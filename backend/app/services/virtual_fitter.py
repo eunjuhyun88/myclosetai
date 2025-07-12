@@ -364,30 +364,144 @@ class VirtualFitter:
         weight: float,
         model_type: str
     ) -> Image.Image:
-        """실제 AI 모델 피팅"""
+        """AI 가상 피팅 처리"""
         
-        logger.info(f"🤖 AI 피팅 모델: {model_type}")
-        
-        try:
-            # AI 모델 매니저 임포트
-            from app.services.ai_models import ai_model_manager
+        if model_type == "real_ai":
+            # 🔥 완전한 AI 가상 피팅
+            logger.info("🔥 완전한 AI 가상 피팅 시작...")
             
-            # 실제 AI 모델로 가상 피팅 생성
-            result, metadata = await ai_model_manager.generate_fitting(
-                person_image, 
-                clothing_image, 
-                model_type=model_type,
-                num_steps=20,
-                guidance_scale=7.5
+            try:
+                from app.services.real_virtual_fitting import real_virtual_fitting
+                
+                # 의류 타입 자동 감지
+                clothing_type = self._detect_clothing_type(clothing_image)
+                
+                # 실제 AI 처리 (모든 기술 통합)
+                result, processing_info = await real_virtual_fitting.process_virtual_fitting(
+                    person_image, clothing_image, height, weight, clothing_type, "ultra"
+                )
+                
+                total_time = processing_info.get('total_processing_time', 0)
+                steps = len(processing_info.get('steps_completed', []))
+                
+                logger.info(f"✅ 완전한 AI 가상 피팅 완료: {total_time:.1f}초, {steps}단계 처리")
+                return result
+                
+            except Exception as e:
+                logger.error(f"❌ AI 가상 피팅 실패: {e}")
+                # 실패시 향상된 데모로 대체
+                return await self.demo_fitting_enhanced(person_image, clothing_image, height, weight)
+        
+        else:
+            # 데모 모드 (빠른 미리보기)
+            return await self.demo_fitting(person_image, clothing_image, height, weight)
+    
+    def _detect_clothing_type(self, clothing_image: Image.Image) -> str:
+        """의류 타입 자동 감지"""
+        
+        # 간단한 비율 기반 감지
+        width, height = clothing_image.size
+        aspect_ratio = height / width
+        
+        if aspect_ratio > 1.5:
+            return "pants"  # 세로가 긴 경우
+        elif aspect_ratio < 0.8:
+            return "jacket"  # 가로가 긴 경우
+        else:
+            return "shirt"  # 기본값
+    
+    async def demo_fitting_enhanced(
+        self, 
+        person_image: Image.Image, 
+        clothing_image: Image.Image,
+        height: float,
+        weight: float
+    ) -> Image.Image:
+        """향상된 데모 가상 피팅"""
+        try:
+            logger.info("🎭 향상된 데모 가상 피팅 시작")
+            
+            # 1. 기본 인체 분석
+            from app.services.human_analysis import human_analyzer
+            body_analysis = await human_analyzer.analyze_human_body(person_image)
+            
+            # 2. 의류 3D 모델링 (간단한 버전)
+            from app.services.clothing_3d_modeling import clothing_3d_modeler
+            clothing_type = self._detect_clothing_type(clothing_image)
+            clothing_mesh = await clothing_3d_modeler.create_clothing_mesh(
+                clothing_image, clothing_type, "cotton"
             )
             
-            logger.info(f"✅ AI 피팅 완료: {model_type} ({metadata['processing_time']:.2f}초)")
+            # 3. 고급 합성
+            result = self._advanced_demo_composite(
+                person_image, clothing_image, body_analysis, clothing_mesh
+            )
+            
+            logger.info("✅ 향상된 데모 피팅 완료")
             return result
             
         except Exception as e:
-            logger.error(f"❌ AI 피팅 실패, 데모 모드로 대체: {e}")
-            # AI 모델 실패시 개선된 데모로 대체
+            logger.error(f"❌ 향상된 데모 피팅 실패: {e}")
+            # 기본 데모로 대체
             return await self.demo_fitting(person_image, clothing_image, height, weight)
+    
+    def _advanced_demo_composite(
+        self,
+        person_image: Image.Image,
+        clothing_image: Image.Image,
+        body_analysis: Dict[str, Any],
+        clothing_mesh: Dict[str, Any]
+    ) -> Image.Image:
+        """고급 데모 합성"""
+        
+        result = person_image.copy()
+        
+        # 의류 영역이 분석되었다면 해당 영역에 정확히 배치
+        if body_analysis.get('clothing_regions') and 'upper_body' in body_analysis['clothing_regions']:
+            region = body_analysis['clothing_regions']['upper_body']
+            bounds = region.get('bounds', {})
+            
+            if bounds:
+                # 정확한 위치에 의류 배치
+                clothing_resized = clothing_image.resize((bounds['width'], bounds['height']))
+                
+                # 알파 블렌딩으로 자연스러운 합성
+                paste_x = bounds['x']
+                paste_y = bounds['y']
+                
+                # 투명도 마스크 생성
+                mask = self._create_clothing_mask(clothing_resized)
+                result.paste(clothing_resized, (paste_x, paste_y), mask)
+            else:
+                # 기본 위치에 배치
+                clothing_resized = clothing_image.resize((200, 200))
+                result.paste(clothing_resized, (150, 100))
+        else:
+            # 포즈가 감지되지 않은 경우 기본 위치
+            clothing_resized = clothing_image.resize((200, 200))
+            result.paste(clothing_resized, (150, 100))
+        
+        # 워터마크 추가
+        draw = ImageDraw.Draw(result)
+        draw.text((10, result.height - 30), "Enhanced Demo Mode", fill='white')
+        
+        return result
+    
+    def _create_clothing_mask(self, clothing_image: Image.Image) -> Image.Image:
+        """의류 마스크 생성"""
+        
+        # 배경 제거를 위한 간단한 마스크
+        cv_image = cv2.cvtColor(np.array(clothing_image), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+        
+        # 임계값 처리
+        _, binary = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
+        
+        # 노이즈 제거
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        cleaned = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        
+        return Image.fromarray(cleaned)
         
     async def initialize_models(self):
         """AI 모델 초기화"""
