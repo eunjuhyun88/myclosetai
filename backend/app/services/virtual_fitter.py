@@ -364,19 +364,42 @@ class VirtualFitter:
         weight: float,
         model_type: str
     ) -> Image.Image:
-        """실제 AI 모델 피팅 (추후 구현)"""
+        """실제 AI 모델 피팅"""
         
         logger.info(f"🤖 AI 피팅 모델: {model_type}")
         
-        if model_type == "ootd":
-            return await self._ootd_fitting(person_image, clothing_image, height, weight)
-        elif model_type == "viton":
-            return await self._viton_fitting(person_image, clothing_image, height, weight)
-        elif model_type == "acgpn":
-            return await self._acgpn_fitting(person_image, clothing_image, height, weight)
-        else:
-            # 데모 모드로 대체
+        try:
+            # AI 모델 매니저 임포트
+            from app.services.ai_models import ai_model_manager
+            
+            # 실제 AI 모델로 가상 피팅 생성
+            result, metadata = await ai_model_manager.generate_fitting(
+                person_image, 
+                clothing_image, 
+                model_type=model_type,
+                num_steps=20,
+                guidance_scale=7.5
+            )
+            
+            logger.info(f"✅ AI 피팅 완료: {model_type} ({metadata['processing_time']:.2f}초)")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ AI 피팅 실패, 데모 모드로 대체: {e}")
+            # AI 모델 실패시 개선된 데모로 대체
             return await self.demo_fitting(person_image, clothing_image, height, weight)
+        
+    async def initialize_models(self):
+        """AI 모델 초기화"""
+        try:
+            from app.services.ai_models import ai_model_manager
+            await ai_model_manager.initialize_models()
+            self.models_loaded = True
+            logger.info("✅ 실제 AI 모델 초기화 완료")
+        except Exception as e:
+            logger.error(f"❌ AI 모델 초기화 실패: {e}")
+            self.models_loaded = False
+            self.demo_mode = True
     
     async def _ootd_fitting(
         self,
