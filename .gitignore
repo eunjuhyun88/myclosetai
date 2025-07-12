@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Build outputs
+/frontend/dist/
+/backend/static/uploads/*
+/backend/static/results/*
+/backend/ai_models/*/checkpoints/*.pth
+/backend/ai_models/*/checkpoints/*.onnx
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Keep directories
+!/backend/static/uploads/.gitkeep
+!/backend/static/results/.gitkeep
+!/backend/ai_models/checkpoints/.gitkeep
