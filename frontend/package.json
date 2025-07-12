@@ -1,27 +1,30 @@
 {
-  "name": "frontend",
-  "version": "0.1.0",
+  "name": "mycloset-frontend",
+  "version": "1.0.0",
+  "description": "MyCloset AI - React 프론트엔드",
   "private": true,
   "dependencies": {
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^13.5.0",
-    "@types/jest": "^27.5.2",
-    "@types/node": "^16.18.126",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "@react-three/drei": "^9.60.0",
+    "@react-three/fiber": "^8.12.0",
+    "autoprefixer": "^10.4.14",
+    "lucide-react": "^0.263.1",
+    "postcss": "^8.4.24",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-scripts": "5.0.1",
+    "tailwindcss": "^3.3.0",
+    "three": "^0.150.0",
     "typescript": "^4.9.5",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^5.0.3"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev": "npm start",
+    "build:prod": "npm run build && serve -s build",
+    "analyze": "npm run build && npx webpack-bundle-analyzer build/static/js/*.js"
   },
   "eslintConfig": {
     "extends": [
@@ -40,5 +43,17 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/jest": "^30.0.0",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@types/three": "^0.150.0",
+    "serve": "^14.2.0",
+    "webpack-bundle-analyzer": "^4.8.0"
+  },
+  "proxy": "http://localhost:8000",
+  "homepage": "."
 }

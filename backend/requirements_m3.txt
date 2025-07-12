@@ -1,0 +1,11 @@
+torch>=2.0.0
+torchvision>=0.15.0
+diffusers>=0.25.0
+transformers>=4.36.0
+accelerate>=0.25.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+gradio>=4.0.0
+numpy<2.0.0
+huggingface-hub
+safetensors

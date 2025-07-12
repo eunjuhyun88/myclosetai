@@ -43,3 +43,4 @@ ai_models/weights/*
 ai_models/OOTDiffusion/
 ai_models/VITON-HD/
 ai_models/
+ai_models/*/.git
