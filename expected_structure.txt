@@ -1,0 +1,21 @@
+mycloset-ai/
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── node_modules/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── models/
+│   │   ├── services/
+│   │   └── utils/
+│   ├── ai_models/
+│   ├── static/
+│   ├── venv/
+│   ├── requirements.txt
+│   └── .env
+├── scripts/
+├── .gitignore
+└── README.md

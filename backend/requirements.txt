@@ -1,38 +1,29 @@
 # FastAPI 및 웹 서버
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
 
 # 이미지 처리
-Pillow==10.1.0
-opencv-python==4.8.1.78
-scikit-image==0.22.0
-
-# 딥러닝 및 AI
-torch==2.1.0
-torchvision==0.16.0
-transformers==4.35.0
-diffusers==0.21.4
-accelerate==0.24.1
-xformers==0.0.22
-numpy==1.24.3
-scipy==1.11.4
-
-# Computer Vision
-mediapipe==0.10.7
+Pillow>=10.0.0
+opencv-python>=4.8.0
+scikit-image>=0.20.0
 
 # 데이터 검증
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
 
 # 파일 처리
-aiofiles==23.2.1
-python-dotenv==1.0.0
+aiofiles>=23.0.0
+python-dotenv>=1.0.0
 
 # 유틸리티
-tqdm==4.66.1
-requests==2.31.0
-uuid
+tqdm>=4.65.0
+requests>=2.31.0
+structlog>=23.0.0
 
-# 로깅
-structlog==23.1.0
+# Computer Vision (선택적)
+# mediapipe>=0.10.0
+
+# NumPy (호환성 중요)
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
