@@ -1,6 +1,6 @@
 """
-🎯 실제 작동하는 6단계 가상 피팅 완전 통합 구현
-VirtualFittingGenerationStep + VirtualFittingStep의 실제 통합
+🎯 실제 작동하는 6단계 가상 피팅 통합 구현
+기존 app/ 구조에 맞게 paste.txt 코드를 통합
 """
 import os
 import time
@@ -19,11 +19,18 @@ from scipy.interpolate import Rbf
 import base64
 import io
 
+# 기존 app 구조 import
+from app.core.config import get_settings
+from app.core.logging_config import setup_logging
+from app.utils.image_utils import save_temp_image, load_image
+from app.utils.memory_manager import optimize_memory_usage
+
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 class RealVirtualFittingStep:
     """
-    🎯 실제로 작동하는 6단계 가상 피팅 시스템
+    🎯 실제로 작동하는 6단계 가상 피팅 시스템 (app 구조 통합 버전)
     
     진짜 통합 버전:
     1. AI 모델 (HR-VITON 스타일) + 전통적 후처리 결합
@@ -31,10 +38,12 @@ class RealVirtualFittingStep:
     3. 실제 TPS 변환 구현
     4. 진짜 이미지 합성 알고리즘
     5. M3 Max MPS 최적화
+    6. 기존 app 구조와 완전 통합
     """
     
-    def __init__(self, device: str = 'mps', config: Dict[str, Any] = None):
-        self.device = device
+    def __init__(self, device: str = None, config: Dict[str, Any] = None):
+        # 기존 설정 시스템 활용
+        self.device = device or ('mps' if torch.backends.mps.is_available() else 'cpu')
         self.config = config or {}
         
         # 실제 컴포넌트들
@@ -48,15 +57,15 @@ class RealVirtualFittingStep:
         self.mp_pose = mp.solutions.pose
         self.mp_selfie_segmentation = mp.solutions.selfie_segmentation
         
-        # MPS 최적화
-        self.use_mps = device == 'mps' and torch.backends.mps.is_available()
+        # MPS 최적화 (M3 Max)
+        self.use_mps = self.device == 'mps' and torch.backends.mps.is_available()
         
         self.is_initialized = False
         
-        logger.info(f"🎯 실제 가상 피팅 시스템 초기화 - 디바이스: {device}")
+        logger.info(f"🎯 실제 가상 피팅 시스템 초기화 - 디바이스: {self.device}")
     
     async def initialize(self) -> bool:
-        """실제 컴포넌트들 초기화"""
+        """실제 컴포넌트들 초기화 (기존 구조 활용)"""
         try:
             logger.info("🔄 실제 가상 피팅 컴포넌트 로딩...")
             
@@ -83,6 +92,9 @@ class RealVirtualFittingStep:
             # 5. 품질 향상기
             self.quality_enhancer = RealQualityEnhancer(device=self.device)
             
+            # 메모리 최적화 (기존 유틸 활용)
+            optimize_memory_usage()
+            
             self.is_initialized = True
             logger.info("✅ 실제 가상 피팅 시스템 초기화 완료")
             return True
@@ -93,20 +105,22 @@ class RealVirtualFittingStep:
     
     async def process_virtual_fitting(
         self,
-        person_image: Union[np.ndarray, torch.Tensor, Image.Image],
-        clothing_image: Union[np.ndarray, torch.Tensor, Image.Image],
-        target_region: str = 'upper'  # 'upper', 'lower', 'full'
+        person_image: Union[np.ndarray, torch.Tensor, Image.Image, str],
+        clothing_image: Union[np.ndarray, torch.Tensor, Image.Image, str],
+        target_region: str = 'upper',  # 'upper', 'lower', 'full'
+        user_preferences: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
-        실제 가상 피팅 처리 파이프라인
+        실제 가상 피팅 처리 파이프라인 (API 연결용)
         
         Args:
-            person_image: 사용자 이미지
-            clothing_image: 옷 이미지  
+            person_image: 사용자 이미지 (파일 경로 또는 이미지 객체)
+            clothing_image: 옷 이미지 (파일 경로 또는 이미지 객체)
             target_region: 착용할 신체 부위
+            user_preferences: 사용자 설정 (키, 몸무게 등)
         
         Returns:
-            실제 피팅 결과
+            API 호환 피팅 결과
         """
         if not self.is_initialized:
             raise RuntimeError("시스템이 초기화되지 않았습니다.")
@@ -114,9 +128,9 @@ class RealVirtualFittingStep:
         start_time = time.time()
         
         try:
-            # === 0. 입력 전처리 ===
-            person_np = self._ensure_numpy(person_image)
-            clothing_np = self._ensure_numpy(clothing_image)
+            # === 0. 입력 전처리 (기존 utils 활용) ===
+            person_np = await self._load_and_preprocess_image(person_image)
+            clothing_np = await self._load_and_preprocess_image(clothing_image)
             
             logger.info("🎨 1단계: 포즈 추정 및 인체 파싱")
             # === 1. 실제 포즈 추정 (MediaPipe) ===
@@ -152,27 +166,26 @@ class RealVirtualFittingStep:
             
             processing_time = time.time() - start_time
             
-            # 결과 구성
+            # === 결과 저장 (기존 구조 활용) ===
+            result_path = await self._save_result_image(enhanced_result)
+            
+            # API 호환 결과 구성
             result = {
                 "success": True,
                 "fitted_image": enhanced_result,
                 "fitted_image_pil": Image.fromarray(cv2.cvtColor(enhanced_result, cv2.COLOR_BGR2RGB)),
                 "fitted_image_base64": self._image_to_base64(enhanced_result),
+                "fitted_image_path": result_path,
                 
-                # 품질 메트릭
+                # 품질 메트릭 (프론트엔드용)
                 "quality_metrics": quality_metrics,
                 "fit_score": quality_metrics.get('fit_score', 0.8),
                 "realism_score": quality_metrics.get('realism_score', 0.8),
                 "overall_quality": quality_metrics.get('overall_quality', 0.8),
+                "confidence": quality_metrics.get('overall_quality', 0.8),  # API 호환
                 
-                # 중간 결과들
-                "intermediate_results": {
-                    "pose_keypoints": pose_result.get('keypoints', []),
-                    "person_mask": pose_result.get('person_mask'),
-                    "clothing_mask": clothing_result.get('mask'),
-                    "warped_clothing": warping_result.get('warped_image'),
-                    "neural_composite": neural_result
-                },
+                # 추천 (AI 기반)
+                "recommendations": self._generate_recommendations(quality_metrics, user_preferences),
                 
                 # 처리 정보
                 "processing_info": {
@@ -180,6 +193,7 @@ class RealVirtualFittingStep:
                     "target_region": target_region,
                     "device_used": self.device,
                     "steps_completed": 6,
+                    "optimization": "M3_Max_MPS" if self.use_mps else "CPU",
                     "model_versions": {
                         "mediapipe_pose": "v1.0",
                         "neural_compositor": "v1.0",
@@ -199,8 +213,71 @@ class RealVirtualFittingStep:
             return {
                 "success": False,
                 "error": str(e),
-                "processing_time": processing_time
+                "processing_time": processing_time,
+                "device_used": self.device
             }
+    
+    async def _load_and_preprocess_image(self, image_input: Union[str, np.ndarray, Image.Image]) -> np.ndarray:
+        """이미지 로딩 및 전처리 (기존 utils 활용)"""
+        
+        if isinstance(image_input, str):
+            # 파일 경로인 경우
+            image = load_image(image_input)
+        elif isinstance(image_input, Image.Image):
+            image = cv2.cvtColor(np.array(image_input), cv2.COLOR_RGB2BGR)
+        elif isinstance(image_input, np.ndarray):
+            image = image_input
+        else:
+            raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
+        
+        # 표준 크기로 리사이즈 (성능 최적화)
+        target_size = self.config.get('image_size', 512)
+        if image.shape[:2] != (target_size, target_size):
+            image = cv2.resize(image, (target_size, target_size))
+        
+        return image
+    
+    async def _save_result_image(self, image: np.ndarray) -> str:
+        """결과 이미지 저장 (기존 utils 활용)"""
+        timestamp = int(time.time())
+        filename = f"fitted_result_{timestamp}.jpg"
+        result_path = os.path.join(settings.RESULT_DIR, filename)
+        
+        # 디렉토리 생성
+        os.makedirs(settings.RESULT_DIR, exist_ok=True)
+        
+        # 이미지 저장
+        cv2.imwrite(result_path, image)
+        
+        return result_path
+    
+    def _generate_recommendations(self, quality_metrics: Dict, user_preferences: Dict = None) -> List[str]:
+        """AI 기반 추천 생성"""
+        recommendations = []
+        
+        fit_score = quality_metrics.get('fit_score', 0.5)
+        realism_score = quality_metrics.get('realism_score', 0.5)
+        
+        if fit_score < 0.7:
+            recommendations.append("더 정확한 핏을 위해 정면을 향한 전신 사진을 사용해보세요.")
+        
+        if realism_score < 0.7:
+            recommendations.append("더 자연스러운 결과를 위해 조명이 균일한 환경에서 촬영해보세요.")
+        
+        if fit_score > 0.8 and realism_score > 0.8:
+            recommendations.append("완벽한 핏입니다! 이 스타일이 당신에게 잘 어울려요.")
+        
+        # 사용자 맞춤 추천
+        if user_preferences:
+            height = user_preferences.get('height', 170)
+            if height < 160:
+                recommendations.append("키가 작으신 분께는 하이웨이스트 스타일을 추천드려요.")
+            elif height > 180:
+                recommendations.append("키가 크신 분께는 롱 실루엣이 잘 어울려요.")
+        
+        return recommendations[:3]  # 최대 3개
+    
+    # === 기존 paste.txt의 핵심 메서드들 유지 ===
     
     async def _extract_pose_and_segmentation(self, person_image: np.ndarray) -> Dict[str, Any]:
         """실제 포즈 추정 및 인체 분할 (MediaPipe)"""
@@ -732,21 +809,6 @@ class RealVirtualFittingStep:
         
         return realism
     
-    def _ensure_numpy(self, image: Union[np.ndarray, torch.Tensor, Image.Image]) -> np.ndarray:
-        """이미지를 numpy 배열로 변환"""
-        if isinstance(image, Image.Image):
-            return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        elif isinstance(image, torch.Tensor):
-            if image.dim() == 4:
-                image = image.squeeze(0)
-            if image.shape[0] == 3:
-                image = image.permute(1, 2, 0)
-            return (image.cpu().numpy() * 255).astype(np.uint8)
-        elif isinstance(image, np.ndarray):
-            return image
-        else:
-            raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
-    
     def _numpy_to_tensor(self, array: np.ndarray, is_mask: bool = False) -> torch.Tensor:
         """numpy를 텐서로 변환"""
         if is_mask:
@@ -787,9 +849,14 @@ class RealVirtualFittingStep:
         if self.neural_compositor:
             await self.neural_compositor.cleanup()
         
+        # 메모리 정리 (기존 utils 활용)
+        optimize_memory_usage()
+        
         self.is_initialized = False
         logger.info("🧹 실제 가상 피팅 시스템 리소스 정리 완료")
 
+
+# === 보조 클래스들 (paste.txt에서 가져옴) ===
 
 class RealTPSTransformer:
     """실제 TPS (Thin Plate Spline) 변환기"""
@@ -1071,9 +1138,9 @@ class RealQualityEnhancer:
         return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
 
-# === 사용 예시 ===
-async def test_real_virtual_fitting():
-    """실제 가상 피팅 테스트"""
+# === 사용 예시 (기존 구조와 통합) ===
+async def test_integrated_virtual_fitting():
+    """통합된 가상 피팅 테스트"""
     
     # 시스템 초기화
     fitting_system = RealVirtualFittingStep(
@@ -1081,7 +1148,8 @@ async def test_real_virtual_fitting():
         config={
             'pose_confidence_threshold': 0.5,
             'segmentation_quality': 'high',
-            'enable_neural_composition': True
+            'enable_neural_composition': True,
+            'image_size': 512
         }
     )
     
@@ -1090,30 +1158,30 @@ async def test_real_virtual_fitting():
         print("❌ 시스템 초기화 실패")
         return
     
-    # 테스트 이미지 로드 (실제 파일 경로)
-    person_image = cv2.imread('test_person.jpg')
-    clothing_image = cv2.imread('test_clothing.jpg')
-    
-    if person_image is None or clothing_image is None:
-        print("❌ 테스트 이미지를 찾을 수 없습니다")
-        return
+    # 테스트 이미지 경로 (기존 구조 활용)
+    person_image_path = os.path.join(settings.UPLOAD_DIR, 'test_person.jpg')
+    clothing_image_path = os.path.join(settings.UPLOAD_DIR, 'test_clothing.jpg')
     
     # 가상 피팅 실행
     result = await fitting_system.process_virtual_fitting(
-        person_image=person_image,
-        clothing_image=clothing_image,
-        target_region='upper'
+        person_image=person_image_path,
+        clothing_image=clothing_image_path,
+        target_region='upper',
+        user_preferences={'height': 175, 'weight': 70}
     )
     
     if result['success']:
-        print(f"✅ 실제 가상 피팅 성공!")
+        print(f"✅ 통합 가상 피팅 성공!")
         print(f"📊 전체 품질: {result['overall_quality']:.3f}")
         print(f"👔 피팅 점수: {result['fit_score']:.3f}")
         print(f"⏱️ 처리 시간: {result['processing_info']['processing_time']:.2f}초")
+        print(f"💾 결과 저장: {result['fitted_image_path']}")
         
-        # 결과 저장
-        cv2.imwrite('output_fitted.jpg', result['fitted_image'])
-        print("💾 결과 이미지 저장: output_fitted.jpg")
+        # 추천사항 출력
+        if result['recommendations']:
+            print("💡 추천사항:")
+            for rec in result['recommendations']:
+                print(f"   - {rec}")
         
     else:
         print(f"❌ 가상 피팅 실패: {result['error']}")
@@ -1123,4 +1191,4 @@ async def test_real_virtual_fitting():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(test_real_virtual_fitting())
+    asyncio.run(test_integrated_virtual_fitting())
