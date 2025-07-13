@@ -1,21 +1,68 @@
 """
 5단계: 옷 워핑 (Clothing Warping) - 신체에 맞춘 고급 의류 변형
 M3 Max 최적화 버전 (물리 시뮬레이션 + 천 특성 고려)
+안전한 임포트 처리 및 의존성 체크 포함
 """
 import os
 import logging
 import time
 from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
-import torch
-import cv2
-from scipy.interpolate import RBFInterpolator
-from scipy.spatial.distance import cdist
-from sklearn.cluster import KMeans
 import json
 import math
 
-logger = logging.getLogger(__name__)
+# 필수 패키지들 - 안전한 임포트 처리
+try:
+    import torch
+    TORCH_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("✅ PyTorch 사용 가능")
+except ImportError:
+    print("❌ PyTorch 설치 필요: pip install torch")
+    TORCH_AVAILABLE = False
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+    if TORCH_AVAILABLE:
+        logger.info("✅ OpenCV 사용 가능")
+except ImportError:
+    print("❌ OpenCV 설치 필요: pip install opencv-python")
+    CV2_AVAILABLE = False
+
+try:
+    from scipy.interpolate import RBFInterpolator
+    from scipy.spatial.distance import cdist
+    SCIPY_AVAILABLE = True
+    if TORCH_AVAILABLE:
+        logger.info("✅ SciPy 사용 가능")
+except ImportError:
+    print("❌ SciPy 설치 필요: pip install scipy")
+    SCIPY_AVAILABLE = False
+
+try:
+    from sklearn.cluster import KMeans
+    SKLEARN_AVAILABLE = True
+    if TORCH_AVAILABLE:
+        logger.info("✅ Scikit-learn 사용 가능")
+except ImportError:
+    print("❌ Scikit-learn 설치 필요: pip install scikit-learn")
+    SKLEARN_AVAILABLE = False
+
+# 선택적 패키지 - 텍스처 분석 향상용
+try:
+    from skimage.feature import local_binary_pattern
+    SKIMAGE_AVAILABLE = True
+    if TORCH_AVAILABLE:
+        logger.info("✅ Scikit-image 사용 가능 (고급 텍스처 분석)")
+except ImportError:
+    print("⚠️ Scikit-image 권장: pip install scikit-image (텍스처 분석 기능 향상)")
+    SKIMAGE_AVAILABLE = False
+
+# 로거 초기화 (torch 없을 때 대비)
+if not TORCH_AVAILABLE:
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
 class ClothingWarpingStep:
     """옷 워핑 스텝 - 신체에 맞춘 고급 의류 변형"""
@@ -27,6 +74,26 @@ class ClothingWarpingStep:
             device: 사용할 디바이스 ('cpu', 'cuda', 'mps')
             config: 설정 딕셔너리
         """
+        # 필수 의존성 체크
+        missing_deps = []
+        if not TORCH_AVAILABLE:
+            missing_deps.append("torch")
+        if not CV2_AVAILABLE:
+            missing_deps.append("opencv-python")
+        if not SCIPY_AVAILABLE:
+            missing_deps.append("scipy")
+        if not SKLEARN_AVAILABLE:
+            missing_deps.append("scikit-learn")
+        
+        if missing_deps:
+            error_msg = f"필수 의존성 누락: {', '.join(missing_deps)}"
+            logger.error(error_msg)
+            raise ImportError(f"{error_msg}\n설치 명령어: pip install {' '.join(missing_deps)}")
+        
+        # 선택적 의존성 경고
+        if not SKIMAGE_AVAILABLE:
+            logger.warning("Scikit-image 없음: 텍스처 분석 기능이 제한됩니다")
+        
         self.model_loader = model_loader
         self.device = device
         self.config = config or {}
@@ -52,8 +119,11 @@ class ClothingWarpingStep:
             'default': {'stiffness': 0.5, 'elasticity': 0.5, 'thickness': 0.5}
         }
         
-        # 성능 최적화 (M3 Max)
-        self.use_mps = device == 'mps' and torch.backends.mps.is_available()
+        # 성능 최적화 (M3 Max) - 안전한 체크
+        self.use_mps = (TORCH_AVAILABLE and 
+                       device == 'mps' and 
+                       hasattr(torch.backends, 'mps') and 
+                       torch.backends.mps.is_available())
         self.optimization_level = self.config.get('optimization_level', 'balanced')  # fast, balanced, quality
         
         # 워핑 컴포넌트들
@@ -64,6 +134,8 @@ class ClothingWarpingStep:
         self.is_initialized = False
         
         logger.info(f"🎯 옷 워핑 스텝 초기화 - 디바이스: {device}, MPS: {self.use_mps}")
+        logger.info(f"📦 사용 가능한 기능: PyTorch({TORCH_AVAILABLE}), OpenCV({CV2_AVAILABLE}), "
+                   f"SciPy({SCIPY_AVAILABLE}), Sklearn({SKLEARN_AVAILABLE}), Skimage({SKIMAGE_AVAILABLE})")
     
     async def initialize(self) -> bool:
         """초기화"""
@@ -351,7 +423,7 @@ class ClothingWarpingStep:
         original: np.ndarray, 
         warped: np.ndarray
     ) -> float:
-        """텍스처 유사도 계산"""
+        """텍스처 유사도 계산 - 안전한 버전"""
         try:
             # 크기 맞추기
             if original.shape != warped.shape:
@@ -367,30 +439,32 @@ class ClothingWarpingStep:
                 orig_gray = original
                 warp_gray = warped_resized
             
-            # 텍스처 특징 추출 (LBP 패턴)
-            from skimage.feature import local_binary_pattern
+            # Scikit-image가 있으면 고급 텍스처 분석
+            if SKIMAGE_AVAILABLE:
+                orig_lbp = local_binary_pattern(orig_gray, 24, 8, method='uniform')
+                warp_lbp = local_binary_pattern(warp_gray, 24, 8, method='uniform')
+                
+                # 히스토그램 비교
+                orig_hist = np.histogram(orig_lbp, bins=26)[0]
+                warp_hist = np.histogram(warp_lbp, bins=26)[0]
+                
+                # 정규화
+                orig_hist = orig_hist / (orig_hist.sum() + 1e-7)
+                warp_hist = warp_hist / (warp_hist.sum() + 1e-7)
+                
+                # 교집합 계산
+                similarity = np.sum(np.minimum(orig_hist, warp_hist))
+                return similarity
             
-            orig_lbp = local_binary_pattern(orig_gray, 24, 8, method='uniform')
-            warp_lbp = local_binary_pattern(warp_gray, 24, 8, method='uniform')
-            
-            # 히스토그램 비교
-            orig_hist = np.histogram(orig_lbp, bins=26)[0]
-            warp_hist = np.histogram(warp_lbp, bins=26)[0]
-            
-            # 정규화
-            orig_hist = orig_hist / (orig_hist.sum() + 1e-7)
-            warp_hist = warp_hist / (warp_hist.sum() + 1e-7)
-            
-            # 교집합 계산
-            similarity = np.sum(np.minimum(orig_hist, warp_hist))
-            
-            return similarity
-            
-        except Exception:
-            # 간단한 히스토그램 비교로 fallback
-            orig_hist = cv2.calcHist([original], [0], None, [256], [0, 256])
-            warp_hist = cv2.calcHist([warped], [0], None, [256], [0, 256])
-            return cv2.compareHist(orig_hist, warp_hist, cv2.HISTCMP_CORREL)
+            else:
+                # Fallback: 간단한 히스토그램 비교
+                orig_hist = cv2.calcHist([orig_gray], [0], None, [256], [0, 256])
+                warp_hist = cv2.calcHist([warp_gray], [0], None, [256], [0, 256])
+                return cv2.compareHist(orig_hist, warp_hist, cv2.HISTCMP_CORREL)
+                
+        except Exception as e:
+            logger.warning(f"텍스처 유사도 계산 실패: {e}")
+            return 0.5  # 기본값 반환
     
     def _assess_deformation_naturalness(
         self, 
@@ -469,10 +543,10 @@ class ClothingWarpingStep:
         return max(0.0, min(1.0, consistency))
     
     async def get_model_info(self) -> Dict[str, Any]:
-        """모델 정보 반환"""
+        """모델 정보 반환 - 의존성 상태 포함"""
         return {
             "step_name": "ClothingWarping",
-            "version": "1.0",
+            "version": "1.1",  # 의존성 체크 추가로 버전업
             "device": self.device,
             "use_mps": self.use_mps,
             "initialized": self.is_initialized,
@@ -485,7 +559,15 @@ class ClothingWarpingStep:
                 "texture_synthesis", 
                 "wrinkle_generation",
                 "fabric_property_modeling"
-            ]
+            ],
+            "dependencies": {
+                "torch": TORCH_AVAILABLE,
+                "opencv": CV2_AVAILABLE,
+                "scipy": SCIPY_AVAILABLE,
+                "sklearn": SKLEARN_AVAILABLE,
+                "skimage": SKIMAGE_AVAILABLE
+            },
+            "missing_features": [] if SKIMAGE_AVAILABLE else ["advanced_texture_analysis"]
         }
     
     async def cleanup(self):
@@ -682,13 +764,15 @@ class AdvancedClothingWarper:
             type_warped, deformation_map
         )
         
-        # 3. 제어점 기반 정밀 워핑
-        if control_points:
+        # 3. 제어점 기반 정밀 워핑 (SciPy 사용 가능할 때만)
+        if control_points and SCIPY_AVAILABLE:
             final_warped = self._apply_control_point_warping(
                 deformation_warped, control_points
             )
         else:
             final_warped = deformation_warped
+            if control_points and not SCIPY_AVAILABLE:
+                logger.warning("SciPy 없음: 정밀 제어점 워핑 스킵")
         
         # 4. 변형 통계 계산
         deformation_stats = self._calculate_deformation_stats(
@@ -780,31 +864,36 @@ class AdvancedClothingWarper:
         image: np.ndarray,
         control_points: List[Tuple[np.ndarray, np.ndarray]]
     ) -> np.ndarray:
-        """제어점 기반 정밀 워핑"""
+        """제어점 기반 정밀 워핑 - SciPy 필요"""
         
         if len(control_points) < 3:
             return image
         
-        # RBF 기반 워핑
-        source_points = np.array([pair[0] for pair in control_points])
-        target_points = np.array([pair[1] for pair in control_points])
+        try:
+            # RBF 기반 워핑
+            source_points = np.array([pair[0] for pair in control_points])
+            target_points = np.array([pair[1] for pair in control_points])
+            
+            # RBF 보간기 생성
+            rbf_x = RBFInterpolator(source_points, target_points[:, 0], 
+                                   kernel='thin_plate_spline', smoothing=0.01)
+            rbf_y = RBFInterpolator(source_points, target_points[:, 1], 
+                                   kernel='thin_plate_spline', smoothing=0.01)
+            
+            h, w = image.shape[:2]
+            y_coords, x_coords = np.mgrid[0:h, 0:w]
+            grid_points = np.stack([x_coords.ravel(), y_coords.ravel()], axis=-1)
+            
+            # 변환 적용
+            mapped_x = rbf_x(grid_points).reshape(h, w)
+            mapped_y = rbf_y(grid_points).reshape(h, w)
+            
+            return cv2.remap(image, mapped_x.astype(np.float32), mapped_y.astype(np.float32), 
+                            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         
-        # RBF 보간기 생성
-        rbf_x = RBFInterpolator(source_points, target_points[:, 0], 
-                               kernel='thin_plate_spline', smoothing=0.01)
-        rbf_y = RBFInterpolator(source_points, target_points[:, 1], 
-                               kernel='thin_plate_spline', smoothing=0.01)
-        
-        h, w = image.shape[:2]
-        y_coords, x_coords = np.mgrid[0:h, 0:w]
-        grid_points = np.stack([x_coords.ravel(), y_coords.ravel()], axis=-1)
-        
-        # 변환 적용
-        mapped_x = rbf_x(grid_points).reshape(h, w)
-        mapped_y = rbf_y(grid_points).reshape(h, w)
-        
-        return cv2.remap(image, mapped_x.astype(np.float32), mapped_y.astype(np.float32), 
-                        cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        except Exception as e:
+            logger.warning(f"제어점 워핑 실패: {e}")
+            return image
     
     def _calculate_deformation_stats(
         self,
@@ -1027,3 +1116,63 @@ class TextureSynthesizer:
         combined_mask = cv2.bitwise_or(detail_mask, high_strain_mask)
         
         return combined_mask
+
+
+# 의존성 체크 함수들
+def check_warping_dependencies() -> Dict[str, bool]:
+    """워핑 단계 의존성 체크"""
+    return {
+        "torch": TORCH_AVAILABLE,
+        "opencv": CV2_AVAILABLE,
+        "scipy": SCIPY_AVAILABLE,
+        "sklearn": SKLEARN_AVAILABLE,
+        "skimage": SKIMAGE_AVAILABLE,
+        "ready": all([TORCH_AVAILABLE, CV2_AVAILABLE, SCIPY_AVAILABLE, SKLEARN_AVAILABLE])
+    }
+
+
+def get_missing_dependencies() -> List[str]:
+    """누락된 의존성 목록 반환"""
+    missing = []
+    
+    if not TORCH_AVAILABLE:
+        missing.append("torch")
+    if not CV2_AVAILABLE:
+        missing.append("opencv-python")
+    if not SCIPY_AVAILABLE:
+        missing.append("scipy")
+    if not SKLEARN_AVAILABLE:
+        missing.append("scikit-learn")
+    
+    return missing
+
+
+def print_dependency_status():
+    """의존성 상태 출력"""
+    print("🔍 옷 워핑 단계 의존성 상태:")
+    print(f"   {'✅' if TORCH_AVAILABLE else '❌'} PyTorch: {TORCH_AVAILABLE}")
+    print(f"   {'✅' if CV2_AVAILABLE else '❌'} OpenCV: {CV2_AVAILABLE}")
+    print(f"   {'✅' if SCIPY_AVAILABLE else '❌'} SciPy: {SCIPY_AVAILABLE}")
+    print(f"   {'✅' if SKLEARN_AVAILABLE else '❌'} Scikit-learn: {SKLEARN_AVAILABLE}")
+    print(f"   {'✅' if SKIMAGE_AVAILABLE else '⚠️'} Scikit-image (선택): {SKIMAGE_AVAILABLE}")
+    
+    missing = get_missing_dependencies()
+    if missing:
+        print(f"\n❌ 설치 필요: pip install {' '.join(missing)}")
+    else:
+        print("\n🎉 모든 필수 의존성이 준비되었습니다!")
+
+
+if __name__ == "__main__":
+    # 의존성 상태 체크 및 출력
+    print_dependency_status()
+    
+    # 기본 테스트
+    deps = check_warping_dependencies()
+    if deps["ready"]:
+        print("\n✅ 옷 워핑 단계 준비 완료!")
+    else:
+        print(f"\n⚠️ 누락된 패키지 설치 후 다시 시도하세요.")
+        missing = get_missing_dependencies()
+        if missing:
+            print(f"설치 명령어: pip install {' '.join(missing)}")
