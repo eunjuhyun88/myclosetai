@@ -209,3 +209,68 @@ static/uploads/*
 !static/uploads/.gitkeep
 static/results/*
 !static/results/.gitkeep
+
+# .gitignore 업데이트 (루트에 추가)
+
+# AI 모델 파일들 (큰 파일들)
+*.safetensors
+*.bin
+*.onnx
+*.pth
+*.pt
+*.h5
+*.pb
+*.tflite
+*.ckpt
+*.pkl
+*.pickle
+
+# AI 모델 폴더들
+backend/ai_models/checkpoints/*
+!backend/ai_models/checkpoints/.gitkeep
+backend/ai_models/cache/*
+!backend/ai_models/cache/.gitkeep
+backend/ai_models/ootd_models/*
+!backend/ai_models/ootd_models/.gitkeep
+backend/ai_models/temp/*
+!backend/ai_models/temp/.gitkeep
+
+# oot_diffusion 생성 파일들
+backend/ai_models/oot_diffusion/outputs/
+backend/ai_models/oot_diffusion/logs/
+backend/ai_models/oot_diffusion/models/
+backend/ai_models/oot_diffusion/cache/
+backend/ai_models/oot_diffusion/__pycache__/
+backend/ai_models/oot_diffusion/*.egg-info/
+backend/ai_models/oot_diffusion/build/
+backend/ai_models/oot_diffusion/dist/
+
+# 대용량 Hugging Face 모델들
+backend/ai_models/oot_diffusion/models/*
+backend/ai_models/oot_diffusion/checkpoints/*
+
+# 업로드/결과 파일
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+backend/static/results/*
+!backend/static/results/.gitkeep
+
+# 로그 파일
+backend/logs/*.log
+
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+
+# 가상환경
+backend/venv/
+frontend/node_modules/
+
+# 환경 설정
+.env
+.env.local
