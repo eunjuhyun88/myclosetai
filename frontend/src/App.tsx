@@ -531,26 +531,30 @@ const App: React.FC = () => {
 
                   {/* Details */}
                   <div>
-                    <h4 style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>Details</h4>
-                    <div style={{ backgroundColor: '#f9fafb', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                        <span style={{ color: '#4b5563' }}>Category</span>
-                        <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>{result.clothing_analysis.category}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                        <span style={{ color: '#4b5563' }}>Style</span>
-                        <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>{result.clothing_analysis.style}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                        <span style={{ color: '#4b5563' }}>Processing Time</span>
-                        <span style={{ fontWeight: '500' }}>{result.processing_time}s</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                        <span style={{ color: '#4b5563' }}>BMI</span>
-                        <span style={{ fontWeight: '500' }}>{result.measurements.bmi}</span>
-                      </div>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>Details</h4>
+                  <div style={{ backgroundColor: '#f9fafb', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                      <span style={{ color: '#4b5563' }}>Category</span>
+                      <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
+                        {result?.clothing_analysis?.category || 'Unknown'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                      <span style={{ color: '#4b5563' }}>Style</span>
+                      <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
+                        {result?.clothing_analysis?.style || 'Unknown'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                      <span style={{ color: '#4b5563' }}>Processing Time</span>
+                      <span style={{ fontWeight: '500' }}>{result?.processing_time || 0}s</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                      <span style={{ color: '#4b5563' }}>BMI</span>
+                      <span style={{ fontWeight: '500' }}>{result?.measurements?.bmi || 0}</span>
                     </div>
                   </div>
+                </div>
 
                   {/* Recommendations */}
                   {result.recommendations && result.recommendations.length > 0 && (
