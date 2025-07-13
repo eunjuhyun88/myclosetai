@@ -1,59 +1,180 @@
-# Dependencies
-node_modules/
-venv/
-env/
-__pycache__/
-*.pyc
+# ============================================================================
+# AI 모델 파일들 (용량이 큰 파일들 Git에서 제외)
+# ============================================================================
 
-# AI model files
-*.pt
-*.ckpt
+# AI 모델 디렉토리 전체 제외
+ai_models/
+backend/ai_models/
+
+# 하지만 설정 파일들은 포함
+!ai_models/model_config.yaml
+!ai_models/simple_config.yaml
+!ai_models/DOWNLOAD_GUIDE.md
+!ai_models/.gitkeep
+!backend/ai_models/model_config.yaml
+!backend/ai_models/simple_config.yaml
+!backend/ai_models/DOWNLOAD_GUIDE.md
+!backend/ai_models/.gitkeep
+
+# 특정 모델 파일 확장자들 제외
 *.pth
-*.safetensors
+*.ckpt
+*.h5
+*.pb
 *.onnx
 *.tflite
-*.pb
-*.h5
-*.joblib
-*.pkl
+*.safetensors
+*.bin
+*.pt
 
-# Huggingface cache
-~/.cache/huggingface/
+# Hugging Face 캐시 제외
+cache/
+.cache/
+**/cache/
+**/.cache/
 
-ai_models/
-weights/
+# 체크포인트 디렉토리들
 checkpoints/
+**/checkpoints/
+!**/checkpoints/.gitkeep
 
-# Build outputs
-/frontend/dist/
-/backend/static/uploads/*
-/backend/static/results/*
-/backend/ai_models/*/checkpoints/*.pth
-/backend/ai_models/*/checkpoints/*.onnx
+# 임시 모델 파일들
+temp/
+**/temp/
+!**/temp/.gitkeep
 
-# Environment files
-.env
-.env.local
-.env.production
+# ============================================================================
+# 기본 Python & 프로젝트 설정 (기존 유지)
+# ============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
 
 # IDE
 .vscode/
 .idea/
 *.swp
-
-# OS
+*.swo
 .DS_Store
-Thumbs.db
 
-# Logs
-logs/
-*.log
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
 
-# Keep directories
-!/backend/static/uploads/.gitkeep
-!/backend/static/results/.gitkeep
-!/backend/ai_models/checkpoints/.gitkeep
-ai_models/
-backend/ai_models/
-.env 
-.env.backup
+# 업로드/결과 파일들
+static/uploads/*
+static/results/*
+logs/*
+
+# 예외: .gitkeep 파일들은 유지
+!static/uploads/.gitkeep
+!static/results/.gitkeep
+!logs/.gitkeep
+
+# 테스트 및 커버리지
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# ============================================================================
+# 특정 AI 모델 디렉토리들 (현재 프로젝트 기준)
+# ============================================================================
+
+# OOTDiffusion 관련
+OOTDiffusion/
+ootdiffusion_hf/
+**/OOTDiffusion/
+**/ootdiffusion_hf/
+
+# VITON 관련
+VITON-HD/
+HR-VITON/
+**/VITON-HD/
+**/HR-VITON/
+
+# 기타 AI 모델들
+Graphonomy/
+Self-Correction-Human-Parsing/
+openpose/
+detectron2/
+**/Graphonomy/
+**/Self-Correction-Human-Parsing/
+**/openpose/
+**/detectron2/
+
+# Stable Diffusion 관련
+stable-diffusion-v1-5/
+**/stable-diffusion-v1-5/
+
+# SAM (Segment Anything Model)
+sam/
+**/sam/
+
+# CLIP 모델
+clip-vit-large-patch14/
+**/clip-vit-large-patch14/
+
+# 개별 모델 파일들
+gen.pth
+mtviton.pth
+resnet50_features.pth
+*.model
+*.weights
+
+# ============================================================================
+# 예외: 필요한 설정 파일들은 Git에 포함
+# ============================================================================
+
+# 설정 파일들은 포함
+!**/*.yaml
+!**/*.yml
+!**/*.json
+!**/*.md
+!**/*.txt
+!**/.gitkeep
+
+# 하지만 모델 가중치 파일과 같은 이름의 설정은 제외
+*.config.json
+**/pytorch_model.bin
+**/diffusion_pytorch_model.bin
+**/diffusion_pytorch_model.safetensors

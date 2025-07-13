@@ -1,0 +1,47 @@
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 📝 로그 레벨: INFO
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 📝 로그 레벨: INFO
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 📝 로그 레벨: INFO
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 21:40:40 | [32mINFO[0m | mycloset.logging     | 92899 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 21:40:40 | [32mINFO[0m | app.main             | 92899 | 🚀 MyCloset AI Backend 시작...
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | 🚀 GPU 설정 시작 검사...
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | device: mps
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | platform: Darwin
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | machine: arm64
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | python_version: 3.10.18
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | pytorch_version: 2.1.0
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | system_memory:
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   total_gb: 128.0
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   available_gb: 71.8
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   used_percent: 43.9
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | gpu_info:
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   name: Apple M3 Max
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   memory_pool: 통합 메모리 (Unified Memory)
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   cores: 30-40 GPU 코어
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   neural_engine: 16코어
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 |   memory_bandwidth: 400GB/s
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | 🧪 AI 파이프라인 테스트 시작...
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | ✅ AI 파이프라인 테스트 성공: torch.Size([1, 10])
+2025-07-13 21:40:40 | [32mINFO[0m | app.core.gpu_config  | 92899 | ✅ GPU 설정 검사 완료
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 🤖 ModelManager 초기화: device=mps
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | ℹ️ MPS empty_cache 미지원 (PyTorch 2.5.1)
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | ℹ️ MPS 메모리 제한 설정 미지원
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 📋 사용 가능한 모델: 7/12
+2025-07-13 21:40:40 | [32mINFO[0m | app.main             | 92899 | ✅ 7/12 모델 감지됨
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 🔄 모든 모델 로드 시작...
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 📋 사용 가능한 모델: 7/12
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 🔄 모델 로드 시작: stable_diffusion
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 🎯 모델 타입: base_diffusion
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | 🎨 디퓨전 모델 로딩: stable_diffusion
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | ✅ 모델 로드 완료: stable_diffusion
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | ✅ 자동 로드 완료: stable_diffusion
+2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | ✅ 모델 자동 로드 완료: 1개
+2025-07-13 21:40:40 | [32mINFO[0m | app.main             | 92899 | ✅ AI 모델 매니저 초기화 완료
+2025-07-13 21:40:40 | [32mINFO[0m | app.main             | 92899 | ✅ 애플리케이션 초기화 완료
