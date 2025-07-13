@@ -5,6 +5,25 @@ env/
 __pycache__/
 *.pyc
 
+# AI model files
+*.pt
+*.ckpt
+*.pth
+*.safetensors
+*.onnx
+*.tflite
+*.pb
+*.h5
+*.joblib
+*.pkl
+
+# Huggingface cache
+~/.cache/huggingface/
+
+ai_models/
+weights/
+checkpoints/
+
 # Build outputs
 /frontend/dist/
 /backend/static/uploads/*
