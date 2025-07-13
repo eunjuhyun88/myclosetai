@@ -1,596 +1,840 @@
-# app/main.py
+# backend/app/main.py
 """
-MyCloset AI 가상 피팅 시스템 메인 애플리케이션
-개선된 PipelineManager와 완전히 통합된 버전
+MyCloset AI Backend - 완전한 가상 피팅 API 시스템
+8단계 AI 파이프라인과 mycloset-uiux.tsx 호환
 """
-
-import sys
 import os
+import sys
 import asyncio
 import logging
 import traceback
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any, List
+import time
+
+# FastAPI 관련 임포트
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
-from typing import Optional
-import uvicorn
+from fastapi.security import HTTPBearer
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 
-# 프로젝트 루트를 Python 경로에 추가
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 이미지 처리
+from PIL import Image
+import numpy as np
+import cv2
+import base64
+from io import BytesIO
 
-# 실제 존재하는 모듈들 import
+# 기존 app 구조 임포트
 try:
-    from app.api.unified_routes import router as unified_router
+    # 8단계 AI 파이프라인 임포트
+    from app.ai_pipeline.pipeline_manager import PipelineManager
+    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.utils.memory_manager import MemoryManager
+    from app.ai_pipeline.utils.data_converter import DataConverter
+    
+    # 코어 모듈들
     from app.core.config import get_settings
     from app.core.logging_config import setup_logging
-    from app.ai_pipeline.pipeline_manager import PipelineManager
+    from app.core.gpu_config import get_device_config
+    
+    # 모델 스키마
+    from app.models.schemas import (
+        VirtualTryOnRequest, 
+        VirtualTryOnResponse,
+        HealthResponse,
+        StatusResponse,
+        ProcessingResponse
+    )
+    
+    # API 라우터들
+    from app.api.virtual_tryon import router as virtual_tryon_router
+    from app.api.health import router as health_router
+    
 except ImportError as e:
-    # 개발 환경에서 모듈이 없을 때 대체
-    print(f"Warning: {e}")
-    unified_router = None
+    logging.warning(f"일부 모듈 임포트 실패: {e}")
+    # 폴백 설정
+    class FallbackConfig:
+        APP_NAME = "MyCloset AI"
+        DEBUG = True
+        CORS_ORIGINS = ["*"]
+        UPLOAD_MAX_SIZE = 50 * 1024 * 1024
     
-    class MockSettings:
-        def __init__(self):
-            self.debug = True
-            self.cors_origins = ["*"]
-    
-    def get_settings():
-        return MockSettings()
-    
-    def setup_logging():
-        logging.basicConfig(level=logging.INFO)
+    get_settings = lambda: FallbackConfig()
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # 설정 로드
 settings = get_settings()
 
-# 로깅 설정
-setup_logging()
-logger = logging.getLogger(__name__)
-
-# 글로벌 변수
-pipeline_manager = None
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """애플리케이션 수명주기 관리"""
+# FastAPI 앱 생성
+app = FastAPI(
+    title="MyCloset AI Backend",
+    description="""
+    🎯 AI 기반 가상 피팅 플랫폼 백엔드 API
     
-    # 시작 시 실행
-    logger.info("🚀 MyCloset AI 시스템 시작 중...")
+    ## 주요 기능
+    - 🤖 8단계 AI 파이프라인 가상 피팅
+    - 📐 실시간 신체 측정 및 분석
+    - 👔 의류 스타일 분석 및 매칭
+    - 🎨 포즈 추정 및 피팅 최적화
+    - 📊 품질 평가 및 개선 제안
+    
+    ## 지원 기능
+    - MediaPipe 포즈 추정
+    - TPS 기하학적 변환
+    - 실시간 이미지 처리
+    - M3 Max MPS 최적화
+    """,
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
+
+# CORS 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=getattr(settings, 'CORS_ORIGINS', [
+        "http://localhost:3000",
+        "http://localhost:5173", 
+        "http://localhost:8080",
+        "https://mycloset-ai.vercel.app"
+    ]),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# 정적 파일 마운트
+try:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+except Exception as e:
+    logger.warning(f"정적 파일 마운트 실패: {e}")
+    os.makedirs("static", exist_ok=True)
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 전역 변수들
+pipeline_manager: Optional[PipelineManager] = None
+model_loader: Optional[ModelLoader] = None
+memory_manager: Optional[MemoryManager] = None
+data_converter: Optional[DataConverter] = None
+
+# 세션 관리
+active_sessions: Dict[str, Dict[str, Any]] = {}
+processing_queue: List[Dict[str, Any]] = []
+
+@app.on_event("startup")
+async def startup_event():
+    """애플리케이션 시작 시 초기화"""
+    global pipeline_manager, model_loader, memory_manager, data_converter
+    
+    logger.info("🚀 MyCloset AI Backend 시작...")
     
     try:
-        # AI 파이프라인 초기화
-        global pipeline_manager
-        pipeline_manager = PipelineManager(
-            config_path='config/pipeline_config.json',  # 설정 파일 경로
-            device='auto'  # 최적 디바이스 자동 선택
-        )
+        # 디렉토리 생성
+        directories = [
+            "static/uploads", "static/results", "static/temp",
+            "logs", "models/checkpoints", "ai_models/cache"
+        ]
+        for directory in directories:
+            os.makedirs(directory, exist_ok=True)
+            # .gitkeep 파일 생성
+            gitkeep_path = os.path.join(directory, ".gitkeep")
+            if not os.path.exists(gitkeep_path):
+                with open(gitkeep_path, "w") as f:
+                    f.write("")
         
-        # 파이프라인 초기화 (비동기)
-        logger.info("🤖 AI 파이프라인 초기화 중...")
-        success = await pipeline_manager.initialize()
-        
-        if success:
-            logger.info("✅ AI 파이프라인 초기화 완료")
-            
-            # 파이프라인 상태 출력
-            status = await pipeline_manager.get_pipeline_status()
-            logger.info(f"📊 파이프라인 상태: {status['steps_status']}")
-        else:
-            logger.warning("⚠️ AI 파이프라인 부분 초기화 (일부 모델 누락)")
-        
-        # 필요한 디렉토리 생성
-        os.makedirs("app/static/uploads", exist_ok=True)
-        os.makedirs("app/static/results", exist_ok=True)
-        os.makedirs("app/logs", exist_ok=True)
-        os.makedirs("output", exist_ok=True)
-        os.makedirs("test_images", exist_ok=True)
-        
-        logger.info("📁 필요한 디렉토리 생성 완료")
-        
-        # GPU 정보 출력
+        # GPU/디바이스 설정
         try:
-            import torch
-            if torch.cuda.is_available():
-                logger.info(f"🔥 CUDA 사용 가능: {torch.cuda.get_device_name()}")
-            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                logger.info("🍎 Apple MPS 사용 가능")
-            else:
-                logger.info("💻 CPU 모드로 실행")
-        except ImportError:
-            logger.info("💻 PyTorch 없음 - CPU 모드로 실행")
+            device_config = get_device_config()
+            logger.info(f"🔧 디바이스 설정: {device_config}")
+        except:
+            logger.warning("디바이스 설정 로드 실패, 기본값 사용")
         
-        logger.info("🎉 MyCloset AI 시스템 시작 완료!")
+        # 유틸리티 초기화
+        try:
+            model_loader = ModelLoader()
+            memory_manager = MemoryManager()
+            data_converter = DataConverter()
+            logger.info("✅ 유틸리티 컴포넌트 초기화 완료")
+        except Exception as e:
+            logger.warning(f"유틸리티 초기화 실패: {e}")
+        
+        # 8단계 AI 파이프라인 초기화 (백그라운드)
+        try:
+            pipeline_manager = PipelineManager()
+            
+            # 비동기로 초기화 (차단하지 않음)
+            asyncio.create_task(initialize_pipeline_background())
+            
+        except Exception as e:
+            logger.warning(f"파이프라인 매니저 생성 실패: {e}")
+        
+        logger.info("✅ MyCloset AI Backend 시작 완료")
         
     except Exception as e:
-        logger.error(f"❌ 시스템 초기화 실패: {e}")
-        logger.error(f"📋 상세 오류: {traceback.format_exc()}")
-    
-    yield  # 애플리케이션 실행
-    
-    # 종료 시 실행
-    logger.info("🛑 MyCloset AI 시스템 종료 중...")
+        logger.error(f"❌ 시작 중 오류: {e}")
+        logger.error(traceback.format_exc())
+
+async def initialize_pipeline_background():
+    """백그라운드에서 파이프라인 초기화"""
+    global pipeline_manager
     
     try:
+        logger.info("🔄 8단계 AI 파이프라인 초기화 시작...")
+        
+        if pipeline_manager:
+            success = await pipeline_manager.initialize()
+            if success:
+                logger.info("✅ 8단계 AI 파이프라인 초기화 완료")
+                
+                # 워밍업 실행
+                warmup_success = await pipeline_manager.warmup()
+                if warmup_success:
+                    logger.info("🔥 파이프라인 워밍업 완료")
+                else:
+                    logger.warning("⚠️ 파이프라인 워밍업 실패")
+            else:
+                logger.error("❌ 파이프라인 초기화 실패")
+        
+    except Exception as e:
+        logger.error(f"❌ 백그라운드 파이프라인 초기화 실패: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """애플리케이션 종료 시 정리"""
+    logger.info("🛑 MyCloset AI Backend 종료 중...")
+    
+    try:
+        # 활성 세션 정리
+        for session_id, session_data in active_sessions.items():
+            logger.info(f"세션 {session_id} 정리 중...")
+        
+        active_sessions.clear()
+        
+        # 파이프라인 매니저 정리
         if pipeline_manager:
             await pipeline_manager.cleanup()
-            logger.info("🧹 AI 파이프라인 정리 완료")
-            
-        # 추가 정리 작업
-        logger.info("✅ 시스템 종료 완료")
+        
+        # 메모리 정리
+        if memory_manager:
+            await memory_manager.cleanup()
+        
+        logger.info("✅ 정리 완료")
         
     except Exception as e:
         logger.error(f"❌ 종료 중 오류: {e}")
 
-# FastAPI 애플리케이션 생성
-app = FastAPI(
-    title="MyCloset AI Virtual Try-On",
-    description="AI 기반 8단계 가상 피팅 시스템",
-    version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan
-)
+# ========================================
+# 헬스체크 및 상태 엔드포인트
+# ========================================
 
-# 미들웨어 설정
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins if hasattr(settings, 'cors_origins') else ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# 정적 파일 서빙
-try:
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
-    app.mount("/output", StaticFiles(directory="output"), name="output")
-except Exception as e:
-    logger.warning(f"정적 파일 마운트 실패: {e}")
-
-# API 라우터 등록
-if unified_router:
-    app.include_router(unified_router, prefix="", tags=["virtual-tryon"])
-else:
-    logger.warning("API 라우터를 로드할 수 없습니다. 기본 엔드포인트만 제공됩니다.")
-
-# 기본 엔드포인트들
-@app.get("/")
-async def root():
-    """루트 엔드포인트"""
+@app.get("/health", response_model=HealthResponse, tags=["System"])
+async def health_check():
+    """시스템 헬스체크"""
+    
+    # 파이프라인 상태 확인
+    pipeline_status = False
+    pipeline_info = {}
+    
+    if pipeline_manager:
+        try:
+            pipeline_info = await pipeline_manager.get_pipeline_status()
+            pipeline_status = pipeline_info.get('initialized', False)
+        except:
+            pass
+    
+    # 메모리 상태 확인
+    memory_status = "unknown"
+    if memory_manager:
+        try:
+            memory_info = await memory_manager.get_memory_status()
+            memory_status = "healthy" if memory_info.get('available_percent', 0) > 20 else "warning"
+        except:
+            pass
+    
     return {
-        "message": "MyCloset AI Virtual Try-On System",
+        "status": "healthy" if pipeline_status else "starting",
+        "timestamp": datetime.now().isoformat(),
+        "pipeline_ready": pipeline_status,
+        "memory_status": memory_status,
+        "active_sessions": len(active_sessions),
         "version": "2.0.0",
-        "status": "running",
-        "features": [
-            "8단계 AI 가상 피팅",
-            "실시간 품질 분석",
-            "자동 오류 복구",
-            "M3 Max MPS 최적화"
-        ],
-        "docs": "/docs",
-        "api_base": "/api"
+        "device": pipeline_info.get('device', 'unknown')
     }
 
-@app.get("/health")
-async def health_check():
-    """헬스체크 엔드포인트"""
-    try:
-        pipeline_status = "unknown"
-        device_info = "unknown"
-        memory_usage = {}
-        
-        if pipeline_manager:
-            if hasattr(pipeline_manager, 'is_initialized'):
-                pipeline_status = "initialized" if pipeline_manager.is_initialized else "not_initialized"
-                device_info = getattr(pipeline_manager, 'device', 'unknown')
-                
-                # 상세 상태 정보
-                if pipeline_manager.is_initialized:
-                    try:
-                        status = await pipeline_manager.get_pipeline_status()
-                        memory_usage = status.get('memory_usage', {})
-                    except:
-                        pass
-            else:
-                pipeline_status = "available"
-        else:
-            pipeline_status = "not_loaded"
-        
-        health_status = {
-            "status": "healthy",
-            "pipeline_status": pipeline_status,
-            "device": device_info,
-            "memory_usage": memory_usage,
-            "debug_mode": getattr(settings, 'debug', False),
-            "timestamp": str(asyncio.get_event_loop().time())
-        }
-        
-        # 파이프라인이 초기화되지 않았으면 warning 상태
-        if pipeline_status != "initialized":
-            health_status["status"] = "warning"
-            health_status["message"] = "Pipeline not fully initialized"
-        
-        return health_status
-        
-    except Exception as e:
-        logger.error(f"헬스체크 오류: {e}")
-        return JSONResponse({
-            "status": "unhealthy",
-            "error": str(e),
-            "timestamp": str(asyncio.get_event_loop().time())
-        }, status_code=500)
+@app.get("/api/status", response_model=StatusResponse, tags=["System"])
+async def get_system_status():
+    """시스템 상세 상태 조회"""
+    
+    status_data = {
+        "backend_status": "running",
+        "timestamp": datetime.now().isoformat(),
+        "active_sessions": len(active_sessions),
+        "processing_queue_length": len(processing_queue)
+    }
+    
+    if pipeline_manager:
+        try:
+            pipeline_status = await pipeline_manager.get_pipeline_status()
+            status_data.update({
+                "pipeline_initialized": pipeline_status.get('initialized', False),
+                "device": pipeline_status.get('device', 'cpu'),
+                "models_loaded": pipeline_status.get('steps_loaded', 0),
+                "total_steps": pipeline_status.get('total_steps', 8),
+                "memory_usage": pipeline_status.get('memory_status', {}),
+                "performance_stats": pipeline_status.get('stats', {})
+            })
+        except Exception as e:
+            logger.warning(f"파이프라인 상태 조회 실패: {e}")
+    
+    return status_data
 
-@app.get("/api/system-info")
-async def system_info():
-    """시스템 정보 엔드포인트"""
-    try:
-        import torch
-        import cv2
-        import numpy as np
-        
-        info = {
-            "system": {
-                "python_version": sys.version,
-                "platform": sys.platform,
-                "architecture": os.uname().machine if hasattr(os, 'uname') else "unknown"
-            },
-            "dependencies": {
-                "pytorch_version": torch.__version__ if 'torch' in sys.modules else "Not installed",
-                "opencv_version": cv2.__version__ if 'cv2' in sys.modules else "Not installed",
-                "numpy_version": np.__version__ if 'np' in sys.modules else "Not installed"
-            },
-            "hardware": {
-                "gpu_available": False,
-                "gpu_info": "None",
-                "cpu_count": os.cpu_count()
-            },
-            "pipeline": {
-                "initialized": False,
-                "device": "unknown",
-                "steps_loaded": 0
-            }
-        }
-        
-        # GPU 정보
-        if torch.cuda.is_available():
-            info["hardware"]["gpu_available"] = True
-            info["hardware"]["gpu_info"] = f"CUDA: {torch.cuda.get_device_name()}"
-            info["hardware"]["gpu_memory"] = f"{torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}GB"
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            info["hardware"]["gpu_available"] = True
-            info["hardware"]["gpu_info"] = "Apple MPS"
-        
-        # 파이프라인 정보
-        if pipeline_manager and hasattr(pipeline_manager, 'is_initialized'):
-            info["pipeline"]["initialized"] = pipeline_manager.is_initialized
-            info["pipeline"]["device"] = getattr(pipeline_manager, 'device', 'unknown')
-            
-            if pipeline_manager.is_initialized:
-                try:
-                    status = await pipeline_manager.get_pipeline_status()
-                    info["pipeline"]["steps_loaded"] = len(status.get('steps_status', {}))
-                    info["pipeline"]["performance_metrics"] = status.get('performance_metrics', {})
-                except:
-                    pass
-        
-        return info
-        
-    except Exception as e:
-        return {"error": f"시스템 정보 수집 실패: {e}"}
+# ========================================
+# 가상 피팅 메인 엔드포인트
+# ========================================
 
-@app.get("/api/pipeline-status")
-async def pipeline_status():
-    """파이프라인 상태 상세 조회"""
-    try:
-        if not pipeline_manager:
-            return {"error": "Pipeline manager not loaded"}
-        
-        if not hasattr(pipeline_manager, 'get_pipeline_status'):
-            return {"error": "Pipeline status method not available"}
-        
-        status = await pipeline_manager.get_pipeline_status()
-        return status
-        
-    except Exception as e:
-        logger.error(f"파이프라인 상태 조회 오류: {e}")
-        return {"error": str(e)}
-
-@app.get("/api/performance-report")
-async def performance_report():
-    """성능 리포트 조회"""
-    try:
-        if not pipeline_manager or not hasattr(pipeline_manager, 'get_performance_report'):
-            return {"error": "Performance report not available"}
-        
-        report = await pipeline_manager.get_performance_report()
-        return report
-        
-    except Exception as e:
-        logger.error(f"성능 리포트 조회 오류: {e}")
-        return {"error": str(e)}
-
-# 개선된 가상 피팅 엔드포인트
-@app.post("/api/virtual-fitting")
-async def virtual_fitting_endpoint(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(170),
-    weight: float = Form(65),
-    chest: Optional[float] = Form(None),
-    waist: Optional[float] = Form(None),
-    hip: Optional[float] = Form(None),
-    clothing_type: str = Form("shirt"),
-    fabric_type: str = Form("cotton"),
-    quality_target: float = Form(0.8),
-    save_intermediate: bool = Form(False)
+@app.post("/api/virtual-tryon", response_model=VirtualTryOnResponse, tags=["Virtual Fitting"])
+async def virtual_tryon_complete(
+    background_tasks: BackgroundTasks,
+    person_image: UploadFile = File(..., description="사용자 사진 (최대 50MB)"),
+    clothing_image: UploadFile = File(..., description="의류 사진 (최대 50MB)"),
+    height: float = Form(170.0, description="키 (cm, 140-220)"),
+    weight: float = Form(65.0, description="몸무게 (kg, 30-150)"),
+    clothing_type: str = Form("shirt", description="의류 타입: shirt, pants, dress, jacket, skirt"),
+    style_preference: str = Form("casual", description="스타일 선호도: casual, formal, sporty"),
+    quality_level: str = Form("high", description="품질 레벨: fast, medium, high, ultra")
 ):
     """
-    개선된 8단계 가상 피팅 엔드포인트
+    🔥 완전한 8단계 AI 가상 피팅
+    
+    mycloset-uiux.tsx와 완전 호환되는 메인 API 엔드포인트
     """
+    session_id = str(uuid.uuid4())
+    start_time = time.time()
+    
     try:
-        if not pipeline_manager or not pipeline_manager.is_initialized:
-            raise HTTPException(500, "AI 파이프라인이 초기화되지 않았습니다.")
+        # 입력 검증
+        validation_result = await validate_virtual_tryon_input(
+            person_image, clothing_image, height, weight, clothing_type, quality_level
+        )
         
-        # 이미지 파일 읽기
-        person_image_data = await person_image.read()
-        clothing_image_data = await clothing_image.read()
+        if not validation_result['valid']:
+            raise HTTPException(status_code=400, detail=validation_result['error'])
         
-        # PIL 이미지로 변환
-        from PIL import Image
-        import io
+        logger.info(f"🎯 8단계 가상 피팅 시작 - Session: {session_id}")
+        logger.info(f"⚙️ 설정: {clothing_type} ({style_preference}), 품질: {quality_level}")
         
-        person_pil = Image.open(io.BytesIO(person_image_data)).convert('RGB')
-        clothing_pil = Image.open(io.BytesIO(clothing_image_data)).convert('RGB')
-        
-        # 신체 치수 구성
-        body_measurements = {
-            'height': height,
-            'weight': weight
+        # 세션 등록
+        active_sessions[session_id] = {
+            'status': 'processing',
+            'start_time': start_time,
+            'clothing_type': clothing_type,
+            'quality_level': quality_level
         }
-        if chest is not None:
-            body_measurements['chest'] = chest
-        if waist is not None:
-            body_measurements['waist'] = waist
-        if hip is not None:
-            body_measurements['hip'] = hip
         
-        # 진행률 콜백 (선택적)
-        progress_updates = []
+        # 파이프라인 사용 가능 여부 확인
+        if not pipeline_manager or not pipeline_manager.is_initialized:
+            # 폴백: 간단한 데모 모드
+            logger.warning("파이프라인 미준비, 데모 모드로 처리")
+            return await process_demo_mode(
+                person_image, clothing_image, height, weight, 
+                clothing_type, session_id, start_time
+            )
         
-        async def progress_callback(stage: str, percentage: int):
-            progress_updates.append({"stage": stage, "percentage": percentage})
-            logger.info(f"🔄 진행률: {stage} - {percentage}%")
+        # 이미지 전처리
+        person_pil = await load_and_validate_image(person_image, "person")
+        clothing_pil = await load_and_validate_image(clothing_image, "clothing")
         
-        # 개선된 가상 피팅 실행
-        logger.info(f"🎯 가상 피팅 시작 - 의류: {clothing_type}, 재질: {fabric_type}")
-        
-        result = await pipeline_manager.process_complete_virtual_fitting(
+        # 8단계 AI 파이프라인 실행
+        pipeline_result = await pipeline_manager.process_complete_virtual_fitting(
             person_image=person_pil,
             clothing_image=clothing_pil,
-            body_measurements=body_measurements,
+            body_measurements={
+                'height': height,
+                'weight': weight,
+                'bmi': weight / ((height/100) ** 2)
+            },
             clothing_type=clothing_type,
-            fabric_type=fabric_type,
-            quality_target=quality_target,
-            progress_callback=progress_callback,
-            save_intermediate=save_intermediate,
+            fabric_type="cotton",  # 기본값
+            style_preferences={
+                'fit': 'regular',
+                'style': style_preference,
+                'color_preference': 'original'
+            },
+            quality_target=0.8 if quality_level == "high" else 0.7,
+            progress_callback=None,  # 웹소켓으로 추후 구현
+            save_intermediate=False,
             enable_auto_retry=True
         )
         
-        if result['success']:
-            # 결과 이미지 저장
-            import uuid
-            result_filename = f"result_{uuid.uuid4().hex[:8]}.jpg"
-            result_path = f"output/{result_filename}"
-            
-            result['result_image'].save(result_path, quality=95)
-            
-            # 응답 구성
-            response = {
-                "success": True,
-                "result_image_url": f"/output/{result_filename}",
-                "final_quality_score": result['final_quality_score'],
-                "quality_grade": result['quality_grade'],
-                "processing_time": result['total_processing_time'],
-                "quality_target_achieved": result['quality_target_achieved'],
-                "fit_analysis": result['fit_analysis'],
-                "improvement_suggestions": result['improvement_suggestions'],
-                "step_results_summary": result['step_results_summary'],
-                "processing_statistics": result['processing_statistics'],
-                "progress_updates": progress_updates,
-                "metadata": result['metadata']
-            }
-            
-            # 중간 결과 포함 (요청된 경우)
-            if save_intermediate and 'intermediate_results' in result:
-                response['intermediate_results'] = result['intermediate_results']
-            
-            logger.info(f"✅ 가상 피팅 성공 - 품질: {result['final_quality_score']:.3f}")
-            
-            return response
-        else:
-            # 실패 응답
-            logger.error(f"❌ 가상 피팅 실패: {result.get('error', 'Unknown error')}")
-            
-            return {
-                "success": False,
-                "error": result.get('error', 'Unknown error'),
-                "error_type": result.get('error_type', 'processing_failure'),
-                "processing_time": result.get('processing_time', 0),
-                "fallback_used": result.get('fallback_used', False),
-                "progress_updates": progress_updates
-            }
-        
-    except Exception as e:
-        logger.error(f"❌ 가상 피팅 엔드포인트 오류: {e}")
-        logger.error(f"📋 상세: {traceback.format_exc()}")
-        
-        raise HTTPException(500, f"처리 중 오류 발생: {str(e)}")
-
-# 기존 호환성을 위한 기본 가상 피팅 엔드포인트
-@app.post("/api/virtual-tryon-basic")
-async def virtual_tryon_basic(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(170),
-    weight: float = Form(65)
-):
-    """
-    기본 가상 피팅 엔드포인트 (기존 호환성)
-    """
-    try:
-        # 이미지 파일 읽기
-        person_image_data = await person_image.read()
-        clothing_image_data = await clothing_image.read()
-        
-        # 파이프라인 매니저가 있으면 기존 메소드 사용
-        if pipeline_manager and hasattr(pipeline_manager, 'process_virtual_tryon'):
-            result = await pipeline_manager.process_virtual_tryon(
-                person_image=person_image_data,
-                clothing_image=clothing_image_data,
-                height=height,
-                weight=weight
+        # 결과 처리
+        if pipeline_result.get('success', False):
+            # 성공 결과 처리
+            result_image_base64 = await process_result_image(
+                pipeline_result.get('result_image'), session_id
             )
             
-            if result['success']:
-                # 결과 이미지를 base64로 인코딩
-                import base64
-                import io
-                from PIL import Image
+            processing_time = time.time() - start_time
+            
+            # 최종 응답 구성 (mycloset-uiux.tsx 호환)
+            response = {
+                "success": True,
+                "session_id": session_id,
+                "fitted_image": result_image_base64,
+                "processing_time": processing_time,
+                "confidence": pipeline_result.get('final_quality_score', 0.85),
                 
-                fitted_image = result['fitted_image']
-                if isinstance(fitted_image, str):
-                    # 이미 base64인 경우
-                    img_str = fitted_image
-                else:
-                    # numpy 배열이나 기타 형식인 경우
-                    if hasattr(fitted_image, 'shape'):
-                        # numpy 배열
-                        img = Image.fromarray(fitted_image.astype('uint8'))
-                    else:
-                        # PIL 이미지
-                        img = fitted_image
-                    
-                    buffered = io.BytesIO()
-                    img.save(buffered, format="JPEG")
-                    img_str = base64.b64encode(buffered.getvalue()).decode()
+                # 신체 측정 정보
+                "measurements": {
+                    "chest": estimate_chest_measurement(height, weight),
+                    "waist": estimate_waist_measurement(height, weight),
+                    "hip": estimate_hip_measurement(height, weight),
+                    "bmi": weight / ((height/100) ** 2)
+                },
                 
-                return {
-                    "success": True,
-                    "fitted_image": img_str,
-                    "processing_time": result.get('processing_time', 0),
-                    "confidence": result.get('confidence', 0.8),
-                    "fit_score": result.get('fit_score', 0.8),
-                    "recommendations": result.get('recommendations', []),
-                    "pipeline_results": result.get('pipeline_results', {}),
-                    "measurements": {
-                        "chest": 95.0,
-                        "waist": 80.0,
-                        "hip": 98.0,
-                        "bmi": round(weight / ((height/100) ** 2), 1)
-                    }
+                # 의류 분석
+                "clothing_analysis": {
+                    "category": clothing_type,
+                    "style": style_preference,
+                    "dominant_color": [128, 128, 128]  # 기본값
+                },
+                
+                # 피팅 스코어 및 추천
+                "fit_score": pipeline_result.get('fit_score', 0.8),
+                "recommendations": pipeline_result.get('recommendations', [
+                    f"✅ {clothing_type} 스타일이 잘 어울립니다!",
+                    "📐 완벽한 핏을 위해 정확한 치수를 확인해보세요",
+                    "🎨 다른 색상도 시도해보세요"
+                ]),
+                
+                # 추가 분석 정보
+                "quality_analysis": {
+                    "overall_score": pipeline_result.get('final_quality_score', 0.85),
+                    "fit_quality": pipeline_result.get('fit_analysis', {}).get('overall_fit_score', 0.8),
+                    "processing_quality": min(1.0, 30.0 / processing_time) if processing_time > 0 else 1.0
+                },
+                
+                # 처리 정보
+                "processing_info": {
+                    "steps_completed": len(pipeline_result.get('step_results_summary', {})),
+                    "quality_level": quality_level,
+                    "device_used": pipeline_result.get('processing_info', {}).get('device_used', 'cpu'),
+                    "optimization": "M3_Max" if "mps" in str(pipeline_result.get('processing_info', {})) else "Standard"
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": result.get('error', 'Processing failed'),
-                    "processing_time": result.get('processing_time', 0)
-                }
-        
-        # 파이프라인이 없는 경우 더미 응답
+            }
+            
+            # 세션 업데이트
+            active_sessions[session_id].update({
+                'status': 'completed',
+                'result': response,
+                'processing_time': processing_time
+            })
+            
+            logger.info(f"✅ 가상 피팅 완료 - Session: {session_id}, 시간: {processing_time:.2f}초")
+            return response
+            
         else:
-            import base64
-            import io
-            from PIL import Image
+            # 파이프라인 실패 시 폴백
+            logger.warning(f"파이프라인 처리 실패: {pipeline_result.get('error', 'Unknown error')}")
+            return await process_demo_mode(
+                person_image, clothing_image, height, weight,
+                clothing_type, session_id, start_time, 
+                error_message=pipeline_result.get('error')
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 가상 피팅 처리 실패 - Session: {session_id}: {e}")
+        logger.error(traceback.format_exc())
+        
+        # 세션 상태 업데이트
+        if session_id in active_sessions:
+            active_sessions[session_id].update({
+                'status': 'failed',
+                'error': str(e)
+            })
+        
+        # 폴백 처리
+        try:
+            return await process_demo_mode(
+                person_image, clothing_image, height, weight,
+                clothing_type, session_id, start_time,
+                error_message=str(e)
+            )
+        except:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"가상 피팅 처리 중 오류가 발생했습니다: {str(e)}"
+            )
+
+# ========================================
+# 보조 함수들
+# ========================================
+
+async def validate_virtual_tryon_input(
+    person_image: UploadFile,
+    clothing_image: UploadFile, 
+    height: float,
+    weight: float,
+    clothing_type: str,
+    quality_level: str
+) -> Dict[str, Any]:
+    """입력 데이터 검증"""
+    
+    # 이미지 파일 검증
+    if not person_image.content_type.startswith('image/'):
+        return {'valid': False, 'error': '사용자 이미지 파일이 올바르지 않습니다'}
+    
+    if not clothing_image.content_type.startswith('image/'):
+        return {'valid': False, 'error': '의류 이미지 파일이 올바르지 않습니다'}
+    
+    # 파일 크기 검증 (50MB 제한)
+    max_size = 50 * 1024 * 1024
+    if person_image.size > max_size:
+        return {'valid': False, 'error': '사용자 이미지 파일이 너무 큽니다 (최대 50MB)'}
+    
+    if clothing_image.size > max_size:
+        return {'valid': False, 'error': '의류 이미지 파일이 너무 큽니다 (최대 50MB)'}
+    
+    # 신체 치수 검증
+    if not (140 <= height <= 220):
+        return {'valid': False, 'error': '키는 140cm ~ 220cm 범위여야 합니다'}
+    
+    if not (30 <= weight <= 150):
+        return {'valid': False, 'error': '몸무게는 30kg ~ 150kg 범위여야 합니다'}
+    
+    # 의류 타입 검증
+    valid_clothing_types = ['shirt', 'pants', 'dress', 'jacket', 'skirt', 't-shirt', 'blouse']
+    if clothing_type not in valid_clothing_types:
+        return {'valid': False, 'error': f'지원하지 않는 의류 타입입니다: {clothing_type}'}
+    
+    # 품질 레벨 검증
+    valid_quality_levels = ['fast', 'medium', 'high', 'ultra']
+    if quality_level not in valid_quality_levels:
+        return {'valid': False, 'error': f'지원하지 않는 품질 레벨입니다: {quality_level}'}
+    
+    return {'valid': True}
+
+async def load_and_validate_image(upload_file: UploadFile, image_type: str) -> Image.Image:
+    """이미지 로드 및 검증"""
+    
+    try:
+        # 이미지 데이터 읽기
+        image_data = await upload_file.read()
+        
+        # PIL 이미지로 변환
+        image = Image.open(BytesIO(image_data)).convert('RGB')
+        
+        # 크기 검증
+        if image.width < 256 or image.height < 256:
+            raise ValueError(f"{image_type} 이미지가 너무 작습니다 (최소 256x256)")
+        
+        # 크기 조정 (최대 1024x1024)
+        if image.width > 1024 or image.height > 1024:
+            image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        
+        return image
+        
+    except Exception as e:
+        raise ValueError(f"{image_type} 이미지 처리 실패: {str(e)}")
+
+async def process_result_image(result_image: Any, session_id: str) -> str:
+    """결과 이미지 처리 및 base64 인코딩"""
+    
+    try:
+        # PIL 이미지로 변환
+        if hasattr(result_image, 'save'):
+            # 이미 PIL 이미지인 경우
+            pil_image = result_image
+        elif isinstance(result_image, np.ndarray):
+            # numpy 배열인 경우
+            pil_image = Image.fromarray(result_image)
+        else:
+            # 기타 형식
+            pil_image = Image.fromarray(np.array(result_image))
+        
+        # 파일로 저장
+        save_path = f"static/results/{session_id}_result.jpg"
+        pil_image.save(save_path, "JPEG", quality=90)
+        
+        # base64 인코딩
+        buffer = BytesIO()
+        pil_image.save(buffer, format="JPEG", quality=90)
+        image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return image_base64
+        
+    except Exception as e:
+        logger.error(f"결과 이미지 처리 실패: {e}")
+        # 기본 이미지 반환
+        default_image = Image.new('RGB', (512, 512), color='lightgray')
+        buffer = BytesIO()
+        default_image.save(buffer, format="JPEG")
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+async def process_demo_mode(
+    person_image: UploadFile,
+    clothing_image: UploadFile,
+    height: float,
+    weight: float,
+    clothing_type: str,
+    session_id: str,
+    start_time: float,
+    error_message: Optional[str] = None
+) -> VirtualTryOnResponse:
+    """데모 모드 처리 (AI 파이프라인 미준비 시)"""
+    
+    try:
+        # 이미지 로드
+        person_pil = await load_and_validate_image(person_image, "person")
+        clothing_pil = await load_and_validate_image(clothing_image, "clothing")
+        
+        # 간단한 합성 이미지 생성
+        demo_result = create_demo_composite(person_pil, clothing_pil)
+        
+        # base64 인코딩
+        result_base64 = await process_result_image(demo_result, session_id)
+        
+        processing_time = time.time() - start_time
+        
+        # 데모 응답 생성
+        response = {
+            "success": True,
+            "session_id": session_id,
+            "fitted_image": result_base64,
+            "processing_time": processing_time,
+            "confidence": 0.75,  # 데모 모드 신뢰도
             
-            # 이미지 처리 (기본)
-            person_img = Image.open(io.BytesIO(person_image_data))
+            "measurements": {
+                "chest": estimate_chest_measurement(height, weight),
+                "waist": estimate_waist_measurement(height, weight),
+                "hip": estimate_hip_measurement(height, weight),
+                "bmi": weight / ((height/100) ** 2)
+            },
             
-            # 더미 결과
-            buffered = io.BytesIO()
-            person_img.save(buffered, format="JPEG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
+            "clothing_analysis": {
+                "category": clothing_type,
+                "style": "casual",
+                "dominant_color": [100, 100, 150]
+            },
+            
+            "fit_score": 0.75,
+            "recommendations": [
+                "🚧 데모 모드로 처리되었습니다",
+                "⚡ AI 모델 로딩 완료 후 더 정확한 결과를 얻을 수 있습니다",
+                f"👔 {clothing_type} 스타일 시뮬레이션"
+            ],
+            
+            "quality_analysis": {
+                "overall_score": 0.75,
+                "fit_quality": 0.7,
+                "processing_quality": 1.0
+            },
+            
+            "processing_info": {
+                "steps_completed": 0,
+                "quality_level": "demo",
+                "device_used": "cpu",
+                "optimization": "Demo Mode",
+                "demo_mode": True,
+                "error_message": error_message
+            }
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"데모 모드 처리 실패: {e}")
+        raise HTTPException(status_code=500, detail="데모 모드 처리 실패")
+
+def create_demo_composite(person_image: Image.Image, clothing_image: Image.Image) -> Image.Image:
+    """데모용 간단한 합성 이미지 생성"""
+    
+    try:
+        # 크기 조정
+        person_resized = person_image.resize((512, 512), Image.Resampling.LANCZOS)
+        clothing_resized = clothing_image.resize((256, 256), Image.Resampling.LANCZOS)
+        
+        # 합성 이미지 생성
+        result = person_resized.copy()
+        
+        # 의류 이미지를 우상단에 오버레이
+        result.paste(clothing_resized, (256, 0), clothing_resized)
+        
+        # 데모 텍스트 추가
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(result)
+        
+        try:
+            font = ImageFont.truetype("arial.ttf", 20)
+        except:
+            font = ImageFont.load_default()
+        
+        draw.text((10, 470), "🚧 DEMO MODE", fill=(255, 100, 100), font=font)
+        draw.text((10, 490), "AI Loading...", fill=(100, 100, 255), font=font)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"데모 합성 실패: {e}")
+        # 기본 이미지 반환
+        return Image.new('RGB', (512, 512), color='lightblue')
+
+# 신체 치수 추정 함수들
+def estimate_chest_measurement(height: float, weight: float) -> float:
+    """가슴둘레 추정"""
+    bmi = weight / ((height/100) ** 2)
+    base_chest = height * 0.52
+    adjustment = (bmi - 22) * 2
+    return round(base_chest + adjustment, 1)
+
+def estimate_waist_measurement(height: float, weight: float) -> float:
+    """허리둘레 추정"""
+    bmi = weight / ((height/100) ** 2)
+    base_waist = height * 0.42
+    adjustment = (bmi - 22) * 2.5
+    return round(base_waist + adjustment, 1)
+
+def estimate_hip_measurement(height: float, weight: float) -> float:
+    """엉덩이둘레 추정"""
+    bmi = weight / ((height/100) ** 2)
+    base_hip = height * 0.55
+    adjustment = (bmi - 22) * 1.8
+    return round(base_hip + adjustment, 1)
+
+# ========================================
+# 추가 유틸리티 엔드포인트들
+# ========================================
+
+@app.get("/api/session/{session_id}", tags=["Session"])
+async def get_session_status(session_id: str):
+    """세션 상태 조회"""
+    
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+    
+    session_data = active_sessions[session_id]
+    
+    return {
+        "session_id": session_id,
+        "status": session_data.get('status', 'unknown'),
+        "start_time": session_data.get('start_time'),
+        "processing_time": time.time() - session_data.get('start_time', time.time()),
+        "clothing_type": session_data.get('clothing_type'),
+        "quality_level": session_data.get('quality_level'),
+        "has_result": 'result' in session_data
+    }
+
+@app.delete("/api/session/{session_id}", tags=["Session"])
+async def delete_session(session_id: str):
+    """세션 삭제"""
+    
+    if session_id in active_sessions:
+        del active_sessions[session_id]
+        
+        # 관련 파일들 정리
+        result_file = f"static/results/{session_id}_result.jpg"
+        if os.path.exists(result_file):
+            os.remove(result_file)
+        
+        return {"message": "세션이 삭제되었습니다"}
+    else:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+
+@app.get("/api/sessions", tags=["Session"])
+async def list_active_sessions():
+    """활성 세션 목록 조회"""
+    
+    return {
+        "active_sessions": len(active_sessions),
+        "sessions": [
+            {
+                "session_id": sid,
+                "status": data.get('status'),
+                "clothing_type": data.get('clothing_type'),
+                "start_time": data.get('start_time')
+            }
+            for sid, data in active_sessions.items()
+        ]
+    }
+
+@app.get("/api/pipeline-status", tags=["System"])
+async def get_pipeline_status():
+    """파이프라인 상세 상태"""
+    
+    if not pipeline_manager:
+        return {
+            "initialized": False,
+            "error": "파이프라인 매니저가 초기화되지 않았습니다"
+        }
+    
+    try:
+        status = await pipeline_manager.get_pipeline_status()
+        return status
+    except Exception as e:
+        return {
+            "initialized": False,
+            "error": str(e)
+        }
+
+# 개발용 엔드포인트들
+if getattr(settings, 'DEBUG', False):
+    
+    @app.get("/api/debug/reset-pipeline", tags=["Debug"])
+    async def reset_pipeline():
+        """파이프라인 리셋 (개발용)"""
+        global pipeline_manager
+        
+        try:
+            if pipeline_manager:
+                await pipeline_manager.cleanup()
+            
+            pipeline_manager = PipelineManager()
+            success = await pipeline_manager.initialize()
             
             return {
-                "success": True,
-                "fitted_image": img_str,
-                "processing_time": 1.0,
-                "confidence": 0.7,
-                "measurements": {
-                    "chest": 95.0,
-                    "waist": 80.0,
-                    "hip": 98.0,
-                    "bmi": round(weight / ((height/100) ** 2), 1)
-                },
-                "fit_score": 0.75,
-                "recommendations": [
-                    "이것은 데모 모드입니다.",
-                    "실제 AI 모델을 설치하면 정확한 결과를 얻을 수 있습니다."
-                ],
-                "note": "Demo mode - AI models not loaded"
+                "message": "파이프라인이 리셋되었습니다",
+                "success": success
             }
-        
-    except Exception as e:
-        logger.error(f"기본 가상 피팅 오류: {e}")
-        raise HTTPException(500, f"처리 중 오류: {e}")
+        except Exception as e:
+            return {
+                "message": "파이프라인 리셋 실패",
+                "error": str(e)
+            }
 
-# 파일 다운로드 엔드포인트
-@app.get("/api/download-result/{filename}")
-async def download_result(filename: str):
-    """결과 파일 다운로드"""
-    try:
-        file_path = f"output/{filename}"
-        
-        if not os.path.exists(file_path):
-            raise HTTPException(404, "파일을 찾을 수 없습니다.")
-        
-        return FileResponse(
-            file_path,
-            media_type='image/jpeg',
-            filename=filename
-        )
-        
-    except Exception as e:
-        logger.error(f"파일 다운로드 오류: {e}")
-        raise HTTPException(500, f"다운로드 중 오류: {e}")
-
-# 예외 처리
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """HTTP 예외 처리"""
-    logger.error(f"HTTP 예외: {exc.status_code} - {exc.detail}")
-    return JSONResponse({
-        "success": False,
-        "error": exc.detail,
-        "status_code": exc.status_code,
-        "timestamp": str(asyncio.get_event_loop().time())
-    }, status_code=exc.status_code)
-
-@app.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    """일반 예외 처리"""
-    logger.error(f"예상치 못한 오류: {exc}")
-    logger.error(f"📋 상세: {traceback.format_exc()}")
-    
-    return JSONResponse({
-        "success": False,
-        "error": "내부 서버 오류가 발생했습니다.",
-        "detail": str(exc) if getattr(settings, 'debug', False) else None,
-        "timestamp": str(asyncio.get_event_loop().time())
-    }, status_code=500)
+# ========================================
+# 메인 실행
+# ========================================
 
 if __name__ == "__main__":
-    # 개발 서버 실행
-    logger.info("🚀 개발 서버 시작...")
+    import uvicorn
     
+    # 로그 디렉토리 생성
+    os.makedirs("logs", exist_ok=True)
+    
+    # 서버 실행
     uvicorn.run(
-        "app.main:app",
+        "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        log_level="info"
+        reload=getattr(settings, 'DEBUG', False),
+        log_level="info",
+        access_log=True
     )
