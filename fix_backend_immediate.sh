@@ -1,3 +1,80 @@
+#!/bin/bash
+
+echo "🔧 MyCloset AI 백엔드 즉시 수정 중..."
+
+cd backend
+
+# 1. pydantic-settings 설치 (config 로드 문제 해결)
+echo "📦 1. 누락된 패키지 설치 중..."
+conda install -c conda-forge pydantic-settings python-dotenv -y
+pip install python-multipart aiofiles
+
+# 2. 간단하고 안정적인 config.py 생성
+echo "⚙️ 2. 안정적인 config.py 생성 중..."
+
+cat > app/core/config.py << 'EOF'
+from typing import List
+import os
+
+class Settings:
+    """간단하고 안정적인 설정 클래스"""
+    
+    # App 기본 설정
+    APP_NAME: str = "MyCloset AI Backend"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = True
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    
+    # CORS 설정 (안전한 기본값)
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173", 
+        "http://localhost:8080"
+    ]
+    
+    # 파일 업로드 설정
+    MAX_UPLOAD_SIZE: int = 52428800  # 50MB
+    ALLOWED_EXTENSIONS: List[str] = ["jpg", "jpeg", "png", "webp", "bmp"]
+    
+    # AI 모델 설정
+    DEFAULT_MODEL: str = "demo"
+    USE_GPU: bool = False  # 안정성을 위해 False
+    DEVICE: str = "cpu"
+    IMAGE_SIZE: int = 512
+    MAX_WORKERS: int = 2
+    BATCH_SIZE: int = 1
+    
+    # 로깅
+    LOG_LEVEL: str = "INFO"
+    
+    # 경로
+    UPLOAD_PATH: str = "static/uploads"
+    RESULT_PATH: str = "static/results"
+    MODEL_PATH: str = "ai_models"
+    
+    def __init__(self):
+        # 환경변수에서 값 읽기 (있으면)
+        self.DEBUG = os.getenv("DEBUG", "true").lower() == "true"
+        self.HOST = os.getenv("HOST", "0.0.0.0")
+        self.PORT = int(os.getenv("PORT", 8000))
+        
+        # CORS_ORIGINS 환경변수 처리
+        cors_env = os.getenv("CORS_ORIGINS")
+        if cors_env:
+            # 쉼표로 구분된 문자열을 리스트로 변환
+            self.CORS_ORIGINS = [origin.strip() for origin in cors_env.split(",")]
+
+# 전역 설정 객체
+settings = Settings()
+EOF
+
+echo "✅ 안정적인 config.py 생성 완료"
+
+# 3. 작동하는 main.py 생성
+echo "🔧 3. 작동하는 main.py 생성 중..."
+
+cat > app/main.py << 'EOF'
 import sys
 import os
 from pathlib import Path
@@ -276,3 +353,83 @@ if __name__ == "__main__":
     import uvicorn
     print("🚀 서버를 시작합니다...")
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+EOF
+
+echo "✅ 작동하는 main.py 생성 완료"
+
+# 4. 필수 디렉토리 생성
+echo "📁 4. 필수 디렉토리 생성 중..."
+mkdir -p static/{uploads,results}
+mkdir -p logs
+touch static/uploads/.gitkeep
+touch static/results/.gitkeep
+touch logs/.gitkeep
+
+# 5. 간단한 실행 스크립트 생성
+echo "📜 5. 간단한 실행 스크립트 생성 중..."
+
+cat > run_fixed.sh << 'EOF'
+#!/bin/bash
+
+echo "🚀 MyCloset AI Backend - 수정된 버전 실행"
+echo "=========================================="
+
+# Conda 환경 확인
+if [[ "$CONDA_DEFAULT_ENV" == "" ]]; then
+    echo "❌ Conda 환경이 활성화되지 않았습니다."
+    echo "conda activate mycloset"
+    exit 1
+fi
+
+echo "✅ Conda 환경: $CONDA_DEFAULT_ENV"
+
+# 패키지 확인
+echo "📦 필수 패키지 확인 중..."
+
+# FastAPI 확인
+python -c "import fastapi; print(f'✅ FastAPI: {fastapi.__version__}')" 2>/dev/null || {
+    echo "❌ FastAPI가 없습니다. 설치: conda install fastapi uvicorn -y"
+    exit 1
+}
+
+# 서버 시작
+echo ""
+echo "🌐 서버 시작 중..."
+echo "📱 접속 주소: http://localhost:8000"
+echo "📚 API 문서: http://localhost:8000/docs"
+echo "🔧 헬스체크: http://localhost:8000/api/health"
+echo "🧪 가상 피팅 테스트: http://localhost:8000/api/virtual-tryon"
+echo ""
+echo "⏹️ 종료하려면 Ctrl+C를 누르세요"
+echo ""
+
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+EOF
+
+chmod +x run_fixed.sh
+
+# 6. 현재 환경 정보 출력
+echo "📊 6. 현재 환경 정보"
+echo "===================="
+
+echo "🐍 Conda 환경: ${CONDA_DEFAULT_ENV:-'없음'}"
+echo "🐍 Python: $(python --version 2>/dev/null || echo '확인불가')"
+
+# 패키지 확인
+echo "📦 설치된 패키지:"
+python -c "import fastapi; print(f'  ✅ FastAPI: {fastapi.__version__}')" 2>/dev/null || echo "  ❌ FastAPI 없음"
+python -c "import uvicorn; print(f'  ✅ Uvicorn: {uvicorn.__version__}')" 2>/dev/null || echo "  ❌ Uvicorn 없음"
+python -c "import pydantic; print(f'  ✅ Pydantic: {pydantic.__version__}')" 2>/dev/null || echo "  ❌ Pydantic 없음"
+python -c "import torch; print(f'  ✅ PyTorch: {torch.__version__}')" 2>/dev/null || echo "  ℹ️ PyTorch 없음 (선택사항)"
+
+echo ""
+echo "🎉 수정 완료!"
+echo ""
+echo "🚀 실행 방법:"
+echo "   ./run_fixed.sh"
+echo ""
+echo "🔧 문제가 있다면:"
+echo "   conda install fastapi uvicorn python-multipart -y"
+echo "   pip install pydantic-settings python-dotenv"
+echo ""
+echo "📱 실행 후 접속: http://localhost:8000"   
