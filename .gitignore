@@ -1,0 +1,6 @@
+# AI Models (keep locally, exclude from Git)
+backend/ai_models/
+*.pth
+*.ckpt
+*.h5
+backend/venv*
