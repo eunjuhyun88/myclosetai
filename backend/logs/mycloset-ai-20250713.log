@@ -45,3 +45,347 @@
 2025-07-13 21:40:40 | [32mINFO[0m | model_manager        | 92899 | ✅ 모델 자동 로드 완료: 1개
 2025-07-13 21:40:40 | [32mINFO[0m | app.main             | 92899 | ✅ AI 모델 매니저 초기화 완료
 2025-07-13 21:40:40 | [32mINFO[0m | app.main             | 92899 | ✅ 애플리케이션 초기화 완료
+2025-07-13 22:03:02 | [32mINFO[0m | app.main             | 92899 | 📥 POST /api/virtual-tryon
+2025-07-13 22:03:02 | [32mINFO[0m | app.main             | 92899 | 📤 POST /api/virtual-tryon - 404 (0.002s)
+2025-07-13 22:05:37 | [32mINFO[0m | app.main             | 92899 | 🛑 MyCloset AI Backend 종료...
+2025-07-13 22:05:37 | [32mINFO[0m | model_manager        | 92899 | 🔄 모든 모델 언로드 시작...
+2025-07-13 22:05:37 | [32mINFO[0m | model_manager        | 92899 | 🔄 모델 언로드: stable_diffusion
+2025-07-13 22:05:37 | [32mINFO[0m | model_manager        | 92899 | ✅ 모델 언로드 완료: stable_diffusion
+2025-07-13 22:05:37 | [32mINFO[0m | model_manager        | 92899 | ✅ 모든 모델 언로드 완료: 1개
+2025-07-13 22:05:37 | [32mINFO[0m | app.main             | 92899 | ✅ 모델 언로드 완료
+2025-07-13 22:05:37 | [32mINFO[0m | app.main             | 92899 | 👋 애플리케이션 종료 완료
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 📝 로그 레벨: INFO
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 📝 로그 레벨: INFO
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 📝 로그 레벨: INFO
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:05:41 | [32mINFO[0m | mycloset.logging     | 3532 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:05:41 | [32mINFO[0m | app.main             | 3532 | 🚀 MyCloset AI Backend 시작...
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | 🚀 GPU 설정 시작 검사...
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | device: mps
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | platform: Darwin
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | machine: arm64
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | python_version: 3.10.18
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | pytorch_version: 2.1.0
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | system_memory:
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   total_gb: 128.0
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   available_gb: 68.3
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   used_percent: 46.7
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | gpu_info:
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   name: Apple M3 Max
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   memory_pool: 통합 메모리 (Unified Memory)
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   cores: 30-40 GPU 코어
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   neural_engine: 16코어
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 |   memory_bandwidth: 400GB/s
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | 🧪 AI 파이프라인 테스트 시작...
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | ✅ AI 파이프라인 테스트 성공: torch.Size([1, 10])
+2025-07-13 22:05:41 | [32mINFO[0m | app.core.gpu_config  | 3532 | ✅ GPU 설정 검사 완료
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 🤖 ModelManager 초기화: device=mps
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | ℹ️ MPS empty_cache 미지원 (PyTorch 2.5.1)
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | ℹ️ MPS 메모리 제한 설정 미지원
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:05:41 | [32mINFO[0m | app.main             | 3532 | ✅ 7/12 모델 감지됨
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 🔄 모든 모델 로드 시작...
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 🔄 모델 로드 시작: stable_diffusion
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 🎯 모델 타입: base_diffusion
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | 🎨 디퓨전 모델 로딩: stable_diffusion
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | ✅ 모델 로드 완료: stable_diffusion
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | ✅ 자동 로드 완료: stable_diffusion
+2025-07-13 22:05:41 | [32mINFO[0m | model_manager        | 3532 | ✅ 모델 자동 로드 완료: 1개
+2025-07-13 22:05:41 | [32mINFO[0m | app.main             | 3532 | ✅ AI 모델 매니저 초기화 완료
+2025-07-13 22:05:41 | [32mINFO[0m | app.main             | 3532 | ✅ 애플리케이션 초기화 완료
+2025-07-13 22:05:55 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:05:55 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.001s)
+2025-07-13 22:06:00 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:06:00 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.001s)
+2025-07-13 22:06:08 | [32mINFO[0m | app.main             | 3532 | 📥 GET /docs
+2025-07-13 22:06:08 | [32mINFO[0m | app.main             | 3532 | 📤 GET /docs - 200 (0.001s)
+2025-07-13 22:06:08 | [32mINFO[0m | app.main             | 3532 | 📥 GET /openapi.json
+2025-07-13 22:06:08 | [32mINFO[0m | app.main             | 3532 | 📤 GET /openapi.json - 200 (0.009s)
+2025-07-13 22:06:16 | [32mINFO[0m | app.main             | 3532 | 📥 GET /docs
+2025-07-13 22:06:16 | [32mINFO[0m | app.main             | 3532 | 📤 GET /docs - 200 (0.000s)
+2025-07-13 22:06:23 | [32mINFO[0m | app.main             | 3532 | 📥 GET /
+2025-07-13 22:06:23 | [32mINFO[0m | app.main             | 3532 | 📤 GET / - 200 (0.001s)
+2025-07-13 22:10:24 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:10:24 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.000s)
+2025-07-13 22:10:28 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:10:28 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.001s)
+2025-07-13 22:10:30 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:10:30 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.001s)
+2025-07-13 22:10:32 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:10:32 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.001s)
+2025-07-13 22:10:34 | [32mINFO[0m | app.main             | 3532 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:10:34 | [32mINFO[0m | app.main             | 3532 | 📤 GET /api/virtual-tryon/test - 404 (0.001s)
+2025-07-13 22:12:52 | [32mINFO[0m | app.main             | 3532 | 🛑 MyCloset AI Backend 종료...
+2025-07-13 22:12:52 | [32mINFO[0m | model_manager        | 3532 | 🔄 모든 모델 언로드 시작...
+2025-07-13 22:12:52 | [32mINFO[0m | model_manager        | 3532 | 🔄 모델 언로드: stable_diffusion
+2025-07-13 22:12:52 | [32mINFO[0m | model_manager        | 3532 | ✅ 모델 언로드 완료: stable_diffusion
+2025-07-13 22:12:52 | [32mINFO[0m | model_manager        | 3532 | ✅ 모든 모델 언로드 완료: 1개
+2025-07-13 22:12:52 | [32mINFO[0m | app.main             | 3532 | ✅ 모델 언로드 완료
+2025-07-13 22:12:52 | [32mINFO[0m | app.main             | 3532 | 👋 애플리케이션 종료 완료
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 📝 로그 레벨: INFO
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 📝 로그 레벨: INFO
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 📝 로그 레벨: INFO
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:12:54 | [32mINFO[0m | mycloset.logging     | 6575 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:12:54 | [32mINFO[0m | app.main             | 6575 | 🚀 MyCloset AI Backend 시작...
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | 🚀 GPU 설정 시작 검사...
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | device: mps
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | platform: Darwin
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | machine: arm64
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | python_version: 3.10.18
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | pytorch_version: 2.1.0
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | system_memory:
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   total_gb: 128.0
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   available_gb: 68.9
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   used_percent: 46.2
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | gpu_info:
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   name: Apple M3 Max
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   memory_pool: 통합 메모리 (Unified Memory)
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   cores: 30-40 GPU 코어
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   neural_engine: 16코어
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 |   memory_bandwidth: 400GB/s
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | 🧪 AI 파이프라인 테스트 시작...
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | ✅ AI 파이프라인 테스트 성공: torch.Size([1, 10])
+2025-07-13 22:12:54 | [32mINFO[0m | app.core.gpu_config  | 6575 | ✅ GPU 설정 검사 완료
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 🤖 ModelManager 초기화: device=mps
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | ℹ️ MPS empty_cache 미지원 (PyTorch 2.5.1)
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | ℹ️ MPS 메모리 제한 설정 미지원
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:12:54 | [32mINFO[0m | app.main             | 6575 | ✅ 7/12 모델 감지됨
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 🔄 모든 모델 로드 시작...
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 🔄 모델 로드 시작: stable_diffusion
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 🎯 모델 타입: base_diffusion
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | 🎨 디퓨전 모델 로딩: stable_diffusion
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | ✅ 모델 로드 완료: stable_diffusion
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | ✅ 자동 로드 완료: stable_diffusion
+2025-07-13 22:12:54 | [32mINFO[0m | model_manager        | 6575 | ✅ 모델 자동 로드 완료: 1개
+2025-07-13 22:12:54 | [32mINFO[0m | app.main             | 6575 | ✅ AI 모델 매니저 초기화 완료
+2025-07-13 22:12:54 | [32mINFO[0m | app.main             | 6575 | ✅ 애플리케이션 초기화 완료
+2025-07-13 22:13:04 | [32mINFO[0m | app.main             | 6575 | 📥 POST /api/virtual-tryon
+2025-07-13 22:13:04 | [32mINFO[0m | app.main             | 6575 | 📤 POST /api/virtual-tryon - 404 (0.001s)
+2025-07-13 22:13:23 | [32mINFO[0m | app.main             | 6575 | 📥 GET /api/virtual-tryon/testRetryClaude
+2025-07-13 22:13:23 | [32mINFO[0m | app.main             | 6575 | 📤 GET /api/virtual-tryon/testRetryClaude - 404 (0.000s)
+2025-07-13 22:13:46 | [32mINFO[0m | app.main             | 6575 | 📥 GET /api/virtual-tryon/test
+2025-07-13 22:13:46 | [32mINFO[0m | app.main             | 6575 | 📤 GET /api/virtual-tryon/test - 404 (0.000s)
+2025-07-13 22:14:23 | [32mINFO[0m | app.main             | 6575 | 🛑 MyCloset AI Backend 종료...
+2025-07-13 22:14:23 | [32mINFO[0m | model_manager        | 6575 | 🔄 모든 모델 언로드 시작...
+2025-07-13 22:14:23 | [32mINFO[0m | model_manager        | 6575 | 🔄 모델 언로드: stable_diffusion
+2025-07-13 22:14:23 | [32mINFO[0m | model_manager        | 6575 | ✅ 모델 언로드 완료: stable_diffusion
+2025-07-13 22:14:23 | [32mINFO[0m | model_manager        | 6575 | ✅ 모든 모델 언로드 완료: 1개
+2025-07-13 22:14:23 | [32mINFO[0m | app.main             | 6575 | ✅ 모델 언로드 완료
+2025-07-13 22:14:23 | [32mINFO[0m | app.main             | 6575 | 👋 애플리케이션 종료 완료
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 📝 로그 레벨: INFO
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 📝 로그 레벨: INFO
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:14:26 | [32mINFO[0m | __main__             | 7162 | ✅ virtual_tryon 라우터 등록됨
+2025-07-13 22:14:26 | [32mINFO[0m | __main__             | 7162 | ✅ models 라우터 등록됨
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 📝 로그 레벨: INFO
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:14:26 | [32mINFO[0m | mycloset.logging     | 7162 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:14:26 | [32mINFO[0m | app.main             | 7162 | ✅ virtual_tryon 라우터 등록됨
+2025-07-13 22:14:26 | [32mINFO[0m | app.main             | 7162 | ✅ models 라우터 등록됨
+2025-07-13 22:14:26 | [32mINFO[0m | app.main             | 7162 | 🚀 MyCloset AI Backend 시작...
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | 🚀 GPU 설정 시작 검사...
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | device: mps
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | platform: Darwin
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | machine: arm64
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | python_version: 3.10.18
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | pytorch_version: 2.1.0
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | system_memory:
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   total_gb: 128.0
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   available_gb: 68.7
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   used_percent: 46.3
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | gpu_info:
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   name: Apple M3 Max
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   memory_pool: 통합 메모리 (Unified Memory)
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   cores: 30-40 GPU 코어
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   neural_engine: 16코어
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 |   memory_bandwidth: 400GB/s
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | 🧪 AI 파이프라인 테스트 시작...
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | ✅ AI 파이프라인 테스트 성공: torch.Size([1, 10])
+2025-07-13 22:14:26 | [32mINFO[0m | app.core.gpu_config  | 7162 | ✅ GPU 설정 검사 완료
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 🤖 ModelManager 초기화: device=mps
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | ℹ️ MPS empty_cache 미지원 (PyTorch 2.5.1)
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | ℹ️ MPS 메모리 제한 설정 미지원
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:14:26 | [32mINFO[0m | app.main             | 7162 | ✅ 7/12 모델 감지됨
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 🔄 모든 모델 로드 시작...
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 🔄 모델 로드 시작: stable_diffusion
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 🎯 모델 타입: base_diffusion
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | 🎨 디퓨전 모델 로딩: stable_diffusion
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | ✅ 모델 로드 완료: stable_diffusion
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | ✅ 자동 로드 완료: stable_diffusion
+2025-07-13 22:14:26 | [32mINFO[0m | model_manager        | 7162 | ✅ 모델 자동 로드 완료: 1개
+2025-07-13 22:14:26 | [32mINFO[0m | app.main             | 7162 | ✅ AI 모델 매니저 초기화 완료
+2025-07-13 22:14:26 | [32mINFO[0m | app.main             | 7162 | ✅ 애플리케이션 초기화 완료
+2025-07-13 22:14:36 | [32mINFO[0m | app.main             | 7162 | 📥 POST /api/virtual-tryon
+2025-07-13 22:14:36 | [32mINFO[0m | app.main             | 7162 | 🎽 가상 피팅 요청: height=170.0cm, weight=65.0kg
+2025-07-13 22:14:36 | [32mINFO[0m | app.main             | 7162 | 📸 이미지 로드 완료: 사용자=(360, 706), 의류=(750, 750)
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ MediaPipe 모델 초기화 완료
+2025-07-13 22:14:46 | [32mINFO[0m | virtual_fitter       | 7162 | 🔥 실제 MediaPipe + OpenCV AI 피팅 시작!
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🔥 실제 AI 가상 피팅 시작!
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | 👤 1단계: MediaPipe 인체 포즈 검출...
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 포즈 검출 성공: 33개 랜드마크, 신뢰도: 0.97
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✂️ 2단계: AI 인체 세그멘테이션...
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 세그멘테이션 성공: 커버리지 0.27, 품질 1.00
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | 📐 3단계: 체형 분석 및 의류 영역 계산...
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 체형 분석 완료: regular, BMI: 22.5
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 상의 영역 계산 완료
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 하의 영역 계산 완료
+2025-07-13 22:14:46 | [32mINFO[0m | real_working_ai_fitt | 7162 | 👕 4단계: 의류 이미지 분석 및 전처리...
+2025-07-13 22:14:47 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 의류 이미지 전처리 완료
+2025-07-13 22:14:47 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🎨 5단계: 정밀 가상 피팅 및 렌더링...
+2025-07-13 22:14:47 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 정밀 피팅 완료
+2025-07-13 22:14:47 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✨ 6단계: 이미지 품질 향상...
+2025-07-13 22:14:48 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🎉 실제 AI 가상 피팅 완료! (1.7초, 신뢰도: 0.99)
+2025-07-13 22:14:48 | [32mINFO[0m | app.main             | 7162 | ✅ 실제 AI 모델 사용
+2025-07-13 22:14:48 | [32mINFO[0m | app.main             | 7162 | ✅ 가상 피팅 완료: 11.55초
+2025-07-13 22:14:48 | [32mINFO[0m | app.main             | 7162 | 📤 POST /api/virtual-tryon - 200 (11.578s)
+2025-07-13 22:15:35 | [32mINFO[0m | app.main             | 7162 | 📥 POST /api/virtual-tryon
+2025-07-13 22:15:35 | [32mINFO[0m | app.main             | 7162 | 🎽 가상 피팅 요청: height=170.0cm, weight=65.0kg
+2025-07-13 22:15:35 | [32mINFO[0m | app.main             | 7162 | 📸 이미지 로드 완료: 사용자=(360, 706), 의류=(750, 750)
+2025-07-13 22:15:35 | [32mINFO[0m | virtual_fitter       | 7162 | 🔥 실제 MediaPipe + OpenCV AI 피팅 시작!
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🔥 실제 AI 가상 피팅 시작!
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | 👤 1단계: MediaPipe 인체 포즈 검출...
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 포즈 검출 성공: 33개 랜드마크, 신뢰도: 0.97
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✂️ 2단계: AI 인체 세그멘테이션...
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 세그멘테이션 성공: 커버리지 0.27, 품질 1.00
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | 📐 3단계: 체형 분석 및 의류 영역 계산...
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 체형 분석 완료: regular, BMI: 22.5
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 상의 영역 계산 완료
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 하의 영역 계산 완료
+2025-07-13 22:15:35 | [32mINFO[0m | real_working_ai_fitt | 7162 | 👕 4단계: 의류 이미지 분석 및 전처리...
+2025-07-13 22:15:36 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 의류 이미지 전처리 완료
+2025-07-13 22:15:36 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🎨 5단계: 정밀 가상 피팅 및 렌더링...
+2025-07-13 22:15:36 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 정밀 피팅 완료
+2025-07-13 22:15:36 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✨ 6단계: 이미지 품질 향상...
+2025-07-13 22:15:36 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🎉 실제 AI 가상 피팅 완료! (0.9초, 신뢰도: 0.99)
+2025-07-13 22:15:36 | [32mINFO[0m | app.main             | 7162 | ✅ 실제 AI 모델 사용
+2025-07-13 22:15:36 | [32mINFO[0m | app.main             | 7162 | ✅ 가상 피팅 완료: 0.86초
+2025-07-13 22:15:36 | [32mINFO[0m | app.main             | 7162 | 📤 POST /api/virtual-tryon - 200 (0.874s)
+2025-07-13 22:17:07 | [32mINFO[0m | app.main             | 7162 | 📥 POST /api/virtual-tryon
+2025-07-13 22:17:07 | [32mINFO[0m | app.main             | 7162 | 🎽 가상 피팅 요청: height=170.0cm, weight=65.0kg
+2025-07-13 22:17:07 | [32mINFO[0m | app.main             | 7162 | 📸 이미지 로드 완료: 사용자=(360, 706), 의류=(750, 750)
+2025-07-13 22:17:07 | [32mINFO[0m | virtual_fitter       | 7162 | 🔥 실제 MediaPipe + OpenCV AI 피팅 시작!
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🔥 실제 AI 가상 피팅 시작!
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | 👤 1단계: MediaPipe 인체 포즈 검출...
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 포즈 검출 성공: 33개 랜드마크, 신뢰도: 0.97
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✂️ 2단계: AI 인체 세그멘테이션...
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 세그멘테이션 성공: 커버리지 0.27, 품질 1.00
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | 📐 3단계: 체형 분석 및 의류 영역 계산...
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 체형 분석 완료: regular, BMI: 22.5
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 상의 영역 계산 완료
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 하의 영역 계산 완료
+2025-07-13 22:17:07 | [32mINFO[0m | real_working_ai_fitt | 7162 | 👕 4단계: 의류 이미지 분석 및 전처리...
+2025-07-13 22:17:08 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 의류 이미지 전처리 완료
+2025-07-13 22:17:08 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🎨 5단계: 정밀 가상 피팅 및 렌더링...
+2025-07-13 22:17:08 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✅ 정밀 피팅 완료
+2025-07-13 22:17:08 | [32mINFO[0m | real_working_ai_fitt | 7162 | ✨ 6단계: 이미지 품질 향상...
+2025-07-13 22:17:08 | [32mINFO[0m | real_working_ai_fitt | 7162 | 🎉 실제 AI 가상 피팅 완료! (0.8초, 신뢰도: 0.99)
+2025-07-13 22:17:08 | [32mINFO[0m | app.main             | 7162 | ✅ 실제 AI 모델 사용
+2025-07-13 22:17:08 | [32mINFO[0m | app.main             | 7162 | ✅ 가상 피팅 완료: 0.85초
+2025-07-13 22:17:08 | [32mINFO[0m | app.main             | 7162 | 📤 POST /api/virtual-tryon - 200 (0.859s)
+2025-07-13 22:17:59 | [32mINFO[0m | app.main             | 7162 | 🛑 MyCloset AI Backend 종료...
+2025-07-13 22:17:59 | [32mINFO[0m | model_manager        | 7162 | 🔄 모든 모델 언로드 시작...
+2025-07-13 22:17:59 | [32mINFO[0m | model_manager        | 7162 | 🔄 모델 언로드: stable_diffusion
+2025-07-13 22:17:59 | [32mINFO[0m | model_manager        | 7162 | ✅ 모델 언로드 완료: stable_diffusion
+2025-07-13 22:17:59 | [32mINFO[0m | model_manager        | 7162 | ✅ 모든 모델 언로드 완료: 1개
+2025-07-13 22:17:59 | [32mINFO[0m | app.main             | 7162 | ✅ 모델 언로드 완료
+2025-07-13 22:17:59 | [32mINFO[0m | app.main             | 7162 | 👋 애플리케이션 종료 완료
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 📝 로그 레벨: INFO
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 📝 로그 레벨: INFO
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:18:01 | [32mINFO[0m | __main__             | 8508 | ✅ virtual_tryon 라우터 등록됨
+2025-07-13 22:18:01 | [32mINFO[0m | __main__             | 8508 | ✅ models 라우터 등록됨
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 🔧 로깅 시스템 초기화 완료
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 📝 로그 레벨: INFO
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | 📁 로그 파일: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log
+2025-07-13 22:18:01 | [32mINFO[0m | mycloset.logging     | 8508 | ❌ 에러 로그: /Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250713.log
+2025-07-13 22:18:01 | [32mINFO[0m | app.main             | 8508 | ✅ virtual_tryon 라우터 등록됨
+2025-07-13 22:18:01 | [32mINFO[0m | app.main             | 8508 | ✅ models 라우터 등록됨
+2025-07-13 22:18:01 | [32mINFO[0m | app.main             | 8508 | 🚀 MyCloset AI Backend 시작...
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | 🚀 GPU 설정 시작 검사...
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | device: mps
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | platform: Darwin
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | machine: arm64
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | python_version: 3.10.18
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | pytorch_version: 2.1.0
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | system_memory:
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   total_gb: 128.0
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   available_gb: 69.1
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   used_percent: 46.0
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | gpu_info:
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   name: Apple M3 Max
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   memory_pool: 통합 메모리 (Unified Memory)
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   cores: 30-40 GPU 코어
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   neural_engine: 16코어
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 |   memory_bandwidth: 400GB/s
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | 🧪 AI 파이프라인 테스트 시작...
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | ✅ AI 파이프라인 테스트 성공: torch.Size([1, 10])
+2025-07-13 22:18:01 | [32mINFO[0m | app.core.gpu_config  | 8508 | ✅ GPU 설정 검사 완료
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 🤖 ModelManager 초기화: device=mps
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | ℹ️ MPS empty_cache 미지원 (PyTorch 2.5.1)
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | ℹ️ MPS 메모리 제한 설정 미지원
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:18:01 | [32mINFO[0m | app.main             | 8508 | ✅ 7/12 모델 감지됨
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 🔄 모든 모델 로드 시작...
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 📋 사용 가능한 모델: 7/12
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 🔄 모델 로드 시작: stable_diffusion
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 🎯 모델 타입: base_diffusion
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | 🎨 디퓨전 모델 로딩: stable_diffusion
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | ✅ 모델 로드 완료: stable_diffusion
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | ✅ 자동 로드 완료: stable_diffusion
+2025-07-13 22:18:01 | [32mINFO[0m | model_manager        | 8508 | ✅ 모델 자동 로드 완료: 1개
+2025-07-13 22:18:01 | [32mINFO[0m | app.main             | 8508 | ✅ AI 모델 매니저 초기화 완료
+2025-07-13 22:18:01 | [32mINFO[0m | app.main             | 8508 | ✅ 애플리케이션 초기화 완료
+2025-07-13 22:18:16 | [32mINFO[0m | app.main             | 8508 | 📥 POST /api/virtual-tryon
+2025-07-13 22:18:16 | [32mINFO[0m | app.main             | 8508 | 🎽 가상 피팅 요청: height=170.0cm, weight=65.0kg
+2025-07-13 22:18:16 | [32mINFO[0m | app.main             | 8508 | 📸 이미지 로드 완료: 사용자=(360, 706), 의류=(750, 750)
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ MediaPipe 모델 초기화 완료
+2025-07-13 22:18:16 | [32mINFO[0m | virtual_fitter       | 8508 | 🔥 실제 MediaPipe + OpenCV AI 피팅 시작!
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | 🔥 실제 AI 가상 피팅 시작!
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | 👤 1단계: MediaPipe 인체 포즈 검출...
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 포즈 검출 성공: 33개 랜드마크, 신뢰도: 0.97
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✂️ 2단계: AI 인체 세그멘테이션...
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 세그멘테이션 성공: 커버리지 0.27, 품질 1.00
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | 📐 3단계: 체형 분석 및 의류 영역 계산...
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 체형 분석 완료: regular, BMI: 22.5
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 상의 영역 계산 완료
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 하의 영역 계산 완료
+2025-07-13 22:18:16 | [32mINFO[0m | real_working_ai_fitt | 8508 | 👕 4단계: 의류 이미지 분석 및 전처리...
+2025-07-13 22:18:17 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 의류 이미지 전처리 완료
+2025-07-13 22:18:17 | [32mINFO[0m | real_working_ai_fitt | 8508 | 🎨 5단계: 정밀 가상 피팅 및 렌더링...
+2025-07-13 22:18:17 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✅ 정밀 피팅 완료
+2025-07-13 22:18:17 | [32mINFO[0m | real_working_ai_fitt | 8508 | ✨ 6단계: 이미지 품질 향상...
+2025-07-13 22:18:17 | [32mINFO[0m | real_working_ai_fitt | 8508 | 🎉 실제 AI 가상 피팅 완료! (0.9초, 신뢰도: 0.99)
+2025-07-13 22:18:17 | [32mINFO[0m | app.main             | 8508 | ✅ 실제 AI 모델 사용
+2025-07-13 22:18:17 | [32mINFO[0m | app.main             | 8508 | ✅ 가상 피팅 완료: 1.26초
+2025-07-13 22:18:17 | [32mINFO[0m | app.main             | 8508 | 📤 POST /api/virtual-tryon - 200 (1.281s)

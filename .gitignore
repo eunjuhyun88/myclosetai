@@ -178,3 +178,34 @@ resnet50_features.pth
 **/pytorch_model.bin
 **/diffusion_pytorch_model.bin
 **/diffusion_pytorch_model.safetensors
+
+# .gitignore에 추가할 내용
+
+# AI 모델 관련
+ai_models/checkpoints/*
+!ai_models/checkpoints/.gitkeep
+ai_models/cache/*
+!ai_models/cache/.gitkeep
+ai_models/ootd_models/*
+!ai_models/ootd_models/.gitkeep
+ai_models/temp/*
+!ai_models/temp/.gitkeep
+
+# 다운로드된 모델 파일들
+*.safetensors
+*.bin
+*.onnx
+*.pth
+*.pt
+
+# oot_diffusion이 많은 임시 파일을 생성할 수 있음
+ai_models/oot_diffusion/outputs/
+ai_models/oot_diffusion/logs/
+ai_models/oot_diffusion/__pycache__/
+ai_models/oot_diffusion/*.egg-info/
+
+# 업로드/결과 파일
+static/uploads/*
+!static/uploads/.gitkeep
+static/results/*
+!static/results/.gitkeep
