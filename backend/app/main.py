@@ -1,543 +1,300 @@
-# backend/app/main.py
 """
-MyCloset AI 통합 백엔드 - 실제 AI 모델과 프론트엔드 완전 연동
+MyCloset AI FastAPI 메인 애플리케이션
+8단계 파이프라인과 프론트엔드를 연결하는 백엔드 서버
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 import logging
-import json
-from typing import Dict
+import time
+import psutil
+from datetime import datetime
+from pathlib import Path
 
-# 기존 라우터들
-from app.api import health
-from app.api.unified_routes import router as unified_router
-from app.core.logging_config import setup_logging
-from app.core.config import settings
-
-# 새로운 통합 서비스
-from app.services.real_working_ai_fitter import RealWorkingAIFitter
+# 로컬 임포트
+from .api.pipeline_routes import router as pipeline_router
+from .core.config import settings
+from .models.schemas import HealthCheck, SystemStats, MonitoringData
 
 # 로깅 설정
-setup_logging()
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(settings.LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+
 logger = logging.getLogger(__name__)
 
 # FastAPI 앱 생성
 app = FastAPI(
     title="MyCloset AI Backend",
-    description="실제 AI 모델 기반 가상 피팅 시스템",
-    version="2.0.0",
+    description="8단계 AI 파이프라인 기반 가상 피팅 시스템",
+    version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-# CORS 미들웨어 추가 (프론트엔드 연동)
+# 시작 시간 기록
+start_time = time.time()
+request_stats = {
+    "total_requests": 0,
+    "successful_requests": 0,
+    "processing_times": [],
+    "quality_scores": []
+}
+
+# CORS 미들웨어 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",    # React 개발 서버
-        "http://localhost:5173",    # Vite 개발 서버
-        "http://localhost:8080",    # 추가 포트
-        "https://mycloset-ai.vercel.app",  # 배포용
-        "https://*.vercel.app",     # Vercel 서브도메인
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
-# Gzip 압축 미들웨어
+# GZIP 압축 미들웨어
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # 정적 파일 서빙
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# WebSocket 연결 관리자
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
+# 라우터 등록
+app.include_router(pipeline_router)
 
-    async def connect(self, websocket: WebSocket, task_id: str):
-        await websocket.accept()
-        self.active_connections[task_id] = websocket
-        logger.info(f"📡 WebSocket 연결됨: {task_id}")
+# 요청 처리 미들웨어
+@app.middleware("http")
+async def process_request_middleware(request, call_next):
+    """요청 처리 미들웨어 - 통계 수집"""
+    start_time_req = time.time()
+    request_stats["total_requests"] += 1
+    
+    try:
+        response = await call_next(request)
+        
+        # 성공한 요청 기록
+        if response.status_code < 400:
+            request_stats["successful_requests"] += 1
+            processing_time = time.time() - start_time_req
+            request_stats["processing_times"].append(processing_time)
+            
+            # 처리 시간이 너무 많이 쌓이지 않도록 제한
+            if len(request_stats["processing_times"]) > 1000:
+                request_stats["processing_times"] = request_stats["processing_times"][-500:]
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"요청 처리 중 오류: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Internal Server Error", "detail": str(e)}
+        )
 
-    def disconnect(self, task_id: str):
-        if task_id in self.active_connections:
-            del self.active_connections[task_id]
-            logger.info(f"📡 WebSocket 연결 해제됨: {task_id}")
-
-    async def send_progress_update(self, task_id: str, data: dict):
-        if task_id in self.active_connections:
-            try:
-                await self.active_connections[task_id].send_text(
-                    json.dumps(data, ensure_ascii=False)
-                )
-                logger.debug(f"📡 진행상황 전송: {task_id} - {data.get('progress', 0)}%")
-            except Exception as e:
-                logger.warning(f"📡 WebSocket 전송 실패: {task_id} - {e}")
-                self.disconnect(task_id)
-
-# 전역 연결 관리자
-manager = ConnectionManager()
-
-# AI 서비스 인스턴스
-ai_fitter = RealWorkingAIFitter()
-
+# 시작/종료 이벤트
 @app.on_event("startup")
 async def startup_event():
-    """앱 시작 시 실행"""
-    logger.info("🚀 MyCloset AI Backend 시작됨")
-    logger.info(f"🔧 설정: {settings.APP_NAME} v{settings.APP_VERSION}")
+    """애플리케이션 시작 시 실행"""
+    logger.info("🚀 MyCloset AI Backend 시작")
+    logger.info(f"⚙️  설정: {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"🖥️  디바이스: {settings.DEVICE}")
+    logger.info(f"💾 메모리 한계: {settings.MEMORY_LIMIT_GB}GB")
     
-    # AI 모델 초기화
-    try:
-        await ai_fitter.initialize()
-        logger.info("✅ AI 서비스 초기화 완료")
-    except Exception as e:
-        logger.error(f"❌ AI 서비스 초기화 실패: {e}")
+    # 필요한 디렉토리 생성
+    Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+    Path(settings.RESULT_DIR).mkdir(parents=True, exist_ok=True)
+    Path("logs").mkdir(exist_ok=True)
+    
+    logger.info("✅ 백엔드 시작 완료")
 
-@app.on_event("shutdown") 
+@app.on_event("shutdown")
 async def shutdown_event():
-    """앱 종료 시 실행"""
-    logger.info("🛑 MyCloset AI Backend 종료됨")
-
-# 라우터 등록
-app.include_router(unified_router)
-app.include_router(health.router, prefix="/api", tags=["health"])
-
-# WebSocket 엔드포인트
-@app.websocket("/ws/fitting/{task_id}")
-async def websocket_endpoint(websocket: WebSocket, task_id: str):
-    """실시간 가상 피팅 진행상황 WebSocket"""
-    await manager.connect(websocket, task_id)
+    """애플리케이션 종료 시 실행"""
+    logger.info("🛑 MyCloset AI Backend 종료 중...")
+    
+    # 파이프라인 정리
     try:
-        while True:
-            # 클라이언트로부터 메시지 대기 (연결 유지용)
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(task_id)
+        from .api.pipeline_routes import pipeline_instance
+        if pipeline_instance:
+            pipeline_instance.cleanup()
+            logger.info("🧹 파이프라인 리소스 정리 완료")
     except Exception as e:
-        logger.error(f"❌ WebSocket 오류: {e}")
-        manager.disconnect(task_id)
+        logger.error(f"파이프라인 정리 중 오류: {e}")
+    
+    logger.info("✅ 백엔드 종료 완료")
 
-# 새로운 통합 API 엔드포인트들
+# 기본 엔드포인트
 @app.get("/")
 async def root():
     """루트 엔드포인트"""
     return {
-        "message": "MyCloset AI Backend v2.0 - 실제 AI 모델 통합 완료",
-        "version": "2.0.0",
-        "status": "running",
-        "features": [
-            "실제 AI 가상 피팅",
-            "실시간 WebSocket 업데이트", 
-            "고급 신체 분석",
-            "다중 모델 지원"
-        ],
+        "message": "MyCloset AI Backend API",
+        "version": "1.0.0",
+        "status": "운영 중",
         "docs": "/docs",
-        "health": "/api/health"
+        "pipeline_status": "/api/pipeline/status"
     }
 
-@app.get("/api/system/status")
-async def get_system_status():
-    """시스템 상태 조회"""
-    try:
-        model_status = await ai_fitter.get_model_status()
-        return {
-            "status": "healthy",
-            "ai_service": model_status,
-            "websocket_connections": len(manager.active_connections),
-            "version": "2.0.0"
-        }
-    except Exception as e:
-        logger.error(f"❌ 시스템 상태 조회 실패: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+@app.get("/health", response_model=HealthCheck)
+async def health_check():
+    """헬스 체크 엔드포인트"""
+    return HealthCheck(
+        status="healthy",
+        timestamp=datetime.now(),
+        version="1.0.0",
+        uptime=time.time() - start_time
+    )
 
-# backend/app/api/unified_routes.py 업데이트
-"""
-프론트엔드와 완전 호환되는 통합 API 라우터
-실제 AI 모델 서비스와 연동
-"""
-
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse
-import asyncio
-import uuid
-import time
-import base64
-from typing import Optional, Dict, Any
-import logging
-
-# 실제 AI 서비스들 import
-from app.services.real_working_ai_fitter import RealWorkingAIFitter
-from app.services.human_analysis import HumanAnalyzer
-from app.services.clothing_analysis import ClothingAnalyzer
-from app.utils.validators import validate_image, validate_measurements
-from app.models.schemas import TryOnRequest, TryOnResponse
-
-logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["virtual-tryon"])
-
-# 서비스 인스턴스들 (싱글톤)
-ai_fitter = RealWorkingAIFitter()
-human_analyzer = HumanAnalyzer()
-clothing_analyzer = ClothingAnalyzer()
-
-# 태스크 상태 저장소 (실제로는 Redis 권장)
-task_storage: Dict[str, Dict[str, Any]] = {}
-
-@router.post("/virtual-tryon")
-async def virtual_tryon_endpoint(
-    background_tasks: BackgroundTasks,
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(...),
-    weight: float = Form(...),
-    chest: Optional[float] = Form(None),
-    waist: Optional[float] = Form(None),
-    hips: Optional[float] = Form(None)
-):
-    """실제 AI 모델을 사용한 가상 피팅 API"""
-    
-    # 입력 검증
-    if not validate_image(person_image):
-        raise HTTPException(400, "잘못된 사용자 이미지 형식입니다.")
-    
-    if not validate_image(clothing_image):
-        raise HTTPException(400, "잘못된 의류 이미지 형식입니다.")
-    
-    if not validate_measurements(height, weight):
-        raise HTTPException(400, "잘못된 신체 측정값입니다.")
-    
-    # 태스크 ID 생성
-    task_id = str(uuid.uuid4())
-    
-    # 초기 태스크 상태 설정
-    task_storage[task_id] = {
-        "status": "processing",
-        "progress": 0,
-        "current_step": "이미지 업로드 완료",
-        "steps": [
-            {"id": "analyzing_body", "name": "신체 분석", "status": "pending"},
-            {"id": "analyzing_clothing", "name": "의류 분석", "status": "pending"},
-            {"id": "checking_compatibility", "name": "호환성 검사", "status": "pending"},
-            {"id": "generating_fitting", "name": "AI 가상 피팅 생성", "status": "pending"},
-            {"id": "post_processing", "name": "품질 향상 및 후처리", "status": "pending"}
-        ],
-        "result": None,
-        "error": None,
-        "created_at": time.time()
-    }
-    
-    logger.info(f"🎨 새로운 가상 피팅 요청: {task_id}")
-    
-    # 백그라운드 태스크로 실제 AI 처리 시작
-    background_tasks.add_task(
-        process_real_virtual_fitting,
-        task_id,
-        await person_image.read(),
-        await clothing_image.read(),
-        {
-            "height": height,
-            "weight": weight,
-            "chest": chest,
-            "waist": waist,
-            "hips": hips
-        }
+@app.get("/stats", response_model=SystemStats)
+async def get_system_stats():
+    """시스템 통계 조회"""
+    avg_processing_time = (
+        sum(request_stats["processing_times"]) / len(request_stats["processing_times"])
+        if request_stats["processing_times"] else 0.0
     )
     
+    avg_quality_score = (
+        sum(request_stats["quality_scores"]) / len(request_stats["quality_scores"])
+        if request_stats["quality_scores"] else 0.0
+    )
+    
+    # 메모리 사용량
+    memory_info = psutil.virtual_memory()
+    peak_memory = memory_info.used / (1024**3)  # GB
+    
+    return SystemStats(
+        total_requests=request_stats["total_requests"],
+        successful_requests=request_stats["successful_requests"],
+        average_processing_time=avg_processing_time,
+        average_quality_score=avg_quality_score,
+        peak_memory_usage=peak_memory,
+        uptime=time.time() - start_time,
+        last_request_time=datetime.now() if request_stats["total_requests"] > 0 else None
+    )
+
+@app.get("/monitoring", response_model=MonitoringData)
+async def get_monitoring_data():
+    """실시간 모니터링 데이터"""
+    
+    # 시스템 리소스 정보
+    cpu_percent = psutil.cpu_percent(interval=1)
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage('/')
+    net_io = psutil.net_io_counters()
+    
+    return MonitoringData(
+        cpu_usage=cpu_percent,
+        memory_usage=memory.percent,
+        disk_usage=(disk.used / disk.total) * 100,
+        network_io={
+            "bytes_sent": float(net_io.bytes_sent),
+            "bytes_recv": float(net_io.bytes_recv)
+        },
+        active_requests=0,  # 실제 구현시 활성 요청 수 추적
+        queue_size=0,       # 실제 구현시 대기열 크기 추적
+        timestamp=datetime.now()
+    )
+
+# 개발용 엔드포인트
+@app.get("/dev/info")
+async def development_info():
+    """개발 정보 (개발 모드에서만)"""
+    if not settings.DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    import torch
+    import platform
+    
     return {
-        "task_id": task_id,
-        "status": "processing",
-        "message": "AI 가상 피팅이 시작되었습니다.",
-        "estimated_time": "15-30초"
+        "system": {
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+            "architecture": platform.machine()
+        },
+        "pytorch": {
+            "version": torch.__version__,
+            "cuda_available": torch.cuda.is_available(),
+            "mps_available": torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False,
+            "device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0
+        },
+        "settings": {
+            "app_name": settings.APP_NAME,
+            "device": settings.DEVICE,
+            "debug": settings.DEBUG,
+            "memory_limit": f"{settings.MEMORY_LIMIT_GB}GB"
+        }
     }
 
-async def process_real_virtual_fitting(
-    task_id: str,
-    person_image: bytes,
-    clothing_image: bytes,
-    measurements: Dict[str, Any]
-):
-    """실제 AI 모델을 사용한 가상 피팅 처리"""
+# 글로벌 예외 처리기
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """글로벌 예외 처리"""
+    logger.error(f"예상치 못한 오류: {str(exc)}", exc_info=True)
     
-    try:
-        # WebSocket 매니저 import (순환 import 방지)
-        from app.main import manager
-        
-        logger.info(f"🤖 [{task_id}] 실제 AI 가상 피팅 처리 시작...")
-        
-        # Step 1: 신체 분석
-        await update_task_progress(task_id, "analyzing_body", 15, manager)
-        logger.info(f"[{task_id}] 신체 분석 시작...")
-        
-        body_analysis = await human_analyzer.analyze_complete_body(
-            person_image, measurements
-        )
-        
-        # Step 2: 의류 분석  
-        await update_task_progress(task_id, "analyzing_clothing", 30, manager)
-        logger.info(f"[{task_id}] 의류 분석 시작...")
-        
-        clothing_analysis = await clothing_analyzer.analyze_clothing(
-            clothing_image
-        )
-        
-        # Step 3: 호환성 검사
-        await update_task_progress(task_id, "checking_compatibility", 45, manager)
-        logger.info(f"[{task_id}] 호환성 검사 시작...")
-        
-        compatibility_score = calculate_enhanced_compatibility(body_analysis, clothing_analysis)
-        
-        # Step 4: 실제 AI 가상 피팅 생성
-        await update_task_progress(task_id, "generating_fitting", 70, manager)
-        logger.info(f"[{task_id}] AI 가상 피팅 생성 시작...")
-        
-        # 실제 AI 서비스 호출
-        fitting_result = await ai_fitter.generate_virtual_fitting(
-            person_image=person_image,
-            clothing_image=clothing_image,
-            body_analysis=body_analysis,
-            clothing_analysis=clothing_analysis
-        )
-        
-        # Step 5: 후처리 및 품질 향상
-        await update_task_progress(task_id, "post_processing", 90, manager)
-        logger.info(f"[{task_id}] 후처리 시작...")
-        
-        # 최종 결과 구성
-        final_result = {
-            "fitted_image": fitting_result["fitted_image"],
-            "confidence": fitting_result.get("confidence", 0.85),
-            "processing_time": fitting_result.get("processing_time", 15.0),
-            "model_used": fitting_result.get("model_used", "ootdiffusion"),
-            "body_analysis": {
-                "measurements": body_analysis.get("measurements", {}),
-                "pose_keypoints": body_analysis.get("pose_analysis", {}).get("keypoints", []),
-                "body_type": body_analysis.get("body_type", "보통"),
-                "analysis_confidence": body_analysis.get("analysis_confidence", 0.8)
-            },
-            "clothing_analysis": {
-                "category": clothing_analysis.get("category", "상의"),
-                "style": clothing_analysis.get("style", "캐주얼"),
-                "colors": clothing_analysis.get("colors", ["파란색"]),
-                "pattern": clothing_analysis.get("pattern", "무지"),
-                "material": clothing_analysis.get("material", "면")
-            },
-            "fit_score": compatibility_score,
-            "recommendations": generate_enhanced_recommendations(
-                body_analysis, clothing_analysis, compatibility_score
-            ),
-            "image_specs": fitting_result.get("image_specs", {
-                "resolution": [512, 512],
-                "format": "JPEG",
-                "quality": 95
-            }),
-            "processing_stats": fitting_result.get("processing_stats", {})
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "message": "서버에서 예상치 못한 오류가 발생했습니다.",
+            "request_id": str(id(request))
         }
-        
-        # 완료 상태 업데이트
-        task_storage[task_id].update({
-            "status": "completed",
-            "progress": 100,
-            "current_step": "완료",
-            "result": final_result,
-            "completed_at": time.time()
-        })
-        
-        # 모든 단계를 completed로 변경
-        for step in task_storage[task_id]["steps"]:
-            step["status"] = "completed"
-        
-        # WebSocket으로 완료 알림
-        await manager.send_progress_update(task_id, {
-            "status": "completed",
-            "progress": 100,
-            "result": final_result
-        })
-        
-        logger.info(f"[{task_id}] ✅ 실제 AI 가상 피팅 완료!")
-        
-    except Exception as e:
-        logger.error(f"[{task_id}] ❌ AI 가상 피팅 처리 중 오류: {e}")
-        
-        task_storage[task_id].update({
-            "status": "error",
-            "error": str(e),
-            "failed_at": time.time()
-        })
-        
-        # WebSocket으로 에러 알림
-        await manager.send_progress_update(task_id, {
-            "status": "error",
-            "error": str(e)
-        })
+    )
 
-async def update_task_progress(task_id: str, current_step: str, progress: int, manager):
-    """태스크 진행상황 업데이트 및 WebSocket 전송"""
-    if task_id in task_storage:
-        task_storage[task_id]["progress"] = progress
-        task_storage[task_id]["current_step"] = current_step
-        
-        # 현재 단계를 processing으로, 이전 단계들을 completed로 설정
-        step_order = ["analyzing_body", "analyzing_clothing", "checking_compatibility", 
-                     "generating_fitting", "post_processing"]
-        
-        current_index = step_order.index(current_step) if current_step in step_order else -1
-        
-        for i, step in enumerate(task_storage[task_id]["steps"]):
-            if i < current_index:
-                step["status"] = "completed"
-            elif step["id"] == current_step:
-                step["status"] = "processing"
-            else:
-                step["status"] = "pending"
-        
-        # WebSocket으로 실시간 업데이트 전송
-        await manager.send_progress_update(task_id, {
-            "progress": progress,
-            "current_step": current_step,
-            "steps": task_storage[task_id]["steps"]
-        })
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """HTTP 예외 처리"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
 
-def calculate_enhanced_compatibility(body_analysis: dict, clothing_analysis: dict) -> float:
-    """향상된 호환성 점수 계산"""
-    base_score = 0.75
+# 커스텀 엔드포인트들
+@app.post("/api/feedback")
+async def submit_feedback(feedback: dict):
+    """사용자 피드백 수집"""
+    logger.info(f"사용자 피드백: {feedback}")
     
-    # 체형과 의류 스타일 매칭
-    body_type = body_analysis.get("body_type", "보통")
-    clothing_style = clothing_analysis.get("style", "캐주얼")
-    
-    # 체형별 스타일 점수
-    style_compatibility = {
-        "슬림": {"피트": 0.9, "캐주얼": 0.8, "포멀": 0.7},
-        "보통": {"캐주얼": 0.9, "피트": 0.8, "포멀": 0.8},
-        "통통": {"루즈": 0.9, "캐주얼": 0.8, "포멀": 0.7}
+    # 실제 구현에서는 데이터베이스에 저장
+    return {
+        "success": True,
+        "message": "피드백이 접수되었습니다.",
+        "feedback_id": str(time.time())
     }
-    
-    # 추가 점수 계산
-    style_score = style_compatibility.get(body_type, {}).get(clothing_style, 0.7) * 0.2
-    
-    return min(base_score + style_score, 1.0)
 
-def generate_enhanced_recommendations(
-    body_analysis: dict, 
-    clothing_analysis: dict, 
-    fit_score: float
-) -> list:
-    """향상된 개인화 추천 생성"""
-    recommendations = []
+@app.get("/api/examples")
+async def get_example_images():
+    """예시 이미지 목록 조회"""
+    examples_dir = Path("static/examples")
+    examples_dir.mkdir(exist_ok=True)
     
-    # 핏 점수 기반 추천
-    if fit_score < 0.7:
-        recommendations.append("더 잘 맞는 사이즈나 스타일을 고려해보세요.")
-    elif fit_score > 0.9:
-        recommendations.append("완벽한 핏입니다! 이 스타일이 잘 어울려요.")
+    example_files = []
+    for file_path in examples_dir.glob("*.jpg"):
+        example_files.append({
+            "name": file_path.stem,
+            "url": f"/static/examples/{file_path.name}",
+            "type": "person" if "person" in file_path.name else "clothing"
+        })
     
-    # 체형별 추천
-    body_type = body_analysis.get("body_type", "보통")
-    if "슬림" in body_type:
-        recommendations.append("피팅 스타일의 의류가 체형을 더욱 돋보이게 할 수 있어요.")
-    elif "통통" in body_type:
-        recommendations.append("A라인이나 루즈핏 스타일이 더 편안하고 멋스러울 수 있어요.")
-    
-    # 색상 추천
-    colors = clothing_analysis.get("colors", [])
-    if "검정" in colors or "블랙" in colors:
-        recommendations.append("검정색은 슬림해 보이는 효과가 있어 다양한 체형에 잘 어울려요.")
-    
-    # 스타일 추천
-    style = clothing_analysis.get("style", "캐주얼")
-    if style == "포멀":
-        recommendations.append("포멀한 스타일에는 깔끔한 신발과 액세서리를 매치해보세요.")
-    
-    return recommendations
+    return {
+        "examples": example_files,
+        "total_count": len(example_files)
+    }
 
-@router.get("/status/{task_id}")
-async def get_task_status(task_id: str):
-    """태스크 처리 상태 조회 (프론트엔드 호환)"""
-    if task_id not in task_storage:
-        raise HTTPException(404, "존재하지 않는 태스크입니다.")
+if __name__ == "__main__":
+    import uvicorn
     
-    return task_storage[task_id]
-
-@router.get("/result/{task_id}")
-async def get_task_result(task_id: str):
-    """태스크 결과 조회 (프론트엔드 호환)"""
-    if task_id not in task_storage:
-        raise HTTPException(404, "존재하지 않는 태스크입니다.")
-    
-    task = task_storage[task_id]
-    
-    if task["status"] == "processing":
-        raise HTTPException(202, "아직 처리 중입니다.")
-    
-    if task["status"] == "error":
-        raise HTTPException(400, task["error"])
-    
-    return task["result"]
-
-@router.post("/analyze-body")
-async def analyze_body_endpoint(image: UploadFile = File(...)):
-    """신체 분석 단독 API (프론트엔드 호환)"""
-    try:
-        image_bytes = await image.read()
-        result = await human_analyzer.analyze_complete_body(
-            image_bytes, {"height": 170, "weight": 60}
-        )
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"신체 분석 오류: {e}")
-        raise HTTPException(400, f"신체 분석 실패: {str(e)}")
-
-@router.post("/analyze-clothing")
-async def analyze_clothing_endpoint(image: UploadFile = File(...)):
-    """의류 분석 단독 API (프론트엔드 호환)"""
-    try:
-        image_bytes = await image.read()
-        result = await clothing_analyzer.analyze_clothing(image_bytes)
-        return {"success": True, "result": result}
-    except Exception as e:
-        logger.error(f"의류 분석 오류: {e}")
-        raise HTTPException(400, f"의류 분석 실패: {str(e)}")
-
-@router.get("/models")
-async def get_available_models():
-    """사용 가능한 AI 모델 목록 (프론트엔드 호환)"""
-    try:
-        model_status = await ai_fitter.get_model_status()
-        return {
-            "models": [
-                {
-                    "id": "ootdiffusion",
-                    "name": "OOT-Diffusion",
-                    "description": "최신 Diffusion 기반 고품질 가상 피팅",
-                    "quality": "Very High",
-                    "speed": "Medium",
-                    "enabled": "ootdiffusion" in model_status.get("available_models", [])
-                },
-                {
-                    "id": "viton_hd", 
-                    "name": "VITON-HD",
-                    "description": "고해상도 가상 피팅 모델",
-                    "quality": "High",
-                    "speed": "Fast",
-                    "enabled": "viton_hd" in model_status.get("available_models", [])
-                }
-            ],
-            "default": "ootdiffusion",
-            "system_info": model_status
-        }
-    except Exception as e:
-        logger.error(f"모델 정보 조회 실패: {e}")
-        return {
-            "models": [],
-            "error": str(e)
-        }
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
+        log_level=settings.LOG_LEVEL.lower()
+    )
