@@ -1,24 +1,306 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# ============================================================================
+# AI 모델 파일들 (용량이 큰 파일들 Git에서 제외)
+# ============================================================================
 
-node_modules
-dist
-dist-ssr
-*.local
+# AI 모델 디렉토리 전체 제외
+ai_models/
+backend/ai_models/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# 하지만 설정 파일들은 포함
+!ai_models/model_config.yaml
+!ai_models/simple_config.yaml
+!ai_models/DOWNLOAD_GUIDE.md
+!ai_models/.gitkeep
+!backend/ai_models/model_config.yaml
+!backend/ai_models/simple_config.yaml
+!backend/ai_models/DOWNLOAD_GUIDE.md
+!backend/ai_models/.gitkeep
+
+# 특정 모델 파일 확장자들 제외
+*.pth
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.tflite
+*.safetensors
+*.bin
+*.pt
+
+# Hugging Face 캐시 제외
+cache/
+.cache/
+**/cache/
+**/.cache/
+
+# 체크포인트 디렉토리들
+checkpoints/
+**/checkpoints/
+!**/checkpoints/.gitkeep
+
+# 임시 모델 파일들
+temp/
+**/temp/
+!**/temp/.gitkeep
+
+# ============================================================================
+# 기본 Python & 프로젝트 설정 (기존 유지)
+# ============================================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 업로드/결과 파일들
+static/uploads/*
+static/results/*
+logs/*
+
+# 예외: .gitkeep 파일들은 유지
+!static/uploads/.gitkeep
+!static/results/.gitkeep
+!logs/.gitkeep
+
+# 테스트 및 커버리지
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# ============================================================================
+# 특정 AI 모델 디렉토리들 (현재 프로젝트 기준)
+# ============================================================================
+
+# OOTDiffusion 관련
+OOTDiffusion/
+ootdiffusion_hf/
+**/OOTDiffusion/
+**/ootdiffusion_hf/
+
+# VITON 관련
+VITON-HD/
+HR-VITON/
+**/VITON-HD/
+**/HR-VITON/
+
+# 기타 AI 모델들
+Graphonomy/
+Self-Correction-Human-Parsing/
+openpose/
+detectron2/
+**/Graphonomy/
+**/Self-Correction-Human-Parsing/
+**/openpose/
+**/detectron2/
+
+# Stable Diffusion 관련
+stable-diffusion-v1-5/
+**/stable-diffusion-v1-5/
+
+# SAM (Segment Anything Model)
+sam/
+**/sam/
+
+# CLIP 모델
+clip-vit-large-patch14/
+**/clip-vit-large-patch14/
+
+# 개별 모델 파일들
+gen.pth
+mtviton.pth
+resnet50_features.pth
+*.model
+*.weights
+
+# ============================================================================
+# 예외: 필요한 설정 파일들은 Git에 포함
+# ============================================================================
+
+# 설정 파일들은 포함
+!**/*.yaml
+!**/*.yml
+!**/*.json
+!**/*.md
+!**/*.txt
+!**/.gitkeep
+
+# 하지만 모델 가중치 파일과 같은 이름의 설정은 제외
+*.config.json
+**/pytorch_model.bin
+**/diffusion_pytorch_model.bin
+**/diffusion_pytorch_model.safetensors
+
+==========================================================================
+
+# AI 모델 디렉토리 전체 제외
+backend/ai_models/
+ai_models/
+
+# 모델 파일 확장자들
+*.pth
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.tflite
+*.safetensors
+*.bin
+*.pt
+*.pkl
+*.model
+*.weights
+
+# Hugging Face 캐시
+**/cache/
+**/.cache/
+**/blobs/
+
+# 체크포인트들
+**/checkpoints/
+!**/checkpoints/.gitkeep
+
+# 임시 파일들
+**/temp/
+!**/temp/.gitkeep
+
+# ============================================================================
+# 개발 환경 파일들
+# ============================================================================
+
+# Python 환경
+__pycache__/
+*.py[cod]
+.python-version
+venv/
+venv_py311/
+env/
+.env
+.env.*
+
+# 설치 스크립트들
+*.sh
+Miniconda3-latest-MacOSX-arm64.sh
+
+# 백업 파일들
+*.backup
+fix.sh
+python311_fix.sh
+
+# 테스트 이미지들
+test_*.jpg
+test_*.png
+
+# IDE 및 OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# 로그
+logs/
+*.log
+
+# 업로드/결과 파일
+static/uploads/*
+static/results/*
+!static/uploads/.gitkeep
+!static/results/.gitkeep
+
+# ============================================================================
+# 포함할 파일들 (예외)
+# ============================================================================
+
+# 설정 파일들은 포함
+!*.yaml
+!*.yml
+!*.json
+!*.md
+!*.txt
+!.gitkeep
+!requirements.txt
+
+
+# ============================================================================
+# 개발 환경 및 임시 파일들 (추가)
+# ============================================================================
+
+# Python 버전 관리
+.python-version
+backend/.python-version
+
+# 환경 활성화 스크립트
+activate_env.sh
+run_dev.sh
+
+# 설치 스크립트들
+Miniconda3-latest-MacOSX-arm64.sh
+backend/Miniconda3-latest-MacOSX-arm64.sh
+
+# 수정/픽스 스크립트들
+fix.sh
+backend/fix.sh
+python311_fix.sh
+backend/python311_fix.sh
+
+# 백업 파일들
+*.backup
+backend/requirements.txt.backup
+
+# 테스트 이미지들
+test_*.jpg
+test_*.png
+backend/test_*.jpg
+backend/test_*.png
+
+# Python 가상환경들
+venv_py311/
+backend/venv_py311/
