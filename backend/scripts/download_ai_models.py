@@ -1,555 +1,359 @@
-#!/usr/bin/env python3
-# backend/scripts/download_ai_models.py
+# scripts/download_ai_models.py
 """
-MyCloset AI - AI 모델 자동 다운로더
-M3 Max 최적화 가상 피팅 시스템용 모델들
+실제 AI 모델 자동 다운로드 및 설정 스크립트
+OOTDiffusion, VITON-HD, Graphonomy 등 실제 모델들을 다운로드
 """
 
 import os
-import sys
-import shutil
-import logging
-import subprocess
-from pathlib import Path
-from typing import Dict, List, Optional
 import requests
+import subprocess
+import zipfile
+import gdown
+from pathlib import Path
 from tqdm import tqdm
-import hashlib
+import yaml
+import logging
+from huggingface_hub import snapshot_download, hf_hub_download
+import torch
 
-# 프로젝트 루트 경로 설정
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(PROJECT_ROOT / 'logs' / 'model_download.log', mode='a')
-    ]
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class AIModelDownloader:
-    """AI 모델 자동 다운로더"""
-    
-    def __init__(self):
-        """다운로더 초기화"""
-        self.project_root = PROJECT_ROOT
-        self.models_dir = self.project_root / "ai_models"
+    def __init__(self, base_dir="backend"):
+        self.base_dir = Path(base_dir)
+        self.models_dir = self.base_dir / "ai_models"
         self.checkpoints_dir = self.models_dir / "checkpoints"
-        self.temp_dir = self.models_dir / "temp"
+        self.configs_dir = self.models_dir / "configs"
         
         # 디렉토리 생성
         self.models_dir.mkdir(exist_ok=True)
         self.checkpoints_dir.mkdir(exist_ok=True)
-        self.temp_dir.mkdir(exist_ok=True)
+        self.configs_dir.mkdir(exist_ok=True)
         
-        # 모델 정보 설정
-        self.model_configs = self._setup_model_configs()
-        
-        logger.info(f"📁 모델 디렉토리: {self.models_dir}")
-        logger.info(f"💾 체크포인트 디렉토리: {self.checkpoints_dir}")
+        # 시스템 정보
+        self.device = self._detect_device()
+        logger.info(f"🖥️ 감지된 디바이스: {self.device}")
     
-    def _setup_model_configs(self) -> Dict:
-        """모델 설정 정보 반환"""
-        
-        return {
-            "ootdiffusion": {
-                "name": "OOTDiffusion",
-                "description": "최신 고품질 가상 피팅 모델",
-                "size_gb": 4.2,
-                "priority": 1,
-                "huggingface_repo": "levihsu/OOTDiffusion",
-                "local_path": self.checkpoints_dir / "ootdiffusion",
-                "required_files": [
-                    "model_index.json",
-                    "unet/diffusion_pytorch_model.safetensors",
-                    "vae/diffusion_pytorch_model.safetensors",
-                    "text_encoder/pytorch_model.bin",
-                ],
-                "download_method": "huggingface"
-            },
-            
-            "viton_hd": {
-                "name": "VITON-HD",
-                "description": "고해상도 가상 시착 모델",
-                "size_gb": 2.8,
-                "priority": 2,
-                "github_repo": "shadow2496/VITON-HD",
-                "local_path": self.checkpoints_dir / "viton_hd",
-                "required_files": [
-                    "gen.pt",
-                    "seg.pt",
-                    "pose.pt"
-                ],
-                "download_method": "github"
-            },
-            
-            "densepose": {
-                "name": "DensePose",
-                "description": "인체 파싱 및 자세 추정",
-                "size_gb": 1.5,
-                "priority": 3,
-                "model_zoo_url": "https://dl.fbaipublicfiles.com/densepose/densepose_rcnn_R_50_FPN_s1x.pkl",
-                "local_path": self.checkpoints_dir / "densepose",
-                "required_files": [
-                    "densepose_rcnn_R_50_FPN_s1x.pkl",
-                    "config.yaml"
-                ],
-                "download_method": "direct"
-            },
-            
-            "openpose": {
-                "name": "OpenPose",
-                "description": "실시간 자세 추정",
-                "size_gb": 0.8,
-                "priority": 4,
-                "models": {
-                    "pose_coco": "https://storage.googleapis.com/openimages/web/pose_coco.pth",
-                    "pose_body_25": "https://storage.googleapis.com/openimages/web/pose_body_25.pth",
-                },
-                "local_path": self.checkpoints_dir / "openpose",
-                "required_files": [
-                    "pose_coco.pth",
-                    "pose_body_25.pth"
-                ],
-                "download_method": "direct"
-            },
-            
-            "segment_anything": {
-                "name": "Segment Anything (SAM)",
-                "description": "범용 이미지 세그멘테이션",
-                "size_gb": 2.4,
-                "priority": 5,
-                "checkpoint_url": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
-                "local_path": self.checkpoints_dir / "segment_anything",
-                "required_files": [
-                    "sam_vit_h_4b8939.pth"
-                ],
-                "download_method": "direct"
-            }
-        }
+    def _detect_device(self):
+        """시스템 디바이스 감지"""
+        if torch.cuda.is_available():
+            return "cuda"
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            return "mps"  # Apple Silicon
+        else:
+            return "cpu"
     
-    def check_dependencies(self):
-        """필요한 패키지 확인 및 설치"""
-        
-        logger.info("📦 의존성 패키지 확인 중...")
-        
-        required_packages = [
-            "huggingface_hub",
-            "transformers",
-            "diffusers",
-            "gitpython",
-        ]
-        
-        missing_packages = []
-        
-        for package in required_packages:
-            try:
-                __import__(package.replace("-", "_"))
-                logger.info(f"✅ {package} 설치됨")
-            except ImportError:
-                missing_packages.append(package)
-                logger.warning(f"❌ {package} 누락")
-        
-        if missing_packages:
-            logger.info(f"📥 누락된 패키지 설치 중: {missing_packages}")
-            for package in missing_packages:
-                subprocess.run([sys.executable, "-m", "pip", "install", package], 
-                             check=True)
-            logger.info("✅ 의존성 설치 완료")
-    
-    def download_file_with_progress(self, url: str, filepath: Path, chunk_size: int = 8192) -> bool:
-        """진행률 표시와 함께 파일 다운로드"""
-        
+    def download_file(self, url, filepath, desc=None):
+        """파일 다운로드 with 진행률 표시"""
         try:
             response = requests.get(url, stream=True)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
             
-            with open(filepath, 'wb') as f, tqdm(
-                desc=filepath.name,
+            with open(filepath, 'wb') as file, tqdm(
+                desc=desc or f"Downloading {filepath.name}",
                 total=total_size,
-                unit='iB',
+                unit='B',
                 unit_scale=True,
                 unit_divisor=1024,
             ) as pbar:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        size = f.write(chunk)
-                        pbar.update(size)
+                for data in response.iter_content(chunk_size=1024):
+                    size = file.write(data)
+                    pbar.update(size)
             
-            logger.info(f"✅ 다운로드 완료: {filepath.name}")
+            logger.info(f"✅ 다운로드 완료: {filepath}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 다운로드 실패 {filepath.name}: {e}")
-            if filepath.exists():
-                filepath.unlink()
+            logger.error(f"❌ 다운로드 실패 {filepath}: {e}")
             return False
     
-    def verify_file_integrity(self, filepath: Path, expected_size: Optional[int] = None) -> bool:
-        """파일 무결성 검증"""
+    def download_ootdiffusion(self):
+        """OOTDiffusion 모델 다운로드"""
+        logger.info("🤖 OOTDiffusion 모델 다운로드 시작...")
         
-        if not filepath.exists():
-            return False
+        ootd_dir = self.checkpoints_dir / "ootdiffusion"
+        ootd_dir.mkdir(exist_ok=True)
         
-        file_size = filepath.stat().st_size
-        
-        if expected_size and abs(file_size - expected_size) > expected_size * 0.05:  # 5% 오차 허용
-            logger.warning(f"⚠️ 파일 크기 불일치: {filepath.name}")
-            return False
-        
-        logger.info(f"✅ 파일 검증 통과: {filepath.name} ({file_size // 1024 // 1024}MB)")
-        return True
-    
-    def download_from_huggingface(self, model_config: Dict) -> bool:
-        """Hugging Face에서 모델 다운로드"""
+        # OOTDiffusion 모델 URL들 (Hugging Face)
+        models = {
+            "ootd_humanparsing_onnx.zip": "levihsu/OOTDiffusion",
+            "ootd/ootd_diffusion_model.safetensors": "levihsu/OOTDiffusion", 
+            "ootd/vae_ootd.safetensors": "levihsu/OOTDiffusion"
+        }
         
         try:
-            from huggingface_hub import snapshot_download
-            
-            repo_id = model_config["huggingface_repo"]
-            local_dir = model_config["local_path"]
-            
-            logger.info(f"📥 Hugging Face에서 다운로드: {repo_id}")
-            
+            # Hugging Face에서 직접 다운로드
+            logger.info("📥 Hugging Face에서 OOTDiffusion 다운로드...")
             snapshot_download(
-                repo_id=repo_id,
-                local_dir=local_dir,
-                local_dir_use_symlinks=False,
-                resume_download=True,
+                repo_id="levihsu/OOTDiffusion",
+                local_dir=str(ootd_dir),
+                allow_patterns=["*.safetensors", "*.onnx", "*.json", "*.txt"]
             )
             
-            # 필수 파일 존재 확인
-            for required_file in model_config["required_files"]:
-                file_path = local_dir / required_file
-                if not file_path.exists():
-                    logger.error(f"❌ 필수 파일 누락: {required_file}")
-                    return False
+            # 설정 파일 생성
+            config_content = {
+                "model_type": "ootdiffusion",
+                "device": self.device,
+                "dtype": "float32" if self.device == "mps" else "float16",
+                "checkpoint_path": str(ootd_dir),
+                "human_parsing_path": str(ootd_dir / "ootd_humanparsing_onnx"),
+                "vae_path": str(ootd_dir / "ootd" / "vae_ootd.safetensors"),
+                "enabled": True
+            }
             
-            logger.info(f"✅ {model_config['name']} 다운로드 완료")
+            config_path = self.configs_dir / "ootdiffusion.yaml"
+            with open(config_path, 'w') as f:
+                yaml.dump(config_content, f, default_flow_style=False)
+            
+            logger.info("✅ OOTDiffusion 설정 완료")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Hugging Face 다운로드 실패: {e}")
+            logger.error(f"❌ OOTDiffusion 다운로드 실패: {e}")
             return False
     
-    def download_from_github(self, model_config: Dict) -> bool:
-        """GitHub에서 모델 다운로드"""
+    def download_viton_hd(self):
+        """VITON-HD 모델 다운로드"""
+        logger.info("🤖 VITON-HD 모델 다운로드 시작...")
+        
+        viton_dir = self.checkpoints_dir / "viton_hd"
+        viton_dir.mkdir(exist_ok=True)
+        
+        # VITON-HD GitHub 클론
+        try:
+            if not (viton_dir / ".git").exists():
+                logger.info("📥 VITON-HD GitHub 클론...")
+                subprocess.run([
+                    "git", "clone", 
+                    "https://github.com/shadow2496/VITON-HD.git",
+                    str(viton_dir)
+                ], check=True)
+            
+            # 사전 훈련된 가중치 다운로드 (Google Drive)
+            weights = {
+                "seg_model.pth": "1mhF3_vQSVZZ5QwQlEKhNRrz5dNGSLCU4",
+                "gmm_model.pth": "1euphqABryn1xQRMWpXCl7zPYKZDK9O4r", 
+                "tom_model.pth": "1S2tbtdLlBR4ZFZHcNtbG9t-xn-1KoHfY"
+            }
+            
+            for filename, file_id in weights.items():
+                filepath = viton_dir / "checkpoints" / filename
+                filepath.parent.mkdir(exist_ok=True)
+                
+                if not filepath.exists():
+                    logger.info(f"📥 {filename} 다운로드 중...")
+                    gdown.download(f"https://drive.google.com/uc?id={file_id}", str(filepath))
+            
+            # 설정 파일 생성
+            config_content = {
+                "model_type": "viton_hd",
+                "device": self.device,
+                "checkpoint_path": str(viton_dir / "checkpoints"),
+                "seg_model": str(viton_dir / "checkpoints" / "seg_model.pth"),
+                "gmm_model": str(viton_dir / "checkpoints" / "gmm_model.pth"),
+                "tom_model": str(viton_dir / "checkpoints" / "tom_model.pth"),
+                "enabled": True
+            }
+            
+            config_path = self.configs_dir / "viton_hd.yaml"
+            with open(config_path, 'w') as f:
+                yaml.dump(config_content, f, default_flow_style=False)
+            
+            logger.info("✅ VITON-HD 설정 완료")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ VITON-HD 다운로드 실패: {e}")
+            return False
+    
+    def download_human_parsing(self):
+        """인체 파싱 모델 다운로드 (Graphonomy)"""
+        logger.info("🤖 Human Parsing 모델 다운로드 시작...")
+        
+        parsing_dir = self.checkpoints_dir / "human_parsing"
+        parsing_dir.mkdir(exist_ok=True)
         
         try:
-            import git
+            # Self-Correction Human Parsing 다운로드 (더 정확함)
+            logger.info("📥 Self-Correction Human Parsing 다운로드...")
             
-            repo_url = f"https://github.com/{model_config['github_repo']}.git"
-            local_dir = model_config["local_path"]
+            # ATR 데이터셋 모델
+            atr_model_url = "https://github.com/PeikeLi/Self-Correction-Human-Parsing/releases/download/v1.0/exp-schp-201908261155-atr.pth"
+            atr_path = parsing_dir / "atr_model.pth"
             
-            logger.info(f"📥 GitHub에서 클론: {repo_url}")
+            if not atr_path.exists():
+                self.download_file(atr_model_url, atr_path, "ATR Parsing Model")
             
-            if local_dir.exists():
-                shutil.rmtree(local_dir)
+            # LIP 데이터셋 모델
+            lip_model_url = "https://github.com/PeikeLi/Self-Correction-Human-Parsing/releases/download/v1.0/exp-schp-201908301523-lip.pth"
+            lip_path = parsing_dir / "lip_model.pth"
             
-            git.Repo.clone_from(repo_url, local_dir, depth=1)
+            if not lip_path.exists():
+                self.download_file(lip_model_url, lip_path, "LIP Parsing Model")
             
-            logger.info(f"✅ {model_config['name']} 클론 완료")
+            # 설정 파일 생성
+            config_content = {
+                "model_type": "human_parsing",
+                "device": self.device,
+                "atr_model": str(atr_path),
+                "lip_model": str(lip_path),
+                "input_size": [473, 473],
+                "num_classes": 18,
+                "enabled": True
+            }
+            
+            config_path = self.configs_dir / "human_parsing.yaml"
+            with open(config_path, 'w') as f:
+                yaml.dump(config_content, f, default_flow_style=False)
+            
+            logger.info("✅ Human Parsing 설정 완료")
             return True
             
         except Exception as e:
-            logger.error(f"❌ GitHub 클론 실패: {e}")
+            logger.error(f"❌ Human Parsing 다운로드 실패: {e}")
             return False
     
-    def download_direct_files(self, model_config: Dict) -> bool:
-        """직접 URL에서 파일 다운로드"""
+    def download_background_removal(self):
+        """배경 제거 모델 다운로드"""
+        logger.info("🤖 배경 제거 모델 다운로드 시작...")
         
-        local_dir = model_config["local_path"]
-        local_dir.mkdir(parents=True, exist_ok=True)
+        bg_dir = self.checkpoints_dir / "background_removal"
+        bg_dir.mkdir(exist_ok=True)
         
-        success = True
-        
-        # 단일 URL인 경우
-        if "checkpoint_url" in model_config:
-            url = model_config["checkpoint_url"]
-            filename = Path(url).name
-            filepath = local_dir / filename
+        try:
+            # U2-Net 모델 다운로드
+            u2net_url = "https://github.com/xuebinqin/U-2-Net/releases/download/u2net/u2net.pth"
+            u2net_path = bg_dir / "u2net.pth"
             
-            if not self.download_file_with_progress(url, filepath):
-                success = False
-        
-        # 여러 모델 URL인 경우
-        elif "models" in model_config:
-            for model_name, url in model_config["models"].items():
-                filename = Path(url).name
-                filepath = local_dir / filename
-                
-                if not self.download_file_with_progress(url, filepath):
-                    success = False
-        
-        # 단일 모델 URL인 경우
-        elif "model_zoo_url" in model_config:
-            url = model_config["model_zoo_url"]
-            filename = Path(url).name
-            filepath = local_dir / filename
+            if not u2net_path.exists():
+                self.download_file(u2net_url, u2net_path, "U2-Net Model")
             
-            if not self.download_file_with_progress(url, filepath):
-                success = False
-        
-        if success:
-            logger.info(f"✅ {model_config['name']} 다운로드 완료")
-        
-        return success
-    
-    def download_model(self, model_key: str) -> bool:
-        """특정 모델 다운로드"""
-        
-        if model_key not in self.model_configs:
-            logger.error(f"❌ 알 수 없는 모델: {model_key}")
-            return False
-        
-        model_config = self.model_configs[model_key]
-        
-        logger.info(f"🚀 {model_config['name']} 다운로드 시작...")
-        logger.info(f"📝 설명: {model_config['description']}")
-        logger.info(f"💾 예상 크기: {model_config['size_gb']}GB")
-        
-        # 이미 다운로드된 경우 확인
-        if self.is_model_downloaded(model_key):
-            logger.info(f"✅ {model_config['name']} 이미 다운로드됨")
+            # 설정 파일 생성
+            config_content = {
+                "model_type": "background_removal",
+                "device": self.device,
+                "u2net_model": str(u2net_path),
+                "input_size": [320, 320],
+                "enabled": True
+            }
+            
+            config_path = self.configs_dir / "background_removal.yaml"
+            with open(config_path, 'w') as f:
+                yaml.dump(config_content, f, default_flow_style=False)
+            
+            logger.info("✅ 배경 제거 모델 설정 완료")
             return True
-        
-        # 다운로드 방법에 따라 실행
-        download_method = model_config["download_method"]
-        
-        if download_method == "huggingface":
-            return self.download_from_huggingface(model_config)
-        elif download_method == "github":
-            return self.download_from_github(model_config)
-        elif download_method == "direct":
-            return self.download_direct_files(model_config)
-        else:
-            logger.error(f"❌ 지원하지 않는 다운로드 방법: {download_method}")
+            
+        except Exception as e:
+            logger.error(f"❌ 배경 제거 모델 다운로드 실패: {e}")
             return False
     
-    def is_model_downloaded(self, model_key: str) -> bool:
-        """모델 다운로드 여부 확인"""
-        
-        model_config = self.model_configs[model_key]
-        local_path = model_config["local_path"]
-        
-        if not local_path.exists():
-            return False
-        
-        # 필수 파일 존재 확인
-        for required_file in model_config["required_files"]:
-            file_path = local_path / required_file
-            if not file_path.exists():
-                return False
-        
-        return True
-    
-    def download_essential_models(self) -> bool:
-        """필수 모델들 다운로드"""
-        
-        essential_models = ["ootdiffusion", "densepose", "openpose"]
-        
-        logger.info("🎯 필수 모델 다운로드 시작...")
-        
-        success_count = 0
-        
-        for model_key in essential_models:
-            if self.download_model(model_key):
-                success_count += 1
-            else:
-                logger.error(f"❌ 필수 모델 다운로드 실패: {model_key}")
-        
-        if success_count == len(essential_models):
-            logger.info("✅ 모든 필수 모델 다운로드 완료")
-            return True
-        else:
-            logger.error(f"❌ 필수 모델 다운로드 실패: {success_count}/{len(essential_models)}")
-            return False
-    
-    def download_all_models(self) -> bool:
-        """모든 모델 다운로드"""
-        
-        logger.info("🌟 전체 모델 다운로드 시작...")
-        
-        # 우선순위 순으로 정렬
-        sorted_models = sorted(
-            self.model_configs.items(), 
-            key=lambda x: x[1]["priority"]
-        )
-        
-        success_count = 0
-        total_size = sum(config["size_gb"] for _, config in sorted_models)
-        
-        logger.info(f"📊 총 다운로드 크기: {total_size:.1f}GB")
-        
-        for model_key, model_config in sorted_models:
-            if self.download_model(model_key):
-                success_count += 1
-        
-        if success_count == len(sorted_models):
-            logger.info("🎉 모든 모델 다운로드 완료!")
-            return True
-        else:
-            logger.warning(f"⚠️ 일부 모델 다운로드 실패: {success_count}/{len(sorted_models)}")
-            return False
-    
-    def create_model_config_file(self):
-        """모델 설정 파일 생성"""
-        
-        import yaml
-        
-        config = {
+    def create_master_config(self):
+        """마스터 설정 파일 생성"""
+        master_config = {
+            "system": {
+                "device": self.device,
+                "models_dir": str(self.models_dir),
+                "checkpoints_dir": str(self.checkpoints_dir)
+            },
             "models": {
-                model_key: {
-                    "name": config["name"],
-                    "path": str(config["local_path"]),
-                    "device": "mps",  # M3 Max 기본값
-                    "enabled": self.is_model_downloaded(model_key)
+                "ootdiffusion": {
+                    "enabled": True,
+                    "priority": 1,
+                    "config_file": "ootdiffusion.yaml"
+                },
+                "viton_hd": {
+                    "enabled": True,
+                    "priority": 2,
+                    "config_file": "viton_hd.yaml"
+                },
+                "human_parsing": {
+                    "enabled": True,
+                    "priority": 1,
+                    "config_file": "human_parsing.yaml"
+                },
+                "background_removal": {
+                    "enabled": True,
+                    "priority": 1,
+                    "config_file": "background_removal.yaml"
                 }
-                for model_key, config in self.model_configs.items()
             },
             "processing": {
-                "image_size": 512,
-                "batch_size": 1,
-                "num_inference_steps": 20,
-                "guidance_scale": 7.5,
-                "device": "mps"
+                "default_model": "ootdiffusion",
+                "fallback_model": "viton_hd",
+                "max_image_size": 1024,
+                "batch_size": 1
             }
         }
         
-        config_path = self.models_dir / "models_config.yaml"
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+        master_path = self.configs_dir / "models_config.yaml"
+        with open(master_path, 'w') as f:
+            yaml.dump(master_config, f, default_flow_style=False)
         
-        logger.info(f"✅ 모델 설정 파일 생성: {config_path}")
+        logger.info(f"✅ 마스터 설정 파일 생성: {master_path}")
     
-    def get_download_status(self) -> Dict:
-        """다운로드 상태 확인"""
+    def download_all(self):
+        """모든 모델 다운로드"""
+        logger.info("🚀 AI 모델 통합 다운로드 시작...")
         
-        status = {
-            "total_models": len(self.model_configs),
-            "downloaded": 0,
-            "missing": [],
-            "total_size_gb": 0,
-            "downloaded_size_gb": 0,
-        }
+        success_count = 0
+        total_models = 4
         
-        for model_key, model_config in self.model_configs.items():
-            status["total_size_gb"] += model_config["size_gb"]
-            
-            if self.is_model_downloaded(model_key):
-                status["downloaded"] += 1
-                status["downloaded_size_gb"] += model_config["size_gb"]
-            else:
-                status["missing"].append(model_key)
+        # 1. OOTDiffusion
+        if self.download_ootdiffusion():
+            success_count += 1
         
-        return status
-    
-    def cleanup_temp_files(self):
-        """임시 파일 정리"""
+        # 2. VITON-HD  
+        if self.download_viton_hd():
+            success_count += 1
         
-        logger.info("🧹 임시 파일 정리 중...")
+        # 3. Human Parsing
+        if self.download_human_parsing():
+            success_count += 1
         
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
-            self.temp_dir.mkdir()
+        # 4. Background Removal
+        if self.download_background_removal():
+            success_count += 1
         
-        logger.info("✅ 임시 파일 정리 완료")
+        # 5. 마스터 설정 파일 생성
+        self.create_master_config()
+        
+        logger.info(f"🎉 모델 다운로드 완료: {success_count}/{total_models}")
+        
+        if success_count == total_models:
+            logger.info("✅ 모든 AI 모델이 성공적으로 다운로드되었습니다!")
+            logger.info("📁 모델 위치:")
+            logger.info(f"   - 체크포인트: {self.checkpoints_dir}")
+            logger.info(f"   - 설정 파일: {self.configs_dir}")
+        else:
+            logger.warning(f"⚠️ 일부 모델 다운로드에 실패했습니다. ({success_count}/{total_models})")
+        
+        return success_count == total_models
 
 def main():
     """메인 실행 함수"""
-    
-    print("🤖 MyCloset AI - AI 모델 다운로더")
-    print("M3 Max 최적화 가상 피팅 시스템")
+    print("🤖 MyCloset AI 모델 다운로드 시스템")
     print("=" * 50)
     
-    downloader = AIModelDownloader()
-    
-    # 의존성 확인
-    downloader.check_dependencies()
-    
-    # 현재 상태 확인
-    status = downloader.get_download_status()
-    print(f"\n📊 현재 상태:")
-    print(f"  전체 모델: {status['total_models']}")
-    print(f"  다운로드됨: {status['downloaded']}")
-    print(f"  누락됨: {len(status['missing'])}")
-    print(f"  전체 크기: {status['total_size_gb']:.1f}GB")
-    print(f"  다운로드된 크기: {status['downloaded_size_gb']:.1f}GB")
-    
-    if status['missing']:
-        print(f"  누락된 모델: {', '.join(status['missing'])}")
-    
-    # 사용자 선택
-    print(f"\n다운로드 옵션:")
-    print("1. 필수 모델만 (OOTDiffusion, DensePose, OpenPose) - 6.5GB")
-    print("2. 전체 모델 (권장) - 11.7GB")
-    print("3. 개별 모델 선택")
-    print("4. 상태 확인만")
-    print("0. 종료")
-    
     try:
-        choice = input("\n선택 (1-4, 0): ").strip()
+        downloader = AIModelDownloader()
+        success = downloader.download_all()
         
-        if choice == "1":
-            print("\n🎯 필수 모델 다운로드 시작...")
-            success = downloader.download_essential_models()
-            
-        elif choice == "2":
-            print("\n🌟 전체 모델 다운로드 시작...")
-            success = downloader.download_all_models()
-            
-        elif choice == "3":
-            print("\n사용 가능한 모델:")
-            for i, (key, config) in enumerate(downloader.model_configs.items(), 1):
-                downloaded = "✅" if downloader.is_model_downloaded(key) else "❌"
-                print(f"  {i}. {config['name']} - {config['size_gb']}GB {downloaded}")
-            
-            model_num = input("다운로드할 모델 번호: ").strip()
-            
-            try:
-                model_keys = list(downloader.model_configs.keys())
-                selected_key = model_keys[int(model_num) - 1]
-                success = downloader.download_model(selected_key)
-            except (ValueError, IndexError):
-                print("❌ 잘못된 번호입니다.")
-                return
-                
-        elif choice == "4":
-            print("✅ 상태 확인 완료")
-            return
-            
-        elif choice == "0":
-            print("👋 다운로더를 종료합니다.")
-            return
-            
+        if success:
+            print("\n🎉 설치 완료!")
+            print("\n📋 다음 단계:")
+            print("1. 의존성 설치: pip install -r requirements-ai.txt")
+            print("2. 모델 테스트: python scripts/test_models.py")
+            print("3. 서버 실행: uvicorn app.main:app --reload")
         else:
-            print("❌ 잘못된 선택입니다.")
-            return
-        
-        # 설정 파일 생성
-        downloader.create_model_config_file()
-        
-        # 임시 파일 정리
-        downloader.cleanup_temp_files()
-        
-        # 최종 상태 출력
-        final_status = downloader.get_download_status()
-        print(f"\n🎉 작업 완료!")
-        print(f"📊 최종 상태: {final_status['downloaded']}/{final_status['total_models']} 모델")
-        print(f"💾 다운로드된 크기: {final_status['downloaded_size_gb']:.1f}GB")
-        
-        if final_status['downloaded'] > 0:
-            print(f"\n✅ 다음 단계: 개발 서버 실행")
-            print(f"cd backend && python run_server.py")
-        
+            print("\n❌ 일부 모델 다운로드가 실패했습니다.")
+            print("로그를 확인하고 수동으로 다운로드해주세요.")
+            
     except KeyboardInterrupt:
-        print("\n\n⚠️ 사용자가 취소했습니다.")
+        print("\n🛑 사용자에 의해 중단되었습니다.")
     except Exception as e:
         logger.error(f"❌ 예상치 못한 오류: {e}")
 
