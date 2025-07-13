@@ -1,42 +1,26 @@
-"""
-GPU 메모리 매니저 - M3 Max 최적화
-"""
-
-import torch
+"""메모리 관리 유틸리티"""
 import psutil
+import torch
 import logging
-from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 class GPUMemoryManager:
-    """GPU 메모리 관리 클래스"""
-    
-    def __init__(self, device: str = "mps", memory_limit_gb: float = 16.0):
+    def __init__(self, device="mps", memory_limit_gb=16.0):
         self.device = device
         self.memory_limit_gb = memory_limit_gb
-        self.logger = logging.getLogger(__name__)
-        
+    
     def clear_cache(self):
-        """메모리 캐시 정리"""
-        if self.device == "mps":
-            try:
-                torch.mps.empty_cache()
-            except:
-                pass
-        elif self.device == "cuda":
+        """메모리 정리"""
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        elif torch.cuda.is_available():
             torch.cuda.empty_cache()
     
-    def check_memory_usage(self) -> Dict[str, float]:
+    def check_memory_usage(self):
         """메모리 사용량 확인"""
-        memory_info = {}
-        
-        # 시스템 메모리
-        memory_info["system_memory_gb"] = psutil.virtual_memory().used / (1024**3)
-        
-        # GPU 메모리 (가능한 경우)
-        if self.device == "mps":
-            try:
-                memory_info["mps_memory_gb"] = torch.mps.current_allocated_memory() / (1024**3)
-            except:
-                memory_info["mps_memory_gb"] = 0.0
-        
-        return memory_info
+        memory = psutil.virtual_memory()
+        used_gb = memory.used / (1024**3)
+        if used_gb > self.memory_limit_gb * 0.9:
+            logger.warning(f"메모리 사용량 높음: {used_gb:.1f}GB")
+            self.clear_cache()

@@ -1,32 +1,53 @@
-"""
-4단계: geometric_matching
-"""
+"""Step 4: Geometric_matching 단계"""
 
 import asyncio
 import torch
+import numpy as np
+from typing import Any, Dict
 
-class geometricmatchingStep:
-    """geometric_matching 단계"""
-    
-    def __init__(self, config, device, model_loader=None):
+class Geometric_matchingStep:
+    def __init__(self, config=None, device="mps", model_loader=None):
         self.config = config
         self.device = device
         self.model_loader = model_loader
+        self.name = "geometric_matching"
     
-    async def process(self, input_data) -> torch.Tensor:
-        """geometric_matching 처리"""
-        await asyncio.sleep(0.3)
+    async def process(self, input_data: Any) -> Dict[str, Any]:
+        """geometric_matching 처리 (더미)"""
+        # 처리 시뮬레이션
+        await asyncio.sleep(0.5)
         
-        if isinstance(input_data, dict):
-            # 복합 입력의 경우 첫 번째 텐서 사용
-            first_key = list(input_data.keys())[0]
-            sample_tensor = input_data[first_key]
-            if hasattr(sample_tensor, 'shape'):
-                return torch.randn_like(sample_tensor).to(self.device)
-            else:
-                return torch.randn(1, 3, 512, 512).to(self.device)
-        else:
-            return torch.randn_like(input_data).to(self.device)
+        result = {
+            "step": "geometric_matching",
+            "success": True,
+            "data": f"processed_geometric_matching",
+            "confidence": 0.85 + (hash("geometric_matching") % 100) / 1000.0
+        }
+        
+        # 특별한 반환값들
+        if "geometric_matching" == "human_parsing":
+            result["body_measurements"] = {
+                "chest": 88.0, "waist": 70.0, "hip": 92.0, "bmi": 22.5
+            }
+        elif "geometric_matching" == "cloth_segmentation":
+            result["cloth_type"] = "상의"
+            result["cloth_confidence"] = 0.9
+        elif "geometric_matching" == "quality_assessment":
+            result = {
+                "overall_score": 0.88,
+                "fit_coverage": 0.85,
+                "color_preservation": 0.92,
+                "fit_overall": 0.87,
+                "ssim": 0.89,
+                "lpips": 0.85
+            }
+        
+        return result
     
     async def warmup(self, dummy_input):
-        await self.process(dummy_input)
+        """워밍업"""
+        await asyncio.sleep(0.1)
+    
+    def cleanup(self):
+        """정리"""
+        pass

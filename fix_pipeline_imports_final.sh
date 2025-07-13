@@ -1,3 +1,191 @@
+#!/bin/bash
+
+echo "🔨 누락된 파이프라인 클래스들 생성 중..."
+
+cd backend
+
+# 1. 먼저 필요한 유틸리티 클래스들 생성
+echo "📦 기본 유틸리티 클래스 생성 중..."
+
+# 간단한 메모리 매니저
+cat > app/ai_pipeline/utils/memory_manager.py << 'EOF'
+"""메모리 관리 유틸리티"""
+import psutil
+import torch
+import logging
+
+logger = logging.getLogger(__name__)
+
+class GPUMemoryManager:
+    def __init__(self, device="mps", memory_limit_gb=16.0):
+        self.device = device
+        self.memory_limit_gb = memory_limit_gb
+    
+    def clear_cache(self):
+        """메모리 정리"""
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        elif torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    def check_memory_usage(self):
+        """메모리 사용량 확인"""
+        memory = psutil.virtual_memory()
+        used_gb = memory.used / (1024**3)
+        if used_gb > self.memory_limit_gb * 0.9:
+            logger.warning(f"메모리 사용량 높음: {used_gb:.1f}GB")
+            self.clear_cache()
+EOF
+
+# 모델 로더
+cat > app/ai_pipeline/utils/model_loader.py << 'EOF'
+"""모델 로딩 유틸리티"""
+import torch
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ModelLoader:
+    def __init__(self, device="mps", use_fp16=True):
+        self.device = torch.device(device)
+        self.use_fp16 = use_fp16
+        self.loaded_models = {}
+    
+    def load_model(self, model_name, model_path=None):
+        """더미 모델 로드"""
+        logger.info(f"더미 모델 로드: {model_name}")
+        
+        class DummyModel:
+            def __init__(self, name):
+                self.name = name
+            
+            def __call__(self, *args, **kwargs):
+                return {"result": f"dummy_{self.name}", "success": True}
+        
+        model = DummyModel(model_name)
+        self.loaded_models[model_name] = model
+        return model
+EOF
+
+# 데이터 변환기
+cat > app/ai_pipeline/utils/data_converter.py << 'EOF'
+"""데이터 변환 유틸리티"""
+import torch
+import numpy as np
+from PIL import Image
+import torchvision.transforms as transforms
+
+class DataConverter:
+    def __init__(self):
+        self.transform = transforms.Compose([
+            transforms.Resize((512, 512)),
+            transforms.ToTensor(),
+        ])
+    
+    def image_to_tensor(self, image, size=512):
+        """PIL 이미지를 텐서로 변환"""
+        if isinstance(image, Image.Image):
+            image = image.resize((size, size))
+            tensor = self.transform(image)
+            return tensor.unsqueeze(0)  # 배치 차원 추가
+        return image
+    
+    def tensor_to_numpy(self, tensor):
+        """텐서를 numpy 배열로 변환"""
+        if torch.is_tensor(tensor):
+            # 배치 차원 제거하고 (C, H, W) -> (H, W, C)로 변환
+            tensor = tensor.squeeze(0) if tensor.dim() == 4 else tensor
+            if tensor.dim() == 3:
+                tensor = tensor.permute(1, 2, 0)
+            
+            # [0, 1] 범위를 [0, 255]로 변환
+            array = tensor.cpu().numpy()
+            if array.max() <= 1.0:
+                array = (array * 255).astype(np.uint8)
+            return array
+        return tensor
+EOF
+
+# 2. 각 단계별 더미 클래스들 생성
+echo "🔧 8단계 더미 클래스들 생성 중..."
+
+for i in {1..8}; do
+    step_names=(
+        "human_parsing"
+        "pose_estimation" 
+        "cloth_segmentation"
+        "geometric_matching"
+        "cloth_warping"
+        "virtual_fitting"
+        "post_processing"
+        "quality_assessment"
+    )
+    
+    step_name=${step_names[$((i-1))]}
+    file_name="step_0${i}_${step_name}.py"
+    
+    cat > "app/ai_pipeline/steps/$file_name" << EOF
+"""Step $i: ${step_name^} 단계"""
+
+import asyncio
+import torch
+import numpy as np
+from typing import Any, Dict
+
+class ${step_name^}Step:
+    def __init__(self, config=None, device="mps", model_loader=None):
+        self.config = config
+        self.device = device
+        self.model_loader = model_loader
+        self.name = "${step_name}"
+    
+    async def process(self, input_data: Any) -> Dict[str, Any]:
+        """${step_name} 처리 (더미)"""
+        # 처리 시뮬레이션
+        await asyncio.sleep(0.5)
+        
+        result = {
+            "step": "${step_name}",
+            "success": True,
+            "data": f"processed_${step_name}",
+            "confidence": 0.85 + (hash("${step_name}") % 100) / 1000.0
+        }
+        
+        # 특별한 반환값들
+        if "${step_name}" == "human_parsing":
+            result["body_measurements"] = {
+                "chest": 88.0, "waist": 70.0, "hip": 92.0, "bmi": 22.5
+            }
+        elif "${step_name}" == "cloth_segmentation":
+            result["cloth_type"] = "상의"
+            result["cloth_confidence"] = 0.9
+        elif "${step_name}" == "quality_assessment":
+            result = {
+                "overall_score": 0.88,
+                "fit_coverage": 0.85,
+                "color_preservation": 0.92,
+                "fit_overall": 0.87,
+                "ssim": 0.89,
+                "lpips": 0.85
+            }
+        
+        return result
+    
+    async def warmup(self, dummy_input):
+        """워밍업"""
+        await asyncio.sleep(0.1)
+    
+    def cleanup(self):
+        """정리"""
+        pass
+EOF
+
+done
+
+# 3. 메인 pipeline_manager.py 교체 
+echo "🔄 pipeline_manager.py 재생성 중..."
+
+cat > app/ai_pipeline/pipeline_manager.py << 'EOF'
 """
 MyCloset AI 가상 피팅 파이프라인 메인 클래스
 """
@@ -312,3 +500,47 @@ class PipelineFactory:
 
 # 하위 호환성을 위한 별칭
 VirtualFittingPipeline = VirtualTryOnPipeline
+EOF
+
+echo "✅ 모든 파이프라인 클래스 생성 완료!"
+
+# 4. Python import 테스트
+echo "🧪 import 테스트 중..."
+
+python -c "
+import sys
+sys.path.insert(0, '.')
+
+try:
+    from app.ai_pipeline.pipeline_manager import VirtualTryOnPipeline, PipelineFactory
+    from app.core.pipeline_config import PipelineConfig
+    print('✅ 모든 클래스 import 성공!')
+    
+    # 간단한 기능 테스트
+    pipeline = PipelineFactory.create_optimized_pipeline()
+    print(f'✅ PipelineFactory 테스트 성공: {type(pipeline).__name__}')
+    
+    status = pipeline.get_pipeline_status()
+    print(f'✅ Pipeline 상태 조회 성공: {len(status)} 항목')
+    
+except Exception as e:
+    print(f'❌ 테스트 실패: {e}')
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+"
+
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "🎉 파이프라인 클래스 생성 및 테스트 완료!"
+    echo "================================================"
+    echo "✅ VirtualTryOnPipeline: 8단계 AI 파이프라인 실행"
+    echo "✅ PipelineFactory: 품질 모드별 파이프라인 생성"
+    echo "✅ 8개 처리 단계: 더미 구현으로 테스트 가능"
+    echo "✅ 메모리 관리: M3 Max 최적화"
+    echo ""
+    echo "🚀 이제 서버를 재시작하세요:"
+    echo "   python run_server.py"
+else
+    echo "❌ 테스트 실패. 수동 확인이 필요합니다."
+fi

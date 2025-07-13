@@ -1,29 +1,53 @@
-"""
-2단계: 포즈 추정 (Pose Estimation)
-18개 키포인트 검출
-"""
+"""Step 2: Pose_estimation 단계"""
 
 import asyncio
 import torch
 import numpy as np
+from typing import Any, Dict
 
-class PoseEstimationStep:
-    """포즈 추정 단계"""
-    
-    def __init__(self, config, device, model_loader):
+class Pose_estimationStep:
+    def __init__(self, config=None, device="mps", model_loader=None):
         self.config = config
         self.device = device
         self.model_loader = model_loader
+        self.name = "pose_estimation"
     
-    async def process(self, person_tensor: torch.Tensor) -> torch.Tensor:
-        """포즈 추정 처리"""
-        await asyncio.sleep(0.4)
+    async def process(self, input_data: Any) -> Dict[str, Any]:
+        """pose_estimation 처리 (더미)"""
+        # 처리 시뮬레이션
+        await asyncio.sleep(0.5)
         
-        # 더미 키포인트 생성 (18개 키포인트)
-        batch_size = person_tensor.shape[0]
-        dummy_keypoints = torch.randn(batch_size, 18, 3)  # [x, y, confidence]
+        result = {
+            "step": "pose_estimation",
+            "success": True,
+            "data": f"processed_pose_estimation",
+            "confidence": 0.85 + (hash("pose_estimation") % 100) / 1000.0
+        }
         
-        return dummy_keypoints.to(self.device)
+        # 특별한 반환값들
+        if "pose_estimation" == "human_parsing":
+            result["body_measurements"] = {
+                "chest": 88.0, "waist": 70.0, "hip": 92.0, "bmi": 22.5
+            }
+        elif "pose_estimation" == "cloth_segmentation":
+            result["cloth_type"] = "상의"
+            result["cloth_confidence"] = 0.9
+        elif "pose_estimation" == "quality_assessment":
+            result = {
+                "overall_score": 0.88,
+                "fit_coverage": 0.85,
+                "color_preservation": 0.92,
+                "fit_overall": 0.87,
+                "ssim": 0.89,
+                "lpips": 0.85
+            }
+        
+        return result
     
-    async def warmup(self, dummy_input: torch.Tensor):
-        await self.process(dummy_input)
+    async def warmup(self, dummy_input):
+        """워밍업"""
+        await asyncio.sleep(0.1)
+    
+    def cleanup(self):
+        """정리"""
+        pass

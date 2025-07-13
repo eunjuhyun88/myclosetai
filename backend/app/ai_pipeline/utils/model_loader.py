@@ -1,31 +1,26 @@
-"""
-모델 로더 - 동적 모델 로딩 및 관리
-"""
-
+"""모델 로딩 유틸리티"""
 import torch
 import logging
-from typing import Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 class ModelLoader:
-    """AI 모델 로더"""
-    
-    def __init__(self, device: str = "mps", use_fp16: bool = True):
-        self.device = device
+    def __init__(self, device="mps", use_fp16=True):
+        self.device = torch.device(device)
         self.use_fp16 = use_fp16
-        self.models = {}
-        self.logger = logging.getLogger(__name__)
+        self.loaded_models = {}
     
-    def load_model(self, model_name: str, model_path: Optional[str] = None) -> Any:
-        """모델 로드 (더미 구현)"""
-        if model_name not in self.models:
-            # 실제 구현에서는 모델 파일을 로드
-            self.models[model_name] = f"dummy_model_{model_name}"
-            self.logger.info(f"모델 로드됨: {model_name}")
+    def load_model(self, model_name, model_path=None):
+        """더미 모델 로드"""
+        logger.info(f"더미 모델 로드: {model_name}")
         
-        return self.models[model_name]
-    
-    def unload_model(self, model_name: str):
-        """모델 언로드"""
-        if model_name in self.models:
-            del self.models[model_name]
-            self.logger.info(f"모델 언로드됨: {model_name}")
+        class DummyModel:
+            def __init__(self, name):
+                self.name = name
+            
+            def __call__(self, *args, **kwargs):
+                return {"result": f"dummy_{self.name}", "success": True}
+        
+        model = DummyModel(model_name)
+        self.loaded_models[model_name] = model
+        return model
