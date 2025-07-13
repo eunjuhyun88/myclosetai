@@ -5,7 +5,7 @@ MyCloset AI 백엔드 API 라우트
 
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List  # ✅ List import 추가
 import asyncio
 import json
 import logging
@@ -18,13 +18,14 @@ import torch
 
 # 조건부 import - 모델이 없어도 서버가 시작되도록
 try:
+    try:
     from ..ai_pipeline.pipeline_manager import VirtualTryOnPipeline, PipelineFactory
+except ImportError:
+    VirtualTryOnPipeline = None
     from ..core.pipeline_config import PipelineConfig
     PIPELINE_AVAILABLE = True
 except ImportError:
     logging.warning("AI 파이프라인 모듈을 찾을 수 없습니다. 더미 모드로 실행됩니다.")
-    VirtualTryOnPipeline = None
-    PipelineFactory = None
     PIPELINE_AVAILABLE = False
 
 from ..models.schemas import (
@@ -40,14 +41,14 @@ router = APIRouter(prefix="/api", tags=["Virtual Try-On Pipeline"])
 pipeline_instance = None
 active_connections: Dict[str, WebSocket] = {}
 
-def get_pipeline_instance(quality_mode: str = "balanced"):
+def get_pipeline_instance(quality_mode: str = "balanced") :
     """파이프라인 인스턴스 관리"""
     global pipeline_instance
     
     if not PIPELINE_AVAILABLE:
         raise HTTPException(status_code=503, detail="AI 파이프라인이 초기화되지 않았습니다.")
     
-    if pipeline_instance is None and PipelineFactory:
+    if pipeline_instance is None:
         pipeline_instance = PipelineFactory.create_optimized_pipeline(
             memory_gb=16.0,
             quality_mode=quality_mode
@@ -179,12 +180,12 @@ async def process_virtual_tryon_pipeline(
         raise HTTPException(status_code=500, detail=str(e))
 
 async def process_pipeline_with_progress(
-    pipeline,
+    pipeline: VirtualTryOnPipeline,
     person_image: Image.Image,
     cloth_image: Image.Image,
     user_measurements: Dict[str, float],
     connection_id: Optional[str]
-):
+) -> Any:
     """진행률 업데이트와 함께 파이프라인 실행"""
     
     step_names = [
@@ -219,8 +220,7 @@ async def process_pipeline_with_progress(
             await send_progress_update(connection_id, step_id + 1, total_progress, message)
     
     # 파이프라인에 콜백 설정
-    if hasattr(pipeline, 'progress_callback'):
-        pipeline.progress_callback = step_callback
+    pipeline.progress_callback = step_callback
     
     # 실제 파이프라인 실행
     result = await pipeline.process(person_image, cloth_image, user_measurements)
@@ -262,7 +262,7 @@ def extract_clothing_analysis(result) -> Dict[str, Any]:
     
     return analysis
 
-def generate_user_recommendations(result) -> List[str]:
+def generate_user_recommendations(result) -> List[str]:  # ✅ List 타입 힌트 수정
     """사용자 친화적 추천사항 생성"""
     recommendations = []
     
@@ -301,16 +301,11 @@ async def get_pipeline_status():
         return {
             "status": "development_mode",
             "message": "AI 모델들이 아직 설정되지 않았습니다.",
-            "available_endpoints": ["test/dummy-process"],
-            "device": "mps" if torch.backends.mps.is_available() else "cpu",
-            "torch_version": torch.__version__
+            "available_endpoints": ["test/dummy-process"]
         }
     
     if pipeline_instance is None:
-        return {
-            "status": "not_initialized",
-            "device": "mps" if torch.backends.mps.is_available() else "cpu"
-        }
+        return {"status": "not_initialized"}
     
     status = pipeline_instance.get_pipeline_status()
     return {
@@ -328,13 +323,11 @@ async def warmup_pipeline(quality_mode: str = "balanced"):
         if not PIPELINE_AVAILABLE:
             return {
                 "success": False,
-                "message": "개발 모드 - AI 모델 설정 필요",
-                "device": "mps" if torch.backends.mps.is_available() else "cpu"
+                "message": "개발 모드 - AI 모델 설정 필요"
             }
             
         pipeline = get_pipeline_instance(quality_mode)
-        if hasattr(pipeline, 'warmup'):
-            await pipeline.warmup()
+        await pipeline.warmup()
         
         return {
             "success": True,
@@ -350,7 +343,7 @@ async def cleanup_pipeline():
     global pipeline_instance
     
     try:
-        if pipeline_instance and hasattr(pipeline_instance, 'cleanup'):
+        if pipeline_instance:
             pipeline_instance.cleanup()
             pipeline_instance = None
         
@@ -427,26 +420,10 @@ async def test_dummy_process(connection_id: Optional[str] = None):
             "dominant_color": [120, 150, 200]
         },
         fit_score=0.85,
-        recommendations=[
-            "✅ 더미 파이프라인 처리 완료!",
-            "🔧 실제 AI 모델 연동 준비 중",
-            f"📱 디바이스: {'MPS' if torch.backends.mps.is_available() else 'CPU'}"
-        ],
+        recommendations=["완벽한 핏입니다!", "색상이 잘 어울립니다!"],
         quality_metrics={
             "ssim": 0.89,
             "lpips": 0.85,
             "fit_overall": 0.87
         }
     )
-
-# 간단한 헬스체크 엔드포인트
-@router.get("/health")
-async def health_check():
-    """서버 상태 확인"""
-    return {
-        "status": "healthy",
-        "timestamp": time.time(),
-        "pipeline_available": PIPELINE_AVAILABLE,
-        "device": "mps" if torch.backends.mps.is_available() else "cpu",
-        "active_connections": len(active_connections)
-    }
