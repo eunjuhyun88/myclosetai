@@ -28,7 +28,7 @@ from .steps.step_04_geometric_matching import GeometricMatchingStep
 from .steps.step_05_cloth_warping import ClothWarpingStep
 from .steps.step_06_virtual_fitting import VirtualFittingStep
 from .steps.step_07_post_processing import PostProcessingStep
-from .steps.step_08_quailty_assessment import QualityAssessmentStep
+from .steps.step_08_quality_assessment import QualityAssessmentStep
 
 @dataclass
 class PipelineConfig:
