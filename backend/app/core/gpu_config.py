@@ -1,32 +1,61 @@
 """
-GPU 및 디바이스 설정
+GPU 설정 및 디바이스 관리 (호환성 개선 버전)
 """
+
 import torch
+import logging
 
-# 디바이스 자동 감지
-if torch.cuda.is_available():
-    DEVICE = "cuda"
-    print(f"🚀 CUDA GPU 사용: {torch.cuda.get_device_name()}")
-elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-    DEVICE = "mps" 
-    print("🍎 Apple Silicon MPS 사용")
-else:
-    DEVICE = "cpu"
-    print("💻 CPU 사용")
+logger = logging.getLogger(__name__)
 
-# 모델 설정
+def setup_device():
+    """디바이스 설정"""
+    try:
+        if torch.backends.mps.is_available():
+            device = "mps"
+            print("🍎 Apple Silicon MPS 사용")
+            
+            # MPS 캐시 정리 (버전 호환성 체크)
+            try:
+                if hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+            except AttributeError:
+                logger.info("MPS empty_cache 미지원 (PyTorch 버전 문제)")
+                
+        elif torch.cuda.is_available():
+            device = "cuda"
+            print("🚀 NVIDIA CUDA 사용")
+            torch.cuda.empty_cache()
+        else:
+            device = "cpu"
+            print("💻 CPU 사용")
+            
+    except Exception as e:
+        logger.warning(f"디바이스 설정 중 오류: {e}")
+        device = "cpu"
+        print("💻 CPU 사용 (fallback)")
+    
+    return device
+
+# 글로벌 설정
+DEVICE = setup_device()
+
 MODEL_CONFIG = {
     "device": DEVICE,
-    "dtype": torch.float32 if DEVICE == "mps" else torch.float16,
-    "memory_fraction": 0.8,
-    "enable_attention_slicing": True,
-    "enable_memory_efficient_attention": DEVICE != "mps"
+    "dtype": torch.float16 if DEVICE in ["cuda", "mps"] else torch.float32,
+    "max_batch_size": 4 if DEVICE != "cpu" else 1
 }
 
-# GPU 메모리 최적화
-if DEVICE == "cuda":
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cuda.matmul.allow_tf32 = True
-elif DEVICE == "mps":
-    # MPS 최적화 설정
-    torch.backends.mps.empty_cache()
+gpu_config = {
+    "device": DEVICE,
+    "available": DEVICE != "cpu",
+    "config": MODEL_CONFIG
+}
+
+DEVICE_INFO = {
+    "device": DEVICE,
+    "torch_version": torch.__version__,
+    "mps_available": torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False,
+    "cuda_available": torch.cuda.is_available()
+}
+
+logger.info(f"디바이스 설정 완료: {DEVICE}")
