@@ -55,3 +55,5 @@ logs/
 !/backend/ai_models/checkpoints/.gitkeep
 ai_models/
 backend/ai_models/
+.env 
+.env.backup
