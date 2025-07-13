@@ -1,29 +1,39 @@
-# FastAPI 및 웹 서버
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-python-multipart>=0.0.6
+# MyCloset AI - M3 Max 최적화 패키지 목록
+# Conda 환경에서 설치된 패키지들의 참조용
 
-# 이미지 처리
-Pillow>=10.0.0
-opencv-python>=4.8.0
-scikit-image>=0.20.0
+# Core ML/AI
+torch>=2.1.0
+torchvision>=0.16.0
+numpy==1.24.3
+scipy==1.11.4
 
-# 데이터 검증
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+# FastAPI & Web
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
 
-# 파일 처리
-aiofiles>=23.0.0
-python-dotenv>=1.0.0
+# Image Processing
+Pillow==10.1.0
+opencv-python==4.8.1.78
+scikit-image==0.22.0
 
-# 유틸리티
-tqdm>=4.65.0
-requests>=2.31.0
-structlog>=23.0.0
+# AI/ML
+transformers==4.35.0
+diffusers==0.21.4
+accelerate==0.24.1
+mediapipe==0.10.7
 
-# Computer Vision (선택적)
-# mediapipe>=0.10.0
+# Utils
+pydantic==2.5.0
+pydantic-settings==2.1.0
+aiofiles==23.2.1
+python-dotenv==1.0.0
+structlog==23.1.0
+requests==2.31.0
+tqdm==4.66.1
 
-# NumPy (호환성 중요)
-numpy>=1.24.0,<2.0.0
-scipy>=1.10.0
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+isort==5.12.0

@@ -1,12 +1,14 @@
 """
-비즈니스 로직 서비스 모듈
-이미지 처리, AI 모델, 가상 피팅 등의 서비스
+MyCloset AI Services
+AI 모델 관리 및 처리 서비스들
 """
 
-from .image_processor import ImageProcessor
-from .virtual_fitter import VirtualFitter
+from .model_manager import model_manager, load_model, unload_model, get_model_status, get_available_models
 
 __all__ = [
-    "ImageProcessor",
-    "VirtualFitter"
+    "model_manager",
+    "load_model", 
+    "unload_model",
+    "get_model_status",
+    "get_available_models"
 ]
