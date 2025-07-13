@@ -37,3 +37,11 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 black==23.11.0
 isort==5.12.0
+
+# 추가 필요 패키지들
+python-multipart==0.0.6
+python-dotenv==1.0.0
+aiofiles==23.2.1
+websockets==11.0.3
+redis==5.0.1
+pydantic==2.5.0
