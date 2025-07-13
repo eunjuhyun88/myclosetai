@@ -1,452 +1,428 @@
 """
-MyCloset AI 백엔드 API 라우트
-프론트엔드와 8단계 파이프라인을 연결하는 FastAPI 엔드포인트
+8단계 AI 파이프라인 API 라우터 - WebSocket 실시간 상태 통합
 """
-
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any, List
 import asyncio
-import json
+import io
 import logging
 import time
+import uuid
+from typing import Dict, Any, Optional
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from PIL import Image
-import io
-import base64
-import numpy as np
-import torch
 
-# 조건부 import - 모델이 없어도 서버가 시작되도록
-try:
-    from ..ai_pipeline.pipeline_manager import VirtualTryOnPipeline, PipelineFactory
-    from ..core.pipeline_config import PipelineConfig
-    PIPELINE_AVAILABLE = True
-except ImportError:
-    logging.warning("AI 파이프라인 모듈을 찾을 수 없습니다. 더미 모드로 실행됩니다.")
-    VirtualTryOnPipeline = None
-    PipelineFactory = None
-    PIPELINE_AVAILABLE = False
-
+from ..ai_pipeline.pipeline_manager import get_pipeline_manager
+from ..core.gpu_config import GPUConfig
 from ..models.schemas import (
-    VirtualTryOnRequest, 
-    VirtualTryOnResponse, 
-    PipelineProgress, 
-    QualityMetrics
+    VirtualTryOnRequest, VirtualTryOnResponse,
+    PipelineStatusResponse, ProcessingStage
 )
+from .websocket_routes import create_progress_callback, manager as ws_manager
 
-router = APIRouter(prefix="/api", tags=["Virtual Try-On Pipeline"])
+logger = logging.getLogger(__name__)
+router = APIRouter()
 
-# 전역 파이프라인 인스턴스 (메모리 효율성을 위해)
-pipeline_instance = None
-active_connections: Dict[str, WebSocket] = {}
+# 전역 변수
+pipeline_manager = None
+gpu_config = None
 
-def get_pipeline_instance(quality_mode: str = "balanced"):
-    """파이프라인 인스턴스 관리"""
-    global pipeline_instance
-    
-    if not PIPELINE_AVAILABLE:
-        raise HTTPException(status_code=503, detail="AI 파이프라인이 초기화되지 않았습니다.")
-    
-    if pipeline_instance is None and PipelineFactory:
-        pipeline_instance = PipelineFactory.create_optimized_pipeline(
-            memory_gb=16.0,
-            quality_mode=quality_mode
-        )
-    
-    return pipeline_instance
-
-def image_to_base64(image_array: np.ndarray) -> str:
-    """numpy 배열을 base64 문자열로 변환"""
-    if image_array.max() <= 1.0:
-        image_array = (image_array * 255).astype(np.uint8)
-    
-    image = Image.fromarray(image_array)
-    buffer = io.BytesIO()
-    image.save(buffer, format='PNG')
-    buffer.seek(0)
-    
-    return base64.b64encode(buffer.getvalue()).decode()
-
-async def send_progress_update(connection_id: str, step: int, progress: float, message: str):
-    """WebSocket으로 진행 상황 전송"""
-    if connection_id in active_connections:
-        try:
-            progress_data = {
-                "step_id": step,
-                "progress": progress,
-                "message": message,
-                "timestamp": time.time()
-            }
-            await active_connections[connection_id].send_text(json.dumps(progress_data))
-        except Exception as e:
-            logging.warning(f"WebSocket 전송 실패: {e}")
-
-@router.websocket("/ws/pipeline-progress")
-async def websocket_endpoint(websocket: WebSocket):
-    """파이프라인 진행 상황을 위한 WebSocket 연결"""
-    await websocket.accept()
-    connection_id = str(id(websocket))
-    active_connections[connection_id] = websocket
+@router.on_event("startup")
+async def startup_pipeline():
+    """파이프라인 라우터 시작 시 초기화"""
+    global pipeline_manager, gpu_config
     
     try:
-        while True:
-            # 연결 유지를 위한 ping
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        if connection_id in active_connections:
-            del active_connections[connection_id]
+        # GPU 설정 초기화
+        gpu_config = GPUConfig()
+        gpu_config.setup_memory_optimization()
+        
+        # 파이프라인 매니저 초기화
+        pipeline_manager = get_pipeline_manager()
+        
+        # 모델 초기화 (백그라운드에서)
+        asyncio.create_task(initialize_pipeline_models())
+        
+        logger.info("✅ 파이프라인 라우터 초기화 완료")
+        
+    except Exception as e:
+        logger.error(f"❌ 파이프라인 라우터 초기화 실패: {e}")
 
-@router.post("/virtual-tryon-pipeline", response_model=VirtualTryOnResponse)
-async def process_virtual_tryon_pipeline(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(170),
-    weight: float = Form(65),
-    quality_mode: str = Form("balanced"),
-    connection_id: Optional[str] = Form(None)
+async def initialize_pipeline_models():
+    """백그라운드에서 파이프라인 모델 초기화"""
+    try:
+        logger.info("🔄 백그라운드에서 AI 모델 초기화 시작...")
+        
+        if pipeline_manager:
+            success = await pipeline_manager.initialize()
+            if success:
+                logger.info("✅ AI 모델 초기화 완료")
+                # 웜업 실행
+                await pipeline_manager.warmup()
+            else:
+                logger.error("❌ AI 모델 초기화 실패")
+        
+    except Exception as e:
+        logger.error(f"❌ 백그라운드 모델 초기화 실패: {e}")
+
+@router.post("/virtual-tryon", response_model=VirtualTryOnResponse)
+async def virtual_tryon_endpoint(
+    background_tasks: BackgroundTasks,
+    person_image: UploadFile = File(..., description="사용자 이미지"),
+    clothing_image: UploadFile = File(..., description="의류 이미지"),
+    height: float = Form(170.0, description="키 (cm)"),
+    weight: float = Form(65.0, description="몸무게 (kg)"),
+    enable_realtime: bool = Form(True, description="실시간 상태 업데이트 사용")
 ):
     """
-    8단계 가상 피팅 파이프라인 실행
+    8단계 AI 파이프라인 가상 피팅 실행
     
-    Args:
-        person_image: 사용자 이미지 파일
-        clothing_image: 의류 이미지 파일  
-        height: 키 (cm)
-        weight: 몸무게 (kg)
-        quality_mode: 품질 모드 (fast/balanced/quality)
-        connection_id: WebSocket 연결 ID (진행률 업데이트용)
-    
-    Returns:
-        VirtualTryOnResponse: 처리 결과
+    실시간 진행 상황은 WebSocket (/api/ws/{client_id})을 통해 전송됩니다.
     """
+    if not pipeline_manager or not pipeline_manager.is_initialized:
+        raise HTTPException(
+            status_code=503, 
+            detail="AI 파이프라인이 아직 초기화되지 않았습니다. 잠시 후 다시 시도해주세요."
+        )
+    
+    # 프로세스 ID 생성
+    process_id = f"tryon_{uuid.uuid4().hex[:12]}"
+    start_time = time.time()
     
     try:
-        # 개발 단계에서는 더미 프로세싱 사용
-        if not PIPELINE_AVAILABLE:
-            logging.info("더미 파이프라인 실행 중...")
-            return await test_dummy_process(connection_id)
+        # 입력 파일 검증
+        await validate_upload_files(person_image, clothing_image)
         
-        # 파이프라인 인스턴스 가져오기
-        pipeline = get_pipeline_instance(quality_mode)
+        # 이미지 로드
+        person_pil = await load_image_from_upload(person_image)
+        clothing_pil = await load_image_from_upload(clothing_image)
         
-        # 이미지 로드 및 전처리
-        person_pil = Image.open(io.BytesIO(await person_image.read())).convert('RGB')
-        cloth_pil = Image.open(io.BytesIO(await clothing_image.read())).convert('RGB')
+        # 실시간 상태 콜백 설정
+        progress_callback = None
+        if enable_realtime:
+            progress_callback = create_progress_callback(process_id)
+            
+            # 프로세스 시작 알림
+            await ws_manager.broadcast_to_process({
+                "type": "process_started",
+                "process_id": process_id,
+                "message": "가상 피팅 처리를 시작합니다...",
+                "timestamp": time.time()
+            }, process_id)
         
-        # 진행 상황 업데이트
-        if connection_id:
-            await send_progress_update(connection_id, 0, 0.1, "이미지 전처리 중...")
-        
-        # 사용자 측정 정보
-        user_measurements = {
-            "height": height,
-            "weight": weight
-        }
-        
-        # 8단계 파이프라인 실행 (각 단계별 진행률 업데이트)
-        result = await process_pipeline_with_progress(
-            pipeline, person_pil, cloth_pil, user_measurements, connection_id
+        # 8단계 파이프라인 실행
+        result = await pipeline_manager.process_virtual_tryon(
+            person_image=person_pil,
+            clothing_image=clothing_pil,
+            height=height,
+            weight=weight,
+            progress_callback=progress_callback
         )
         
-        if result.success:
-            # 성공 응답
-            response = VirtualTryOnResponse(
-                success=True,
-                fitted_image=image_to_base64(result.fitted_image),
-                processing_time=result.processing_time,
-                confidence=result.quality_scores.get("overall_score", 0.85),
-                measurements=extract_measurements(result),
-                clothing_analysis=extract_clothing_analysis(result),
-                fit_score=result.quality_scores.get("fit_overall", 0.85),
-                recommendations=generate_user_recommendations(result),
-                quality_metrics=result.quality_scores,
-                memory_usage=result.memory_usage,
-                step_times=result.step_times
-            )
-            
-            # 최종 진행률 업데이트
-            if connection_id:
-                await send_progress_update(connection_id, 8, 1.0, "처리 완료!")
-            
-            return response
-        else:
-            raise HTTPException(status_code=500, detail=result.error_message)
-    
+        # 성공 시 WebSocket으로 완료 알림
+        if enable_realtime and result["success"]:
+            await ws_manager.broadcast_to_process({
+                "type": "process_completed",
+                "process_id": process_id,
+                "result": {
+                    "processing_time": result["processing_time"],
+                    "fit_score": result["fit_score"],
+                    "quality_score": result["quality_score"]
+                },
+                "timestamp": time.time()
+            }, process_id)
+        
+        # 응답 구성
+        response = VirtualTryOnResponse(
+            success=result["success"],
+            process_id=process_id,
+            fitted_image=result["fitted_image"],
+            processing_time=result["processing_time"],
+            confidence=result["confidence"],
+            fit_score=result["fit_score"],
+            quality_score=result["quality_score"],
+            measurements=result["measurements"],
+            recommendations=result["recommendations"],
+            pipeline_stages=result.get("pipeline_stages", {}),
+            debug_info=result.get("debug_info", {})
+        )
+        
+        # 백그라운드에서 통계 업데이트
+        background_tasks.add_task(update_processing_stats, result)
+        
+        return response
+        
     except Exception as e:
-        logging.error(f"파이프라인 처리 오류: {str(e)}")
-        if connection_id:
-            await send_progress_update(connection_id, -1, 0, f"오류 발생: {str(e)}")
+        error_msg = f"가상 피팅 처리 실패: {str(e)}"
+        logger.error(error_msg)
+        
+        # 실패 시 WebSocket으로 에러 알림
+        if enable_realtime:
+            await ws_manager.broadcast_to_process({
+                "type": "process_error",
+                "process_id": process_id,
+                "error": error_msg,
+                "timestamp": time.time()
+            }, process_id)
+        
+        raise HTTPException(status_code=500, detail=error_msg)
+
+async def validate_upload_files(person_image: UploadFile, clothing_image: UploadFile):
+    """업로드된 파일 검증"""
+    # 파일 크기 검증 (10MB 제한)
+    max_size = 10 * 1024 * 1024  # 10MB
+    
+    if person_image.size and person_image.size > max_size:
+        raise HTTPException(status_code=413, detail="사용자 이미지가 10MB를 초과합니다.")
+    
+    if clothing_image.size and clothing_image.size > max_size:
+        raise HTTPException(status_code=413, detail="의류 이미지가 10MB를 초과합니다.")
+    
+    # 파일 형식 검증
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+    
+    if person_image.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="사용자 이미지는 JPG, PNG, WebP 형식만 지원됩니다.")
+    
+    if clothing_image.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="의류 이미지는 JPG, PNG, WebP 형식만 지원됩니다.")
+
+async def load_image_from_upload(upload_file: UploadFile) -> Image.Image:
+    """업로드 파일에서 PIL 이미지 로드"""
+    try:
+        # 파일 내용 읽기
+        contents = await upload_file.read()
+        
+        # PIL 이미지로 변환
+        image = Image.open(io.BytesIO(contents))
+        
+        # RGB로 변환 (필요한 경우)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        return image
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 로드 실패: {str(e)}")
+
+async def update_processing_stats(result: Dict[str, Any]):
+    """처리 통계 업데이트 (백그라운드 태스크)"""
+    try:
+        # 여기서 데이터베이스나 로그에 통계 저장
+        logger.info(f"처리 완료 - 시간: {result['processing_time']:.2f}초, 품질: {result.get('quality_score', 0):.2f}")
+    except Exception as e:
+        logger.error(f"통계 업데이트 실패: {e}")
+
+@router.get("/status", response_model=PipelineStatusResponse)
+async def get_pipeline_status():
+    """파이프라인 현재 상태 조회"""
+    try:
+        if not pipeline_manager:
+            return PipelineStatusResponse(
+                initialized=False,
+                device="unknown",
+                steps_loaded=0,
+                total_steps=8,
+                memory_status={},
+                stats={}
+            )
+        
+        status = await pipeline_manager.get_pipeline_status()
+        
+        return PipelineStatusResponse(
+            initialized=status["initialized"],
+            device=status["device"],
+            steps_loaded=status["steps_loaded"],
+            total_steps=status["total_steps"],
+            memory_status=status["memory_status"],
+            stats=status["stats"]
+        )
+        
+    except Exception as e:
+        logger.error(f"파이프라인 상태 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-async def process_pipeline_with_progress(
-    pipeline,
-    person_image: Image.Image,
-    cloth_image: Image.Image,
-    user_measurements: Dict[str, float],
-    connection_id: Optional[str]
-):
-    """진행률 업데이트와 함께 파이프라인 실행"""
+@router.post("/initialize")
+async def initialize_pipeline():
+    """파이프라인 수동 초기화"""
+    global pipeline_manager
     
-    step_names = [
-        "인체 파싱 (20개 부위 분할)",
-        "포즈 추정 (18개 키포인트)", 
-        "의류 세그멘테이션",
-        "기하학적 매칭 (TPS 변환)",
-        "옷 워핑",
-        "가상 피팅 생성",
-        "후처리 (품질 향상)",
-        "품질 평가"
-    ]
-    
-    # 각 단계별 예상 소요 시간 (비율)
-    step_weights = [0.15, 0.1, 0.1, 0.15, 0.15, 0.25, 0.05, 0.05]
-    
-    class ProgressTracker:
-        def __init__(self):
-            self.current_step = 0
-            self.total_progress = 0.1  # 초기 전처리 10%
-    
-    tracker = ProgressTracker()
-    
-    # 파이프라인의 각 단계에 진행률 콜백 추가
-    async def step_callback(step_id: int, progress: float):
-        if connection_id:
-            # 현재 단계의 진행률 계산
-            step_progress = sum(step_weights[:step_id]) + step_weights[step_id] * progress
-            total_progress = 0.1 + step_progress * 0.9  # 전처리 10% + 파이프라인 90%
-            
-            message = f"{step_names[step_id]} ({int(progress * 100)}%)"
-            await send_progress_update(connection_id, step_id + 1, total_progress, message)
-    
-    # 파이프라인에 콜백 설정
-    if hasattr(pipeline, 'progress_callback'):
-        pipeline.progress_callback = step_callback
-    
-    # 실제 파이프라인 실행
-    result = await pipeline.process(person_image, cloth_image, user_measurements)
-    
-    return result
-
-def extract_measurements(result) -> Dict[str, float]:
-    """결과에서 신체 측정 정보 추출"""
-    measurements = {
-        "chest": 88.0,
-        "waist": 70.0,
-        "hip": 92.0,
-        "bmi": 22.5
-    }
-    
-    # 실제 파이프라인 결과에서 측정값 추출
-    if hasattr(result, 'intermediate_results'):
-        human_parsing = result.intermediate_results.get('human_parsing', {})
-        if 'body_measurements' in human_parsing:
-            measurements.update(human_parsing['body_measurements'])
-    
-    return measurements
-
-def extract_clothing_analysis(result) -> Dict[str, Any]:
-    """의류 분석 정보 추출"""
-    analysis = {
-        "category": "상의",
-        "style": "캐주얼",
-        "dominant_color": [120, 150, 200],
-        "material": "면"
-    }
-    
-    # 실제 파이프라인 결과에서 의류 분석 추출
-    if hasattr(result, 'intermediate_results'):
-        cloth_seg = result.intermediate_results.get('cloth_segmentation', {})
-        if 'cloth_type' in cloth_seg:
-            analysis["category"] = cloth_seg['cloth_type']
-            analysis["confidence"] = cloth_seg.get('cloth_confidence', 0.8)
-    
-    return analysis
-
-def generate_user_recommendations(result) -> List[str]:
-    """사용자 친화적 추천사항 생성"""
-    recommendations = []
-    
-    if hasattr(result, 'quality_scores'):
-        overall_score = result.quality_scores.get('overall_score', 0.8)
+    try:
+        if not pipeline_manager:
+            pipeline_manager = get_pipeline_manager()
         
-        if overall_score >= 0.9:
-            recommendations.append("🎉 완벽한 핏! 이 스타일이 매우 잘 어울립니다.")
-        elif overall_score >= 0.8:
-            recommendations.append("👍 좋은 핏입니다! 자신감 있게 착용하세요.")
-        elif overall_score >= 0.6:
-            recommendations.append("👌 괜찮은 핏이지만, 다른 사이즈도 고려해보세요.")
+        if pipeline_manager.is_initialized:
+            return {"message": "파이프라인이 이미 초기화되었습니다.", "initialized": True}
+        
+        logger.info("🔄 파이프라인 수동 초기화 시작...")
+        success = await pipeline_manager.initialize()
+        
+        if success:
+            logger.info("✅ 파이프라인 수동 초기화 완료")
+            return {"message": "파이프라인 초기화 완료", "initialized": True}
         else:
-            recommendations.append("🤔 이 아이템은 맞지 않을 수 있습니다. 다른 스타일을 추천드립니다.")
-        
-        # 구체적인 피팅 조언
-        fit_coverage = result.quality_scores.get('fit_coverage', 0.8)
-        if fit_coverage < 0.7:
-            recommendations.append("📏 사이즈를 한 치수 크게 고려해보세요.")
-        
-        color_preservation = result.quality_scores.get('color_preservation', 0.8)
-        if color_preservation > 0.9:
-            recommendations.append("🎨 색상이 피부톤과 잘 어울립니다!")
-    
-    if not recommendations:
-        recommendations.append("✨ 멋진 선택입니다! 이 스타일을 추천드립니다.")
-    
-    return recommendations
-
-@router.get("/pipeline/status")
-async def get_pipeline_status():
-    """파이프라인 상태 조회"""
-    global pipeline_instance
-    
-    if not PIPELINE_AVAILABLE:
-        return {
-            "status": "development_mode",
-            "message": "AI 모델들이 아직 설정되지 않았습니다.",
-            "available_endpoints": ["test/dummy-process"],
-            "device": "mps" if torch.backends.mps.is_available() else "cpu",
-            "torch_version": torch.__version__
-        }
-    
-    if pipeline_instance is None:
-        return {
-            "status": "not_initialized",
-            "device": "mps" if torch.backends.mps.is_available() else "cpu"
-        }
-    
-    status = pipeline_instance.get_pipeline_status()
-    return {
-        "status": "ready",
-        "device": status["device"],
-        "memory_usage": status["memory_usage"],
-        "models_loaded": status["models_loaded"],
-        "active_connections": len(active_connections)
-    }
-
-@router.post("/pipeline/warmup")
-async def warmup_pipeline(quality_mode: str = "balanced"):
-    """파이프라인 워밍업 (첫 실행 시 모델 로딩)"""
-    try:
-        if not PIPELINE_AVAILABLE:
-            return {
-                "success": False,
-                "message": "개발 모드 - AI 모델 설정 필요",
-                "device": "mps" if torch.backends.mps.is_available() else "cpu"
-            }
+            raise HTTPException(status_code=500, detail="파이프라인 초기화 실패")
             
-        pipeline = get_pipeline_instance(quality_mode)
-        if hasattr(pipeline, 'warmup'):
-            await pipeline.warmup()
-        
-        return {
-            "success": True,
-            "message": "파이프라인 워밍업 완료",
-            "quality_mode": quality_mode
-        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"워밍업 실패: {str(e)}")
+        logger.error(f"파이프라인 수동 초기화 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/pipeline/cleanup")
-async def cleanup_pipeline():
-    """파이프라인 리소스 정리"""
-    global pipeline_instance
+@router.post("/warmup")
+async def warmup_pipeline():
+    """파이프라인 웜업 실행"""
+    if not pipeline_manager or not pipeline_manager.is_initialized:
+        raise HTTPException(status_code=503, detail="파이프라인이 초기화되지 않았습니다.")
     
     try:
-        if pipeline_instance and hasattr(pipeline_instance, 'cleanup'):
-            pipeline_instance.cleanup()
-            pipeline_instance = None
+        logger.info("🔥 파이프라인 웜업 시작...")
+        success = await pipeline_manager.warmup()
+        
+        if success:
+            return {"message": "파이프라인 웜업 완료", "success": True}
+        else:
+            return {"message": "파이프라인 웜업 부분 실패", "success": False}
+            
+    except Exception as e:
+        logger.error(f"파이프라인 웜업 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/memory")
+async def get_memory_status():
+    """메모리 사용량 조회"""
+    try:
+        if gpu_config:
+            memory_info = gpu_config.get_memory_info()
+            return {
+                "memory_info": memory_info,
+                "timestamp": time.time()
+            }
+        else:
+            raise HTTPException(status_code=503, detail="GPU 설정이 초기화되지 않았습니다.")
+            
+    except Exception as e:
+        logger.error(f"메모리 상태 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/cleanup")
+async def cleanup_memory():
+    """메모리 수동 정리"""
+    try:
+        if gpu_config:
+            gpu_config.cleanup_memory()
+            return {"message": "메모리 정리 완료", "timestamp": time.time()}
+        else:
+            raise HTTPException(status_code=503, detail="GPU 설정이 초기화되지 않았습니다.")
+            
+    except Exception as e:
+        logger.error(f"메모리 정리 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/models/info")
+async def get_models_info():
+    """로드된 모델 정보 조회"""
+    if not pipeline_manager:
+        raise HTTPException(status_code=503, detail="파이프라인이 초기화되지 않았습니다.")
+    
+    try:
+        models_info = {}
+        
+        for step_num, step in pipeline_manager.steps.items():
+            if hasattr(step, 'get_model_info'):
+                models_info[f"step_{step_num}"] = await step.get_model_info()
+            else:
+                models_info[f"step_{step_num}"] = {
+                    "loaded": hasattr(step, 'model') and step.model is not None,
+                    "initialized": getattr(step, 'is_initialized', False)
+                }
         
         return {
-            "success": True,
-            "message": "파이프라인 리소스 정리 완료"
+            "models": models_info,
+            "total_steps": len(pipeline_manager.steps),
+            "device": pipeline_manager.device,
+            "timestamp": time.time()
         }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"정리 실패: {str(e)}")
+        logger.error(f"모델 정보 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/quality/metrics")
-async def get_quality_metrics_info():
-    """품질 메트릭 정보 조회"""
-    return {
-        "metrics": {
-            "ssim": {
-                "name": "구조적 유사성",
-                "description": "원본과 결과 이미지의 구조적 유사도",
-                "range": [0, 1],
-                "higher_better": True
-            },
-            "lpips": {
-                "name": "지각적 유사성", 
-                "description": "인간의 시각 인지에 기반한 유사도",
-                "range": [0, 1],
-                "higher_better": True
-            },
-            "fit_overall": {
-                "name": "전체 피팅 점수",
-                "description": "의류 착용감의 종합 평가",
-                "range": [0, 1],
-                "higher_better": True
-            }
-        },
-        "quality_grades": {
-            "excellent": "90% 이상 - 완벽한 품질",
-            "good": "80-89% - 우수한 품질", 
-            "fair": "60-79% - 양호한 품질",
-            "poor": "60% 미만 - 개선 필요"
-        }
-    }
-
-@router.post("/test/dummy-process")
-async def test_dummy_process(connection_id: Optional[str] = None):
-    """테스트용 더미 처리 (개발용)"""
-    step_names = [
-        "인체 파싱", "포즈 추정", "의류 세그멘테이션", "기하학적 매칭",
-        "옷 워핑", "가상 피팅", "후처리", "품질 평가"
-    ]
-    
-    for i, step_name in enumerate(step_names):
-        # 각 단계마다 0.5초 대기
-        await asyncio.sleep(0.5)
-        
-        progress = (i + 1) / len(step_names)
-        
-        if connection_id:
-            await send_progress_update(
-                connection_id, i + 1, progress, f"{step_name} 완료"
-            )
-    
-    # 더미 결과 생성 (512x512 랜덤 이미지)
-    dummy_image = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
-    
-    return VirtualTryOnResponse(
-        success=True,
-        fitted_image=image_to_base64(dummy_image),
-        processing_time=4.0,
-        confidence=0.87,
-        measurements={"chest": 88, "waist": 70, "hip": 92, "bmi": 22.5},
-        clothing_analysis={
-            "category": "상의",
-            "style": "캐주얼", 
-            "dominant_color": [120, 150, 200]
-        },
-        fit_score=0.85,
-        recommendations=[
-            "✅ 더미 파이프라인 처리 완료!",
-            "🔧 실제 AI 모델 연동 준비 중",
-            f"📱 디바이스: {'MPS' if torch.backends.mps.is_available() else 'CPU'}"
-        ],
-        quality_metrics={
-            "ssim": 0.89,
-            "lpips": 0.85,
-            "fit_overall": 0.87
-        }
-    )
-
-# 간단한 헬스체크 엔드포인트
 @router.get("/health")
-async def health_check():
-    """서버 상태 확인"""
-    return {
-        "status": "healthy",
-        "timestamp": time.time(),
-        "pipeline_available": PIPELINE_AVAILABLE,
-        "device": "mps" if torch.backends.mps.is_available() else "cpu",
-        "active_connections": len(active_connections)
+async def pipeline_health_check():
+    """파이프라인 헬스체크"""
+    health_status = {
+        "pipeline_manager": pipeline_manager is not None,
+        "gpu_config": gpu_config is not None,
+        "initialized": pipeline_manager.is_initialized if pipeline_manager else False,
+        "device": pipeline_manager.device if pipeline_manager else "unknown",
+        "timestamp": time.time()
     }
+    
+    # 메모리 상태 추가
+    if gpu_config:
+        try:
+            memory_info = gpu_config.get_memory_info()
+            health_status["memory"] = memory_info
+        except:
+            health_status["memory"] = {"error": "메모리 정보 조회 실패"}
+    
+    # 전체 상태 판정
+    if health_status["pipeline_manager"] and health_status["initialized"]:
+        health_status["status"] = "healthy"
+        status_code = 200
+    elif health_status["pipeline_manager"]:
+        health_status["status"] = "initializing"
+        status_code = 202
+    else:
+        health_status["status"] = "unhealthy"
+        status_code = 503
+    
+    return JSONResponse(content=health_status, status_code=status_code)
+
+# 실시간 처리 상태 테스트 엔드포인트
+@router.post("/test/realtime/{process_id}")
+async def test_realtime_updates(process_id: str):
+    """실시간 업데이트 테스트"""
+    try:
+        progress_callback = create_progress_callback(process_id)
+        
+        # 8단계 시뮬레이션
+        steps = [
+            "인체 파싱 (20개 부위)",
+            "포즈 추정 (18개 키포인트)",
+            "의류 세그멘테이션 (배경 제거)",
+            "기하학적 매칭 (TPS 변환)",
+            "옷 워핑 (신체에 맞춰 변형)",
+            "가상 피팅 생성 (HR-VITON/ACGPN)",
+            "후처리 (품질 향상)",
+            "품질 평가 (자동 스코어링)"
+        ]
+        
+        for i, step_name in enumerate(steps, 1):
+            await progress_callback(i, f"{step_name} 처리 중...", (i / 8) * 100)
+            await asyncio.sleep(1)  # 1초 대기
+        
+        return {"message": "실시간 업데이트 테스트 완료", "process_id": process_id}
+        
+    except Exception as e:
+        logger.error(f"실시간 테스트 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 개발용 디버그 엔드포인트
+@router.get("/debug/config")
+async def get_debug_config():
+    """디버그용 설정 정보"""
+    debug_info = {
+        "pipeline_manager_initialized": pipeline_manager is not None and pipeline_manager.is_initialized,
+        "gpu_config_initialized": gpu_config is not None,
+        "websocket_connections": len(ws_manager.active_connections),
+        "active_processes": len(ws_manager.process_connections)
+    }
+    
+    if gpu_config:
+        debug_info["gpu_settings"] = {
+            "device": gpu_config.device_type,
+            "is_apple_silicon": gpu_config.is_apple_silicon,
+            "memory_settings": gpu_config.memory_settings,
+            "optimization_settings": gpu_config.optimization_settings
+        }
+    
+    return debug_info
