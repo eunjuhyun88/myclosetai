@@ -26,10 +26,13 @@ class Settings(BaseSettings):
     # CORS 설정
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
-        "http://localhost:3001", 
+        "http://localhost:5173",     # Vite 기본 포트
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001"
+        "*"  # 개발 중에만 사용 (보안상 위험)
     ]
+    
     
     # 파일 업로드 설정
     MAX_UPLOAD_SIZE: int = 52428800  # 50MB
