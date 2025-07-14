@@ -1649,13 +1649,7 @@ async def test_real_quality_assessment():
             
     else:
         print(f"❌ 평가 실패: {result['error']}")
-    else:
-        print("⚠️ 테스트 이미지 파일들이 없습니다.")
-        print("필요한 파일들:")
-        print(f"  - {fitted_path}")
-        print(f"  - {person_path}")
-        print(f"  - {clothing_path}")
-    
+
     await quality_assessor.cleanup()
 
 
