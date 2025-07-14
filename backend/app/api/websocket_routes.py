@@ -1,813 +1,897 @@
+# app/api/websocket_routes.py
 """
-MyCloset AI Backend - 완전한 WebSocket 라우터 구현
-프론트엔드 usePipeline과 완벽 호환
-실시간 파이프라인 진행 상황 및 시스템 모니터링
+WebSocket API 라우터 - M3 Max 최적화 (최적 생성자 패턴 적용)
+실시간 통신 및 진행 상황 업데이트
 """
 
-import asyncio
 import json
-import logging
 import time
+import logging
+import asyncio
 import uuid
-import traceback
-from typing import Dict, Any, Set, Optional, List, Callable
 from datetime import datetime
+from typing import Dict, Any, Optional, List, Set
+from collections import defaultdict
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse
-import psutil
-import torch
 
-# 프로젝트 내부 import
-try:
-    from app.models.schemas import (
-        ProcessingStep, ProcessingStatusEnum, VirtualTryOnRequest,
-        VirtualTryOnResponse, PipelineProgress, SystemHealth, PerformanceMetrics
-    )
-    from app.core.config import settings
-    from app.ai_pipeline.pipeline_manager import PipelineManager
-except ImportError as e:
-    logging.warning(f"일부 모듈 import 실패: {e}")
+class OptimalRouterConstructor:
+    """최적화된 라우터 생성자 패턴 베이스 클래스"""
+    
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ):
+        # 1. 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+        
+        # 2. 기본 설정
+        self.config = config or {}
+        self.router_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"api.{self.router_name}")
+        
+        # 3. 표준 시스템 파라미터 추출
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        
+        # 4. 상태 초기화
+        self.is_initialized = False
 
-logger = logging.getLogger(__name__)
-router = APIRouter()
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
 
-# ========================
-# 연결 관리자 클래스
-# ========================
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+            else:
+                return 'cpu'
+        except:
+            return 'cpu'
 
-class WebSocketConnectionManager:
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+class ConnectionManager:
     """
-    고급 WebSocket 연결 관리자
-    - 세션별 클라이언트 그룹화
-    - 실시간 진행 상황 브로드캐스트
-    - 연결 상태 모니터링
-    - 자동 재연결 지원
+    🍎 M3 Max 최적화 WebSocket 연결 매니저
+    최적 생성자 패턴 적용
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ):
+        """
+        ✅ 최적 생성자 - 연결 매니저 특화
+
+        Args:
+            device: 사용할 디바이스 (None=자동감지)
+            config: 연결 매니저 설정
+            **kwargs: 확장 파라미터들
+                - max_connections: int = 1000  # 최대 동시 연결 수
+                - heartbeat_interval: float = 30.0  # 하트비트 간격
+                - message_queue_size: int = 100  # 메시지 큐 크기
+                - enable_message_history: bool = True  # 메시지 히스토리
+                - compression_enabled: bool = True  # 압축 활성화
+        """
+        # 기본 설정
+        self.device = device or self._auto_detect_device()
+        self.config = config or {}
+        self.logger = logging.getLogger("websocket.ConnectionManager")
+        
+        # 연결 매니저 특화 설정
+        self.max_connections = kwargs.get('max_connections', 1000)
+        self.heartbeat_interval = kwargs.get('heartbeat_interval', 30.0)
+        self.message_queue_size = kwargs.get('message_queue_size', 100)
+        self.enable_message_history = kwargs.get('enable_message_history', True)
+        self.compression_enabled = kwargs.get('compression_enabled', True)
+        
+        # M3 Max 감지 및 최적화
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        if self.is_m3_max:
+            self.max_connections = 2000  # M3 Max는 더 많은 연결 처리 가능
+            self.heartbeat_interval = 15.0  # 더 빈번한 하트비트
+        
+        # 연결 관리
         self.active_connections: Dict[str, WebSocket] = {}
-        self.session_connections: Dict[str, Set[str]] = {}  # session_id -> client_ids
-        self.client_sessions: Dict[str, str] = {}  # client_id -> session_id
-        self.client_metadata: Dict[str, Dict[str, Any]] = {}  # 클라이언트 메타데이터
-        self.message_history: Dict[str, List[Dict[str, Any]]] = {}  # 메시지 히스토리
+        self.session_connections: Dict[str, Set[str]] = defaultdict(set)
+        self.connection_metadata: Dict[str, Dict[str, Any]] = {}
         
-        # 활성 파이프라인 추적
-        self.active_pipelines: Dict[str, Dict[str, Any]] = {}
+        # 메시지 관리
+        self.message_history: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self.message_queues: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         
-        # 연결 통계
-        self.connection_stats = {
+        # 통계
+        self.stats = {
             "total_connections": 0,
             "current_connections": 0,
-            "total_messages": 0,
-            "start_time": time.time()
-        }
-    
-    async def connect(self, websocket: WebSocket, client_id: Optional[str] = None) -> str:
-        """클라이언트 연결 설정"""
-        await websocket.accept()
-        
-        if not client_id:
-            client_id = str(uuid.uuid4())
-        
-        # 연결 등록
-        self.active_connections[client_id] = websocket
-        self.client_metadata[client_id] = {
-            "connected_at": datetime.now().isoformat(),
-            "last_activity": time.time(),
-            "message_count": 0,
-            "user_agent": "unknown",
-            "ip_address": "unknown"
+            "messages_sent": 0,
+            "messages_received": 0,
+            "disconnections": 0,
+            "errors": 0
         }
         
-        # 통계 업데이트
-        self.connection_stats["total_connections"] += 1
-        self.connection_stats["current_connections"] = len(self.active_connections)
+        # 백그라운드 태스크 관리
+        self._background_tasks: Set[asyncio.Task] = set()
+        self._heartbeat_task: Optional[asyncio.Task] = None
         
-        logger.info(f"✅ WebSocket 클라이언트 연결: {client_id}")
-        
-        # 환영 메시지 전송
-        welcome_message = {
-            "type": "connection_established",
-            "client_id": client_id,
-            "timestamp": time.time(),
-            "server_info": {
-                "api_version": "2.0.0",
-                "pipeline_version": "2.0.0",
-                "supported_features": [
-                    "real_time_progress",
-                    "system_monitoring", 
-                    "session_tracking",
-                    "error_recovery",
-                    "message_history"
-                ],
-                "available_endpoints": [
-                    "/api/ws/pipeline-progress",
-                    "/api/ws/system-monitor",
-                    "/api/ws/test"
-                ]
-            },
-            "message": "MyCloset AI WebSocket 연결이 설정되었습니다."
-        }
-        
-        await self.send_personal_message(welcome_message, client_id)
-        return client_id
-    
-    def disconnect(self, client_id: str):
-        """클라이언트 연결 해제"""
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-        
-        # 세션에서 제거
-        if client_id in self.client_sessions:
-            session_id = self.client_sessions[client_id]
-            if session_id in self.session_connections:
-                self.session_connections[session_id].discard(client_id)
-                if not self.session_connections[session_id]:
-                    del self.session_connections[session_id]
-            del self.client_sessions[client_id]
-        
-        # 메타데이터 정리
-        if client_id in self.client_metadata:
-            del self.client_metadata[client_id]
-        
-        # 통계 업데이트
-        self.connection_stats["current_connections"] = len(self.active_connections)
-        
-        logger.info(f"❌ WebSocket 클라이언트 연결 해제: {client_id}")
-    
-    async def send_personal_message(self, message: Dict[str, Any], client_id: str):
-        """개별 클라이언트에게 메시지 전송"""
-        if client_id not in self.active_connections:
-            logger.warning(f"⚠️ 비활성 클라이언트에게 메시지 시도: {client_id}")
-            return False
-        
+        self.logger.info(f"🔗 WebSocket 연결 매니저 초기화 - {self.device} (M3 Max: {self.is_m3_max})")
+
+    def _auto_detect_device(self) -> str:
+        """디바이스 자동 감지"""
         try:
-            # 메시지에 타임스탬프 추가
-            if "timestamp" not in message:
-                message["timestamp"] = time.time()
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+            else:
+                return 'cpu'
+        except:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    async def connect(self, websocket: WebSocket, connection_id: str, session_id: Optional[str] = None) -> bool:
+        """WebSocket 연결"""
+        try:
+            # 연결 수 제한 확인
+            if len(self.active_connections) >= self.max_connections:
+                await websocket.close(code=1008, reason="Connection limit exceeded")
+                return False
             
-            # 전송
-            await self.active_connections[client_id].send_text(json.dumps(message))
+            # WebSocket 연결 수락
+            await websocket.accept()
             
-            # 통계 및 메타데이터 업데이트
-            self.connection_stats["total_messages"] += 1
-            if client_id in self.client_metadata:
-                self.client_metadata[client_id]["message_count"] += 1
-                self.client_metadata[client_id]["last_activity"] = time.time()
+            # 연결 등록
+            self.active_connections[connection_id] = websocket
             
-            # 메시지 히스토리 저장 (최근 100개만)
-            if client_id not in self.message_history:
-                self.message_history[client_id] = []
+            # 세션 연결 매핑
+            if session_id:
+                self.session_connections[session_id].add(connection_id)
             
-            self.message_history[client_id].append({
-                "timestamp": message.get("timestamp"),
-                "type": message.get("type", "unknown"),
-                "size": len(json.dumps(message))
-            })
+            # 메타데이터 저장
+            self.connection_metadata[connection_id] = {
+                "session_id": session_id,
+                "connected_at": time.time(),
+                "last_ping": time.time(),
+                "message_count": 0,
+                "device": self.device,
+                "m3_max_optimized": self.is_m3_max
+            }
             
-            # 히스토리 크기 제한
-            if len(self.message_history[client_id]) > 100:
-                self.message_history[client_id] = self.message_history[client_id][-100:]
+            # 통계 업데이트
+            self.stats["total_connections"] += 1
+            self.stats["current_connections"] = len(self.active_connections)
             
+            # 환영 메시지 전송
+            await self.send_personal_message({
+                "type": "connection_established",
+                "connection_id": connection_id,
+                "session_id": session_id,
+                "message": "WebSocket 연결이 성공적으로 설정되었습니다",
+                "device": self.device,
+                "m3_max_optimized": self.is_m3_max,
+                "features": {
+                    "realtime_updates": True,
+                    "message_history": self.enable_message_history,
+                    "compression": self.compression_enabled
+                },
+                "timestamp": time.time()
+            }, connection_id)
+            
+            self.logger.info(f"🔗 WebSocket 연결 성공: {connection_id} (세션: {session_id})")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 메시지 전송 실패 to {client_id}: {e}")
-            self.disconnect(client_id)
+            self.logger.error(f"❌ WebSocket 연결 실패: {e}")
+            self.stats["errors"] += 1
             return False
-    
-    async def broadcast_to_session(self, message: Dict[str, Any], session_id: str):
-        """세션별 브로드캐스트"""
-        if session_id not in self.session_connections:
-            logger.warning(f"⚠️ 존재하지 않는 세션: {session_id}")
+
+    async def disconnect(self, connection_id: str):
+        """WebSocket 연결 해제"""
+        try:
+            if connection_id in self.active_connections:
+                # 연결 제거
+                del self.active_connections[connection_id]
+                
+                # 메타데이터에서 세션 ID 확인
+                metadata = self.connection_metadata.get(connection_id, {})
+                session_id = metadata.get("session_id")
+                
+                # 세션 연결에서 제거
+                if session_id and session_id in self.session_connections:
+                    self.session_connections[session_id].discard(connection_id)
+                    if not self.session_connections[session_id]:
+                        del self.session_connections[session_id]
+                
+                # 메타데이터 정리
+                if connection_id in self.connection_metadata:
+                    del self.connection_metadata[connection_id]
+                
+                # 메시지 히스토리 정리 (선택적)
+                if not self.enable_message_history and connection_id in self.message_history:
+                    del self.message_history[connection_id]
+                
+                # 통계 업데이트
+                self.stats["disconnections"] += 1
+                self.stats["current_connections"] = len(self.active_connections)
+                
+                self.logger.info(f"🔌 WebSocket 연결 해제: {connection_id}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ WebSocket 연결 해제 실패: {e}")
+
+    async def send_personal_message(self, message: Dict[str, Any], connection_id: str) -> bool:
+        """개인 메시지 전송"""
+        try:
+            if connection_id not in self.active_connections:
+                return False
+            
+            websocket = self.active_connections[connection_id]
+            
+            # 메시지 전송
+            await websocket.send_text(json.dumps(message))
+            
+            # 통계 및 히스토리 업데이트
+            self.stats["messages_sent"] += 1
+            
+            if connection_id in self.connection_metadata:
+                self.connection_metadata[connection_id]["message_count"] += 1
+            
+            if self.enable_message_history:
+                self.message_history[connection_id].append({
+                    **message,
+                    "sent_at": time.time(),
+                    "type": "outbound"
+                })
+                
+                # 히스토리 크기 제한
+                if len(self.message_history[connection_id]) > self.message_queue_size:
+                    self.message_history[connection_id] = self.message_history[connection_id][-self.message_queue_size:]
+            
+            return True
+            
+        except WebSocketDisconnect:
+            await self.disconnect(connection_id)
+            return False
+        except Exception as e:
+            self.logger.error(f"❌ 개인 메시지 전송 실패: {e}")
+            self.stats["errors"] += 1
+            return False
+
+    async def send_to_session(self, message: Dict[str, Any], session_id: str) -> int:
+        """세션의 모든 연결에 메시지 전송"""
+        try:
+            if session_id not in self.session_connections:
+                return 0
+            
+            success_count = 0
+            failed_connections = []
+            
+            for connection_id in self.session_connections[session_id]:
+                success = await self.send_personal_message(message, connection_id)
+                if success:
+                    success_count += 1
+                else:
+                    failed_connections.append(connection_id)
+            
+            # 실패한 연결들 정리
+            for connection_id in failed_connections:
+                await self.disconnect(connection_id)
+            
+            return success_count
+            
+        except Exception as e:
+            self.logger.error(f"❌ 세션 메시지 전송 실패: {e}")
             return 0
-        
-        success_count = 0
-        failed_clients = []
-        
-        for client_id in list(self.session_connections[session_id]):
-            if await self.send_personal_message(message, client_id):
-                success_count += 1
-            else:
-                failed_clients.append(client_id)
-        
-        # 실패한 클라이언트 정리
-        for client_id in failed_clients:
-            self.disconnect(client_id)
-        
-        logger.debug(f"📡 세션 {session_id} 브로드캐스트: {success_count}명 성공")
-        return success_count
-    
-    async def broadcast_to_all(self, message: Dict[str, Any]):
-        """전체 브로드캐스트"""
-        success_count = 0
-        failed_clients = []
-        
-        for client_id in list(self.active_connections.keys()):
-            if await self.send_personal_message(message, client_id):
-                success_count += 1
-            else:
-                failed_clients.append(client_id)
-        
-        # 실패한 클라이언트 정리
-        for client_id in failed_clients:
-            self.disconnect(client_id)
-        
-        logger.debug(f"📡 전체 브로드캐스트: {success_count}명 성공")
-        return success_count
-    
-    def subscribe_to_session(self, client_id: str, session_id: str):
-        """세션 구독"""
-        if session_id not in self.session_connections:
-            self.session_connections[session_id] = set()
-        
-        # 기존 구독 해제
-        if client_id in self.client_sessions:
-            old_session = self.client_sessions[client_id]
-            if old_session in self.session_connections:
-                self.session_connections[old_session].discard(client_id)
-        
-        # 새 구독 설정
-        self.session_connections[session_id].add(client_id)
-        self.client_sessions[client_id] = session_id
-        
-        logger.info(f"📡 클라이언트 {client_id}가 세션 {session_id}에 구독")
-    
-    def get_connection_stats(self) -> Dict[str, Any]:
-        """연결 통계 조회"""
-        uptime = time.time() - self.connection_stats["start_time"]
-        
-        return {
-            "current_connections": len(self.active_connections),
-            "total_connections": self.connection_stats["total_connections"],
-            "active_sessions": len(self.session_connections),
-            "total_messages": self.connection_stats["total_messages"],
-            "uptime_seconds": uptime,
-            "uptime_formatted": f"{uptime // 3600:.0f}h {(uptime % 3600) // 60:.0f}m {uptime % 60:.0f}s",
-            "session_details": {
-                session_id: len(clients) 
-                for session_id, clients in self.session_connections.items()
-            },
-            "active_pipelines": len(self.active_pipelines)
-        }
 
-# 글로벌 연결 관리자
-manager = WebSocketConnectionManager()
-
-# ========================
-# 진행 상황 콜백 함수들
-# ========================
-
-def create_progress_callback(session_id: str) -> Callable[[Dict[str, Any]], None]:
-    """파이프라인 진행 상황 콜백 생성"""
-    
-    async def progress_callback(progress_data: Dict[str, Any]):
-        """진행 상황 업데이트 브로드캐스트"""
+    async def broadcast(self, message: Dict[str, Any]) -> int:
+        """모든 연결에 브로드캐스트"""
         try:
-            # 진행 상황 메시지 구성
-            message = {
-                "type": "pipeline_progress",
-                "session_id": session_id,
-                "data": progress_data,
-                "timestamp": time.time()
-            }
+            success_count = 0
+            failed_connections = []
             
-            # 세션 구독자들에게 브로드캐스트
-            await manager.broadcast_to_session(message, session_id)
+            for connection_id in list(self.active_connections.keys()):
+                success = await self.send_personal_message(message, connection_id)
+                if success:
+                    success_count += 1
+                else:
+                    failed_connections.append(connection_id)
             
-            logger.debug(f"📊 진행 상황 업데이트: {session_id} - {progress_data.get('current_step', 'unknown')}")
+            # 실패한 연결들 정리
+            for connection_id in failed_connections:
+                await self.disconnect(connection_id)
+            
+            return success_count
             
         except Exception as e:
-            logger.error(f"❌ 진행 상황 콜백 오류: {e}")
-    
-    return progress_callback
+            self.logger.error(f"❌ 브로드캐스트 실패: {e}")
+            return 0
 
-def create_step_callback(session_id: str) -> Callable[[str, Dict[str, Any]], None]:
-    """단계별 진행 상황 콜백 생성"""
-    
-    async def step_callback(step_name: str, step_data: Dict[str, Any]):
-        """단계별 진행 상황 브로드캐스트"""
+    async def broadcast_to_session(self, message: Dict[str, Any], session_id: str) -> int:
+        """세션별 브로드캐스트 (편의 메서드)"""
+        return await self.send_to_session(message, session_id)
+
+    async def receive_message(self, message: str, connection_id: str) -> Dict[str, Any]:
+        """메시지 수신 처리"""
         try:
-            message = {
-                "type": "step_update",
-                "session_id": session_id,
-                "step_name": step_name,
-                "step_data": step_data,
-                "timestamp": time.time()
-            }
+            # JSON 파싱
+            try:
+                data = json.loads(message)
+            except json.JSONDecodeError:
+                return {"type": "error", "message": "Invalid JSON format"}
             
-            await manager.broadcast_to_session(message, session_id)
+            # 통계 업데이트
+            self.stats["messages_received"] += 1
             
-            logger.info(f"🔄 단계 업데이트: {session_id} - {step_name}")
+            # 메시지 히스토리 저장
+            if self.enable_message_history:
+                self.message_history[connection_id].append({
+                    **data,
+                    "received_at": time.time(),
+                    "type": "inbound"
+                })
+            
+            # 메시지 타입별 처리
+            message_type = data.get("type", "unknown")
+            
+            if message_type == "ping":
+                # 하트비트 업데이트
+                if connection_id in self.connection_metadata:
+                    self.connection_metadata[connection_id]["last_ping"] = time.time()
+                
+                return {
+                    "type": "pong",
+                    "timestamp": time.time(),
+                    "connection_id": connection_id
+                }
+            
+            elif message_type == "subscribe":
+                # 세션 구독
+                session_id = data.get("session_id")
+                if session_id:
+                    self.session_connections[session_id].add(connection_id)
+                    if connection_id in self.connection_metadata:
+                        self.connection_metadata[connection_id]["session_id"] = session_id
+                    
+                    return {
+                        "type": "subscribed",
+                        "session_id": session_id,
+                        "message": f"세션 {session_id}에 구독되었습니다"
+                    }
+            
+            elif message_type == "unsubscribe":
+                # 세션 구독 해제
+                session_id = data.get("session_id")
+                if session_id and session_id in self.session_connections:
+                    self.session_connections[session_id].discard(connection_id)
+                    
+                    return {
+                        "type": "unsubscribed",
+                        "session_id": session_id,
+                        "message": f"세션 {session_id}에서 구독 해제되었습니다"
+                    }
+            
+            elif message_type == "get_status":
+                # 연결 상태 조회
+                metadata = self.connection_metadata.get(connection_id, {})
+                return {
+                    "type": "status",
+                    "connection_id": connection_id,
+                    "metadata": metadata,
+                    "stats": self.get_connection_stats(connection_id)
+                }
+            
+            else:
+                return {
+                    "type": "echo",
+                    "original_message": data,
+                    "timestamp": time.time()
+                }
             
         except Exception as e:
-            logger.error(f"❌ 단계 콜백 오류: {e}")
-    
-    return step_callback
-
-# ========================
-# 메시지 핸들러
-# ========================
-
-async def handle_client_message(message: Dict[str, Any], client_id: str):
-    """클라이언트 메시지 처리"""
-    try:
-        message_type = message.get("type", "unknown")
-        
-        if message_type == "ping":
-            await handle_ping(client_id)
-        
-        elif message_type == "subscribe_session":
-            session_id = message.get("session_id")
-            if session_id:
-                manager.subscribe_to_session(client_id, session_id)
-                await manager.send_personal_message({
-                    "type": "subscription_confirmed",
-                    "session_id": session_id
-                }, client_id)
-        
-        elif message_type == "get_stats":
-            stats = manager.get_connection_stats()
-            await manager.send_personal_message({
-                "type": "stats_response",
-                "data": stats
-            }, client_id)
-        
-        elif message_type == "get_system_info":
-            system_info = await get_system_info()
-            await manager.send_personal_message({
-                "type": "system_info_response",
-                "data": system_info
-            }, client_id)
-        
-        else:
-            logger.warning(f"⚠️ 알 수 없는 메시지 타입: {message_type} from {client_id}")
-            await manager.send_personal_message({
+            self.logger.error(f"❌ 메시지 수신 처리 실패: {e}")
+            return {
                 "type": "error",
-                "error": f"Unknown message type: {message_type}"
-            }, client_id)
-            
-    except Exception as e:
-        logger.error(f"❌ 메시지 처리 오류: {e}")
-        await manager.send_personal_message({
-            "type": "error",
-            "error": "Message processing failed"
-        }, client_id)
+                "message": f"메시지 처리 중 오류 발생: {str(e)}"
+            }
 
-async def handle_ping(client_id: str):
-    """Ping 응답"""
-    await manager.send_personal_message({
-        "type": "pong",
-        "timestamp": time.time()
-    }, client_id)
-
-# ========================
-# 시스템 정보 수집
-# ========================
-
-async def get_system_info() -> Dict[str, Any]:
-    """시스템 정보 수집"""
-    try:
-        # CPU 정보
-        cpu_percent = psutil.cpu_percent(interval=1)
-        cpu_count = psutil.cpu_count()
-        
-        # 메모리 정보
-        memory = psutil.virtual_memory()
-        
-        # GPU 정보 (가능한 경우)
-        gpu_info = {}
-        try:
-            if torch.cuda.is_available():
-                gpu_info = {
-                    "available": True,
-                    "device_count": torch.cuda.device_count(),
-                    "current_device": torch.cuda.current_device(),
-                    "device_name": torch.cuda.get_device_name(),
-                    "memory_allocated": torch.cuda.memory_allocated(),
-                    "memory_reserved": torch.cuda.memory_reserved()
-                }
-            elif torch.backends.mps.is_available():
-                gpu_info = {
-                    "available": True,
-                    "type": "MPS (Apple Silicon)",
-                    "device_count": 1
-                }
-            else:
-                gpu_info = {"available": False}
-        except:
-            gpu_info = {"available": False, "error": "GPU info unavailable"}
+    def get_connection_stats(self, connection_id: str) -> Dict[str, Any]:
+        """연결 통계 조회"""
+        metadata = self.connection_metadata.get(connection_id, {})
         
         return {
-            "cpu": {
-                "usage_percent": cpu_percent,
-                "core_count": cpu_count
-            },
-            "memory": {
-                "total": memory.total,
-                "available": memory.available,
-                "used": memory.used,
-                "percent": memory.percent
-            },
-            "gpu": gpu_info,
-            "connections": manager.get_connection_stats(),
-            "timestamp": time.time()
+            "connected_at": metadata.get("connected_at"),
+            "uptime_seconds": time.time() - metadata.get("connected_at", time.time()),
+            "message_count": metadata.get("message_count", 0),
+            "last_ping": metadata.get("last_ping"),
+            "session_id": metadata.get("session_id"),
+            "device": metadata.get("device"),
+            "m3_max_optimized": metadata.get("m3_max_optimized", False)
         }
-        
-    except Exception as e:
-        logger.error(f"❌ 시스템 정보 수집 실패: {e}")
-        return {"error": str(e), "timestamp": time.time()}
 
-# ========================
-# WebSocket 엔드포인트들
-# ========================
-
-@router.websocket("/pipeline-progress")
-async def pipeline_progress_websocket(websocket: WebSocket):
-    """파이프라인 진행 상황 WebSocket"""
-    client_id = None
-    try:
-        client_id = await manager.connect(websocket)
-        
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            await handle_client_message(message, client_id)
-            
-    except WebSocketDisconnect:
-        if client_id:
-            manager.disconnect(client_id)
-        logger.info(f"🔌 파이프라인 WebSocket 연결 해제: {client_id}")
-    except Exception as e:
-        logger.error(f"❌ 파이프라인 WebSocket 오류: {e}")
-        if client_id:
-            manager.disconnect(client_id)
-
-@router.websocket("/system-monitor")
-async def system_monitor_websocket(websocket: WebSocket):
-    """시스템 모니터링 WebSocket"""
-    client_id = None
-    try:
-        client_id = await manager.connect(websocket)
-        
-        # 시스템 정보 주기적 전송 시작
-        asyncio.create_task(send_periodic_system_info(client_id))
-        
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            await handle_client_message(message, client_id)
-            
-    except WebSocketDisconnect:
-        if client_id:
-            manager.disconnect(client_id)
-        logger.info(f"🔌 시스템 모니터 WebSocket 연결 해제: {client_id}")
-    except Exception as e:
-        logger.error(f"❌ 시스템 모니터 WebSocket 오류: {e}")
-        if client_id:
-            manager.disconnect(client_id)
-
-@router.websocket("/test")
-async def test_websocket(websocket: WebSocket):
-    """테스트용 WebSocket"""
-    client_id = None
-    try:
-        client_id = await manager.connect(websocket)
-        
-        # 테스트 메시지 전송
-        await manager.send_personal_message({
-            "type": "test_message",
-            "message": "WebSocket 테스트 연결이 성공했습니다!",
-            "connection_info": manager.get_connection_stats()
-        }, client_id)
-        
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            
-            # 에코 응답
-            echo_response = {
-                "type": "echo_response",
-                "original_message": message,
-                "server_timestamp": time.time()
+    def get_global_stats(self) -> Dict[str, Any]:
+        """전역 통계 조회"""
+        return {
+            **self.stats,
+            "active_sessions": len(self.session_connections),
+            "total_message_history": sum(len(history) for history in self.message_history.values()),
+            "device": self.device,
+            "m3_max_optimized": self.is_m3_max,
+            "connection_manager_features": {
+                "max_connections": self.max_connections,
+                "heartbeat_interval": self.heartbeat_interval,
+                "message_history": self.enable_message_history,
+                "compression": self.compression_enabled
             }
-            await manager.send_personal_message(echo_response, client_id)
-            
-    except WebSocketDisconnect:
-        if client_id:
-            manager.disconnect(client_id)
-        logger.info(f"🔌 테스트 WebSocket 연결 해제: {client_id}")
-    except Exception as e:
-        logger.error(f"❌ 테스트 WebSocket 오류: {e}")
-        if client_id:
-            manager.disconnect(client_id)
+        }
 
-# ========================
-# 백그라운드 태스크
-# ========================
-
-async def send_periodic_system_info(client_id: str, interval: int = 10):
-    """주기적 시스템 정보 전송"""
-    while client_id in manager.active_connections:
+    async def start_background_tasks(self):
+        """백그라운드 태스크 시작"""
         try:
-            system_info = await get_system_info()
-            await manager.send_personal_message({
-                "type": "periodic_system_info",
-                "data": system_info
-            }, client_id)
+            # 하트비트 태스크
+            if not self._heartbeat_task or self._heartbeat_task.done():
+                self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                self._background_tasks.add(self._heartbeat_task)
             
-            await asyncio.sleep(interval)
+            # 정리 태스크
+            cleanup_task = asyncio.create_task(self._cleanup_loop())
+            self._background_tasks.add(cleanup_task)
+            
+            self.logger.info("🔄 WebSocket 백그라운드 태스크 시작됨")
             
         except Exception as e:
-            logger.error(f"❌ 주기적 시스템 정보 전송 실패: {e}")
-            break
+            self.logger.error(f"❌ 백그라운드 태스크 시작 실패: {e}")
 
-async def system_monitor():
-    """전역 시스템 모니터링"""
-    while True:
-        try:
-            # 비활성 연결 정리
-            inactive_clients = []
-            current_time = time.time()
-            
-            for client_id, metadata in manager.client_metadata.items():
-                if current_time - metadata["last_activity"] > 300:  # 5분 이상 비활성
-                    inactive_clients.append(client_id)
-            
-            for client_id in inactive_clients:
-                logger.info(f"🧹 비활성 클라이언트 정리: {client_id}")
-                manager.disconnect(client_id)
-            
-            # 30초마다 체크
-            await asyncio.sleep(30)
-            
-        except Exception as e:
-            logger.error(f"❌ 시스템 모니터링 오류: {e}")
-            await asyncio.sleep(60)
+    async def _heartbeat_loop(self):
+        """하트비트 루프"""
+        while True:
+            try:
+                await asyncio.sleep(self.heartbeat_interval)
+                
+                current_time = time.time()
+                disconnected_connections = []
+                
+                # 비활성 연결 확인
+                for connection_id, metadata in self.connection_metadata.items():
+                    last_ping = metadata.get("last_ping", metadata.get("connected_at", current_time))
+                    
+                    # 하트비트 간격의 3배 이상 응답 없으면 연결 해제
+                    if current_time - last_ping > self.heartbeat_interval * 3:
+                        disconnected_connections.append(connection_id)
+                
+                # 비활성 연결 정리
+                for connection_id in disconnected_connections:
+                    await self.disconnect(connection_id)
+                    self.logger.info(f"⏰ 비활성 연결 정리: {connection_id}")
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"❌ 하트비트 루프 오류: {e}")
 
-# ========================
-# 디버깅 및 관리 엔드포인트
-# ========================
+    async def _cleanup_loop(self):
+        """정리 루프"""
+        while True:
+            try:
+                await asyncio.sleep(300)  # 5분마다 정리
+                
+                # 메시지 히스토리 정리
+                if self.enable_message_history:
+                    current_time = time.time()
+                    
+                    for connection_id in list(self.message_history.keys()):
+                        # 연결이 끊어진 경우의 히스토리 정리
+                        if connection_id not in self.active_connections:
+                            # 1시간 후 히스토리 삭제
+                            metadata = self.connection_metadata.get(connection_id)
+                            if metadata:
+                                disconnect_time = metadata.get("disconnected_at", current_time)
+                                if current_time - disconnect_time > 3600:
+                                    del self.message_history[connection_id]
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"❌ 정리 루프 오류: {e}")
 
-@router.get("/debug")
-async def websocket_debug():
-    """WebSocket 디버깅 페이지"""
-    return HTMLResponse(content="""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>MyCloset AI WebSocket Debug</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .panel { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .status { display: inline-block; padding: 4px 8px; border-radius: 4px; color: white; font-weight: bold; }
-        .connected { background: #4CAF50; }
-        .disconnected { background: #f44336; }
-        button { background: #2196F3; color: white; border: none; padding: 10px 20px; margin: 5px; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #1976D2; }
-        textarea { width: 100%; height: 300px; font-family: monospace; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .endpoint { background: #e3f2fd; padding: 10px; margin: 5px 0; border-radius: 4px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🔍 MyCloset AI WebSocket 디버깅 도구</h1>
+class WebSocketRouter(OptimalRouterConstructor):
+    """
+    🍎 M3 Max 최적화 WebSocket 라우터
+    최적 생성자 패턴 적용
+    """
+    
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ):
+        """
+        ✅ 최적 생성자 - WebSocket 라우터 특화
+
+        Args:
+            device: 사용할 디바이스 (None=자동감지)
+            config: WebSocket 라우터 설정
+            **kwargs: 확장 파라미터들
+        """
+        super().__init__(device=device, config=config, **kwargs)
         
-        <div class="panel">
-            <h2>연결 상태</h2>
-            <div>
-                <span>파이프라인 진행 상황: </span>
-                <span id="status-pipeline" class="status disconnected">연결 해제됨</span>
-            </div>
-            <div>
-                <span>시스템 모니터: </span>
-                <span id="status-system" class="status disconnected">연결 해제됨</span>
-            </div>
-            <div>
-                <span>테스트: </span>
-                <span id="status-test" class="status disconnected">연결 해제됨</span>
-            </div>
-        </div>
+        # 연결 매니저 생성
+        self.manager = ConnectionManager(
+            device=self.device,
+            config=self.config.get('connection_manager', {}),
+            **kwargs
+        )
         
-        <div class="panel">
-            <h2>사용 가능한 엔드포인트</h2>
-            <div class="endpoint">
-                <strong>파이프라인 진행 상황:</strong> ws://localhost:8000/api/ws/pipeline-progress
-            </div>
-            <div class="endpoint">
-                <strong>시스템 모니터:</strong> ws://localhost:8000/api/ws/system-monitor
-            </div>
-            <div class="endpoint">
-                <strong>테스트:</strong> ws://localhost:8000/api/ws/test
-            </div>
-        </div>
+        # FastAPI 라우터 생성
+        self.router = APIRouter()
+        self._setup_routes()
         
-        <div class="grid">
-            <div class="panel">
-                <h2>연결 관리</h2>
-                <button onclick="connectAll()">모든 연결 시작</button>
-                <button onclick="disconnectAll()">모든 연결 해제</button>
-                <button onclick="sendTestMessage()">테스트 메시지 전송</button>
-                <button onclick="clearMessages()">메시지 지우기</button>
-                <button onclick="exportLogs()">로그 내보내기</button>
-            </div>
+        self.logger.info(f"🔗 WebSocket 라우터 초기화 - {self.device}")
+        
+        # 초기화 완료
+        self.is_initialized = True
+
+    def _setup_routes(self):
+        """라우터 엔드포인트 설정"""
+        
+        @self.router.websocket("/pipeline-progress")
+        async def websocket_pipeline_progress(websocket: WebSocket):
+            """파이프라인 진행 상황 WebSocket"""
+            connection_id = f"pipeline_{uuid.uuid4().hex[:8]}"
             
-            <div class="panel">
-                <h2>시뮬레이션</h2>
-                <button onclick="simulatePipelineProgress()">파이프라인 진행 시뮬레이션</button>
-                <button onclick="subscribeToSession()">세션 구독 (test-session)</button>
-                <button onclick="getStats()">연결 통계 요청</button>
-                <button onclick="getSystemInfo()">시스템 정보 요청</button>
-            </div>
-        </div>
+            if await self.manager.connect(websocket, connection_id):
+                try:
+                    while True:
+                        data = await websocket.receive_text()
+                        response = await self.manager.receive_message(data, connection_id)
+                        await self.manager.send_personal_message(response, connection_id)
+                        
+                except WebSocketDisconnect:
+                    await self.manager.disconnect(connection_id)
         
-        <div class="panel">
-            <h2>실시간 메시지</h2>
-            <textarea id="messages" readonly placeholder="WebSocket 메시지가 여기에 표시됩니다..."></textarea>
-        </div>
-    </div>
-
-    <script>
-        let ws_pipeline = null;
-        let ws_system = null;
-        let ws_test = null;
-        let messageLog = [];
+        @self.router.websocket("/system-monitor")
+        async def websocket_system_monitor(websocket: WebSocket):
+            """시스템 모니터링 WebSocket"""
+            connection_id = f"monitor_{uuid.uuid4().hex[:8]}"
+            
+            if await self.manager.connect(websocket, connection_id):
+                try:
+                    # 주기적으로 시스템 상태 전송
+                    while True:
+                        system_stats = self.manager.get_global_stats()
+                        await self.manager.send_personal_message({
+                            "type": "system_stats",
+                            "data": system_stats,
+                            "timestamp": time.time()
+                        }, connection_id)
+                        
+                        await asyncio.sleep(5)  # 5초마다 업데이트
+                        
+                except WebSocketDisconnect:
+                    await self.manager.disconnect(connection_id)
         
-        function updateStatus(endpoint, connected) {
-            const element = document.getElementById(`status-${endpoint}`);
-            if (connected) {
-                element.textContent = '연결됨';
-                element.className = 'status connected';
-            } else {
-                element.textContent = '연결 해제됨';
-                element.className = 'status disconnected';
+        @self.router.websocket("/test")
+        async def websocket_test(websocket: WebSocket):
+            """WebSocket 테스트 엔드포인트"""
+            connection_id = f"test_{uuid.uuid4().hex[:8]}"
+            
+            if await self.manager.connect(websocket, connection_id):
+                try:
+                    while True:
+                        data = await websocket.receive_text()
+                        
+                        # 에코 응답
+                        response = {
+                            "type": "test_echo",
+                            "original_data": data,
+                            "connection_id": connection_id,
+                            "timestamp": time.time(),
+                            "device": self.device,
+                            "m3_max_optimized": self.is_m3_max
+                        }
+                        
+                        await self.manager.send_personal_message(response, connection_id)
+                        
+                except WebSocketDisconnect:
+                    await self.manager.disconnect(connection_id)
+        
+        @self.router.get("/debug")
+        async def websocket_debug_page():
+            """WebSocket 디버깅 페이지"""
+            return HTMLResponse(content=self._get_debug_html())
+        
+        @self.router.get("/stats")
+        async def get_websocket_stats():
+            """WebSocket 통계"""
+            return {
+                "success": True,
+                "stats": self.manager.get_global_stats(),
+                "timestamp": datetime.now().isoformat()
             }
-        }
         
-        function logMessage(endpoint, message) {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = `[${timestamp}] [${endpoint}] ${JSON.stringify(message, null, 2)}`;
-            messageLog.push(logEntry);
-            
-            const textarea = document.getElementById('messages');
-            textarea.value += logEntry + '\\n\\n';
-            textarea.scrollTop = textarea.scrollHeight;
-        }
-        
-        function connectPipeline() {
-            ws_pipeline = new WebSocket('ws://localhost:8000/api/ws/pipeline-progress');
-            
-            ws_pipeline.onopen = () => {
-                updateStatus('pipeline', true);
-                logMessage('PIPELINE', {type: 'connection_opened'});
-            };
-            
-            ws_pipeline.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                logMessage('PIPELINE', message);
-            };
-            
-            ws_pipeline.onclose = () => {
-                updateStatus('pipeline', false);
-                logMessage('PIPELINE', {type: 'connection_closed'});
-            };
-            
-            ws_pipeline.onerror = (error) => {
-                logMessage('PIPELINE', {type: 'error', error: error});
-            };
-        }
-        
-        function connectSystem() {
-            ws_system = new WebSocket('ws://localhost:8000/api/ws/system-monitor');
-            
-            ws_system.onopen = () => {
-                updateStatus('system', true);
-                logMessage('SYSTEM', {type: 'connection_opened'});
-            };
-            
-            ws_system.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                logMessage('SYSTEM', message);
-            };
-            
-            ws_system.onclose = () => {
-                updateStatus('system', false);
-                logMessage('SYSTEM', {type: 'connection_closed'});
-            };
-        }
-        
-        function connectTest() {
-            ws_test = new WebSocket('ws://localhost:8000/api/ws/test');
-            
-            ws_test.onopen = () => {
-                updateStatus('test', true);
-                logMessage('TEST', {type: 'connection_opened'});
-            };
-            
-            ws_test.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                logMessage('TEST', message);
-            };
-            
-            ws_test.onclose = () => {
-                updateStatus('test', false);
-                logMessage('TEST', {type: 'connection_closed'});
-            };
-        }
-        
-        function connectAll() {
-            connectPipeline();
-            connectSystem();
-            connectTest();
-        }
-        
-        function disconnectAll() {
-            if (ws_pipeline) ws_pipeline.close();
-            if (ws_system) ws_system.close();
-            if (ws_test) ws_test.close();
-        }
-        
-        function sendTestMessage() {
-            if (ws_test && ws_test.readyState === WebSocket.OPEN) {
-                const message = {
-                    type: 'test',
-                    data: 'Hello from debug client!',
-                    timestamp: Date.now()
-                };
-                ws_test.send(JSON.stringify(message));
-                logMessage('TEST', {type: 'sent', message: message});
-            }
-        }
-        
-        function subscribeToSession() {
-            if (ws_pipeline && ws_pipeline.readyState === WebSocket.OPEN) {
-                const message = {
-                    type: 'subscribe_session',
-                    session_id: 'test-session'
-                };
-                ws_pipeline.send(JSON.stringify(message));
-                logMessage('PIPELINE', {type: 'sent', message: message});
-            }
-        }
-        
-        function getStats() {
-            if (ws_pipeline && ws_pipeline.readyState === WebSocket.OPEN) {
-                const message = {type: 'get_stats'};
-                ws_pipeline.send(JSON.stringify(message));
-                logMessage('PIPELINE', {type: 'sent', message: message});
-            }
-        }
-        
-        function getSystemInfo() {
-            if (ws_system && ws_system.readyState === WebSocket.OPEN) {
-                const message = {type: 'get_system_info'};
-                ws_system.send(JSON.stringify(message));
-                logMessage('SYSTEM', {type: 'sent', message: message});
-            }
-        }
-        
-        function clearMessages() {
-            document.getElementById('messages').value = '';
-            messageLog = [];
-        }
-        
-        function exportLogs() {
-            const logs = messageLog.join('\\n');
-            const blob = new Blob([logs], {type: 'text/plain'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `websocket_debug_logs_${new Date().getTime()}.txt`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        // 자동 연결
-        setTimeout(connectAll, 1000);
-    </script>
-</body>
-</html>
-    """)
+        @self.router.post("/broadcast")
+        async def broadcast_message(message: Dict[str, Any]):
+            """브로드캐스트 메시지 전송"""
+            try:
+                sent_count = await self.manager.broadcast(message)
+                return {
+                    "success": True,
+                    "message": "브로드캐스트 완료",
+                    "sent_to": sent_count,
+                    "timestamp": datetime.now().isoformat()
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
 
-# ========================
-# 백그라운드 태스크 시작
-# ========================
+    def _get_debug_html(self) -> str:
+        """WebSocket 디버깅 HTML 페이지"""
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>WebSocket Debug - M3 Max Optimized</title>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; }}
+                .container {{ max-width: 1200px; margin: 0 auto; }}
+                .section {{ margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }}
+                .status {{ padding: 10px; margin: 10px 0; border-radius: 4px; }}
+                .connected {{ background: #d4edda; color: #155724; }}
+                .disconnected {{ background: #f8d7da; color: #721c24; }}
+                button {{ padding: 8px 16px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; }}
+                .btn-primary {{ background: #007bff; color: white; }}
+                .btn-success {{ background: #28a745; color: white; }}
+                .btn-danger {{ background: #dc3545; color: white; }}
+                textarea {{ width: 100%; height: 100px; margin: 10px 0; }}
+                .log {{ background: #f8f9fa; padding: 10px; height: 200px; overflow-y: scroll; font-family: monospace; }}
+                .m3-badge {{ background: linear-gradient(45deg, #ff6b6b, #ffa726); padding: 3px 10px; border-radius: 15px; color: white; font-size: 0.8em; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>
+                    🔗 WebSocket Debug Console
+                    {'<span class="m3-badge">🍎 M3 Max Optimized</span>' if self.is_m3_max else ''}
+                </h1>
+                
+                <div class="section">
+                    <h3>연결 상태</h3>
+                    <div id="connectionStatus" class="status disconnected">연결되지 않음</div>
+                    <button class="btn-primary" onclick="connectWebSocket()">연결</button>
+                    <button class="btn-danger" onclick="disconnectWebSocket()">연결 해제</button>
+                </div>
+                
+                <div class="section">
+                    <h3>메시지 전송</h3>
+                    <textarea id="messageInput" placeholder='{{\"type\": \"test\", \"message\": \"Hello WebSocket!\"}}'></textarea>
+                    <br>
+                    <button class="btn-success" onclick="sendMessage()">메시지 전송</button>
+                    <button class="btn-primary" onclick="sendPing()">Ping</button>
+                    <button class="btn-primary" onclick="getStatus()">상태 조회</button>
+                </div>
+                
+                <div class="section">
+                    <h3>메시지 로그</h3>
+                    <div id="messageLog" class="log"></div>
+                    <button class="btn-danger" onclick="clearLog()">로그 지우기</button>
+                </div>
+                
+                <div class="section">
+                    <h3>시스템 정보</h3>
+                    <p><strong>디바이스:</strong> {self.device}</p>
+                    <p><strong>M3 Max 최적화:</strong> {'✅ 활성화' if self.is_m3_max else '❌ 비활성화'}</p>
+                    <p><strong>현재 시간:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                </div>
+            </div>
+            
+            <script>
+                let ws = null;
+                let connectionId = null;
+                
+                function addLog(message, type = 'info') {{
+                    const log = document.getElementById('messageLog');
+                    const timestamp = new Date().toLocaleTimeString();
+                    const logEntry = document.createElement('div');
+                    logEntry.innerHTML = `[${{timestamp}}] [${{type.toUpperCase()}}] ${{message}}`;
+                    log.appendChild(logEntry);
+                    log.scrollTop = log.scrollHeight;
+                }}
+                
+                function updateStatus(connected) {{
+                    const status = document.getElementById('connectionStatus');
+                    if (connected) {{
+                        status.className = 'status connected';
+                        status.textContent = '연결됨 (Connection ID: ' + connectionId + ')';
+                    }} else {{
+                        status.className = 'status disconnected';
+                        status.textContent = '연결되지 않음';
+                        connectionId = null;
+                    }}
+                }}
+                
+                function connectWebSocket() {{
+                    if (ws && ws.readyState === WebSocket.OPEN) {{
+                        addLog('이미 연결되어 있습니다', 'warn');
+                        return;
+                    }}
+                    
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${{protocol}}//${{window.location.host}}/api/ws/test`;
+                    
+                    ws = new WebSocket(wsUrl);
+                    
+                    ws.onopen = function(event) {{
+                        addLog('WebSocket 연결 성공', 'success');
+                        updateStatus(true);
+                    }};
+                    
+                    ws.onmessage = function(event) {{
+                        try {{
+                            const data = JSON.parse(event.data);
+                            if (data.type === 'connection_established') {{
+                                connectionId = data.connection_id;
+                                updateStatus(true);
+                            }}
+                            addLog('수신: ' + JSON.stringify(data, null, 2), 'receive');
+                        }} catch (e) {{
+                            addLog('수신 (원시): ' + event.data, 'receive');
+                        }}
+                    }};
+                    
+                    ws.onclose = function(event) {{
+                        addLog('WebSocket 연결 종료 (코드: ' + event.code + ')', 'warn');
+                        updateStatus(false);
+                    }};
+                    
+                    ws.onerror = function(error) {{
+                        addLog('WebSocket 오류: ' + error, 'error');
+                    }};
+                }}
+                
+                function disconnectWebSocket() {{
+                    if (ws) {{
+                        ws.close();
+                        addLog('연결 해제 요청', 'info');
+                    }}
+                }}
+                
+                function sendMessage() {{
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {{
+                        addLog('WebSocket이 연결되지 않음', 'error');
+                        return;
+                    }}
+                    
+                    const input = document.getElementById('messageInput');
+                    const message = input.value.trim();
+                    
+                    if (!message) {{
+                        addLog('메시지가 비어있습니다', 'warn');
+                        return;
+                    }}
+                    
+                    try {{
+                        JSON.parse(message); // JSON 유효성 검사
+                        ws.send(message);
+                        addLog('전송: ' + message, 'send');
+                    }} catch (e) {{
+                        addLog('잘못된 JSON 형식: ' + e.message, 'error');
+                    }}
+                }}
+                
+                function sendPing() {{
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {{
+                        addLog('WebSocket이 연결되지 않음', 'error');
+                        return;
+                    }}
+                    
+                    const pingMessage = {{
+                        type: 'ping',
+                        timestamp: Date.now()
+                    }};
+                    
+                    ws.send(JSON.stringify(pingMessage));
+                    addLog('Ping 전송', 'send');
+                }}
+                
+                function getStatus() {{
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {{
+                        addLog('WebSocket이 연결되지 않음', 'error');
+                        return;
+                    }}
+                    
+                    const statusMessage = {{
+                        type: 'get_status'
+                    }};
+                    
+                    ws.send(JSON.stringify(statusMessage));
+                    addLog('상태 조회 요청', 'send');
+                }}
+                
+                function clearLog() {{
+                    document.getElementById('messageLog').innerHTML = '';
+                }}
+                
+                // 페이지 로드 시 자동 연결
+                window.onload = function() {{
+                    addLog('WebSocket 디버그 콘솔 시작', 'info');
+                }};
+            </script>
+        </body>
+        </html>
+        """
 
+# WebSocket 라우터 인스턴스 생성 (최적 생성자 패턴)
+websocket_router = WebSocketRouter()
+router = websocket_router.router
+manager = websocket_router.manager
+
+# 백그라운드 태스크 시작 함수
 async def start_background_tasks():
-    """백그라운드 태스크 시작"""
-    asyncio.create_task(system_monitor())
-    logger.info("✅ WebSocket 백그라운드 태스크 시작됨")
+    """WebSocket 백그라운드 태스크 시작"""
+    await manager.start_background_tasks()
 
-# ========================
-# 모듈 exports
-# ========================
+# 편의 함수들 (하위 호환성)
+def create_websocket_router(
+    device: Optional[str] = None,
+    max_connections: int = 1000,
+    **kwargs
+) -> WebSocketRouter:
+    """WebSocket 라우터 생성 (하위 호환)"""
+    return WebSocketRouter(
+        device=device,
+        max_connections=max_connections,
+        **kwargs
+    )
 
+# 모듈 익스포트
 __all__ = [
-    'router', 
-    'manager', 
-    'create_progress_callback', 
-    'create_step_callback',
+    'router',
+    'manager',
+    'WebSocketRouter',
+    'ConnectionManager',
+    'OptimalRouterConstructor',
+    'create_websocket_router',
     'start_background_tasks'
 ]

@@ -1,4 +1,4 @@
-# backend/app/core/model_paths.py
+# app/core/model_paths.py
 """
 AI 모델 경로 설정 - 자동 생성됨
 기존 다운로드된 모델들의 실제 경로 매핑
@@ -10,164 +10,142 @@ from typing import Dict, Optional, List
 # 기본 경로
 AI_MODELS_ROOT = Path(__file__).parent.parent.parent / "ai_models"
 
-# 발견된 모델 경로 매핑
-DETECTED_MODELS = {
+# 스캔된 모델 정보
+SCANNED_MODELS = {
     "ootdiffusion": {
-        "name": "OOTDiffusion (Hugging Face)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/ootdiffusion_hf"),
-        "type": "virtual_tryon",
-        "ready": True,
+        "name": "OOTDiffusion",
+        "type": "diffusion",
+        "step": "step_06_virtual_fitting",
+        "path": AI_MODELS_ROOT / "OOTDiffusion",
+        "ready": False,
+        "size_mb": 51.8,
         "priority": 1
-    },
-    "ootdiffusion_additional": {
-        "name": "OOTDiffusion (Checkpoints)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion"),
-        "type": "virtual_tryon_additional",
-        "ready": True,
-        "priority": 2
-    },
-    "stable_diffusion": {
-        "name": "Stable Diffusion v1.5",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/stable-diffusion-v1-5"),
-        "type": "base_diffusion",
-        "ready": True,
-        "priority": 2
-    },
-    "sam": {
-        "name": "Segment Anything (SAM)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/sam"),
-        "type": "segmentation",
-        "ready": True,
-        "priority": 3
-    },
-    "graphonomy": {
-        "name": "Graphonomy (Human Parsing)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/Graphonomy"),
-        "type": "human_parsing",
-        "ready": True,
-        "priority": 4
-    },
-    "schp": {
-        "name": "Self-Correction Human Parsing",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/Self-Correction-Human-Parsing"),
-        "type": "human_parsing",
-        "ready": True,
-        "priority": 4
-    },
-    "openpose": {
-        "name": "OpenPose",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/openpose"),
-        "type": "pose_estimation",
-        "ready": True,
-        "priority": 4
-    },
-    "clip": {
-        "name": "CLIP ViT-Large",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip-vit-large-patch14"),
-        "type": "vision_language",
-        "ready": True,
-        "priority": 5
-    },
-    "viton_gen": {
-        "name": "VITON-HD Generator",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/gen.pth"),
-        "type": "virtual_tryon",
-        "ready": True,
-        "priority": 6
-    },
-    "resnet50": {
-        "name": "ResNet50 Features",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/resnet50_features.pth"),
-        "type": "feature_extractor",
-        "ready": True,
-        "priority": 7
     },
     "hr_viton": {
         "name": "HR-VITON",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/HR-VITON"),
         "type": "virtual_tryon",
-        "ready": True,
-        "priority": 8
+        "step": "step_05_cloth_warping",
+        "path": AI_MODELS_ROOT / "HR-VITON",
+        "ready": False,
+        "size_mb": 17.4,
+        "priority": 2
     },
-    "viton_hd": {
-        "name": "VITON-HD",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/VITON-HD"),
-        "type": "virtual_tryon",
+    "graphonomy": {
+        "name": "Graphonomy",
+        "type": "human_parsing",
+        "step": "step_01_human_parsing",
+        "path": AI_MODELS_ROOT / "Graphonomy",
+        "ready": False,
+        "size_mb": 0.9,
+        "priority": 3
+    },
+    "openpose": {
+        "name": "OpenPose",
+        "type": "pose_estimation",
+        "step": "step_02_pose_estimation",
+        "path": AI_MODELS_ROOT / "openpose",
         "ready": True,
-        "priority": 8
-    }
+        "size_mb": 148.9,
+        "priority": 4
+    },
+    "detectron2": {
+        "name": "Detectron2",
+        "type": "detection_segmentation",
+        "step": "auxiliary",
+        "path": AI_MODELS_ROOT / "detectron2",
+        "ready": False,
+        "size_mb": 11.0,
+        "priority": 5
+    },
+    "self_correction_parsing": {
+        "name": "Self-Correction Human Parsing",
+        "type": "human_parsing",
+        "step": "step_01_human_parsing",
+        "path": AI_MODELS_ROOT / "Self-Correction-Human-Parsing",
+        "ready": False,
+        "size_mb": 11.3,
+        "priority": 6
+    },
+    "checkpoints": {
+        "name": "Additional Checkpoints",
+        "type": "mixed",
+        "step": "auxiliary",
+        "path": AI_MODELS_ROOT / "checkpoints",
+        "ready": True,
+        "size_mb": 80363.6,
+        "priority": 7
+    },
 }
 
-# 타입별 모델 그룹핑
-def get_models_by_type(model_type: str) -> List[str]:
-    """타입별 모델 목록 반환"""
-    return [key for key, info in DETECTED_MODELS.items() 
-            if info["type"] == model_type and info["ready"]]
+# 단계별 모델 매핑
+STEP_TO_MODELS = {
+    "step_01_human_parsing": ["graphonomy", "self_correction_parsing"],
+    "step_02_pose_estimation": ["openpose"],
+    "step_03_cloth_segmentation": [],  # U2Net 등 추가 필요
+    "step_04_geometric_matching": [],  # HR-VITON GMM
+    "step_05_cloth_warping": ["hr_viton"],  # HR-VITON TOM
+    "step_06_virtual_fitting": ["ootdiffusion", "hr_viton"],
+    "step_07_post_processing": [],
+    "step_08_quality_assessment": []
+}
 
-def get_virtual_tryon_models() -> List[str]:
-    """가상 피팅 모델 목록"""
-    return get_models_by_type("virtual_tryon")
+def get_model_path(model_key: str) -> Optional[Path]:
+    """모델 경로 반환"""
+    if model_key in SCANNED_MODELS:
+        return SCANNED_MODELS[model_key]["path"]
+    return None
 
-def get_primary_ootd_path() -> Path:
-    """메인 OOTDiffusion 경로 반환"""
-    if "ootdiffusion" in DETECTED_MODELS:
-        return DETECTED_MODELS["ootdiffusion"]["path"]
-    raise FileNotFoundError("OOTDiffusion 모델을 찾을 수 없습니다")
-
-def get_stable_diffusion_path() -> Path:
-    """Stable Diffusion 경로 반환"""
-    if "stable_diffusion" in DETECTED_MODELS:
-        return DETECTED_MODELS["stable_diffusion"]["path"]
-    raise FileNotFoundError("Stable Diffusion 모델을 찾을 수 없습니다")
-
-def get_sam_path(model_size: str = "vit_h") -> Path:
-    """SAM 모델 경로 반환"""
-    if "sam" in DETECTED_MODELS:
-        base_path = DETECTED_MODELS["sam"]["path"]
-        if model_size == "vit_h":
-            return Path(base_path) / "sam_vit_h_4b8939.pth"
-        elif model_size == "vit_b":
-            return Path(base_path) / "sam_vit_b_01ec64.pth"
-    raise FileNotFoundError(f"SAM {model_size} 모델을 찾을 수 없습니다")
-
-def is_model_available(model_key: str) -> bool:
+def is_model_ready(model_key: str) -> bool:
     """모델 사용 가능 여부 확인"""
-    if model_key in DETECTED_MODELS:
-        model_path = DETECTED_MODELS[model_key]["path"]
-        return Path(model_path).exists()
+    if model_key in SCANNED_MODELS:
+        model_info = SCANNED_MODELS[model_key]
+        return model_info["ready"] and model_info["path"].exists()
     return False
 
-def get_all_available_models() -> List[str]:
-    """사용 가능한 모든 모델 목록"""
-    available = []
-    for key, info in DETECTED_MODELS.items():
-        if info["ready"] and Path(info["path"]).exists():
-            available.append(key)
-    return sorted(available, key=lambda x: DETECTED_MODELS[x]["priority"])
+def get_ready_models() -> List[str]:
+    """사용 가능한 모델 목록"""
+    return [key for key, info in SCANNED_MODELS.items() if info["ready"]]
+
+def get_models_for_step(step: str) -> List[str]:
+    """특정 단계에 사용 가능한 모델들"""
+    available_models = []
+    for model_key in STEP_TO_MODELS.get(step, []):
+        if is_model_ready(model_key):
+            available_models.append(model_key)
+    return available_models
+
+def get_primary_model_for_step(step: str) -> Optional[str]:
+    """단계별 주요 모델 반환 (우선순위 기준)"""
+    models = get_models_for_step(step)
+    if not models:
+        return None
+    
+    # 우선순위로 정렬
+    models_with_priority = [(model, SCANNED_MODELS[model]["priority"]) for model in models]
+    models_with_priority.sort(key=lambda x: x[1])
+    
+    return models_with_priority[0][0] if models_with_priority else None
+
+def get_ootdiffusion_path() -> Optional[Path]:
+    """OOTDiffusion 경로 반환"""
+    return get_model_path("ootdiffusion")
+
+def get_hr_viton_path() -> Optional[Path]:
+    """HR-VITON 경로 반환"""
+    return get_model_path("hr_viton")
+
+def get_graphonomy_path() -> Optional[Path]:
+    """Graphonomy 경로 반환"""
+    return get_model_path("graphonomy")
+
+def get_openpose_path() -> Optional[Path]:
+    """OpenPose 경로 반환"""
+    return get_model_path("openpose")
 
 def get_model_info(model_key: str) -> Optional[Dict]:
-    """모델 정보 반환"""
-    return DETECTED_MODELS.get(model_key)
+    """모델 상세 정보 반환"""
+    return SCANNED_MODELS.get(model_key)
 
-# 빠른 경로 접근
-class ModelPaths:
-    """모델 경로 빠른 접근 클래스"""
-    
-    @property
-    def ootd_hf(self) -> Path:
-        return get_primary_ootd_path()
-    
-    @property
-    def stable_diffusion(self) -> Path:
-        return get_stable_diffusion_path()
-    
-    @property
-    def sam_large(self) -> Path:
-        return get_sam_path("vit_h")
-    
-    @property
-    def sam_base(self) -> Path:
-        return get_sam_path("vit_b")
-
-# 전역 인스턴스
-model_paths = ModelPaths()
+def list_all_models() -> Dict[str, Dict]:
+    """모든 모델 정보 반환"""
+    return SCANNED_MODELS.copy()
