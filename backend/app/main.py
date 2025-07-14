@@ -1,848 +1,1114 @@
-#!/usr/bin/env python3
+# app/main.py
 """
-MyCloset AI Backend - 완전 수정 버전
-루트 엔드포인트 추가 + Import 오류 해결
+MyCloset AI Backend - 완전한 메인 애플리케이션
+M3 Max 128GB 최적화, 안정적인 import 처리, 프로덕션 레벨 구현
 """
-import os
+
 import sys
-import asyncio
+import os
 import logging
-import traceback
-import uuid
-import json
 import time
-import base64
+import asyncio
+import traceback
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Union
-from io import BytesIO
+from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
-# 프로젝트 루트 설정
-current_file = Path(__file__).resolve()
-backend_dir = current_file.parent.parent
-project_root = backend_dir.parent
-
-# Python 경로에 추가
-sys.path.insert(0, str(backend_dir))
+# Python 경로 설정
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+sys.path.insert(0, str(current_dir))
 sys.path.insert(0, str(project_root))
 
-print(f"🐍 Python 경로 설정:")
-print(f"  - Backend: {backend_dir}")
+print("🐍 Python 경로 설정:")
+print(f"  - App Dir: {current_dir}")
 print(f"  - Project Root: {project_root}")
 
-# FastAPI 관련
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
-from fastapi.websockets import WebSocketState
-from pydantic import BaseModel, Field
+# FastAPI imports
+try:
+    from fastapi import FastAPI, HTTPException, Request, Depends
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import JSONResponse, HTMLResponse
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from pydantic import BaseModel
+except ImportError as e:
+    print(f"❌ FastAPI import 실패: {e}")
+    sys.exit(1)
 
-# 이미지 처리
-import numpy as np
-import cv2
-from PIL import Image, ImageDraw, ImageFont
+# 로깅 설정
+def setup_logging():
+    """로깅 시스템 초기화"""
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+    
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    
+    # 파일 핸들러
+    file_handler = logging.FileHandler(
+        log_dir / f"mycloset-ai-{datetime.now().strftime('%Y%m%d')}.log",
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(logging.Formatter(log_format))
+    
+    # 콘솔 핸들러
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(log_format))
+    
+    # 루트 로거 설정
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    return logging.getLogger(__name__)
+
+# 로깅 초기화
+logger = setup_logging()
 
 # ============================================
-# 수정된 Import 경로 - 지연 로딩 방식
+# 안전한 컴포넌트 Import 시스템
 # ============================================
 
-AI_PIPELINE_AVAILABLE = False
-STEP_CLASSES = {}
-
-# 로깅 먼저 설정
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-try:
-    # 지연 로딩으로 step 클래스들 가져오기
-    from app.ai_pipeline.steps import get_all_steps
-    STEP_CLASSES = get_all_steps()
+class ComponentImporter:
+    """안전한 컴포넌트 import 매니저"""
     
-    if STEP_CLASSES:
-        AI_PIPELINE_AVAILABLE = True
-        logger.info("✅ AI 파이프라인 모듈 로드 성공")
-        logger.info(f"📊 로드된 Step 클래스: {list(STEP_CLASSES.keys())}")
-    else:
-        raise ImportError("Step 클래스들을 로드할 수 없습니다")
+    def __init__(self):
+        self.components = {}
+        self.import_errors = []
+        self.fallback_mode = False
     
-except ImportError as e:
-    AI_PIPELINE_AVAILABLE = False
-    logger.error(f"❌ AI 파이프라인 모듈 로드 실패: {e}")
-    logger.error("데모 모드로 전환됩니다.")
-    
-    # 폴백 클래스들 정의
-    class DemoStep:
-        def __init__(self, device='cpu', config=None):
-            self.device = device
-            self.config = config or {}
-            self.is_initialized = False
-        
-        async def initialize(self):
-            await asyncio.sleep(0.1)
-            self.is_initialized = True
-            return True
-        
-        async def process(self, *args, **kwargs):
-            await asyncio.sleep(0.3)
-            return {
-                'success': True,
-                'confidence': 0.75,
-                'processing_time': 0.3,
-                'demo_mode': True
-            }
-        
-        async def cleanup(self):
-            pass
-    
-    # 폴백 클래스들
-    STEP_CLASSES = {
-        'HumanParsingStep': DemoStep,
-        'PoseEstimationStep': DemoStep,
-        'ClothSegmentationStep': DemoStep,
-        'GeometricMatchingStep': DemoStep,
-        'ClothWarpingStep': DemoStep,
-        'VirtualFittingStep': DemoStep,
-        'PostProcessingStep': DemoStep,
-        'QualityAssessmentStep': DemoStep
-    }
-
-# 유틸리티 클래스들 (안전한 import)
-try:
-    from app.ai_pipeline.utils.memory_manager import MemoryManager
-    from app.ai_pipeline.utils.data_converter import DataConverter
-    from app.ai_pipeline.utils.model_loader import ModelLoader
-except ImportError as e:
-    logger.warning(f"유틸리티 import 실패: {e}")
-    
-    class DemoUtility:
-        def __init__(self, *args, **kwargs):
-            pass
-        async def get_memory_status(self):
-            return {"available_percent": 50}
-        async def cleanup(self):
-            pass
-    
-    MemoryManager = DemoUtility
-    DataConverter = DemoUtility
-    ModelLoader = DemoUtility
-
-# 설정
-try:
-    from app.core.config import get_settings
-except ImportError:
-    def get_settings():
-        class Settings:
-            APP_NAME = "MyCloset AI"
-            APP_VERSION = "2.2.1"
-            DEBUG = True
-            CORS_ORIGINS = ["*"]
-            HOST = "0.0.0.0"
-            PORT = 8000
-        return Settings()
-
-# ========================================
-# AI 파이프라인 매니저
-# ========================================
-
-class FixedPipelineManager:
-    """수정된 경로를 사용하는 파이프라인 매니저"""
-    
-    def __init__(self, device: str = "auto"):
-        self.device = self._detect_device(device)
-        self.is_initialized = False
-        self.steps = {}
-        
-        logger.info(f"🎯 수정된 파이프라인 매니저 초기화 - 디바이스: {self.device}")
-        logger.info(f"📊 AI 파이프라인 사용 가능: {AI_PIPELINE_AVAILABLE}")
-    
-    def _detect_device(self, preferred: str) -> str:
-        """최적 디바이스 감지"""
-        if preferred == "auto":
-            try:
-                import torch
-                if torch.backends.mps.is_available():
-                    return "mps"
-                elif torch.cuda.is_available():
-                    return "cuda"
-                else:
-                    return "cpu"
-            except:
-                return "cpu"
-        return preferred
-    
-    async def initialize(self) -> bool:
-        """파이프라인 초기화"""
+    def safe_import_gpu_config(self):
+        """GPU 설정 안전 import"""
         try:
-            logger.info("🔄 수정된 파이프라인 초기화 시작...")
+            from app.core.gpu_config import (
+                gpu_config, DEVICE, MODEL_CONFIG, 
+                DEVICE_INFO, get_device_config,
+                get_device, get_model_config, get_device_info  # 추가된 함수들
+            )
             
-            # 각 단계별 초기화
-            step_configs = {
-                'step_01': {'model_name': 'graphonomy', 'input_size': (512, 512)},
-                'step_02': {'model_complexity': 2, 'min_detection_confidence': 0.7},
-                'step_03': {'model_name': 'u2net', 'background_threshold': 0.5},
-                'step_04': {'tps_points': 25, 'matching_threshold': 0.8},
-                'step_05': {'warping_method': 'tps', 'physics_simulation': True},
-                'step_06': {'blending_method': 'poisson', 'seamless_cloning': True},
-                'step_07': {'enable_super_resolution': True, 'enhance_faces': True},
-                'step_08': {'enable_detailed_analysis': True, 'perceptual_metrics': True}
+            self.components['gpu_config'] = {
+                'instance': gpu_config,
+                'device': DEVICE,
+                'model_config': MODEL_CONFIG,
+                'device_info': DEVICE_INFO,
+                'get_config': get_device_config,
+                'get_device': get_device,
+                'get_model_config': get_model_config,
+                'get_device_info': get_device_info
             }
             
-            step_names = [
-                'HumanParsingStep', 'PoseEstimationStep', 'ClothSegmentationStep',
-                'GeometricMatchingStep', 'ClothWarpingStep', 'VirtualFittingStep',
-                'PostProcessingStep', 'QualityAssessmentStep'
-            ]
-            
-            for i, step_name in enumerate(step_names):
-                step_key = f'step_{i+1:02d}'
-                step_class = STEP_CLASSES.get(step_name)
-                
-                if step_class:
-                    try:
-                        self.steps[step_key] = step_class(
-                            device=self.device,
-                            config=step_configs.get(step_key, {})
-                        )
-                        await self.steps[step_key].initialize()
-                        logger.info(f"✅ {step_key} ({step_name}) 초기화 성공")
-                    except Exception as e:
-                        logger.warning(f"⚠️ {step_key} 초기화 실패: {e}")
-                        # 폴백 사용
-                        self.steps[step_key] = DemoStep(device=self.device)
-                        await self.steps[step_key].initialize()
-            
-            self.is_initialized = True
-            logger.info(f"✅ 파이프라인 초기화 완료 - {len(self.steps)}/8 단계 로드됨")
+            logger.info("✅ GPU 설정 import 성공")
             return True
             
-        except Exception as e:
-            logger.error(f"❌ 파이프라인 초기화 실패: {e}")
-            logger.error(traceback.format_exc())
+        except ImportError as e:
+            error_msg = f"GPU 설정 import 실패: {e}"
+            self.import_errors.append(error_msg)
+            logger.warning(f"⚠️ {error_msg}")
+            
+            # 폴백 설정
+            self.components['gpu_config'] = {
+                'instance': None,
+                'device': "cpu",
+                'model_config': {"device": "cpu", "dtype": "float32"},
+                'device_info': {
+                    "device": "cpu",
+                    "name": "CPU",
+                    "memory_gb": 0,
+                    "is_m3_max": False,
+                    "pytorch_version": "unknown",
+                    "mps_available": False
+                },
+                'get_config': lambda: {"device": "cpu", "name": "CPU"},
+                'get_device': lambda: "cpu",
+                'get_model_config': lambda: {"device": "cpu"},
+                'get_device_info': lambda: {"device": "cpu", "name": "CPU"}
+            }
             return False
     
-    async def process_complete_virtual_fitting(
-        self,
-        person_image: str,
-        clothing_image: str,
-        body_measurements: Dict[str, Any],
-        clothing_type: str,
-        fabric_type: str = "cotton",
-        style_preferences: Dict[str, Any] = None,
-        quality_target: float = 0.8,
-        progress_callback: Optional[callable] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """완전한 8단계 가상 피팅 처리"""
-        
-        if not self.is_initialized:
-            raise RuntimeError("파이프라인이 초기화되지 않았습니다.")
-        
-        start_time = time.time()
-        
+    def safe_import_memory_manager(self):
+        """메모리 매니저 안전 import"""
         try:
-            logger.info(f"🎯 8단계 가상 피팅 시작 - 모드: {'Real' if AI_PIPELINE_AVAILABLE else 'Demo'}")
+            from app.ai_pipeline.utils.memory_manager import (
+                get_memory_manager, 
+                optimize_memory_usage,
+                check_memory,
+                MemoryManager,
+                get_global_memory_manager,  # 추가된 함수들
+                create_memory_manager,
+                get_default_memory_manager
+            )
             
-            # 단계별 처리
-            step_results = {}
-            stages = [
-                ("인체 파싱", "신체 부위 분석 중..."),
-                ("포즈 추정", "포즈 키포인트 검출 중..."),
-                ("의류 분석", "의류 영역 분할 중..."),
-                ("매칭", "기하학적 매칭 중..."),
-                ("변형", "의류 모양 조정 중..."),
-                ("피팅", "가상 피팅 생성 중..."),
-                ("후처리", "이미지 품질 향상 중..."),
-                ("품질 평가", "결과 품질 분석 중...")
-            ]
+            self.components['memory_manager'] = {
+                'get_manager': get_memory_manager,
+                'optimize': optimize_memory_usage,
+                'check': check_memory,
+                'class': MemoryManager,
+                'get_global': get_global_memory_manager,
+                'create': create_memory_manager,
+                'get_default': get_default_memory_manager
+            }
             
-            for i, (stage_name, stage_message) in enumerate(stages):
-                step_key = f'step_{i+1:02d}'
-                progress = int(10 + ((i + 1) * 80 / 8))
-                
-                if progress_callback:
-                    await progress_callback(stage_name, progress, stage_message)
-                
-                try:
-                    # 단계별 처리 로직
-                    if i == 0:  # Human Parsing
-                        result = await self.steps[step_key].process(person_image)
-                    elif i == 1:  # Pose Estimation
-                        result = await self.steps[step_key].process(person_image)
-                    elif i == 2:  # Cloth Segmentation
-                        result = await self.steps[step_key].process(clothing_image, clothing_type=clothing_type)
-                    else:  # 나머지 단계들
-                        result = await self.steps[step_key].process(
-                            previous_results=step_results,
-                            clothing_type=clothing_type
-                        )
-                    
-                    step_results[step_key] = result
-                    
-                except Exception as e:
-                    logger.warning(f"⚠️ {step_key} 처리 실패: {e}")
-                    step_results[step_key] = {
-                        'success': False,
-                        'error': str(e),
-                        'confidence': 0.5
-                    }
+            logger.info("✅ 메모리 매니저 import 성공")
+            return True
             
-            # 결과 구성
-            processing_time = time.time() - start_time
+        except ImportError as e:
+            error_msg = f"메모리 매니저 import 실패: {e}"
+            self.import_errors.append(error_msg)
+            logger.warning(f"⚠️ {error_msg}")
             
-            # 더미 결과 이미지 생성 (더 현실적으로)
-            result_image = Image.new('RGB', (512, 512), color=(120, 180, 220))
-            draw = ImageDraw.Draw(result_image)
+            # 폴백 함수들
+            def fallback_get_memory_manager():
+                return None
             
-            # 간단한 결과 이미지 시뮬레이션
-            draw.rectangle([100, 150, 412, 450], fill=(100, 150, 200), outline=(80, 120, 160), width=3)
-            draw.text((150, 200), "Virtual Try-On Result", fill='white')
-            draw.text((180, 250), f"Type: {clothing_type}", fill='white')
-            draw.text((160, 300), f"Quality: {0.85:.2f}", fill='white')
-            
-            final_result = {
-                'success': True,
-                'result_image': result_image,
-                'final_quality_score': 0.85,
-                'quality_grade': 'Good',
-                'processing_time': processing_time,
-                'step_results_summary': {
-                    step_key: {
-                        'success': result.get('success', True),
-                        'confidence': result.get('confidence', 0.75),
-                        'processing_time': result.get('processing_time', 0.3)
-                    }
-                    for step_key, result in step_results.items()
-                },
-                'fit_analysis': {
-                    'overall_fit_score': 0.85,
-                    'pose_quality': 0.8,
-                    'parsing_quality': 0.9
-                },
-                'improvement_suggestions': {
-                    'user_experience': [
-                        "✅ 전반적으로 좋은 결과입니다",
-                        "📸 더 밝은 조명에서 촬영하면 더 좋은 결과를 얻을 수 있습니다",
-                        f"👔 {clothing_type} 스타일이 잘 어울립니다"
-                    ]
-                },
-                'processing_info': {
-                    'device_used': self.device,
-                    'total_steps': len(self.steps),
-                    'successful_steps': sum(1 for r in step_results.values() if r.get('success', True)),
-                    'ai_pipeline_mode': 'real' if AI_PIPELINE_AVAILABLE else 'demo'
-                },
-                'model_versions': {
-                    'human_parsing': 'Graphonomy-v1.0' if AI_PIPELINE_AVAILABLE else 'Demo',
-                    'pose_estimation': 'MediaPipe-v0.10' if AI_PIPELINE_AVAILABLE else 'Demo',
-                    'virtual_fitting': 'HR-VITON-v2.0' if AI_PIPELINE_AVAILABLE else 'Demo'
+            def fallback_optimize_memory_usage(device=None, aggressive=False):
+                return {
+                    "success": False, 
+                    "error": "Memory manager not available",
+                    "device": device or "unknown"
                 }
+            
+            def fallback_check_memory():
+                return {
+                    "status": "unknown", 
+                    "error": "Memory manager not available"
+                }
+            
+            self.components['memory_manager'] = {
+                'get_manager': fallback_get_memory_manager,
+                'optimize': fallback_optimize_memory_usage,
+                'check': fallback_check_memory,
+                'class': None,
+                'get_global': fallback_get_memory_manager,
+                'create': fallback_get_memory_manager,
+                'get_default': fallback_get_memory_manager
             }
-            
-            if progress_callback:
-                await progress_callback("완료", 100, "가상 피팅 완료!")
-            
-            logger.info(f"✅ 8단계 파이프라인 완료 - 시간: {processing_time:.2f}초")
-            
-            return final_result
-            
-        except Exception as e:
-            processing_time = time.time() - start_time
-            logger.error(f"❌ 파이프라인 처리 실패: {e}")
-            
-            return {
-                'success': False,
-                'error': str(e),
-                'processing_time': processing_time
-            }
+            return False
     
-    async def get_pipeline_status(self) -> Dict[str, Any]:
-        """파이프라인 상태 조회"""
-        return {
-            'initialized': self.is_initialized,
-            'device': self.device,
-            'steps_loaded': len(self.steps),
-            'total_steps': 8,
-            'ai_pipeline_available': AI_PIPELINE_AVAILABLE,
-            'step_classes_loaded': list(STEP_CLASSES.keys()),
-            'memory_status': 'healthy'
-        }
-    
-    async def cleanup(self):
-        """리소스 정리"""
+    def safe_import_m3_optimizer(self):
+        """M3 Max 최적화 안전 import"""
         try:
-            for step in self.steps.values():
-                if hasattr(step, 'cleanup'):
-                    await step.cleanup()
-            self.steps.clear()
-            self.is_initialized = False
-            logger.info("✅ 파이프라인 리소스 정리 완료")
-        except Exception as e:
-            logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
-
-# ========================================
-# FastAPI 앱 설정
-# ========================================
-
-# 전역 변수
-pipeline_manager: Optional[FixedPipelineManager] = None
-
-# WebSocket 연결 관리
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-        self.session_progress: Dict[str, Dict[str, Any]] = {}
+            from app.core.m3_optimizer import (
+                get_m3_optimizer,
+                is_m3_max_optimized,
+                get_optimal_config,
+                M3MaxOptimizer,
+                create_m3_optimizer,  # 추가된 함수들
+                get_m3_config,
+                optimize_for_m3_max
+            )
+            
+            self.components['m3_optimizer'] = {
+                'get_optimizer': get_m3_optimizer,
+                'is_optimized': is_m3_max_optimized,
+                'get_config': get_optimal_config,
+                'class': M3MaxOptimizer,
+                'create': create_m3_optimizer,
+                'get_m3_config': get_m3_config,
+                'optimize': optimize_for_m3_max
+            }
+            
+            logger.info("✅ M3 최적화 import 성공")
+            return True
+            
+        except ImportError as e:
+            error_msg = f"M3 최적화 import 실패: {e}"
+            self.import_errors.append(error_msg)
+            logger.warning(f"⚠️ {error_msg}")
+            
+            # 폴백 함수들
+            def fallback_get_m3_optimizer():
+                class FallbackOptimizer:
+                    def __init__(self):
+                        self.is_m3_max = False
+                        self.device = "cpu"
+                return FallbackOptimizer()
+            
+            def fallback_is_m3_max_optimized():
+                return False
+            
+            def fallback_get_optimal_config(model_type="diffusion"):
+                return {"device": "cpu", "batch_size": 1}
+            
+            self.components['m3_optimizer'] = {
+                'get_optimizer': fallback_get_m3_optimizer,
+                'is_optimized': fallback_is_m3_max_optimized,
+                'get_config': fallback_get_optimal_config,
+                'class': None,
+                'create': fallback_get_m3_optimizer,
+                'get_m3_config': lambda: {"device": "cpu"},
+                'optimize': fallback_is_m3_max_optimized
+            }
+            return False
     
-    async def connect(self, websocket: WebSocket, session_id: str):
-        await websocket.accept()
-        self.active_connections[session_id] = websocket
-        logger.info(f"WebSocket 연결: {session_id}")
+    def safe_import_pipeline_manager(self):
+        """파이프라인 매니저 안전 import"""
+        try:
+            from app.ai_pipeline.pipeline_manager import (
+                PipelineManager, PipelineMode,
+                get_pipeline_manager,  # 추가된 함수들  
+                create_pipeline_manager,
+                get_available_modes
+            )
+            
+            self.components['pipeline_manager'] = {
+                'class': PipelineManager,
+                'modes': PipelineMode,
+                'get_manager': get_pipeline_manager,
+                'create': create_pipeline_manager,
+                'get_modes': get_available_modes
+            }
+            
+            logger.info("✅ 파이프라인 매니저 import 성공")
+            return True
+            
+        except ImportError as e:
+            error_msg = f"파이프라인 매니저 import 실패: {e}"
+            self.import_errors.append(error_msg)
+            logger.warning(f"⚠️ {error_msg}")
+            
+            # 시뮬레이션 파이프라인 클래스
+            class SimulationPipelineManager:
+                def __init__(self, mode="simulation", **kwargs):
+                    self.mode = mode
+                    self.is_initialized = False
+                    self.device = kwargs.get('device', 'cpu')
+                
+                async def initialize(self):
+                    logger.info("🎭 시뮬레이션 파이프라인 초기화...")
+                    await asyncio.sleep(1)  # 초기화 시뮬레이션
+                    self.is_initialized = True
+                    logger.info("✅ 시뮬레이션 파이프라인 준비 완료")
+                    return True
+                
+                async def cleanup(self):
+                    logger.info("🎭 시뮬레이션 파이프라인 정리 완료")
+                    self.is_initialized = False
+                
+                def get_status(self):
+                    return {
+                        "mode": self.mode,
+                        "initialized": self.is_initialized,
+                        "device": self.device,
+                        "simulation": True
+                    }
+            
+            # 시뮬레이션 모드 enum
+            class SimulationMode:
+                SIMULATION = "simulation"
+                PRODUCTION = "production"
+                HYBRID = "hybrid"
+            
+            def fallback_get_pipeline_manager():
+                return None
+            
+            def fallback_create_pipeline_manager(mode="simulation"):
+                return SimulationPipelineManager(mode=mode)
+            
+            def fallback_get_available_modes():
+                return {
+                    "simulation": "simulation",
+                    "production": "production", 
+                    "hybrid": "hybrid"
+                }
+            
+            self.components['pipeline_manager'] = {
+                'class': SimulationPipelineManager,
+                'modes': SimulationMode,
+                'get_manager': fallback_get_pipeline_manager,
+                'create': fallback_create_pipeline_manager,
+                'get_modes': fallback_get_available_modes
+            }
+            self.fallback_mode = True
+            return False
     
-    def disconnect(self, session_id: str):
-        if session_id in self.active_connections:
-            del self.active_connections[session_id]
-        if session_id in self.session_progress:
-            del self.session_progress[session_id]
-        logger.info(f"WebSocket 연결 해제: {session_id}")
-    
-    async def send_progress(self, session_id: str, stage: str, percentage: int, message: str = ""):
-        # 진행상황 저장
-        self.session_progress[session_id] = {
-            "stage": stage,
-            "percentage": percentage,
-            "message": message,
-            "timestamp": datetime.now().isoformat()
-        }
+    def safe_import_api_routers(self):
+        """API 라우터들 안전 import"""
+        routers = {}
         
-        # WebSocket으로 전송
-        if session_id in self.active_connections:
-            websocket = self.active_connections[session_id]
-            if websocket.client_state == WebSocketState.CONNECTED:
-                try:
-                    await websocket.send_json({
-                        "type": "progress",
-                        "stage": stage,
-                        "percentage": percentage,
-                        "message": message,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                except Exception as e:
-                    logger.warning(f"WebSocket 메시지 전송 실패 {session_id}: {e}")
-                    self.disconnect(session_id)
+        # Health router
+        try:
+            from app.api.health import router as health_router
+            routers['health'] = health_router
+            logger.info("✅ Health 라우터 import 성공")
+        except ImportError as e:
+            logger.warning(f"⚠️ Health 라우터 import 실패: {e}")
+            routers['health'] = None
+        
+        # Virtual try-on router
+        try:
+            from app.api.virtual_tryon import router as virtual_tryon_router
+            routers['virtual_tryon'] = virtual_tryon_router
+            logger.info("✅ Virtual Try-on 라우터 import 성공")
+        except ImportError as e:
+            logger.warning(f"⚠️ Virtual Try-on 라우터 import 실패: {e}")
+            routers['virtual_tryon'] = None
+        
+        # Models router
+        try:
+            from app.api.models import router as models_router
+            routers['models'] = models_router
+            logger.info("✅ Models 라우터 import 성공")
+        except ImportError as e:
+            logger.warning(f"⚠️ Models 라우터 import 실패: {e}")
+            routers['models'] = None
+        
+        # Pipeline routes
+        try:
+            from app.api.pipeline_routes import router as pipeline_router
+            routers['pipeline'] = pipeline_router
+            logger.info("✅ Pipeline 라우터 import 성공")
+        except ImportError as e:
+            logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
+            routers['pipeline'] = None
+        
+        # WebSocket routes - 안전하게 처리
+        try:
+            # Pydantic V2 호환성 문제로 인해 조건부 import
+            import pydantic
+            pydantic_version = pydantic.version.VERSION
+            
+            if pydantic_version.startswith('2.'):
+                # Pydantic V2를 사용하는 경우에만 import 시도
+                from app.api.websocket_routes import router as websocket_router
+                routers['websocket'] = websocket_router
+                logger.info("✅ WebSocket 라우터 import 성공")
+            else:
+                logger.warning("⚠️ Pydantic V1 감지 - WebSocket 라우터 비활성화")
+                routers['websocket'] = None
+                
+        except ImportError as e:
+            logger.warning(f"⚠️ WebSocket 라우터 import 실패: {e}")
+            routers['websocket'] = None
+        except Exception as e:
+            logger.warning(f"⚠️ WebSocket 라우터 오류: {e}")
+            routers['websocket'] = None
+        
+        self.components['routers'] = routers
+        return routers
+    
+    def initialize_all_components(self):
+        """모든 컴포넌트 초기화"""
+        logger.info("🔄 AI 파이프라인 로딩 시도...")
+        
+        # AI 파이프라인 디렉토리 확인
+        ai_pipeline_dir = current_dir / "ai_pipeline"
+        if ai_pipeline_dir.exists():
+            logger.info(f"✅ AI 파이프라인 디렉토리 발견: {ai_pipeline_dir}")
+            
+            # Step 파일들 확인
+            steps_dir = ai_pipeline_dir / "steps"
+            if steps_dir.exists():
+                step_files = list(steps_dir.glob("step_*.py"))
+                logger.info(f"📊 Step 파일들 발견: {len(step_files)}개")
+        
+        # 필요한 디렉토리 생성
+        directories_to_create = [
+            project_root / "logs",
+            project_root / "static" / "uploads",
+            project_root / "static" / "results",
+            project_root / "temp",
+            current_dir / "ai_pipeline" / "cache",
+            current_dir / "ai_pipeline" / "models" / "checkpoints"
+        ]
+        
+        created_count = 0
+        for directory in directories_to_create:
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
+                created_count += 1
+        
+        if created_count > 0:
+            print(f"✅ 필요한 디렉토리 생성 완료: {created_count}개")
+        
+        # 컴포넌트별 import
+        success_count = 0
+        
+        if self.safe_import_gpu_config():
+            success_count += 1
+        
+        if self.safe_import_memory_manager():
+            success_count += 1
+        
+        if self.safe_import_m3_optimizer():
+            success_count += 1
+        
+        if self.safe_import_pipeline_manager():
+            success_count += 1
+        
+        self.safe_import_api_routers()
+        
+        logger.info(f"📊 컴포넌트 import 완료: {success_count}/4 성공")
+        
+        if self.import_errors:
+            logger.warning("⚠️ Import 오류 목록:")
+            for error in self.import_errors:
+                logger.warning(f"  - {error}")
+        
+        return success_count >= 2  # 최소 절반 이상 성공
 
-manager = ConnectionManager()
+# 컴포넌트 importer 초기화
+importer = ComponentImporter()
+import_success = importer.initialize_all_components()
 
-# 모델 정의
-class VirtualTryOnResponse(BaseModel):
-    success: bool
-    session_id: str
-    fitted_image: Optional[str] = None
-    fitted_image_url: Optional[str] = None
-    processing_time: float
-    confidence: float
-    fit_score: float = Field(default=0.0)
-    quality_score: float = Field(default=0.0)
-    quality_grade: str = Field(default="Unknown")
-    recommendations: List[str] = Field(default_factory=list)
-    measurements: Dict[str, Any] = Field(default_factory=dict)
-    clothing_analysis: Dict[str, Any] = Field(default_factory=dict)
-    quality_analysis: Dict[str, Any] = Field(default_factory=dict)
-    processing_info: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
+# 컴포넌트 참조 설정
+gpu_config = importer.components['gpu_config']
+memory_manager = importer.components['memory_manager']
+m3_optimizer = importer.components['m3_optimizer']
+pipeline_manager_info = importer.components['pipeline_manager']
+api_routers = importer.components['routers']
 
-class ProcessingStatusResponse(BaseModel):
-    session_id: str
+# 전역 변수들
+pipeline_manager = None
+app_state = {
+    "initialized": False,
+    "startup_time": None,
+    "import_success": import_success,
+    "fallback_mode": importer.fallback_mode,
+    "device": gpu_config['device'],
+    "pipeline_mode": "simulation",
+    "total_sessions": 0,
+    "successful_sessions": 0,
+    "errors": importer.import_errors.copy(),
+    "performance_metrics": {
+        "average_response_time": 0.0,
+        "total_requests": 0,
+        "error_rate": 0.0
+    }
+}
+
+# ============================================
+# Pydantic 모델들
+# ============================================
+
+class SystemStatus(BaseModel):
+    """시스템 상태 모델"""
     status: str
-    current_stage: str
-    progress_percentage: int
-    estimated_remaining_time: Optional[float] = None
-    error: Optional[str] = None
+    initialized: bool
+    device: str
+    pipeline_mode: str
+    fallback_mode: bool
+    import_success: bool
+    errors: List[str]
 
-# 설정
-settings = get_settings()
+class VirtualTryOnRequest(BaseModel):
+    """가상 피팅 요청 모델"""
+    person_image_url: Optional[str] = None
+    clothing_image_url: Optional[str] = None
+    clothing_type: str = "shirt"
+    fabric_type: str = "cotton"
+    quality_target: float = 0.8
+
+class PerformanceMetrics(BaseModel):
+    """성능 메트릭 모델"""
+    total_requests: int
+    successful_requests: int
+    average_response_time: float
+    error_rate: float
+    uptime_seconds: float
+
+# ============================================
+# 미들웨어 및 예외 처리
+# ============================================
+
+async def add_process_time_header(request: Request, call_next):
+    """요청 처리 시간 추가 미들웨어"""
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    response.headers["X-Process-Time"] = str(round(process_time, 4))
+    
+    # 성능 메트릭 업데이트
+    app_state["performance_metrics"]["total_requests"] += 1
+    current_avg = app_state["performance_metrics"]["average_response_time"]
+    total_requests = app_state["performance_metrics"]["total_requests"]
+    
+    # 이동 평균 계산
+    app_state["performance_metrics"]["average_response_time"] = (
+        (current_avg * (total_requests - 1) + process_time) / total_requests
+    )
+    
+    return response
+
+# ============================================
+# 애플리케이션 라이프사이클
+# ============================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 라이프사이클 관리"""
-    global pipeline_manager
+    global pipeline_manager, app_state
     
-    # 시작 시
-    logger.info("🚀 MyCloset AI Backend 완전 수정 버전 시작...")
+    # ==========================================
+    # 시작 로직
+    # ==========================================
+    logger.info("🚀 MyCloset AI Backend 시작...")
+    startup_start = time.time()
     
     try:
-        # 디렉토리 생성
-        directories = ["static/uploads", "static/results", "static/temp", "logs"]
-        for directory in directories:
-            os.makedirs(directory, exist_ok=True)
+        # 파이프라인 매니저 초기화
+        PipelineManagerClass = pipeline_manager_info['class']
         
-        logger.info(f"✅ 필요한 디렉토리 생성 완료: {len(directories)}개")
+        if PipelineManagerClass:
+            logger.info("🎭 시뮬레이션 파이프라인 초기화 중...")
+            
+            # 디바이스 설정
+            device = gpu_config['device']
+            
+            # 파이프라인 매니저 생성
+            if importer.fallback_mode:
+                logger.info("🎭 시뮬레이션 파이프라인 초기화...")
+                pipeline_manager = PipelineManagerClass(mode="simulation", device=device)
+            else:
+                logger.info("🤖 실제 파이프라인 초기화 시도...")
+                pipeline_manager = PipelineManagerClass(mode="simulation", device=device)
+            
+            # 초기화 시도
+            initialization_success = await pipeline_manager.initialize()
+            
+            if initialization_success:
+                app_state["initialized"] = True
+                app_state["pipeline_mode"] = getattr(pipeline_manager, 'mode', 'simulation')
+                logger.info("✅ 파이프라인 초기화 완료")
+            else:
+                logger.warning("⚠️ 파이프라인 초기화 부분 실패")
+                app_state["errors"].append("Pipeline initialization partially failed")
         
-        # 파이프라인 초기화
-        pipeline_manager = FixedPipelineManager()
-        await pipeline_manager.initialize()
+        else:
+            logger.error("❌ 파이프라인 매니저 클래스를 찾을 수 없음")
+            app_state["errors"].append("Pipeline manager class not found")
         
-        logger.info("✅ MyCloset AI Backend 시작 완료")
+        app_state["startup_time"] = time.time() - startup_start
+        
+        # 시스템 상태 로깅
+        logger.info("=" * 60)
+        logger.info("🏥 MyCloset AI Backend 시스템 상태")
+        logger.info("=" * 60)
+        logger.info(f"🔧 디바이스: {app_state['device']}")
+        logger.info(f"🎭 파이프라인 모드: {app_state['pipeline_mode']}")
+        logger.info(f"✅ 초기화 성공: {app_state['initialized']}")
+        logger.info(f"🚨 폴백 모드: {app_state['fallback_mode']}")
+        logger.info(f"⏱️ 시작 시간: {app_state['startup_time']:.2f}초")
+        
+        if app_state['errors']:
+            logger.warning(f"⚠️ 오류 목록 ({len(app_state['errors'])}개):")
+            for error in app_state['errors']:
+                logger.warning(f"  - {error}")
+        
+        logger.info("✅ 백엔드 초기화 완료")
+        logger.info("=" * 60)
         
     except Exception as e:
-        logger.error(f"❌ 시작 중 오류: {e}")
+        error_msg = f"Startup error: {str(e)}"
+        logger.error(f"❌ 시작 중 치명적 오류: {error_msg}")
+        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
+        app_state["errors"].append(error_msg)
+        app_state["initialized"] = False
     
-    yield
+    yield  # 애플리케이션 실행
     
-    # 종료 시
+    # ==========================================
+    # 종료 로직
+    # ==========================================
     logger.info("🛑 MyCloset AI Backend 종료 중...")
-    if pipeline_manager:
-        await pipeline_manager.cleanup()
-    logger.info("✅ 정리 완료")
+    
+    try:
+        if pipeline_manager and hasattr(pipeline_manager, 'cleanup'):
+            await pipeline_manager.cleanup()
+            logger.info("✅ 파이프라인 리소스 정리 완료")
+        
+        # 메모리 정리
+        if memory_manager['optimize']:
+            result = memory_manager['optimize'](aggressive=True)
+            if result.get('success'):
+                logger.info("✅ 메모리 정리 완료")
+        
+        logger.info("✅ 정리 완료")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ 정리 중 오류: {e}")
 
-# FastAPI 앱 생성
+# ============================================
+# FastAPI 애플리케이션 생성
+# ============================================
+
 app = FastAPI(
-    title="MyCloset AI Backend - Complete Fixed Edition",
-    description="""
-    🎯 완전 수정된 AI 기반 가상 피팅 플랫폼 백엔드 API
-    
-    ## 주요 기능
-    - 🤖 8단계 AI 파이프라인 가상 피팅
-    - 📐 포즈 추정 및 인체 분석
-    - 👔 의류 세그멘테이션 및 피팅
-    - 🎯 품질 평가 및 개선 제안
-    - 🔌 실시간 WebSocket 진행상황
-    
-    ## 현재 상태
-    - ✅ Import 오류 해결
-    - ✅ 루트 엔드포인트 추가
-    - ✅ 모든 API 엔드포인트 정상 동작
-    """,
-    version="2.2.1-complete-fixed",
-    lifespan=lifespan
+    title="MyCloset AI Backend",
+    description="M3 Max 최적화 가상 피팅 AI 백엔드 서비스",
+    version="3.0.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
+
+# ============================================
+# 미들웨어 설정
+# ============================================
 
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # 프로덕션에서는 특정 도메인으로 제한
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 정적 파일 서빙
-static_dir = Path("static")
-static_dir.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# 성능 측정 미들웨어
+app.middleware("http")(add_process_time_header)
 
-# ========================================
-# API 엔드포인트들
-# ========================================
+# ============================================
+# 예외 처리
+# ============================================
 
-@app.get("/", response_class=HTMLResponse, tags=["System"])
-async def root():
-    """메인 페이지"""
-    pipeline_info = ""
-    if pipeline_manager:
-        try:
-            status = await pipeline_manager.get_pipeline_status()
-            pipeline_info = f"""
-            <p><strong>파이프라인 상태:</strong> {'✅ 초기화됨' if status['initialized'] else '⚠️ 초기화 중'}</p>
-            <p><strong>디바이스:</strong> {status['device']}</p>
-            <p><strong>로드된 단계:</strong> {status['steps_loaded']}/{status['total_steps']}</p>
-            """
-        except:
-            pipeline_info = "<p><strong>파이프라인 상태:</strong> ⚠️ 확인 불가</p>"
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """HTTP 예외 처리"""
+    app_state["performance_metrics"]["total_requests"] += 1
     
-    return f"""
+    error_response = {
+        "success": False,
+        "error": {
+            "type": "http_error",
+            "status_code": exc.status_code,
+            "message": exc.detail,
+            "timestamp": datetime.now().isoformat()
+        },
+        "request_info": {
+            "method": request.method,
+            "url": str(request.url),
+            "client": request.client.host if request.client else "unknown"
+        }
+    }
+    
+    logger.warning(f"HTTP 예외: {exc.status_code} - {exc.detail} - {request.url}")
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """요청 검증 예외 처리"""
+    app_state["performance_metrics"]["total_requests"] += 1
+    
+    error_response = {
+        "success": False,
+        "error": {
+            "type": "validation_error",
+            "message": "Request validation failed",
+            "details": exc.errors(),
+            "timestamp": datetime.now().isoformat()
+        }
+    }
+    
+    logger.warning(f"검증 오류: {exc.errors()} - {request.url}")
+    
+    return JSONResponse(
+        status_code=422,
+        content=error_response
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """일반 예외 처리"""
+    app_state["performance_metrics"]["total_requests"] += 1
+    
+    error_msg = str(exc)
+    error_type = type(exc).__name__
+    
+    error_response = {
+        "success": False,
+        "error": {
+            "type": error_type,
+            "message": error_msg,
+            "timestamp": datetime.now().isoformat()
+        }
+    }
+    
+    logger.error(f"일반 예외: {error_type} - {error_msg} - {request.url}")
+    logger.error(f"스택 트레이스: {traceback.format_exc()}")
+    
+    return JSONResponse(
+        status_code=500,
+        content=error_response
+    )
+
+# ============================================
+# API 라우터 등록
+# ============================================
+
+# Health router
+if api_routers.get('health'):
+    app.include_router(api_routers['health'], prefix="/health", tags=["health"])
+    logger.info("✅ Health 라우터 등록됨")
+
+# Virtual try-on router
+if api_routers.get('virtual_tryon'):
+    app.include_router(api_routers['virtual_tryon'], prefix="/api", tags=["virtual-tryon"])
+    logger.info("✅ Virtual Try-on 라우터 등록됨")
+
+# Models router
+if api_routers.get('models'):
+    app.include_router(api_routers['models'], prefix="/api", tags=["models"])
+    logger.info("✅ Models 라우터 등록됨")
+
+# Pipeline router
+if api_routers.get('pipeline'):
+    app.include_router(api_routers['pipeline'], prefix="/api/pipeline", tags=["pipeline"])
+    logger.info("✅ Pipeline 라우터 등록됨")
+
+# WebSocket router
+if api_routers.get('websocket'):
+    app.include_router(api_routers['websocket'], prefix="/api/ws", tags=["websocket"])
+    logger.info("✅ WebSocket 라우터 등록됨")
+
+# ============================================
+# 정적 파일 서빙
+# ============================================
+
+# 정적 파일 디렉토리 설정
+static_dir = project_root / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    logger.info("✅ 정적 파일 서빙 설정됨")
+
+# ============================================
+# 핵심 API 엔드포인트들
+# ============================================
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """루트 엔드포인트 - HTML 대시보드"""
+    device_emoji = "🍎" if gpu_config['device'] == "mps" else "🖥️" if gpu_config['device'] == "cuda" else "💻"
+    status_emoji = "✅" if app_state["initialized"] else "⚠️"
+    
+    html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>MyCloset AI Backend</title>
+        <meta charset="utf-8">
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
-            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-            .header {{ text-align: center; margin-bottom: 40px; }}
-            .logo {{ font-size: 2.5em; color: #333; margin-bottom: 10px; }}
-            .subtitle {{ color: #666; font-size: 1.2em; }}
-            .info {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }}
-            .btn {{ display: inline-block; padding: 12px 24px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; margin: 10px; }}
-            .btn:hover {{ background: #0056b3; }}
-            .status {{ color: #28a745; font-weight: bold; }}
-            .feature {{ margin: 10px 0; }}
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
+            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            h1 {{ color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }}
+            .status {{ padding: 15px; border-radius: 5px; margin: 15px 0; }}
+            .status.success {{ background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }}
+            .status.warning {{ background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }}
+            .status.error {{ background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }}
+            .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }}
+            .metric {{ background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; }}
+            .metric h3 {{ margin: 0; color: #666; font-size: 0.9em; }}
+            .metric p {{ margin: 5px 0 0 0; font-size: 1.4em; font-weight: bold; color: #333; }}
+            .links {{ margin-top: 30px; }}
+            .links a {{ display: inline-block; margin: 5px 10px 5px 0; padding: 10px 15px; background: #007acc; color: white; text-decoration: none; border-radius: 5px; }}
+            .links a:hover {{ background: #005a9e; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <div class="logo">🍎 MyCloset AI</div>
-                <div class="subtitle">AI 기반 가상 피팅 플랫폼 백엔드</div>
+            <h1>{device_emoji} MyCloset AI Backend v3.0</h1>
+            
+            <div class="status {'success' if app_state['initialized'] else 'warning'}">
+                <strong>{status_emoji} 시스템 상태:</strong> 
+                {'정상 운영 중' if app_state['initialized'] else '초기화 중 또는 제한적 운영'}
             </div>
             
-            <div class="info">
-                <h3>🖥️ 시스템 정보</h3>
-                <p><strong>상태:</strong> <span class="status">✅ 온라인</span></p>
-                <p><strong>버전:</strong> 2.2.1-complete-fixed</p>
-                <p><strong>AI 파이프라인:</strong> {'✅ 실제 모드' if AI_PIPELINE_AVAILABLE else '⚠️ 데모 모드'}</p>
-                {pipeline_info}
-                <p><strong>현재 시간:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <div class="metrics">
+                <div class="metric">
+                    <h3>디바이스</h3>
+                    <p>{gpu_config['device'].upper()}</p>
+                </div>
+                <div class="metric">
+                    <h3>파이프라인 모드</h3>
+                    <p>{app_state['pipeline_mode']}</p>
+                </div>
+                <div class="metric">
+                    <h3>총 요청 수</h3>
+                    <p>{app_state['performance_metrics']['total_requests']}</p>
+                </div>
+                <div class="metric">
+                    <h3>평균 응답 시간</h3>
+                    <p>{app_state['performance_metrics']['average_response_time']:.3f}s</p>
+                </div>
+                <div class="metric">
+                    <h3>가동 시간</h3>
+                    <p>{(time.time() - (app_state['startup_time'] or time.time())):.0f}s</p>
+                </div>
+                <div class="metric">
+                    <h3>Import 성공</h3>
+                    <p>{'✅' if app_state['import_success'] else '⚠️'}</p>
+                </div>
             </div>
             
-            <div class="info">
-                <h3>🚀 주요 기능</h3>
-                <div class="feature">🤖 8단계 AI 파이프라인 가상 피팅</div>
-                <div class="feature">📐 실시간 포즈 추정 및 인체 분석</div>
-                <div class="feature">👔 지능형 의류 세그멘테이션</div>
-                <div class="feature">🎯 품질 평가 및 개선 제안</div>
-                <div class="feature">🔌 WebSocket 실시간 진행상황</div>
-            </div>
+            {f'<div class="status error"><strong>⚠️ 오류:</strong><br>{"<br>".join(app_state["errors"][:3])}</div>' if app_state['errors'] else ''}
             
-            <div style="text-align: center;">
-                <a href="/docs" class="btn">📚 API 문서</a>
-                <a href="/health" class="btn">🔍 상태 확인</a>
-                <a href="/api/pipeline-status" class="btn">🎯 파이프라인 상태</a>
-                <a href="/test" class="btn">🧪 테스트</a>
-            </div>
-            
-            <div style="margin-top: 40px; text-align: center; color: #666;">
-                <p>🚀 8단계 AI 파이프라인이 준비되었습니다.</p>
-                <p>API 문서에서 사용법을 확인하세요.</p>
+            <div class="links">
+                <a href="/docs">📚 API 문서</a>
+                <a href="/status">📊 상세 상태</a>
+                <a href="/health">💊 헬스체크</a>
+                <a href="/api/system/performance">📈 성능 메트릭</a>
             </div>
         </div>
     </body>
     </html>
     """
-
-@app.get("/health", tags=["System"])
-async def health_check():
-    """시스템 헬스체크"""
-    pipeline_status = False
-    pipeline_info = {}
     
-    if pipeline_manager:
+    return HTMLResponse(content=html_content)
+
+@app.get("/status", response_model=Dict[str, Any])
+async def get_detailed_status():
+    """상세 시스템 상태 조회"""
+    memory_status = memory_manager['check']()
+    
+    # 파이프라인 상태
+    pipeline_status = {}
+    if pipeline_manager and hasattr(pipeline_manager, 'get_status'):
         try:
-            pipeline_info = await pipeline_manager.get_pipeline_status()
-            pipeline_status = pipeline_info.get('initialized', False)
+            pipeline_status = pipeline_manager.get_status()
         except Exception as e:
-            logger.warning(f"파이프라인 상태 확인 실패: {e}")
+            pipeline_status = {"error": str(e)}
     
-    return {
-        "status": "healthy" if pipeline_status else "initializing",
-        "timestamp": datetime.now().isoformat(),
-        "pipeline_ready": pipeline_status,
-        "ai_pipeline_available": AI_PIPELINE_AVAILABLE,
-        "version": "2.2.1-complete-fixed",
-        "step_classes_loaded": list(STEP_CLASSES.keys()),
-        "pipeline_info": pipeline_info
-    }
-
-@app.get("/test", tags=["System"])
-async def test_endpoint():
-    """간단한 테스트 엔드포인트"""
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "message": "MyCloset AI Backend이 정상 동작 중입니다",
-        "ai_pipeline_mode": "real" if AI_PIPELINE_AVAILABLE else "demo",
-        "step_classes": list(STEP_CLASSES.keys()),
-        "endpoints": [
-            "/health", "/docs", "/api/virtual-tryon", 
-            "/api/virtual-tryon-real-pipeline", "/api/pipeline-status"
-        ]
-    }
-
-@app.post("/api/virtual-tryon", tags=["Virtual Try-On"], response_model=VirtualTryOnResponse)
-async def virtual_tryon(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(170.0),
-    weight: float = Form(65.0),
-    clothing_type: str = Form("shirt"),
-    fabric_type: str = Form("cotton"),
-    quality_target: float = Form(0.8)
-):
-    """수정된 가상 피팅 API"""
+    # 디바이스 정보
+    device_info = gpu_config['device_info'].copy()
     
-    if not pipeline_manager or not pipeline_manager.is_initialized:
-        raise HTTPException(status_code=503, detail="AI 파이프라인이 아직 초기화되지 않았습니다.")
-    
-    session_id = str(uuid.uuid4())
-    start_time = time.time()
-    
-    try:
-        logger.info(f"🎯 가상 피팅 시작 - 세션: {session_id}")
-        
-        # 임시 파일 저장
-        temp_dir = Path("static/temp")
-        temp_dir.mkdir(exist_ok=True)
-        
-        person_path = temp_dir / f"{session_id}_person.jpg"
-        clothing_path = temp_dir / f"{session_id}_clothing.jpg"
-        
-        with open(person_path, "wb") as f:
-            f.write(await person_image.read())
-        with open(clothing_path, "wb") as f:
-            f.write(await clothing_image.read())
-        
-        # 신체 측정 데이터
-        body_measurements = {
-            "height": height,
-            "weight": weight,
-            "estimated_chest": height * 0.52,
-            "estimated_waist": height * 0.45,
-            "estimated_hip": height * 0.55
-        }
-        
-        # 진행상황 콜백
-        async def progress_callback(stage: str, percentage: int, message: str = ""):
-            logger.info(f"📊 {session_id}: {stage} ({percentage}%) - {message}")
-            await manager.send_progress(session_id, stage, percentage, message)
-        
-        # 파이프라인 실행
-        result = await pipeline_manager.process_complete_virtual_fitting(
-            person_image=str(person_path),
-            clothing_image=str(clothing_path),
-            body_measurements=body_measurements,
-            clothing_type=clothing_type,
-            fabric_type=fabric_type,
-            quality_target=quality_target,
-            progress_callback=progress_callback
-        )
-        
-        if not result.get('success', False):
-            raise HTTPException(status_code=500, detail=f"처리 실패: {result.get('error', 'Unknown error')}")
-        
-        # 결과 이미지 처리
-        result_image = result.get('result_image')
-        fitted_image_base64 = None
-        fitted_image_url = None
-        
-        if result_image:
-            try:
-                buffer = BytesIO()
-                result_image.save(buffer, format="JPEG", quality=90)
-                fitted_image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                
-                # 파일 저장
-                result_path = Path("static/results") / f"{session_id}_result.jpg"
-                result_path.parent.mkdir(exist_ok=True)
-                result_image.save(result_path, quality=90)
-                fitted_image_url = f"/static/results/{session_id}_result.jpg"
-                
-            except Exception as e:
-                logger.warning(f"결과 이미지 처리 실패: {e}")
-        
-        processing_time = time.time() - start_time
-        fit_analysis = result.get('fit_analysis', {})
-        
-        response = VirtualTryOnResponse(
-            success=True,
-            session_id=session_id,
-            fitted_image=fitted_image_base64,
-            fitted_image_url=fitted_image_url,
-            processing_time=processing_time,
-            confidence=fit_analysis.get('overall_fit_score', 0.85),
-            fit_score=fit_analysis.get('overall_fit_score', 0.85),
-            quality_score=result.get('final_quality_score', 0.85),
-            quality_grade=result.get('quality_grade', 'Good'),
-            recommendations=result.get('improvement_suggestions', {}).get('user_experience', []),
-            measurements=body_measurements,
-            clothing_analysis={
-                "type": clothing_type,
-                "fabric": fabric_type,
-                "estimated_size": "M",
-                "fit_recommendation": "잘 맞습니다"
-            },
-            quality_analysis={
-                "overall_score": result.get('final_quality_score', 0.85),
-                "grade": result.get('quality_grade', 'Good'),
-                "model_versions": result.get('model_versions', {})
-            },
-            processing_info={
-                "pipeline_mode": result.get('processing_info', {}).get('ai_pipeline_mode', 'demo'),
-                "device": pipeline_manager.device,
-                "processing_time": processing_time,
-                "total_steps": result.get('processing_info', {}).get('total_steps', 8),
-                "successful_steps": result.get('processing_info', {}).get('successful_steps', 8)
+    # M3 최적화 상태
+    m3_status = {}
+    if m3_optimizer['get_optimizer']:
+        try:
+            optimizer = m3_optimizer['get_optimizer']()
+            m3_status = {
+                "is_m3_max": getattr(optimizer, 'is_m3_max', False),
+                "device": getattr(optimizer, 'device', 'unknown'),
+                "optimized": m3_optimizer['is_optimized']()
             }
-        )
-        
-        logger.info(f"✅ 가상 피팅 완료 - {processing_time:.2f}초")
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ 가상 피팅 오류: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"처리 중 오류: {str(e)}")
+        except Exception as e:
+            m3_status = {"error": str(e)}
+    
+    uptime = time.time() - (app_state['startup_time'] or time.time())
+    
+    return {
+        "application": {
+            "name": "MyCloset AI Backend",
+            "version": "3.0.0",
+            "initialized": app_state["initialized"],
+            "fallback_mode": app_state["fallback_mode"],
+            "import_success": app_state["import_success"],
+            "uptime_seconds": uptime,
+            "startup_time": app_state["startup_time"],
+            "errors": app_state["errors"]
+        },
+        "system": {
+            "device": gpu_config["device"],
+            "device_info": device_info,
+            "memory_status": memory_status,
+            "m3_optimization": m3_status
+        },
+        "pipeline": {
+            "mode": app_state["pipeline_mode"],
+            "status": pipeline_status,
+            "available": pipeline_manager is not None
+        },
+        "performance": app_state["performance_metrics"],
+        "component_status": {
+            "gpu_config": gpu_config['instance'] is not None,
+            "memory_manager": memory_manager['class'] is not None,
+            "m3_optimizer": m3_optimizer['class'] is not None,
+            "pipeline_manager": pipeline_manager_info['class'] is not None
+        },
+        "api_routers": {
+            name: router is not None 
+            for name, router in api_routers.items()
+        }
+    }
 
-# 기존 엔드포인트와의 호환성
-@app.post("/api/virtual-tryon-real-pipeline", tags=["Virtual Try-On"], response_model=VirtualTryOnResponse)
-async def virtual_tryon_real_pipeline(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(170.0),
-    weight: float = Form(65.0),
-    clothing_type: str = Form("shirt"),
-    fabric_type: str = Form("cotton"),
-    quality_target: float = Form(0.8)
-):
-    """기존 엔드포인트와의 호환성"""
-    return await virtual_tryon(
-        person_image=person_image,
-        clothing_image=clothing_image,
-        height=height,
-        weight=weight,
-        clothing_type=clothing_type,
-        fabric_type=fabric_type,
-        quality_target=quality_target
+@app.get("/health")
+async def health_check():
+    """간단한 헬스체크"""
+    return {
+        "status": "healthy" if app_state["initialized"] else "degraded",
+        "timestamp": datetime.now().isoformat(),
+        "version": "3.0.0",
+        "device": gpu_config["device"],
+        "uptime": time.time() - (app_state["startup_time"] or time.time())
+    }
+
+# ============================================
+# 시스템 관리 엔드포인트들
+# ============================================
+
+@app.post("/api/system/optimize-memory")
+async def optimize_memory_endpoint():
+    """메모리 최적화 엔드포인트"""
+    try:
+        start_time = time.time()
+        result = memory_manager['optimize'](device=gpu_config['device'], aggressive=False)
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "optimization_result": result,
+            "processing_time": processing_time,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"메모리 최적화 API 오류: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/api/system/performance")
+async def get_performance_metrics():
+    """성능 메트릭 조회"""
+    uptime = time.time() - (app_state["startup_time"] or time.time())
+    
+    return PerformanceMetrics(
+        total_requests=app_state["performance_metrics"]["total_requests"],
+        successful_requests=app_state["successful_sessions"],
+        average_response_time=app_state["performance_metrics"]["average_response_time"],
+        error_rate=app_state["performance_metrics"]["error_rate"],
+        uptime_seconds=uptime
     )
 
-@app.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocket 엔드포인트"""
-    await manager.connect(websocket, session_id)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(session_id)
-
-@app.get("/api/processing-status/{session_id}", tags=["Status"], response_model=ProcessingStatusResponse)
-async def get_processing_status(session_id: str):
-    """처리 상태 조회"""
-    progress = manager.session_progress.get(session_id, {
-        "stage": "대기중",
-        "percentage": 0,
-        "message": "세션을 찾을 수 없습니다",
-        "timestamp": datetime.now().isoformat()
-    })
-    
-    return ProcessingStatusResponse(
-        session_id=session_id,
-        status="processing" if progress["percentage"] < 100 else "completed",
-        current_stage=progress["stage"],
-        progress_percentage=progress["percentage"],
-        estimated_remaining_time=None,
-        error=None
-    )
-
-@app.get("/api/pipeline-status", tags=["System"])
-async def get_pipeline_status():
-    """파이프라인 상태 조회"""
-    if not pipeline_manager:
-        return {"initialized": False, "error": "파이프라인 매니저 없음"}
+@app.post("/api/system/restart-pipeline")
+async def restart_pipeline():
+    """파이프라인 재시작"""
+    global pipeline_manager
     
     try:
-        return await pipeline_manager.get_pipeline_status()
+        if pipeline_manager and hasattr(pipeline_manager, 'cleanup'):
+            await pipeline_manager.cleanup()
+        
+        PipelineManagerClass = pipeline_manager_info['class']
+        if PipelineManagerClass:
+            pipeline_manager = PipelineManagerClass(
+                mode="simulation", 
+                device=gpu_config['device']
+            )
+            success = await pipeline_manager.initialize()
+            
+            if success:
+                app_state["initialized"] = True
+                return {
+                    "success": True,
+                    "message": "파이프라인 재시작 완료",
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "파이프라인 재시작 실패",
+                    "timestamp": datetime.now().isoformat()
+                }
+        else:
+            return {
+                "success": False,
+                "message": "파이프라인 매니저 클래스를 찾을 수 없음",
+                "timestamp": datetime.now().isoformat()
+            }
+    
     except Exception as e:
-        return {"initialized": False, "error": str(e)}
+        logger.error(f"파이프라인 재시작 오류: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/api/system/logs")
+async def get_recent_logs(lines: int = 50):
+    """최근 로그 조회"""
+    try:
+        log_file = project_root / "logs" / f"mycloset-ai-{datetime.now().strftime('%Y%m%d')}.log"
+        
+        if not log_file.exists():
+            return {
+                "success": False,
+                "message": "로그 파일을 찾을 수 없음"
+            }
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        
+        return {
+            "success": True,
+            "logs": [line.strip() for line in recent_lines],
+            "total_lines": len(all_lines),
+            "returned_lines": len(recent_lines),
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    except Exception as e:
+        logger.error(f"로그 조회 오류: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+# ============================================
+# 메인 실행부
+# ============================================
 
 if __name__ == "__main__":
     import uvicorn
     
-    logger.info("🚀 MyCloset AI Backend - 완전 수정 버전 시작...")
-    logger.info(f"📊 AI 파이프라인 사용 가능: {AI_PIPELINE_AVAILABLE}")
-    logger.info(f"🔧 로드된 Step 클래스: {list(STEP_CLASSES.keys())}")
+    logger.info("🍎 M3 Max 최적화된 MyCloset AI Backend v3.0.0 시작...")
+    logger.info(f"🤖 AI 파이프라인: {'시뮬레이션 모드' if importer.fallback_mode else '실제 모드'}")
+    logger.info(f"🔧 디바이스: {gpu_config['device']}")
+    logger.info(f"📊 Import 성공: {import_success}")
     
-    uvicorn.run(
-        "app.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.DEBUG,
-        log_level="info"
-    )
+    # 환경별 설정
+    if os.getenv("ENVIRONMENT") == "production":
+        # 프로덕션 설정
+        uvicorn.run(
+            "app.main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=False,
+            workers=1,  # M3 Max 환경에서는 단일 워커 권장
+            log_level="info",
+            access_log=True
+        )
+    else:
+        # 개발 설정
+        uvicorn.run(
+            "app.main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=False,  # import 문제로 인해 reload 비활성화
+            log_level="info",
+            access_log=True
+        )
+
+# ============================================
+# 시작 시 자동 실행 코드
+# ============================================
+
+# 시작 시 메모리 상태 로깅
+if memory_manager['check']:
+    try:
+        memory_status = memory_manager['check']()
+        logger.info(f"💾 초기 메모리 상태: {memory_status['status']}")
+    except Exception as e:
+        logger.warning(f"메모리 상태 확인 실패: {e}")
+
+# M3 Max 최적화 상태 로깅
+if m3_optimizer['is_optimized']:
+    try:
+        is_optimized = m3_optimizer['is_optimized']()
+        logger.info(f"🍎 M3 Max 최적화: {'✅ 활성화됨' if is_optimized else '❌ 비활성화됨'}")
+    except Exception as e:
+        logger.warning(f"M3 최적화 상태 확인 실패: {e}")
+
+logger.info("🚀 MyCloset AI Backend 메인 모듈 로드 완료")
