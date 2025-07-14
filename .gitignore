@@ -78,6 +78,7 @@ mycloset_env/
 mycloset_env/
 .env
 *.env
+backend/ai_models/
 
 # 빌드 & 캐시
 dist/
