@@ -1,7 +1,7 @@
 # app/ai_pipeline/utils/memory_manager.py
 """
 MyCloset AI - 지능형 메모리 관리 시스템 (M3 Max 최적화)
-수정사항: line 455 await 에러 해결
+✅ 최적 생성자 패턴 적용 - await 에러 해결
 """
 import os
 import gc
@@ -49,21 +49,53 @@ class MemoryStats:
     process_memory_mb: float = 0.0
 
 class MemoryManager:
-    """지능형 GPU/CPU 메모리 관리자 - Apple Silicon M3 Max 최적화"""
+    """
+    지능형 GPU/CPU 메모리 관리자 - Apple Silicon M3 Max 최적화
+    ✅ 최적 생성자 패턴 적용
+    """
     
-    def __init__(self, 
-                 device: str = "auto", 
-                 memory_limit_gb: float = None,
-                 warning_threshold: float = 0.75,
-                 critical_threshold: float = 0.9,
-                 auto_cleanup: bool = True,
-                 monitoring_interval: float = 30.0,
-                 enable_caching: bool = True):
-        
-        # 디바이스 자동 감지
-        self.device = self._detect_optimal_device(device)
-        
-        # 메모리 제한 자동 설정
+    def __init__(
+        self,
+        device: Optional[str] = None,  # 🔥 최적 패턴: None으로 자동 감지
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
+    ):
+        """
+        ✅ 최적 생성자 - 메모리 관리 특화
+
+        Args:
+            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
+            config: 메모리 관리 설정 딕셔너리
+            **kwargs: 확장 파라미터들
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0  
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
+                - memory_limit_gb: float = None  # 메모리 제한
+                - warning_threshold: float = 0.75  # 경고 임계치
+                - critical_threshold: float = 0.9  # 위험 임계치
+                - auto_cleanup: bool = True  # 자동 정리
+                - monitoring_interval: float = 30.0  # 모니터링 주기
+                - enable_caching: bool = True  # 캐싱 활성화
+        """
+        # 1. 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 2. 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"utils.{self.step_name}")
+
+        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+
+        # 4. ⚙️ 메모리 관리 특화 파라미터
+        memory_limit_gb = kwargs.get('memory_limit_gb', None)
         if memory_limit_gb is None:
             if PSUTIL_AVAILABLE:
                 total_memory = psutil.virtual_memory().total / 1024**3
@@ -73,12 +105,72 @@ class MemoryManager:
         else:
             self.memory_limit_gb = memory_limit_gb
             
-        self.warning_threshold = warning_threshold
-        self.critical_threshold = critical_threshold
-        self.auto_cleanup = auto_cleanup
-        self.monitoring_interval = monitoring_interval
-        self.enable_caching = enable_caching
-        
+        self.warning_threshold = kwargs.get('warning_threshold', 0.75)
+        self.critical_threshold = kwargs.get('critical_threshold', 0.9)
+        self.auto_cleanup = kwargs.get('auto_cleanup', True)
+        self.monitoring_interval = kwargs.get('monitoring_interval', 30.0)
+        self.enable_caching = kwargs.get('enable_caching', True)
+
+        # 5. ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+
+        # 6. ✅ 상태 초기화
+        self.is_initialized = False
+
+        # 7. 🎯 기존 클래스별 고유 초기화 로직 실행
+        self._initialize_step_specific()
+
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        if not TORCH_AVAILABLE:
+            return 'cpu'
+
+        try:
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max 우선
+            elif torch.cuda.is_available():
+                return 'cuda'  # NVIDIA GPU
+            else:
+                return 'cpu'  # 폴백
+        except:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level',
+            'memory_limit_gb', 'warning_threshold', 'critical_threshold',
+            'auto_cleanup', 'monitoring_interval', 'enable_caching'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
+    def _initialize_step_specific(self):
+        """🎯 기존 초기화 로직 완전 유지"""
         # 메모리 통계
         self.stats_history: List[MemoryStats] = []
         self.max_history_length = 100
@@ -99,24 +191,9 @@ class MemoryManager:
         # M3 Max 최적화 설정
         if self.device == "mps":
             logger.info("🍎 M3 Max 최적화 모드 활성화")
-    
-    def _detect_optimal_device(self, device: str) -> str:
-        """최적 디바이스 자동 감지"""
-        if device != "auto":
-            return device
-            
-        try:
-            if TORCH_AVAILABLE:
-                if torch.backends.mps.is_available():
-                    return "mps"
-                elif torch.cuda.is_available():
-                    return "cuda"
-                else:
-                    return "cpu"
-            else:
-                return "cpu"
-        except Exception:
-            return "cpu"
+        
+        # 초기화 완료
+        self.is_initialized = True
     
     def get_memory_stats(self) -> MemoryStats:
         """현재 메모리 상태 조회"""
@@ -458,6 +535,48 @@ class MemoryManager:
                 "model_cache_size": len(self.model_cache)
             }
         }
+
+    async def initialize(self) -> bool:
+        """메모리 관리자 초기화"""
+        try:
+            # M3 Max 최적화 설정
+            if self.is_m3_max and self.optimization_enabled:
+                self.optimize_for_inference()
+            
+            # 모니터링 시작 (옵션)
+            if self.config.get('start_monitoring', False):
+                self.start_monitoring()
+            
+            self.logger.info(f"✅ 메모리 관리자 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ 메모리 관리자 초기화 실패: {e}")
+            return False
+
+    async def get_step_info(self) -> Dict[str, Any]:
+        """메모리 관리자 정보 반환"""
+        return {
+            "step_name": self.step_name,
+            "device": self.device,
+            "device_type": self.device_type,
+            "memory_gb": self.memory_gb,
+            "is_m3_max": self.is_m3_max,
+            "optimization_enabled": self.optimization_enabled,
+            "quality_level": self.quality_level,
+            "initialized": self.is_initialized,
+            "config_keys": list(self.config.keys()),
+            "specialized_features": {
+                "memory_limit_gb": self.memory_limit_gb,
+                "warning_threshold": self.warning_threshold,
+                "critical_threshold": self.critical_threshold,
+                "auto_cleanup": self.auto_cleanup,
+                "monitoring_interval": self.monitoring_interval,
+                "enable_caching": self.enable_caching
+            },
+            "current_stats": self.get_memory_stats().__dict__,
+            "pressure_info": self.check_memory_pressure()
+        }
     
     def __del__(self):
         """소멸자"""
@@ -587,3 +706,15 @@ def memory_efficient(clear_before: bool = True, clear_after: bool = True):
         else:
             return sync_wrapper
     return decorator
+
+# 모듈 익스포트
+__all__ = [
+    'MemoryManager',
+    'MemoryStats',
+    'get_memory_manager',
+    'get_global_memory_manager',
+    'optimize_memory_usage',
+    'optimize_memory',
+    'check_memory',
+    'memory_efficient'
+]

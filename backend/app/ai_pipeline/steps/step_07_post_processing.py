@@ -1,6 +1,6 @@
 # app/ai_pipeline/steps/step_07_post_processing.py
 """
-7단계: 후처리 (Post Processing) - BasePipelineStep 완전 호환
+7단계: 후처리 (Post Processing) - 최적 생성자 패턴 적용
 통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
 """
 
@@ -44,27 +44,11 @@ try:
 except ImportError:
     CONCURRENT_AVAILABLE = False
 
-# BasePipelineStep 임포트 시도
-try:
-    from .base_step import BasePipelineStep, ProcessingPipelineStep
-    BASE_STEP_AVAILABLE = True
-except ImportError:
-    # 폴백: 기본 클래스
-    class BasePipelineStep:
-        def __init__(self, device=None, config=None, **kwargs):
-            self.device = device or 'cpu'
-            self.config = config or {}
-    
-    class ProcessingPipelineStep(BasePipelineStep):
-        pass
-    
-    BASE_STEP_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
 
-class PostProcessingStep(ProcessingPipelineStep):
+class PostProcessingStep:
     """
-    Step 7: 후처리 품질 향상 - BasePipelineStep 완전 호환
+    Step 7: 후처리 품질 향상 - 최적 생성자 패턴 적용
     통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
     """
     
@@ -75,7 +59,7 @@ class PostProcessingStep(ProcessingPipelineStep):
         **kwargs
     ):
         """
-        🎯 BasePipelineStep 완전 호환 생성자
+        🎯 최적 생성자 패턴 - 모든 MyCloset AI Step과 호환
         
         Args:
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
@@ -88,19 +72,79 @@ class PostProcessingStep(ProcessingPipelineStep):
                 - quality_level: str = "balanced"
                 - 기타 스텝별 특화 파라미터들...
         """
-        # BasePipelineStep 초기화 (상속)
-        if BASE_STEP_AVAILABLE:
-            super().__init__(device=device, config=config, **kwargs)
-        else:
-            # 폴백 초기화
-            self.device = self._get_optimal_device(device or 'auto')
-            self.config = config or {}
-            self.device_type = kwargs.get('device_type', 'auto')
-            self.memory_gb = kwargs.get('memory_gb', 16.0)
-            self.is_m3_max = kwargs.get('is_m3_max', False)
-            self.optimization_enabled = kwargs.get('optimization_enabled', True)
-            self.quality_level = kwargs.get('quality_level', 'balanced')
-        
+        # 1. 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 2. 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+
+        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+
+        # 4. ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+
+        # 5. ✅ 상태 초기화
+        self.is_initialized = False
+
+        # 6. 🎯 기존 클래스별 고유 초기화 로직 실행
+        self._initialize_step_specific()
+
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+    
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        try:
+            if TORCH_AVAILABLE:
+                if torch.backends.mps.is_available():
+                    return 'mps'  # M3 Max 우선
+                elif torch.cuda.is_available():
+                    return 'cuda'  # NVIDIA GPU
+                else:
+                    return 'cpu'  # 폴백
+            else:
+                return 'cpu'
+        except ImportError:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
+    def _initialize_step_specific(self):
+        """🎯 기존 초기화 로직 완전 유지"""
         # M3 Max 특화 설정
         self._configure_m3_max_optimizations()
         
@@ -119,7 +163,7 @@ class PostProcessingStep(ProcessingPipelineStep):
         self.use_mps = self.device == 'mps' and TORCH_AVAILABLE and torch.backends.mps.is_available()
         self.batch_size = self._get_optimal_batch_size()
         self.tile_size = self._get_optimal_tile_size()
-        self.enable_neural_enhancement = getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True)
+        self.enable_neural_enhancement = self.is_m3_max and self.optimization_enabled
         
         # 모델 인스턴스들
         self.real_esrgan = None
@@ -132,7 +176,6 @@ class PostProcessingStep(ProcessingPipelineStep):
         self.edge_enhancer = None
         
         # 초기화 상태
-        self.is_initialized = False
         self.initialization_error = None
         
         # 성능 통계
@@ -140,42 +183,20 @@ class PostProcessingStep(ProcessingPipelineStep):
             'total_images': 0,
             'average_time': 0.0,
             'enhancement_success_rate': 0.0,
-            'm3_max_accelerated': getattr(self, 'is_m3_max', False),
+            'm3_max_accelerated': self.is_m3_max,
             'memory_efficiency': 0.0
         }
         
-        logger.info(f"🎨 PostProcessingStep 초기화 - 디바이스: {self.device}")
-        if getattr(self, 'is_m3_max', False):
-            logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {getattr(self, 'memory_gb', 16.0)}GB")
-    
-    def _get_optimal_device(self, preferred_device: str) -> str:
-        """최적 디바이스 선택 - M3 Max 특화"""
-        try:
-            if preferred_device == 'auto':
-                if TORCH_AVAILABLE and torch.backends.mps.is_available():
-                    return 'mps'  # M3 Max Metal Performance Shaders
-                elif TORCH_AVAILABLE and torch.cuda.is_available():
-                    return 'cuda'
-                else:
-                    return 'cpu'
-            
-            if preferred_device == 'mps' and TORCH_AVAILABLE and torch.backends.mps.is_available():
-                return 'mps'
-            elif preferred_device == 'cuda' and TORCH_AVAILABLE and torch.cuda.is_available():
-                return 'cuda'
-            else:
-                return 'cpu'
-        except Exception as e:
-            logger.warning(f"디바이스 설정 실패: {e}, CPU 사용")
-            return 'cpu'
+        if self.is_m3_max:
+            self.logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {self.memory_gb}GB")
     
     def _configure_m3_max_optimizations(self):
         """M3 Max 전용 최적화 설정"""
-        if not getattr(self, 'is_m3_max', False):
+        if not self.is_m3_max:
             return
         
         try:
-            logger.info("🍎 M3 Max 후처리 최적화 설정...")
+            self.logger.info("🍎 M3 Max 후처리 최적화 설정...")
             
             # MPS 최적화
             if self.device == 'mps' and TORCH_AVAILABLE:
@@ -186,59 +207,48 @@ class PostProcessingStep(ProcessingPipelineStep):
                 if hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
                 
-                logger.info("✅ M3 Max MPS 후처리 최적화 완료")
+                self.logger.info("✅ M3 Max MPS 후처리 최적화 완료")
             
             # CPU 최적화 (14코어 M3 Max)
             if TORCH_AVAILABLE:
                 optimal_threads = min(12, os.cpu_count() or 8)  # 성능 코어 중심
                 torch.set_num_threads(optimal_threads)
-                logger.info(f"⚡ M3 Max CPU 스레드 최적화: {optimal_threads}")
+                self.logger.info(f"⚡ M3 Max CPU 스레드 최적화: {optimal_threads}")
             
             # 128GB 메모리 활용 최적화
-            memory_gb = getattr(self, 'memory_gb', 16.0)
-            if memory_gb >= 128:
+            if self.memory_gb >= 128:
                 self.enhancement_config['enable_large_batch'] = True
                 self.enhancement_config['memory_aggressive_mode'] = True
-                logger.info("💾 M3 Max 128GB 메모리 활용 최적화 활성화")
+                self.logger.info("💾 M3 Max 128GB 메모리 활용 최적화 활성화")
             
         except Exception as e:
-            logger.warning(f"M3 Max 최적화 설정 실패: {e}")
+            self.logger.warning(f"M3 Max 최적화 설정 실패: {e}")
     
     def _get_quality_level(self) -> str:
         """품질 수준 결정 - M3 Max는 최고 품질"""
-        is_m3_max = getattr(self, 'is_m3_max', False)
-        optimization_enabled = getattr(self, 'optimization_enabled', True)
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        
-        if is_m3_max and optimization_enabled:
+        if self.is_m3_max and self.optimization_enabled:
             return 'ultra'  # M3 Max 전용 최고 품질
-        elif memory_gb >= 64:
+        elif self.memory_gb >= 64:
             return 'high'
-        elif memory_gb >= 32:
+        elif self.memory_gb >= 32:
             return 'medium'
         else:
             return 'basic'
     
     def _get_optimal_batch_size(self) -> int:
         """최적 배치 크기 결정"""
-        is_m3_max = getattr(self, 'is_m3_max', False)
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        
-        if is_m3_max and memory_gb >= 128:
+        if self.is_m3_max and self.memory_gb >= 128:
             return 4  # M3 Max 128GB: 대용량 배치
-        elif memory_gb >= 64:
+        elif self.memory_gb >= 64:
             return 2
         else:
             return 1
     
     def _get_optimal_tile_size(self) -> int:
         """최적 타일 크기 결정"""
-        is_m3_max = getattr(self, 'is_m3_max', False)
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        
-        if is_m3_max and memory_gb >= 128:
+        if self.is_m3_max and self.memory_gb >= 128:
             return 1024  # M3 Max: 큰 타일 처리 가능
-        elif memory_gb >= 64:
+        elif self.memory_gb >= 64:
             return 768
         else:
             return 512
@@ -246,10 +256,10 @@ class PostProcessingStep(ProcessingPipelineStep):
     async def initialize(self) -> bool:
         """후처리 모델들 초기화"""
         try:
-            logger.info("🔄 Step 7 후처리 모델 로드 중...")
+            self.logger.info("🔄 Step 7 후처리 모델 로드 중...")
             
             # M3 Max 전용 초기화
-            if getattr(self, 'is_m3_max', False):
+            if self.is_m3_max:
                 await self._initialize_m3_max_components()
             
             initialization_tasks = []
@@ -282,24 +292,24 @@ class PostProcessingStep(ProcessingPipelineStep):
                 self.is_initialized = True
                 
                 # M3 Max 워밍업
-                if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+                if self.is_m3_max and self.optimization_enabled:
                     await self._warmup_m3_max_pipeline()
                 
-                logger.info(f"✅ Step 7 후처리 모델 로드 완료 ({success_count}/{total_count})")
+                self.logger.info(f"✅ Step 7 후처리 모델 로드 완료 ({success_count}/{total_count})")
                 return True
             else:
-                logger.error(f"❌ Step 7 후처리 모델 로드 실패 ({success_count}/{total_count})")
+                self.logger.error(f"❌ Step 7 후처리 모델 로드 실패 ({success_count}/{total_count})")
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Step 7 후처리 초기화 실패: {e}")
+            self.logger.error(f"❌ Step 7 후처리 초기화 실패: {e}")
             self.is_initialized = False
             self.initialization_error = str(e)
             return False
     
     async def _initialize_m3_max_components(self):
         """M3 Max 전용 컴포넌트 초기화"""
-        logger.info("🍎 M3 Max 후처리 컴포넌트 초기화...")
+        self.logger.info("🍎 M3 Max 후처리 컴포넌트 초기화...")
         
         # Metal Performance Shaders 설정
         if self.device == 'mps' and TORCH_AVAILABLE:
@@ -308,20 +318,19 @@ class PostProcessingStep(ProcessingPipelineStep):
                 test_tensor = torch.randn(1, 3, 256, 256).to(self.device)
                 _ = F.conv2d(test_tensor, torch.randn(3, 3, 3, 3).to(self.device), padding=1)
                 del test_tensor
-                logger.info("✅ M3 Max MPS 후처리 테스트 완료")
+                self.logger.info("✅ M3 Max MPS 후처리 테스트 완료")
             except Exception as e:
-                logger.warning(f"MPS 후처리 테스트 실패: {e}")
+                self.logger.warning(f"MPS 후처리 테스트 실패: {e}")
         
         # 고성능 메모리 관리
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        if memory_gb >= 128:
+        if self.memory_gb >= 128:
             import gc
             gc.collect()
-            logger.info("✅ M3 Max 128GB 후처리 메모리 관리 설정")
+            self.logger.info("✅ M3 Max 128GB 후처리 메모리 관리 설정")
     
     async def _warmup_m3_max_pipeline(self):
         """M3 Max 후처리 파이프라인 워밍업"""
-        logger.info("🔥 M3 Max 후처리 파이프라인 워밍업...")
+        self.logger.info("🔥 M3 Max 후처리 파이프라인 워밍업...")
         
         try:
             # 작은 더미 이미지로 워밍업
@@ -335,10 +344,10 @@ class PostProcessingStep(ProcessingPipelineStep):
             if self.color_enhancer and TORCH_AVAILABLE:
                 self.color_enhancer.correct_colors(dummy_image)
             
-            logger.info("✅ M3 Max 후처리 파이프라인 워밍업 완료")
+            self.logger.info("✅ M3 Max 후처리 파이프라인 워밍업 완료")
             
         except Exception as e:
-            logger.warning(f"M3 Max 후처리 워밍업 실패: {e}")
+            self.logger.warning(f"M3 Max 후처리 워밍업 실패: {e}")
     
     async def _init_real_esrgan(self) -> bool:
         """Real-ESRGAN Super Resolution 모델 초기화"""
@@ -346,14 +355,14 @@ class PostProcessingStep(ProcessingPipelineStep):
             # M3 Max 최적화 업스케일링
             self.real_esrgan = M3MaxUpscaler(
                 device=self.device,
-                scale_factor=4 if getattr(self, 'is_m3_max', False) else 2,
+                scale_factor=4 if self.is_m3_max else 2,
                 use_neural=self.enable_neural_enhancement
             )
-            logger.info("✅ Real-ESRGAN M3 Max 최적화 모드 사용")
+            self.logger.info("✅ Real-ESRGAN M3 Max 최적화 모드 사용")
             return True
                 
         except Exception as e:
-            logger.warning(f"Real-ESRGAN 초기화 실패: {e}")
+            self.logger.warning(f"Real-ESRGAN 초기화 실패: {e}")
             self.real_esrgan = M3MaxUpscaler(device=self.device)
             return True
     
@@ -363,13 +372,13 @@ class PostProcessingStep(ProcessingPipelineStep):
             # M3 Max 얼굴 향상
             self.gfpgan = M3MaxFaceEnhancer(
                 device=self.device,
-                enhancement_strength=1.5 if getattr(self, 'is_m3_max', False) else 1.0
+                enhancement_strength=1.5 if self.is_m3_max else 1.0
             )
-            logger.info("✅ GFPGAN M3 Max 최적화 모드 사용")
+            self.logger.info("✅ GFPGAN M3 Max 최적화 모드 사용")
             return True
                 
         except Exception as e:
-            logger.warning(f"GFPGAN 초기화 실패: {e}")
+            self.logger.warning(f"GFPGAN 초기화 실패: {e}")
             self.gfpgan = M3MaxFaceEnhancer(device=self.device)
             return True
     
@@ -379,13 +388,13 @@ class PostProcessingStep(ProcessingPipelineStep):
             # M3 Max 이미지 복원
             self.codeformer = M3MaxImageRestorer(
                 device=self.device,
-                restoration_strength=1.2 if getattr(self, 'is_m3_max', False) else 1.0
+                restoration_strength=1.2 if self.is_m3_max else 1.0
             )
-            logger.info("✅ CodeFormer M3 Max 최적화 모드 사용")
+            self.logger.info("✅ CodeFormer M3 Max 최적화 모드 사용")
             return True
                 
         except Exception as e:
-            logger.warning(f"CodeFormer 초기화 실패: {e}")
+            self.logger.warning(f"CodeFormer 초기화 실패: {e}")
             self.codeformer = M3MaxImageRestorer(device=self.device)
             return True
     
@@ -394,11 +403,11 @@ class PostProcessingStep(ProcessingPipelineStep):
         try:
             self.color_enhancer = ColorEnhancer(
                 device=self.device,
-                m3_max_mode=getattr(self, 'is_m3_max', False)
+                m3_max_mode=self.is_m3_max
             )
             return True
         except Exception as e:
-            logger.warning(f"색상 향상기 초기화 실패: {e}")
+            self.logger.warning(f"색상 향상기 초기화 실패: {e}")
             return False
     
     async def _init_noise_reducer(self) -> bool:
@@ -406,11 +415,11 @@ class PostProcessingStep(ProcessingPipelineStep):
         try:
             self.noise_reducer = NoiseReducer(
                 device=self.device,
-                m3_max_mode=getattr(self, 'is_m3_max', False)
+                m3_max_mode=self.is_m3_max
             )
             return True
         except Exception as e:
-            logger.warning(f"노이즈 제거기 초기화 실패: {e}")
+            self.logger.warning(f"노이즈 제거기 초기화 실패: {e}")
             return False
     
     async def _init_edge_enhancer(self) -> bool:
@@ -418,15 +427,15 @@ class PostProcessingStep(ProcessingPipelineStep):
         try:
             self.edge_enhancer = EdgeEnhancer(
                 device=self.device,
-                m3_max_mode=getattr(self, 'is_m3_max', False)
+                m3_max_mode=self.is_m3_max
             )
             return True
         except Exception as e:
-            logger.warning(f"엣지 향상기 초기화 실패: {e}")
+            self.logger.warning(f"엣지 향상기 초기화 실패: {e}")
             return False
     
     # =================================================================
-    # 메인 처리 메서드 - BasePipelineStep 호환 인터페이스
+    # 메인 처리 메서드 - 기존 로직 완전 유지
     # =================================================================
     
     async def process(
@@ -435,7 +444,7 @@ class PostProcessingStep(ProcessingPipelineStep):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        후처리 메인 처리 함수 - BasePipelineStep 호환
+        후처리 메인 처리 함수 - 기존 로직 완전 유지
         
         Args:
             input_data: 입력 이미지 (다양한 형태 지원)
@@ -453,7 +462,7 @@ class PostProcessingStep(ProcessingPipelineStep):
         
         try:
             # M3 Max 메모리 최적화
-            if getattr(self, 'is_m3_max', False):
+            if self.is_m3_max:
                 await self._optimize_m3_max_memory()
             
             # 1. 입력 전처리
@@ -468,7 +477,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             image_tensor = await self._preprocess_input(input_image)
             original_shape = image_tensor.shape if TORCH_AVAILABLE else input_image.shape
             
-            logger.info(f"🎨 후처리 시작 - 크기: {original_shape}")
+            self.logger.info(f"🎨 후처리 시작 - 크기: {original_shape}")
             
             # 2. 향상 옵션 설정
             enhancement_options = kwargs.get('enhancement_options', {})
@@ -477,7 +486,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             options = {**self.enhancement_config, **enhancement_options}
             
             # M3 Max 모드에서 자동 최적화
-            if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+            if self.is_m3_max and self.optimization_enabled:
                 options = self._apply_m3_max_optimizations(options)
             
             # 3. 순차적 향상 처리
@@ -486,43 +495,43 @@ class PostProcessingStep(ProcessingPipelineStep):
             
             # Super Resolution (해상도 향상)
             if options.get('super_resolution', True) and self.real_esrgan:
-                logger.info("🔍 Super Resolution 적용 중...")
+                self.logger.info("🔍 Super Resolution 적용 중...")
                 enhanced_image, sr_metrics = await self._apply_super_resolution(enhanced_image)
                 processing_log.append({'step': 'super_resolution', 'metrics': sr_metrics})
             
             # Face Enhancement (얼굴 향상)
             if options.get('face_enhancement', True) and self.gfpgan:
-                logger.info("👤 얼굴 향상 적용 중...")
+                self.logger.info("👤 얼굴 향상 적용 중...")
                 enhanced_image, face_metrics = await self._apply_face_enhancement(enhanced_image)
                 processing_log.append({'step': 'face_enhancement', 'metrics': face_metrics})
             
             # Image Restoration (전체 복원)
             if options.get('image_restoration', True) and self.codeformer:
-                logger.info("🔧 이미지 복원 적용 중...")
+                self.logger.info("🔧 이미지 복원 적용 중...")
                 enhanced_image, restoration_metrics = await self._apply_image_restoration(enhanced_image)
                 processing_log.append({'step': 'image_restoration', 'metrics': restoration_metrics})
             
             # Color Correction (색상 보정)
             if options.get('color_correction', True) and self.color_enhancer:
-                logger.info("🌈 색상 보정 적용 중...")
+                self.logger.info("🌈 색상 보정 적용 중...")
                 enhanced_image, color_metrics = await self._apply_color_correction(enhanced_image)
                 processing_log.append({'step': 'color_correction', 'metrics': color_metrics})
             
             # Noise Reduction (노이즈 제거)
             if options.get('noise_reduction', True) and self.noise_reducer:
-                logger.info("🔇 노이즈 제거 적용 중...")
+                self.logger.info("🔇 노이즈 제거 적용 중...")
                 enhanced_image, noise_metrics = await self._apply_noise_reduction(enhanced_image)
                 processing_log.append({'step': 'noise_reduction', 'metrics': noise_metrics})
             
             # Edge Enhancement (엣지 향상)
             if options.get('edge_enhancement', True) and self.edge_enhancer:
-                logger.info("📐 엣지 향상 적용 중...")
+                self.logger.info("📐 엣지 향상 적용 중...")
                 enhanced_image, edge_metrics = await self._apply_edge_enhancement(enhanced_image)
                 processing_log.append({'step': 'edge_enhancement', 'metrics': edge_metrics})
             
             # M3 Max 전용 최종 향상
-            if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
-                logger.info("🍎 M3 Max 최종 향상 적용 중...")
+            if self.is_m3_max and self.optimization_enabled:
+                self.logger.info("🍎 M3 Max 최종 향상 적용 중...")
                 enhanced_image, m3_metrics = await self._apply_m3_max_final_enhancement(enhanced_image)
                 processing_log.append({'step': 'm3_max_enhancement', 'metrics': m3_metrics})
             
@@ -547,12 +556,12 @@ class PostProcessingStep(ProcessingPipelineStep):
                 'applied_enhancements': [log['step'] for log in processing_log],
                 'target_achieved': quality_score >= quality_target,
                 'device_used': self.device,
-                'device_type': getattr(self, 'device_type', 'unknown'),
-                'm3_max_optimized': getattr(self, 'is_m3_max', False),
-                'memory_gb': getattr(self, 'memory_gb', 16.0),
+                'device_type': self.device_type,
+                'm3_max_optimized': self.is_m3_max,
+                'memory_gb': self.memory_gb,
                 'config_used': options,
                 'performance_info': {
-                    'optimization_enabled': getattr(self, 'optimization_enabled', True),
+                    'optimization_enabled': self.optimization_enabled,
                     'batch_size': self.batch_size,
                     'tile_size': self.tile_size,
                     'neural_enhancement': self.enable_neural_enhancement
@@ -562,26 +571,26 @@ class PostProcessingStep(ProcessingPipelineStep):
             # 6. 통계 업데이트
             self._update_processing_stats(processing_time, quality_score)
             
-            logger.info(f"✅ 후처리 완료 - 품질: {quality_score:.3f}, 시간: {processing_time:.2f}초")
+            self.logger.info(f"✅ 후처리 완료 - 품질: {quality_score:.3f}, 시간: {processing_time:.2f}초")
             
             return result
             
         except Exception as e:
             error_msg = f"후처리 실패: {str(e)}"
-            logger.error(error_msg)
+            self.logger.error(error_msg)
             
             return {
                 'success': False,
                 'error': error_msg,
                 'processing_time': time.time() - start_time,
                 'device_used': self.device,
-                'device_type': getattr(self, 'device_type', 'unknown'),
-                'm3_max_optimized': getattr(self, 'is_m3_max', False)
+                'device_type': self.device_type,
+                'm3_max_optimized': self.is_m3_max
             }
     
     async def _optimize_m3_max_memory(self):
         """M3 Max 메모리 최적화"""
-        if not getattr(self, 'is_m3_max', False):
+        if not self.is_m3_max:
             return
         
         try:
@@ -594,14 +603,14 @@ class PostProcessingStep(ProcessingPipelineStep):
                 elif hasattr(torch.mps, 'synchronize'):
                     torch.mps.synchronize()
                 
-            logger.debug("🍎 M3 Max 후처리 메모리 최적화 완료")
+            self.logger.debug("🍎 M3 Max 후처리 메모리 최적화 완료")
             
         except Exception as e:
-            logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
+            self.logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
     
     def _apply_m3_max_optimizations(self, options: Dict[str, Any]) -> Dict[str, Any]:
         """M3 Max 전용 옵션 최적화"""
-        if not getattr(self, 'is_m3_max', False):
+        if not self.is_m3_max:
             return options
         
         # M3 Max에서 더 공격적인 향상
@@ -610,12 +619,11 @@ class PostProcessingStep(ProcessingPipelineStep):
         optimized_options['precision_mode'] = 'high'
         optimized_options['memory_efficient'] = True
         
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        if memory_gb >= 128:
+        if self.memory_gb >= 128:
             optimized_options['enable_large_operations'] = True
             optimized_options['batch_optimization'] = True
         
-        logger.debug("🍎 M3 Max 옵션 최적화 적용")
+        self.logger.debug("🍎 M3 Max 옵션 최적화 적용")
         return optimized_options
     
     async def _preprocess_input(self, input_image: Union[np.ndarray, torch.Tensor, str]) -> Union[torch.Tensor, np.ndarray]:
@@ -667,12 +675,16 @@ class PostProcessingStep(ProcessingPipelineStep):
                 raise ValueError(f"지원하지 않는 이미지 형태: {image_np.shape}")
                 
         except Exception as e:
-            logger.error(f"입력 전처리 실패: {e}")
+            self.logger.error(f"입력 전처리 실패: {e}")
             # 기본 더미 텐서 반환
             if TORCH_AVAILABLE:
                 return torch.zeros(1, 3, 512, 512, device=self.device)
             else:
                 return np.zeros((512, 512, 3), dtype=np.uint8)
+    
+    # =================================================================
+    # 향상 처리 메서드들 - 기존 로직 완전 유지
+    # =================================================================
     
     async def _apply_super_resolution(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
         """Super Resolution 적용 - M3 Max 최적화"""
@@ -697,21 +709,21 @@ class PostProcessingStep(ProcessingPipelineStep):
                 improvement_score = 0.8
             
             # M3 Max 보너스
-            if getattr(self, 'is_m3_max', False):
+            if self.is_m3_max:
                 improvement_score = min(1.0, improvement_score * 1.1)
             
             metrics = {
                 'processing_time': processing_time,
                 'scale_factor': scale_factor,
                 'improvement_score': improvement_score,
-                'm3_max_accelerated': getattr(self, 'is_m3_max', False),
+                'm3_max_accelerated': self.is_m3_max,
                 'device': self.device
             }
             
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"Super Resolution 실패: {e}")
+            self.logger.warning(f"Super Resolution 실패: {e}")
             return image, {'error': str(e)}
     
     async def _apply_face_enhancement(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
@@ -727,19 +739,19 @@ class PostProcessingStep(ProcessingPipelineStep):
             processing_time = time.time() - start_time
             
             face_regions = self._count_face_regions(image)
-            enhancement_strength = 0.8 if getattr(self, 'is_m3_max', False) else 0.7
+            enhancement_strength = 0.8 if self.is_m3_max else 0.7
             
             metrics = {
                 'processing_time': processing_time,
                 'face_regions_processed': face_regions,
                 'enhancement_strength': enhancement_strength,
-                'm3_max_enhanced': getattr(self, 'is_m3_max', False)
+                'm3_max_enhanced': self.is_m3_max
             }
             
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"얼굴 향상 실패: {e}")
+            self.logger.warning(f"얼굴 향상 실패: {e}")
             return image, {'error': str(e)}
     
     async def _apply_image_restoration(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
@@ -758,20 +770,20 @@ class PostProcessingStep(ProcessingPipelineStep):
             detail_preservation = self._calculate_detail_preservation(image, enhanced)
             
             # M3 Max 정밀도 보너스
-            if getattr(self, 'is_m3_max', False):
+            if self.is_m3_max:
                 detail_preservation = min(1.0, detail_preservation * 1.05)
             
             metrics = {
                 'processing_time': processing_time,
                 'artifacts_removed': artifacts_removed,
                 'detail_preservation': detail_preservation,
-                'm3_max_precision': getattr(self, 'is_m3_max', False)
+                'm3_max_precision': self.is_m3_max
             }
             
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"이미지 복원 실패: {e}")
+            self.logger.warning(f"이미지 복원 실패: {e}")
             return image, {'error': str(e)}
     
     async def _apply_color_correction(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
@@ -790,13 +802,13 @@ class PostProcessingStep(ProcessingPipelineStep):
                 'processing_time': processing_time,
                 'color_balance_improvement': color_improvement,
                 'saturation_adjustment': saturation_change,
-                'm3_max_precision': getattr(self, 'is_m3_max', False)
+                'm3_max_precision': self.is_m3_max
             }
             
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"색상 보정 실패: {e}")
+            self.logger.warning(f"색상 보정 실패: {e}")
             return image, {'error': str(e)}
     
     async def _apply_noise_reduction(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
@@ -815,13 +827,13 @@ class PostProcessingStep(ProcessingPipelineStep):
                 'processing_time': processing_time,
                 'noise_reduction_amount': noise_reduction,
                 'detail_preservation': detail_preservation,
-                'm3_max_filtering': getattr(self, 'is_m3_max', False)
+                'm3_max_filtering': self.is_m3_max
             }
             
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"노이즈 제거 실패: {e}")
+            self.logger.warning(f"노이즈 제거 실패: {e}")
             return image, {'error': str(e)}
     
     async def _apply_edge_enhancement(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
@@ -840,18 +852,18 @@ class PostProcessingStep(ProcessingPipelineStep):
                 'processing_time': processing_time,
                 'edge_strength_improvement': edge_improvement,
                 'sharpness_gain': sharpness_gain,
-                'm3_max_precision': getattr(self, 'is_m3_max', False)
+                'm3_max_precision': self.is_m3_max
             }
             
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"엣지 향상 실패: {e}")
+            self.logger.warning(f"엣지 향상 실패: {e}")
             return image, {'error': str(e)}
     
     async def _apply_m3_max_final_enhancement(self, image: Union[torch.Tensor, np.ndarray]) -> Tuple[Union[torch.Tensor, np.ndarray], Dict]:
         """M3 Max 전용 최종 향상"""
-        if not getattr(self, 'is_m3_max', False):
+        if not self.is_m3_max:
             return image, {'skipped': 'not_m3_max'}
         
         try:
@@ -886,8 +898,12 @@ class PostProcessingStep(ProcessingPipelineStep):
             return enhanced, metrics
             
         except Exception as e:
-            logger.warning(f"M3 Max 최종 향상 실패: {e}")
+            self.logger.warning(f"M3 Max 최종 향상 실패: {e}")
             return image, {'error': str(e)}
+    
+    # =================================================================
+    # 헬퍼 메서드들 - 기존 로직 완전 유지
+    # =================================================================
     
     def _apply_advanced_unsharp_mask(self, image: torch.Tensor, strength: float = 0.3) -> torch.Tensor:
         """M3 Max 고급 언샵 마스크"""
@@ -908,7 +924,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return torch.clamp(unsharp, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"고급 언샵 마스크 실패: {e}")
+            self.logger.warning(f"고급 언샵 마스크 실패: {e}")
             return image
     
     def _apply_adaptive_histogram_equalization(self, image: torch.Tensor) -> torch.Tensor:
@@ -927,7 +943,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return torch.clamp(enhanced, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"적응적 히스토그램 균등화 실패: {e}")
+            self.logger.warning(f"적응적 히스토그램 균등화 실패: {e}")
             return image
     
     def _apply_color_fine_tuning(self, image: torch.Tensor) -> torch.Tensor:
@@ -946,7 +962,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return torch.clamp(enhanced, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"색상 미세 조정 실패: {e}")
+            self.logger.warning(f"색상 미세 조정 실패: {e}")
             return image
     
     def _apply_numpy_enhancement(self, image: np.ndarray) -> np.ndarray:
@@ -962,7 +978,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return np.clip(enhanced, 0, 255).astype(np.uint8)
             
         except Exception as e:
-            logger.warning(f"NumPy 향상 처리 실패: {e}")
+            self.logger.warning(f"NumPy 향상 처리 실패: {e}")
             return image
     
     async def _postprocess_output(self, image: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:
@@ -977,13 +993,13 @@ class PostProcessingStep(ProcessingPipelineStep):
                     image = self._apply_final_adjustments(image)
                 
                 # M3 Max 전용 최종 폴리싱
-                if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+                if self.is_m3_max and self.optimization_enabled:
                     image = self._apply_m3_max_final_polish(image)
             
             return image
             
         except Exception as e:
-            logger.warning(f"출력 후처리 실패: {e}")
+            self.logger.warning(f"출력 후처리 실패: {e}")
             return image
     
     def _apply_final_adjustments(self, image: torch.Tensor) -> torch.Tensor:
@@ -991,18 +1007,18 @@ class PostProcessingStep(ProcessingPipelineStep):
         try:
             # 약간의 선명도 향상
             if self.enhancement_config.get('final_sharpening', True):
-                strength = 0.3 if getattr(self, 'is_m3_max', False) else 0.2
+                strength = 0.3 if self.is_m3_max else 0.2
                 image = self._apply_unsharp_mask(image, strength=strength)
             
             # 색상 미세 조정
             if self.enhancement_config.get('final_color_boost', True):
-                factor = 0.15 if getattr(self, 'is_m3_max', False) else 0.1
+                factor = 0.15 if self.is_m3_max else 0.1
                 image = self._boost_colors(image, factor=factor)
             
             return image
             
         except Exception as e:
-            logger.warning(f"최종 조정 실패: {e}")
+            self.logger.warning(f"최종 조정 실패: {e}")
             return image
     
     def _apply_m3_max_final_polish(self, image: torch.Tensor) -> torch.Tensor:
@@ -1022,7 +1038,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return torch.clamp(final, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"M3 Max 최종 폴리싱 실패: {e}")
+            self.logger.warning(f"M3 Max 최종 폴리싱 실패: {e}")
             return image
     
     def _apply_unsharp_mask(self, image: torch.Tensor, strength: float = 0.2) -> torch.Tensor:
@@ -1042,7 +1058,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return torch.clamp(unsharp, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"언샵 마스크 실패: {e}")
+            self.logger.warning(f"언샵 마스크 실패: {e}")
             return image
     
     def _boost_colors(self, image: torch.Tensor, factor: float = 0.1) -> torch.Tensor:
@@ -1059,7 +1075,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return torch.clamp(boosted, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"색상 부스트 실패: {e}")
+            self.logger.warning(f"색상 부스트 실패: {e}")
             return image
     
     def _get_gaussian_kernel(self, size: int, sigma: float) -> torch.Tensor:
@@ -1092,7 +1108,7 @@ class PostProcessingStep(ProcessingPipelineStep):
         return kernel
     
     # =================================================================
-    # 품질 평가 및 헬퍼 메서드들
+    # 품질 평가 및 헬퍼 메서드들 - 기존 로직 완전 유지
     # =================================================================
     
     async def _evaluate_enhancement_quality(self, original: Union[torch.Tensor, np.ndarray], enhanced: Union[torch.Tensor, np.ndarray]) -> float:
@@ -1113,7 +1129,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             artifact_level = self._estimate_artifact_level(enhanced)
             
             # M3 Max 정밀도 보너스
-            precision_bonus = 0.02 if getattr(self, 'is_m3_max', False) else 0.0
+            precision_bonus = 0.02 if self.is_m3_max else 0.0
             
             # 종합 점수
             quality_score = (
@@ -1127,7 +1143,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return max(0.0, min(1.0, quality_score))
             
         except Exception as e:
-            logger.warning(f"품질 평가 실패: {e}")
+            self.logger.warning(f"품질 평가 실패: {e}")
             return 0.5
     
     def _calculate_sharpness_improvement(self, original: Union[torch.Tensor, np.ndarray], enhanced: Union[torch.Tensor, np.ndarray]) -> float:
@@ -1148,7 +1164,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return 0.5
             
         except Exception as e:
-            logger.warning(f"선명도 개선 계산 실패: {e}")
+            self.logger.warning(f"선명도 개선 계산 실패: {e}")
             return 0.5
     
     def _calculate_laplacian_variance_tensor(self, image: torch.Tensor, kernel: torch.Tensor) -> float:
@@ -1166,7 +1182,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return float(torch.var(laplacian))
             
         except Exception as e:
-            logger.warning(f"라플라시안 분산 계산 실패: {e}")
+            self.logger.warning(f"라플라시안 분산 계산 실패: {e}")
             return 0.0
     
     def _calculate_detail_preservation(self, original: Union[torch.Tensor, np.ndarray], enhanced: Union[torch.Tensor, np.ndarray]) -> float:
@@ -1189,7 +1205,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return 0.5
             
         except Exception as e:
-            logger.warning(f"디테일 보존도 계산 실패: {e}")
+            self.logger.warning(f"디테일 보존도 계산 실패: {e}")
             return 0.5
     
     def _extract_high_frequency_tensor(self, image: torch.Tensor) -> torch.Tensor:
@@ -1210,7 +1226,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return high_freq
             
         except Exception as e:
-            logger.warning(f"고주파 성분 추출 실패: {e}")
+            self.logger.warning(f"고주파 성분 추출 실패: {e}")
             return torch.zeros_like(image[:, 0:1])
     
     def _calculate_color_naturalness(self, image: Union[torch.Tensor, np.ndarray]) -> float:
@@ -1237,7 +1253,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return 0.5
             
         except Exception as e:
-            logger.warning(f"색상 자연스러움 계산 실패: {e}")
+            self.logger.warning(f"색상 자연스러움 계산 실패: {e}")
             return 0.5
     
     def _estimate_artifact_level(self, image: Union[torch.Tensor, np.ndarray]) -> float:
@@ -1247,7 +1263,7 @@ class PostProcessingStep(ProcessingPipelineStep):
             return 0.2  # 기본값
             
         except Exception as e:
-            logger.warning(f"아티팩트 수준 추정 실패: {e}")
+            self.logger.warning(f"아티팩트 수준 추정 실패: {e}")
             return 0.3
     
     # 기타 헬퍼 메서드들...
@@ -1297,24 +1313,24 @@ class PostProcessingStep(ProcessingPipelineStep):
             self.processing_stats['enhancement_success_rate'] = success_count / total_images
             
         except Exception as e:
-            logger.warning(f"통계 업데이트 실패: {e}")
+            self.logger.warning(f"통계 업데이트 실패: {e}")
     
     # =================================================================
-    # BasePipelineStep 호환 메서드들
+    # 최적 생성자 호환 메서드들
     # =================================================================
     
     async def get_step_info(self) -> Dict[str, Any]:
-        """🔍 스텝 정보 반환 (BasePipelineStep 호환)"""
+        """🔍 스텝 정보 반환 (최적 생성자 호환)"""
         return {
             "step_name": "PostProcessing",
             "class_name": self.__class__.__name__,
             "version": "4.0-m3max",
             "device": self.device,
-            "device_type": getattr(self, 'device_type', 'unknown'),
-            "memory_gb": getattr(self, 'memory_gb', 16.0),
-            "is_m3_max": getattr(self, 'is_m3_max', False),
-            "optimization_enabled": getattr(self, 'optimization_enabled', True),
-            "quality_level": getattr(self, 'quality_level', 'balanced'),
+            "device_type": self.device_type,
+            "memory_gb": self.memory_gb,
+            "is_m3_max": self.is_m3_max,
+            "optimization_enabled": self.optimization_enabled,
+            "quality_level": self.quality_level,
             "initialized": self.is_initialized,
             "initialization_error": self.initialization_error,
             "config_keys": list(self.config.keys()),
@@ -1327,7 +1343,7 @@ class PostProcessingStep(ProcessingPipelineStep):
                 "noise_reduction": bool(self.noise_reducer),
                 "edge_enhancement": bool(self.edge_enhancer),
                 "neural_enhancement": self.enable_neural_enhancement,
-                "m3_max_acceleration": getattr(self, 'is_m3_max', False) and self.device == 'mps'
+                "m3_max_acceleration": self.is_m3_max and self.device == 'mps'
             },
             "performance_settings": {
                 "batch_size": self.batch_size,
@@ -1339,9 +1355,9 @@ class PostProcessingStep(ProcessingPipelineStep):
         }
     
     async def cleanup(self):
-        """리소스 정리 (BasePipelineStep 호환)"""
+        """리소스 정리 (최적 생성자 호환)"""
         try:
-            logger.info("🧹 후처리 시스템 리소스 정리 시작...")
+            self.logger.info("🧹 후처리 시스템 리소스 정리 시작...")
             
             # 모델 정리
             if self.real_esrgan and hasattr(self.real_esrgan, 'cleanup'):
@@ -1367,14 +1383,14 @@ class PostProcessingStep(ProcessingPipelineStep):
             gc.collect()
             
             self.is_initialized = False
-            logger.info("✅ 후처리 시스템 리소스 정리 완료")
+            self.logger.info("✅ 후처리 시스템 리소스 정리 완료")
             
         except Exception as e:
-            logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
+            self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
 
 
 # =================================================================
-# M3 Max 최적화 폴백 클래스들
+# M3 Max 최적화 폴백 클래스들 - 기존 로직 완전 유지
 # =================================================================
 
 class M3MaxUpscaler:

@@ -1,6 +1,6 @@
 # app/ai_pipeline/steps/step_08_quality_assessment.py
 """
-8단계: 품질 평가 (Quality Assessment) - BasePipelineStep 완전 호환
+8단계: 품질 평가 (Quality Assessment) - 최적 생성자 패턴 적용
 통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
 """
 import os
@@ -58,22 +58,6 @@ except ImportError:
     SKIMAGE_AVAILABLE = False
     print("⚠️ Scikit-image 권장: pip install scikit-image")
 
-# BasePipelineStep 임포트 시도
-try:
-    from .base_step import BasePipelineStep, ProcessingPipelineStep
-    BASE_STEP_AVAILABLE = True
-except ImportError:
-    # 폴백: 기본 클래스
-    class BasePipelineStep:
-        def __init__(self, device=None, config=None, **kwargs):
-            self.device = device or 'cpu'
-            self.config = config or {}
-    
-    class ProcessingPipelineStep(BasePipelineStep):
-        pass
-    
-    BASE_STEP_AVAILABLE = False
-
 # 로거 설정
 logger = logging.getLogger(__name__)
 
@@ -116,9 +100,9 @@ class QualityMetrics:
         else:
             return QualityGrade.VERY_POOR
 
-class QualityAssessmentStep(ProcessingPipelineStep):
+class QualityAssessmentStep:
     """
-    실제로 작동하는 품질 평가 시스템 - BasePipelineStep 완전 호환
+    실제로 작동하는 품질 평가 시스템 - 최적 생성자 패턴 적용
     통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
     - M3 Max 128GB 최적화
     - 실제 SSIM, PSNR, MSE 계산
@@ -155,7 +139,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
         **kwargs
     ):
         """
-        🎯 BasePipelineStep 완전 호환 생성자
+        🎯 최적 생성자 패턴 - 모든 MyCloset AI Step과 호환
         
         Args:
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
@@ -168,19 +152,79 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 - quality_level: str = "balanced"
                 - 기타 스텝별 특화 파라미터들...
         """
-        # BasePipelineStep 초기화 (상속)
-        if BASE_STEP_AVAILABLE:
-            super().__init__(device=device, config=config, **kwargs)
-        else:
-            # 폴백 초기화
-            self.device = self._setup_optimal_device(device or 'auto')
-            self.config = config or {}
-            self.device_type = kwargs.get('device_type', 'auto')
-            self.memory_gb = kwargs.get('memory_gb', 16.0)
-            self.is_m3_max = kwargs.get('is_m3_max', False)
-            self.optimization_enabled = kwargs.get('optimization_enabled', True)
-            self.quality_level = kwargs.get('quality_level', 'balanced')
-        
+        # 1. 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 2. 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+
+        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+
+        # 4. ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+
+        # 5. ✅ 상태 초기화
+        self.is_initialized = False
+
+        # 6. 🎯 기존 클래스별 고유 초기화 로직 실행
+        self._initialize_step_specific()
+
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+    
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        try:
+            if TORCH_AVAILABLE:
+                if torch.backends.mps.is_available():
+                    return 'mps'  # M3 Max 우선
+                elif torch.cuda.is_available():
+                    return 'cuda'  # NVIDIA GPU
+                else:
+                    return 'cpu'  # 폴백
+            else:
+                return 'cpu'
+        except ImportError:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
+    def _initialize_step_specific(self):
+        """🎯 기존 초기화 로직 완전 유지"""
         # M3 Max 특화 설정
         self._configure_m3_max_optimizations()
         
@@ -201,16 +245,16 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             'memory_efficient': True,
             'max_resolution': self._get_max_resolution(),
             'enable_caching': True,
-            'batch_processing': getattr(self, 'memory_gb', 16.0) > 64
+            'batch_processing': self.memory_gb > 64
         })
         
         # 최적화 수준
         self.optimization_level = kwargs.get('optimization_level', 'balanced')
-        if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+        if self.is_m3_max and self.optimization_enabled:
             self.optimization_level = 'ultra'
         
         # 품질 임계값 (M3 Max 향상된 임계값)
-        if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+        if self.is_m3_max and self.optimization_enabled:
             self.quality_thresholds = {
                 'excellent': 0.95,
                 'good': 0.8,
@@ -242,8 +286,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
         self.aesthetic_analyzer = None
         self.face_detector = None
         
-        # 상태 변수들
-        self.is_initialized = False
+        # 초기화 상태
         self.initialization_error = None
         
         # 성능 통계
@@ -252,48 +295,20 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             'average_time': 0.0,
             'average_quality_score': 0.0,
             'success_rate': 0.0,
-            'm3_max_optimized': getattr(self, 'is_m3_max', False),
+            'm3_max_optimized': self.is_m3_max,
             'memory_usage_gb': 0.0
         }
         
-        logger.info(f"📊 QualityAssessmentStep 초기화 - 디바이스: {self.device}")
-        if getattr(self, 'is_m3_max', False):
-            logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {getattr(self, 'memory_gb', 16.0)}GB")
-    
-    def _setup_optimal_device(self, preferred_device: str) -> str:
-        """최적 디바이스 선택 - M3 Max 특화"""
-        try:
-            if preferred_device == 'auto':
-                if TORCH_AVAILABLE and torch.backends.mps.is_available():
-                    logger.info("🍎 M3 Max MPS 자동 선택")
-                    return 'mps'
-                elif TORCH_AVAILABLE and torch.cuda.is_available():
-                    logger.info("🎮 CUDA 자동 선택")
-                    return 'cuda'
-                else:
-                    logger.info("⚡ CPU 자동 선택")
-                    return 'cpu'
-            
-            if preferred_device == 'mps' and TORCH_AVAILABLE and torch.backends.mps.is_available():
-                logger.info("✅ Apple Silicon MPS 백엔드 활성화")
-                return 'mps'
-            elif preferred_device == 'cuda' and TORCH_AVAILABLE and torch.cuda.is_available():
-                logger.info("✅ CUDA 백엔드 활성화")
-                return 'cuda'
-            else:
-                logger.info("⚠️ CPU 백엔드 사용")
-                return 'cpu'
-        except Exception as e:
-            logger.warning(f"디바이스 설정 실패: {e}, CPU 사용")
-            return 'cpu'
+        if self.is_m3_max:
+            self.logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {self.memory_gb}GB")
     
     def _configure_m3_max_optimizations(self):
         """M3 Max 전용 최적화 설정"""
-        if not getattr(self, 'is_m3_max', False):
+        if not self.is_m3_max:
             return
         
         try:
-            logger.info("🍎 M3 Max 품질 평가 최적화 설정 시작...")
+            self.logger.info("🍎 M3 Max 품질 평가 최적화 설정 시작...")
             
             # MPS 최적화
             if self.device == 'mps' and TORCH_AVAILABLE:
@@ -303,49 +318,41 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 if hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
                 
-                logger.info("✅ M3 Max MPS 최적화 완료")
+                self.logger.info("✅ M3 Max MPS 최적화 완료")
             
             # CPU 코어 최적화 (14코어 M3 Max)
             if TORCH_AVAILABLE:
                 optimal_threads = min(12, os.cpu_count() or 8)  # 효율성 코어 활용
                 torch.set_num_threads(optimal_threads)
-                logger.info(f"⚡ M3 Max CPU 스레드 최적화: {optimal_threads}")
+                self.logger.info(f"⚡ M3 Max CPU 스레드 최적화: {optimal_threads}")
             
             # 메모리 관리 최적화
-            memory_gb = getattr(self, 'memory_gb', 16.0)
-            if memory_gb >= 128:
+            if self.memory_gb >= 128:
                 self.performance_config['large_batch_processing'] = True
                 self.performance_config['memory_aggressive_mode'] = True
-                logger.info("💾 M3 Max 128GB 메모리 최적화 활성화")
+                self.logger.info("💾 M3 Max 128GB 메모리 최적화 활성화")
             
         except Exception as e:
-            logger.warning(f"M3 Max 최적화 설정 실패: {e}")
+            self.logger.warning(f"M3 Max 최적화 설정 실패: {e}")
     
     def _get_quality_level(self) -> str:
         """품질 수준 결정 - M3 Max는 기본적으로 높은 품질"""
-        is_m3_max = getattr(self, 'is_m3_max', False)
-        optimization_enabled = getattr(self, 'optimization_enabled', True)
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        
-        if is_m3_max and optimization_enabled:
+        if self.is_m3_max and self.optimization_enabled:
             return 'ultra'  # M3 Max 전용 최고 품질
-        elif memory_gb >= 64:
+        elif self.memory_gb >= 64:
             return 'high'
-        elif memory_gb >= 32:
+        elif self.memory_gb >= 32:
             return 'medium'
         else:
             return 'basic'
     
     def _get_max_resolution(self) -> int:
         """최대 해상도 결정 - M3 Max는 더 높은 해상도 지원"""
-        is_m3_max = getattr(self, 'is_m3_max', False)
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        
-        if is_m3_max and memory_gb >= 128:
+        if self.is_m3_max and self.memory_gb >= 128:
             return 2048  # M3 Max 128GB: 2K 처리 가능
-        elif memory_gb >= 64:
+        elif self.memory_gb >= 64:
             return 1536
-        elif memory_gb >= 32:
+        elif self.memory_gb >= 32:
             return 1024
         else:
             return 512
@@ -353,23 +360,23 @@ class QualityAssessmentStep(ProcessingPipelineStep):
     async def initialize(self) -> bool:
         """
         품질 평가 시스템 초기화
-        BasePipelineStep 표준 초기화 메서드
+        표준 초기화 메서드
         """
         try:
-            logger.info("🔄 품질 평가 시스템 초기화 시작...")
+            self.logger.info("🔄 품질 평가 시스템 초기화 시작...")
             
             # 1. 기본 요구사항 검증
             if not CV2_AVAILABLE:
                 raise RuntimeError("OpenCV가 필요합니다: pip install opencv-python")
             
             # 2. M3 Max 전용 초기화
-            if getattr(self, 'is_m3_max', False):
+            if self.is_m3_max:
                 await self._initialize_m3_max_components()
             
             # 3. 지각적 분석기 초기화
             self.perceptual_analyzer = PerceptualQualityAnalyzer(
                 device=self.device,
-                m3_max_mode=getattr(self, 'is_m3_max', False),
+                m3_max_mode=self.is_m3_max,
                 optimization_level=self.optimization_level
             )
             
@@ -377,14 +384,14 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             self.technical_analyzer = TechnicalQualityAnalyzer(
                 device=self.device,
                 enable_advanced_features=self.optimization_level in ['high', 'ultra'],
-                m3_max_acceleration=getattr(self, 'is_m3_max', False)
+                m3_max_acceleration=self.is_m3_max
             )
             
             # 5. 미적 분석기 초기화
             self.aesthetic_analyzer = AestheticQualityAnalyzer(
                 device=self.device,
                 use_advanced_features=self.optimization_level in ['high', 'ultra'],
-                m3_max_precision=getattr(self, 'is_m3_max', False)
+                m3_max_precision=self.is_m3_max
             )
             
             # 6. 얼굴 검출기 초기화 (선택적)
@@ -395,24 +402,24 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             await self._validate_system()
             
             # 8. 워밍업 (M3 Max는 선택적)
-            if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+            if self.is_m3_max and self.optimization_enabled:
                 await self._warmup_m3_max_pipeline()
             
             self.is_initialized = True
-            logger.info("✅ 품질 평가 시스템 초기화 완료")
+            self.logger.info("✅ 품질 평가 시스템 초기화 완료")
             
             return True
             
         except Exception as e:
             error_msg = f"품질 평가 시스템 초기화 실패: {e}"
-            logger.error(f"❌ {error_msg}")
+            self.logger.error(f"❌ {error_msg}")
             self.initialization_error = error_msg
             self.is_initialized = False
             return False
     
     async def _initialize_m3_max_components(self):
         """M3 Max 전용 컴포넌트 초기화"""
-        logger.info("🍎 M3 Max 전용 품질 평가 컴포넌트 초기화...")
+        self.logger.info("🍎 M3 Max 전용 품질 평가 컴포넌트 초기화...")
         
         # Metal Performance Shaders 설정
         if self.device == 'mps' and TORCH_AVAILABLE:
@@ -421,16 +428,15 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 test_tensor = torch.randn(1, 3, 512, 512).to(self.device)
                 _ = torch.mean(test_tensor)
                 del test_tensor
-                logger.info("✅ M3 Max MPS 백엔드 테스트 완료")
+                self.logger.info("✅ M3 Max MPS 백엔드 테스트 완료")
             except Exception as e:
-                logger.warning(f"MPS 테스트 실패: {e}")
+                self.logger.warning(f"MPS 테스트 실패: {e}")
         
         # 고성능 메모리 관리
-        memory_gb = getattr(self, 'memory_gb', 16.0)
-        if memory_gb >= 128:
+        if self.memory_gb >= 128:
             import gc
             gc.collect()
-            logger.info("✅ M3 Max 128GB 메모리 관리 설정")
+            self.logger.info("✅ M3 Max 128GB 메모리 관리 설정")
     
     async def _initialize_face_detector(self):
         """얼굴 검출기 초기화"""
@@ -440,23 +446,22 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             self.face_detector = cv2.CascadeClassifier(cascade_path)
             
             if self.face_detector.empty():
-                logger.warning("⚠️ 얼굴 검출기 로드 실패")
+                self.logger.warning("⚠️ 얼굴 검출기 로드 실패")
                 self.face_detector = None
             else:
-                logger.info("✅ 얼굴 검출기 로드 완료")
+                self.logger.info("✅ 얼굴 검출기 로드 완료")
                 
         except Exception as e:
-            logger.warning(f"얼굴 검출기 초기화 실패: {e}")
+            self.logger.warning(f"얼굴 검출기 초기화 실패: {e}")
             self.face_detector = None
     
     async def _warmup_m3_max_pipeline(self):
         """M3 Max 파이프라인 워밍업"""
-        logger.info("🔥 M3 Max 품질 평가 파이프라인 워밍업...")
+        self.logger.info("🔥 M3 Max 품질 평가 파이프라인 워밍업...")
         
         try:
             # M3 Max 128GB는 더 큰 워밍업 이미지 사용
-            memory_gb = getattr(self, 'memory_gb', 16.0)
-            if memory_gb >= 128:
+            if self.memory_gb >= 128:
                 warmup_size = (1024, 1024)
             else:
                 warmup_size = (512, 512)
@@ -474,10 +479,10 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             if self.aesthetic_analyzer and hasattr(self.aesthetic_analyzer, 'warmup'):
                 await self.aesthetic_analyzer.warmup()
             
-            logger.info("✅ M3 Max 품질 평가 파이프라인 워밍업 완료")
+            self.logger.info("✅ M3 Max 품질 평가 파이프라인 워밍업 완료")
             
         except Exception as e:
-            logger.warning(f"M3 Max 워밍업 실패: {e}")
+            self.logger.warning(f"M3 Max 워밍업 실패: {e}")
     
     async def _validate_system(self):
         """시스템 검증"""
@@ -493,16 +498,16 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             available_features.append('machine_learning_metrics')
         if SKIMAGE_AVAILABLE:
             available_features.append('texture_analysis')
-        if getattr(self, 'is_m3_max', False):
+        if self.is_m3_max:
             available_features.append('m3_max_acceleration')
         
         if not available_features:
             raise RuntimeError("사용 가능한 품질 평가 기능이 없습니다")
         
-        logger.info(f"✅ 사용 가능한 기능들: {available_features}")
+        self.logger.info(f"✅ 사용 가능한 기능들: {available_features}")
     
     # =================================================================
-    # 메인 처리 메서드 - BasePipelineStep 호환 인터페이스
+    # 메인 처리 메서드 - 기존 로직 완전 유지
     # =================================================================
     
     async def process(
@@ -511,7 +516,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        품질 평가 처리 - BasePipelineStep 호환 인터페이스
+        품질 평가 처리 - 기존 로직 완전 유지
         
         Args:
             input_data: 가상 피팅 결과 또는 이미지 데이터
@@ -531,7 +536,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
         
         try:
             # M3 Max 메모리 최적화
-            if getattr(self, 'is_m3_max', False):
+            if self.is_m3_max:
                 await self._optimize_m3_max_memory()
             
             # 1. 입력 데이터 처리
@@ -552,11 +557,11 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             fabric_type = kwargs.get('fabric_type', 'cotton')
             clothing_type = kwargs.get('clothing_type', 'shirt')
             
-            logger.info(f"📊 품질 평가 시작 - 재질: {fabric_type}, 타입: {clothing_type}")
+            self.logger.info(f"📊 품질 평가 시작 - 재질: {fabric_type}, 타입: {clothing_type}")
             
             # 2. 입력 데이터 검증
             if fitted_image is None:
-                logger.warning("⚠️ 피팅된 이미지가 없음 - 폴백 모드")
+                self.logger.warning("⚠️ 피팅된 이미지가 없음 - 폴백 모드")
                 return self._create_fallback_result("피팅된 이미지 없음")
             
             # 3. 데이터 타입 변환
@@ -569,33 +574,33 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             quality_weights = self.CLOTHING_QUALITY_WEIGHTS.get(clothing_type, self.CLOTHING_QUALITY_WEIGHTS['default'])
             
             # 5. 지각적 품질 분석
-            logger.info("👁️ 지각적 품질 분석...")
+            self.logger.info("👁️ 지각적 품질 분석...")
             perceptual_score = await self.perceptual_analyzer.analyze_perceptual_quality(
                 fitted_img, person_img, fabric_standards
             )
             
             # 6. 기술적 품질 분석
-            logger.info("🔧 기술적 품질 분석...")
+            self.logger.info("🔧 기술적 품질 분석...")
             technical_score = await self.technical_analyzer.analyze_technical_quality(
                 fitted_img, fabric_standards, clothing_type
             )
             
             # 7. 미적 품질 분석
-            logger.info("🎨 미적 품질 분석...")
+            self.logger.info("🎨 미적 품질 분석...")
             aesthetic_score = await self.aesthetic_analyzer.analyze_aesthetic_quality(
                 fitted_img, person_img, clothing_img, fabric_type
             )
             
             # 8. 핏 정확도 평가
-            logger.info("👕 핏 정확도 평가...")
+            self.logger.info("👕 핏 정확도 평가...")
             fit_score = await self._evaluate_fit_accuracy(fitted_img, person_img, fitted_result)
             
             # 9. 색상 조화 평가
-            logger.info("🌈 색상 조화 평가...")
+            self.logger.info("🌈 색상 조화 평가...")
             color_score = await self._evaluate_color_harmony(fitted_img, clothing_img)
             
             # 10. 디테일 보존도 평가
-            logger.info("🔍 디테일 보존도 평가...")
+            self.logger.info("🔍 디테일 보존도 평가...")
             detail_score = await self._evaluate_detail_preservation(fitted_img, person_img)
             
             # 11. 추가 메트릭들
@@ -606,7 +611,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             # 12. 얼굴 보존도 평가 (선택적)
             face_score = 1.0
             if self.face_detector is not None and person_img is not None:
-                logger.info("👤 얼굴 보존도 평가...")
+                self.logger.info("👤 얼굴 보존도 평가...")
                 face_score = await self._evaluate_face_preservation(fitted_img, person_img)
             
             # 13. 종합 품질 메트릭 계산
@@ -636,7 +641,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             )
             
             # M3 Max 정밀도 보너스
-            if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+            if self.is_m3_max and self.optimization_enabled:
                 overall_score = min(1.0, overall_score * 1.02)  # 2% 보너스
             
             metrics.overall_score = overall_score
@@ -661,17 +666,17 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             # 18. 통계 업데이트
             self._update_performance_stats(processing_time, metrics.overall_score)
             
-            logger.info(f"✅ 품질 평가 완료 - 점수: {metrics.overall_score:.3f} ({metrics.get_grade().value})")
+            self.logger.info(f"✅ 품질 평가 완료 - 점수: {metrics.overall_score:.3f} ({metrics.get_grade().value})")
             return result
             
         except Exception as e:
             error_msg = f"품질 평가 처리 실패: {e}"
-            logger.error(f"❌ {error_msg}")
+            self.logger.error(f"❌ {error_msg}")
             return self._create_error_result(error_msg)
     
     async def _optimize_m3_max_memory(self):
         """M3 Max 메모리 최적화"""
-        if not getattr(self, 'is_m3_max', False):
+        if not self.is_m3_max:
             return
         
         try:
@@ -684,13 +689,13 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 elif hasattr(torch.mps, 'synchronize'):
                     torch.mps.synchronize()
                 
-            logger.debug("🍎 M3 Max 메모리 최적화 완료")
+            self.logger.debug("🍎 M3 Max 메모리 최적화 완료")
             
         except Exception as e:
-            logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
+            self.logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
     
     # =================================================================
-    # 평가 메서드들
+    # 평가 메서드들 - 기존 로직 완전 유지
     # =================================================================
     
     def _prepare_image_data(self, image_data) -> np.ndarray:
@@ -704,7 +709,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             try:
                 return np.array(image_data)
             except:
-                logger.warning("이미지 데이터 변환 실패 - 더미 데이터 생성")
+                self.logger.warning("이미지 데이터 변환 실패 - 더미 데이터 생성")
                 return np.ones((512, 512, 3), dtype=np.uint8) * 128
     
     async def _evaluate_fit_accuracy(self, fitted: np.ndarray, person: Optional[np.ndarray], fitted_result: Dict) -> float:
@@ -743,7 +748,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return max(0.0, min(1.0, fit_score))
             
         except Exception as e:
-            logger.warning(f"핏 정확도 평가 실패: {e}")
+            self.logger.warning(f"핏 정확도 평가 실패: {e}")
             return 0.5
     
     async def _evaluate_color_harmony(self, fitted: np.ndarray, clothing: Optional[np.ndarray]) -> float:
@@ -777,7 +782,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return harmony_score
             
         except Exception as e:
-            logger.warning(f"색상 조화 평가 실패: {e}")
+            self.logger.warning(f"색상 조화 평가 실패: {e}")
             return 0.5
     
     async def _evaluate_detail_preservation(self, fitted: np.ndarray, original: Optional[np.ndarray]) -> float:
@@ -811,7 +816,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return max(0.0, min(1.0, detail_score))
             
         except Exception as e:
-            logger.warning(f"디테일 보존도 평가 실패: {e}")
+            self.logger.warning(f"디테일 보존도 평가 실패: {e}")
             return 0.5
     
     async def _evaluate_edge_quality(self, image: np.ndarray) -> float:
@@ -843,7 +848,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return max(0.0, min(1.0, edge_score))
             
         except Exception as e:
-            logger.warning(f"엣지 품질 평가 실패: {e}")
+            self.logger.warning(f"엣지 품질 평가 실패: {e}")
             return 0.5
     
     async def _evaluate_lighting_consistency(self, fitted: np.ndarray, original: Optional[np.ndarray]) -> float:
@@ -870,7 +875,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return max(0.0, min(1.0, similarity))
             
         except Exception as e:
-            logger.warning(f"조명 일관성 평가 실패: {e}")
+            self.logger.warning(f"조명 일관성 평가 실패: {e}")
             return 0.5
     
     async def _evaluate_artifacts(self, image: np.ndarray) -> float:
@@ -896,7 +901,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return max(0.0, min(1.0, artifact_score))
             
         except Exception as e:
-            logger.warning(f"아티팩트 검출 실패: {e}")
+            self.logger.warning(f"아티팩트 검출 실패: {e}")
             return 0.5
     
     async def _evaluate_face_preservation(self, fitted: np.ndarray, original: np.ndarray) -> float:
@@ -944,7 +949,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return 0.5
             
         except Exception as e:
-            logger.warning(f"얼굴 보존도 평가 실패: {e}")
+            self.logger.warning(f"얼굴 보존도 평가 실패: {e}")
             return 1.0
     
     def _calculate_ssim_numpy(self, img1: np.ndarray, img2: np.ndarray) -> float:
@@ -981,11 +986,11 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return float(np.mean(ssim_map))
             
         except Exception as e:
-            logger.warning(f"SSIM 계산 실패: {e}")
+            self.logger.warning(f"SSIM 계산 실패: {e}")
             return 0.5
     
     # =================================================================
-    # 결과 생성 및 분석 메서드들
+    # 결과 생성 및 분석 메서드들 - 기존 로직 완전 유지
     # =================================================================
     
     def _build_final_result(
@@ -997,7 +1002,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
         fabric_type: str,
         clothing_type: str
     ) -> Dict[str, Any]:
-        """최종 결과 구성 (BasePipelineStep 호환 형식)"""
+        """최종 결과 구성 (호환 형식)"""
         
         return {
             "success": True,
@@ -1013,14 +1018,14 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 "assessment_method": "comprehensive",
                 "processing_time": processing_time,
                 "device": self.device,
-                "device_type": getattr(self, 'device_type', 'unknown'),
-                "m3_max_optimized": getattr(self, 'is_m3_max', False),
-                "memory_gb": getattr(self, 'memory_gb', 16.0),
+                "device_type": self.device_type,
+                "m3_max_optimized": self.is_m3_max,
+                "memory_gb": self.memory_gb,
                 "features_used": self._get_used_features(),
                 "optimization_level": self.optimization_level
             },
             "performance_info": {
-                "optimization_enabled": getattr(self, 'optimization_enabled', True),
+                "optimization_enabled": self.optimization_enabled,
                 "memory_usage": self._estimate_memory_usage(),
                 "gpu_acceleration": self.device != 'cpu'
             }
@@ -1054,26 +1059,22 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 recommendations.append("디테일 보존 개선: 더 높은 품질의 원본 이미지를 사용해보세요.")
             
             # M3 Max 전용 제안
-            if getattr(self, 'is_m3_max', False) and getattr(self, 'optimization_enabled', True):
+            if self.is_m3_max and self.optimization_enabled:
                 if metrics.overall_score >= thresholds['excellent']:
                     recommendations.insert(0, "🍎 M3 Max 최적화로 최고 품질을 달성했습니다!")
                 elif metrics.overall_score >= thresholds['good']:
                     recommendations.insert(0, "M3 Max 가속으로 우수한 품질을 얻었습니다. 더 정밀한 설정을 시도해보세요.")
                     
                 # 128GB 메모리 특화 제안
-                memory_gb = getattr(self, 'memory_gb', 16.0)
-                if memory_gb >= 128:
+                if self.memory_gb >= 128:
                     if metrics.overall_score < thresholds['excellent']:
                         recommendations.append("128GB 메모리 활용: 고해상도 모드나 배치 처리를 활성화해보세요.")
             
             # 빈 추천 목록인 경우 기본 제안
             if not recommendations:
-                is_m3_max = getattr(self, 'is_m3_max', False)
-                memory_gb = getattr(self, 'memory_gb', 16.0)
-                
-                if is_m3_max and memory_gb >= 128:
+                if self.is_m3_max and self.memory_gb >= 128:
                     recommendations.append("🍎 M3 Max 128GB로 최고급 품질을 달성했습니다! 현재 설정을 유지하세요.")
-                elif is_m3_max:
+                elif self.is_m3_max:
                     recommendations.append("🍎 M3 Max로 훌륭한 품질을 달성했습니다! 현재 설정을 유지하세요.")
                 else:
                     recommendations.append("훌륭한 품질입니다! 현재 설정을 유지하세요.")
@@ -1081,7 +1082,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return recommendations
             
         except Exception as e:
-            logger.warning(f"개선 제안 생성 실패: {e}")
+            self.logger.warning(f"개선 제안 생성 실패: {e}")
             return ["품질 분석은 완료되었지만 개선 제안 생성에 실패했습니다."]
     
     async def _generate_detailed_analysis(
@@ -1119,18 +1120,14 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             }
             
             # M3 Max 전용 분석
-            is_m3_max = getattr(self, 'is_m3_max', False)
-            optimization_enabled = getattr(self, 'optimization_enabled', True)
-            memory_gb = getattr(self, 'memory_gb', 16.0)
-            
-            if is_m3_max and optimization_enabled:
+            if self.is_m3_max and self.optimization_enabled:
                 analysis['m3_max_analysis'] = {
                     'optimization_level': self.optimization_level,
-                    'memory_utilization': f"{memory_gb}GB 활용",
+                    'memory_utilization': f"{self.memory_gb}GB 활용",
                     'neural_engine_boost': metrics.overall_score > 0.8,
                     'metal_acceleration': self.device == 'mps',
                     'quality_enhancement': "M3 Max 최적화로 품질 향상됨",
-                    'high_memory_mode': memory_gb >= 128,
+                    'high_memory_mode': self.memory_gb >= 128,
                     'batch_processing': self.performance_config.get('batch_processing', False),
                     'advanced_caching': self.performance_config.get('enable_caching', False)
                 }
@@ -1146,8 +1143,8 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                     'aspect': metric_name.replace('_', ' ').title(),
                     'score': metric_value,
                     'status': self._get_metric_status(metric_value),
-                    'm3_max_enhanced': is_m3_max and metric_value > 0.8,
-                    'high_memory_optimized': memory_gb >= 128 and metric_value > 0.85
+                    'm3_max_enhanced': self.is_m3_max and metric_value > 0.8,
+                    'high_memory_optimized': self.memory_gb >= 128 and metric_value > 0.85
                 }
                 
                 if metric_value >= thresholds['excellent']:
@@ -1160,11 +1157,11 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return analysis
             
         except Exception as e:
-            logger.warning(f"상세 분석 생성 실패: {e}")
+            self.logger.warning(f"상세 분석 생성 실패: {e}")
             return {'error': '상세 분석 생성에 실패했습니다.'}
     
     # =================================================================
-    # 유틸리티 메서드들
+    # 유틸리티 메서드들 - 기존 로직 완전 유지
     # =================================================================
     
     def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
@@ -1199,7 +1196,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return array
             
         except Exception as e:
-            logger.error(f"텐서 변환 실패: {e}")
+            self.logger.error(f"텐서 변환 실패: {e}")
             raise
     
     def _get_used_features(self) -> List[str]:
@@ -1216,7 +1213,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             features.append('neural_processing')
         if self.face_detector:
             features.append('face_detection')
-        if getattr(self, 'is_m3_max', False):
+        if self.is_m3_max:
             features.append('m3_max_acceleration')
         if self.device == 'mps':
             features.append('metal_performance_shaders')
@@ -1246,7 +1243,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return {'estimated_usage_gb': 2.0}
             
         except Exception as e:
-            logger.warning(f"메모리 사용량 추정 실패: {e}")
+            self.logger.warning(f"메모리 사용량 추정 실패: {e}")
             return {'estimated_usage_gb': 2.0}
     
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
@@ -1263,15 +1260,15 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             "quality_info": {
                 "error_details": error_message,
                 "device": self.device,
-                "device_type": getattr(self, 'device_type', 'unknown'),
-                "m3_max_optimized": getattr(self, 'is_m3_max', False),
+                "device_type": self.device_type,
+                "m3_max_optimized": self.is_m3_max,
                 "processing_time": 0.0
             }
         }
     
     def _create_fallback_result(self, reason: str) -> Dict[str, Any]:
         """폴백 결과 생성 (최소 기능)"""
-        logger.warning(f"폴백 모드: {reason}")
+        self.logger.warning(f"폴백 모드: {reason}")
         
         # 기본 메트릭 생성
         fallback_metrics = QualityMetrics(
@@ -1302,13 +1299,13 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 "assessment_method": "fallback",
                 "processing_time": 0.001,
                 "device": self.device,
-                "device_type": getattr(self, 'device_type', 'unknown'),
-                "m3_max_optimized": getattr(self, 'is_m3_max', False)
+                "device_type": self.device_type,
+                "m3_max_optimized": self.is_m3_max
             }
         }
     
     # =================================================================
-    # 추가 헬퍼 메서드들
+    # 추가 헬퍼 메서드들 - 기존 로직 완전 유지
     # =================================================================
     
     def _analyze_image_properties(self, image: np.ndarray) -> Dict[str, Any]:
@@ -1321,9 +1318,9 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 'channels': c,
                 'file_size_estimate': f"{(w * h * c / 1024):.1f} KB",
                 'aspect_ratio': f"{w/h:.2f}:1",
-                'm3_max_optimized': getattr(self, 'is_m3_max', False) and min(w, h) >= 1024,
+                'm3_max_optimized': self.is_m3_max and min(w, h) >= 1024,
                 'high_resolution': min(w, h) >= 1024,
-                'memory_efficient': getattr(self, 'memory_gb', 16.0) >= 128
+                'memory_efficient': self.memory_gb >= 128
             }
             
             # 색상 통계
@@ -1341,7 +1338,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return properties
             
         except Exception as e:
-            logger.warning(f"이미지 속성 분석 실패: {e}")
+            self.logger.warning(f"이미지 속성 분석 실패: {e}")
             return {}
     
     def _analyze_fabric_quality(self, image: np.ndarray, fabric_type: str) -> Dict[str, Any]:
@@ -1365,14 +1362,14 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 'texture_threshold_met': texture_score >= fabric_standards['texture_threshold'],
                 'smoothness_score': self._calculate_smoothness(gray),
                 'surface_quality': 'excellent' if texture_score > 0.8 else 'good' if texture_score > 0.6 else 'fair',
-                'm3_max_precision': getattr(self, 'is_m3_max', False),
-                'high_memory_analysis': getattr(self, 'memory_gb', 16.0) >= 128
+                'm3_max_precision': self.is_m3_max,
+                'high_memory_analysis': self.memory_gb >= 128
             }
             
             return analysis
             
         except Exception as e:
-            logger.warning(f"천 품질 분석 실패: {e}")
+            self.logger.warning(f"천 품질 분석 실패: {e}")
             return {}
     
     def _calculate_smoothness(self, gray_image: np.ndarray) -> float:
@@ -1402,14 +1399,14 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 'edge_density_person': float(np.sum(person_edges > 0) / person_edges.size),
                 'structural_similarity': self._calculate_ssim_numpy(fitted_edges, person_edges),
                 'geometric_distortion': self._calculate_geometric_distortion(fitted, person),
-                'm3_max_enhanced': getattr(self, 'is_m3_max', False),
-                'high_precision': getattr(self, 'memory_gb', 16.0) >= 128
+                'm3_max_enhanced': self.is_m3_max,
+                'high_precision': self.memory_gb >= 128
             }
             
             return analysis
             
         except Exception as e:
-            logger.warning(f"구조 분석 실패: {e}")
+            self.logger.warning(f"구조 분석 실패: {e}")
             return {}
     
     def _calculate_geometric_distortion(self, fitted: np.ndarray, person: np.ndarray) -> float:
@@ -1427,7 +1424,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             return float(1.0 - distortion_level)
             
         except Exception as e:
-            logger.warning(f"기하학적 왜곡 계산 실패: {e}")
+            self.logger.warning(f"기하학적 왜곡 계산 실패: {e}")
             return 0.5
     
     def _calculate_overall_similarity(self, fitted: np.ndarray, person: np.ndarray) -> float:
@@ -1441,7 +1438,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             
             return self._calculate_ssim_numpy(fitted_gray, person_gray)
         except Exception as e:
-            logger.warning(f"전체 유사성 계산 실패: {e}")
+            self.logger.warning(f"전체 유사성 계산 실패: {e}")
             return 0.5
     
     def _calculate_clothing_integration(self, fitted: np.ndarray, clothing: np.ndarray) -> float:
@@ -1455,7 +1452,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             
             return max(0.0, min(1.0, integration_score))
         except Exception as e:
-            logger.warning(f"의류 통합도 계산 실패: {e}")
+            self.logger.warning(f"의류 통합도 계산 실패: {e}")
             return 0.5
     
     def _calculate_realism_score(self, fitted: np.ndarray) -> float:
@@ -1477,7 +1474,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             
             return max(0.0, min(1.0, realism_score))
         except Exception as e:
-            logger.warning(f"현실감 점수 계산 실패: {e}")
+            self.logger.warning(f"현실감 점수 계산 실패: {e}")
             return 0.5
     
     def _find_strongest_aspect(self, metrics: QualityMetrics) -> str:
@@ -1587,28 +1584,27 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             # 메모리 사용량 업데이트
             memory_usage = self._estimate_memory_usage()
             if 'available_gb' in memory_usage:
-                memory_gb = getattr(self, 'memory_gb', 16.0)
-                self.performance_stats['memory_usage_gb'] = memory_gb - memory_usage['available_gb']
+                self.performance_stats['memory_usage_gb'] = self.memory_gb - memory_usage['available_gb']
             
         except Exception as e:
-            logger.warning(f"통계 업데이트 실패: {e}")
+            self.logger.warning(f"통계 업데이트 실패: {e}")
     
     # =================================================================
-    # BasePipelineStep 호환 메서드들
+    # 최적 생성자 호환 메서드들
     # =================================================================
     
     async def get_step_info(self) -> Dict[str, Any]:
-        """🔍 스텝 정보 반환 (BasePipelineStep 호환)"""
+        """🔍 스텝 정보 반환 (최적 생성자 호환)"""
         return {
             "step_name": "QualityAssessment",
             "class_name": self.__class__.__name__,
             "version": "4.0-m3max",
             "device": self.device,
-            "device_type": getattr(self, 'device_type', 'unknown'),
-            "memory_gb": getattr(self, 'memory_gb', 16.0),
-            "is_m3_max": getattr(self, 'is_m3_max', False),
-            "optimization_enabled": getattr(self, 'optimization_enabled', True),
-            "quality_level": getattr(self, 'quality_level', 'balanced'),
+            "device_type": self.device_type,
+            "memory_gb": self.memory_gb,
+            "is_m3_max": self.is_m3_max,
+            "optimization_enabled": self.optimization_enabled,
+            "quality_level": self.quality_level,
             "initialized": self.is_initialized,
             "initialization_error": self.initialization_error,
             "config_keys": list(self.config.keys()),
@@ -1619,7 +1615,7 @@ class QualityAssessmentStep(ProcessingPipelineStep):
                 "aesthetic_analysis": bool(self.aesthetic_analyzer),
                 "face_detection": bool(self.face_detector),
                 "neural_processing": TORCH_AVAILABLE and self.device != 'cpu',
-                "m3_max_acceleration": getattr(self, 'is_m3_max', False) and self.device == 'mps'
+                "m3_max_acceleration": self.is_m3_max and self.device == 'mps'
             },
             "supported_fabrics": list(self.FABRIC_QUALITY_STANDARDS.keys()),
             "supported_clothing_types": list(self.CLOTHING_QUALITY_WEIGHTS.keys()),
@@ -1646,9 +1642,9 @@ class QualityAssessmentStep(ProcessingPipelineStep):
         }
     
     async def cleanup(self):
-        """리소스 정리 (BasePipelineStep 호환)"""
+        """리소스 정리 (최적 생성자 호환)"""
         try:
-            logger.info("🧹 품질 평가 시스템 리소스 정리 시작...")
+            self.logger.info("🧹 품질 평가 시스템 리소스 정리 시작...")
             
             # 컴포넌트들 정리
             if self.perceptual_analyzer:
@@ -1688,14 +1684,14 @@ class QualityAssessmentStep(ProcessingPipelineStep):
             gc.collect()
             
             self.is_initialized = False
-            logger.info("✅ 품질 평가 시스템 리소스 정리 완료")
+            self.logger.info("✅ 품질 평가 시스템 리소스 정리 완료")
             
         except Exception as e:
-            logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
+            self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
 
 
 # =================================================================
-# 보조 클래스들 (업데이트된 생성자 적용)
+# 보조 클래스들 (최적 생성자 적용)
 # =================================================================
 
 class PerceptualQualityAnalyzer:

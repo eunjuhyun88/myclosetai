@@ -9,7 +9,6 @@ import logging
 import time
 import base64
 from typing import Dict, Any, Optional, Union, List, Tuple
-from abc import ABC, abstractmethod
 import numpy as np
 from pathlib import Path
 
@@ -41,90 +40,19 @@ except ImportError:
     transforms = None
     TF = None
 
-class OptimalStepConstructor(ABC):
-    """최적화된 생성자 패턴 베이스 클래스"""
+logger = logging.getLogger(__name__)
 
-    def __init__(
-        self,
-        device: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ):
-        # 1. 지능적 디바이스 자동 감지
-        self.device = self._auto_detect_device(device)
-        
-        # 2. 기본 설정
-        self.config = config or {}
-        self.step_name = self.__class__.__name__
-        self.logger = logging.getLogger(f"utils.{self.step_name}")
-        
-        # 3. 표준 시스템 파라미터 추출
-        self.device_type = kwargs.get('device_type', 'auto')
-        self.memory_gb = kwargs.get('memory_gb', 16.0)
-        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
-        self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.quality_level = kwargs.get('quality_level', 'balanced')
-        
-        # 4. 스텝별 특화 파라미터를 config에 병합
-        self._merge_step_specific_config(kwargs)
-        
-        # 5. 상태 초기화
-        self.is_initialized = False
-
-    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
-        """지능적 디바이스 자동 감지"""
-        if preferred_device:
-            return preferred_device
-
-        if not TORCH_AVAILABLE:
-            return 'cpu'
-
-        try:
-            if torch.backends.mps.is_available():
-                return 'mps'
-            elif torch.cuda.is_available():
-                return 'cuda'
-            else:
-                return 'cpu'
-        except:
-            return 'cpu'
-
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 칩 자동 감지"""
-        try:
-            import platform
-            import subprocess
-
-            if platform.system() == 'Darwin':
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-
-    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
-        """스텝별 특화 설정 병합"""
-        system_params = {
-            'device_type', 'memory_gb', 'is_m3_max', 
-            'optimization_enabled', 'quality_level'
-        }
-
-        for key, value in kwargs.items():
-            if key not in system_params:
-                self.config[key] = value
-
-class DataConverter(OptimalStepConstructor):
+class DataConverter:
     """
     🍎 M3 Max 최적화 데이터 변환기
-    최적 생성자 패턴 적용 - 이미지/텐서 변환 및 처리
+    ✅ 최적 생성자 패턴 적용 - 이미지/텐서 변환 및 처리
     """
     
     def __init__(
         self,
-        device: Optional[str] = None,
+        device: Optional[str] = None,  # 🔥 최적 패턴: None으로 자동 감지
         config: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
     ):
         """
         ✅ 최적 생성자 - 데이터 변환기 특화
@@ -133,6 +61,11 @@ class DataConverter(OptimalStepConstructor):
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
             config: 데이터 변환 설정 딕셔너리
             **kwargs: 확장 파라미터들
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0  
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
                 - default_size: Tuple[int, int] = (512, 512)  # 기본 이미지 크기
                 - interpolation: str = "bilinear"  # 보간 방법
                 - normalize_mean: List[float] = [0.485, 0.456, 0.406]  # 정규화 평균
@@ -142,9 +75,22 @@ class DataConverter(OptimalStepConstructor):
                 - memory_efficient: bool = True  # 메모리 효율적 처리
                 - quality_preservation: bool = True  # 품질 보존
         """
-        super().__init__(device=device, config=config, **kwargs)
-        
-        # 데이터 변환기 특화 설정
+        # 1. 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 2. 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"utils.{self.step_name}")
+
+        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+
+        # 4. ⚙️ 데이터 변환기 특화 파라미터
         self.default_size = tuple(kwargs.get('default_size', (512, 512)))
         self.interpolation = kwargs.get('interpolation', 'bilinear')
         self.normalize_mean = kwargs.get('normalize_mean', [0.485, 0.456, 0.406])
@@ -153,13 +99,73 @@ class DataConverter(OptimalStepConstructor):
         self.batch_processing = kwargs.get('batch_processing', True)
         self.memory_efficient = kwargs.get('memory_efficient', True)
         self.quality_preservation = kwargs.get('quality_preservation', True)
-        
-        # M3 Max 특화 설정
+
+        # 5. 🍎 M3 Max 특화 설정
         if self.is_m3_max:
             self.use_gpu_acceleration = True  # M3 Max는 항상 GPU 가속
             self.batch_processing = True  # 배치 처리 최적화
             self.memory_efficient = False  # 128GB 메모리이므로 품질 우선
-        
+
+        # 6. ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+
+        # 7. ✅ 상태 초기화
+        self.is_initialized = False
+
+        # 8. 🎯 기존 클래스별 고유 초기화 로직 실행
+        self._initialize_step_specific()
+
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        if not TORCH_AVAILABLE:
+            return 'cpu'
+
+        try:
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max 우선
+            elif torch.cuda.is_available():
+                return 'cuda'  # NVIDIA GPU
+            else:
+                return 'cpu'  # 폴백
+        except:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level',
+            'default_size', 'interpolation', 'normalize_mean', 'normalize_std',
+            'use_gpu_acceleration', 'batch_processing', 'memory_efficient', 'quality_preservation'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
+    def _initialize_step_specific(self):
+        """🎯 기존 초기화 로직 완전 유지"""
         # 변환 파이프라인 초기화
         self._init_transforms()
         
@@ -753,7 +759,6 @@ def quick_tensor_to_image(tensor: torch.Tensor) -> Optional[Image.Image]:
 # 모듈 익스포트
 __all__ = [
     'DataConverter',
-    'OptimalStepConstructor',
     'create_data_converter',
     'get_global_data_converter',
     'initialize_global_data_converter',

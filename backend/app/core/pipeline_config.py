@@ -21,7 +21,23 @@ from functools import lru_cache
 from abc import ABC, abstractmethod
 import torch
 
-from .gpu_config import gpu_config, DEVICE, DEVICE_INFO
+# gpu_config는 실제 파일에서 import하되, 없으면 기본값 사용
+try:
+    from .gpu_config import gpu_config, DEVICE, DEVICE_INFO
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("gpu_config import 실패 - 기본값 사용")
+    
+    # 기본값 설정
+    DEVICE = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+    DEVICE_INFO = {"device": DEVICE, "available": True}
+    
+    class DummyGPUConfig:
+        def __init__(self):
+            self.device = DEVICE
+            self.device_type = "auto"
+    
+    gpu_config = DummyGPUConfig()
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +65,7 @@ class OptimalConstructorBase(ABC):
             config: 설정 딕셔너리
             **kwargs: 확장 파라미터들
                 - device_type: str = "auto"
-                - memory_gb: float = 16.0  
+                - memory_gb: float = 16.0
                 - is_m3_max: bool = False
                 - optimization_enabled: bool = True
                 - quality_level: str = "balanced"
@@ -970,42 +986,7 @@ def create_legacy_pipeline_config(
     )
 
 # ===============================================================
-# 초기화 및 검증 (최적 생성자 패턴)
-# ===============================================================
-
-# 기본 설정 생성 (자동 감지)
-_default_config = get_pipeline_config()
-_validation_result = _default_config.validate_config()
-
-if not _validation_result["valid"]:
-    for error in _validation_result["errors"]:
-        logger.error(f"❌ 설정 오류: {error}")
-    
-    # 경고는 로깅만
-    for warning in _validation_result["warnings"]:
-        logger.warning(f"⚠️ 설정 경고: {warning}")
-
-logger.info(f"🔧 최적 생성자 패턴 파이프라인 설정 초기화 완료 - 디바이스: {DEVICE}")
-
-# 시스템 정보 로깅
-_system_info = _default_config.get_system_info()
-logger.info(f"💻 시스템: {_system_info['device']} ({_system_info['quality_level']}) - 최적 생성자 패턴")
-logger.info(f"🎯 메모리: {_system_info['memory_gb']}GB, M3 Max: {'✅' if _system_info['is_m3_max'] else '❌'}")
-
-# 모듈 레벨 exports
-__all__ = [
-    "OptimalConstructorBase",         # 최적 생성자 베이스
-    "PipelineConfig",                 # 메인 설정 클래스
-    "get_pipeline_config", 
-    "get_step_configs",
-    "get_model_paths",
-    "create_custom_config",
-    "create_optimal_pipeline_config", # 새로운 최적 방식
-    "create_legacy_pipeline_config"   # 기존 호환성
-]
-
-# ===============================================================
-# ✅ 최적 생성자 패턴 - 환경별 설정 함수들
+# 환경별 설정 함수들 - 최적 생성자 패턴
 # ===============================================================
 
 def configure_for_development():
@@ -1059,7 +1040,30 @@ def configure_for_m3_max():
     return config
 
 # ===============================================================
-# ✅ 최적 생성자 패턴 호환성 검증
+# 초기화 및 검증 (최적 생성자 패턴)
+# ===============================================================
+
+# 기본 설정 생성 (자동 감지)
+_default_config = get_pipeline_config()
+_validation_result = _default_config.validate_config()
+
+if not _validation_result["valid"]:
+    for error in _validation_result["errors"]:
+        logger.error(f"❌ 설정 오류: {error}")
+    
+    # 경고는 로깅만
+    for warning in _validation_result["warnings"]:
+        logger.warning(f"⚠️ 설정 경고: {warning}")
+
+logger.info(f"🔧 최적 생성자 패턴 파이프라인 설정 초기화 완료 - 디바이스: {DEVICE}")
+
+# 시스템 정보 로깅
+_system_info = _default_config.get_system_info()
+logger.info(f"💻 시스템: {_system_info['device']} ({_system_info['quality_level']}) - 최적 생성자 패턴")
+logger.info(f"🎯 메모리: {_system_info['memory_gb']}GB, M3 Max: {'✅' if _system_info['is_m3_max'] else '❌'}")
+
+# ===============================================================
+# 최적 생성자 패턴 호환성 검증
 # ===============================================================
 
 def validate_optimal_constructor_compatibility() -> Dict[str, bool]:
@@ -1121,5 +1125,22 @@ if _compatibility_result['overall_compatible']:
     logger.info("✅ 최적 생성자 패턴 호환성 검증 완료")
 else:
     logger.warning(f"⚠️ 호환성 문제: {_compatibility_result}")
+
+# 모듈 레벨 exports
+__all__ = [
+    "OptimalConstructorBase",         # 최적 생성자 베이스
+    "PipelineConfig",                 # 메인 설정 클래스
+    "get_pipeline_config", 
+    "get_step_configs",
+    "get_model_paths",
+    "create_custom_config",
+    "create_optimal_pipeline_config", # 새로운 최적 방식
+    "create_legacy_pipeline_config",  # 기존 호환성
+    "configure_for_development",
+    "configure_for_production", 
+    "configure_for_testing",
+    "configure_for_m3_max",
+    "validate_optimal_constructor_compatibility"
+]
 
 logger.info("🎯 최적 생성자 패턴 PipelineConfig 초기화 완료 - 모든 기능 활성화")
