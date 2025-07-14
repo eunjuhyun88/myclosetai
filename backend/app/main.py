@@ -64,9 +64,9 @@ try:
     from ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
     
     # 🔧 수정된 유틸리티 import 경로 - 실제 구조에 맞게
-    from ai_pipeline.utils.memory_manager import MemoryManager  
-    from ai_pipeline.utils.data_converter import DataConverter
-    from ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.utils.memory_manager import MemoryManager  
+    from app.ai_pipeline.utils.data_converter import DataConverter
+    from app.ai_pipeline.utils.model_loader import ModelLoader
     
     # 코어 모듈들 (올바른 경로)
     try:
