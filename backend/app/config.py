@@ -20,7 +20,6 @@ import psutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 from enum import Enum
-from app.config import get_settings, settings  # ✅ 완전한 모듈
 
 # Pydantic V2 import
 from pydantic import BaseModel, Field, field_validator, ConfigDict

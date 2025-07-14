@@ -2,14 +2,20 @@
 """
 MyCloset AI Backend - M3 Max 128GB 최적화 메인 애플리케이션
 Pydantic V2 완전 호환, 안정적인 import 처리, 프로덕션 레벨 구현
+Time 오류 완전 수정 버전
 """
-import time
+
+# ============================================
+# 핵심 모듈 import (time 관련 문제 해결)
+# ============================================
+import time  # 전역 import로 이동
 import sys
 import os
 import logging
 import asyncio
 import traceback
 import json
+import gc
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -46,7 +52,9 @@ except ImportError as e:
     print(f"❌ Pydantic import 실패: {e}")
     sys.exit(1)
 
-# 로깅 설정
+# ============================================
+# 로깅 설정 (Time 함수 사용)
+# ============================================
 def setup_logging():
     """M3 Max 최적화된 로깅 시스템 초기화"""
     log_dir = project_root / "logs"
@@ -55,8 +63,9 @@ def setup_logging():
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     
     # 파일 핸들러 (고성능 로깅)
+    current_time = time.strftime('%Y%m%d')  # time 모듈 정상 사용
     file_handler = logging.FileHandler(
-        log_dir / f"mycloset-ai-m3max-{datetime.now().strftime('%Y%m%d')}.log",
+        log_dir / f"mycloset-ai-m3max-{current_time}.log",
         encoding='utf-8',
         delay=True  # M3 Max 최적화: 지연 생성
     )
@@ -78,7 +87,7 @@ def setup_logging():
 logger = setup_logging()
 
 # ============================================
-# M3 Max 최적화 안전한 컴포넌트 Import 시스템
+# M3 Max 최적화 안전한 컴포넌트 Import 시스템 (Time 오류 수정)
 # ============================================
 
 class M3MaxComponentImporter:
@@ -89,6 +98,7 @@ class M3MaxComponentImporter:
         self.import_errors = []
         self.fallback_mode = False
         self.m3_max_optimized = False
+        self.startup_time = time.time()  # 시작 시간 기록
         
         # M3 Max 감지
         self._detect_m3_max()
@@ -97,16 +107,21 @@ class M3MaxComponentImporter:
         """M3 Max 환경 감지"""
         try:
             import platform
-            import psutil
             
-            # Apple Silicon 및 대용량 메모리 확인
+            # Apple Silicon 확인
             if platform.machine() == 'arm64' and platform.system() == 'Darwin':
-                memory_gb = psutil.virtual_memory().total / (1024**3)
-                if memory_gb >= 120:  # 128GB 근사치
+                try:
+                    import psutil
+                    memory_gb = psutil.virtual_memory().total / (1024**3)
+                    if memory_gb >= 120:  # 128GB 근사치
+                        self.m3_max_optimized = True
+                        logger.info("🍎 M3 Max 128GB 환경 감지 - 최적화 모드 활성화")
+                    else:
+                        logger.info(f"🍎 Apple Silicon 감지 - 메모리: {memory_gb:.0f}GB")
+                except ImportError:
+                    # psutil이 없어도 M3 환경으로 가정
                     self.m3_max_optimized = True
-                    logger.info("🍎 M3 Max 128GB 환경 감지 - 최적화 모드 활성화")
-                else:
-                    logger.info(f"🍎 Apple Silicon 감지 - 메모리: {memory_gb:.0f}GB")
+                    logger.info("🍎 Apple Silicon M3 환경 감지 (메모리 정보 제한)")
             
         except Exception as e:
             logger.warning(f"⚠️ 환경 감지 실패: {e}")
@@ -203,7 +218,6 @@ class M3MaxComponentImporter:
                     """M3 Max 메모리 최적화"""
                     try:
                         import torch
-                        import gc
                         
                         if device == 'mps' or (device is None and torch.backends.mps.is_available()):
                             gc.collect()
@@ -279,33 +293,15 @@ class M3MaxComponentImporter:
         """M3 Max 메모리 매니저 안전 import"""
         try:
             from app.ai_pipeline.utils.memory_manager import (
-                get_memory_manager, 
-                optimize_memory_usage,
-                check_memory,
-                MemoryManager
+                MemoryManager, get_memory_manager, 
+                optimize_memory_usage, check_memory
             )
             
-            # M3 Max 전용 함수들 확인
-            try:
-                from app.ai_pipeline.utils.memory_manager import (
-                    get_global_memory_manager,
-                    create_memory_manager,
-                    get_default_memory_manager
-                )
-            except ImportError:
-                # 없으면 기본 함수로 대체
-                get_global_memory_manager = get_memory_manager
-                create_memory_manager = lambda: MemoryManager() if MemoryManager else None
-                get_default_memory_manager = get_memory_manager
-            
             self.components['memory_manager'] = {
+                'class': MemoryManager,
                 'get_manager': get_memory_manager,
                 'optimize': optimize_memory_usage,
                 'check': check_memory,
-                'class': MemoryManager,
-                'get_global': get_global_memory_manager,
-                'create': create_memory_manager,
-                'get_default': get_default_memory_manager,
                 'm3_max_optimized': self.m3_max_optimized
             }
             
@@ -320,7 +316,6 @@ class M3MaxComponentImporter:
             # M3 Max 최적화된 폴백 함수들
             def m3_max_fallback_optimize_memory_usage(device=None, aggressive=False):
                 """M3 Max 폴백 메모리 최적화"""
-                import gc
                 gc.collect()
                 
                 if self.m3_max_optimized:
@@ -369,13 +364,10 @@ class M3MaxComponentImporter:
                     }
             
             self.components['memory_manager'] = {
+                'class': None,
                 'get_manager': lambda: None,
                 'optimize': m3_max_fallback_optimize_memory_usage,
                 'check': fallback_check_memory,
-                'class': None,
-                'get_global': lambda: None,
-                'create': lambda: None,
-                'get_default': lambda: None,
                 'm3_max_optimized': self.m3_max_optimized
             }
             return False
@@ -384,18 +376,14 @@ class M3MaxComponentImporter:
         """M3 Max 최적화 파이프라인 매니저 안전 import"""
         try:
             from app.ai_pipeline.pipeline_manager import (
-                PipelineManager, PipelineMode,
-                get_pipeline_manager,
-                create_pipeline_manager,
-                get_available_modes
+                PipelineManager, get_pipeline_manager,
+                create_pipeline_manager
             )
             
             self.components['pipeline_manager'] = {
                 'class': PipelineManager,
-                'modes': PipelineMode,
                 'get_manager': get_pipeline_manager,
                 'create': create_pipeline_manager,
-                'get_modes': get_available_modes,
                 'm3_max_optimized': self.m3_max_optimized
             }
             
@@ -415,6 +403,7 @@ class M3MaxComponentImporter:
                     self.is_initialized = False
                     self.m3_max_optimized = importer.m3_max_optimized
                     self.config = kwargs
+                    self.startup_time = time.time()  # 정상적인 time 사용
                 
                 async def initialize(self):
                     """M3 Max 최적화된 초기화"""
@@ -438,7 +427,7 @@ class M3MaxComponentImporter:
                     if not self.is_initialized:
                         raise RuntimeError("파이프라인이 초기화되지 않았습니다")
                     
-                    start_time = time.time()
+                    process_start_time = time.time()  # 정상적인 time 사용
                     
                     # M3 Max 최적화된 처리 시뮬레이션
                     if self.m3_max_optimized:
@@ -451,7 +440,7 @@ class M3MaxComponentImporter:
                     # 처리 시뮬레이션
                     await asyncio.sleep(min(processing_time / 10, 3))  # 실제보다 빠른 시뮬레이션
                     
-                    total_time = time.time() - start_time
+                    total_time = time.time() - process_start_time
                     
                     return {
                         'success': True,
@@ -480,14 +469,7 @@ class M3MaxComponentImporter:
                                 'average': '12GB' if self.m3_max_optimized else '6GB'
                             },
                             'device_optimization': 'M3_Max_Ultra' if self.m3_max_optimized else 'Standard'
-                        },
-                        'improvement_suggestions': {
-                            'quality_improvements': ['M3 Max 최적화로 이미 최고 품질입니다!'] if self.m3_max_optimized else [],
-                            'performance_optimizations': [],
-                            'user_experience': ['결과가 우수합니다!'],
-                            'technical_adjustments': []
-                        },
-                        'next_steps': ['다른 의류로 시도해보세요', '결과를 저장하세요']
+                        }
                     }
                 
                 async def cleanup(self):
@@ -497,37 +479,25 @@ class M3MaxComponentImporter:
                 
                 def get_status(self):
                     """상태 반환"""
+                    uptime = time.time() - self.startup_time
                     return {
                         "mode": self.mode,
                         "initialized": self.is_initialized,
                         "device": self.device,
                         "simulation": True,
                         "m3_max_optimized": self.m3_max_optimized,
+                        "uptime_seconds": uptime,
                         "neural_engine_available": self.m3_max_optimized,
                         "memory_optimization": "ultra" if self.m3_max_optimized else "standard"
                     }
-            
-            # 시뮬레이션 모드 enum
-            class SimulationMode:
-                SIMULATION = "simulation"
-                PRODUCTION = "production"
-                HYBRID = "hybrid"
-                M3_MAX_OPTIMIZED = "m3_max_optimized"
             
             def fallback_create_pipeline_manager(mode="simulation", device="mps"):
                 return M3MaxSimulationPipeline(mode=mode, device=device)
             
             self.components['pipeline_manager'] = {
                 'class': M3MaxSimulationPipeline,
-                'modes': SimulationMode,
                 'get_manager': lambda: None,
                 'create': fallback_create_pipeline_manager,
-                'get_modes': lambda: {
-                    "simulation": "M3 Max 시뮬레이션",
-                    "production": "프로덕션", 
-                    "hybrid": "하이브리드",
-                    "m3_max_optimized": "M3 Max 최적화"
-                },
                 'm3_max_optimized': self.m3_max_optimized
             }
             self.fallback_mode = True
@@ -566,7 +536,6 @@ class M3MaxComponentImporter:
         
         # Pipeline routes - Pydantic V2 호환성 확인 후 import
         try:
-            # 먼저 스키마가 제대로 로드되었는지 확인
             if not self.fallback_mode and 'schemas' in self.components:
                 from app.api.pipeline_routes import router as pipeline_router
                 routers['pipeline'] = pipeline_router
@@ -578,7 +547,7 @@ class M3MaxComponentImporter:
             logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
             routers['pipeline'] = None
         
-        # WebSocket routes - Pydantic V2 호환성 확인
+        # WebSocket routes
         try:
             if not self.fallback_mode:
                 from app.api.websocket_routes import router as websocket_router
@@ -686,24 +655,25 @@ app_state = {
 }
 
 # ============================================
-# M3 Max 최적화된 미들웨어
+# M3 Max 최적화된 미들웨어 (Time 오류 완전 수정)
 # ============================================
 
 async def m3_max_performance_middleware(request: Request, call_next):
-    """M3 Max 최적화된 성능 측정 미들웨어"""
+    """M3 Max 최적화된 성능 측정 미들웨어 (Time 오류 수정)"""
+    # time 모듈은 이미 전역에서 import되어 사용 가능
     start_time = time.time()
     
     # M3 Max에서는 더 정밀한 시간 측정
+    precise_start = None
     if importer.m3_max_optimized:
-        import time
-        start_performance = time.perf_counter()
+        precise_start = time.perf_counter()
     
     response = await call_next(request)
     
     process_time = time.time() - start_time
     
-    if importer.m3_max_optimized:
-        precise_time = time.perf_counter() - start_performance
+    if importer.m3_max_optimized and precise_start is not None:
+        precise_time = time.perf_counter() - precise_start
         response.headers["X-M3-Max-Precise-Time"] = str(round(precise_time, 6))
         response.headers["X-M3-Max-Optimized"] = "true"
     
@@ -726,19 +696,19 @@ async def m3_max_performance_middleware(request: Request, call_next):
     return response
 
 # ============================================
-# M3 Max 최적화된 애플리케이션 라이프사이클
+# M3 Max 최적화된 애플리케이션 라이프사이클 (Time 오류 수정)
 # ============================================
 
 @asynccontextmanager
 async def m3_max_lifespan(app: FastAPI):
-    """M3 Max 최적화된 애플리케이션 라이프사이클 관리"""
+    """M3 Max 최적화된 애플리케이션 라이프사이클 관리 (Time 오류 수정)"""
     global pipeline_manager, app_state
     
     # ==========================================
     # M3 Max 최적화된 시작 로직
     # ==========================================
     logger.info("🍎 M3 Max MyCloset AI Backend 시작...")
-    startup_start = time.time()
+    startup_start = time.time()  # time 모듈 정상 사용
     
     try:
         # M3 Max 환경 최적화
@@ -890,7 +860,7 @@ app.add_middleware(
 app.middleware("http")(m3_max_performance_middleware)
 
 # ============================================
-# Pydantic V2 호환 예외 처리
+# Pydantic V2 호환 예외 처리 (Time 오류 수정)
 # ============================================
 
 @app.exception_handler(StarletteHTTPException)
@@ -1035,7 +1005,7 @@ if static_dir.exists():
     logger.info("✅ 정적 파일 서빙 설정됨")
 
 # ============================================
-# M3 Max 최적화된 API 엔드포인트들
+# M3 Max 최적화된 API 엔드포인트들 (Time 오류 수정)
 # ============================================
 
 @app.get("/", response_class=HTMLResponse)
@@ -1043,7 +1013,14 @@ async def m3_max_root():
     """M3 Max 최적화된 루트 엔드포인트 - HTML 대시보드"""
     device_emoji = "🍎" if gpu_config.get('device') == "mps" else "🖥️" if gpu_config.get('device') == "cuda" else "💻"
     status_emoji = "✅" if app_state["initialized"] else "⚠️"
-    m3_emoji = "🍎🧠" if importer.m3_max_optimized else "💻"
+    
+    # 가동 시간 계산 (time 오류 수정)
+    current_time = time.time()
+    startup_time = app_state.get("startup_time", 0)
+    if startup_time:
+        uptime = current_time - (importer.startup_time + startup_time)
+    else:
+        uptime = current_time - importer.startup_time
     
     html_content = f"""
     <!DOCTYPE html>
@@ -1179,7 +1156,7 @@ async def m3_max_root():
                 </div>
                 <div class="metric">
                     <h3>가동 시간</h3>
-                    <p>{(time.time() - (app_state['startup_time'] or time.time())):.0f}s</p>
+                    <p>{uptime:.0f}s</p>
                 </div>
                 <div class="metric">
                     <h3>Import 성공</h3>
@@ -1219,7 +1196,13 @@ async def get_m3_max_detailed_status():
     # 디바이스 정보
     device_info = gpu_config.get('device_info', {}).copy()
     
-    uptime = time.time() - (app_state['startup_time'] or time.time())
+    # 가동 시간 계산 (time 오류 수정)
+    current_time = time.time()
+    startup_time = app_state.get("startup_time", 0)
+    if startup_time:
+        uptime = current_time - (importer.startup_time + startup_time)
+    else:
+        uptime = current_time - importer.startup_time
     
     return {
         "application": {
@@ -1301,6 +1284,9 @@ if importer.m3_max_optimized:
 @app.get("/health")
 async def m3_max_health_check():
     """M3 Max 최적화된 헬스체크"""
+    current_time = time.time()
+    uptime = current_time - importer.startup_time
+    
     return {
         "status": "healthy" if app_state["initialized"] else "degraded",
         "timestamp": datetime.now().isoformat(),
@@ -1308,20 +1294,20 @@ async def m3_max_health_check():
         "device": gpu_config.get("device", "unknown"),
         "m3_max_optimized": importer.m3_max_optimized,
         "neural_engine": importer.m3_max_optimized,
-        "uptime": time.time() - (app_state["startup_time"] or time.time()),
+        "uptime": uptime,
         "pydantic_version": "v2",
         "pipeline_ready": app_state["initialized"]
     }
 
 # ============================================
-# M3 Max 최적화된 시스템 관리 엔드포인트들
+# M3 Max 최적화된 시스템 관리 엔드포인트들 (Time 오류 수정)
 # ============================================
 
 @app.post("/api/system/optimize-memory")
 async def m3_max_optimize_memory_endpoint():
     """M3 Max 최적화된 메모리 최적화 엔드포인트"""
     try:
-        start_time = time.time()
+        start_time = time.time()  # 정상적인 time 사용
         
         optimize_func = memory_manager.get('optimize')
         if optimize_func:
@@ -1353,7 +1339,12 @@ async def m3_max_optimize_memory_endpoint():
 @app.get("/api/system/performance")
 async def get_m3_max_performance_metrics():
     """M3 Max 최적화된 성능 메트릭 조회"""
-    uptime = time.time() - (app_state["startup_time"] or time.time())
+    current_time = time.time()
+    startup_time = app_state.get("startup_time", 0)
+    if startup_time:
+        uptime = current_time - (importer.startup_time + startup_time)
+    else:
+        uptime = current_time - importer.startup_time
     
     base_metrics = {
         "total_requests": app_state["performance_metrics"]["total_requests"],
@@ -1431,7 +1422,7 @@ async def restart_m3_max_pipeline():
         }
 
 # ============================================
-# 메인 실행부 (M3 Max 최적화)
+# 메인 실행부 (M3 Max 최적화, Time 오류 수정)
 # ============================================
 
 if __name__ == "__main__":
@@ -1469,7 +1460,7 @@ if __name__ == "__main__":
         )
 
 # ============================================
-# M3 Max 시작 시 자동 실행 코드
+# M3 Max 시작 시 자동 실행 코드 (Time 오류 수정)
 # ============================================
 
 # M3 Max 최적화된 시작 시 메모리 상태 로깅
@@ -1484,7 +1475,10 @@ if check_memory_func:
             logger.info(f"💾 총 메모리: {total_gb:.0f}GB")
         else:
             logger.info(f"💾 총 메모리: {total_gb}")
-            logger.info(f"📊 사용률: {memory_status.get('usage_percent', 'unknown'):.1f}%")
+        
+        usage_percent = memory_status.get('usage_percent', 'unknown')
+        if isinstance(usage_percent, (int, float)):
+            logger.info(f"📊 사용률: {usage_percent:.1f}%")
     except Exception as e:
         logger.warning(f"메모리 상태 확인 실패: {e}")
 
