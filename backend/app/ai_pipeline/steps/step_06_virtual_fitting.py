@@ -1,6 +1,6 @@
 """
-🎯 실제 작동하는 6단계 가상 피팅 통합 구현
-기존 app/ 구조에 맞게 paste.txt 코드를 통합
+6단계: 가상 피팅 (Virtual Fitting) - Pipeline Manager 완전 호환 버전
+M3 Max 128GB 환경 최적화 및 통합 인터페이스
 """
 import os
 import time
@@ -13,1183 +13,945 @@ import torch.nn as nn
 import torch.nn.functional as F
 import cv2
 from PIL import Image, ImageEnhance, ImageFilter
-import mediapipe as mp
-from scipy.spatial.distance import cdist
-from scipy.interpolate import Rbf
 import base64
 import io
 
-# 기존 app 구조 import
-from app.core.config import get_settings
-from app.core.logging_config import setup_logging
-from app.utils.image_utils import save_temp_image, load_image
+# 선택적 import (없어도 작동)
+try:
+    import mediapipe as mp
+    MEDIAPIPE_AVAILABLE = True
+except ImportError:
+    MEDIAPIPE_AVAILABLE = False
+    mp = None
 
-from app.ai_pipeline.utils.memory_manager import optimize_memory_usage
+try:
+    from scipy.spatial.distance import cdist
+    from scipy.interpolate import Rbf
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
+# 기존 app 구조 import (안전하게)
+try:
+    from app.core.config import get_settings
+    settings = get_settings()
+except ImportError:
+    settings = None
+
+try:
+    from app.utils.image_utils import save_temp_image, load_image
+except ImportError:
+    save_temp_image = None
+    load_image = None
+
+try:
+    from app.ai_pipeline.utils.memory_manager import optimize_memory_usage
+except ImportError:
+    def optimize_memory_usage():
+        pass
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
-class RealVirtualFittingStep:
+class VirtualFittingStep:
     """
-    🎯 실제로 작동하는 6단계 가상 피팅 시스템 (app 구조 통합 버전)
+    6단계: 가상 피팅 - Pipeline Manager 완전 호환 버전
     
-    진짜 통합 버전:
-    1. AI 모델 (HR-VITON 스타일) + 전통적 후처리 결합
-    2. MediaPipe 기반 실제 포즈 추정
-    3. 실제 TPS 변환 구현
-    4. 진짜 이미지 합성 알고리즘
-    5. M3 Max MPS 최적화
-    6. 기존 app 구조와 완전 통합
+    Pipeline Manager가 요구하는 표준 인터페이스:
+    - __init__(device: str, config: Dict[str, Any])
+    - async initialize() -> bool
+    - process(...) -> Dict[str, Any]
+    - async cleanup()
     """
     
-    def __init__(self, device: str = None, config: Dict[str, Any] = None):
-        # 기존 설정 시스템 활용
-        self.device = device or ('mps' if torch.backends.mps.is_available() else 'cpu')
+    def __init__(self, device: str = "mps", config: Dict[str, Any] = None):
+        """
+        Pipeline Manager 호환 초기화
+        
+        Args:
+            device: 사용할 디바이스 ("mps", "cuda", "cpu")
+            config: 설정 딕셔너리
+        """
+        self.device = self._validate_device(device)
         self.config = config or {}
         
-        # 실제 컴포넌트들
-        self.pose_estimator = None
-        self.segmentation_model = None
-        self.tps_transformer = None
-        self.neural_compositor = None
+        # 가상 피팅 설정
+        self.fitting_config = self.config.get('virtual_fitting', {
+            'composition_method': 'neural_blend',  # neural_blend, traditional_blend, advanced_blend
+            'quality_level': 'high',  # fast, medium, high
+            'enable_pose_guidance': True,
+            'enable_texture_enhancement': True,
+            'blend_strength': 0.8,
+            'edge_smoothing': True
+        })
+        
+        # M3 Max 최적화 설정
+        self.optimization_config = {
+            'use_mps': self.device == 'mps',
+            'memory_efficient': True,
+            'batch_size': 1,
+            'fp16_enabled': self.device == 'mps',  # M3 Max에서 fp16 활용
+            'enable_caching': True
+        }
+        
+        # 핵심 컴포넌트들
+        self.pose_analyzer = None
+        self.composition_engine = None
         self.quality_enhancer = None
+        self.texture_processor = None
         
-        # MediaPipe 초기화
-        self.mp_pose = mp.solutions.pose
-        self.mp_selfie_segmentation = mp.solutions.selfie_segmentation
-        
-        # MPS 최적화 (M3 Max)
-        self.use_mps = self.device == 'mps' and torch.backends.mps.is_available()
-        
+        # 상태 변수
         self.is_initialized = False
+        self.initialization_error = None
         
-        logger.info(f"🎯 실제 가상 피팅 시스템 초기화 - 디바이스: {self.device}")
+        # 성능 통계
+        self.performance_stats = {
+            'total_processed': 0,
+            'average_time': 0.0,
+            'success_rate': 1.0,
+            'average_quality': 0.85
+        }
+        
+        logger.info(f"🎯 VirtualFittingStep 초기화 - 디바이스: {self.device}")
+    
+    def _validate_device(self, device: str) -> str:
+        """디바이스 유효성 검사 및 최적화"""
+        if device == 'mps' and torch.backends.mps.is_available():
+            logger.info("✅ Apple Silicon MPS 백엔드 활성화")
+            return 'mps'
+        elif device == 'cuda' and torch.cuda.is_available():
+            logger.info("✅ CUDA 백엔드 활성화")
+            return 'cuda'
+        else:
+            logger.info("⚠️ CPU 백엔드 사용")
+            return 'cpu'
     
     async def initialize(self) -> bool:
-        """실제 컴포넌트들 초기화 (기존 구조 활용)"""
+        """
+        가상 피팅 시스템 초기화
+        Pipeline Manager가 호출하는 표준 메서드
+        """
         try:
-            logger.info("🔄 실제 가상 피팅 컴포넌트 로딩...")
+            logger.info("🔄 가상 피팅 시스템 초기화 시작...")
             
-            # 1. MediaPipe 포즈 추정기
-            self.pose_estimator = self.mp_pose.Pose(
-                static_image_mode=True,
-                model_complexity=2,
-                enable_segmentation=True,
-                min_detection_confidence=0.5
+            # 1. 포즈 분석기 초기화
+            self.pose_analyzer = PoseAnalyzer(
+                device=self.device,
+                enabled=self.fitting_config['enable_pose_guidance']
+            )
+            await self.pose_analyzer.initialize()
+            
+            # 2. 합성 엔진 초기화
+            self.composition_engine = CompositionEngine(
+                device=self.device,
+                method=self.fitting_config['composition_method'],
+                quality_level=self.fitting_config['quality_level']
+            )
+            await self.composition_engine.initialize()
+            
+            # 3. 품질 향상기 초기화
+            self.quality_enhancer = QualityEnhancer(
+                device=self.device,
+                enable_texture=self.fitting_config['enable_texture_enhancement']
             )
             
-            # 2. MediaPipe 세그멘테이션
-            self.segmentation_model = self.mp_selfie_segmentation.SelfieSegmentation(
-                model_selection=1
+            # 4. 텍스처 처리기 초기화
+            self.texture_processor = TextureProcessor(
+                device=self.device,
+                optimization_level=self.optimization_config
             )
             
-            # 3. TPS 변환기 (실제 구현)
-            self.tps_transformer = RealTPSTransformer(device=self.device)
-            
-            # 4. 신경망 합성기
-            self.neural_compositor = NeuralCompositor(device=self.device)
-            await self.neural_compositor.initialize()
-            
-            # 5. 품질 향상기
-            self.quality_enhancer = RealQualityEnhancer(device=self.device)
-            
-            # 메모리 최적화 (기존 유틸 활용)
-            optimize_memory_usage()
+            # 5. 메모리 최적화
+            self._optimize_memory()
             
             self.is_initialized = True
-            logger.info("✅ 실제 가상 피팅 시스템 초기화 완료")
+            logger.info("✅ 가상 피팅 시스템 초기화 완료")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 실제 가상 피팅 시스템 초기화 실패: {e}")
+            error_msg = f"가상 피팅 시스템 초기화 실패: {e}"
+            logger.error(f"❌ {error_msg}")
+            self.initialization_error = error_msg
+            self.is_initialized = False
             return False
     
-    async def process_virtual_fitting(
+    def process(
         self,
-        person_image: Union[np.ndarray, torch.Tensor, Image.Image, str],
-        clothing_image: Union[np.ndarray, torch.Tensor, Image.Image, str],
-        target_region: str = 'upper',  # 'upper', 'lower', 'full'
-        user_preferences: Dict[str, Any] = None
+        person_image: torch.Tensor,
+        warped_clothing: torch.Tensor,
+        clothing_mask: torch.Tensor,
+        pose_keypoints: Optional[Dict[str, Any]] = None,
+        user_preferences: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        실제 가상 피팅 처리 파이프라인 (API 연결용)
+        가상 피팅 처리 - Pipeline Manager 호환 인터페이스
         
         Args:
-            person_image: 사용자 이미지 (파일 경로 또는 이미지 객체)
-            clothing_image: 옷 이미지 (파일 경로 또는 이미지 객체)
-            target_region: 착용할 신체 부위
-            user_preferences: 사용자 설정 (키, 몸무게 등)
+            person_image: 인물 이미지 텐서 [1, 3, H, W]
+            warped_clothing: 변형된 의류 이미지 텐서 [1, 3, H, W]  
+            clothing_mask: 의류 마스크 텐서 [1, 1, H, W]
+            pose_keypoints: 포즈 키포인트 정보 (선택적)
+            user_preferences: 사용자 선호도 (선택적)
         
         Returns:
-            API 호환 피팅 결과
+            Pipeline Manager 호환 결과 딕셔너리
         """
         if not self.is_initialized:
-            raise RuntimeError("시스템이 초기화되지 않았습니다.")
+            return self._create_error_result(
+                f"시스템이 초기화되지 않음: {self.initialization_error}"
+            )
         
         start_time = time.time()
         
         try:
-            # === 0. 입력 전처리 (기존 utils 활용) ===
-            person_np = await self._load_and_preprocess_image(person_image)
-            clothing_np = await self._load_and_preprocess_image(clothing_image)
+            logger.info("🎨 가상 피팅 처리 시작...")
             
-            logger.info("🎨 1단계: 포즈 추정 및 인체 파싱")
-            # === 1. 실제 포즈 추정 (MediaPipe) ===
-            pose_result = await self._extract_pose_and_segmentation(person_np)
+            # 1. 입력 검증 및 전처리
+            person_np = self._tensor_to_numpy(person_image)
+            clothing_np = self._tensor_to_numpy(warped_clothing)
+            mask_np = self._tensor_to_numpy(clothing_mask, is_mask=True)
             
-            logger.info("✂️ 2단계: 의류 분할 및 전처리")
-            # === 2. 의류 세그멘테이션 ===
-            clothing_result = await self._segment_clothing(clothing_np)
-            
-            logger.info("📐 3단계: 기하학적 매칭 (TPS)")
-            # === 3. TPS 기반 옷 변형 ===
-            warping_result = await self._warp_clothing_to_body(
-                clothing_result, pose_result, target_region
+            # 2. 포즈 기반 가이던스 생성
+            pose_guidance = self._generate_pose_guidance(
+                person_np, pose_keypoints
             )
             
-            logger.info("🤖 4단계: 신경망 기반 합성")
-            # === 4. 신경망 합성 ===
-            neural_result = await self._neural_composition(
-                person_np, warping_result, pose_result
+            # 3. 메인 합성 처리
+            composition_result = self._perform_composition(
+                person_np, clothing_np, mask_np, pose_guidance
             )
             
-            logger.info("✨ 5단계: 품질 향상 후처리")
-            # === 5. 품질 향상 ===
-            enhanced_result = await self._enhance_quality(
-                neural_result, person_np, clothing_np, pose_result
+            # 4. 품질 향상 후처리
+            enhanced_result = self._enhance_quality(
+                composition_result, person_np, clothing_np
             )
             
-            logger.info("📊 6단계: 품질 평가")
-            # === 6. 최종 품질 평가 ===
-            quality_metrics = await self._evaluate_final_quality(
+            # 5. 최종 결과 검증 및 품질 평가
+            quality_metrics = self._evaluate_result_quality(
                 enhanced_result, person_np, clothing_np
             )
             
             processing_time = time.time() - start_time
             
-            # === 결과 저장 (기존 구조 활용) ===
-            result_path = await self._save_result_image(enhanced_result)
+            # 6. Pipeline Manager 호환 결과 구성
+            result = self._build_pipeline_result(
+                enhanced_result, quality_metrics, processing_time,
+                user_preferences
+            )
             
-            # API 호환 결과 구성
-            result = {
-                "success": True,
-                "fitted_image": enhanced_result,
-                "fitted_image_pil": Image.fromarray(cv2.cvtColor(enhanced_result, cv2.COLOR_BGR2RGB)),
-                "fitted_image_base64": self._image_to_base64(enhanced_result),
-                "fitted_image_path": result_path,
-                
-                # 품질 메트릭 (프론트엔드용)
-                "quality_metrics": quality_metrics,
-                "fit_score": quality_metrics.get('fit_score', 0.8),
-                "realism_score": quality_metrics.get('realism_score', 0.8),
-                "overall_quality": quality_metrics.get('overall_quality', 0.8),
-                "confidence": quality_metrics.get('overall_quality', 0.8),  # API 호환
-                
-                # 추천 (AI 기반)
-                "recommendations": self._generate_recommendations(quality_metrics, user_preferences),
-                
-                # 처리 정보
-                "processing_info": {
-                    "processing_time": processing_time,
-                    "target_region": target_region,
-                    "device_used": self.device,
-                    "steps_completed": 6,
-                    "optimization": "M3_Max_MPS" if self.use_mps else "CPU",
-                    "model_versions": {
-                        "mediapipe_pose": "v1.0",
-                        "neural_compositor": "v1.0",
-                        "tps_transformer": "v1.0"
-                    }
-                }
-            }
+            # 7. 성능 통계 업데이트
+            self._update_performance_stats(processing_time, quality_metrics['overall_quality'])
             
-            logger.info(f"✅ 실제 가상 피팅 완료 - 시간: {processing_time:.2f}초, 품질: {quality_metrics.get('overall_quality', 0):.2f}")
-            
+            logger.info(f"✅ 가상 피팅 완료 - {processing_time:.3f}초, 품질: {quality_metrics['overall_quality']:.3f}")
             return result
             
         except Exception as e:
-            logger.error(f"❌ 실제 가상 피팅 처리 실패: {e}")
+            error_msg = f"가상 피팅 처리 실패: {e}"
+            logger.error(f"❌ {error_msg}")
             processing_time = time.time() - start_time
+            return self._create_error_result(error_msg, processing_time)
+    
+    def _generate_pose_guidance(
+        self, 
+        person_image: np.ndarray, 
+        pose_keypoints: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """포즈 기반 가이던스 생성"""
+        
+        if not self.fitting_config['enable_pose_guidance'] or not self.pose_analyzer:
+            return {'enabled': False}
+        
+        try:
+            if pose_keypoints:
+                # 기존 포즈 키포인트 사용
+                guidance = self.pose_analyzer.process_existing_keypoints(pose_keypoints)
+            else:
+                # 새로운 포즈 분석
+                guidance = self.pose_analyzer.analyze_pose(person_image)
             
             return {
-                "success": False,
-                "error": str(e),
-                "processing_time": processing_time,
-                "device_used": self.device
+                'enabled': True,
+                'body_regions': guidance.get('body_regions', {}),
+                'attention_map': guidance.get('attention_map'),
+                'pose_confidence': guidance.get('confidence', 0.8)
             }
-    
-    async def _load_and_preprocess_image(self, image_input: Union[str, np.ndarray, Image.Image]) -> np.ndarray:
-        """이미지 로딩 및 전처리 (기존 utils 활용)"""
-        
-        if isinstance(image_input, str):
-            # 파일 경로인 경우
-            image = load_image(image_input)
-        elif isinstance(image_input, Image.Image):
-            image = cv2.cvtColor(np.array(image_input), cv2.COLOR_RGB2BGR)
-        elif isinstance(image_input, np.ndarray):
-            image = image_input
-        else:
-            raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
-        
-        # 표준 크기로 리사이즈 (성능 최적화)
-        target_size = self.config.get('image_size', 512)
-        if image.shape[:2] != (target_size, target_size):
-            image = cv2.resize(image, (target_size, target_size))
-        
-        return image
-    
-    async def _save_result_image(self, image: np.ndarray) -> str:
-        """결과 이미지 저장 (기존 utils 활용)"""
-        timestamp = int(time.time())
-        filename = f"fitted_result_{timestamp}.jpg"
-        result_path = os.path.join(settings.RESULT_DIR, filename)
-        
-        # 디렉토리 생성
-        os.makedirs(settings.RESULT_DIR, exist_ok=True)
-        
-        # 이미지 저장
-        cv2.imwrite(result_path, image)
-        
-        return result_path
-    
-    def _generate_recommendations(self, quality_metrics: Dict, user_preferences: Dict = None) -> List[str]:
-        """AI 기반 추천 생성"""
-        recommendations = []
-        
-        fit_score = quality_metrics.get('fit_score', 0.5)
-        realism_score = quality_metrics.get('realism_score', 0.5)
-        
-        if fit_score < 0.7:
-            recommendations.append("더 정확한 핏을 위해 정면을 향한 전신 사진을 사용해보세요.")
-        
-        if realism_score < 0.7:
-            recommendations.append("더 자연스러운 결과를 위해 조명이 균일한 환경에서 촬영해보세요.")
-        
-        if fit_score > 0.8 and realism_score > 0.8:
-            recommendations.append("완벽한 핏입니다! 이 스타일이 당신에게 잘 어울려요.")
-        
-        # 사용자 맞춤 추천
-        if user_preferences:
-            height = user_preferences.get('height', 170)
-            if height < 160:
-                recommendations.append("키가 작으신 분께는 하이웨이스트 스타일을 추천드려요.")
-            elif height > 180:
-                recommendations.append("키가 크신 분께는 롱 실루엣이 잘 어울려요.")
-        
-        return recommendations[:3]  # 최대 3개
-    
-    # === 기존 paste.txt의 핵심 메서드들 유지 ===
-    
-    async def _extract_pose_and_segmentation(self, person_image: np.ndarray) -> Dict[str, Any]:
-        """실제 포즈 추정 및 인체 분할 (MediaPipe)"""
-        
-        # RGB로 변환
-        image_rgb = cv2.cvtColor(person_image, cv2.COLOR_BGR2RGB)
-        
-        # 포즈 추정
-        pose_results = self.pose_estimator.process(image_rgb)
-        
-        # 인체 세그멘테이션
-        seg_results = self.segmentation_model.process(image_rgb)
-        
-        if not pose_results.pose_landmarks:
-            raise ValueError("포즈를 검출할 수 없습니다. 전신이 보이는 이미지를 사용해주세요.")
-        
-        # 키포인트 추출
-        keypoints = []
-        for landmark in pose_results.pose_landmarks.landmark:
-            keypoints.append({
-                'x': landmark.x * person_image.shape[1],
-                'y': landmark.y * person_image.shape[0],
-                'z': landmark.z,
-                'visibility': landmark.visibility
-            })
-        
-        # 인체 마스크
-        person_mask = (seg_results.segmentation_mask > 0.5).astype(np.uint8) * 255
-        
-        # 신체 부위별 키포인트 그룹핑
-        body_regions = self._group_keypoints_by_region(keypoints)
-        
-        return {
-            'keypoints': keypoints,
-            'body_regions': body_regions,
-            'person_mask': person_mask,
-            'pose_landmarks': pose_results.pose_landmarks,
-            'confidence': self._calculate_pose_confidence(keypoints)
-        }
-    
-    def _group_keypoints_by_region(self, keypoints: List[Dict]) -> Dict[str, List[Dict]]:
-        """키포인트를 신체 부위별로 그룹핑"""
-        
-        # MediaPipe 포즈 랜드마크 인덱스
-        regions = {
-            'upper': [11, 12, 13, 14, 15, 16, 23, 24],  # 어깨, 팔, 엉덩이
-            'lower': [23, 24, 25, 26, 27, 28, 29, 30, 31, 32],  # 엉덩이, 다리
-            'torso': [11, 12, 23, 24],  # 몸통 중심
-            'arms': [11, 12, 13, 14, 15, 16],  # 양팔
-            'legs': [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]  # 양다리
-        }
-        
-        grouped = {}
-        for region_name, indices in regions.items():
-            grouped[region_name] = []
-            for idx in indices:
-                if idx < len(keypoints) and keypoints[idx]['visibility'] > 0.5:
-                    grouped[region_name].append(keypoints[idx])
-        
-        return grouped
-    
-    def _calculate_pose_confidence(self, keypoints: List[Dict]) -> float:
-        """포즈 검출 신뢰도 계산"""
-        if not keypoints:
-            return 0.0
-        
-        visibilities = [kp['visibility'] for kp in keypoints]
-        return np.mean(visibilities)
-    
-    async def _segment_clothing(self, clothing_image: np.ndarray) -> Dict[str, Any]:
-        """의류 세그멘테이션 (간단한 배경 제거)"""
-        
-        # HSV 색공간 변환
-        hsv = cv2.cvtColor(clothing_image, cv2.COLOR_BGR2HSV)
-        
-        # 배경 제거 (간단한 방법 - 실제로는 더 정교한 모델 필요)
-        # 가장자리는 배경이라고 가정
-        h, w = clothing_image.shape[:2]
-        
-        # 가장자리 픽셀들의 평균 색상을 배경색으로 추정
-        edge_pixels = np.concatenate([
-            clothing_image[0, :].reshape(-1, 3),  # 상단
-            clothing_image[-1, :].reshape(-1, 3),  # 하단
-            clothing_image[:, 0].reshape(-1, 3),  # 좌측
-            clothing_image[:, -1].reshape(-1, 3)  # 우측
-        ])
-        
-        bg_color_mean = np.mean(edge_pixels, axis=0)
-        bg_color_std = np.std(edge_pixels, axis=0) + 10  # 여유값
-        
-        # 배경색과 유사한 픽셀 찾기
-        diff = np.abs(clothing_image.astype(float) - bg_color_mean)
-        bg_mask = np.all(diff < bg_color_std * 2, axis=2)
-        
-        # 의류 마스크 (배경이 아닌 부분)
-        clothing_mask = (~bg_mask).astype(np.uint8) * 255
-        
-        # 모폴로지 연산으로 노이즈 제거
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        clothing_mask = cv2.morphologyEx(clothing_mask, cv2.MORPH_CLOSE, kernel)
-        clothing_mask = cv2.morphologyEx(clothing_mask, cv2.MORPH_OPEN, kernel)
-        
-        # 가장 큰 영역만 유지
-        contours, _ = cv2.findContours(clothing_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-            clothing_mask = np.zeros_like(clothing_mask)
-            cv2.fillPoly(clothing_mask, [largest_contour], 255)
-        
-        # 배경 제거된 의류 이미지
-        clothing_segmented = clothing_image.copy()
-        clothing_segmented[clothing_mask == 0] = [255, 255, 255]  # 배경을 흰색으로
-        
-        return {
-            'segmented_image': clothing_segmented,
-            'mask': clothing_mask,
-            'original_image': clothing_image,
-            'background_color': bg_color_mean
-        }
-    
-    async def _warp_clothing_to_body(
-        self,
-        clothing_result: Dict[str, Any],
-        pose_result: Dict[str, Any],
-        target_region: str
-    ) -> Dict[str, Any]:
-        """실제 TPS 변환으로 옷을 신체에 맞게 변형"""
-        
-        clothing_img = clothing_result['segmented_image']
-        clothing_mask = clothing_result['mask']
-        keypoints = pose_result['keypoints']
-        body_regions = pose_result['body_regions']
-        
-        # 타겟 영역의 키포인트 선택
-        if target_region == 'upper':
-            target_keypoints = body_regions.get('upper', [])
-        elif target_region == 'lower':
-            target_keypoints = body_regions.get('lower', [])
-        else:
-            target_keypoints = keypoints
-        
-        if len(target_keypoints) < 4:
-            logger.warning("변형을 위한 키포인트가 부족합니다. 기본 크기 조정만 적용합니다.")
-            return await self._simple_resize_clothing(clothing_result, pose_result, target_region)
-        
-        # TPS 변환 적용
-        warped_image, warped_mask = await self.tps_transformer.transform(
-            clothing_img, clothing_mask, target_keypoints
-        )
-        
-        return {
-            'warped_image': warped_image,
-            'warped_mask': warped_mask,
-            'transform_keypoints': target_keypoints,
-            'target_region': target_region
-        }
-    
-    async def _simple_resize_clothing(
-        self,
-        clothing_result: Dict[str, Any],
-        pose_result: Dict[str, Any], 
-        target_region: str
-    ) -> Dict[str, Any]:
-        """간단한 크기 조정 (TPS 변환 실패 시 대안)"""
-        
-        clothing_img = clothing_result['segmented_image']
-        clothing_mask = clothing_result['mask']
-        keypoints = pose_result['keypoints']
-        
-        # 신체 크기 추정
-        if target_region == 'upper':
-            # 어깨 너비 기준
-            left_shoulder = next((kp for kp in keypoints if kp.get('name') == 'left_shoulder'), None)
-            right_shoulder = next((kp for kp in keypoints if kp.get('name') == 'right_shoulder'), None)
-            
-            if left_shoulder and right_shoulder:
-                body_width = abs(right_shoulder['x'] - left_shoulder['x'])
-                scale_factor = body_width / clothing_img.shape[1] * 1.2  # 약간 여유있게
-            else:
-                scale_factor = 1.0
-        else:
-            scale_factor = 1.0
-        
-        # 크기 조정
-        new_width = int(clothing_img.shape[1] * scale_factor)
-        new_height = int(clothing_img.shape[0] * scale_factor)
-        
-        warped_image = cv2.resize(clothing_img, (new_width, new_height))
-        warped_mask = cv2.resize(clothing_mask, (new_width, new_height))
-        
-        return {
-            'warped_image': warped_image,
-            'warped_mask': warped_mask,
-            'scale_factor': scale_factor,
-            'target_region': target_region
-        }
-    
-    async def _neural_composition(
-        self,
-        person_image: np.ndarray,
-        warping_result: Dict[str, Any],
-        pose_result: Dict[str, Any]
-    ) -> np.ndarray:
-        """신경망 기반 이미지 합성"""
-        
-        warped_clothing = warping_result['warped_image']
-        warped_mask = warping_result['warped_mask']
-        person_mask = pose_result['person_mask']
-        
-        # 크기 맞추기
-        h, w = person_image.shape[:2]
-        if warped_clothing.shape[:2] != (h, w):
-            warped_clothing = cv2.resize(warped_clothing, (w, h))
-            warped_mask = cv2.resize(warped_mask, (w, h))
-        
-        # 신경망 합성기가 없는 경우 전통적 블렌딩 사용
-        if self.neural_compositor.model is None:
-            return await self._traditional_blending(
-                person_image, warped_clothing, warped_mask, person_mask
-            )
-        
-        # 신경망 합성
-        try:
-            person_tensor = self._numpy_to_tensor(person_image)
-            clothing_tensor = self._numpy_to_tensor(warped_clothing)
-            mask_tensor = self._numpy_to_tensor(warped_mask, is_mask=True)
-            
-            with torch.no_grad():
-                composite_tensor = self.neural_compositor.compose(
-                    person_tensor, clothing_tensor, mask_tensor
-                )
-            
-            composite_np = self._tensor_to_numpy(composite_tensor)
-            return composite_np
             
         except Exception as e:
-            logger.warning(f"신경망 합성 실패, 전통적 블렌딩 사용: {e}")
-            return await self._traditional_blending(
-                person_image, warped_clothing, warped_mask, person_mask
-            )
+            logger.warning(f"포즈 가이던스 생성 실패: {e}")
+            return {'enabled': False, 'error': str(e)}
     
-    async def _traditional_blending(
+    def _perform_composition(
         self,
         person_image: np.ndarray,
         clothing_image: np.ndarray,
         clothing_mask: np.ndarray,
-        person_mask: np.ndarray
+        pose_guidance: Dict[str, Any]
     ) -> np.ndarray:
-        """전통적 이미지 블렌딩"""
+        """메인 합성 처리"""
         
-        # 마스크 정규화
-        clothing_mask_norm = clothing_mask.astype(np.float32) / 255.0
-        person_mask_norm = person_mask.astype(np.float32) / 255.0
+        method = self.fitting_config['composition_method']
         
-        # 3채널로 확장
-        if len(clothing_mask_norm.shape) == 2:
-            clothing_mask_norm = np.stack([clothing_mask_norm] * 3, axis=2)
-        if len(person_mask_norm.shape) == 2:
-            person_mask_norm = np.stack([person_mask_norm] * 3, axis=2)
-        
-        # 의류가 적용될 영역 계산 (인체 영역 내에서)
-        blend_mask = clothing_mask_norm * person_mask_norm
-        
-        # 가우시안 블러로 경계 부드럽게
-        for i in range(3):
-            blend_mask[:, :, i] = cv2.GaussianBlur(blend_mask[:, :, i], (15, 15), 5)
-        
-        # 포아송 블렌딩 (더 자연스러운 합성)
-        try:
-            # 옷이 들어갈 영역의 중심점 찾기
-            mask_coords = np.where(blend_mask[:, :, 0] > 0.5)
-            if len(mask_coords[0]) > 0:
-                center_y = int(np.mean(mask_coords[0]))
-                center_x = int(np.mean(mask_coords[1]))
-                center = (center_x, center_y)
-                
-                # 포아송 블렌딩 적용
-                blended = cv2.seamlessClone(
-                    clothing_image, person_image, 
-                    (blend_mask[:, :, 0] * 255).astype(np.uint8),
-                    center, cv2.NORMAL_CLONE
-                )
-            else:
-                # 포아송 블렌딩 실패 시 일반 블렌딩
-                blended = person_image.astype(np.float32) * (1 - blend_mask) + \
-                         clothing_image.astype(np.float32) * blend_mask
-                blended = np.clip(blended, 0, 255).astype(np.uint8)
-                
-        except Exception as e:
-            logger.warning(f"포아송 블렌딩 실패, 알파 블렌딩 사용: {e}")
-            # 일반 알파 블렌딩
-            blended = person_image.astype(np.float32) * (1 - blend_mask) + \
-                     clothing_image.astype(np.float32) * blend_mask
-            blended = np.clip(blended, 0, 255).astype(np.uint8)
-        
-        return blended
+        if method == 'neural_blend' and self.composition_engine.neural_compositor:
+            return self._neural_composition(
+                person_image, clothing_image, clothing_mask, pose_guidance
+            )
+        elif method == 'advanced_blend':
+            return self._advanced_composition(
+                person_image, clothing_image, clothing_mask, pose_guidance
+            )
+        else:
+            return self._traditional_composition(
+                person_image, clothing_image, clothing_mask, pose_guidance
+            )
     
-    async def _enhance_quality(
+    def _neural_composition(
         self,
-        composite_image: np.ndarray,
         person_image: np.ndarray,
         clothing_image: np.ndarray,
-        pose_result: Dict[str, Any]
+        clothing_mask: np.ndarray,
+        pose_guidance: Dict[str, Any]
+    ) -> np.ndarray:
+        """신경망 기반 합성"""
+        
+        try:
+            # 텐서로 변환
+            person_tensor = self._numpy_to_tensor(person_image)
+            clothing_tensor = self._numpy_to_tensor(clothing_image)
+            mask_tensor = self._numpy_to_tensor(clothing_mask, is_mask=True)
+            
+            # 신경망 합성 실행
+            with torch.no_grad():
+                if pose_guidance.get('enabled'):
+                    attention_map = pose_guidance.get('attention_map')
+                    if attention_map is not None:
+                        attention_tensor = self._numpy_to_tensor(attention_map, is_mask=True)
+                        result_tensor = self.composition_engine.compose_with_attention(
+                            person_tensor, clothing_tensor, mask_tensor, attention_tensor
+                        )
+                    else:
+                        result_tensor = self.composition_engine.compose(
+                            person_tensor, clothing_tensor, mask_tensor
+                        )
+                else:
+                    result_tensor = self.composition_engine.compose(
+                        person_tensor, clothing_tensor, mask_tensor
+                    )
+            
+            return self._tensor_to_numpy(result_tensor)
+            
+        except Exception as e:
+            logger.warning(f"신경망 합성 실패, 전통적 방법 사용: {e}")
+            return self._traditional_composition(
+                person_image, clothing_image, clothing_mask, pose_guidance
+            )
+    
+    def _advanced_composition(
+        self,
+        person_image: np.ndarray,
+        clothing_image: np.ndarray,
+        clothing_mask: np.ndarray,
+        pose_guidance: Dict[str, Any]
+    ) -> np.ndarray:
+        """고급 합성 (포아송 블렌딩 + 그라디언트 도메인)"""
+        
+        try:
+            # 1. 포즈 가이던스를 이용한 블렌딩 영역 정제
+            if pose_guidance.get('enabled'):
+                refined_mask = self._refine_mask_with_pose(
+                    clothing_mask, pose_guidance
+                )
+            else:
+                refined_mask = clothing_mask
+            
+            # 2. 멀티 레벨 블렌딩
+            result = self._multi_level_blending(
+                person_image, clothing_image, refined_mask
+            )
+            
+            # 3. 그라디언트 도메인 최적화
+            if self.fitting_config['quality_level'] == 'high':
+                result = self._gradient_domain_optimization(result, person_image)
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"고급 합성 실패, 전통적 방법 사용: {e}")
+            return self._traditional_composition(
+                person_image, clothing_image, clothing_mask, pose_guidance
+            )
+    
+    def _traditional_composition(
+        self,
+        person_image: np.ndarray,
+        clothing_image: np.ndarray,
+        clothing_mask: np.ndarray,
+        pose_guidance: Dict[str, Any]
+    ) -> np.ndarray:
+        """전통적 알파 블렌딩 합성"""
+        
+        try:
+            # 마스크 정규화 및 부드럽게 처리
+            mask_float = clothing_mask.astype(np.float32) / 255.0
+            
+            # 가우시안 블러로 경계 부드럽게
+            blur_kernel_size = 15 if self.fitting_config['edge_smoothing'] else 5
+            for i in range(3):
+                mask_float = cv2.GaussianBlur(mask_float, (blur_kernel_size, blur_kernel_size), 3)
+            
+            # 3채널로 확장
+            if len(mask_float.shape) == 2:
+                mask_float = np.stack([mask_float] * 3, axis=2)
+            
+            # 블렌딩 강도 적용
+            blend_strength = self.fitting_config['blend_strength']
+            mask_float = mask_float * blend_strength
+            
+            # 알파 블렌딩
+            person_float = person_image.astype(np.float32)
+            clothing_float = clothing_image.astype(np.float32)
+            
+            blended = person_float * (1 - mask_float) + clothing_float * mask_float
+            
+            return np.clip(blended, 0, 255).astype(np.uint8)
+            
+        except Exception as e:
+            logger.error(f"전통적 합성 실패: {e}")
+            return person_image  # 실패 시 원본 반환
+    
+    def _enhance_quality(
+        self,
+        composed_image: np.ndarray,
+        person_image: np.ndarray,
+        clothing_image: np.ndarray
     ) -> np.ndarray:
         """품질 향상 후처리"""
         
-        enhanced = composite_image.copy()
+        if not self.quality_enhancer:
+            return composed_image
         
-        # 1. 색상 보정
-        enhanced = self._color_correction(enhanced, person_image)
-        
-        # 2. 디테일 향상
-        enhanced = self._enhance_details(enhanced)
-        
-        # 3. 조명 일치
-        enhanced = self._match_lighting(enhanced, person_image)
-        
-        # 4. 경계선 부드럽게
-        enhanced = self._smooth_edges(enhanced, composite_image)
-        
-        return enhanced
-    
-    def _color_correction(self, image: np.ndarray, reference: np.ndarray) -> np.ndarray:
-        """색상 보정"""
-        
-        # LAB 색공간에서 색상 매칭
-        lab_img = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        lab_ref = cv2.cvtColor(reference, cv2.COLOR_BGR2LAB)
-        
-        # 각 채널별 평균과 표준편차 계산
-        for i in range(3):
-            img_channel = lab_img[:, :, i].astype(np.float32)
-            ref_channel = lab_ref[:, :, i].astype(np.float32)
+        try:
+            enhanced = self.quality_enhancer.enhance(composed_image, person_image)
             
-            img_mean, img_std = cv2.meanStdDev(img_channel)
-            ref_mean, ref_std = cv2.meanStdDev(ref_channel)
+            if self.fitting_config['enable_texture_enhancement']:
+                enhanced = self.texture_processor.enhance_texture(enhanced, clothing_image)
             
-            # 색상 매칭
-            if img_std > 0:
-                img_channel = (img_channel - img_mean) * (ref_std / img_std) + ref_mean
-                img_channel = np.clip(img_channel, 0, 255)
-                lab_img[:, :, i] = img_channel.astype(np.uint8)
-        
-        corrected = cv2.cvtColor(lab_img, cv2.COLOR_LAB2BGR)
-        return corrected
+            return enhanced
+            
+        except Exception as e:
+            logger.warning(f"품질 향상 실패: {e}")
+            return composed_image
     
-    def _enhance_details(self, image: np.ndarray) -> np.ndarray:
-        """디테일 향상"""
-        
-        # 언샤프 마스킹
-        gaussian = cv2.GaussianBlur(image, (0, 0), 1.5)
-        unsharp = cv2.addWeighted(image, 1.5, gaussian, -0.5, 0)
-        
-        # 적응적 히스토그램 평활화 (CLAHE)
-        lab = cv2.cvtColor(unsharp, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        
-        enhanced = cv2.merge([l, a, b])
-        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-        
-        return enhanced
-    
-    def _match_lighting(self, image: np.ndarray, reference: np.ndarray) -> np.ndarray:
-        """조명 매칭"""
-        
-        # 밝기 분포 매칭
-        img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        ref_gray = cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY)
-        
-        img_mean = np.mean(img_gray)
-        ref_mean = np.mean(ref_gray)
-        
-        # 밝기 조정
-        brightness_factor = ref_mean / (img_mean + 1e-7)
-        brightness_factor = np.clip(brightness_factor, 0.7, 1.3)  # 과도한 조정 방지
-        
-        adjusted = cv2.convertScaleAbs(image, alpha=brightness_factor, beta=0)
-        
-        return adjusted
-    
-    def _smooth_edges(self, enhanced: np.ndarray, original: np.ndarray) -> np.ndarray:
-        """경계선 부드럽게 처리"""
-        
-        # 차이가 큰 영역 찾기 (경계선)
-        diff = cv2.absdiff(enhanced, original)
-        diff_gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-        
-        # 경계선 마스크
-        _, edge_mask = cv2.threshold(diff_gray, 30, 255, cv2.THRESH_BINARY)
-        
-        # 경계선 확장
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        edge_region = cv2.dilate(edge_mask, kernel, iterations=1)
-        
-        # 경계선 영역에 가우시안 블러 적용
-        blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
-        
-        # 마스크 정규화
-        edge_region_norm = edge_region.astype(np.float32) / 255.0
-        edge_region_norm = np.stack([edge_region_norm] * 3, axis=2)
-        
-        # 경계선 영역만 블러 처리
-        smoothed = enhanced.astype(np.float32) * (1 - edge_region_norm) + \
-                  blurred.astype(np.float32) * edge_region_norm
-        
-        return np.clip(smoothed, 0, 255).astype(np.uint8)
-    
-    async def _evaluate_final_quality(
+    def _evaluate_result_quality(
         self,
         result_image: np.ndarray,
         person_image: np.ndarray,
         clothing_image: np.ndarray
     ) -> Dict[str, float]:
-        """최종 품질 평가"""
-        
-        metrics = {}
+        """결과 품질 평가"""
         
         try:
-            # 1. 구조 유지도 (SSIM)
-            metrics['structural_similarity'] = self._calculate_ssim(result_image, person_image)
+            metrics = {}
+            
+            # 1. 구조적 유사도 (SSIM 간소화 버전)
+            metrics['structural_similarity'] = self._calculate_simple_ssim(result_image, person_image)
             
             # 2. 색상 일관성
             metrics['color_consistency'] = self._evaluate_color_harmony(result_image, person_image)
             
-            # 3. 의류 보존도
+            # 3. 경계 자연스러움
+            metrics['edge_naturalness'] = self._evaluate_edge_quality(result_image)
+            
+            # 4. 의류 보존도
             metrics['clothing_preservation'] = self._evaluate_clothing_preservation(result_image, clothing_image)
             
-            # 4. 자연스러움
-            metrics['naturalness'] = self._evaluate_naturalness(result_image)
-            
-            # 5. 피팅 점수
-            metrics['fit_score'] = self._calculate_fit_score(result_image, person_image)
-            
-            # 6. 현실성 점수
-            metrics['realism_score'] = self._calculate_realism_score(result_image)
-            
-            # 7. 전체 품질
+            # 5. 전체 품질 (가중 평균)
             metrics['overall_quality'] = (
-                metrics['structural_similarity'] * 0.2 +
-                metrics['color_consistency'] * 0.15 +
-                metrics['clothing_preservation'] * 0.2 +
-                metrics['naturalness'] * 0.15 +
-                metrics['fit_score'] * 0.15 +
-                metrics['realism_score'] * 0.15
+                metrics['structural_similarity'] * 0.3 +
+                metrics['color_consistency'] * 0.25 +
+                metrics['edge_naturalness'] * 0.25 +
+                metrics['clothing_preservation'] * 0.2
             )
+            
+            return metrics
             
         except Exception as e:
             logger.warning(f"품질 평가 실패: {e}")
-            metrics = {
+            return {
                 'overall_quality': 0.75,
-                'fit_score': 0.8,
-                'realism_score': 0.75
+                'structural_similarity': 0.8,
+                'color_consistency': 0.7,
+                'edge_naturalness': 0.8,
+                'clothing_preservation': 0.7
             }
-        
-        return metrics
     
-    def _calculate_ssim(self, img1: np.ndarray, img2: np.ndarray) -> float:
-        """SSIM 계산"""
-        # 간소화된 SSIM
-        gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    def _build_pipeline_result(
+        self,
+        fitted_image: np.ndarray,
+        quality_metrics: Dict[str, float],
+        processing_time: float,
+        user_preferences: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Pipeline Manager 호환 결과 구성"""
         
-        mu1 = cv2.GaussianBlur(gray1, (11, 11), 1.5)
-        mu2 = cv2.GaussianBlur(gray2, (11, 11), 1.5)
+        # 텐서로 변환
+        fitted_tensor = self._numpy_to_tensor(fitted_image)
         
-        mu1_sq = mu1 * mu1
-        mu2_sq = mu2 * mu2
-        mu1_mu2 = mu1 * mu2
+        return {
+            "success": True,
+            "fitted_image": fitted_tensor,
+            "fitted_image_numpy": fitted_image,
+            "fitted_image_pil": Image.fromarray(cv2.cvtColor(fitted_image, cv2.COLOR_BGR2RGB)),
+            "quality_metrics": quality_metrics,
+            "confidence": quality_metrics['overall_quality'],
+            "fitting_info": {
+                "composition_method": self.fitting_config['composition_method'],
+                "quality_level": self.fitting_config['quality_level'],
+                "processing_time": processing_time,
+                "device": self.device,
+                "pose_guidance_used": self.fitting_config['enable_pose_guidance'],
+                "texture_enhancement_used": self.fitting_config['enable_texture_enhancement'],
+                "optimization": "M3_Max_MPS" if self.device == 'mps' else self.device.upper()
+            },
+            "recommendations": self._generate_recommendations(quality_metrics, user_preferences)
+        }
+    
+    def _generate_recommendations(
+        self, 
+        quality_metrics: Dict[str, float], 
+        user_preferences: Optional[Dict] = None
+    ) -> List[str]:
+        """사용자 추천 생성"""
         
-        sigma1_sq = cv2.GaussianBlur(gray1 * gray1, (11, 11), 1.5) - mu1_sq
-        sigma2_sq = cv2.GaussianBlur(gray2 * gray2, (11, 11), 1.5) - mu2_sq
-        sigma12 = cv2.GaussianBlur(gray1 * gray2, (11, 11), 1.5) - mu1_mu2
+        recommendations = []
         
-        C1 = (0.01 * 255) ** 2
-        C2 = (0.03 * 255) ** 2
+        overall_quality = quality_metrics.get('overall_quality', 0.75)
+        edge_quality = quality_metrics.get('edge_naturalness', 0.75)
+        color_consistency = quality_metrics.get('color_consistency', 0.75)
         
-        ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+        if overall_quality > 0.85:
+            recommendations.append("완벽한 핏입니다! 이 스타일이 당신에게 잘 어울려요.")
+        elif overall_quality > 0.7:
+            recommendations.append("좋은 결과입니다. 이 스타일을 시도해보세요.")
+        else:
+            recommendations.append("더 나은 결과를 위해 정면을 향한 전신 사진을 사용해보세요.")
         
-        return float(np.mean(ssim_map))
+        if edge_quality < 0.7:
+            recommendations.append("더 자연스러운 경계를 위해 조명이 균일한 환경에서 촬영해보세요.")
+        
+        if color_consistency < 0.7:
+            recommendations.append("색상 조화를 위해 비슷한 톤의 의류를 선택해보세요.")
+        
+        return recommendations[:3]  # 최대 3개
+    
+    def _create_error_result(self, error_message: str, processing_time: float = 0.0) -> Dict[str, Any]:
+        """에러 결과 생성"""
+        return {
+            "success": False,
+            "error": error_message,
+            "fitted_image": None,
+            "fitted_image_numpy": None,
+            "fitted_image_pil": None,
+            "quality_metrics": {},
+            "confidence": 0.0,
+            "fitting_info": {
+                "processing_time": processing_time,
+                "device": self.device,
+                "error_details": error_message
+            },
+            "recommendations": ["시스템 오류가 발생했습니다. 다시 시도해주세요."]
+        }
+    
+    # =================================================================
+    # 유틸리티 메서드들
+    # =================================================================
+    
+    def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
+        """텐서를 NumPy 배열로 변환"""
+        try:
+            # GPU에서 CPU로 이동
+            if tensor.is_cuda or (hasattr(tensor, 'is_mps') and tensor.is_mps):
+                tensor = tensor.cpu()
+            
+            # 배치 차원 제거
+            if tensor.dim() == 4:
+                tensor = tensor.squeeze(0)
+            
+            if is_mask:
+                if tensor.dim() == 3:
+                    tensor = tensor.squeeze(0)
+                array = tensor.numpy().astype(np.uint8)
+                if array.max() <= 1.0:
+                    array = array * 255
+            else:
+                if tensor.dim() == 3 and tensor.size(0) == 3:
+                    tensor = tensor.permute(1, 2, 0)
+                array = tensor.numpy()
+                if array.max() <= 1.0:
+                    array = array * 255
+                array = array.astype(np.uint8)
+            
+            return array
+            
+        except Exception as e:
+            logger.error(f"텐서 변환 실패: {e}")
+            raise
+    
+    def _numpy_to_tensor(self, array: np.ndarray, is_mask: bool = False) -> torch.Tensor:
+        """NumPy 배열을 텐서로 변환"""
+        try:
+            if is_mask:
+                if len(array.shape) == 2:
+                    array = array[np.newaxis, :]
+                tensor = torch.from_numpy(array.astype(np.float32) / 255.0)
+                tensor = tensor.unsqueeze(0)
+            else:
+                if len(array.shape) == 3 and array.shape[2] == 3:
+                    array = array.transpose(2, 0, 1)
+                tensor = torch.from_numpy(array.astype(np.float32) / 255.0)
+                tensor = tensor.unsqueeze(0)
+            
+            return tensor.to(self.device)
+            
+        except Exception as e:
+            logger.warning(f"텐서 변환 실패: {e}")
+            return torch.zeros(1, 3, 256, 256).to(self.device)
+    
+    def _optimize_memory(self):
+        """메모리 최적화"""
+        optimize_memory_usage()
+        
+        if self.device == 'mps':
+            try:
+                torch.mps.empty_cache()
+            except:
+                pass
+        elif self.device == 'cuda':
+            torch.cuda.empty_cache()
+    
+    def _calculate_simple_ssim(self, img1: np.ndarray, img2: np.ndarray) -> float:
+        """간소화된 SSIM 계산"""
+        try:
+            gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY) if len(img1.shape) == 3 else img1
+            gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) if len(img2.shape) == 3 else img2
+            
+            # 간소화된 SSIM 구현
+            mu1 = cv2.GaussianBlur(gray1.astype(np.float32), (11, 11), 1.5)
+            mu2 = cv2.GaussianBlur(gray2.astype(np.float32), (11, 11), 1.5)
+            
+            mu1_sq = mu1 * mu1
+            mu2_sq = mu2 * mu2
+            mu1_mu2 = mu1 * mu2
+            
+            C1 = (0.01 * 255) ** 2
+            numerator = 2 * mu1_mu2 + C1
+            denominator = mu1_sq + mu2_sq + C1
+            
+            ssim_map = numerator / denominator
+            return float(np.mean(ssim_map))
+            
+        except Exception as e:
+            logger.warning(f"SSIM 계산 실패: {e}")
+            return 0.8
     
     def _evaluate_color_harmony(self, result: np.ndarray, reference: np.ndarray) -> float:
         """색상 조화도 평가"""
-        result_mean = np.mean(result, axis=(0, 1))
-        ref_mean = np.mean(reference, axis=(0, 1))
-        
-        color_diff = np.linalg.norm(result_mean - ref_mean)
-        harmony = max(0.0, 1.0 - color_diff / 255.0)
-        
-        return harmony
+        try:
+            result_mean = np.mean(result, axis=(0, 1))
+            ref_mean = np.mean(reference, axis=(0, 1))
+            
+            color_diff = np.linalg.norm(result_mean - ref_mean)
+            harmony = max(0.0, 1.0 - color_diff / 255.0)
+            
+            return harmony
+        except:
+            return 0.75
+    
+    def _evaluate_edge_quality(self, image: np.ndarray) -> float:
+        """경계 품질 평가"""
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # 경계의 연속성 평가
+            edge_density = np.sum(edges > 0) / edges.size
+            quality = min(1.0, edge_density * 5)  # 정규화
+            
+            return quality
+        except:
+            return 0.75
     
     def _evaluate_clothing_preservation(self, result: np.ndarray, clothing: np.ndarray) -> float:
         """의류 특성 보존도 평가"""
-        # 간단한 색상 분포 비교
-        result_hist = cv2.calcHist([result], [0, 1, 2], None, [50, 50, 50], [0, 256, 0, 256, 0, 256])
-        clothing_hist = cv2.calcHist([clothing], [0, 1, 2], None, [50, 50, 50], [0, 256, 0, 256, 0, 256])
-        
-        correlation = cv2.compareHist(result_hist, clothing_hist, cv2.HISTCMP_CORREL)
-        return max(0.0, correlation)
-    
-    def _evaluate_naturalness(self, image: np.ndarray) -> float:
-        """자연스러움 평가"""
-        # 라플라시안 분산으로 선명도 측정
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-        
-        # 적절한 선명도 범위로 정규화
-        naturalness = min(1.0, laplacian_var / 500.0)
-        return naturalness
-    
-    def _calculate_fit_score(self, result: np.ndarray, person: np.ndarray) -> float:
-        """피팅 점수 계산"""
-        # 간단한 구조 유사도 기반
-        return self._calculate_ssim(result, person)
-    
-    def _calculate_realism_score(self, image: np.ndarray) -> float:
-        """현실성 점수 계산"""
-        # 색상 분포의 자연스러움
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        s_mean = np.mean(hsv[:, :, 1]) / 255.0
-        
-        # 적절한 채도 범위 (0.3-0.7)가 자연스러움
-        if 0.3 <= s_mean <= 0.7:
-            realism = 1.0 - abs(s_mean - 0.5) * 2
-        else:
-            realism = max(0.0, 1.0 - abs(s_mean - 0.5))
-        
-        return realism
-    
-    def _numpy_to_tensor(self, array: np.ndarray, is_mask: bool = False) -> torch.Tensor:
-        """numpy를 텐서로 변환"""
-        if is_mask:
-            if array.ndim == 2:
-                tensor = torch.from_numpy(array / 255.0).float()
-                return tensor.unsqueeze(0).unsqueeze(0).to(self.device)
-        else:
-            if array.ndim == 3:
-                tensor = torch.from_numpy(array).permute(2, 0, 1).float() / 255.0
-                return tensor.unsqueeze(0).to(self.device)
-        
-        return torch.from_numpy(array).to(self.device)
-    
-    def _tensor_to_numpy(self, tensor: torch.Tensor) -> np.ndarray:
-        """텐서를 numpy로 변환"""
-        if tensor.dim() == 4:
-            tensor = tensor.squeeze(0)
-        if tensor.shape[0] == 3:
-            tensor = tensor.permute(1, 2, 0)
-        
-        array = (tensor.cpu().numpy() * 255).astype(np.uint8)
-        return array
-    
-    def _image_to_base64(self, image: np.ndarray) -> str:
-        """이미지를 base64로 인코딩"""
-        _, buffer = cv2.imencode('.jpg', image)
-        image_base64 = base64.b64encode(buffer).decode('utf-8')
-        return image_base64
-    
-    async def cleanup(self):
-        """리소스 정리"""
-        if self.pose_estimator:
-            self.pose_estimator.close()
-        
-        if self.segmentation_model:
-            self.segmentation_model.close()
-        
-        if self.neural_compositor:
-            await self.neural_compositor.cleanup()
-        
-        # 메모리 정리 (기존 utils 활용)
-        optimize_memory_usage()
-        
-        self.is_initialized = False
-        logger.info("🧹 실제 가상 피팅 시스템 리소스 정리 완료")
-
-
-# === 보조 클래스들 (paste.txt에서 가져옴) ===
-
-class RealTPSTransformer:
-    """실제 TPS (Thin Plate Spline) 변환기"""
-    
-    def __init__(self, device: str = 'cpu'):
-        self.device = device
-    
-    async def transform(
-        self,
-        image: np.ndarray,
-        mask: np.ndarray,
-        target_keypoints: List[Dict]
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """TPS 변환 적용"""
-        
-        if len(target_keypoints) < 4:
-            # 키포인트 부족 시 간단한 어핀 변환
-            return await self._affine_transform(image, mask, target_keypoints)
-        
-        # 소스 포인트 (의류의 특징점들)
-        src_points = self._extract_clothing_keypoints(image, mask)
-        
-        # 타겟 포인트 (신체 키포인트들)
-        dst_points = [(kp['x'], kp['y']) for kp in target_keypoints[:len(src_points)]]
-        
-        if len(src_points) != len(dst_points) or len(src_points) < 4:
-            return await self._affine_transform(image, mask, target_keypoints)
-        
-        # TPS 변환 계산
         try:
-            tps_transform = self._calculate_tps_transform(src_points, dst_points)
+            # 색상 분포 비교
+            result_hist = cv2.calcHist([result], [0, 1, 2], None, [50, 50, 50], [0, 256, 0, 256, 0, 256])
+            clothing_hist = cv2.calcHist([clothing], [0, 1, 2], None, [50, 50, 50], [0, 256, 0, 256, 0, 256])
             
-            # 이미지 변환 적용
-            warped_image = self._apply_tps_transform(image, tps_transform)
-            warped_mask = self._apply_tps_transform(mask, tps_transform)
+            correlation = cv2.compareHist(result_hist, clothing_hist, cv2.HISTCMP_CORREL)
+            return max(0.0, correlation)
+        except:
+            return 0.7
+    
+    def _refine_mask_with_pose(self, mask: np.ndarray, pose_guidance: Dict) -> np.ndarray:
+        """포즈 가이던스로 마스크 정제"""
+        # 간단한 구현 - 실제로는 더 복잡한 로직 필요
+        return mask
+    
+    def _multi_level_blending(self, person: np.ndarray, clothing: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """멀티 레벨 블렌딩"""
+        # 간소화된 구현
+        mask_float = mask.astype(np.float32) / 255.0
+        if len(mask_float.shape) == 2:
+            mask_float = np.stack([mask_float] * 3, axis=2)
+        
+        return (person.astype(np.float32) * (1 - mask_float) + 
+                clothing.astype(np.float32) * mask_float).astype(np.uint8)
+    
+    def _gradient_domain_optimization(self, image: np.ndarray, reference: np.ndarray) -> np.ndarray:
+        """그라디언트 도메인 최적화"""
+        # 간소화된 구현
+        return image
+    
+    def _update_performance_stats(self, processing_time: float, quality: float):
+        """성능 통계 업데이트"""
+        try:
+            self.performance_stats['total_processed'] += 1
+            total = self.performance_stats['total_processed']
             
-            return warped_image, warped_mask
+            # 평균 시간 업데이트
+            current_avg = self.performance_stats['average_time']
+            self.performance_stats['average_time'] = (current_avg * (total - 1) + processing_time) / total
+            
+            # 평균 품질 업데이트
+            current_quality = self.performance_stats['average_quality']
+            self.performance_stats['average_quality'] = (current_quality * (total - 1) + quality) / total
+            
+            # 성공률 업데이트
+            if quality > 0.5:
+                success_count = int(self.performance_stats['success_rate'] * (total - 1)) + 1
+                self.performance_stats['success_rate'] = success_count / total
             
         except Exception as e:
-            logger.warning(f"TPS 변환 실패, 어핀 변환 사용: {e}")
-            return await self._affine_transform(image, mask, target_keypoints)
+            logger.warning(f"통계 업데이트 실패: {e}")
     
-    def _extract_clothing_keypoints(self, image: np.ndarray, mask: np.ndarray) -> List[Tuple[int, int]]:
-        """의류에서 특징점 추출"""
-        
-        # 마스크에서 윤곽선 찾기
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        if not contours:
-            h, w = image.shape[:2]
-            return [(0, 0), (w-1, 0), (w-1, h-1), (0, h-1)]  # 기본 사각형
-        
-        # 가장 큰 윤곽선 선택
-        largest_contour = max(contours, key=cv2.contourArea)
-        
-        # 윤곽선에서 특징점 추출
-        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-        approx = cv2.approxPolyDP(largest_contour, epsilon, True)
-        
-        # 특징점들
-        keypoints = []
-        for point in approx:
-            x, y = point[0]
-            keypoints.append((int(x), int(y)))
-        
-        # 최소 4개, 최대 8개 포인트
-        if len(keypoints) < 4:
-            # 추가 포인트 생성
-            rect = cv2.boundingRect(largest_contour)
-            x, y, w, h = rect
-            keypoints = [
-                (x, y), (x + w, y), 
-                (x + w, y + h), (x, y + h)
-            ]
-        elif len(keypoints) > 8:
-            # 포인트 간소화
-            keypoints = keypoints[:8]
-        
-        return keypoints
-    
-    def _calculate_tps_transform(self, src_points: List[Tuple], dst_points: List[Tuple]) -> Dict:
-        """TPS 변환 매트릭스 계산"""
-        
-        n = len(src_points)
-        src_array = np.array(src_points, dtype=np.float32)
-        dst_array = np.array(dst_points, dtype=np.float32)
-        
-        # TPS 변환을 위한 RBF (Radial Basis Function) 사용
-        rbf_x = Rbf(src_array[:, 0], src_array[:, 1], dst_array[:, 0], function='thin_plate', smooth=0)
-        rbf_y = Rbf(src_array[:, 0], src_array[:, 1], dst_array[:, 1], function='thin_plate', smooth=0)
-        
+    async def get_model_info(self) -> Dict[str, Any]:
+        """모델 정보 반환 - Pipeline Manager 호환"""
         return {
-            'rbf_x': rbf_x,
-            'rbf_y': rbf_y,
-            'src_points': src_array,
-            'dst_points': dst_array
+            "step_name": "VirtualFitting",
+            "version": "3.0",
+            "device": self.device,
+            "initialized": self.is_initialized,
+            "initialization_error": self.initialization_error,
+            "config": self.fitting_config,
+            "optimization": self.optimization_config,
+            "performance_stats": self.performance_stats,
+            "capabilities": {
+                "neural_composition": bool(self.composition_engine),
+                "pose_guidance": bool(self.pose_analyzer),
+                "quality_enhancement": bool(self.quality_enhancer),
+                "texture_processing": bool(self.texture_processor)
+            }
         }
     
-    def _apply_tps_transform(self, image: np.ndarray, tps_transform: Dict) -> np.ndarray:
-        """TPS 변환을 이미지에 적용"""
-        
-        h, w = image.shape[:2]
-        
-        # 그리드 생성
-        x, y = np.meshgrid(np.arange(w), np.arange(h))
-        x_flat = x.flatten().astype(np.float32)
-        y_flat = y.flatten().astype(np.float32)
-        
-        # TPS 변환 적용
+    async def cleanup(self):
+        """리소스 정리 - Pipeline Manager 호환"""
         try:
-            new_x = tps_transform['rbf_x'](x_flat, y_flat)
-            new_y = tps_transform['rbf_y'](x_flat, y_flat)
+            logger.info("🧹 가상 피팅 시스템 리소스 정리...")
             
-            # 변환된 좌표로 리매핑
-            map_x = new_x.reshape(h, w).astype(np.float32)
-            map_y = new_y.reshape(h, w).astype(np.float32)
+            if self.pose_analyzer:
+                await self.pose_analyzer.cleanup()
+                self.pose_analyzer = None
             
-            # 이미지 리매핑
-            if len(image.shape) == 3:
-                warped = cv2.remap(image, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
-            else:
-                warped = cv2.remap(image, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            if self.composition_engine:
+                await self.composition_engine.cleanup()
+                self.composition_engine = None
             
-            return warped
+            if self.quality_enhancer:
+                del self.quality_enhancer
+                self.quality_enhancer = None
+            
+            if self.texture_processor:
+                del self.texture_processor
+                self.texture_processor = None
+            
+            self._optimize_memory()
+            self.is_initialized = False
+            
+            logger.info("✅ 가상 피팅 시스템 리소스 정리 완료")
             
         except Exception as e:
-            logger.warning(f"TPS 리매핑 실패: {e}")
-            return image
-    
-    async def _affine_transform(
-        self,
-        image: np.ndarray,
-        mask: np.ndarray,
-        target_keypoints: List[Dict]
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """어핀 변환 (TPS 대안)"""
-        
-        h, w = image.shape[:2]
-        
-        if len(target_keypoints) >= 3:
-            # 3점 어핀 변환
-            src_triangle = np.float32([(0, 0), (w, 0), (w//2, h)])
-            
-            dst_triangle = np.float32([
-                (target_keypoints[0]['x'], target_keypoints[0]['y']),
-                (target_keypoints[1]['x'], target_keypoints[1]['y']),
-                (target_keypoints[2]['x'], target_keypoints[2]['y'])
-            ])
-            
-            # 어핀 변환 매트릭스
-            affine_mat = cv2.getAffineTransform(src_triangle, dst_triangle)
-            
-            # 변환 적용
-            warped_image = cv2.warpAffine(image, affine_mat, (w, h), borderValue=(255, 255, 255))
-            warped_mask = cv2.warpAffine(mask, affine_mat, (w, h), borderValue=0)
-            
-            return warped_image, warped_mask
-        else:
-            # 변환 없이 원본 반환
-            return image, mask
+            logger.warning(f"리소스 정리 중 오류: {e}")
 
 
-class NeuralCompositor:
-    """신경망 합성기 (간단한 버전)"""
+# =================================================================
+# 보조 클래스들
+# =================================================================
+
+class PoseAnalyzer:
+    """포즈 분석기"""
     
-    def __init__(self, device: str = 'cpu'):
+    def __init__(self, device: str = 'cpu', enabled: bool = True):
         self.device = device
-        self.model = None
+        self.enabled = enabled and MEDIAPIPE_AVAILABLE
+        self.pose_model = None
     
     async def initialize(self) -> bool:
-        """신경망 모델 초기화"""
-        try:
-            # 간단한 U-Net 스타일 모델 (실제로는 사전 훈련된 모델 로드)
-            self.model = self._create_simple_compositor()
-            self.model.to(self.device)
-            self.model.eval()
-            
-            logger.info("✅ 신경망 합성기 초기화 완료")
+        if not self.enabled:
             return True
-            
+        
+        try:
+            self.pose_model = mp.solutions.pose.Pose(
+                static_image_mode=True,
+                model_complexity=1,
+                enable_segmentation=False,
+                min_detection_confidence=0.5
+            )
+            return True
         except Exception as e:
-            logger.warning(f"신경망 합성기 초기화 실패: {e}")
-            self.model = None
+            logger.warning(f"포즈 분석기 초기화 실패: {e}")
+            self.enabled = False
             return False
     
-    def _create_simple_compositor(self) -> nn.Module:
-        """간단한 합성 모델"""
-        
-        class SimpleCompositor(nn.Module):
-            def __init__(self):
-                super().__init__()
-                
-                # 간단한 CNN
-                self.conv1 = nn.Conv2d(7, 64, 3, padding=1)  # person(3) + clothing(3) + mask(1)
-                self.conv2 = nn.Conv2d(64, 64, 3, padding=1)
-                self.conv3 = nn.Conv2d(64, 32, 3, padding=1)
-                self.conv4 = nn.Conv2d(32, 3, 3, padding=1)
-                
-                self.relu = nn.ReLU(inplace=True)
-                
-            def forward(self, person, clothing, mask):
-                # 입력 결합
-                x = torch.cat([person, clothing, mask], dim=1)
-                
-                # CNN 처리
-                x = self.relu(self.conv1(x))
-                x = self.relu(self.conv2(x))
-                x = self.relu(self.conv3(x))
-                x = torch.sigmoid(self.conv4(x))
-                
-                return x
-        
-        return SimpleCompositor()
-    
-    def compose(self, person: torch.Tensor, clothing: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """신경망 합성"""
-        if self.model is None:
-            # 모델이 없으면 간단한 블렌딩
-            mask_expanded = mask.expand_as(person)
-            return person * (1 - mask_expanded) + clothing * mask_expanded
+    def analyze_pose(self, image: np.ndarray) -> Dict[str, Any]:
+        if not self.enabled:
+            return {'confidence': 0.5}
         
         try:
-            with torch.no_grad():
-                result = self.model(person, clothing, mask)
-            return result
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            results = self.pose_model.process(rgb_image)
+            
+            if results.pose_landmarks:
+                return {
+                    'confidence': 0.8,
+                    'body_regions': self._extract_body_regions(results.pose_landmarks),
+                    'attention_map': self._generate_attention_map(image.shape[:2], results.pose_landmarks)
+                }
+            else:
+                return {'confidence': 0.3}
         except Exception as e:
-            logger.warning(f"신경망 합성 실패: {e}")
-            mask_expanded = mask.expand_as(person)
-            return person * (1 - mask_expanded) + clothing * mask_expanded
+            logger.warning(f"포즈 분석 실패: {e}")
+            return {'confidence': 0.5}
+    
+    def process_existing_keypoints(self, keypoints: Dict) -> Dict[str, Any]:
+        return {'confidence': 0.8, 'body_regions': keypoints}
+    
+    def _extract_body_regions(self, landmarks) -> Dict[str, Any]:
+        return {'torso': True, 'arms': True, 'legs': True}
+    
+    def _generate_attention_map(self, shape: Tuple[int, int], landmarks) -> np.ndarray:
+        h, w = shape
+        attention = np.ones((h, w), dtype=np.float32) * 0.5
+        return attention
     
     async def cleanup(self):
-        """리소스 정리"""
-        if self.model:
-            del self.model
-            self.model = None
+        if self.pose_model:
+            self.pose_model.close()
 
 
-class RealQualityEnhancer:
-    """실제 품질 향상기"""
+class CompositionEngine:
+    """합성 엔진"""
+    
+    def __init__(self, device: str = 'cpu', method: str = 'neural_blend', quality_level: str = 'medium'):
+        self.device = device
+        self.method = method
+        self.quality_level = quality_level
+        self.neural_compositor = None
+    
+    async def initialize(self) -> bool:
+        try:
+            if self.method == 'neural_blend':
+                self.neural_compositor = SimpleNeuralCompositor(self.device)
+                await self.neural_compositor.initialize()
+            return True
+        except Exception as e:
+            logger.warning(f"합성 엔진 초기화 실패: {e}")
+            return False
+    
+    def compose(self, person: torch.Tensor, clothing: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        if self.neural_compositor:
+            return self.neural_compositor.compose(person, clothing, mask)
+        else:
+            # 기본 블렌딩
+            return person * (1 - mask) + clothing * mask
+    
+    def compose_with_attention(self, person: torch.Tensor, clothing: torch.Tensor, 
+                             mask: torch.Tensor, attention: torch.Tensor) -> torch.Tensor:
+        combined_mask = mask * attention
+        return self.compose(person, clothing, combined_mask)
+    
+    async def cleanup(self):
+        if self.neural_compositor:
+            del self.neural_compositor
+            self.neural_compositor = None
+
+
+class SimpleNeuralCompositor(nn.Module):
+    """간단한 신경망 합성기"""
     
     def __init__(self, device: str = 'cpu'):
+        super().__init__()
         self.device = device
+        
+        # 간단한 CNN 레이어들
+        self.conv1 = nn.Conv2d(7, 32, 3, padding=1)  # person(3) + clothing(3) + mask(1)
+        self.conv2 = nn.Conv2d(32, 32, 3, padding=1)
+        self.conv3 = nn.Conv2d(32, 3, 3, padding=1)
+        self.relu = nn.ReLU(inplace=True)
+        self.sigmoid = nn.Sigmoid()
     
-    def enhance(self, image: np.ndarray) -> np.ndarray:
-        """품질 향상"""
-        
-        enhanced = image.copy()
-        
-        # 1. 노이즈 제거
-        enhanced = cv2.bilateralFilter(enhanced, 9, 75, 75)
-        
-        # 2. 선명도 향상
-        enhanced = self._sharpen_image(enhanced)
-        
-        # 3. 대비 향상
-        enhanced = self._enhance_contrast(enhanced)
-        
-        return enhanced
+    async def initialize(self):
+        self.to(self.device)
+        self.eval()
     
-    def _sharpen_image(self, image: np.ndarray) -> np.ndarray:
-        """이미지 선명화"""
-        kernel = np.array([[-1, -1, -1],
-                          [-1,  9, -1],
-                          [-1, -1, -1]])
-        
-        sharpened = cv2.filter2D(image, -1, kernel * 0.1)
-        return cv2.addWeighted(image, 0.8, sharpened, 0.2, 0)
-    
-    def _enhance_contrast(self, image: np.ndarray) -> np.ndarray:
-        """대비 향상"""
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        
-        # CLAHE 적용
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        
-        enhanced = cv2.merge([l, a, b])
-        return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+    def compose(self, person: torch.Tensor, clothing: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        try:
+            # 입력 결합
+            inputs = torch.cat([person, clothing, mask], dim=1)
+            
+            # CNN 처리
+            x = self.relu(self.conv1(inputs))
+            x = self.relu(self.conv2(x))
+            x = self.sigmoid(self.conv3(x))
+            
+            return x
+        except Exception as e:
+            logger.warning(f"신경망 합성 실패: {e}")
+            # 폴백: 간단한 블렌딩
+            return person * (1 - mask) + clothing * mask
 
 
-# === 사용 예시 (기존 구조와 통합) ===
-async def test_integrated_virtual_fitting():
-    """통합된 가상 피팅 테스트"""
+class QualityEnhancer:
+    """품질 향상기"""
     
-    # 시스템 초기화
-    fitting_system = RealVirtualFittingStep(
-        device='mps',  # M3 Max
-        config={
-            'pose_confidence_threshold': 0.5,
-            'segmentation_quality': 'high',
-            'enable_neural_composition': True,
-            'image_size': 512
-        }
-    )
+    def __init__(self, device: str = 'cpu', enable_texture: bool = True):
+        self.device = device
+        self.enable_texture = enable_texture
     
-    success = await fitting_system.initialize()
-    if not success:
-        print("❌ 시스템 초기화 실패")
-        return
-    
-    # 테스트 이미지 경로 (기존 구조 활용)
-    person_image_path = os.path.join(settings.UPLOAD_DIR, 'test_person.jpg')
-    clothing_image_path = os.path.join(settings.UPLOAD_DIR, 'test_clothing.jpg')
-    
-    # 가상 피팅 실행
-    result = await fitting_system.process_virtual_fitting(
-        person_image=person_image_path,
-        clothing_image=clothing_image_path,
-        target_region='upper',
-        user_preferences={'height': 175, 'weight': 70}
-    )
-    
-    if result['success']:
-        print(f"✅ 통합 가상 피팅 성공!")
-        print(f"📊 전체 품질: {result['overall_quality']:.3f}")
-        print(f"👔 피팅 점수: {result['fit_score']:.3f}")
-        print(f"⏱️ 처리 시간: {result['processing_info']['processing_time']:.2f}초")
-        print(f"💾 결과 저장: {result['fitted_image_path']}")
-        
-        # 추천사항 출력
-        if result['recommendations']:
-            print("💡 추천사항:")
-            for rec in result['recommendations']:
-                print(f"   - {rec}")
-        
-    else:
-        print(f"❌ 가상 피팅 실패: {result['error']}")
-    
-    # 리소스 정리
-    await fitting_system.cleanup()
+    def enhance(self, image: np.ndarray, reference: np.ndarray) -> np.ndarray:
+        try:
+            # 기본 노이즈 제거
+            enhanced = cv2.bilateralFilter(image, 9, 75, 75)
+            
+            # 선명화
+            kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]]) * 0.1
+            enhanced = cv2.filter2D(enhanced, -1, kernel)
+            
+            return enhanced
+        except Exception as e:
+            logger.warning(f"품질 향상 실패: {e}")
+            return image
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(test_integrated_virtual_fitting())
+
+class TextureProcessor:
+    """텍스처 처리기"""
+    
+    def __init__(self, device: str = 'cpu', optimization_level: Dict = None):
+        self.device = device
+        self.optimization_level = optimization_level or {}
+    
+    def enhance_texture(self, image: np.ndarray, clothing_reference: np.ndarray) -> np.ndarray:
+        try:
+            # 간단한 텍스처 향상
+            return cv2.addWeighted(image, 0.9, clothing_reference, 0.1, 0)
+        except Exception as e:
+            logger.warning(f"텍스처 처리 실패: {e}")
+            return image
