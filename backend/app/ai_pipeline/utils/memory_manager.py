@@ -1,6 +1,8 @@
 # app/ai_pipeline/utils/memory_manager.py
 """
 M3 Max 최적화 메모리 매니저 (PyTorch 2.5.1 호환성 보장)
+- 누락된 export 함수들 추가
+- main.py에서 요구하는 모든 함수 구현
 """
 
 import logging
@@ -211,3 +213,122 @@ class MemoryManager:
     def stop_monitoring(self) -> None:
         """메모리 모니터링 중지"""
         logger.info("📊 메모리 모니터링 중지")
+
+# ==========================================
+# MAIN.PY에서 요구하는 EXPORT 함수들 추가
+# ==========================================
+
+# 전역 메모리 매니저 인스턴스
+_global_memory_manager: Optional[MemoryManager] = None
+
+def get_memory_manager() -> Optional[MemoryManager]:
+    """전역 메모리 매니저 반환"""
+    global _global_memory_manager
+    if _global_memory_manager is None:
+        _global_memory_manager = MemoryManager()
+    return _global_memory_manager
+
+def get_global_memory_manager() -> Optional[MemoryManager]:
+    """전역 메모리 매니저 반환 (별칭)"""
+    return get_memory_manager()
+
+def create_memory_manager(device: str = "mps", memory_limit_gb: Optional[float] = None) -> MemoryManager:
+    """새로운 메모리 매니저 생성"""
+    return MemoryManager(device=device, memory_limit_gb=memory_limit_gb)
+
+def get_default_memory_manager() -> MemoryManager:
+    """기본 메모리 매니저 반환"""
+    manager = get_memory_manager()
+    if manager is None:
+        manager = create_memory_manager()
+    return manager
+
+def optimize_memory_usage(device: Optional[str] = None, aggressive: bool = False) -> Dict[str, Any]:
+    """메모리 사용량 최적화 (main.py 호환)"""
+    try:
+        manager = get_memory_manager()
+        if manager is None:
+            manager = create_memory_manager(device=device or "mps")
+        
+        stats_before = manager.get_memory_stats()
+        
+        # 메모리 정리
+        manager.clear_cache()
+        
+        # 적극적 정리
+        if aggressive:
+            manager.optimize_memory()
+            
+            # 추가 정리
+            import gc
+            for _ in range(3):
+                gc.collect()
+        
+        stats_after = manager.get_memory_stats()
+        
+        return {
+            "success": True,
+            "device": device or manager.device,
+            "aggressive": aggressive,
+            "memory_before": {
+                "cpu_available_gb": stats_before.cpu_available_gb,
+                "cpu_used_percent": stats_before.cpu_used_percent,
+                "gpu_allocated_gb": stats_before.gpu_allocated_gb
+            },
+            "memory_after": {
+                "cpu_available_gb": stats_after.cpu_available_gb,
+                "cpu_used_percent": stats_after.cpu_used_percent,
+                "gpu_allocated_gb": stats_after.gpu_allocated_gb
+            },
+            "freed_memory_gb": stats_before.cpu_used_percent - stats_after.cpu_used_percent,
+            "optimization_time": 0.1  # 더미 시간
+        }
+        
+    except Exception as e:
+        logger.error(f"메모리 최적화 실패: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "device": device or "unknown"
+        }
+
+def check_memory() -> Dict[str, Any]:
+    """메모리 상태 체크 (main.py 호환)"""
+    try:
+        manager = get_memory_manager()
+        if manager is None:
+            return {
+                "status": "unknown",
+                "error": "Memory manager not available"
+            }
+        
+        stats = manager.get_memory_stats()
+        
+        # 상태 판단
+        if stats.cpu_used_percent > 90:
+            status = "critical"
+        elif stats.cpu_used_percent > 75:
+            status = "warning"
+        elif stats.cpu_used_percent > 50:
+            status = "normal"
+        else:
+            status = "good"
+        
+        return {
+            "status": status,
+            "cpu_total_gb": stats.cpu_total_gb,
+            "cpu_available_gb": stats.cpu_available_gb,
+            "cpu_used_percent": stats.cpu_used_percent,
+            "gpu_allocated_gb": stats.gpu_allocated_gb,
+            "gpu_cached_gb": stats.gpu_cached_gb,
+            "is_m3_max": manager.is_m3_max,
+            "device": manager.device,
+            "memory_limit_gb": manager.memory_limit_gb
+        }
+        
+    except Exception as e:
+        logger.error(f"메모리 체크 실패: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }

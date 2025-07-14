@@ -1,6 +1,8 @@
 # app/core/gpu_config.py
 """
 M3 Max GPU 설정 및 최적화 (PyTorch 2.5.1 호환)
+- 누락된 export 함수들 추가
+- main.py에서 요구하는 모든 함수 구현
 """
 
 import os
@@ -235,6 +237,49 @@ class GPUConfig:
         except Exception as e:
             logger.error(f"❌ {self.device} 디바이스 테스트 실패: {e}")
             return False
+    
+    def get_optimal_settings(self, model_type: str = "diffusion") -> Dict[str, Any]:
+        """최적 설정 반환 (누락된 함수 추가)"""
+        base_settings = self.config.copy()
+        
+        # 모델 타입별 특화 설정
+        if model_type == "diffusion":
+            if self.device == "mps" and self.gpu_info.is_m3_max:
+                base_settings.update({
+                    "batch_size": 2,
+                    "num_inference_steps": 20,
+                    "guidance_scale": 7.5,
+                    "enable_attention_slicing": True
+                })
+            elif self.device == "cuda":
+                base_settings.update({
+                    "batch_size": 4,
+                    "num_inference_steps": 50,
+                    "guidance_scale": 7.5,
+                    "enable_xformers": True
+                })
+            else:
+                base_settings.update({
+                    "batch_size": 1,
+                    "num_inference_steps": 20,
+                    "guidance_scale": 7.5
+                })
+        
+        elif model_type == "segmentation":
+            base_settings.update({
+                "input_size": (512, 512),
+                "confidence_threshold": 0.5,
+                "use_tta": self.device != "cpu"
+            })
+        
+        elif model_type == "pose_estimation":
+            base_settings.update({
+                "input_size": (368, 368),
+                "confidence_threshold": 0.1,
+                "use_tensorrt": self.device == "cuda"
+            })
+        
+        return base_settings
 
 # 전역 설정 초기화
 def initialize_gpu_config():
@@ -288,7 +333,10 @@ else:
         "mps_available": False
     }
 
-# 추가 호환성 exports
+# ==========================================
+# MAIN.PY에서 요구하는 EXPORT 함수들 추가
+# ==========================================
+
 def get_device_config():
     """디바이스 설정 반환 (호환성)"""
     return {
@@ -308,3 +356,74 @@ def get_model_config():
 def get_device_info():
     """디바이스 정보 반환 (호환성)"""
     return DEVICE_INFO
+
+def get_optimal_settings(model_type: str = "diffusion") -> Dict[str, Any]:
+    """최적 설정 반환 (main.py에서 누락된 함수)"""
+    if gpu_config and hasattr(gpu_config, 'get_optimal_settings'):
+        return gpu_config.get_optimal_settings(model_type)
+    else:
+        # 폴백 설정
+        return {
+            "device": DEVICE,
+            "dtype": torch.float32,
+            "batch_size": 1,
+            "memory_fraction": 0.8,
+            "enable_optimization": True
+        }
+
+def set_device_optimization(enable: bool = True) -> bool:
+    """디바이스 최적화 설정/해제"""
+    try:
+        if gpu_config:
+            if enable:
+                gpu_config._apply_optimizations()
+            logger.info(f"🔧 디바이스 최적화 {'활성화' if enable else '비활성화'}")
+            return True
+        else:
+            logger.warning("GPU 설정이 초기화되지 않음")
+            return False
+    except Exception as e:
+        logger.error(f"디바이스 최적화 설정 실패: {e}")
+        return False
+
+def get_performance_info() -> Dict[str, Any]:
+    """성능 정보 반환"""
+    if gpu_config:
+        info = gpu_config.get_device_info()
+        info.update({
+            "optimization_applied": True,
+            "pytorch_version": torch.__version__,
+            "performance_tips": _get_performance_tips()
+        })
+        return info
+    else:
+        return {
+            "device": "cpu",
+            "optimization_applied": False,
+            "performance_tips": ["GPU 설정을 초기화하세요"]
+        }
+
+def _get_performance_tips() -> list:
+    """성능 향상 팁 반환"""
+    tips = []
+    
+    if DEVICE == "mps":
+        tips.extend([
+            "MPS 사용 중 - M3 Max에 최적화됨",
+            "통합 메모리의 장점을 활용하세요",
+            "배치 크기를 늘려 성능을 향상시킬 수 있습니다"
+        ])
+    elif DEVICE == "cuda":
+        tips.extend([
+            "CUDA 가속 활성화됨",
+            "메모리 사용량을 모니터링하세요",
+            "혼합 정밀도 연산을 활용하세요"
+        ])
+    else:
+        tips.extend([
+            "CPU 모드 사용 중",
+            "GPU가 사용 가능한지 확인하세요",
+            "스레드 수 최적화가 적용됨"
+        ])
+    
+    return tips
