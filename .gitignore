@@ -274,3 +274,4 @@ frontend/node_modules/
 # 환경 설정
 .env
 .env.localbackend/mycloset_env/
+backend/mycloset_env/
