@@ -1,6 +1,6 @@
-# app/core/config.py
+# backend/app/core/config.py
 """
-MyCloset AI 백엔드 설정 모듈
+MyCloset AI 백엔드 설정 모듈 - LOGS 디렉토리 추가
 get_settings 함수 포함한 완전한 설정 관리
 """
 
@@ -45,10 +45,17 @@ class Settings(BaseSettings):
     RESULTS_DIR: str = os.path.join(PROJECT_ROOT, "static", "results")
     MODELS_DIR: str = os.path.join(PROJECT_ROOT, "models", "ai_models")
     CACHE_DIR: str = os.path.join(PROJECT_ROOT, "cache")
+    # LOGS 디렉토리 추가
+    LOGS_DIR: Path = Path(PROJECT_ROOT) / "logs"
     
-    # 로깅 설정
+    # 로깅 설정 확장
     LOG_LEVEL: str = "INFO"
     LOG_FILE: Optional[str] = None
+    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    LOG_MAX_BYTES: int = 10 * 1024 * 1024  # 10MB
+    LOG_BACKUP_COUNT: int = 5
+    LOG_TO_CONSOLE: bool = True
+    LOG_TO_FILE: bool = True
     
     # 보안 설정
     SECRET_KEY: str = "mycloset-ai-secret-key-change-in-production"
@@ -100,7 +107,8 @@ def get_settings() -> Settings:
             _settings.STATIC_DIR,
             _settings.UPLOAD_DIR, 
             _settings.RESULTS_DIR,
-            _settings.CACHE_DIR
+            _settings.CACHE_DIR,
+            _settings.LOGS_DIR  # LOGS 디렉토리 추가
         ]:
             os.makedirs(directory, exist_ok=True)
     
@@ -118,7 +126,8 @@ def ensure_directories():
         settings.UPLOAD_DIR,
         settings.RESULTS_DIR, 
         settings.CACHE_DIR,
-        settings.MODELS_DIR
+        settings.MODELS_DIR,
+        settings.LOGS_DIR  # LOGS 디렉토리 추가
     ]
     
     for directory in directories:
@@ -145,6 +154,10 @@ def validate_settings():
     # 배치 크기 확인  
     if settings.BATCH_SIZE <= 0:
         raise ValueError("BATCH_SIZE must be positive")
+    
+    # LOGS 디렉토리 권한 확인
+    if not os.access(settings.LOGS_DIR, os.W_OK):
+        print(f"⚠️ LOGS 디렉토리 쓰기 권한 없음: {settings.LOGS_DIR}")
         
     print("✅ 설정 검증 완료")
 
@@ -161,4 +174,5 @@ if __name__ == "__main__":
     print(f"프로젝트 루트: {settings.PROJECT_ROOT}")
     print(f"업로드 디렉토리: {settings.UPLOAD_DIR}")
     print(f"결과 디렉토리: {settings.RESULTS_DIR}")
+    print(f"로그 디렉토리: {settings.LOGS_DIR}")  # LOGS 디렉토리 추가
     validate_settings()

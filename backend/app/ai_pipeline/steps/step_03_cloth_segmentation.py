@@ -1,7 +1,7 @@
 # app/ai_pipeline/steps/step_03_cloth_segmentation.py
 """
-3단계: 의류 세그멘테이션 (Clothing Segmentation) - 배경 제거
-Pipeline Manager와 완전 호환되는 수정된 버전
+3단계: 의류 세그멘테이션 (Clothing Segmentation) - 수정된 버전
+Pipeline Manager와 완전 호환되는 배경 제거 시스템
 M3 Max 최적화 + 견고한 에러 처리 + 폴백 메커니즘
 """
 import os
@@ -53,338 +53,123 @@ class ClothSegmentationStep:
         'accessories': ['hat', 'scarf', 'gloves', 'shoes', 'bag', 'belt']
     }
     
-    def __init__(self, model_loader=None, device: str = "mps", config: Dict[str, Any] = None):
+    def __init__(self, device: str = "mps", config: Optional[Dict[str, Any]] = None):
         """
-        초기화 - Pipeline Manager 호환 인터페이스
+        초기화 - Pipeline Manager 완전 호환
         
         Args:
-            model_loader: 모델 로더 인스턴스 (선택적)
             device: 사용할 디바이스 (mps, cuda, cpu)
             config: 설정 딕셔너리 (선택적)
         """
-        self.model_loader = model_loader
+        # model_loader는 내부에서 전역 함수로 가져옴
+        from app.ai_pipeline.utils.model_loader import get_global_model_loader
+        self.model_loader = get_global_model_loader()
+        
         self.device = self._setup_optimal_device(device)
         self.config = config or {}
+        self.is_initialized = False
+        
+        # 로깅 설정
+        self.logger = logging.getLogger(__name__)
         
         # 세그멘테이션 설정
         self.segmentation_config = self.config.get('segmentation', {
             'method': 'auto',
             'model_name': 'u2net',
-            'post_processing': True,
-            'edge_refinement': True,
-            'quality_threshold': 0.6,
-            'fallback_methods': ['rembg', 'grabcut', 'threshold'],
-            'use_ensemble': False
+            'confidence_threshold': 0.5,
+            'use_background_removal': True,
+            'quality_threshold': 0.7,
+            'enable_post_processing': True,
+            'max_image_size': 1024
         })
         
         # 후처리 설정
         self.post_process_config = self.config.get('post_processing', {
             'morphology_enabled': True,
             'gaussian_blur': True,
-            'edge_smoothing': True,
-            'noise_removal': True,
-            'bilateral_filter': False  # 속도 최적화
+            'edge_refinement': True,
+            'hole_filling': True
         })
         
-        # 성능 설정
-        self.performance_config = self.config.get('performance', {
-            'use_mps': self.device == 'mps',
-            'memory_efficient': True,
-            'async_processing': True,
-            'max_resolution': 1024,
-            'cache_models': True
-        })
-        
-        # 모델 인스턴스들
+        # 모델 및 세션 변수들
         self.rembg_session = None
         self.rembg_sessions = {}
         self.segmentation_model = None
         self.backup_methods = None
         
-        # 통계 및 상태
-        self.is_initialized = False
-        self.initialization_error = None
-        self.performance_stats = {
+        # 통계
+        self.processing_stats = {
             'total_processed': 0,
-            'average_time': 0.0,
-            'success_rate': 0.0,
+            'successful_segmentations': 0,
+            'average_quality': 0.0,
             'method_usage': {}
         }
         
-        # 스레드 풀 (비동기 처리용)
-        self.thread_pool = ThreadPoolExecutor(max_workers=2)
-        
-        logger.info(f"🎯 ClothSegmentationStep 초기화 - 디바이스: {self.device}")
+        self.logger.info(f"👕 의류 세그멘테이션 스텝 초기화 - 디바이스: {device}")
     
-    def _setup_optimal_device(self, preferred_device: str) -> str:
-        """최적 디바이스 선택 (M3 Max 우선)"""
-        try:
-            if preferred_device == 'mps' and torch.backends.mps.is_available():
-                logger.info("✅ Apple Silicon MPS 백엔드 활성화")
-                return 'mps'
-            elif preferred_device == 'cuda' and torch.cuda.is_available():
-                logger.info("✅ CUDA 백엔드 활성화")
-                return 'cuda'
-            else:
-                logger.info("⚠️ CPU 백엔드 사용 (속도가 느릴 수 있음)")
-                return 'cpu'
-        except Exception as e:
-            logger.warning(f"디바이스 설정 실패: {e}, CPU 사용")
-            return 'cpu'
+    def _setup_optimal_device(self, device: str) -> str:
+        """최적 디바이스 설정"""
+        if device == "mps" and torch.backends.mps.is_available():
+            return "mps"
+        elif device == "cuda" and torch.cuda.is_available():
+            return "cuda"
+        else:
+            return "cpu"
     
     async def initialize(self) -> bool:
-        """
-        세그멘테이션 시스템 초기화
-        Pipeline Manager가 호출하는 표준 초기화 메서드
-        """
+        """초기화 메서드"""
         try:
-            logger.info("🔄 의류 세그멘테이션 시스템 초기화 시작...")
+            # 1. RemBG 초기화
+            await self._initialize_rembg()
             
-            # 1. RemBG 모델 초기화 (우선순위)
-            await self._initialize_rembg_models()
-            
-            # 2. 커스텀 세그멘테이션 모델 초기화
-            await self._initialize_custom_models()
+            # 2. 커스텀 모델 초기화
+            await self._initialize_custom_model()
             
             # 3. 백업 방법들 초기화
             self._initialize_backup_methods()
             
-            # 4. 시스템 검증
-            await self._validate_system()
-            
-            # 5. 모델 워밍업
-            await self._warmup_models()
-            
             self.is_initialized = True
-            logger.info("✅ 의류 세그멘테이션 시스템 초기화 완료")
-            
+            self.logger.info("✅ 의류 세그멘테이션 시스템 초기화 완료")
             return True
             
         except Exception as e:
-            error_msg = f"의류 세그멘테이션 초기화 실패: {e}"
-            logger.error(f"❌ {error_msg}")
-            self.initialization_error = error_msg
-            self.is_initialized = False
-            return False
+            self.logger.error(f"❌ 세그멘테이션 초기화 실패: {e}")
+            # 최소한의 폴백 시스템으로라도 초기화
+            self.backup_methods = self._create_simple_backup()
+            self.is_initialized = True
+            return True
     
-    async def _initialize_rembg_models(self):
-        """RemBG 모델들 초기화"""
-        if not REMBG_AVAILABLE:
-            logger.warning("⚠️ RemBG 사용 불가 - 대안 방법 사용")
-            return
-        
-        try:
-            model_name = self.segmentation_config['model_name']
-            logger.info(f"📦 RemBG 모델 로딩: {model_name}")
-            
-            # 메인 모델 로드
-            self.rembg_session = new_session(model_name)
-            self.rembg_sessions[model_name] = self.rembg_session
-            
-            # 의류별 특화 모델들 (리소스가 허용하는 경우)
-            specialized_models = {
-                'human_seg': 'u2net_human_seg',
-                'cloth': 'silueta'
-            }
-            
-            for name, model in specialized_models.items():
-                try:
-                    if model != model_name:  # 중복 로드 방지
-                        session = new_session(model)
-                        self.rembg_sessions[name] = session
-                        logger.info(f"✅ 특화 모델 로드: {name} ({model})")
-                except Exception as e:
-                    logger.warning(f"⚠️ 특화 모델 {name} 로드 실패: {e}")
-            
-            logger.info("✅ RemBG 모델 초기화 완료")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ RemBG 초기화 실패: {e}")
-            self.rembg_session = None
-    
-    async def _initialize_custom_models(self):
-        """커스텀 세그멘테이션 모델 초기화"""
-        try:
-            model_type = self.config.get('model_type', 'simple')
-            
-            if model_type == 'u2net':
-                self.segmentation_model = await self._create_u2net_model()
-            else:
-                self.segmentation_model = self._create_simple_model()
-            
-            logger.info("✅ 커스텀 모델 초기화 완료")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ 커스텀 모델 초기화 실패: {e}")
-            self.segmentation_model = self._create_fallback_model()
-    
-    def _initialize_backup_methods(self):
-        """백업 세그멘테이션 방법들 초기화"""
-        try:
-            self.backup_methods = BackupSegmentationMethods(self.device)
-            logger.info("✅ 백업 방법들 초기화 완료")
-        except Exception as e:
-            logger.warning(f"⚠️ 백업 방법 초기화 실패: {e}")
-            self.backup_methods = None
-    
-    async def _create_u2net_model(self):
-        """U²-Net 스타일 모델 생성"""
-        class SimpleU2Net(torch.nn.Module):
-            def __init__(self):
-                super(SimpleU2Net, self).__init__()
-                # 간단한 U-Net 구조
-                self.encoder = torch.nn.Sequential(
-                    torch.nn.Conv2d(3, 64, 3, padding=1),
-                    torch.nn.ReLU(inplace=True),
-                    torch.nn.Conv2d(64, 64, 3, padding=1),
-                    torch.nn.ReLU(inplace=True),
-                    torch.nn.MaxPool2d(2)
-                )
-                
-                self.middle = torch.nn.Sequential(
-                    torch.nn.Conv2d(64, 128, 3, padding=1),
-                    torch.nn.ReLU(inplace=True),
-                    torch.nn.Conv2d(128, 128, 3, padding=1),
-                    torch.nn.ReLU(inplace=True),
-                )
-                
-                self.decoder = torch.nn.Sequential(
-                    torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-                    torch.nn.Conv2d(128, 64, 3, padding=1),
-                    torch.nn.ReLU(inplace=True),
-                    torch.nn.Conv2d(64, 1, 1),
-                    torch.nn.Sigmoid()
-                )
-            
-            def forward(self, x):
-                x1 = self.encoder(x)
-                x2 = self.middle(x1)
-                out = self.decoder(x2)
-                return out
-        
-        model = SimpleU2Net().to(self.device)
-        model.eval()
-        
-        # MPS 최적화
-        if self.device == 'mps':
-            try:
-                model = torch.jit.optimize_for_inference(model)
-            except:
-                pass  # 실패해도 계속 진행
-        
-        return model
-    
-    def _create_simple_model(self):
-        """간단한 세그멘테이션 모델"""
-        class SimpleSegModel(torch.nn.Module):
-            def __init__(self):
-                super(SimpleSegModel, self).__init__()
-                self.conv1 = torch.nn.Conv2d(3, 32, 3, padding=1)
-                self.conv2 = torch.nn.Conv2d(32, 16, 3, padding=1)
-                self.conv3 = torch.nn.Conv2d(16, 1, 1)
-                
-            def forward(self, x):
-                x = torch.relu(self.conv1(x))
-                x = torch.relu(self.conv2(x))
-                x = torch.sigmoid(self.conv3(x))
-                return x
-        
-        model = SimpleSegModel().to(self.device)
-        model.eval()
-        return model
-    
-    def _create_fallback_model(self):
-        """최소 기능 폴백 모델"""
-        class FallbackModel(torch.nn.Module):
-            def forward(self, x):
-                # 간단한 밝기 기반 마스크 생성
-                gray = torch.mean(x, dim=1, keepdim=True)
-                mask = (gray > 0.3).float()
-                return mask
-        
-        return FallbackModel().to(self.device)
-    
-    async def _validate_system(self):
-        """시스템 검증"""
-        available_methods = []
-        
-        if self.rembg_session:
-            available_methods.append('rembg')
-        if self.segmentation_model:
-            available_methods.append('model')
-        if self.backup_methods:
-            available_methods.append('backup')
-        
-        if not available_methods:
-            raise RuntimeError("사용 가능한 세그멘테이션 방법이 없습니다")
-        
-        logger.info(f"✅ 사용 가능한 방법들: {available_methods}")
-    
-    async def _warmup_models(self):
-        """모델 워밍업 (성능 최적화)"""
-        try:
-            # 더미 입력 생성
-            dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
-            
-            # 커스텀 모델 워밍업
-            if self.segmentation_model:
-                with torch.no_grad():
-                    _ = self.segmentation_model(dummy_input)
-            
-            logger.info("🔥 모델 워밍업 완료")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ 모델 워밍업 실패: {e}")
-    
-    # =================================================================
-    # 메인 처리 메서드 - Pipeline Manager 호환 인터페이스
-    # =================================================================
-    
-    def process(
+    async def process(
         self, 
-        clothing_image_tensor: torch.Tensor,
+        clothing_image: Union[str, np.ndarray, Image.Image, torch.Tensor], 
         clothing_type: str = "shirt",
-        quality_level: str = "medium"
+        quality_level: str = "high",
+        **kwargs
     ) -> Dict[str, Any]:
         """
-        의류 세그멘테이션 처리 (동기 버전)
-        Pipeline Manager가 호출하는 메인 메서드
-        """
-        return asyncio.run(self.process_async(clothing_image_tensor, clothing_type, quality_level))
-    
-    async def process_async(
-        self, 
-        clothing_image_tensor: torch.Tensor,
-        clothing_type: str = "shirt",
-        quality_level: str = "medium"
-    ) -> Dict[str, Any]:
-        """
-        의류 세그멘테이션 비동기 처리
+        의류 세그멘테이션 처리
         
         Args:
-            clothing_image_tensor: 의류 이미지 텐서 [1, 3, H, W] 또는 [3, H, W]
-            clothing_type: 의류 타입 (shirt, pants, dress 등)
-            quality_level: 품질 레벨 (low, medium, high)
+            clothing_image: 입력 의류 이미지
+            clothing_type: 의류 타입
+            quality_level: 품질 레벨 ('low', 'medium', 'high')
+            **kwargs: 추가 매개변수
             
         Returns:
-            세그멘테이션 결과 딕셔너리
+            Dict: 세그멘테이션 결과
         """
-        if not self.is_initialized:
-            error_msg = f"세그멘테이션 시스템이 초기화되지 않음: {self.initialization_error}"
-            logger.error(f"❌ {error_msg}")
-            return self._create_error_result(error_msg)
-        
         start_time = time.time()
         
         try:
-            logger.info(f"🔍 의류 세그멘테이션 시작 - 타입: {clothing_type}, 품질: {quality_level}")
+            if not self.is_initialized:
+                await self.initialize()
             
             # 1. 입력 텐서 검증 및 전처리
-            clothing_pil = self._prepare_input_image(clothing_image_tensor)
+            clothing_pil = self._prepare_input_image(clothing_image)
             
             # 2. 최적 세그멘테이션 방법 선택
             method = self._select_segmentation_method(clothing_pil, clothing_type, quality_level)
-            logger.info(f"📋 선택된 방법: {method}")
+            self.logger.info(f"📋 선택된 방법: {method}")
             
             # 3. 메인 세그멘테이션 수행
             segmentation_result = await self._perform_segmentation(clothing_pil, method)
@@ -394,7 +179,7 @@ class ClothSegmentationStep:
             
             # 5. 품질이 낮으면 폴백 시도
             if quality_score < self.segmentation_config['quality_threshold']:
-                logger.info(f"🔄 품질 개선 시도 (현재: {quality_score:.3f})")
+                self.logger.info(f"🔄 품질 개선 시도 (현재: {quality_score:.3f})")
                 improved_result = await self._try_fallback_methods(clothing_pil, clothing_type)
                 
                 if improved_result and improved_result.get('quality', 0) > quality_score:
@@ -412,69 +197,90 @@ class ClothSegmentationStep:
             )
             
             # 8. 통계 업데이트
-            self._update_performance_stats(method, processing_time, quality_score)
+            self._update_statistics(method, quality_score, processing_time)
             
-            logger.info(f"✅ 세그멘테이션 완료 - {processing_time:.3f}초, 품질: {quality_score:.3f}")
+            self.logger.info(f"✅ 세그멘테이션 완료 - 방법: {method}, 품질: {quality_score:.3f}, 시간: {processing_time:.3f}초")
             return result
             
         except Exception as e:
-            error_msg = f"세그멘테이션 처리 실패: {e}"
-            logger.error(f"❌ {error_msg}")
-            return self._create_error_result(error_msg)
+            self.logger.error(f"❌ 세그멘테이션 실패: {e}")
+            return self._create_empty_result(f"처리 오류: {str(e)}")
     
-    def _prepare_input_image(self, tensor: torch.Tensor) -> Image.Image:
-        """입력 텐서를 PIL 이미지로 변환"""
+    def _prepare_input_image(self, image_input: Union[str, np.ndarray, Image.Image, torch.Tensor]) -> Image.Image:
+        """입력 이미지 전처리"""
         try:
-            # 텐서 차원 정규화
-            if tensor.dim() == 4 and tensor.size(0) == 1:
-                tensor = tensor.squeeze(0)  # [1, 3, H, W] -> [3, H, W]
-            elif tensor.dim() == 3 and tensor.size(0) == 3:
-                pass  # [3, H, W] - 올바른 형태
+            if isinstance(image_input, str):
+                if not os.path.exists(image_input):
+                    raise FileNotFoundError(f"이미지 파일이 존재하지 않음: {image_input}")
+                image_pil = Image.open(image_input).convert('RGB')
+                
+            elif isinstance(image_input, np.ndarray):
+                if len(image_input.shape) == 3:
+                    # BGR to RGB 변환
+                    if image_input.shape[2] == 3:
+                        image_input = cv2.cvtColor(image_input, cv2.COLOR_BGR2RGB)
+                    image_pil = Image.fromarray(image_input.astype(np.uint8))
+                else:
+                    raise ValueError("잘못된 numpy 배열 형태")
+                    
+            elif isinstance(image_input, torch.Tensor):
+                # 텐서를 numpy로 변환
+                if image_input.dim() == 4:
+                    image_input = image_input.squeeze(0)
+                if image_input.dim() == 3:
+                    image_array = image_input.permute(1, 2, 0).cpu().numpy()
+                    if image_array.max() <= 1.0:
+                        image_array = (image_array * 255).astype(np.uint8)
+                    image_pil = Image.fromarray(image_array)
+                else:
+                    raise ValueError("잘못된 텐서 형태")
+                    
+            elif isinstance(image_input, Image.Image):
+                image_pil = image_input.convert('RGB')
+                
             else:
-                raise ValueError(f"지원하지 않는 텐서 형태: {tensor.shape}")
+                raise ValueError(f"지원하지 않는 이미지 형식: {type(image_input)}")
             
-            # [3, H, W] -> [H, W, 3]
-            tensor = tensor.permute(1, 2, 0)
+            # 크기 조정 (필요한 경우)
+            max_size = self.segmentation_config['max_image_size']
+            if max(image_pil.size) > max_size:
+                image_pil.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                self.logger.info(f"🔄 이미지 크기 조정: {image_pil.size}")
             
-            # 값 범위 정규화
-            if tensor.max() <= 1.0:
-                tensor = tensor * 255
-            
-            # NumPy 배열로 변환
-            array = tensor.cpu().numpy().astype(np.uint8)
-            
-            # PIL 이미지로 변환
-            pil_image = Image.fromarray(array)
-            
-            # 크기 제한 (메모리 효율성)
-            max_size = self.performance_config['max_resolution']
-            if max(pil_image.size) > max_size:
-                pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-            
-            return pil_image
+            return image_pil
             
         except Exception as e:
-            logger.error(f"입력 이미지 준비 실패: {e}")
-            raise ValueError(f"입력 텐서 처리 실패: {e}")
+            self.logger.error(f"이미지 전처리 실패: {e}")
+            raise
     
     def _select_segmentation_method(self, image: Image.Image, clothing_type: str, quality_level: str) -> str:
         """최적 세그멘테이션 방법 선택"""
+        
         method = self.segmentation_config['method']
         
+        # 자동 선택 모드
         if method == 'auto':
-            # 이미지 복잡도 기반 자동 선택
+            # 이미지 복잡도 분석
             complexity = self._analyze_image_complexity(image)
             
-            if REMBG_AVAILABLE and self.rembg_session:
-                if quality_level == 'high' or complexity > 0.7:
+            # 품질 레벨과 복잡도에 따른 방법 선택
+            if quality_level == 'high':
+                if REMBG_AVAILABLE and self.rembg_session and complexity < 0.7:
                     return 'rembg'
-                elif complexity < 0.3:
+                elif self.segmentation_model and complexity > 0.3:
+                    return 'model'
+            
+            elif quality_level == 'medium':
+                if REMBG_AVAILABLE and self.rembg_session:
                     return 'rembg'
+                elif self.backup_methods and complexity < 0.6:
+                    return 'grabcut'
             
-            if self.segmentation_model and complexity > 0.4:
-                return 'model'
+            # 기본 방법
+            if self.backup_methods:
+                return 'grabcut'
             
-            return 'grabcut'  # 기본 백업 방법
+            return 'threshold'  # 최후의 수단
         
         # 명시적 방법 선택 시 사용 가능성 확인
         if method == 'rembg' and not (REMBG_AVAILABLE and self.rembg_session):
@@ -508,7 +314,7 @@ class ClothSegmentationStep:
             return min(max(complexity, 0.0), 1.0)
             
         except Exception as e:
-            logger.warning(f"복잡도 분석 실패: {e}")
+            self.logger.warning(f"복잡도 분석 실패: {e}")
             return 0.5  # 기본값
     
     async def _perform_segmentation(self, image: Image.Image, method: str) -> Dict[str, Any]:
@@ -527,7 +333,7 @@ class ClothSegmentationStep:
                 return await self._segment_with_simple_threshold(image)
                 
         except Exception as e:
-            logger.warning(f"세그멘테이션 방법 {method} 실패: {e}")
+            self.logger.warning(f"세그멘테이션 방법 {method} 실패: {e}")
             return await self._segment_with_simple_threshold(image)
     
     async def _segment_with_rembg(self, image: Image.Image) -> Dict[str, Any]:
@@ -557,7 +363,7 @@ class ClothSegmentationStep:
             }
             
         except Exception as e:
-            logger.warning(f"RemBG 처리 실패: {e}")
+            self.logger.warning(f"RemBG 처리 실패: {e}")
             raise
     
     async def _segment_with_model(self, image: Image.Image) -> Dict[str, Any]:
@@ -587,21 +393,24 @@ class ClothSegmentationStep:
             }
             
         except Exception as e:
-            logger.warning(f"모델 세그멘테이션 실패: {e}")
+            self.logger.warning(f"모델 세그멘테이션 실패: {e}")
             raise
     
     async def _segment_with_simple_threshold(self, image: Image.Image) -> Dict[str, Any]:
         """간단한 임계값 세그멘테이션 (최후의 수단)"""
         try:
             # 그레이스케일 변환
-            gray = np.array(image.convert('L'))
+            gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
             
-            # Otsu 임계값
+            # Otsu 임계값 적용
             _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # 배경이 밝은 경우 반전
-            if np.mean(mask) > 127:
-                mask = 255 - mask
+            # 가장 큰 연결 성분만 유지
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                largest_contour = max(contours, key=cv2.contourArea)
+                mask = np.zeros_like(mask)
+                cv2.fillPoly(mask, [largest_contour], 255)
             
             # 세그멘테이션된 이미지 생성
             segmented_image = self._apply_mask_to_image(image, mask)
@@ -614,10 +423,9 @@ class ClothSegmentationStep:
             }
             
         except Exception as e:
-            logger.error(f"간단한 임계값 세그멘테이션 실패: {e}")
-            # 최후의 폴백 - 전체 이미지를 전경으로
-            h, w = image.size
-            mask = np.ones((w, h), dtype=np.uint8) * 255
+            self.logger.error(f"임계값 세그멘테이션 실패: {e}")
+            # 전체 이미지를 마스크로 반환
+            mask = np.ones((image.height, image.width), dtype=np.uint8) * 255
             return {
                 'segmented_image': image,
                 'mask': mask,
@@ -625,104 +433,18 @@ class ClothSegmentationStep:
                 'confidence': 0.3
             }
     
-    async def _try_fallback_methods(self, image: Image.Image, clothing_type: str) -> Optional[Dict[str, Any]]:
-        """폴백 방법들 시도"""
-        fallback_methods = self.segmentation_config['fallback_methods']
-        best_result = None
-        best_quality = 0.0
-        
-        for method in fallback_methods:
-            try:
-                result = await self._perform_segmentation(image, method)
-                if result:
-                    quality = self._evaluate_quality(image, result['mask'])
-                    result['quality'] = quality
-                    
-                    if quality > best_quality:
-                        best_quality = quality
-                        best_result = result
-                        
-            except Exception as e:
-                logger.warning(f"폴백 방법 {method} 실패: {e}")
-                continue
-        
-        return best_result
-    
-    def _evaluate_quality(self, original: Image.Image, mask: np.ndarray) -> float:
-        """세그멘테이션 품질 평가 (0.0-1.0)"""
-        try:
-            # 기본 검증
-            if mask is None or mask.size == 0:
-                return 0.0
-            
-            # 연결성 분석
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            if not contours:
-                return 0.0
-            
-            # 가장 큰 연결 요소
-            main_contour = max(contours, key=cv2.contourArea)
-            main_area = cv2.contourArea(main_contour)
-            total_mask_area = np.sum(mask > 0)
-            
-            # 연결성 점수
-            connectivity_score = main_area / (total_mask_area + 1e-6)
-            
-            # 크기 적절성
-            image_area = original.width * original.height
-            size_ratio = total_mask_area / image_area
-            size_score = 1.0 if 0.05 <= size_ratio <= 0.8 else max(0.0, 1.0 - abs(size_ratio - 0.4) * 2)
-            
-            # 엣지 품질
-            edge_score = self._evaluate_edge_quality(mask)
-            
-            # 종합 점수
-            quality = (connectivity_score * 0.4 + size_score * 0.3 + edge_score * 0.3)
-            
-            return min(max(quality, 0.0), 1.0)
-            
-        except Exception as e:
-            logger.warning(f"품질 평가 실패: {e}")
-            return 0.5
-    
-    def _evaluate_edge_quality(self, mask: np.ndarray) -> float:
-        """엣지 품질 평가"""
-        try:
-            # 엣지 검출
-            edges = cv2.Canny(mask, 50, 150)
-            
-            # 엣지 부드러움 측정
-            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            if not contours:
-                return 0.5
-            
-            main_contour = max(contours, key=cv2.contourArea)
-            
-            # 윤곽선 근사화로 부드러움 측정
-            epsilon = 0.02 * cv2.arcLength(main_contour, True)
-            approx = cv2.approxPolyDP(main_contour, epsilon, True)
-            
-            if len(main_contour) > 0:
-                smoothness = 1.0 - (len(approx) / len(main_contour))
-            else:
-                smoothness = 0.5
-            
-            return max(0.0, min(1.0, smoothness))
-            
-        except Exception as e:
-            logger.warning(f"엣지 품질 평가 실패: {e}")
-            return 0.5
-    
     def _apply_post_processing(self, segmentation_result: Dict[str, Any], quality_level: str) -> Dict[str, Any]:
         """후처리 적용"""
+        
+        if not self.post_process_config.get('enable_post_processing', True):
+            return segmentation_result
+        
         try:
-            mask = segmentation_result['mask']
+            mask = segmentation_result['mask'].copy()
             
             # 품질 레벨에 따른 처리 강도
-            intensity_map = {'low': 1, 'medium': 2, 'high': 3}
-            intensity = intensity_map.get(quality_level, 2)
+            intensity_map = {'low': 0, 'medium': 1, 'high': 2}
+            intensity = intensity_map.get(quality_level, 1)
             
             processed_mask = mask.copy()
             
@@ -741,438 +463,592 @@ class ClothSegmentationStep:
                 processed_mask = cv2.GaussianBlur(processed_mask, (blur_kernel, blur_kernel), 0)
                 processed_mask = (processed_mask > 127).astype(np.uint8) * 255
             
-            # 3. 노이즈 제거 (작은 연결 요소 제거)
-            if self.post_process_config['noise_removal']:
-                processed_mask = self._remove_small_components(processed_mask, intensity)
+            # 3. 홀 채우기
+            if self.post_process_config['hole_filling']:
+                contours, _ = cv2.findContours(processed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.fillPoly(processed_mask, contours, 255)
             
-            # 마스크를 텐서로 변환 (Pipeline Manager 호환)
-            mask_tensor = torch.from_numpy(processed_mask).float() / 255.0
-            mask_tensor = mask_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
+            # 4. 엣지 정제
+            if self.post_process_config['edge_refinement'] and intensity > 0:
+                processed_mask = self._refine_edges(processed_mask, intensity)
             
-            # 처리된 세그멘테이션 이미지 생성
-            processed_segmented = self._apply_mask_to_image(
+            segmentation_result['mask'] = processed_mask
+            segmentation_result['segmented_image'] = self._apply_mask_to_image(
                 segmentation_result['segmented_image'], processed_mask
             )
             
-            return {
-                'segmented_image': processed_segmented,
-                'mask_tensor': mask_tensor,
-                'binary_mask': processed_mask,
-                'confidence_map': self._generate_confidence_map(processed_mask)
-            }
+            return segmentation_result
             
         except Exception as e:
-            logger.warning(f"후처리 실패: {e}")
-            # 원본 결과 반환
-            mask = segmentation_result['mask']
-            mask_tensor = torch.from_numpy(mask).float() / 255.0
-            mask_tensor = mask_tensor.unsqueeze(0).unsqueeze(0).to(self.device)
-            
-            return {
-                'segmented_image': segmentation_result['segmented_image'],
-                'mask_tensor': mask_tensor,
-                'binary_mask': mask,
-                'confidence_map': None
-            }
+            self.logger.warning(f"후처리 실패: {e}")
+            return segmentation_result
     
-    def _remove_small_components(self, mask: np.ndarray, intensity: int) -> np.ndarray:
-        """작은 연결 요소 제거"""
-        try:
-            # 연결 성분 분석
-            num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
-            
-            if num_labels <= 1:
-                return mask
-            
-            # 가장 큰 연결 성분 찾기
-            largest_component = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
-            
-            # 최소 크기 임계값
-            min_area = stats[largest_component, cv2.CC_STAT_AREA] * 0.05 / intensity
-            
-            # 큰 성분들만 유지
-            cleaned_mask = np.zeros_like(mask)
-            for i in range(1, num_labels):
-                if stats[i, cv2.CC_STAT_AREA] >= min_area:
-                    cleaned_mask[labels == i] = 255
-            
-            return cleaned_mask
-            
-        except Exception as e:
-            logger.warning(f"작은 성분 제거 실패: {e}")
-            return mask
-    
-    def _generate_confidence_map(self, mask: np.ndarray) -> Optional[np.ndarray]:
-        """신뢰도 맵 생성"""
-        try:
-            # 거리 변환으로 중심부일수록 높은 신뢰도
-            dist_transform = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-            
-            # 정규화
-            if dist_transform.max() > 0:
-                confidence_map = dist_transform / dist_transform.max()
-            else:
-                confidence_map = np.zeros_like(mask, dtype=np.float32)
-            
-            return confidence_map
-            
-        except Exception as e:
-            logger.warning(f"신뢰도 맵 생성 실패: {e}")
-            return None
-    
-    def _build_final_result(
-        self,
-        processed_result: Dict[str, Any],
-        quality_score: float,
-        processing_time: float,
-        method: str,
-        clothing_type: str
-    ) -> Dict[str, Any]:
-        """최종 결과 구성 (Pipeline Manager 호환 형식)"""
-        
-        return {
-            "success": True,
-            "segmented_image": processed_result['segmented_image'],
-            "clothing_mask": processed_result['mask_tensor'],
-            "binary_mask": processed_result['binary_mask'],
-            "confidence_map": processed_result.get('confidence_map'),
-            "segmentation_quality": quality_score,
-            "clothing_analysis": {
-                "dominant_colors": self._extract_dominant_colors(processed_result['segmented_image']),
-                "clothing_area": self._calculate_clothing_area(processed_result['binary_mask']),
-                "edge_complexity": self._calculate_edge_complexity(processed_result['binary_mask']),
-                "background_removed": True,
-                "clothing_type": clothing_type
-            },
-            "processing_info": {
-                "method_used": method,
-                "processing_time": processing_time,
-                "device": self.device,
-                "post_processing_applied": True,
-                "quality_level": "good" if quality_score > 0.7 else "medium" if quality_score > 0.5 else "low"
-            }
-        }
-    
-    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
-        """에러 결과 생성"""
-        return {
-            "success": False,
-            "error": error_message,
-            "segmented_image": None,
-            "clothing_mask": None,
-            "binary_mask": None,
-            "segmentation_quality": 0.0,
-            "clothing_analysis": {},
-            "processing_info": {
-                "method_used": "error",
-                "processing_time": 0.0,
-                "device": self.device,
-                "error_details": error_message
-            }
-        }
-    
-    # =================================================================
-    # 유틸리티 메서드들
-    # =================================================================
-    
-    def _preprocess_for_model(self, image: Image.Image) -> torch.Tensor:
-        """모델 입력을 위한 전처리"""
-        try:
-            # 크기 조정
-            input_size = (256, 256)
-            resized = image.resize(input_size, Image.Resampling.LANCZOS)
-            
-            # 텐서로 변환
-            tensor = torch.from_numpy(np.array(resized)).float() / 255.0
-            tensor = tensor.permute(2, 0, 1).unsqueeze(0)
-            
-            # 정규화 (ImageNet 표준)
-            mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-            tensor = (tensor - mean) / std
-            
-            return tensor.to(self.device)
-            
-        except Exception as e:
-            logger.error(f"모델 전처리 실패: {e}")
-            raise
-    
-    def _apply_mask_to_image(self, image: Image.Image, mask: np.ndarray) -> Image.Image:
-        """마스크를 이미지에 적용하여 배경 제거"""
-        try:
-            img_array = np.array(image)
-            
-            # 3채널 마스크 생성
-            if len(mask.shape) == 2:
-                mask_3ch = np.stack([mask] * 3, axis=2) / 255.0
-            else:
-                mask_3ch = mask / 255.0
-            
-            # 배경을 흰색으로 설정
-            background = np.ones_like(img_array) * 255
-            
-            # 마스크 적용
-            result = img_array * mask_3ch + background * (1 - mask_3ch)
-            
-            return Image.fromarray(result.astype(np.uint8))
-            
-        except Exception as e:
-            logger.warning(f"마스크 적용 실패: {e}")
-            return image
-    
-    def _extract_dominant_colors(self, image: Image.Image) -> List[List[int]]:
-        """주요 색상 추출"""
-        try:
-            if not SKLEARN_AVAILABLE:
-                return [[128, 128, 128]]  # 기본 회색
-            
-            img_array = np.array(image.resize((100, 100)))  # 속도 최적화
-            pixels = img_array.reshape(-1, 3)
-            
-            # 배경색 제거 (흰색 근처)
-            non_white_pixels = pixels[np.sum(pixels, axis=1) < 700]
-            
-            if len(non_white_pixels) < 10:
-                return [[128, 128, 128]]
-            
-            # K-means로 주요 색상 추출
-            n_colors = min(3, len(non_white_pixels) // 50)
-            if n_colors < 1:
-                n_colors = 1
-                
-            kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
-            kmeans.fit(non_white_pixels)
-            
-            return kmeans.cluster_centers_.astype(int).tolist()
-            
-        except Exception as e:
-            logger.warning(f"색상 추출 실패: {e}")
-            return [[128, 128, 128]]
-    
-    def _calculate_clothing_area(self, mask: np.ndarray) -> Dict[str, float]:
-        """의류 영역 계산"""
-        try:
-            total_pixels = mask.size
-            clothing_pixels = np.sum(mask > 0)
-            
-            return {
-                'total_pixels': float(total_pixels),
-                'clothing_pixels': float(clothing_pixels),
-                'coverage_ratio': float(clothing_pixels / total_pixels),
-                'area_score': min(1.0, clothing_pixels / 40000)  # 정규화
-            }
-            
-        except Exception as e:
-            logger.warning(f"영역 계산 실패: {e}")
-            return {'total_pixels': 0.0, 'clothing_pixels': 0.0, 'coverage_ratio': 0.0, 'area_score': 0.0}
-    
-    def _calculate_edge_complexity(self, mask: np.ndarray) -> Dict[str, float]:
-        """엣지 복잡도 계산"""
+    def _refine_edges(self, mask: np.ndarray, intensity: int) -> np.ndarray:
+        """엣지 정제"""
         try:
             # 엣지 검출
             edges = cv2.Canny(mask, 50, 150)
-            edge_pixels = np.sum(edges > 0)
             
-            # 윤곽선 분석
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # 엣지 확장
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            dilated_edges = cv2.dilate(edges, kernel, iterations=intensity)
             
-            if contours:
-                main_contour = max(contours, key=cv2.contourArea)
-                perimeter = cv2.arcLength(main_contour, True)
-                area = cv2.contourArea(main_contour)
-                
-                # 복잡도 계산
-                if area > 0:
-                    complexity = (perimeter * perimeter) / (4 * np.pi * area)
-                else:
-                    complexity = 0.0
+            # 원본 마스크와 결합
+            refined_mask = cv2.bitwise_or(mask, dilated_edges)
+            
+            return refined_mask
+            
+        except Exception as e:
+            self.logger.warning(f"엣지 정제 실패: {e}")
+            return mask
+    
+    def _apply_mask_to_image(self, image: Image.Image, mask: np.ndarray) -> Image.Image:
+        """이미지에 마스크 적용"""
+        try:
+            # PIL 이미지를 numpy 배열로 변환
+            image_array = np.array(image)
+            
+            # 마스크를 3채널로 확장
+            if len(mask.shape) == 2:
+                mask_3channel = np.stack([mask] * 3, axis=2)
             else:
-                perimeter = 0.0
-                complexity = 0.0
+                mask_3channel = mask
+            
+            # 마스크 정규화 (0-1 범위)
+            mask_normalized = mask_3channel.astype(np.float32) / 255.0
+            
+            # 마스크 적용
+            segmented_array = image_array * mask_normalized
+            
+            # PIL 이미지로 변환
+            segmented_image = Image.fromarray(segmented_array.astype(np.uint8))
+            
+            return segmented_image
+            
+        except Exception as e:
+            self.logger.warning(f"마스크 적용 실패: {e}")
+            return image
+    
+    def _evaluate_quality(self, original_image: Image.Image, mask: np.ndarray) -> float:
+        """세그멘테이션 품질 평가"""
+        try:
+            # 1. 마스크 커버리지 (전체 이미지 대비 마스크 비율)
+            mask_coverage = np.sum(mask > 0) / mask.size
+            
+            # 2. 마스크 연결성 (연결된 영역 수)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            connectivity_score = 1.0 / (len(contours) + 1)  # 영역이 적을수록 좋음
+            
+            # 3. 엣지 품질 (엣지의 부드러움)
+            edges = cv2.Canny(mask, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            edge_score = min(edge_density * 10, 1.0)  # 적당한 엣지 밀도
+            
+            # 4. 형태 복잡도 (볼록성)
+            if contours:
+                largest_contour = max(contours, key=cv2.contourArea)
+                hull = cv2.convexHull(largest_contour)
+                contour_area = cv2.contourArea(largest_contour)
+                hull_area = cv2.contourArea(hull)
+                
+                if hull_area > 0:
+                    convexity = contour_area / hull_area
+                else:
+                    convexity = 0.0
+            else:
+                convexity = 0.0
+            
+            # 종합 점수 계산
+            quality_score = (
+                mask_coverage * 0.3 +
+                connectivity_score * 0.3 +
+                edge_score * 0.2 +
+                convexity * 0.2
+            )
+            
+            return min(max(quality_score, 0.0), 1.0)
+            
+        except Exception as e:
+            self.logger.warning(f"품질 평가 실패: {e}")
+            return 0.5
+    
+    async def _try_fallback_methods(self, image: Image.Image, clothing_type: str) -> Optional[Dict[str, Any]]:
+        """폴백 방법들 시도"""
+        
+        fallback_methods = ['grabcut', 'kmeans', 'threshold']
+        best_result = None
+        best_quality = 0.0
+        
+        for method in fallback_methods:
+            try:
+                if method == 'grabcut' and self.backup_methods:
+                    result = self.backup_methods.grabcut_segmentation(image)
+                elif method == 'kmeans' and SKLEARN_AVAILABLE:
+                    result = await self._segment_with_kmeans(image)
+                elif method == 'threshold':
+                    result = await self._segment_with_simple_threshold(image)
+                else:
+                    continue
+                
+                # 품질 평가
+                quality = self._evaluate_quality(image, result['mask'])
+                result['quality'] = quality
+                
+                if quality > best_quality:
+                    best_quality = quality
+                    best_result = result
+                    
+                self.logger.info(f"📊 폴백 방법 {method}: 품질 {quality:.3f}")
+                
+            except Exception as e:
+                self.logger.warning(f"폴백 방법 {method} 실패: {e}")
+                continue
+        
+        return best_result
+    
+    async def _segment_with_kmeans(self, image: Image.Image) -> Dict[str, Any]:
+        """K-means를 사용한 세그멘테이션"""
+        try:
+            # 이미지를 numpy 배열로 변환
+            image_array = np.array(image)
+            
+            # 픽셀을 1D 배열로 변환
+            pixels = image_array.reshape(-1, 3)
+            
+            # K-means 클러스터링 (2개 클러스터: 배경과 전경)
+            kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(pixels)
+            
+            # 라벨을 이미지 크기로 복원
+            label_image = labels.reshape(image_array.shape[:2])
+            
+            # 전경과 배경 구분 (더 큰 클러스터를 배경으로 가정)
+            unique, counts = np.unique(labels, return_counts=True)
+            background_label = unique[np.argmax(counts)]
+            
+            # 마스크 생성 (전경=255, 배경=0)
+            mask = (label_image != background_label).astype(np.uint8) * 255
+            
+            # 세그멘테이션된 이미지 생성
+            segmented_image = self._apply_mask_to_image(image, mask)
             
             return {
-                'edge_pixels': float(edge_pixels),
-                'perimeter': float(perimeter),
-                'complexity_ratio': float(complexity),
-                'edge_density': float(edge_pixels / mask.size)
-            }
-            
-        except Exception as e:
-            logger.warning(f"복잡도 계산 실패: {e}")
-            return {'edge_pixels': 0.0, 'perimeter': 0.0, 'complexity_ratio': 0.0, 'edge_density': 0.0}
-    
-    def _update_performance_stats(self, method: str, processing_time: float, quality_score: float):
-        """성능 통계 업데이트"""
-        try:
-            self.performance_stats['total_processed'] += 1
-            
-            # 평균 처리 시간 업데이트
-            total = self.performance_stats['total_processed']
-            current_avg = self.performance_stats['average_time']
-            self.performance_stats['average_time'] = (current_avg * (total - 1) + processing_time) / total
-            
-            # 방법별 사용 통계
-            if method not in self.performance_stats['method_usage']:
-                self.performance_stats['method_usage'][method] = 0
-            self.performance_stats['method_usage'][method] += 1
-            
-            # 성공률 업데이트
-            success_count = sum(1 for _ in range(total) if quality_score > 0.5)
-            self.performance_stats['success_rate'] = success_count / total
-            
-        except Exception as e:
-            logger.warning(f"통계 업데이트 실패: {e}")
-    
-    # =================================================================
-    # Pipeline Manager 호환 메서드들
-    # =================================================================
-    
-    async def get_model_info(self) -> Dict[str, Any]:
-        """모델 정보 반환 (Pipeline Manager 호환)"""
-        return {
-            "step_name": "ClothSegmentation",
-            "version": "3.0",
-            "device": self.device,
-            "initialized": self.is_initialized,
-            "initialization_error": self.initialization_error,
-            "available_methods": ["rembg", "model", "grabcut", "threshold"],
-            "rembg_available": REMBG_AVAILABLE and bool(self.rembg_session),
-            "custom_model_available": bool(self.segmentation_model),
-            "backup_methods_available": bool(self.backup_methods),
-            "performance_stats": self.performance_stats,
-            "config": {
-                "segmentation": self.segmentation_config,
-                "post_processing": self.post_process_config,
-                "performance": self.performance_config
-            }
-        }
-    
-    async def cleanup(self):
-        """리소스 정리 (Pipeline Manager 호환)"""
-        try:
-            logger.info("🧹 의류 세그멘테이션 리소스 정리 시작...")
-            
-            # 모델들 정리
-            if self.segmentation_model:
-                del self.segmentation_model
-                self.segmentation_model = None
-            
-            # RemBG 세션들 정리
-            for session in self.rembg_sessions.values():
-                try:
-                    del session
-                except:
-                    pass
-            self.rembg_sessions.clear()
-            self.rembg_session = None
-            
-            # 백업 방법들 정리
-            if self.backup_methods:
-                del self.backup_methods
-                self.backup_methods = None
-            
-            # 스레드 풀 종료
-            self.thread_pool.shutdown(wait=True)
-            
-            # GPU 메모리 정리
-            if self.device == 'mps':
-                torch.mps.empty_cache()
-            elif self.device == 'cuda':
-                torch.cuda.empty_cache()
-            
-            self.is_initialized = False
-            logger.info("✅ 의류 세그멘테이션 리소스 정리 완료")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
-
-
-# =================================================================
-# 백업 세그멘테이션 방법들
-# =================================================================
-
-class BackupSegmentationMethods:
-    """백업 세그멘테이션 방법들 (RemBG 없이도 동작)"""
-    
-    def __init__(self, device: str):
-        self.device = device
-    
-    def grabcut_segmentation(self, image: Image.Image) -> Dict[str, Any]:
-        """GrabCut 세그멘테이션"""
-        try:
-            img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-            h, w = img_cv.shape[:2]
-            
-            # 초기 사각형 (중앙 80% 영역)
-            margin_h, margin_w = int(h * 0.1), int(w * 0.1)
-            rect = (margin_w, margin_h, w - 2*margin_w, h - 2*margin_h)
-            
-            # GrabCut 초기화
-            mask = np.zeros((h, w), np.uint8)
-            bgd_model = np.zeros((1, 65), np.float64)
-            fgd_model = np.zeros((1, 65), np.float64)
-            
-            # GrabCut 실행
-            cv2.grabCut(img_cv, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
-            
-            # 마스크 후처리
-            mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8') * 255
-            
-            # 결과 이미지
-            result_cv = img_cv.copy()
-            result_cv[mask2 == 0] = [255, 255, 255]
-            result_rgb = cv2.cvtColor(result_cv, cv2.COLOR_BGR2RGB)
-            result_pil = Image.fromarray(result_rgb)
-            
-            return {
-                'segmented_image': result_pil,
-                'mask': mask2,
-                'method': 'grabcut',
+                'segmented_image': segmented_image,
+                'mask': mask,
+                'method': 'kmeans',
                 'confidence': 0.7
             }
             
         except Exception as e:
-            logger.warning(f"GrabCut 실패: {e}")
-            return self.threshold_segmentation(image)
+            self.logger.warning(f"K-means 세그멘테이션 실패: {e}")
+            raise
     
-    def threshold_segmentation(self, image: Image.Image) -> Dict[str, Any]:
-        """임계값 기반 세그멘테이션 (최후의 수단)"""
+    def _build_final_result(
+        self, 
+        processed_result: Dict[str, Any], 
+        quality_score: float, 
+        processing_time: float, 
+        method: str, 
+        clothing_type: str
+    ) -> Dict[str, Any]:
+        """최종 결과 구성"""
+        
         try:
-            # 그레이스케일 변환
-            gray = np.array(image.convert('L'))
+            # 기본 결과 구조
+            result = {
+                'success': True,
+                'segmented_image': processed_result['segmented_image'],
+                'clothing_mask': processed_result['mask'],
+                'mask': processed_result['mask'],  # 호환성을 위한 중복
+                'clothing_type': clothing_type,
+                'segmentation_method': method,
+                'quality_score': quality_score,
+                'confidence': processed_result.get('confidence', quality_score),
+                'processing_time': processing_time
+            }
             
-            # Otsu 임계값
-            _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # 품질 등급 추가
+            if quality_score >= 0.9:
+                result['quality_grade'] = 'excellent'
+            elif quality_score >= 0.8:
+                result['quality_grade'] = 'good'
+            elif quality_score >= 0.6:
+                result['quality_grade'] = 'fair'
+            elif quality_score >= 0.4:
+                result['quality_grade'] = 'poor'
+            else:
+                result['quality_grade'] = 'very_poor'
             
-            # 배경이 밝은 경우 반전
-            if np.mean(binary) > 127:
-                binary = 255 - binary
+            # 세그멘테이션 분석 추가
+            result['segmentation_analysis'] = self._analyze_segmentation(processed_result['mask'])
             
-            # 형태학적 정리
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+            # 처리 정보 추가
+            result['processing_info'] = {
+                'method_used': method,
+                'post_processing_applied': True,
+                'fallback_used': method in ['grabcut', 'kmeans', 'threshold'],
+                'image_size': f"{processed_result['segmented_image'].size[0]}x{processed_result['segmented_image'].size[1]}",
+                'mask_coverage': np.sum(processed_result['mask'] > 0) / processed_result['mask'].size
+            }
             
-            # 결과 이미지
-            img_array = np.array(image)
-            result = img_array.copy()
-            result[binary == 0] = [255, 255, 255]
-            result_pil = Image.fromarray(result)
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"최종 결과 구성 실패: {e}")
+            return self._create_empty_result("결과 구성 오류")
+    
+    def _analyze_segmentation(self, mask: np.ndarray) -> Dict[str, Any]:
+        """세그멘테이션 분석"""
+        
+        analysis = {}
+        
+        try:
+            # 마스크 영역 분석
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if contours:
+                # 가장 큰 영역
+                largest_contour = max(contours, key=cv2.contourArea)
+                
+                # 바운딩 박스
+                x, y, w, h = cv2.boundingRect(largest_contour)
+                analysis['bounding_box'] = {'x': int(x), 'y': int(y), 'width': int(w), 'height': int(h)}
+                
+                # 영역 정보
+                analysis['area'] = float(cv2.contourArea(largest_contour))
+                analysis['perimeter'] = float(cv2.arcLength(largest_contour, True))
+                
+                # 형태 특성
+                if analysis['perimeter'] > 0:
+                    analysis['compactness'] = 4 * np.pi * analysis['area'] / (analysis['perimeter'] ** 2)
+                else:
+                    analysis['compactness'] = 0.0
+                
+                # 종횡비
+                if h > 0:
+                    analysis['aspect_ratio'] = w / h
+                else:
+                    analysis['aspect_ratio'] = 1.0
+                
+                # 영역 개수
+                analysis['num_regions'] = len(contours)
+                
+            else:
+                # 윤곽선이 없는 경우
+                analysis = {
+                    'bounding_box': {'x': 0, 'y': 0, 'width': 0, 'height': 0},
+                    'area': 0.0,
+                    'perimeter': 0.0,
+                    'compactness': 0.0,
+                    'aspect_ratio': 1.0,
+                    'num_regions': 0
+                }
+            
+        except Exception as e:
+            self.logger.warning(f"세그멘테이션 분석 실패: {e}")
+            analysis = {'error': str(e)}
+        
+        return analysis
+    
+    def _create_empty_result(self, reason: str) -> Dict[str, Any]:
+        """빈 결과 생성"""
+        return {
+            'success': False,
+            'error': reason,
+            'segmented_image': None,
+            'clothing_mask': None,
+            'mask': None,
+            'clothing_type': 'unknown',
+            'segmentation_method': 'none',
+            'quality_score': 0.0,
+            'confidence': 0.0,
+            'quality_grade': 'failed',
+            'processing_time': 0.0,
+            'segmentation_analysis': {},
+            'processing_info': {
+                'method_used': 'none',
+                'post_processing_applied': False,
+                'fallback_used': False,
+                'error_occurred': True
+            }
+        }
+    
+    def _update_statistics(self, method: str, quality_score: float, processing_time: float):
+        """통계 업데이트"""
+        self.processing_stats['total_processed'] += 1
+        
+        if quality_score > 0.5:
+            self.processing_stats['successful_segmentations'] += 1
+        
+        # 품질 이동 평균
+        alpha = 0.1
+        self.processing_stats['average_quality'] = (
+            alpha * quality_score + 
+            (1 - alpha) * self.processing_stats['average_quality']
+        )
+        
+        # 방법별 사용 통계
+        if method not in self.processing_stats['method_usage']:
+            self.processing_stats['method_usage'][method] = 0
+        self.processing_stats['method_usage'][method] += 1
+    
+    async def _initialize_rembg(self):
+        """RemBG 초기화"""
+        if not REMBG_AVAILABLE:
+            self.logger.warning("RemBG 사용 불가")
+            return
+        
+        try:
+            # 기본 세션 생성
+            self.rembg_session = new_session('u2net')
+            
+            # 특화 세션들 생성
+            self.rembg_sessions = {
+                'human_seg': new_session('u2net_human_seg'),
+                'cloth_seg': new_session('u2net_cloth_seg') if hasattr(rembg, 'u2net_cloth_seg') else self.rembg_session
+            }
+            
+            self.logger.info("✅ RemBG 세션 초기화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ RemBG 초기화 실패: {e}")
+            self.rembg_session = None
+            self.rembg_sessions = {}
+    
+    async def _initialize_custom_model(self):
+        """커스텀 모델 초기화"""
+        try:
+            if self.model_loader:
+                # 모델 로더를 통한 모델 로드 시도
+                self.segmentation_model = await self.model_loader.load_model(
+                    self.segmentation_config['model_name']
+                )
+            
+            if not self.segmentation_model:
+                # 간단한 모델 생성
+                self.segmentation_model = await self._create_u2net_model()
+            
+            self.logger.info("✅ 커스텀 모델 초기화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 커스텀 모델 초기화 실패: {e}")
+            self.segmentation_model = self._create_fallback_model()
+    
+    def _initialize_backup_methods(self):
+        """백업 세그멘테이션 방법들 초기화"""
+        try:
+            self.backup_methods = BackupSegmentationMethods(self.device)
+            self.logger.info("✅ 백업 방법들 초기화 완료")
+        except Exception as e:
+            self.logger.warning(f"⚠️ 백업 방법 초기화 실패: {e}")
+            self.backup_methods = self._create_simple_backup()
+    
+    async def _create_u2net_model(self):
+        """U²-Net 스타일 모델 생성"""
+        class SimpleU2Net(torch.nn.Module):
+            def __init__(self):
+                super(SimpleU2Net, self).__init__()
+                # 간단한 U-Net 구조
+                self.encoder = torch.nn.Sequential(
+                    torch.nn.Conv2d(3, 64, 3, padding=1),
+                    torch.nn.ReLU(inplace=True),
+                    torch.nn.Conv2d(64, 64, 3, padding=1),
+                    torch.nn.ReLU(inplace=True),
+                    torch.nn.MaxPool2d(2)
+                )
+                
+                self.middle = torch.nn.Sequential(
+                    torch.nn.Conv2d(64, 128, 3, padding=1),
+                    torch.nn.ReLU(inplace=True),
+                    torch.nn.Conv2d(128, 128, 3, padding=1),
+                    torch.nn.ReLU(inplace=True),
+                )
+                
+                self.decoder = torch.nn.Sequential(
+                    torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+                    torch.nn.Conv2d(128, 64, 3, padding=1),
+                    torch.nn.ReLU(inplace=True),
+                    torch.nn.Conv2d(64, 1, 1),
+                    torch.nn.Sigmoid()
+                )
+            
+            def forward(self, x):
+                x1 = self.encoder(x)
+                x2 = self.middle(x1)
+                x3 = self.decoder(x2)
+                return x3
+        
+        return SimpleU2Net().to(self.device)
+    
+    def _create_fallback_model(self):
+        """폴백 모델 생성"""
+        class FallbackModel:
+            def __call__(self, x):
+                # 간단한 더미 출력
+                batch_size = x.shape[0] if len(x.shape) == 4 else 1
+                height, width = x.shape[-2], x.shape[-1]
+                return torch.ones(batch_size, 1, height, width) * 0.5
+        
+        return FallbackModel()
+    
+    def _create_simple_backup(self):
+        """간단한 백업 방법 생성"""
+        class SimpleBackup:
+            def grabcut_segmentation(self, image):
+                # 더미 GrabCut
+                mask = np.ones((image.height, image.width), dtype=np.uint8) * 255
+                return {
+                    'segmented_image': image,
+                    'mask': mask,
+                    'method': 'simple_grabcut',
+                    'confidence': 0.5
+                }
+            
+            def threshold_segmentation(self, image):
+                # 더미 임계값
+                mask = np.ones((image.height, image.width), dtype=np.uint8) * 255
+                return {
+                    'segmented_image': image,
+                    'mask': mask,
+                    'method': 'simple_threshold',
+                    'confidence': 0.4
+                }
+        
+        return SimpleBackup()
+    
+    def _preprocess_for_model(self, image: Image.Image) -> torch.Tensor:
+        """모델용 이미지 전처리"""
+        try:
+            # PIL을 텐서로 변환
+            image_array = np.array(image).astype(np.float32) / 255.0
+            image_tensor = torch.from_numpy(image_array).permute(2, 0, 1).unsqueeze(0)
+            
+            # 디바이스로 이동
+            image_tensor = image_tensor.to(self.device)
+            
+            return image_tensor
+            
+        except Exception as e:
+            self.logger.error(f"모델 전처리 실패: {e}")
+            raise
+    
+    async def cleanup(self):
+        """리소스 정리"""
+        try:
+            # RemBG 세션 정리
+            if hasattr(self, 'rembg_session'):
+                self.rembg_session = None
+            self.rembg_sessions = {}
+            
+            # 모델 정리
+            if hasattr(self, 'segmentation_model'):
+                if hasattr(self.segmentation_model, 'cpu'):
+                    self.segmentation_model.cpu()
+                self.segmentation_model = None
+            
+            # 백업 방법들 정리
+            self.backup_methods = None
+            
+            self.is_initialized = False
+            self.logger.info("🧹 의류 세그멘테이션 스텝 정리 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
+
+
+class BackupSegmentationMethods:
+    """백업 세그멘테이션 방법들"""
+    
+    def __init__(self, device: str):
+        self.device = device
+        self.logger = logging.getLogger(__name__)
+    
+    def grabcut_segmentation(self, image: Image.Image) -> Dict[str, Any]:
+        """GrabCut 알고리즘을 사용한 세그멘테이션"""
+        try:
+            # PIL을 OpenCV 형식으로 변환
+            img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            
+            # 초기 사각형 (이미지의 10% 여백)
+            height, width = img.shape[:2]
+            rect = (
+                int(width * 0.1), 
+                int(height * 0.1), 
+                int(width * 0.8), 
+                int(height * 0.8)
+            )
+            
+            # GrabCut 초기화
+            mask = np.zeros((height, width), np.uint8)
+            bgd_model = np.zeros((1, 65), np.float64)
+            fgd_model = np.zeros((1, 65), np.float64)
+            
+            # GrabCut 수행
+            cv2.grabCut(img, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
+            
+            # 마스크 후처리
+            mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+            final_mask = mask2 * 255
+            
+            # RGB로 변환된 세그멘테이션 이미지 생성
+            segmented_img = img * mask2[:, :, np.newaxis]
+            segmented_img_rgb = cv2.cvtColor(segmented_img, cv2.COLOR_BGR2RGB)
+            segmented_image = Image.fromarray(segmented_img_rgb.astype(np.uint8))
             
             return {
-                'segmented_image': result_pil,
-                'mask': binary,
-                'method': 'threshold',
-                'confidence': 0.5
+                'segmented_image': segmented_image,
+                'mask': final_mask,
+                'method': 'grabcut',
+                'confidence': 0.75
             }
             
         except Exception as e:
-            logger.error(f"임계값 세그멘테이션 실패: {e}")
-            # 최후의 폴백
-            h, w = image.size
-            mask = np.ones((w, h), dtype=np.uint8) * 255
+            self.logger.warning(f"GrabCut 실패: {e}")
+            # 폴백: 전체 이미지를 마스크로 반환
+            mask = np.ones((image.height, image.width), dtype=np.uint8) * 255
             return {
                 'segmented_image': image,
                 'mask': mask,
-                'method': 'emergency_fallback',
+                'method': 'grabcut_fallback',
+                'confidence': 0.3
+            }
+    
+    def threshold_segmentation(self, image: Image.Image) -> Dict[str, Any]:
+        """임계값 기반 세그멘테이션"""
+        try:
+            # 그레이스케일 변환
+            gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+            
+            # 적응형 임계값 적용
+            mask = cv2.adaptiveThreshold(
+                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+            )
+            
+            # 노이즈 제거
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            
+            # 세그멘테이션된 이미지 생성
+            image_array = np.array(image)
+            mask_3channel = np.stack([mask] * 3, axis=2)
+            segmented_array = image_array * (mask_3channel / 255.0)
+            segmented_image = Image.fromarray(segmented_array.astype(np.uint8))
+            
+            return {
+                'segmented_image': segmented_image,
+                'mask': mask,
+                'method': 'adaptive_threshold',
+                'confidence': 0.65
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"임계값 세그멘테이션 실패: {e}")
+            # 폴백
+            mask = np.ones((image.height, image.width), dtype=np.uint8) * 255
+            return {
+                'segmented_image': image,
+                'mask': mask,
+                'method': 'threshold_fallback',
                 'confidence': 0.3
             }

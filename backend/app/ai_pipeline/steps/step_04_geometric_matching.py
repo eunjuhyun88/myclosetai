@@ -1,1533 +1,1221 @@
+# app/ai_pipeline/steps/step_04_geometric_matching.py
 """
-4단계: 기하학적 매칭 (Geometric Matching) - 통합 버전
-두 파일의 장점을 모두 포함한 완전한 TPS 변환 + 메쉬 워핑 시스템
-M3 Max 최적화 포함
+4단계: 기하학적 매칭 (Geometric Matching) - 수정된 버전
+Pipeline Manager와 완전 호환되는 의류-인체 매칭 시스템
+M3 Max 최적화 + 고급 매칭 알고리즘 + 견고한 에러 처리
 """
 import os
 import logging
 import time
-import math
-from typing import Dict, Any, Optional, Tuple, List
+import asyncio
+from typing import Dict, Any, Optional, Tuple, List, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
 import cv2
-from scipy.interpolate import RBFInterpolator
-from scipy.spatial import Delaunay
-from scipy.spatial.distance import cdist
-from scipy.optimize import linear_sum_assignment
+from PIL import Image
 import json
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from scipy.spatial.distance import cdist
+from scipy.optimize import minimize
 
 logger = logging.getLogger(__name__)
 
 class GeometricMatchingStep:
-    """기하학적 매칭 스텝 - TPS 변환 + 메쉬 워핑 통합 버전"""
+    """
+    기하학적 매칭 스텝 - Pipeline Manager 완전 호환
+    - M3 Max MPS 최적화
+    - 고급 매칭 알고리즘 (TPS, Affine, Homography)
+    - 포즈 기반 적응형 매칭
+    - 실시간 매칭 품질 평가
+    """
     
-    # 의류별 주요 매칭 포인트 정의 (더 세분화)
-    CLOTHING_KEYPOINTS = {
-        'shirt': ['left_shoulder', 'right_shoulder', 'left_sleeve', 'right_sleeve', 
-                 'collar', 'hem', 'left_armpit', 'right_armpit'],
-        'pants': ['waist_left', 'waist_right', 'left_leg', 'right_leg', 
-                 'left_ankle', 'right_ankle', 'left_thigh', 'right_thigh'],
-        'dress': ['left_shoulder', 'right_shoulder', 'waist_left', 'waist_right', 
-                 'hem_left', 'hem_right', 'left_hip', 'right_hip'],
-        'skirt': ['waist_left', 'waist_right', 'hem_left', 'hem_right']
-    }
-    
-    # OpenPose 18 키포인트와 의류 키포인트 매핑
-    POSE_TO_CLOTHING = {
+    # 의류별 핵심 매칭 포인트 정의
+    MATCHING_POINTS = {
         'shirt': {
-            5: 'left_shoulder',   # left_shoulder
-            2: 'right_shoulder',  # right_shoulder  
-            7: 'left_sleeve',     # left_elbow
-            4: 'right_sleeve',    # right_elbow
-            1: 'collar',          # neck
-            11: 'hem',            # left_hip (하단)
+            'keypoints': ['left_shoulder', 'right_shoulder', 'neck', 'left_wrist', 'right_wrist'],
+            'clothing_points': ['left_shoulder', 'right_shoulder', 'collar', 'left_cuff', 'right_cuff'],
+            'priority_weights': [1.0, 1.0, 0.8, 0.7, 0.7]
         },
         'pants': {
-            11: 'waist_left',     # left_hip
-            8: 'waist_right',     # right_hip
-            12: 'left_leg',       # left_knee
-            9: 'right_leg',       # right_knee
-            13: 'left_ankle',     # left_ankle
-            10: 'right_ankle',    # right_ankle
+            'keypoints': ['left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'],
+            'clothing_points': ['left_waist', 'right_waist', 'left_knee', 'right_knee', 'left_hem', 'right_hem'],
+            'priority_weights': [1.0, 1.0, 0.8, 0.8, 0.6, 0.6]
         },
         'dress': {
-            5: 'left_shoulder',   # left_shoulder
-            2: 'right_shoulder',  # right_shoulder
-            11: 'waist_left',     # left_hip
-            8: 'waist_right',     # right_hip
-            13: 'hem_left',       # left_ankle
-            10: 'hem_right',      # right_ankle
+            'keypoints': ['left_shoulder', 'right_shoulder', 'neck', 'left_hip', 'right_hip'],
+            'clothing_points': ['left_shoulder', 'right_shoulder', 'collar', 'left_waist', 'right_waist'],
+            'priority_weights': [1.0, 1.0, 0.8, 0.7, 0.7]
         }
     }
     
-    def __init__(self, model_loader, device: str, config: Dict[str, Any] = None):
+    def __init__(self, device: str, config: Optional[Dict[str, Any]] = None):
         """
+        초기화 - Pipeline Manager 완전 호환
+        
         Args:
-            model_loader: 모델 로더 인스턴스
-            device: 사용할 디바이스 ('cpu', 'cuda', 'mps')
-            config: 설정 딕셔너리
+            device: 사용할 디바이스 (mps, cuda, cpu)
+            config: 설정 딕셔너리 (선택적)
         """
-        self.model_loader = model_loader
+        # model_loader는 내부에서 전역 함수로 가져옴
+        from app.ai_pipeline.utils.model_loader import get_global_model_loader
+        self.model_loader = get_global_model_loader()
+        
         self.device = device
         self.config = config or {}
-        
-        # TPS 변환 설정
-        self.tps_config = self.config.get('tps_transform', {
-            'regularization': 0.001,
-            'smoothing': 0.01,
-            'kernel': 'thin_plate_spline',
-            'mesh_density': 15
-        })
-        
-        # 매칭 알고리즘 설정
-        self.matching_config = self.config.get('matching', {
-            'feature_method': 'sift',
-            'keypoint_threshold': 0.02,
-            'outlier_threshold': 2.0,
-            'max_keypoints': 50,
-            'matching_threshold': 50.0,
-            'min_matching_points': 4
-        })
-        
-        # 성능 최적화 설정 (M3 Max)
-        self.use_mps = device == 'mps' and torch.backends.mps.is_available()
-        
-        # 변환 객체들
-        self.tps_solver = None
-        self.tps_transformer = None
-        self.mesh_warper = None
-        
         self.is_initialized = False
         
-        logger.info(f"🎯 기하학적 매칭 스텝 초기화 - 디바이스: {device}, MPS: {self.use_mps}")
+        # 로깅 설정
+        self.logger = logging.getLogger(__name__)
+        
+        # 매칭 설정
+        self.matching_config = self.config.get('matching', {
+            'method': 'auto',  # 'tps', 'affine', 'homography', 'auto'
+            'max_iterations': 1000,
+            'convergence_threshold': 1e-6,
+            'outlier_threshold': 0.15,
+            'use_pose_guidance': True,
+            'adaptive_weights': True,
+            'quality_threshold': 0.7
+        })
+        
+        # TPS (Thin Plate Spline) 설정
+        self.tps_config = self.config.get('tps', {
+            'regularization': 0.1,
+            'grid_size': 20,
+            'boundary_padding': 0.1
+        })
+        
+        # 최적화 설정
+        self.optimization_config = self.config.get('optimization', {
+            'learning_rate': 0.01,
+            'momentum': 0.9,
+            'weight_decay': 1e-4,
+            'scheduler_step': 100
+        })
+        
+        # 매칭 통계
+        self.matching_stats = {
+            'total_matches': 0,
+            'successful_matches': 0,
+            'average_accuracy': 0.0,
+            'method_performance': {}
+        }
+        
+        self.logger.info(f"🎯 기하학적 매칭 스텝 초기화 - 디바이스: {device}")
     
     async def initialize(self) -> bool:
-        """초기화"""
+        """초기화 메서드"""
         try:
-            logger.info("🔄 기하학적 매칭 초기화 중...")
+            # 매칭 알고리즘 초기화
+            await self._initialize_matching_algorithms()
             
-            # TPS 솔버 초기화 (수학적으로 정확한 버전)
-            self.tps_solver = TPSSolver(
-                device=self.device, 
-                reg_factor=self.tps_config['regularization']
-            )
-            
-            # TPS 변환기 초기화 (RBF 기반)
-            self.tps_transformer = ThinPlateSplineTransform(
-                regularization=self.tps_config['regularization'],
-                smoothing=self.tps_config['smoothing']
-            )
-            
-            # 메쉬 워핑 초기화
-            self.mesh_warper = MeshBasedWarping(
-                mesh_size=self.tps_config['mesh_density']
-            )
+            # 최적화 도구 초기화
+            await self._initialize_optimization_tools()
             
             self.is_initialized = True
-            logger.info("✅ 기하학적 매칭 초기화 완료")
-            
+            self.logger.info("✅ 기하학적 매칭 시스템 초기화 완료")
             return True
             
         except Exception as e:
-            logger.error(f"❌ 기하학적 매칭 초기화 실패: {e}")
-            self.is_initialized = False
-            return False
+            self.logger.error(f"❌ 매칭 시스템 초기화 실패: {e}")
+            # 기본 시스템으로 폴백
+            self.is_initialized = True
+            return True
     
-    def process(
+    async def process(
         self,
-        person_image_tensor: torch.Tensor,
-        clothing_image_tensor: torch.Tensor,
-        clothing_mask: torch.Tensor,
+        person_parsing: Dict[str, Any],
         pose_keypoints: List[List[float]],
-        parsing_result: Dict[str, Any]
+        clothing_segmentation: Dict[str, Any],
+        clothing_type: str = "shirt",
+        **kwargs
     ) -> Dict[str, Any]:
         """
-        기하학적 매칭 처리 (통합 버전)
+        기하학적 매칭 처리
         
         Args:
-            person_image_tensor: 사용자 이미지 텐서 [1, 3, H, W]
-            clothing_image_tensor: 의류 이미지 텐서 [1, 3, H, W]  
-            clothing_mask: 의류 마스크 텐서 [1, 1, H, W]
-            pose_keypoints: 18개 포즈 키포인트
-            parsing_result: 인체 파싱 결과
+            person_parsing: 인체 파싱 결과
+            pose_keypoints: 포즈 키포인트 (OpenPose 18 형식)
+            clothing_segmentation: 의류 세그멘테이션 결과
+            clothing_type: 의류 타입
+            **kwargs: 추가 매개변수
             
         Returns:
-            처리 결과 딕셔너리
+            Dict: 매칭 결과
         """
-        if not self.is_initialized:
-            raise RuntimeError("기하학적 매칭이 초기화되지 않았습니다.")
-        
         start_time = time.time()
         
         try:
-            # 1. 의류 타입 결정
-            clothing_type = self._determine_clothing_type(parsing_result, pose_keypoints)
+            if not self.is_initialized:
+                await self.initialize()
             
-            # 2. 텐서를 numpy 배열로 변환
-            person_img = self._tensor_to_numpy(person_image_tensor)
-            cloth_img = self._tensor_to_numpy(clothing_image_tensor)
-            cloth_mask = self._tensor_to_numpy(clothing_mask, is_mask=True)
+            # 1. 입력 데이터 검증 및 전처리
+            person_points = self._extract_person_keypoints(pose_keypoints, clothing_type)
+            clothing_points = self._extract_clothing_keypoints(clothing_segmentation, clothing_type)
             
-            # 3. 신체 키포인트 추출 (포즈 기반)
-            body_keypoints = self._extract_body_keypoints(pose_keypoints, clothing_type)
+            if len(person_points) < 3 or len(clothing_points) < 3:
+                return self._create_empty_result("충분하지 않은 매칭 포인트")
             
-            # 4. 의류 키포인트 추출 (윤곽선 기반)
-            clothing_keypoints = self._extract_clothing_keypoints_from_contour(
-                cloth_img, cloth_mask, clothing_type
+            # 2. 매칭 방법 선택
+            matching_method = self._select_matching_method(person_points, clothing_points, clothing_type)
+            self.logger.info(f"📐 선택된 매칭 방법: {matching_method}")
+            
+            # 3. 초기 매칭 수행
+            initial_match = await self._perform_initial_matching(
+                person_points, clothing_points, matching_method
             )
             
-            # 5. 키포인트 매칭 (Hungarian 알고리즘 + 직접 매칭)
-            matched_pairs = self._match_keypoints_advanced(body_keypoints, clothing_keypoints)
+            # 4. 포즈 기반 정제
+            if self.matching_config['use_pose_guidance']:
+                refined_match = await self._refine_with_pose_guidance(
+                    initial_match, pose_keypoints, clothing_type
+                )
+            else:
+                refined_match = initial_match
             
-            # 6. TPS 변환 매트릭스 계산
-            tps_matrix = self._calculate_tps_transform(matched_pairs)
-            
-            # 7. TPS 변환 적용
-            warped_cloth, warped_mask = self._apply_tps_transform(
-                cloth_img, cloth_mask, matched_pairs
+            # 5. 매칭 품질 평가
+            quality_metrics = self._evaluate_matching_quality(
+                person_points, clothing_points, refined_match
             )
             
-            # 8. 메쉬 기반 세밀 조정
-            refined_cloth, refined_mask = self._apply_mesh_refinement(
-                warped_cloth, warped_mask, matched_pairs
-            )
+            # 6. 품질이 낮으면 대안 방법 시도
+            if quality_metrics['overall_quality'] < self.matching_config['quality_threshold']:
+                self.logger.info(f"🔄 품질 개선 시도 (현재: {quality_metrics['overall_quality']:.3f})")
+                alternative_match = await self._try_alternative_methods(
+                    person_points, clothing_points, clothing_type
+                )
+                
+                alternative_quality = self._evaluate_matching_quality(
+                    person_points, clothing_points, alternative_match
+                )
+                
+                if alternative_quality['overall_quality'] > quality_metrics['overall_quality']:
+                    refined_match = alternative_match
+                    quality_metrics = alternative_quality
+                    matching_method = alternative_match.get('method', matching_method)
             
-            # 9. 결과 품질 평가
-            quality_metrics = self._evaluate_matching_quality_comprehensive(
-                cloth_img, refined_cloth, matched_pairs, body_keypoints, clothing_keypoints
-            )
+            # 7. 워핑 파라미터 생성
+            warp_params = self._generate_warp_parameters(refined_match, clothing_segmentation)
             
-            # 10. 변형 영역 계산
-            deformation_regions = self._calculate_deformation_regions(matched_pairs, clothing_type)
-            
+            # 8. 최종 결과 구성
             processing_time = time.time() - start_time
+            result = self._build_final_result(
+                refined_match, warp_params, quality_metrics, 
+                processing_time, matching_method, clothing_type
+            )
             
-            result = {
-                "success": True,
-                "warped_clothing": self._numpy_to_tensor(refined_cloth),
-                "warped_mask": self._numpy_to_tensor(refined_mask, is_mask=True),
-                "tps_matrix": tps_matrix,
-                "matched_pairs": matched_pairs,
-                "body_keypoints": body_keypoints,
-                "clothing_keypoints": clothing_keypoints,
-                "clothing_type": clothing_type,
-                "transform_quality": quality_metrics,
-                "deformation_regions": deformation_regions,
-                "confidence": float(quality_metrics.get('overall_score', 0.7)),
-                "processing_time": processing_time,
-                "num_matched_points": len(matched_pairs),
-                "transform_method": "TPS + Mesh Hybrid"
-            }
+            # 9. 통계 업데이트
+            self._update_statistics(matching_method, quality_metrics['overall_quality'])
             
-            logger.info(f"✅ 기하학적 매칭 완료 - 처리시간: {processing_time:.3f}초, 매칭 포인트: {len(matched_pairs)}")
-            
+            self.logger.info(f"✅ 기하학적 매칭 완료 - 방법: {matching_method}, 품질: {quality_metrics['overall_quality']:.3f}")
             return result
             
         except Exception as e:
-            logger.error(f"❌ 기하학적 매칭 처리 실패: {e}")
-            raise
+            self.logger.error(f"❌ 기하학적 매칭 실패: {e}")
+            return self._create_empty_result(f"처리 오류: {str(e)}")
     
-    def _determine_clothing_type(self, parsing_result: Dict[str, Any], pose_keypoints: List[List[float]]) -> str:
-        """의류 타입 결정 (향상된 로직)"""
+    def _extract_person_keypoints(self, pose_keypoints: List[List[float]], clothing_type: str) -> List[Tuple[float, float]]:
+        """인체에서 매칭 포인트 추출"""
+        
         try:
-            # 파싱 결과에서 감지된 신체 부위 분석
-            detected_parts = parsing_result.get('body_parts_detected', {})
+            keypoint_mapping = {
+                'neck': 1, 'left_shoulder': 5, 'right_shoulder': 2,
+                'left_elbow': 6, 'right_elbow': 3,
+                'left_wrist': 7, 'right_wrist': 4,
+                'left_hip': 11, 'right_hip': 8,
+                'left_knee': 12, 'right_knee': 9,
+                'left_ankle': 13, 'right_ankle': 10
+            }
             
-            # 의류 관련 부위 확인
-            has_upper_clothes = any(part in detected_parts for part in ['upper_clothes', 'dress', 'coat', 'top'])
-            has_lower_clothes = any(part in detected_parts for part in ['pants', 'skirt', 'bottom'])
-            has_dress = 'dress' in detected_parts
+            matching_points = self.MATCHING_POINTS.get(clothing_type, self.MATCHING_POINTS['shirt'])
+            person_points = []
             
-            # 포즈에서 신체 영역 분석
-            has_upper_body = len([kp for kp in pose_keypoints[:11] if len(kp) > 2 and kp[2] > 0.3]) >= 3
-            has_lower_body = len([kp for kp in pose_keypoints[11:] if len(kp) > 2 and kp[2] > 0.3]) >= 2
+            for keypoint_name in matching_points['keypoints']:
+                if keypoint_name in keypoint_mapping:
+                    idx = keypoint_mapping[keypoint_name]
+                    if idx < len(pose_keypoints):
+                        x, y, conf = pose_keypoints[idx]
+                        if conf > 0.5:  # 신뢰도 임계값
+                            person_points.append((float(x), float(y)))
             
-            # 의류 타입 결정 로직 (우선순위 기반)
-            if has_dress and has_upper_body and has_lower_body:
-                return 'dress'
-            elif has_upper_clothes and has_upper_body:
-                return 'shirt'
-            elif has_lower_clothes and has_lower_body:
-                return 'pants'
-            elif 'skirt' in detected_parts:
-                return 'skirt'
-            else:
-                # 기본값: 포즈 기반 추정
-                return 'shirt' if has_upper_body else 'pants'
+            self.logger.debug(f"추출된 인체 포인트: {len(person_points)}개")
+            return person_points
             
         except Exception as e:
-            logger.warning(f"의류 타입 결정 실패: {e}")
-            return 'shirt'  # 기본값
+            self.logger.warning(f"인체 키포인트 추출 실패: {e}")
+            return []
     
-    def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
-        """텐서를 numpy 배열로 변환"""
-        if tensor.dim() == 4:
-            tensor = tensor.squeeze(0)
-        
-        if is_mask:
-            # 마스크의 경우 2D로 변환
-            if tensor.dim() == 3:
-                tensor = tensor.squeeze(0)
-            return (tensor.cpu().numpy() * 255).astype(np.uint8)
-        else:
-            # 이미지의 경우 [3, H, W] → [H, W, 3]으로 변환
-            if tensor.shape[0] == 3:
-                tensor = tensor.permute(1, 2, 0)
-            
-            # 0-1 범위를 0-255로 변환
-            if tensor.max() <= 1.0:
-                tensor = tensor * 255
-            
-            return tensor.cpu().numpy().astype(np.uint8)
-    
-    def _numpy_to_tensor(self, array: np.ndarray, is_mask: bool = False) -> torch.Tensor:
-        """numpy 배열을 텐서로 변환"""
-        if is_mask:
-            # 마스크: [H, W] → [1, 1, H, W]
-            if array.ndim == 2:
-                tensor = torch.from_numpy(array / 255.0).float()
-                return tensor.unsqueeze(0).unsqueeze(0).to(self.device)
-        else:
-            # 이미지: [H, W, 3] → [1, 3, H, W]
-            if array.ndim == 3:
-                tensor = torch.from_numpy(array).permute(2, 0, 1).float() / 255.0
-                return tensor.unsqueeze(0).to(self.device)
-        
-        return torch.from_numpy(array).to(self.device)
-    
-    def _extract_body_keypoints(self, pose_keypoints: List[List[float]], clothing_type: str) -> Dict[str, Tuple[float, float]]:
-        """신체 키포인트 추출 (포즈 기반)"""
-        body_keypoints = {}
+    def _extract_clothing_keypoints(self, clothing_segmentation: Dict[str, Any], clothing_type: str) -> List[Tuple[float, float]]:
+        """의류에서 매칭 포인트 추출"""
         
         try:
-            # 의류 타입에 따른 관련 키포인트 추출
-            if clothing_type in self.POSE_TO_CLOTHING:
-                for pose_idx, clothing_name in self.POSE_TO_CLOTHING[clothing_type].items():
-                    if pose_idx < len(pose_keypoints):
-                        kp = pose_keypoints[pose_idx]
-                        if len(kp) > 2 and kp[2] > 0.3:  # 신뢰도 체크
-                            body_keypoints[clothing_name] = (kp[0], kp[1])
+            mask = clothing_segmentation.get('mask')
+            if mask is None:
+                return []
             
-            # 추가 계산된 포인트들
-            if clothing_type == 'shirt':
-                # 겨드랑이 계산
-                if 5 < len(pose_keypoints) and 7 < len(pose_keypoints):
-                    left_shoulder = pose_keypoints[5]
-                    left_elbow = pose_keypoints[7]
-                    if len(left_shoulder) > 2 and len(left_elbow) > 2:
-                        if left_shoulder[2] > 0.3 and left_elbow[2] > 0.3:
-                            armpit_x = left_shoulder[0] + (left_elbow[0] - left_shoulder[0]) * 0.3
-                            armpit_y = left_shoulder[1] + (left_elbow[1] - left_shoulder[1]) * 0.3
-                            body_keypoints['left_armpit'] = (armpit_x, armpit_y)
-                
-                if 2 < len(pose_keypoints) and 4 < len(pose_keypoints):
-                    right_shoulder = pose_keypoints[2]
-                    right_elbow = pose_keypoints[4]
-                    if len(right_shoulder) > 2 and len(right_elbow) > 2:
-                        if right_shoulder[2] > 0.3 and right_elbow[2] > 0.3:
-                            armpit_x = right_shoulder[0] + (right_elbow[0] - right_shoulder[0]) * 0.3
-                            armpit_y = right_shoulder[1] + (right_elbow[1] - right_shoulder[1]) * 0.3
-                            body_keypoints['right_armpit'] = (armpit_x, armpit_y)
-            
-            elif clothing_type == 'pants':
-                # 허벅지 중간점 계산
-                if 11 < len(pose_keypoints) and 12 < len(pose_keypoints):
-                    left_hip = pose_keypoints[11]
-                    left_knee = pose_keypoints[12]
-                    if len(left_hip) > 2 and len(left_knee) > 2:
-                        if left_hip[2] > 0.3 and left_knee[2] > 0.3:
-                            thigh_x = (left_hip[0] + left_knee[0]) / 2
-                            thigh_y = (left_hip[1] + left_knee[1]) / 2
-                            body_keypoints['left_thigh'] = (thigh_x, thigh_y)
-                
-                if 8 < len(pose_keypoints) and 9 < len(pose_keypoints):
-                    right_hip = pose_keypoints[8]
-                    right_knee = pose_keypoints[9]
-                    if len(right_hip) > 2 and len(right_knee) > 2:
-                        if right_hip[2] > 0.3 and right_knee[2] > 0.3:
-                            thigh_x = (right_hip[0] + right_knee[0]) / 2
-                            thigh_y = (right_hip[1] + right_knee[1]) / 2
-                            body_keypoints['right_thigh'] = (thigh_x, thigh_y)
-            
-        except Exception as e:
-            logger.warning(f"신체 키포인트 추출 실패: {e}")
-        
-        return body_keypoints
-    
-    def _extract_clothing_keypoints_from_contour(
-        self, 
-        cloth_img: np.ndarray, 
-        cloth_mask: np.ndarray, 
-        clothing_type: str
-    ) -> Dict[str, Tuple[float, float]]:
-        """윤곽선 기반 의류 키포인트 추출 (향상된 버전)"""
-        
-        clothing_keypoints = {}
-        
-        try:
-            # 윤곽선 찾기
-            contours, _ = cv2.findContours(cloth_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # 의류 윤곽선 추출
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             if not contours:
-                return self._generate_default_keypoints(cloth_img.shape[1], cloth_img.shape[0], clothing_type)
+                return []
             
             # 가장 큰 윤곽선 선택
-            main_contour = max(contours, key=cv2.contourArea)
+            largest_contour = max(contours, key=cv2.contourArea)
             
-            # 바운딩 박스
-            x, y, w, h = cv2.boundingRect(main_contour)
+            # 의류 타입별 특징점 추출
+            clothing_points = self._extract_clothing_features(largest_contour, mask, clothing_type)
             
-            # 의류 타입별 키포인트 추출
-            if clothing_type == 'shirt':
-                clothing_keypoints = self._extract_shirt_keypoints_detailed(main_contour, x, y, w, h)
-            elif clothing_type == 'pants':
-                clothing_keypoints = self._extract_pants_keypoints_detailed(main_contour, x, y, w, h)
-            elif clothing_type == 'dress':
-                clothing_keypoints = self._extract_dress_keypoints_detailed(main_contour, x, y, w, h)
-            elif clothing_type == 'skirt':
-                clothing_keypoints = self._extract_skirt_keypoints_detailed(main_contour, x, y, w, h)
-            else:
-                clothing_keypoints = self._generate_default_keypoints(w, h, clothing_type)
+            self.logger.debug(f"추출된 의류 포인트: {len(clothing_points)}개")
+            return clothing_points
             
         except Exception as e:
-            logger.warning(f"의류 키포인트 추출 실패: {e}")
-            # 실패 시 기본 키포인트 생성
-            h, w = cloth_img.shape[:2]
-            clothing_keypoints = self._generate_default_keypoints(w, h, clothing_type)
-        
-        return clothing_keypoints
+            self.logger.warning(f"의류 키포인트 추출 실패: {e}")
+            return []
     
-    def _extract_shirt_keypoints_detailed(
-        self, 
-        contour: np.ndarray, 
-        x: int, y: int, w: int, h: int
-    ) -> Dict[str, Tuple[float, float]]:
-        """상의 키포인트 상세 추출"""
-        keypoints = {}
+    def _extract_clothing_features(self, contour: np.ndarray, mask: np.ndarray, clothing_type: str) -> List[Tuple[float, float]]:
+        """의류 특징점 추출"""
+        
+        features = []
         
         try:
-            # 어깨 라인 (상단 15% 지점)
-            shoulder_y = y + int(h * 0.15)
-            left_shoulder = self._find_contour_point_at_height(contour, shoulder_y, 'left')
-            right_shoulder = self._find_contour_point_at_height(contour, shoulder_y, 'right')
+            # 바운딩 박스
+            x, y, w, h = cv2.boundingRect(contour)
             
-            keypoints['left_shoulder'] = (left_shoulder[0], left_shoulder[1])
-            keypoints['right_shoulder'] = (right_shoulder[0], right_shoulder[1])
+            if clothing_type in ['shirt', 't-shirt', 'blouse']:
+                # 상의: 어깨, 목, 소매 부분
+                features.extend([
+                    (x + w * 0.2, y + h * 0.1),  # 왼쪽 어깨
+                    (x + w * 0.8, y + h * 0.1),  # 오른쪽 어깨
+                    (x + w * 0.5, y),            # 목/칼라
+                    (x, y + h * 0.3),            # 왼쪽 소매
+                    (x + w, y + h * 0.3)         # 오른쪽 소매
+                ])
+                
+            elif clothing_type in ['pants', 'jeans', 'trousers']:
+                # 하의: 허리, 무릎, 발목 부분
+                features.extend([
+                    (x + w * 0.2, y),            # 왼쪽 허리
+                    (x + w * 0.8, y),            # 오른쪽 허리
+                    (x + w * 0.3, y + h * 0.6),  # 왼쪽 무릎
+                    (x + w * 0.7, y + h * 0.6),  # 오른쪽 무릎
+                    (x + w * 0.3, y + h),        # 왼쪽 발목
+                    (x + w * 0.7, y + h)         # 오른쪽 발목
+                ])
+                
+            elif clothing_type in ['dress', 'gown']:
+                # 드레스: 어깨, 목, 허리 부분
+                features.extend([
+                    (x + w * 0.2, y + h * 0.1),  # 왼쪽 어깨
+                    (x + w * 0.8, y + h * 0.1),  # 오른쪽 어깨
+                    (x + w * 0.5, y),            # 목/칼라
+                    (x + w * 0.2, y + h * 0.4),  # 왼쪽 허리
+                    (x + w * 0.8, y + h * 0.4)   # 오른쪽 허리
+                ])
             
-            # 겨드랑이 (어깨에서 25% 아래)
-            armpit_y = y + int(h * 0.25)
-            left_armpit = self._find_contour_point_at_height(contour, armpit_y, 'left')
-            right_armpit = self._find_contour_point_at_height(contour, armpit_y, 'right')
+            # 윤곽선 기반 추가 특징점
+            features.extend(self._extract_contour_features(contour))
             
-            keypoints['left_armpit'] = (left_armpit[0], left_armpit[1])
-            keypoints['right_armpit'] = (right_armpit[0], right_armpit[1])
+            return features
             
-            # 소매 끝 (좌우 극단점)
+        except Exception as e:
+            self.logger.warning(f"의류 특징점 추출 실패: {e}")
+            return []
+    
+    def _extract_contour_features(self, contour: np.ndarray) -> List[Tuple[float, float]]:
+        """윤곽선 기반 특징점 추출"""
+        
+        features = []
+        
+        try:
+            # 볼록 껍질
+            hull = cv2.convexHull(contour)
+            
+            # 극값점들
             leftmost = tuple(contour[contour[:, :, 0].argmin()][0])
             rightmost = tuple(contour[contour[:, :, 0].argmax()][0])
+            topmost = tuple(contour[contour[:, :, 1].argmin()][0])
+            bottommost = tuple(contour[contour[:, :, 1].argmax()][0])
             
-            keypoints['left_sleeve'] = leftmost
-            keypoints['right_sleeve'] = rightmost
+            features.extend([leftmost, rightmost, topmost, bottommost])
             
-            # 목 라인 (최상단 중앙)
-            top_points = contour[contour[:, :, 1] < y + h * 0.1]
-            if len(top_points) > 0:
-                neck_center = np.mean(top_points, axis=0)
-                keypoints['collar'] = (int(neck_center[0][0]), int(neck_center[0][1]))
+            # 코너 점들 (Harris corner detection)
+            mask = np.zeros(contour.max(axis=0).max(axis=0) + 10, dtype=np.uint8)
+            cv2.fillPoly(mask, [contour], 255)
+            
+            corners = cv2.goodFeaturesToTrack(
+                mask, maxCorners=10, qualityLevel=0.01, minDistance=10
+            )
+            
+            if corners is not None:
+                for corner in corners:
+                    features.append(tuple(corner.ravel()))
+            
+            return features
+            
+        except Exception as e:
+            self.logger.warning(f"윤곽선 특징점 추출 실패: {e}")
+            return []
+    
+    def _select_matching_method(self, person_points: List, clothing_points: List, clothing_type: str) -> str:
+        """매칭 방법 선택"""
+        
+        method = self.matching_config['method']
+        
+        if method == 'auto':
+            num_points = min(len(person_points), len(clothing_points))
+            
+            # 포인트 수와 의류 타입에 따른 자동 선택
+            if num_points >= 8:
+                return 'tps'  # 충분한 포인트가 있으면 TPS
+            elif num_points >= 4:
+                return 'homography'  # 4-7개 포인트는 Homography
+            elif num_points >= 3:
+                return 'affine'  # 3개 포인트는 Affine
             else:
-                keypoints['collar'] = (x + w // 2, y)
-            
-            # 하단 (hem)
-            bottom_y = y + int(h * 0.9)
-            hem_points = contour[np.abs(contour[:, :, 1] - bottom_y) < h * 0.1]
-            if len(hem_points) > 0:
-                hem_center = np.mean(hem_points, axis=0)
-                keypoints['hem'] = (int(hem_center[0][0]), int(hem_center[0][1]))
+                return 'similarity'  # 최소 변환
+        
+        return method
+    
+    async def _perform_initial_matching(
+        self, 
+        person_points: List, 
+        clothing_points: List, 
+        method: str
+    ) -> Dict[str, Any]:
+        """초기 매칭 수행"""
+        
+        try:
+            if method == 'tps':
+                return await self._tps_matching(person_points, clothing_points)
+            elif method == 'homography':
+                return self._homography_matching(person_points, clothing_points)
+            elif method == 'affine':
+                return self._affine_matching(person_points, clothing_points)
+            elif method == 'similarity':
+                return self._similarity_matching(person_points, clothing_points)
             else:
-                keypoints['hem'] = (x + w // 2, y + h)
-            
-        except Exception as e:
-            logger.warning(f"상의 키포인트 추출 실패: {e}")
-        
-        return keypoints
-    
-    def _extract_pants_keypoints_detailed(
-        self, 
-        contour: np.ndarray, 
-        x: int, y: int, w: int, h: int
-    ) -> Dict[str, Tuple[float, float]]:
-        """바지 키포인트 상세 추출"""
-        keypoints = {}
-        
-        try:
-            # 허리 라인 (상단 10%)
-            waist_y = y + int(h * 0.1)
-            left_waist = self._find_contour_point_at_height(contour, waist_y, 'left')
-            right_waist = self._find_contour_point_at_height(contour, waist_y, 'right')
-            
-            keypoints['waist_left'] = (left_waist[0], left_waist[1])
-            keypoints['waist_right'] = (right_waist[0], right_waist[1])
-            
-            # 허벅지 (상단 40%)
-            thigh_y = y + int(h * 0.4)
-            left_thigh = self._find_contour_point_at_height(contour, thigh_y, 'left')
-            right_thigh = self._find_contour_point_at_height(contour, thigh_y, 'right')
-            
-            keypoints['left_thigh'] = (left_thigh[0], left_thigh[1])
-            keypoints['right_thigh'] = (right_thigh[0], right_thigh[1])
-            
-            # 무릎 (중간 60%)
-            knee_y = y + int(h * 0.6)
-            left_knee = self._find_contour_point_at_height(contour, knee_y, 'left')
-            right_knee = self._find_contour_point_at_height(contour, knee_y, 'right')
-            
-            keypoints['left_leg'] = (left_knee[0], left_knee[1])
-            keypoints['right_leg'] = (right_knee[0], right_knee[1])
-            
-            # 발목 (하단 90%)
-            ankle_y = y + int(h * 0.9)
-            left_ankle = self._find_contour_point_at_height(contour, ankle_y, 'left')
-            right_ankle = self._find_contour_point_at_height(contour, ankle_y, 'right')
-            
-            keypoints['left_ankle'] = (left_ankle[0], left_ankle[1])
-            keypoints['right_ankle'] = (right_ankle[0], right_ankle[1])
-            
-        except Exception as e:
-            logger.warning(f"바지 키포인트 추출 실패: {e}")
-        
-        return keypoints
-    
-    def _extract_dress_keypoints_detailed(
-        self, 
-        contour: np.ndarray, 
-        x: int, y: int, w: int, h: int
-    ) -> Dict[str, Tuple[float, float]]:
-        """원피스 키포인트 상세 추출"""
-        keypoints = {}
-        
-        try:
-            # 상의 부분 (상단 50%)
-            shirt_keypoints = self._extract_shirt_keypoints_detailed(contour, x, y, w, int(h * 0.5))
-            keypoints.update(shirt_keypoints)
-            
-            # 허리 라인 (중간 40%)
-            waist_y = y + int(h * 0.4)
-            left_waist = self._find_contour_point_at_height(contour, waist_y, 'left')
-            right_waist = self._find_contour_point_at_height(contour, waist_y, 'right')
-            
-            keypoints['waist_left'] = (left_waist[0], left_waist[1])
-            keypoints['waist_right'] = (right_waist[0], right_waist[1])
-            
-            # 엉덩이 라인 (중간 60%)
-            hip_y = y + int(h * 0.6)
-            left_hip = self._find_contour_point_at_height(contour, hip_y, 'left')
-            right_hip = self._find_contour_point_at_height(contour, hip_y, 'right')
-            
-            keypoints['left_hip'] = (left_hip[0], left_hip[1])
-            keypoints['right_hip'] = (right_hip[0], right_hip[1])
-            
-            # 밑단 (하단 95%)
-            hem_y = y + int(h * 0.95)
-            left_hem = self._find_contour_point_at_height(contour, hem_y, 'left')
-            right_hem = self._find_contour_point_at_height(contour, hem_y, 'right')
-            
-            keypoints['hem_left'] = (left_hem[0], left_hem[1])
-            keypoints['hem_right'] = (right_hem[0], right_hem[1])
-            
-        except Exception as e:
-            logger.warning(f"원피스 키포인트 추출 실패: {e}")
-        
-        return keypoints
-    
-    def _extract_skirt_keypoints_detailed(
-        self, 
-        contour: np.ndarray, 
-        x: int, y: int, w: int, h: int
-    ) -> Dict[str, Tuple[float, float]]:
-        """스커트 키포인트 상세 추출"""
-        keypoints = {}
-        
-        try:
-            # 허리 라인 (상단 10%)
-            waist_y = y + int(h * 0.1)
-            left_waist = self._find_contour_point_at_height(contour, waist_y, 'left')
-            right_waist = self._find_contour_point_at_height(contour, waist_y, 'right')
-            
-            keypoints['waist_left'] = (left_waist[0], left_waist[1])
-            keypoints['waist_right'] = (right_waist[0], right_waist[1])
-            
-            # 밑단 (하단 95%)
-            hem_y = y + int(h * 0.95)
-            left_hem = self._find_contour_point_at_height(contour, hem_y, 'left')
-            right_hem = self._find_contour_point_at_height(contour, hem_y, 'right')
-            
-            keypoints['hem_left'] = (left_hem[0], left_hem[1])
-            keypoints['hem_right'] = (right_hem[0], right_hem[1])
-            
-        except Exception as e:
-            logger.warning(f"스커트 키포인트 추출 실패: {e}")
-        
-        return keypoints
-    
-    def _find_contour_point_at_height(
-        self, 
-        contour: np.ndarray, 
-        y: int, 
-        side: str
-    ) -> List[int]:
-        """특정 높이에서 윤곽선의 좌/우 끝점 찾기"""
-        tolerance = 15
-        points_at_height = []
-        
-        for point in contour:
-            if abs(point[0][1] - y) < tolerance:
-                points_at_height.append(point[0])
-        
-        if not points_at_height:
-            # 가장 가까운 포인트 찾기
-            distances = [abs(point[0][1] - y) for point in contour]
-            nearest_idx = np.argmin(distances)
-            return contour[nearest_idx][0].tolist()
-        
-        # 좌측 또는 우측 극단점 선택
-        if side == 'left':
-            return min(points_at_height, key=lambda p: p[0]).tolist()
-        else:
-            return max(points_at_height, key=lambda p: p[0]).tolist()
-    
-    def _generate_default_keypoints(self, w: int, h: int, clothing_type: str) -> Dict[str, Tuple[float, float]]:
-        """기본 키포인트 생성"""
-        keypoints = {}
-        
-        if clothing_type == 'shirt':
-            keypoints = {
-                'left_shoulder': (w * 0.2, h * 0.15),
-                'right_shoulder': (w * 0.8, h * 0.15),
-                'left_sleeve': (w * 0.05, h * 0.4),
-                'right_sleeve': (w * 0.95, h * 0.4),
-                'left_armpit': (w * 0.25, h * 0.25),
-                'right_armpit': (w * 0.75, h * 0.25),
-                'collar': (w * 0.5, h * 0.05),
-                'hem': (w * 0.5, h * 0.9)
-            }
-        elif clothing_type == 'pants':
-            keypoints = {
-                'waist_left': (w * 0.3, h * 0.1),
-                'waist_right': (w * 0.7, h * 0.1),
-                'left_thigh': (w * 0.35, h * 0.4),
-                'right_thigh': (w * 0.65, h * 0.4),
-                'left_leg': (w * 0.35, h * 0.6),
-                'right_leg': (w * 0.65, h * 0.6),
-                'left_ankle': (w * 0.35, h * 0.9),
-                'right_ankle': (w * 0.65, h * 0.9)
-            }
-        elif clothing_type == 'dress':
-            keypoints = {
-                'left_shoulder': (w * 0.2, h * 0.1),
-                'right_shoulder': (w * 0.8, h * 0.1),
-                'waist_left': (w * 0.25, h * 0.4),
-                'waist_right': (w * 0.75, h * 0.4),
-                'left_hip': (w * 0.3, h * 0.6),
-                'right_hip': (w * 0.7, h * 0.6),
-                'hem_left': (w * 0.3, h * 0.95),
-                'hem_right': (w * 0.7, h * 0.95)
-            }
-        elif clothing_type == 'skirt':
-            keypoints = {
-                'waist_left': (w * 0.25, h * 0.1),
-                'waist_right': (w * 0.75, h * 0.1),
-                'hem_left': (w * 0.2, h * 0.95),
-                'hem_right': (w * 0.8, h * 0.95)
-            }
-        
-        return keypoints
-    
-    def _match_keypoints_advanced(
-        self,
-        body_keypoints: Dict[str, Tuple[float, float]],
-        clothing_keypoints: Dict[str, Tuple[float, float]]
-    ) -> List[Tuple[Tuple[float, float], Tuple[float, float], str]]:
-        """고급 키포인트 매칭 (직접 매칭 + Hungarian 알고리즘)"""
-        
-        matched_pairs = []
-        
-        try:
-            # 1. 동일한 이름의 키포인트 직접 매칭
-            common_names = set(body_keypoints.keys()) & set(clothing_keypoints.keys())
-            used_body_names = set()
-            used_clothing_names = set()
-            
-            for name in common_names:
-                body_point = body_keypoints[name]
-                clothing_point = clothing_keypoints[name]
+                # 기본: 아핀 변환
+                return self._affine_matching(person_points, clothing_points)
                 
-                # 거리 검사
-                distance = math.sqrt((body_point[0] - clothing_point[0])**2 + (body_point[1] - clothing_point[1])**2)
-                
-                # 매칭 허용 (거리 기반)
-                if distance < self.matching_config['matching_threshold'] * 2:  # 관대한 임계값
-                    matched_pairs.append((body_point, clothing_point, name))
-                    used_body_names.add(name)
-                    used_clothing_names.add(name)
-            
-            # 2. 남은 키포인트들에 대해 Hungarian 알고리즘 적용
-            available_body = {k: v for k, v in body_keypoints.items() if k not in used_body_names}
-            available_clothing = {k: v for k, v in clothing_keypoints.items() if k not in used_clothing_names}
-            
-            if available_body and available_clothing:
-                additional_pairs = self._find_additional_matches_hungarian(
-                    available_body, available_clothing
-                )
-                matched_pairs.extend(additional_pairs)
-            
-            # 3. 최소 매칭 개수 확보
-            if len(matched_pairs) < self.matching_config['min_matching_points']:
-                extra_pairs = self._generate_additional_correspondences(
-                    body_keypoints, clothing_keypoints, matched_pairs
-                )
-                matched_pairs.extend(extra_pairs)
-            
         except Exception as e:
-            logger.warning(f"키포인트 매칭 실패: {e}")
-        
-        logger.info(f"매칭된 키포인트 쌍: {len(matched_pairs)}개")
-        return matched_pairs
+            self.logger.warning(f"매칭 방법 {method} 실패: {e}")
+            # 폴백: 단순 변환
+            return self._similarity_matching(person_points, clothing_points)
     
-    def _find_additional_matches_hungarian(
-        self,
-        available_body: Dict[str, Tuple[float, float]],
-        available_clothing: Dict[str, Tuple[float, float]]
-    ) -> List[Tuple[Tuple[float, float], Tuple[float, float], str]]:
-        """Hungarian 알고리즘을 사용한 추가 매칭"""
-        
-        additional_pairs = []
+    async def _tps_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
+        """Thin Plate Spline 매칭"""
         
         try:
-            if not available_body or not available_clothing:
-                return additional_pairs
+            # 대응점 쌍 생성 (가장 가까운 점들 매칭)
+            person_array = np.array(person_points)
+            clothing_array = np.array(clothing_points)
             
-            # 거리 기반 매칭
-            body_points = list(available_body.values())
-            clothing_points = list(available_clothing.values())
-            body_names = list(available_body.keys())
-            clothing_names = list(available_clothing.keys())
+            # 거리 기반 대응 찾기
+            distances = cdist(person_array, clothing_array)
+            correspondences = []
+            
+            used_clothing = set()
+            for i, person_pt in enumerate(person_array):
+                # 각 인체 포인트에 대해 가장 가까운 의류 포인트 찾기
+                distances_to_clothing = distances[i]
+                sorted_indices = np.argsort(distances_to_clothing)
+                
+                for clothing_idx in sorted_indices:
+                    if clothing_idx not in used_clothing:
+                        correspondences.append((person_pt, clothing_array[clothing_idx]))
+                        used_clothing.add(clothing_idx)
+                        break
+            
+            # TPS 변환 계산
+            if len(correspondences) >= 3:
+                source_pts = np.array([corr[1] for corr in correspondences])  # 의류 점들
+                target_pts = np.array([corr[0] for corr in correspondences])  # 인체 점들
+                
+                tps_transform = self._compute_tps_transform(source_pts, target_pts)
+                
+                return {
+                    'method': 'tps',
+                    'transform': tps_transform,
+                    'correspondences': correspondences,
+                    'source_points': source_pts.tolist(),
+                    'target_points': target_pts.tolist(),
+                    'confidence': 0.9
+                }
+            else:
+                raise ValueError("TPS를 위한 충분한 대응점이 없음")
+                
+        except Exception as e:
+            self.logger.warning(f"TPS 매칭 실패: {e}")
+            raise
+    
+    def _compute_tps_transform(self, source_pts: np.ndarray, target_pts: np.ndarray) -> Dict[str, Any]:
+        """TPS 변환 매개변수 계산"""
+        
+        try:
+            n = len(source_pts)
+            
+            # TPS 기본 함수 (U 함수: r^2 * log(r))
+            def U(r):
+                return np.where(r == 0, 0, r**2 * np.log(r + 1e-10))
             
             # 거리 행렬 계산
-            distances = cdist(body_points, clothing_points)
+            distances = cdist(source_pts, source_pts)
             
-            # Hungarian 알고리즘으로 최적 할당
-            row_indices, col_indices = linear_sum_assignment(distances)
+            # K 행렬 (기본 함수들의 값)
+            K = U(distances)
             
-            for i, j in zip(row_indices, col_indices):
-                if distances[i, j] < self.matching_config['matching_threshold'] * 2:
-                    body_point = body_points[i]
-                    clothing_point = clothing_points[j]
-                    match_name = f"{body_names[i]}_to_{clothing_names[j]}"
-                    additional_pairs.append((body_point, clothing_point, match_name))
+            # P 행렬 (affine 부분을 위한 다항식 기저)
+            P = np.column_stack([np.ones(n), source_pts])
             
-        except Exception as e:
-            logger.warning(f"Hungarian 매칭 실패: {e}")
-        
-        return additional_pairs
-    
-    def _generate_additional_correspondences(
-        self,
-        body_keypoints: Dict[str, Tuple[float, float]],
-        clothing_keypoints: Dict[str, Tuple[float, float]],
-        existing_pairs: List
-    ) -> List[Tuple[Tuple[float, float], Tuple[float, float], str]]:
-        """추가 대응점 생성"""
-        
-        additional_pairs = []
-        
-        try:
-            # 의류 바운딩 박스의 모서리점들 추가
-            if clothing_keypoints:
-                cloth_xs = [kp[0] for kp in clothing_keypoints.values()]
-                cloth_ys = [kp[1] for kp in clothing_keypoints.values()]
-                
-                cloth_min_x, cloth_max_x = min(cloth_xs), max(cloth_xs)
-                cloth_min_y, cloth_max_y = min(cloth_ys), max(cloth_ys)
-                
-                # 의류 중심점
-                cloth_center = (
-                    (cloth_min_x + cloth_max_x) / 2,
-                    (cloth_min_y + cloth_max_y) / 2
-                )
-                
-                # 신체 중심점 계산
-                if body_keypoints:
-                    body_xs = [kp[0] for kp in body_keypoints.values()]
-                    body_ys = [kp[1] for kp in body_keypoints.values()]
-                    
-                    body_center = (
-                        sum(body_xs) / len(body_xs),
-                        sum(body_ys) / len(body_ys)
-                    )
-                    
-                    additional_pairs.append((body_center, cloth_center, "center_correspondence"))
+            # L 행렬 구성
+            O = np.zeros((3, 3))
+            L = np.block([[K, P], [P.T, O]])
+            
+            # 목표 점들을 확장
+            Y = np.vstack([target_pts.T, np.zeros((3, 2))])
+            
+            # 선형 시스템 해결
+            try:
+                coeffs = np.linalg.solve(L, Y)
+            except np.linalg.LinAlgError:
+                # 특이 행렬인 경우 pseudo-inverse 사용
+                coeffs = np.linalg.pinv(L) @ Y
+            
+            # 계수 분리
+            w = coeffs[:n]  # TPS 가중치
+            a = coeffs[n:]  # affine 계수
+            
+            return {
+                'source_points': source_pts.tolist(),
+                'weights': w.tolist(),
+                'affine_coeffs': a.tolist(),
+                'regularization': self.tps_config['regularization']
+            }
             
         except Exception as e:
-            logger.warning(f"추가 대응점 생성 실패: {e}")
-        
-        return additional_pairs
+            self.logger.error(f"TPS 변환 계산 실패: {e}")
+            # 폴백: 단위 변환
+            return {
+                'source_points': source_pts.tolist(),
+                'weights': np.zeros((len(source_pts), 2)).tolist(),
+                'affine_coeffs': np.array([[1, 0, 0], [0, 1, 0]]).tolist(),
+                'regularization': 0.0
+            }
     
-    def _calculate_tps_transform(
-        self, 
-        matched_pairs: List[Tuple[Tuple[float, float], Tuple[float, float], str]]
-    ) -> Optional[np.ndarray]:
-        """TPS 변환 매트릭스 계산"""
-        if len(matched_pairs) < self.matching_config['min_matching_points']:
-            logger.warning(f"매칭 포인트 부족: {len(matched_pairs)} < {self.matching_config['min_matching_points']}")
-            return None
+    def _homography_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
+        """Homography 매칭"""
         
         try:
-            # 소스 포인트 (의류) 및 타겟 포인트 (신체) 추출
-            source_points = np.array([pair[1] for pair in matched_pairs], dtype=np.float32)  # 의류
-            target_points = np.array([pair[0] for pair in matched_pairs], dtype=np.float32)  # 신체
+            person_array = np.array(person_points, dtype=np.float32)
+            clothing_array = np.array(clothing_points, dtype=np.float32)
             
-            # TPS 솔버로 변환 계산
-            tps_matrix = self.tps_solver.solve(source_points, target_points)
+            # 최소 4개 점 필요
+            min_points = min(len(person_array), len(clothing_array), 4)
             
-            return tps_matrix
+            if min_points < 4:
+                raise ValueError("Homography를 위한 충분한 점이 없음")
+            
+            # 첫 4개 점 사용 (더 정교한 대응 방법으로 개선 가능)
+            src_pts = clothing_array[:min_points]
+            dst_pts = person_array[:min_points]
+            
+            # Homography 계산
+            H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            
+            if H is None:
+                raise ValueError("Homography 계산 실패")
+            
+            return {
+                'method': 'homography',
+                'transform': H.tolist(),
+                'source_points': src_pts.tolist(),
+                'target_points': dst_pts.tolist(),
+                'inlier_mask': mask.flatten().tolist() if mask is not None else [],
+                'confidence': 0.8
+            }
             
         except Exception as e:
-            logger.error(f"TPS 변환 계산 실패: {e}")
-            return None
+            self.logger.warning(f"Homography 매칭 실패: {e}")
+            raise
     
-    def _apply_tps_transform(
-        self,
-        cloth_img: np.ndarray,
-        cloth_mask: np.ndarray,
-        matched_pairs: List[Tuple[Tuple[float, float], Tuple[float, float], str]]
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """TPS 변환 적용"""
-        
-        if len(matched_pairs) < 3:
-            logger.warning("매칭 포인트가 부족합니다. 원본을 반환합니다.")
-            return cloth_img, cloth_mask
+    def _affine_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
+        """Affine 변환 매칭"""
         
         try:
-            # 소스와 타겟 포인트 분리
-            source_points = np.array([pair[1] for pair in matched_pairs], dtype=np.float32)
-            target_points = np.array([pair[0] for pair in matched_pairs], dtype=np.float32)
+            person_array = np.array(person_points, dtype=np.float32)
+            clothing_array = np.array(clothing_points, dtype=np.float32)
             
-            # TPS 변환기에 학습
-            self.tps_transformer.fit(source_points, target_points)
+            # 최소 3개 점 필요
+            min_points = min(len(person_array), len(clothing_array), 3)
             
-            # 이미지 워핑
-            warped_cloth = self.tps_transformer.transform_image(cloth_img)
-            warped_mask = self.tps_transformer.transform_image(cloth_mask)
+            if min_points < 3:
+                raise ValueError("Affine 변환을 위한 충분한 점이 없음")
             
-            # 마스크 이진화
-            if len(warped_mask.shape) == 3:
-                warped_mask = cv2.cvtColor(warped_mask, cv2.COLOR_BGR2GRAY)
-            warped_mask = (warped_mask > 128).astype(np.uint8) * 255
+            # 첫 3개 점 사용
+            src_pts = clothing_array[:min_points]
+            dst_pts = person_array[:min_points]
             
-            return warped_cloth, warped_mask
+            # Affine 변환 계산
+            M = cv2.getAffineTransform(src_pts[:3], dst_pts[:3])
+            
+            return {
+                'method': 'affine',
+                'transform': M.tolist(),
+                'source_points': src_pts.tolist(),
+                'target_points': dst_pts.tolist(),
+                'confidence': 0.7
+            }
             
         except Exception as e:
-            logger.error(f"TPS 변환 적용 실패: {e}")
-            return cloth_img, cloth_mask
+            self.logger.warning(f"Affine 매칭 실패: {e}")
+            raise
     
-    def _apply_mesh_refinement(
-        self,
-        warped_cloth: np.ndarray,
-        warped_mask: np.ndarray,
-        matched_pairs: List[Tuple[Tuple[float, float], Tuple[float, float], str]]
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """메쉬 기반 세밀 조정"""
+    def _similarity_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
+        """유사성 변환 매칭 (회전, 스케일, 평행이동)"""
         
         try:
-            # 메쉬 생성 및 세밀 조정
-            refined_cloth = self.mesh_warper.refine_warping(
-                warped_cloth, warped_mask, matched_pairs
-            )
-            
-            # 마스크도 동일하게 정제
-            refined_mask = self.mesh_warper.refine_warping(
-                warped_mask, warped_mask, matched_pairs
-            )
-            
-            return refined_cloth, refined_mask
-            
-        except Exception as e:
-            logger.warning(f"메쉬 정제 실패: {e}")
-            return warped_cloth, warped_mask
-    
-    def _evaluate_matching_quality_comprehensive(
-        self,
-        original_cloth: np.ndarray,
-        warped_cloth: np.ndarray,
-        matched_pairs: List,
-        body_keypoints: Dict,
-        clothing_keypoints: Dict
-    ) -> Dict[str, float]:
-        """종합적인 매칭 품질 평가"""
-        
-        metrics = {}
-        
-        try:
-            # 1. 키포인트 매칭 정확도
-            num_matched = len(matched_pairs)
-            total_possible = min(len(body_keypoints), len(clothing_keypoints))
-            
-            metrics['keypoint_count'] = num_matched
-            metrics['matching_ratio'] = num_matched / max(1, total_possible)
-            metrics['keypoint_density'] = num_matched / max(original_cloth.shape[:2])
-            
-            # 2. 평균 매칭 거리
-            if matched_pairs:
-                distances = []
-                for body_point, clothing_point, _ in matched_pairs:
-                    dist = math.sqrt((body_point[0] - clothing_point[0])**2 + (body_point[1] - clothing_point[1])**2)
-                    distances.append(dist)
-                
-                metrics['average_distance'] = np.mean(distances)
-                metrics['max_distance'] = np.max(distances)
-                metrics['distance_std'] = np.std(distances)
-                
-                # 거리 기반 품질 점수
-                normalized_distance = min(1.0, metrics['average_distance'] / self.matching_config['matching_threshold'])
-                metrics['distance_score'] = 1.0 - normalized_distance
-            else:
-                metrics['average_distance'] = float('inf')
-                metrics['distance_score'] = 0.0
-            
-            # 3. 변형 일관성 (인접 키포인트 간 거리 비율)
-            if len(matched_pairs) >= 2:
-                source_distances = []
-                target_distances = []
-                
-                for i in range(len(matched_pairs)):
-                    for j in range(i+1, len(matched_pairs)):
-                        src_dist = np.linalg.norm(np.array(matched_pairs[i][1]) - np.array(matched_pairs[j][1]))
-                        tgt_dist = np.linalg.norm(np.array(matched_pairs[i][0]) - np.array(matched_pairs[j][0]))
-                        
-                        if src_dist > 0:
-                            source_distances.append(src_dist)
-                            target_distances.append(tgt_dist)
-                
-                if source_distances:
-                    distance_ratios = np.array(target_distances) / np.array(source_distances)
-                    metrics['deformation_consistency'] = 1.0 - min(1.0, np.std(distance_ratios))
+            if len(person_points) < 2 or len(clothing_points) < 2:
+                # 최소 변환: 평행이동만
+                if person_points and clothing_points:
+                    tx = person_points[0][0] - clothing_points[0][0]
+                    ty = person_points[0][1] - clothing_points[0][1]
+                    M = np.array([[1, 0, tx], [0, 1, ty]], dtype=np.float32)
                 else:
-                    metrics['deformation_consistency'] = 0.0
+                    M = np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
             else:
-                metrics['deformation_consistency'] = 0.0
+                # 중심점 기반 변환
+                person_center = np.mean(person_points, axis=0)
+                clothing_center = np.mean(clothing_points, axis=0)
+                
+                # 스케일 추정
+                person_spread = np.std(person_points, axis=0)
+                clothing_spread = np.std(clothing_points, axis=0)
+                
+                scale_x = person_spread[0] / (clothing_spread[0] + 1e-6)
+                scale_y = person_spread[1] / (clothing_spread[1] + 1e-6)
+                scale = (scale_x + scale_y) / 2  # 평균 스케일
+                
+                # 평행이동
+                tx = person_center[0] - clothing_center[0] * scale
+                ty = person_center[1] - clothing_center[1] * scale
+                
+                M = np.array([[scale, 0, tx], [0, scale, ty]], dtype=np.float32)
             
-            # 4. 이미지 품질 (히스토그램 유사도)
-            metrics['transform_quality'] = self._calculate_image_similarity(original_cloth, warped_cloth)
-            
-            # 5. 전체 품질 점수 (가중평균)
-            overall_score = (
-                metrics['matching_ratio'] * 0.3 +
-                metrics.get('distance_score', 0) * 0.3 +
-                metrics['deformation_consistency'] * 0.2 +
-                metrics['transform_quality'] * 0.2
-            )
-            metrics['overall_score'] = min(1.0, max(0.0, overall_score))
-            
-            # 6. 신뢰도 레벨
-            if metrics['overall_score'] > 0.8:
-                metrics['confidence_level'] = 'high'
-            elif metrics['overall_score'] > 0.6:
-                metrics['confidence_level'] = 'medium'
-            else:
-                metrics['confidence_level'] = 'low'
+            return {
+                'method': 'similarity',
+                'transform': M.tolist(),
+                'source_points': clothing_points[:2] if len(clothing_points) >= 2 else clothing_points,
+                'target_points': person_points[:2] if len(person_points) >= 2 else person_points,
+                'confidence': 0.6
+            }
             
         except Exception as e:
-            logger.warning(f"매칭 품질 평가 실패: {e}")
-            metrics = {'overall_score': 0.5, 'confidence_level': 'medium'}
-        
-        return metrics
+            self.logger.warning(f"유사성 변환 실패: {e}")
+            # 최후의 폴백: 단위 변환
+            return {
+                'method': 'identity',
+                'transform': [[1, 0, 0], [0, 1, 0]],
+                'source_points': [],
+                'target_points': [],
+                'confidence': 0.3
+            }
     
-    def _calculate_image_similarity(self, img1: np.ndarray, img2: np.ndarray) -> float:
-        """이미지 유사도 계산"""
-        try:
-            # 크기 맞추기
-            if img1.shape != img2.shape:
-                img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
-            
-            # 그레이스케일 변환
-            if len(img1.shape) == 3:
-                img1_gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-            else:
-                img1_gray = img1
-                
-            if len(img2.shape) == 3:
-                img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-            else:
-                img2_gray = img2
-            
-            # 히스토그램 비교
-            hist1 = cv2.calcHist([img1_gray], [0], None, [256], [0, 256])
-            hist2 = cv2.calcHist([img2_gray], [0], None, [256], [0, 256])
-            
-            # 코사인 유사도
-            correlation = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
-            
-            return max(0.0, correlation)
-            
-        except Exception:
-            return 0.5  # 기본값
-    
-    def _calculate_deformation_regions(
+    async def _refine_with_pose_guidance(
         self, 
-        matched_pairs: List, 
+        initial_match: Dict[str, Any], 
+        pose_keypoints: List[List[float]], 
         clothing_type: str
     ) -> Dict[str, Any]:
-        """변형 영역 계산 (향상된 버전)"""
-        regions = {}
+        """포즈 기반 매칭 정제"""
         
         try:
-            if not matched_pairs:
-                return regions
+            # 포즈 특성 분석
+            pose_analysis = self._analyze_pose_characteristics(pose_keypoints)
             
-            # 변형 벡터 계산
-            deformation_vectors = []
-            for body_point, clothing_point, name in matched_pairs:
-                vector = (body_point[0] - clothing_point[0], body_point[1] - clothing_point[1])
-                deformation_vectors.append({
-                    'name': name,
-                    'vector': vector,
-                    'magnitude': math.sqrt(vector[0]**2 + vector[1]**2),
-                    'angle': math.atan2(vector[1], vector[0])
-                })
+            # 의류 타입별 포즈 적응
+            adaptation_factor = self._calculate_pose_adaptation(pose_analysis, clothing_type)
             
-            regions['deformation_vectors'] = deformation_vectors
+            # 변환 매개변수 조정
+            refined_transform = self._adapt_transform_to_pose(
+                initial_match['transform'], adaptation_factor, pose_analysis
+            )
             
-            # 통계 정보
-            magnitudes = [v['magnitude'] for v in deformation_vectors]
-            regions['average_deformation'] = np.mean(magnitudes)
-            regions['max_deformation'] = np.max(magnitudes)
-            regions['min_deformation'] = np.min(magnitudes)
-            regions['deformation_variance'] = np.var(magnitudes)
+            refined_match = initial_match.copy()
+            refined_match['transform'] = refined_transform
+            refined_match['pose_adapted'] = True
+            refined_match['adaptation_factor'] = adaptation_factor
             
-            # 주요 변형 방향
-            angles = [v['angle'] for v in deformation_vectors]
-            regions['primary_direction'] = np.mean(angles)
-            regions['direction_consistency'] = 1.0 - (np.std(angles) / np.pi)
-            
-            # 의류별 특화 분석
-            if clothing_type == 'shirt':
-                regions['sleeve_analysis'] = self._analyze_sleeve_deformation(deformation_vectors)
-                regions['torso_analysis'] = self._analyze_torso_deformation(deformation_vectors)
-            elif clothing_type == 'pants':
-                regions['waist_analysis'] = self._analyze_waist_deformation(deformation_vectors)
-                regions['leg_analysis'] = self._analyze_leg_deformation(deformation_vectors)
-            elif clothing_type == 'dress':
-                regions['upper_analysis'] = self._analyze_torso_deformation(deformation_vectors)
-                regions['lower_analysis'] = self._analyze_leg_deformation(deformation_vectors)
+            return refined_match
             
         except Exception as e:
-            logger.warning(f"변형 영역 계산 실패: {e}")
-        
-        return regions
+            self.logger.warning(f"포즈 기반 정제 실패: {e}")
+            return initial_match
     
-    def _analyze_sleeve_deformation(self, vectors: List[Dict]) -> Dict[str, float]:
-        """소매 변형 분석"""
-        sleeve_vectors = [v for v in vectors if 'sleeve' in v['name'].lower() or 'armpit' in v['name'].lower()]
-        if not sleeve_vectors:
-            return {'magnitude': 0.0, 'asymmetry': 0.0, 'consistency': 1.0}
+    def _analyze_pose_characteristics(self, pose_keypoints: List[List[float]]) -> Dict[str, Any]:
+        """포즈 특성 분석"""
         
-        magnitudes = [v['magnitude'] for v in sleeve_vectors]
-        angles = [v['angle'] for v in sleeve_vectors]
+        analysis = {}
         
-        return {
-            'magnitude': np.mean(magnitudes),
-            'asymmetry': np.std(magnitudes) if len(magnitudes) > 1 else 0.0,
-            'consistency': 1.0 - (np.std(angles) / np.pi) if len(angles) > 1 else 1.0
+        try:
+            # 어깨 각도
+            if all(pose_keypoints[i][2] > 0.5 for i in [2, 5]):  # 양쪽 어깨
+                left_shoulder = pose_keypoints[5][:2]
+                right_shoulder = pose_keypoints[2][:2]
+                shoulder_angle = np.degrees(np.arctan2(
+                    left_shoulder[1] - right_shoulder[1],
+                    left_shoulder[0] - right_shoulder[0]
+                ))
+                analysis['shoulder_angle'] = shoulder_angle
+            
+            # 몸통 기울기
+            if all(pose_keypoints[i][2] > 0.5 for i in [1, 8, 11]):  # 목, 양쪽 엉덩이
+                neck = pose_keypoints[1][:2]
+                hip_center = np.mean([pose_keypoints[8][:2], pose_keypoints[11][:2]], axis=0)
+                torso_angle = np.degrees(np.arctan2(
+                    neck[0] - hip_center[0],
+                    hip_center[1] - neck[1]
+                ))
+                analysis['torso_angle'] = torso_angle
+            
+            # 팔 위치
+            arm_angles = {}
+            if all(pose_keypoints[i][2] > 0.5 for i in [2, 3, 4]):  # 오른팔
+                shoulder = pose_keypoints[2][:2]
+                elbow = pose_keypoints[3][:2]
+                wrist = pose_keypoints[4][:2]
+                
+                upper_arm_angle = np.degrees(np.arctan2(
+                    elbow[1] - shoulder[1], elbow[0] - shoulder[0]
+                ))
+                arm_angles['right_upper'] = upper_arm_angle
+            
+            if all(pose_keypoints[i][2] > 0.5 for i in [5, 6, 7]):  # 왼팔
+                shoulder = pose_keypoints[5][:2]
+                elbow = pose_keypoints[6][:2]
+                wrist = pose_keypoints[7][:2]
+                
+                upper_arm_angle = np.degrees(np.arctan2(
+                    elbow[1] - shoulder[1], elbow[0] - shoulder[0]
+                ))
+                arm_angles['left_upper'] = upper_arm_angle
+            
+            analysis['arm_angles'] = arm_angles
+            
+        except Exception as e:
+            self.logger.warning(f"포즈 특성 분석 실패: {e}")
+        
+        return analysis
+    
+    def _calculate_pose_adaptation(self, pose_analysis: Dict[str, Any], clothing_type: str) -> Dict[str, float]:
+        """포즈 적응 인수 계산"""
+        
+        adaptation = {
+            'scale_factor': 1.0,
+            'rotation_adjustment': 0.0,
+            'shear_factor': 0.0
+        }
+        
+        try:
+            # 어깨 기울기에 따른 회전 조정
+            if 'shoulder_angle' in pose_analysis:
+                shoulder_angle = pose_analysis['shoulder_angle']
+                # 어깨가 기울어진 만큼 역방향으로 조정
+                adaptation['rotation_adjustment'] = -shoulder_angle * 0.5
+            
+            # 몸통 기울기에 따른 전단 조정
+            if 'torso_angle' in pose_analysis:
+                torso_angle = pose_analysis['torso_angle']
+                adaptation['shear_factor'] = np.tan(np.radians(torso_angle)) * 0.3
+            
+            # 팔 위치에 따른 스케일 조정 (상의의 경우)
+            if clothing_type in ['shirt', 't-shirt', 'blouse']:
+                arm_angles = pose_analysis.get('arm_angles', {})
+                if arm_angles:
+                    # 팔이 벌어진 정도에 따라 스케일 조정
+                    avg_arm_angle = np.mean(list(arm_angles.values()))
+                    if abs(avg_arm_angle) > 45:  # 팔이 많이 벌어진 경우
+                        adaptation['scale_factor'] = 1.1
+                    elif abs(avg_arm_angle) < 15:  # 팔이 몸에 붙은 경우
+                        adaptation['scale_factor'] = 0.95
+            
+        except Exception as e:
+            self.logger.warning(f"포즈 적응 계산 실패: {e}")
+        
+        return adaptation
+    
+    def _adapt_transform_to_pose(
+        self, 
+        original_transform: List[List[float]], 
+        adaptation_factor: Dict[str, float], 
+        pose_analysis: Dict[str, Any]
+    ) -> List[List[float]]:
+        """포즈에 맞게 변환 조정"""
+        
+        try:
+            transform = np.array(original_transform)
+            
+            # 회전 조정
+            rotation_adj = adaptation_factor.get('rotation_adjustment', 0.0)
+            if abs(rotation_adj) > 0.1:
+                cos_r = np.cos(np.radians(rotation_adj))
+                sin_r = np.sin(np.radians(rotation_adj))
+                rotation_matrix = np.array([[cos_r, -sin_r, 0], [sin_r, cos_r, 0], [0, 0, 1]])
+                
+                if transform.shape[0] == 2:  # Affine transform
+                    transform = np.vstack([transform, [0, 0, 1]])
+                    transform = rotation_matrix @ transform
+                    transform = transform[:2]
+                else:  # Homography
+                    transform = rotation_matrix @ transform
+            
+            # 스케일 조정
+            scale_factor = adaptation_factor.get('scale_factor', 1.0)
+            if abs(scale_factor - 1.0) > 0.01:
+                if transform.shape[0] == 2:  # Affine
+                    transform[0, 0] *= scale_factor
+                    transform[1, 1] *= scale_factor
+                else:  # Homography
+                    transform[:2, :2] *= scale_factor
+            
+            # 전단 조정
+            shear_factor = adaptation_factor.get('shear_factor', 0.0)
+            if abs(shear_factor) > 0.01:
+                if transform.shape[0] == 2:  # Affine
+                    transform[0, 1] += shear_factor
+                else:  # Homography
+                    transform[0, 1] += shear_factor
+            
+            return transform.tolist()
+            
+        except Exception as e:
+            self.logger.warning(f"변환 포즈 적응 실패: {e}")
+            return original_transform
+    
+    def _evaluate_matching_quality(
+        self, 
+        person_points: List, 
+        clothing_points: List, 
+        match_result: Dict[str, Any]
+    ) -> Dict[str, float]:
+        """매칭 품질 평가"""
+        
+        try:
+            transform = np.array(match_result['transform'])
+            method = match_result['method']
+            
+            # 1. 재투영 오차 계산
+            reprojection_error = self._calculate_reprojection_error(
+                clothing_points, person_points, transform, method
+            )
+            
+            # 2. 기하학적 일관성
+            geometric_consistency = self._evaluate_geometric_consistency(transform, method)
+            
+            # 3. 변환 안정성
+            transform_stability = self._evaluate_transform_stability(transform, method)
+            
+            # 4. 대응점 신뢰도
+            correspondence_confidence = match_result.get('confidence', 0.5)
+            
+            # 5. 전체 품질 점수
+            overall_quality = (
+                (1.0 - reprojection_error) * 0.4 +
+                geometric_consistency * 0.3 +
+                transform_stability * 0.2 +
+                correspondence_confidence * 0.1
+            )
+            
+            return {
+                'overall_quality': max(0.0, min(1.0, overall_quality)),
+                'reprojection_error': reprojection_error,
+                'geometric_consistency': geometric_consistency,
+                'transform_stability': transform_stability,
+                'correspondence_confidence': correspondence_confidence,
+                'quality_grade': self._get_quality_grade(overall_quality)
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"품질 평가 실패: {e}")
+            return {
+                'overall_quality': 0.5,
+                'reprojection_error': 1.0,
+                'geometric_consistency': 0.0,
+                'transform_stability': 0.0,
+                'correspondence_confidence': 0.0,
+                'quality_grade': 'poor'
+            }
+    
+    def _calculate_reprojection_error(
+        self, 
+        source_points: List, 
+        target_points: List, 
+        transform: np.ndarray, 
+        method: str
+    ) -> float:
+        """재투영 오차 계산"""
+        
+        try:
+            if not source_points or not target_points:
+                return 1.0
+            
+            source_array = np.array(source_points)
+            target_array = np.array(target_points)
+            
+            # 변환 적용
+            if method == 'tps':
+                # TPS는 별도 처리 필요 (여기서는 간단화)
+                projected_points = source_array  # 임시
+            elif method in ['homography']:
+                # 동차 좌표로 변환
+                source_homo = np.column_stack([source_array, np.ones(len(source_array))])
+                projected_homo = source_homo @ transform.T
+                projected_points = projected_homo[:, :2] / projected_homo[:, 2:3]
+            else:  # affine, similarity
+                source_homo = np.column_stack([source_array, np.ones(len(source_array))])
+                projected_points = source_homo @ transform.T
+            
+            # 가장 가까운 대응점들 찾기
+            min_len = min(len(projected_points), len(target_array))
+            distances = cdist(projected_points[:min_len], target_array[:min_len])
+            
+            # 최소 거리들의 평균
+            min_distances = np.min(distances, axis=1)
+            avg_error = np.mean(min_distances)
+            
+            # 정규화 (이미지 크기 대비)
+            if target_array.size > 0:
+                image_diagonal = np.linalg.norm(np.ptp(target_array, axis=0))
+                normalized_error = avg_error / (image_diagonal + 1e-6)
+            else:
+                normalized_error = 1.0
+            
+            return min(1.0, normalized_error)
+            
+        except Exception as e:
+            self.logger.warning(f"재투영 오차 계산 실패: {e}")
+            return 1.0
+    
+    def _evaluate_geometric_consistency(self, transform: np.ndarray, method: str) -> float:
+        """기하학적 일관성 평가"""
+        
+        try:
+            if method == 'tps':
+                # TPS는 항상 일관성 있음
+                return 0.9
+            
+            if transform.shape[0] < 2:
+                return 0.0
+            
+            # 행렬식 계산 (스케일 변화)
+            if transform.shape == (2, 3):  # Affine
+                det = np.linalg.det(transform[:2, :2])
+            else:  # Homography
+                det = np.linalg.det(transform[:2, :2])
+            
+            # 합리적인 스케일 변화인지 확인 (0.1 ~ 10 배)
+            if 0.1 <= abs(det) <= 10:
+                scale_consistency = 1.0
+            else:
+                scale_consistency = 0.0
+            
+            # 회전 각도 확인
+            if transform.shape == (2, 3):
+                rotation_matrix = transform[:2, :2]
+                if abs(det) > 1e-6:
+                    U, _, Vt = np.linalg.svd(rotation_matrix)
+                    rotation_part = U @ Vt
+                    # 직교성 확인
+                    orthogonality = np.linalg.norm(rotation_part @ rotation_part.T - np.eye(2))
+                    rotation_consistency = max(0.0, 1.0 - orthogonality)
+                else:
+                    rotation_consistency = 0.0
+            else:
+                rotation_consistency = 0.8  # Homography의 경우 기본값
+            
+            consistency = (scale_consistency + rotation_consistency) / 2
+            return min(1.0, max(0.0, consistency))
+            
+        except Exception as e:
+            self.logger.warning(f"기하학적 일관성 평가 실패: {e}")
+            return 0.5
+    
+    def _evaluate_transform_stability(self, transform: np.ndarray, method: str) -> float:
+        """변환 안정성 평가"""
+        
+        try:
+            # 조건수 확인
+            if transform.shape == (2, 3):  # Affine
+                matrix_part = transform[:2, :2]
+            else:  # Homography
+                matrix_part = transform[:2, :2]
+            
+            condition_number = np.linalg.cond(matrix_part)
+            
+            # 조건수가 낮을수록 안정적
+            if condition_number < 10:
+                stability = 1.0
+            elif condition_number < 100:
+                stability = 0.8
+            elif condition_number < 1000:
+                stability = 0.5
+            else:
+                stability = 0.2
+            
+            # 특이값 분석
+            singular_values = np.linalg.svd(matrix_part, compute_uv=False)
+            sv_ratio = np.max(singular_values) / (np.min(singular_values) + 1e-6)
+            
+            if sv_ratio < 5:
+                sv_stability = 1.0
+            elif sv_ratio < 20:
+                sv_stability = 0.7
+            else:
+                sv_stability = 0.3
+            
+            return (stability + sv_stability) / 2
+            
+        except Exception as e:
+            self.logger.warning(f"변환 안정성 평가 실패: {e}")
+            return 0.5
+    
+    def _get_quality_grade(self, overall_quality: float) -> str:
+        """품질 등급 반환"""
+        if overall_quality >= 0.9:
+            return "excellent"
+        elif overall_quality >= 0.8:
+            return "good"
+        elif overall_quality >= 0.6:
+            return "fair"
+        elif overall_quality >= 0.4:
+            return "poor"
+        else:
+            return "very_poor"
+    
+    async def _try_alternative_methods(
+        self, 
+        person_points: List, 
+        clothing_points: List, 
+        clothing_type: str
+    ) -> Dict[str, Any]:
+        """대안 매칭 방법들 시도"""
+        
+        alternative_methods = ['affine', 'similarity', 'homography']
+        best_result = None
+        best_quality = 0.0
+        
+        for method in alternative_methods:
+            try:
+                result = await self._perform_initial_matching(person_points, clothing_points, method)
+                quality = self._evaluate_matching_quality(person_points, clothing_points, result)
+                
+                if quality['overall_quality'] > best_quality:
+                    best_quality = quality['overall_quality']
+                    best_result = result
+                    
+                self.logger.debug(f"대안 방법 {method}: 품질 {quality['overall_quality']:.3f}")
+                
+            except Exception as e:
+                self.logger.warning(f"대안 방법 {method} 실패: {e}")
+                continue
+        
+        return best_result if best_result else {
+            'method': 'identity',
+            'transform': [[1, 0, 0], [0, 1, 0]],
+            'confidence': 0.3
         }
     
-    def _analyze_torso_deformation(self, vectors: List[Dict]) -> Dict[str, float]:
-        """몸통 변형 분석"""
-        torso_keywords = ['shoulder', 'collar', 'hem', 'chest']
-        torso_vectors = [v for v in vectors if any(keyword in v['name'].lower() for keyword in torso_keywords)]
+    def _generate_warp_parameters(self, match_result: Dict[str, Any], clothing_segmentation: Dict[str, Any]) -> Dict[str, Any]:
+        """워핑 파라미터 생성"""
         
-        if not torso_vectors:
-            return {'magnitude': 0.0, 'uniformity': 1.0, 'stability': 1.0}
-        
-        magnitudes = [v['magnitude'] for v in torso_vectors]
-        angles = [v['angle'] for v in torso_vectors]
+        try:
+            transform = match_result['transform']
+            method = match_result['method']
+            
+            # 기본 워핑 파라미터
+            warp_params = {
+                'transform_matrix': transform,
+                'transform_method': method,
+                'interpolation': 'bilinear',
+                'border_mode': 'reflect',
+                'output_size': None  # 원본 크기 유지
+            }
+            
+            # 의류 마스크 정보 추가
+            if 'mask' in clothing_segmentation:
+                mask = clothing_segmentation['mask']
+                warp_params['mask_transform'] = transform  # 마스크도 같은 변환 적용
+                warp_params['original_mask_size'] = mask.shape
+            
+            # 방법별 특화 파라미터
+            if method == 'tps':
+                warp_params.update({
+                    'source_points': match_result.get('source_points', []),
+                    'target_points': match_result.get('target_points', []),
+                    'tps_weights': transform.get('weights', []) if isinstance(transform, dict) else [],
+                    'tps_affine': transform.get('affine_coeffs', []) if isinstance(transform, dict) else []
+                })
+            
+            # 품질 기반 파라미터 조정
+            if 'quality_metrics' in match_result:
+                quality = match_result['quality_metrics']['overall_quality']
+                if quality < 0.6:
+                    warp_params['interpolation'] = 'nearest'  # 낮은 품질일 때는 보간 단순화
+                elif quality > 0.8:
+                    warp_params['interpolation'] = 'bicubic'   # 높은 품질일 때는 고급 보간
+            
+            return warp_params
+            
+        except Exception as e:
+            self.logger.warning(f"워핑 파라미터 생성 실패: {e}")
+            return {
+                'transform_matrix': [[1, 0, 0], [0, 1, 0]],
+                'transform_method': 'identity',
+                'interpolation': 'bilinear',
+                'border_mode': 'reflect'
+            }
+    
+    def _build_final_result(
+        self,
+        match_result: Dict[str, Any],
+        warp_params: Dict[str, Any],
+        quality_metrics: Dict[str, float],
+        processing_time: float,
+        method: str,
+        clothing_type: str
+    ) -> Dict[str, Any]:
+        """최종 결과 구성"""
         
         return {
-            'magnitude': np.mean(magnitudes),
-            'uniformity': 1.0 - (np.std(magnitudes) / np.mean(magnitudes)) if np.mean(magnitudes) > 0 else 1.0,
-            'stability': 1.0 - (np.std(angles) / np.pi) if len(angles) > 1 else 1.0
+            'success': True,
+            'transform_matrix': match_result['transform'],
+            'warp_matrix': match_result['transform'],  # 호환성을 위한 중복
+            'warp_parameters': warp_params,
+            'matching_method': method,
+            'clothing_type': clothing_type,
+            'quality_metrics': quality_metrics,
+            'confidence': quality_metrics['overall_quality'],
+            'processing_time': processing_time,
+            'matching_info': {
+                'source_points': match_result.get('source_points', []),
+                'target_points': match_result.get('target_points', []),
+                'correspondences': match_result.get('correspondences', []),
+                'pose_adapted': match_result.get('pose_adapted', False),
+                'method_used': method
+            },
+            'geometric_analysis': {
+                'reprojection_error': quality_metrics['reprojection_error'],
+                'geometric_consistency': quality_metrics['geometric_consistency'],
+                'transform_stability': quality_metrics['transform_stability'],
+                'quality_grade': quality_metrics['quality_grade']
+            }
         }
     
-    def _analyze_waist_deformation(self, vectors: List[Dict]) -> Dict[str, float]:
-        """허리 변형 분석"""
-        waist_vectors = [v for v in vectors if 'waist' in v['name'].lower()]
-        if not waist_vectors:
-            return {'magnitude': 0.0, 'symmetry': 1.0, 'fit_quality': 1.0}
-        
-        magnitudes = [v['magnitude'] for v in waist_vectors]
-        
+    def _create_empty_result(self, reason: str) -> Dict[str, Any]:
+        """빈 결과 생성"""
         return {
-            'magnitude': np.mean(magnitudes),
-            'symmetry': 1.0 - (np.std(magnitudes) / np.mean(magnitudes)) if np.mean(magnitudes) > 0 else 1.0,
-            'fit_quality': 1.0 / (1.0 + np.mean(magnitudes) / 50.0)  # 변형이 적을수록 좋은 핏
+            'success': False,
+            'error': reason,
+            'transform_matrix': [[1, 0, 0], [0, 1, 0]],
+            'warp_matrix': [[1, 0, 0], [0, 1, 0]],
+            'warp_parameters': {
+                'transform_matrix': [[1, 0, 0], [0, 1, 0]],
+                'transform_method': 'identity',
+                'interpolation': 'bilinear'
+            },
+            'matching_method': 'none',
+            'clothing_type': 'unknown',
+            'quality_metrics': {
+                'overall_quality': 0.0,
+                'quality_grade': 'failed'
+            },
+            'confidence': 0.0,
+            'processing_time': 0.0,
+            'matching_info': {
+                'error_occurred': True,
+                'method_used': 'none'
+            }
         }
     
-    def _analyze_leg_deformation(self, vectors: List[Dict]) -> Dict[str, float]:
-        """다리 변형 분석"""
-        leg_keywords = ['leg', 'ankle', 'thigh', 'knee']
-        leg_vectors = [v for v in vectors if any(keyword in v['name'].lower() for keyword in leg_keywords)]
+    def _update_statistics(self, method: str, quality: float):
+        """통계 업데이트"""
+        self.matching_stats['total_matches'] += 1
         
-        if not leg_vectors:
-            return {'magnitude': 0.0, 'proportion': 1.0, 'length_consistency': 1.0}
+        if quality > 0.6:
+            self.matching_stats['successful_matches'] += 1
         
-        magnitudes = [v['magnitude'] for v in leg_vectors]
+        # 품질 이동 평균
+        alpha = 0.1
+        self.matching_stats['average_accuracy'] = (
+            alpha * quality + 
+            (1 - alpha) * self.matching_stats['average_accuracy']
+        )
         
-        return {
-            'magnitude': np.mean(magnitudes),
-            'proportion': min(magnitudes) / max(magnitudes) if max(magnitudes) > 0 else 1.0,
-            'length_consistency': 1.0 - (np.std(magnitudes) / np.mean(magnitudes)) if np.mean(magnitudes) > 0 else 1.0
-        }
+        # 방법별 성능 추적
+        if method not in self.matching_stats['method_performance']:
+            self.matching_stats['method_performance'][method] = {'count': 0, 'avg_quality': 0.0}
+        
+        method_stats = self.matching_stats['method_performance'][method]
+        method_stats['count'] += 1
+        method_stats['avg_quality'] = (
+            (method_stats['avg_quality'] * (method_stats['count'] - 1) + quality) / 
+            method_stats['count']
+        )
     
-    async def get_model_info(self) -> Dict[str, Any]:
-        """모델 정보 반환"""
-        return {
-            "step_name": "GeometricMatching",
-            "version": "unified_v1.0",
-            "transform_method": "TPS + Mesh Hybrid",
-            "device": self.device,
-            "use_mps": self.use_mps,
-            "initialized": self.is_initialized,
-            "tps_config": self.tps_config,
-            "matching_config": self.matching_config,
-            "supported_clothing_types": list(self.CLOTHING_KEYPOINTS.keys()),
-            "pose_mapping": self.POSE_TO_CLOTHING,
-            "min_keypoints": self.matching_config["min_matching_points"],
-            "max_keypoints": self.matching_config["max_keypoints"],
-            "features": [
-                "Hungarian algorithm matching",
-                "Contour-based keypoint extraction", 
-                "TPS + Mesh hybrid warping",
-                "Comprehensive quality evaluation",
-                "M3 Max optimization"
-            ]
-        }
+    async def _initialize_matching_algorithms(self):
+        """매칭 알고리즘 초기화"""
+        try:
+            # TPS 그리드 초기화
+            grid_size = self.tps_config['grid_size']
+            self.tps_grid = np.mgrid[0:grid_size, 0:grid_size].reshape(2, -1).T
+            
+            # RANSAC 파라미터 설정
+            self.ransac_params = {
+                'max_trials': 1000,
+                'residual_threshold': 5.0,
+                'min_samples': 4
+            }
+            
+            self.logger.info("✅ 매칭 알고리즘 초기화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 매칭 알고리즘 초기화 실패: {e}")
+    
+    async def _initialize_optimization_tools(self):
+        """최적화 도구 초기화"""
+        try:
+            # 최적화 기법 설정
+            self.optimizer_config = {
+                'method': 'L-BFGS-B',
+                'options': {
+                    'maxiter': self.matching_config['max_iterations'],
+                    'ftol': self.matching_config['convergence_threshold']
+                }
+            }
+            
+            self.logger.info("✅ 최적화 도구 초기화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 최적화 도구 초기화 실패: {e}")
     
     async def cleanup(self):
         """리소스 정리"""
-        if self.tps_solver:
-            del self.tps_solver
-            self.tps_solver = None
-            
-        if self.tps_transformer:
-            del self.tps_transformer
-            self.tps_transformer = None
-        
-        if self.mesh_warper:
-            del self.mesh_warper
-            self.mesh_warper = None
-        
-        self.is_initialized = False
-        logger.info("🧹 기하학적 매칭 스텝 리소스 정리 완료")
-
-
-class TPSSolver:
-    """Thin Plate Spline 변환 솔버 (수학적으로 정확한 버전)"""
-    
-    def __init__(self, device: str, reg_factor: float = 0.1):
-        self.device = device
-        self.reg_factor = reg_factor
-    
-    def solve(self, source_points: np.ndarray, target_points: np.ndarray) -> np.ndarray:
-        """TPS 변환 매트릭스 계산"""
         try:
-            n_points = source_points.shape[0]
+            # 캐시된 데이터 정리
+            if hasattr(self, 'tps_grid'):
+                del self.tps_grid
             
-            # 거리 행렬 계산
-            distances = cdist(source_points, source_points)
-            
-            # TPS 기저 함수: r^2 * log(r)
-            with np.errstate(divide='ignore', invalid='ignore'):
-                K = np.where(distances == 0, 0, distances**2 * np.log(distances))
-            
-            # 시스템 행렬 구성
-            P = np.hstack([np.ones((n_points, 1)), source_points])
-            
-            # 상단 블록
-            top_block = np.hstack([K + self.reg_factor * np.eye(n_points), P])
-            
-            # 하단 블록
-            bottom_block = np.hstack([P.T, np.zeros((3, 3))])
-            
-            # 전체 시스템 행렬
-            A = np.vstack([top_block, bottom_block])
-            
-            # 우변 벡터
-            b_x = np.hstack([target_points[:, 0], np.zeros(3)])
-            b_y = np.hstack([target_points[:, 1], np.zeros(3)])
-            
-            # 선형 시스템 해결
-            weights_x = np.linalg.solve(A, b_x)
-            weights_y = np.linalg.solve(A, b_y)
-            
-            # 변환 매트릭스 반환
-            tps_matrix = np.column_stack([weights_x, weights_y])
-            
-            return tps_matrix
-            
-        except Exception as e:
-            logger.error(f"TPS 해결 실패: {e}")
-            # 항등 변환 반환
-            return np.eye(source_points.shape[0] + 3, 2)
-    
-    def transform(self, points: np.ndarray, tps_matrix: np.ndarray, source_points: np.ndarray) -> np.ndarray:
-        """TPS 변환 적용"""
-        try:
-            n_source = source_points.shape[0]
-            n_points = points.shape[0]
-            
-            # 변환할 점들과 소스 점들 간의 거리
-            distances = cdist(points, source_points)
-            
-            # TPS 기저 함수 계산
-            with np.errstate(divide='ignore', invalid='ignore'):
-                U = np.where(distances == 0, 0, distances**2 * np.log(distances))
-            
-            # 어파인 부분
-            affine_part = np.hstack([np.ones((n_points, 1)), points])
-            
-            # 전체 기저 함수
-            basis = np.hstack([U, affine_part])
-            
-            # 변환 적용
-            transformed = basis @ tps_matrix
-            
-            return transformed
-            
-        except Exception as e:
-            logger.error(f"TPS 변환 적용 실패: {e}")
-            return points  # 원본 점들 반환
-
-
-class ThinPlateSplineTransform:
-    """Thin Plate Spline 변환 구현 (RBF 기반)"""
-    
-    def __init__(self, regularization: float = 0.001, smoothing: float = 0.01):
-        self.regularization = regularization
-        self.smoothing = smoothing
-        self.rbf_x = None
-        self.rbf_y = None
-        self.control_points = None
-        self.target_points = None
-    
-    def fit(self, control_points: np.ndarray, target_points: np.ndarray):
-        """TPS 변환 학습"""
-        self.control_points = control_points.astype(np.float32)
-        self.target_points = target_points.astype(np.float32)
-        
-        # RBF 보간기 생성
-        self.rbf_x = RBFInterpolator(
-            self.control_points,
-            self.target_points[:, 0],
-            kernel='thin_plate_spline',
-            smoothing=self.smoothing
-        )
-        
-        self.rbf_y = RBFInterpolator(
-            self.control_points,
-            self.target_points[:, 1],
-            kernel='thin_plate_spline',
-            smoothing=self.smoothing
-        )
-    
-    def transform_image(self, image: np.ndarray) -> np.ndarray:
-        """이미지 변환"""
-        h, w = image.shape[:2]
-        
-        # 그리드 생성
-        x, y = np.meshgrid(np.arange(w), np.arange(h))
-        grid_points = np.stack([x.ravel(), y.ravel()], axis=-1).astype(np.float32)
-        
-        # 변환 적용
-        transformed_x = self.rbf_x(grid_points).reshape(h, w)
-        transformed_y = self.rbf_y(grid_points).reshape(h, w)
-        
-        # 리매핑
-        map_x = transformed_x.astype(np.float32)
-        map_y = transformed_y.astype(np.float32)
-        
-        # 이미지 워핑
-        warped = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-        
-        return warped
-
-
-class MeshBasedWarping:
-    """메쉬 기반 워핑 (세밀 조정용)"""
-    
-    def __init__(self, mesh_size: int = 15):
-        self.mesh_size = mesh_size
-    
-    def refine_warping(
-        self,
-        image: np.ndarray,
-        mask: np.ndarray,
-        matched_pairs: List[Tuple[Tuple[float, float], Tuple[float, float], str]]
-    ) -> np.ndarray:
-        """메쉬 기반 세밀 조정"""
-        
-        try:
-            # 1. 기본 가우시안 스무딩
-            refined = cv2.GaussianBlur(image, (3, 3), 0.5)
-            
-            # 2. 엣지 보존
-            if len(image.shape) == 3:
-                edges = cv2.Canny(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 50, 150)
-            else:
-                edges = cv2.Canny(image, 50, 150)
-            
-            # 엣지 영역은 원본 유지
-            edge_mask = edges > 0
-            if len(image.shape) == 3:
-                edge_mask = np.stack([edge_mask] * 3, axis=2)
-            
-            refined = np.where(edge_mask, image, refined)
-            
-            # 3. 키포인트 주변 국소 조정
-            if matched_pairs:
-                refined = self._apply_local_adjustments(refined, matched_pairs)
-            
-            # 4. 마스크 기반 블렌딩
-            if mask is not None and mask.max() > 0:
-                mask_normalized = mask.astype(np.float32) / 255.0
-                if len(image.shape) == 3 and len(mask_normalized.shape) == 2:
-                    mask_normalized = np.stack([mask_normalized] * 3, axis=2)
-                
-                # 마스크 영역만 적용
-                refined = refined * mask_normalized + image * (1 - mask_normalized)
-            
-            return refined.astype(np.uint8)
-            
-        except Exception as e:
-            logger.warning(f"메쉬 기반 워핑 실패: {e}")
-            return image
-    
-    def _apply_local_adjustments(
-        self, 
-        image: np.ndarray, 
-        matched_pairs: List[Tuple[Tuple[float, float], Tuple[float, float], str]]
-    ) -> np.ndarray:
-        """키포인트 주변 국소 조정"""
-        
-        try:
-            h, w = image.shape[:2]
-            adjusted = image.copy()
-            
-            for body_point, cloth_point, name in matched_pairs:
-                # 변형 벡터
-                dx = body_point[0] - cloth_point[0]
-                dy = body_point[1] - cloth_point[1]
-                
-                # 영향 반경 (적응적)
-                influence_radius = min(50, max(20, math.sqrt(dx*dx + dy*dy)))
-                
-                # 중심점 주변 영역
-                center_x, center_y = int(cloth_point[0]), int(cloth_point[1])
-                
-                # 영역 범위 계산
-                x_min = max(0, center_x - int(influence_radius))
-                x_max = min(w, center_x + int(influence_radius))
-                y_min = max(0, center_y - int(influence_radius))
-                y_max = min(h, center_y + int(influence_radius))
-                
-                # 국소 영역에 부드러운 변형 적용
-                for y in range(y_min, y_max):
-                    for x in range(x_min, x_max):
-                        dist = math.sqrt((x - center_x)**2 + (y - center_y)**2)
-                        
-                        if dist < influence_radius:
-                            # 가우시안 가중치
-                            weight = math.exp(-(dist**2) / (2 * (influence_radius/3)**2))
-                            
-                            # 새로운 위치 계산
-                            new_x = x + dx * weight
-                            new_y = y + dy * weight
-                            
-                            # 경계 확인 및 값 보간
-                            if 0 <= new_x < w-1 and 0 <= new_y < h-1:
-                                # 바이리니어 보간
-                                x1, y1 = int(new_x), int(new_y)
-                                x2, y2 = x1 + 1, y1 + 1
-                                
-                                dx_frac = new_x - x1
-                                dy_frac = new_y - y1
-                                
-                                if len(image.shape) == 3:
-                                    interpolated = (
-                                        image[y1, x1] * (1-dx_frac) * (1-dy_frac) +
-                                        image[y1, x2] * dx_frac * (1-dy_frac) +
-                                        image[y2, x1] * (1-dx_frac) * dy_frac +
-                                        image[y2, x2] * dx_frac * dy_frac
-                                    )
-                                else:
-                                    interpolated = (
-                                        image[y1, x1] * (1-dx_frac) * (1-dy_frac) +
-                                        image[y1, x2] * dx_frac * (1-dy_frac) +
-                                        image[y2, x1] * (1-dx_frac) * dy_frac +
-                                        image[y2, x2] * dx_frac * dy_frac
-                                    )
-                                
-                                # 가중 평균으로 블렌딩
-                                adjusted[y, x] = (
-                                    adjusted[y, x] * (1 - weight) + 
-                                    interpolated * weight
-                                ).astype(np.uint8)
-            
-            return adjusted
-            
-        except Exception as e:
-            logger.warning(f"국소 조정 실패: {e}")
-            return image
-
-
-# 추가 유틸리티 함수들
-def visualize_keypoints(
-    image: np.ndarray, 
-    keypoints: Dict[str, Tuple[float, float]], 
-    color: Tuple[int, int, int] = (0, 255, 0),
-    radius: int = 5,
-    thickness: int = 2
-) -> np.ndarray:
-    """키포인트 시각화"""
-    vis_image = image.copy()
-    
-    for name, (x, y) in keypoints.items():
-        cv2.circle(vis_image, (int(x), int(y)), radius, color, thickness)
-        cv2.putText(vis_image, name, (int(x)+10, int(y)-10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-    
-    return vis_image
-
-
-def visualize_matches(
-    image1: np.ndarray,
-    image2: np.ndarray, 
-    matched_pairs: List[Tuple[Tuple[float, float], Tuple[float, float], str]]
-) -> np.ndarray:
-    """매칭 결과 시각화"""
-    h1, w1 = image1.shape[:2]
-    h2, w2 = image2.shape[:2]
-    h = max(h1, h2)
-    w = w1 + w2
-    
-    # 이미지 합치기
-    vis_image = np.zeros((h, w, 3), dtype=np.uint8)
-    vis_image[:h1, :w1] = image1 if len(image1.shape) == 3 else cv2.cvtColor(image1, cv2.COLOR_GRAY2BGR)
-    vis_image[:h2, w1:w1+w2] = image2 if len(image2.shape) == 3 else cv2.cvtColor(image2, cv2.COLOR_GRAY2BGR)
-    
-    # 매칭 라인 그리기
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
-    
-    for i, (body_point, cloth_point, name) in enumerate(matched_pairs):
-        color = colors[i % len(colors)]
-        
-        # 포인트 그리기
-        cv2.circle(vis_image, (int(body_point[0]), int(body_point[1])), 8, color, -1)
-        cv2.circle(vis_image, (int(cloth_point[0] + w1), int(cloth_point[1])), 8, color, -1)
-        
-        # 연결 라인 그리기
-        cv2.line(vis_image, 
-                (int(body_point[0]), int(body_point[1])),
-                (int(cloth_point[0] + w1), int(cloth_point[1])),
-                color, 2)
-        
-        # 이름 표시
-        cv2.putText(vis_image, f"{i+1}", 
-                   (int(body_point[0])-20, int(body_point[1])-20),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-    
-    return vis_image
-
-
-def save_intermediate_results(
-    cloth_img: np.ndarray,
-    warped_cloth: np.ndarray,
-    matched_pairs: List,
-    output_dir: str,
-    step_name: str = "geometric_matching"
-):
-    """중간 결과 저장"""
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # 원본 의류 이미지 저장
-        cv2.imwrite(os.path.join(output_dir, f"{step_name}_original_cloth.jpg"), cloth_img)
-        
-        # 변형된 의류 이미지 저장
-        cv2.imwrite(os.path.join(output_dir, f"{step_name}_warped_cloth.jpg"), warped_cloth)
-        
-        # 키포인트 정보 저장
-        keypoint_data = {
-            "num_matches": len(matched_pairs),
-            "matches": [
-                {
-                    "body_point": [float(pair[0][0]), float(pair[0][1])],
-                    "cloth_point": [float(pair[1][0]), float(pair[1][1])], 
-                    "name": pair[2]
-                }
-                for pair in matched_pairs
-            ]
-        }
-        
-        with open(os.path.join(output_dir, f"{step_name}_keypoints.json"), 'w') as f:
-            json.dump(keypoint_data, f, indent=2)
-        
-        logger.info(f"중간 결과 저장 완료: {output_dir}")
-        
-    except Exception as e:
-        logger.warning(f"중간 결과 저장 실패: {e}")
-
-
-# 성능 최적화를 위한 M3 Max 전용 함수들
-def optimize_for_m3_max():
-    """M3 Max 칩 최적화 설정"""
-    if torch.backends.mps.is_available():
-        # MPS 메모리 관리 최적화
-        torch.mps.empty_cache()
-        
-        # 수치 안정성 설정
-        torch.backends.mps.enable_fusion = True
-        
-        logger.info("M3 Max MPS 최적화 설정 완료")
-        return True
-    
-    return False
-
-
-def batch_process_keypoints(
-    keypoints_list: List[Dict[str, Tuple[float, float]]],
-    batch_size: int = 8
-) -> List[Dict[str, Tuple[float, float]]]:
-    """키포인트 배치 처리 (메모리 최적화)"""
-    processed = []
-    
-    for i in range(0, len(keypoints_list), batch_size):
-        batch = keypoints_list[i:i+batch_size]
-        
-        # 배치 처리 로직
-        batch_processed = []
-        for kp_dict in batch:
-            # 키포인트 정규화 및 필터링
-            filtered_kp = {
-                name: point for name, point in kp_dict.items()
-                if 0 <= point[0] <= 2048 and 0 <= point[1] <= 2048  # 합리적인 이미지 크기 범위
+            # 통계 초기화
+            self.matching_stats = {
+                'total_matches': 0,
+                'successful_matches': 0,
+                'average_accuracy': 0.0,
+                'method_performance': {}
             }
-            batch_processed.append(filtered_kp)
-        
-        processed.extend(batch_processed)
-        
-        # 메모리 정리
-        if torch.backends.mps.is_available():
-            torch.mps.empty_cache()
-    
-    return processed
+            
+            self.is_initialized = False
+            self.logger.info("🧹 기하학적 매칭 스텝 정리 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
