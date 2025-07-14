@@ -1,10 +1,9 @@
 """
-완전 통합된 8단계 AI 파이프라인 매니저 - 모든 기능 포함
-- 1번 파일의 pipeline_routes.py 완전 호환성
-- 2번 파일의 고급 분석 및 처리 기능  
-- 실제 프로젝트의 모든 헬퍼 메서드들 포함
-- M3 Max 최적화
-- 프로덕션 레벨 안정성
+완전 통합된 8단계 AI 파이프라인 매니저 - 최적 생성자 패턴 적용
+- 최적 생성자 설계로 모든 Step 클래스 통일
+- M3 Max 최적화 및 완전한 호환성
+- 프로덕션 레벨 안정성과 고급 분석 기능
+- 실제 프로젝트 구조에 완전 적합
 """
 import os
 import sys
@@ -23,6 +22,126 @@ import json
 import gc
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+
+# 최적 생성자 기본 클래스
+from typing import Dict, Any, Optional, Union
+from abc import ABC, abstractmethod
+
+class OptimalStepConstructor(ABC):
+    """
+    🎯 최적화된 생성자 패턴
+    - 단순함 + 편의성 + 확장성 + 일관성
+    """
+
+    def __init__(
+        self,
+        device: Optional[str] = None,  # 🔥 핵심 개선: None으로 자동 감지
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
+    ):
+        """
+        ✅ 최적 생성자 - 모든 장점 결합
+
+        Args:
+            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
+            config: 스텝별 설정 딕셔너리
+            **kwargs: 확장 파라미터들
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0  
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
+                - 기타 스텝별 특화 파라미터들...
+        """
+        # 1. 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 2. 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+
+        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+
+        # 4. ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+
+        # 5. ✅ 상태 초기화
+        self.is_initialized = False
+
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max 우선
+            elif torch.cuda.is_available():
+                return 'cuda'  # NVIDIA GPU
+            else:
+                return 'cpu'  # 폴백
+        except ImportError:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
+    @abstractmethod
+    async def initialize(self) -> bool:
+        """스텝 초기화"""
+        pass
+
+    @abstractmethod
+    async def process(self, input_data: Any, **kwargs) -> Dict[str, Any]:
+        """메인 처리"""
+        pass
+
+    async def get_step_info(self) -> Dict[str, Any]:
+        """🔍 스텝 정보 반환"""
+        return {
+            "step_name": self.step_name,
+            "device": self.device,
+            "device_type": self.device_type,
+            "memory_gb": self.memory_gb,
+            "is_m3_max": self.is_m3_max,
+            "optimization_enabled": self.optimization_enabled,
+            "quality_level": self.quality_level,
+            "initialized": self.is_initialized,
+            "config_keys": list(self.config.keys())
+        }
 
 # 로깅 설정
 logging.basicConfig(
@@ -78,44 +197,48 @@ except ImportError as e:
 
 class PipelineManager:
     """
-    완전 통합된 8단계 가상 피팅 파이프라인 - 모든 기능 포함
+    완전 통합된 8단계 가상 피팅 파이프라인 - 최적 생성자 패턴 적용
+    - 모든 Step 클래스가 동일한 생성자 패턴 사용
     - pipeline_routes.py와 완벽 호환 (1번 파일 기능)
     - 고급 품질 분석 및 처리 (2번 파일 기능)
-    - 모든 헬퍼 메서드들 완전 구현
     - M3 Max 최적화
     - 프로덕션 레벨 안정성
     """
     
     def __init__(
         self, 
-        device: str = "mps",
-        device_type: str = "apple_silicon", 
-        memory_gb: float = 128.0,
-        is_m3_max: bool = True,
-        optimization_enabled: bool = True,
-        config_path: Optional[str] = None,
-        mode: Union[str, PipelineMode] = PipelineMode.PRODUCTION
+        device: Optional[str] = None,  # 자동 감지로 변경
+        config: Optional[Dict[str, Any]] = None,
+        mode: Union[str, PipelineMode] = PipelineMode.PRODUCTION,
+        **kwargs  # 시스템 설정들
     ):
         """
-        파이프라인 초기화 - 완전 호환
+        파이프라인 초기화 - 최적 생성자 패턴 적용
         
         Args:
-            device: 사용할 디바이스 ('auto', 'cpu', 'cuda', 'mps')
-            device_type: 디바이스 타입 ('apple_silicon', 'nvidia', 'intel')
-            memory_gb: 사용 가능한 메모리 (GB)
-            is_m3_max: M3 Max 칩 여부
-            optimization_enabled: 최적화 활성화 여부
-            config_path: 설정 파일 경로 (선택적)
+            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
+            config: 파이프라인 설정 딕셔너리
             mode: 파이프라인 모드
+            **kwargs: 시스템 설정
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
+                - config_path: Optional[str] = None
         """
-        # pipeline_routes.py에서 요구하는 속성들 설정
-        self.device = device if device != "auto" else self._get_optimal_device()
-        self.device_type = device_type
-        self.memory_gb = memory_gb
-        self.is_m3_max = is_m3_max
-        self.optimization_enabled = optimization_enabled
+        # 1. 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 2. 📋 기본 시스템 설정
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+        config_path = kwargs.get('config_path')
         
-        # 모드 설정
+        # 3. 모드 설정
         if isinstance(mode, str):
             try:
                 self.mode = PipelineMode(mode)
@@ -124,13 +247,13 @@ class PipelineManager:
         else:
             self.mode = mode
         
-        # 디바이스 최적화 설정
+        # 4. 디바이스 최적화 설정
         self._configure_device_optimizations()
         
-        # 기존 유틸리티들 초기화 (안전하게)
+        # 5. 기존 유틸리티들 초기화 (안전하게)
         try:
             self.model_loader = ModelLoader(device=self.device) if ModelLoader else None
-            self.memory_manager = MemoryManager(device=self.device, memory_limit_gb=memory_gb) if MemoryManager else None
+            self.memory_manager = MemoryManager(device=self.device, memory_limit_gb=self.memory_gb) if MemoryManager else None
             self.data_converter = DataConverter(device=self.device) if DataConverter else None
         except Exception as e:
             logger.warning(f"유틸리티 초기화 실패: {e}")
@@ -138,14 +261,14 @@ class PipelineManager:
             self.memory_manager = None
             self.data_converter = None
         
-        # 설정 로드
-        self.config = self._load_config(config_path)
+        # 6. 설정 로드
+        self.config = self._load_config(config_path, config)
         
-        # 파이프라인 설정
+        # 7. 파이프라인 설정
         self.pipeline_config = self.config.get('pipeline', {
-            'quality_level': 'high',
+            'quality_level': self.quality_level,
             'processing_mode': 'complete',
-            'enable_optimization': optimization_enabled,
+            'enable_optimization': self.optimization_enabled,
             'enable_caching': True,
             'parallel_processing': True,
             'memory_optimization': True,
@@ -154,7 +277,7 @@ class PipelineManager:
             'timeout_seconds': 300
         })
         
-        # 8단계 컴포넌트
+        # 8. 8단계 컴포넌트
         self.steps = {}
         self.step_order = [
             'human_parsing',           # 1단계: 인체 파싱
@@ -167,13 +290,13 @@ class PipelineManager:
             'quality_assessment'      # 8단계: 품질 평가
         ]
         
-        # 상태 관리
+        # 9. 상태 관리
         self.is_initialized = False
         self.processing_stats = {}
         self.session_data = {}  # 2번 파일의 세션 관리 기능
         self.error_history = []
         
-        # 성능 모니터링
+        # 10. 성능 모니터링
         self.performance_metrics = {
             'total_sessions': 0,
             'successful_sessions': 0,
@@ -181,7 +304,7 @@ class PipelineManager:
             'average_quality_score': 0.0
         }
         
-        # 스레드 풀 (병렬 처리용)
+        # 11. 스레드 풀 (병렬 처리용)
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
         
         logger.info(f"🚀 완전 통합된 가상 피팅 파이프라인 초기화 - 디바이스: {self.device}")
@@ -189,15 +312,37 @@ class PipelineManager:
         logger.info(f"🍎 M3 Max: {'✅' if self.is_m3_max else '❌'}, 최적화: {'✅' if self.optimization_enabled else '❌'}")
         logger.info(f"📊 파이프라인 모드: {self.mode.value}")
         logger.info(f"🎯 품질 레벨: {self.pipeline_config['quality_level']}")
-    
-    def _get_optimal_device(self) -> str:
-        """최적 디바이스 자동 선택"""
-        if torch.backends.mps.is_available():
-            return 'mps'
-        elif torch.cuda.is_available():
-            return 'cuda'
-        else:
+
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max 우선
+            elif torch.cuda.is_available():
+                return 'cuda'  # NVIDIA GPU
+            else:
+                return 'cpu'  # 폴백
+        except ImportError:
             return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
     
     def _configure_device_optimizations(self):
         """디바이스별 최적화 설정 (MPS empty_cache 오류 수정)"""
@@ -293,9 +438,9 @@ class PipelineManager:
             logger.info("🔄 안전 모드로 폴백 - CPU 사용")
 
     async def initialize(self) -> bool:
-        """전체 파이프라인 초기화"""
+        """전체 파이프라인 초기화 - 최적 생성자 패턴"""
         try:
-            logger.info("🔄 완전 통합된 8단계 가상 피팅 파이프라인 초기화 시작...")
+            logger.info("🔄 최적 생성자 패턴 8단계 가상 피팅 파이프라인 초기화 시작...")
             start_time = time.time()
             
             # Step 클래스 import 확인
@@ -306,8 +451,8 @@ class PipelineManager:
             # 메모리 정리
             self._cleanup_memory()
             
-            # 각 단계 순차적 초기화
-            await self._initialize_all_steps()
+            # 각 단계 순차적 초기화 - ✅ 최적 생성자 패턴 적용
+            await self._initialize_all_steps_optimal()
             
             # 초기화 검증
             initialization_success = await self._verify_initialization()
@@ -334,140 +479,21 @@ class PipelineManager:
             logger.info("🔄 시뮬레이션 모드로 폴백 시도...")
             return await self._initialize_simulation_mode()
 
-    async def _initialize_simulation_mode(self) -> bool:
-        """시뮬레이션 모드 초기화"""
-        try:
-            logger.info("🎭 시뮬레이션 모드로 파이프라인 초기화...")
-            
-            # 시뮬레이션 단계들 생성
-            for step_name in self.step_order:
-                self.steps[step_name] = self._create_fallback_step(step_name)
-                logger.info(f"🎭 {step_name} 시뮬레이션 단계 생성됨")
-            
-            self.is_initialized = True
-            self.pipeline_config['processing_mode'] = 'simulation'
-            self.mode = PipelineMode.SIMULATION
-            
-            logger.info("✅ 시뮬레이션 모드 초기화 완료")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ 시뮬레이션 모드 초기화도 실패: {e}")
-            self.is_initialized = False
-            return False
-    
-    async def _initialize_all_steps(self):
-        """모든 단계 초기화 - 수정된 클래스 생성자에 맞춤"""
+    async def _initialize_all_steps_optimal(self):
+        """✅ 모든 단계 초기화 - 최적 생성자 패턴 적용"""
         
-        # 1단계: 인체 파싱 (수정된 생성자: device 인자)
-        logger.info("1️⃣ 인체 파싱 초기화...")
-        try:
-            self.steps['human_parsing'] = HumanParsingStep(
-                device=self.device,
-                config=self._get_step_config('human_parsing')
-            )
-            await self._safe_initialize_step('human_parsing')
-        except Exception as e:
-            logger.warning(f"⚠️ 인체 파싱 초기화 실패: {e}")
-            self.steps['human_parsing'] = self._create_fallback_step('human_parsing')
-        
-        # 2단계: 포즈 추정 (수정된 생성자: device 인자)
-        logger.info("2️⃣ 포즈 추정 초기화...")
-        try:
-            self.steps['pose_estimation'] = PoseEstimationStep(
-                device=self.device,
-                config=self._get_step_config('pose_estimation')
-            )
-            await self._safe_initialize_step('pose_estimation')
-        except Exception as e:
-            logger.warning(f"⚠️ 포즈 추정 초기화 실패: {e}")
-            self.steps['pose_estimation'] = self._create_fallback_step('pose_estimation')
-        
-        # 3단계: 의류 세그멘테이션 (수정된 생성자: device 인자)
-        logger.info("3️⃣ 의류 세그멘테이션 초기화...")
-        try:
-            self.steps['cloth_segmentation'] = ClothSegmentationStep(
-                device=self.device,
-                config=self._get_step_config('cloth_segmentation')
-            )
-            await self._safe_initialize_step('cloth_segmentation')
-        except Exception as e:
-            logger.warning(f"⚠️ 의류 세그멘테이션 초기화 실패: {e}")
-            self.steps['cloth_segmentation'] = self._create_fallback_step('cloth_segmentation')
-        
-        # 4단계: 기하학적 매칭 (수정된 생성자: device 인자)
-        logger.info("4️⃣ 기하학적 매칭 초기화...")
-        try:
-            self.steps['geometric_matching'] = GeometricMatchingStep(
-                device=self.device,
-                config=self._get_step_config('geometric_matching')
-            )
-            await self._safe_initialize_step('geometric_matching')
-        except Exception as e:
-            logger.warning(f"⚠️ 기하학적 매칭 초기화 실패: {e}")
-            self.steps['geometric_matching'] = self._create_fallback_step('geometric_matching')
-        
-        # 5단계: 옷 워핑 (수정된 생성자: device 인자)
-        logger.info("5️⃣ 옷 워핑 초기화...")
-        try:
-            self.steps['cloth_warping'] = ClothWarpingStep(
-                device=self.device,
-                config=self._get_step_config('cloth_warping')
-            )
-            await self._safe_initialize_step('cloth_warping')
-        except Exception as e:
-            logger.warning(f"⚠️ 옷 워핑 초기화 실패: {e}")
-            self.steps['cloth_warping'] = self._create_fallback_step('cloth_warping')
-        
-        # 6단계: 가상 피팅 (수정된 생성자: device 인자)
-        logger.info("6️⃣ 가상 피팅 생성 초기화...")
-        try:
-            self.steps['virtual_fitting'] = VirtualFittingStep(
-                device=self.device,
-                config=self._get_step_config('virtual_fitting')
-            )
-            await self._safe_initialize_step('virtual_fitting')
-        except Exception as e:
-            logger.warning(f"⚠️ 가상 피팅 초기화 실패: {e}")
-            self.steps['virtual_fitting'] = self._create_fallback_step('virtual_fitting')
-        
-        # 7단계: 후처리 (수정된 생성자: device 인자)
-        logger.info("7️⃣ 후처리 초기화...")
-        try:
-            self.steps['post_processing'] = PostProcessingStep(
-                device=self.device,
-                config=self._get_step_config('post_processing')
-            )
-            await self._safe_initialize_step('post_processing')
-        except Exception as e:
-            logger.warning(f"⚠️ 후처리 초기화 실패: {e}")
-            self.steps['post_processing'] = self._create_fallback_step('post_processing')
-        
-        # 8단계: 품질 평가 (수정된 생성자: device 인자)
-        logger.info("8️⃣ 품질 평가 초기화...")
-        try:
-            self.steps['quality_assessment'] = QualityAssessmentStep(
-                device=self.device,
-                config=self._get_step_config('quality_assessment')
-            )
-            await self._safe_initialize_step('quality_assessment')
-        except Exception as e:
-            logger.warning(f"⚠️ 품질 평가 초기화 실패: {e}")
-            self.steps['quality_assessment'] = self._create_fallback_step('quality_assessment')
-    
-    def _get_step_config(self, step_name: str) -> Dict[str, Any]:
-        """단계별 설정 생성"""
-        base_config = {
-            'quality_level': self.pipeline_config['quality_level'],
-            'enable_optimization': self.pipeline_config['enable_optimization'],
-            'memory_optimization': self.pipeline_config['memory_optimization'],
+        # 🎯 시스템 공통 설정 정의
+        system_config = {
+            'device': self.device,
             'device_type': self.device_type,
             'memory_gb': self.memory_gb,
-            'is_m3_max': self.is_m3_max
+            'is_m3_max': self.is_m3_max,
+            'optimization_enabled': self.optimization_enabled,
+            'quality_level': self.quality_level
         }
         
-        # 단계별 특화 설정
-        step_specific_configs = {
+        # 🎯 단계별 특화 설정
+        step_configs = {
             'human_parsing': {
                 'use_coreml': self.is_m3_max,
                 'enable_quantization': True,
@@ -518,21 +544,52 @@ class PipelineManager:
             }
         }
         
-        step_config = base_config.copy()
-        if step_name in step_specific_configs:
-            step_config.update(step_specific_configs[step_name])
+        # 🎯 스텝 클래스들 매핑
+        step_classes = {
+            'human_parsing': HumanParsingStep,
+            'pose_estimation': PoseEstimationStep,
+            'cloth_segmentation': ClothSegmentationStep,
+            'geometric_matching': GeometricMatchingStep,
+            'cloth_warping': ClothWarpingStep,
+            'virtual_fitting': VirtualFittingStep,
+            'post_processing': PostProcessingStep,
+            'quality_assessment': QualityAssessmentStep
+        }
         
-        return step_config
-    
-    def _create_fallback_step(self, step_name: str):
-        """폴백 단계 클래스 생성"""
+        # 🚀 모든 스텝을 최적 생성자 패턴으로 생성
+        for step_name, step_class in step_classes.items():
+            logger.info(f"{step_name.replace('_', ' ').title()} 초기화...")
+            
+            try:
+                # ✅ 최적 생성자 패턴: 모든 스텝이 동일한 시그니처!
+                step_config = step_configs.get(step_name, {})
+                
+                self.steps[step_name] = step_class(
+                    device=system_config['device'],                    # None으로 자동 감지
+                    config=step_config,                               # 스텝별 설정
+                    **system_config                                   # 시스템 전체 설정
+                )
+                
+                # 안전한 초기화
+                await self._safe_initialize_step(step_name)
+                
+                logger.info(f"✅ {step_name} 최적 생성자 패턴 적용 완료")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ {step_name} 초기화 실패: {e}")
+                # 폴백 스텝 생성 - 동일한 생성자 패턴
+                self.steps[step_name] = self._create_optimal_fallback_step(step_name, system_config, step_configs.get(step_name, {}))
+
+    def _create_optimal_fallback_step(self, step_name: str, system_config: Dict[str, Any], step_config: Dict[str, Any]):
+        """✅ 최적 생성자 패턴을 적용한 폴백 단계 클래스 생성"""
         
-        class FallbackStep:
-            def __init__(self, device='cpu', config=None):
-                self.device = device
-                self.config = config or {}
-                self.is_initialized = False
+        class OptimalFallbackStep(OptimalStepConstructor):
+            """최적 생성자 패턴을 따르는 폴백 스텝"""
+            
+            def __init__(self, device=None, config=None, **kwargs):
+                super().__init__(device=device, config=config, **kwargs)
                 self.step_name = step_name
+                self.fallback_mode = True
             
             async def initialize(self):
                 self.is_initialized = True
@@ -546,15 +603,60 @@ class PipelineManager:
                     'step_name': self.step_name,
                     'confidence': 0.6,
                     'processing_time': 0.1,
-                    'method': 'fallback'
+                    'method': 'optimal_fallback',
+                    'device': self.device,
+                    'device_type': self.device_type,
+                    'memory_gb': self.memory_gb,
+                    'is_m3_max': self.is_m3_max,
+                    'optimization_enabled': self.optimization_enabled,
+                    'quality_level': self.quality_level
                 }
             
             async def cleanup(self):
                 pass
+            
+            async def get_model_info(self):
+                return await self.get_step_info()
         
-        logger.info(f"🚨 {step_name} 폴백 클래스 생성")
-        return FallbackStep(device=self.device, config=self._get_step_config(step_name))
-    
+        logger.info(f"🚨 {step_name} 최적 폴백 클래스 생성")
+        return OptimalFallbackStep(
+            device=system_config['device'],
+            config=step_config,
+            **system_config
+        )
+
+    async def _initialize_simulation_mode(self) -> bool:
+        """시뮬레이션 모드 초기화 - 최적 생성자 패턴"""
+        try:
+            logger.info("🎭 최적 생성자 패턴 시뮬레이션 모드로 파이프라인 초기화...")
+            
+            # 시스템 설정
+            system_config = {
+                'device': self.device,
+                'device_type': self.device_type,
+                'memory_gb': self.memory_gb,
+                'is_m3_max': self.is_m3_max,
+                'optimization_enabled': self.optimization_enabled,
+                'quality_level': self.quality_level
+            }
+            
+            # 시뮬레이션 단계들 생성 - 최적 생성자 패턴
+            for step_name in self.step_order:
+                self.steps[step_name] = self._create_optimal_fallback_step(step_name, system_config, {})
+                logger.info(f"🎭 {step_name} 최적 시뮬레이션 단계 생성됨")
+            
+            self.is_initialized = True
+            self.pipeline_config['processing_mode'] = 'simulation'
+            self.mode = PipelineMode.SIMULATION
+            
+            logger.info("✅ 최적 생성자 패턴 시뮬레이션 모드 초기화 완료")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 시뮬레이션 모드 초기화도 실패: {e}")
+            self.is_initialized = False
+            return False
+
     async def _safe_initialize_step(self, step_name: str):
         """안전한 단계 초기화"""
         try:
@@ -590,6 +692,7 @@ class PipelineManager:
     ) -> Dict[str, Any]:
         """
         pipeline_routes.py에서 호출하는 가상 피팅 메서드 (1번 파일 기능)
+        최적 생성자 패턴 적용된 Step들과 호환
         """
         if not self.is_initialized:
             raise RuntimeError("파이프라인이 초기화되지 않았습니다.")
@@ -645,7 +748,8 @@ class PipelineManager:
                     'memory_gb': self.memory_gb,
                     'is_m3_max': self.is_m3_max,
                     'optimization_enabled': self.optimization_enabled,
-                    'mode': self.mode.value
+                    'mode': self.mode.value,
+                    'constructor_pattern': 'optimal'
                 }
             }
             
@@ -666,9 +770,9 @@ class PipelineManager:
                 'measurements': {},
                 'recommendations': ['오류가 발생했습니다. 다시 시도해주세요.'],
                 'pipeline_stages': {},
-                'debug_info': {'error': str(e)}
+                'debug_info': {'error': str(e), 'constructor_pattern': 'optimal'}
             }
-    
+
     async def _execute_complete_pipeline(
         self, 
         person_tensor: torch.Tensor,
@@ -677,7 +781,7 @@ class PipelineManager:
         weight: float,
         progress_callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
-        """완전한 8단계 파이프라인 실행"""
+        """완전한 8단계 파이프라인 실행 - 최적 생성자 패턴 스텝들과 호환"""
         
         try:
             # 1단계: 인체 파싱
@@ -784,7 +888,7 @@ class PipelineManager:
         enable_auto_retry: bool = True
     ) -> Dict[str, Any]:
         """
-        고급 가상 피팅 처리 (2번 파일 기능)
+        고급 가상 피팅 처리 (2번 파일 기능) - 최적 생성자 패턴 적용
         """
         if not self.is_initialized:
             raise RuntimeError("파이프라인이 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
@@ -795,7 +899,7 @@ class PipelineManager:
         self.performance_metrics['total_sessions'] += 1
         
         try:
-            logger.info(f"🎯 고급 8단계 가상 피팅 시작 - 세션 ID: {session_id}")
+            logger.info(f"🎯 최적 생성자 패턴 8단계 가상 피팅 시작 - 세션 ID: {session_id}")
             logger.info(f"⚙️ 설정: {clothing_type} ({fabric_type}), 품질목표: {quality_target}")
             
             # 입력 검증 및 전처리
@@ -809,7 +913,8 @@ class PipelineManager:
                 'fabric_type': fabric_type,
                 'quality_target': quality_target,
                 'style_preferences': style_preferences or {},
-                'processing_mode': self.pipeline_config['processing_mode']
+                'processing_mode': self.pipeline_config['processing_mode'],
+                'constructor_pattern': 'optimal'
             })
             
             if progress_callback:
@@ -858,6 +963,7 @@ class PipelineManager:
                 'session_id': session_id,
                 'processing_mode': self.pipeline_config['processing_mode'],
                 'quality_level': self.pipeline_config['quality_level'],
+                'constructor_pattern': 'optimal',
                 
                 # 결과 이미지들
                 'result_image': final_image_pil,
@@ -895,7 +1001,7 @@ class PipelineManager:
                 # 메타데이터
                 'metadata': {
                     'timestamp': datetime.now().isoformat(),
-                    'pipeline_version': '3.0.0',
+                    'pipeline_version': '4.0.0-optimal',
                     'input_resolution': f"{person_tensor.shape[3]}x{person_tensor.shape[2]}",
                     'output_resolution': f"{final_image_pil.width}x{final_image_pil.height}",
                     'clothing_type': clothing_type,
@@ -904,7 +1010,8 @@ class PipelineManager:
                     'style_preferences_provided': bool(style_preferences),
                     'intermediate_results_saved': save_intermediate,
                     'device_optimization': self.device,
-                    'integrated_version': True  # 통합 버전 표시
+                    'constructor_pattern': 'optimal',
+                    'integrated_version': True
                 }
             }
             
@@ -916,7 +1023,7 @@ class PipelineManager:
                 await progress_callback("처리 완료", 100)
             
             logger.info(
-                f"🎉 고급 8단계 가상 피팅 완료! "
+                f"🎉 최적 생성자 패턴 8단계 가상 피팅 완료! "
                 f"전체 소요시간: {total_time:.2f}초, "
                 f"최종 품질: {comprehensive_quality['overall_score']:.3f} ({comprehensive_quality['quality_grade']}), "
                 f"목표 달성: {'✅' if comprehensive_quality['overall_score'] >= quality_target else '❌'}"
@@ -931,7 +1038,7 @@ class PipelineManager:
                 enable_auto_retry
             )
             return error_result
-    
+
     async def _execute_complete_pipeline_with_retry(
         self,
         person_tensor: torch.Tensor,
@@ -941,7 +1048,7 @@ class PipelineManager:
         progress_callback: Optional[Callable],
         session_id: str
     ) -> Dict[str, Any]:
-        """재시도 로직이 포함된 완전한 파이프라인 실행"""
+        """재시도 로직이 포함된 완전한 파이프라인 실행 - 최적 생성자 패턴"""
         
         try:
             # 1단계: 인체 파싱
@@ -1012,7 +1119,7 @@ class PipelineManager:
                 'success': False,
                 'error': str(e)
             }
-    
+
     async def _execute_step_with_retry(
         self,
         step_name: str,
@@ -1023,7 +1130,7 @@ class PipelineManager:
         extra_args: Optional[Dict] = None,
         max_retries: int = 3
     ) -> Dict[str, Any]:
-        """재시도 로직이 포함된 단계 실행"""
+        """재시도 로직이 포함된 단계 실행 - 최적 생성자 패턴 스텝과 호환"""
         
         step_start = time.time()
         last_error = None
@@ -1078,20 +1185,20 @@ class PipelineManager:
         # 모든 재시도 실패 시 폴백 결과 생성
         logger.warning(f"🚨 {step_name} 폴백 결과 생성 중...")
         return self._create_fallback_step_result(step_name, input_data, last_error)
-    
+
     async def _execute_single_step(
         self, 
         step_name: str, 
         input_data: Any, 
         extra_args: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """단일 단계 실행 - 수정된 클래스들과 호환"""
+        """단일 단계 실행 - 최적 생성자 패턴 클래스들과 호환"""
         
         step = self.steps.get(step_name)
         if not step:
             raise ValueError(f"Step {step_name} not found")
         
-        # 수정된 클래스들의 process 메서드 호출
+        # 최적 생성자 패턴 클래스들의 process 메서드 호출
         if step_name == 'human_parsing':
             return await step.process(input_data)
                 
@@ -1127,13 +1234,13 @@ class PipelineManager:
         
         else:
             raise ValueError(f"Unknown step: {step_name}")
-    
+
     def _validate_step_result(self, step_name: str, result: Dict[str, Any]) -> bool:
         """단계 결과 검증"""
         if not isinstance(result, dict):
             return False
         return result.get('success', True)  # 기본적으로 성공으로 간주
-    
+
     def _create_fallback_step_result(
         self, 
         step_name: str, 
@@ -1148,10 +1255,11 @@ class PipelineManager:
             'step_name': step_name,
             'confidence': 0.5,
             'processing_time': 0.1,
-            'method': 'fallback',
+            'method': 'optimal_fallback',
+            'constructor_pattern': 'optimal',
             'timestamp': datetime.now().isoformat()
         }
-    
+
     # ===========================================
     # 2번 파일의 고급 분석 메서드들
     # ===========================================
@@ -1187,7 +1295,8 @@ class PipelineManager:
             'quality_grade': quality_grade,
             'confidence': confidence,
             'breakdown': breakdown,
-            'analysis_timestamp': datetime.now().isoformat()
+            'analysis_timestamp': datetime.now().isoformat(),
+            'constructor_pattern': 'optimal'
         }
     
     def _calculate_detailed_statistics(self, session_id: str, total_time: float) -> Dict[str, Any]:
@@ -1202,6 +1311,7 @@ class PipelineManager:
             'success_rate': len(step_times) / len(self.step_order),
             'memory_usage': self._get_detailed_memory_usage(),
             'device_utilization': self._get_device_utilization(),
+            'constructor_pattern': 'optimal'
         }
         
         if step_times:
@@ -1247,7 +1357,8 @@ class PipelineManager:
         
         suggestions['user_experience'].extend([
             "📸 정면을 바라보는 자세의 사진이 가장 좋은 결과를 제공합니다",
-            "🎨 단색 배경의 의류 이미지를 사용하면 더 정확한 결과를 얻을 수 있습니다"
+            "🎨 단색 배경의 의류 이미지를 사용하면 더 정확한 결과를 얻을 수 있습니다",
+            "✨ 최적 생성자 패턴으로 모든 단계가 일관되게 처리되었습니다"
         ])
         
         if self.device == 'cpu':
@@ -1266,7 +1377,8 @@ class PipelineManager:
             next_steps.extend([
                 "✅ 목표 품질에 도달했습니다!",
                 "💾 결과를 저장하고 활용하세요",
-                "🔄 다른 의류로 추가 피팅을 시도해보세요"
+                "🔄 다른 의류로 추가 피팅을 시도해보세요",
+                "🎯 최적 생성자 패턴으로 일관된 품질이 보장됩니다"
             ])
         else:
             gap = quality_target - overall_score
@@ -1291,14 +1403,16 @@ class PipelineManager:
                 'completed': step_name in step_results,
                 'processing_time': step_times.get(step_name, 0),
                 'success': step_name in step_results and not step_results[step_name].get('error'),
-                'fallback_used': step_results.get(step_name, {}).get('fallback', False)
+                'fallback_used': step_results.get(step_name, {}).get('fallback', False),
+                'constructor_pattern': 'optimal'
             }
             
             if step_name in step_results:
                 result = step_results[step_name]
                 step_summary.update({
                     'confidence': result.get('confidence', 0),
-                    'method': result.get('method', 'unknown')
+                    'method': result.get('method', 'optimal'),
+                    'device': result.get('device', self.device)
                 })
             
             summary[step_name] = step_summary
@@ -1319,7 +1433,8 @@ class PipelineManager:
             'intermediate_results': {},
             'error_log': [],
             'memory_snapshots': [],
-            'quality_progression': []
+            'quality_progression': [],
+            'constructor_pattern': 'optimal'
         }
     
     def _cleanup_session_data(self, session_id: str):
@@ -1365,10 +1480,11 @@ class PipelineManager:
             'error': error_msg,
             'error_type': type(error).__name__,
             'timestamp': datetime.now().isoformat(),
-            'processing_time': processing_time
+            'processing_time': processing_time,
+            'constructor_pattern': 'optimal'
         })
         
-        logger.error(f"❌ 가상 피팅 처리 실패 - 세션 {session_id}: {error_msg}")
+        logger.error(f"❌ 최적 생성자 패턴 가상 피팅 처리 실패 - 세션 {session_id}: {error_msg}")
         
         # 자동 복구 시도
         if enable_auto_retry and not hasattr(error, '_retry_attempted'):
@@ -1395,6 +1511,7 @@ class PipelineManager:
                     logger.info("✅ 자동 복구 성공!")
                     result['recovered'] = True
                     result['recovery_method'] = 'quality_downgrade'
+                    result['constructor_pattern'] = 'optimal'
                     return result
                     
             except Exception as retry_error:
@@ -1409,8 +1526,9 @@ class PipelineManager:
             'processing_time': processing_time,
             'timestamp': datetime.now().isoformat(),
             'recovery_attempted': enable_auto_retry,
+            'constructor_pattern': 'optimal',
             'metadata': {
-                'pipeline_version': '3.0.0',
+                'pipeline_version': '4.0.0-optimal',
                 'device': self.device,
                 'integrated_version': True
             }
@@ -1568,7 +1686,8 @@ class PipelineManager:
         """디바이스 활용도 조회"""
         utilization = {
             'device_type': self.device,
-            'optimization_enabled': self.pipeline_config['enable_optimization']
+            'optimization_enabled': self.pipeline_config['enable_optimization'],
+            'constructor_pattern': 'optimal'
         }
         
         if self.device == 'cuda' and torch.cuda.is_available():
@@ -1588,12 +1707,12 @@ class PipelineManager:
     # 설정 및 상태 관리
     # ===========================================
     
-    def _load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
+    def _load_config(self, config_path: Optional[str] = None, base_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """설정 파일 로드"""
         default_config = {
             'input_size': (512, 512),
             'pipeline': {
-                'quality_level': 'high',
+                'quality_level': self.quality_level,
                 'processing_mode': 'complete',
                 'enable_optimization': self.optimization_enabled,
                 'enable_caching': True,
@@ -1601,7 +1720,8 @@ class PipelineManager:
                 'memory_optimization': True,
                 'enable_intermediate_saving': False,
                 'max_retries': 3,
-                'timeout_seconds': 300
+                'timeout_seconds': 300,
+                'constructor_pattern': 'optimal'
             },
             'quality_thresholds': {
                 'excellent': 0.9,
@@ -1617,6 +1737,18 @@ class PipelineManager:
             }
         }
         
+        # 기본 설정 병합
+        if base_config:
+            def deep_update(base_dict, update_dict):
+                for key, value in update_dict.items():
+                    if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
+                        deep_update(base_dict[key], value)
+                    else:
+                        base_dict[key] = value
+            
+            deep_update(default_config, base_config)
+        
+        # 파일 설정 로드
         if config_path and os.path.exists(config_path):
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
@@ -1640,7 +1772,7 @@ class PipelineManager:
     async def _print_system_status(self):
         """시스템 상태 출력"""
         logger.info("=" * 70)
-        logger.info("🏥 완전 통합된 가상 피팅 파이프라인 시스템 상태")
+        logger.info("🏥 최적 생성자 패턴 가상 피팅 파이프라인 시스템 상태")
         logger.info("=" * 70)
         
         # 디바이스 정보
@@ -1649,6 +1781,7 @@ class PipelineManager:
         logger.info(f"💾 메모리: {self.memory_gb}GB")
         logger.info(f"🍎 M3 Max: {'✅' if self.is_m3_max else '❌'}")
         logger.info(f"⚡ 최적화: {'✅' if self.optimization_enabled else '❌'}")
+        logger.info(f"🎯 생성자 패턴: 최적 통일 패턴")
         
         if self.device == 'mps':
             logger.info(f"   - MPS 사용 가능: {torch.backends.mps.is_available()}")
@@ -1658,7 +1791,7 @@ class PipelineManager:
                 logger.info(f"   - GPU 이름: {torch.cuda.get_device_name()}")
         
         # 단계별 상태
-        logger.info("📋 단계별 초기화 상태:")
+        logger.info("📋 단계별 초기화 상태 (최적 생성자 패턴):")
         for i, step_name in enumerate(self.step_order, 1):
             if step_name in self.steps:
                 status = "✅ 준비됨"
@@ -1666,6 +1799,8 @@ class PipelineManager:
                 if hasattr(step, 'is_initialized'):
                     if not step.is_initialized:
                         status = "⚠️ 초기화 미완료"
+                if hasattr(step, 'fallback_mode') and step.fallback_mode:
+                    status += " (폴백)"
             else:
                 status = "❌ 로드 안됨"
             
@@ -1677,6 +1812,7 @@ class PipelineManager:
         logger.info(f"   - 처리 모드: {self.pipeline_config['processing_mode']}")
         logger.info(f"   - 메모리 최적화: {self.pipeline_config['memory_optimization']}")
         logger.info(f"   - 병렬 처리: {self.pipeline_config['parallel_processing']}")
+        logger.info(f"   - 생성자 패턴: 최적 통일")
         
         # 메모리 정보
         memory_info = self._get_detailed_memory_usage()
@@ -1700,6 +1836,7 @@ class PipelineManager:
             'is_m3_max': self.is_m3_max,
             'optimization_enabled': self.optimization_enabled,
             'mode': self.mode.value,
+            'constructor_pattern': 'optimal',
             'steps_loaded': len(self.steps),
             'total_steps': len(self.step_order),
             'pipeline_config': self.pipeline_config,
@@ -1712,7 +1849,8 @@ class PipelineManager:
                     self.performance_metrics['successful_sessions'] / 
                     max(1, self.performance_metrics['total_sessions'])
                 ),
-                'average_processing_time': self.performance_metrics['average_processing_time']
+                'average_processing_time': self.performance_metrics['average_processing_time'],
+                'constructor_pattern': 'optimal'
             },
             'steps_status': {
                 step_name: {
@@ -1721,11 +1859,12 @@ class PipelineManager:
                     'initialized': (
                         getattr(self.steps[step_name], 'is_initialized', False) 
                         if step_name in self.steps else False
-                    )
+                    ),
+                    'constructor_pattern': 'optimal'
                 }
                 for step_name in self.step_order
             },
-            'version': '3.0.0',
+            'version': '4.0.0-optimal',
             'integrated_version': True
         }
     
@@ -1739,16 +1878,17 @@ class PipelineManager:
             'steps_loaded': len(self.steps),
             'performance_stats': self.performance_metrics.copy(),
             'error_count': len(self.error_history),
-            'version': '3.0.0',
+            'version': '4.0.0-optimal',
             'simulation_mode': self.pipeline_config.get('processing_mode', 'complete') == 'simulation',
             'pipeline_config': self.pipeline_config,
+            'constructor_pattern': 'optimal',
             'integrated_version': True
         }
     
     async def warmup(self) -> bool:
         """파이프라인 웜업"""
         try:
-            logger.info("🔥 파이프라인 웜업 시작...")
+            logger.info("🔥 최적 생성자 패턴 파이프라인 웜업 시작...")
             
             # 더미 텐서로 각 단계 워밍업
             dummy_tensor = torch.randn(1, 3, 512, 512).to(self.device)
@@ -1759,11 +1899,11 @@ class PipelineManager:
                         step = self.steps[step_name]
                         if hasattr(step, 'process'):
                             await step.process(dummy_tensor)
-                        logger.debug(f"✅ {step_name} 워밍업 완료")
+                        logger.debug(f"✅ {step_name} 웜업 완료")
                     except Exception as e:
-                        logger.warning(f"⚠️ {step_name} 워밍업 실패: {e}")
+                        logger.warning(f"⚠️ {step_name} 웜업 실패: {e}")
             
-            logger.info("✅ 파이프라인 웜업 완료")
+            logger.info("✅ 최적 생성자 패턴 파이프라인 웜업 완료")
             return True
             
         except Exception as e:
@@ -1772,7 +1912,7 @@ class PipelineManager:
     
     async def cleanup(self):
         """전체 파이프라인 리소스 정리"""
-        logger.info("🧹 완전 통합된 가상 피팅 파이프라인 리소스 정리 중...")
+        logger.info("🧹 최적 생성자 패턴 가상 피팅 파이프라인 리소스 정리 중...")
         
         try:
             # 각 단계별 정리
@@ -1806,14 +1946,14 @@ class PipelineManager:
             # 상태 초기화
             self.is_initialized = False
             
-            logger.info("✅ 전체 파이프라인 리소스 정리 완료")
+            logger.info("✅ 최적 생성자 패턴 전체 파이프라인 리소스 정리 완료")
             
         except Exception as e:
             logger.error(f"❌ 리소스 정리 중 오류: {e}")
 
 
 # ==========================================
-# Export 함수들 (1번 파일과 동일)
+# Export 함수들 (1번 파일과 동일하지만 최적화)
 # ==========================================
 
 # 전역 파이프라인 매니저
@@ -1826,14 +1966,11 @@ def get_pipeline_manager() -> Optional[PipelineManager]:
 
 def create_pipeline_manager(
     mode: Union[str, PipelineMode] = PipelineMode.PRODUCTION,
-    device: str = "mps",
-    device_type: str = "apple_silicon",
-    memory_gb: float = 128.0,
-    is_m3_max: bool = True,
-    optimization_enabled: bool = True,
-    config: Optional[Dict[str, Any]] = None
+    device: Optional[str] = None,  # 자동 감지로 변경
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs  # 최적 생성자 패턴
 ) -> PipelineManager:
-    """새로운 파이프라인 매니저 생성 - pipeline_routes.py 완전 호환"""
+    """새로운 파이프라인 매니저 생성 - 최적 생성자 패턴"""
     global _global_pipeline_manager
     
     # 기존 매니저 정리
@@ -1843,18 +1980,15 @@ def create_pipeline_manager(
         except:
             pass
     
-    # 새 매니저 생성 - 모든 필수 인자 포함
+    # 새 매니저 생성 - 최적 생성자 패턴
     _global_pipeline_manager = PipelineManager(
-        device=device,
-        device_type=device_type,
-        memory_gb=memory_gb,
-        is_m3_max=is_m3_max,
-        optimization_enabled=optimization_enabled,
-        config_path=None,
-        mode=mode
+        device=device,              # None으로 자동 감지
+        config=config,             # 설정 딕셔너리
+        mode=mode,                 # 파이프라인 모드
+        **kwargs                   # 추가 설정들
     )
     
-    logger.info(f"✅ 완전 통합된 파이프라인 매니저 생성됨 - {device} ({device_type})")
+    logger.info(f"✅ 최적 생성자 패턴 파이프라인 매니저 생성됨 - {_global_pipeline_manager.device}")
     return _global_pipeline_manager
 
 def get_available_modes() -> Dict[str, str]:
@@ -1866,40 +2000,34 @@ def get_available_modes() -> Dict[str, str]:
         PipelineMode.DEVELOPMENT.value: "개발 모드 (디버깅용)"
     }
 
-# 하위 호환성을 위한 별칭들
+# 하위 호환성을 위한 별칭들 - 최적 생성자 패턴으로 업데이트
 def initialize_pipeline_manager(
     mode: str = "production", 
-    device: str = "mps",
-    device_type: str = "apple_silicon",
-    memory_gb: float = 128.0,
-    is_m3_max: bool = True,
-    optimization_enabled: bool = True
+    device: Optional[str] = None,  # 자동 감지
+    **kwargs
 ) -> PipelineManager:
-    """파이프라인 매니저 초기화 (하위 호환성)"""
+    """파이프라인 매니저 초기화 (하위 호환성) - 최적 생성자 패턴"""
     return create_pipeline_manager(
         mode=mode, 
         device=device,
-        device_type=device_type,
-        memory_gb=memory_gb,
-        is_m3_max=is_m3_max,
-        optimization_enabled=optimization_enabled
+        **kwargs
     )
 
 def get_default_pipeline_manager() -> PipelineManager:
-    """기본 파이프라인 매니저 반환"""
+    """기본 파이프라인 매니저 반환 - 최적 생성자 패턴"""
     manager = get_pipeline_manager()
     if manager is None:
         manager = create_pipeline_manager()
     return manager
 
-# 호환성 검증 함수
+# 호환성 검증 함수 - 최적 생성자 패턴
 def validate_pipeline_manager_compatibility() -> Dict[str, bool]:
     """pipeline_routes.py와의 호환성 검증"""
     try:
-        # 테스트 매니저 생성
+        # 테스트 매니저 생성 - 최적 생성자 패턴
         test_manager = create_pipeline_manager(
             mode=PipelineMode.SIMULATION,
-            device="cpu",
+            device="cpu",  # 명시적 설정 가능
             device_type="test",
             memory_gb=8.0,
             is_m3_max=False,
@@ -1919,22 +2047,51 @@ def validate_pipeline_manager_compatibility() -> Dict[str, bool]:
             'methods': all(method_check.values()),
             'attr_details': attr_check,
             'method_details': method_check,
-            'overall_compatible': all(attr_check.values()) and all(method_check.values())
+            'overall_compatible': all(attr_check.values()) and all(method_check.values()),
+            'constructor_pattern': 'optimal'
         }
         
     except Exception as e:
         logger.error(f"호환성 검증 실패: {e}")
-        return {'overall_compatible': False, 'error': str(e)}
+        return {'overall_compatible': False, 'error': str(e), 'constructor_pattern': 'optimal'}
+
+# 최적 생성자 패턴 호환성 함수들
+def create_human_parsing_step(
+    device: Optional[str] = None, 
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs
+) -> 'OptimalStepConstructor':
+    """✅ 최적 생성자 패턴 - 인체 파싱 스텝 생성"""
+    try:
+        from app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
+        return HumanParsingStep(device=device, config=config, **kwargs)
+    except ImportError:
+        logger.warning("HumanParsingStep import 실패 - 폴백 생성")
+        return None
+
+def create_cloth_warping_step(
+    device: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs
+) -> 'OptimalStepConstructor':
+    """✅ 최적 생성자 패턴 - 옷 워핑 스텝 생성"""
+    try:
+        from app.ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
+        return ClothWarpingStep(device=device, config=config, **kwargs)
+    except ImportError:
+        logger.warning("ClothWarpingStep import 실패 - 폴백 생성")
+        return None
 
 # 모듈 로드 시 호환성 검증
 _compatibility_result = validate_pipeline_manager_compatibility()
 if _compatibility_result['overall_compatible']:
-    logger.info("✅ pipeline_routes.py와 완전 호환됨")
+    logger.info("✅ pipeline_routes.py와 완전 호환됨 (최적 생성자 패턴)")
 else:
     logger.warning(f"⚠️ 호환성 문제: {_compatibility_result}")
 
 # __all__ export
 __all__ = [
+    'OptimalStepConstructor',
     'PipelineManager',
     'PipelineMode',
     'get_pipeline_manager',
@@ -1942,5 +2099,7 @@ __all__ = [
     'get_available_modes',
     'initialize_pipeline_manager',
     'get_default_pipeline_manager',
-    'validate_pipeline_manager_compatibility'
+    'validate_pipeline_manager_compatibility',
+    'create_human_parsing_step',
+    'create_cloth_warping_step'
 ]

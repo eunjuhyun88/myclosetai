@@ -1,7 +1,7 @@
-# app/ai_pipeline/steps/step_05_cloth_warping.py
+# app/ai_pipeline/steps/step_06_virtual_fitting.py
 """
-5단계: 옷 워핑 (Clothing Warping) - 신체에 맞춘 고급 의류 변형
-Pipeline Manager 완전 호환 버전 - M3 Max 최적화 - 생성자 인자 수정
+6단계: 가상 피팅 (Virtual Fitting) - BasePipelineStep 완전 호환
+통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
 """
 import os
 import logging
@@ -48,12 +48,29 @@ except ImportError:
     SKIMAGE_AVAILABLE = False
     print("⚠️ Scikit-image 권장: pip install scikit-image")
 
+# BasePipelineStep 임포트 시도
+try:
+    from .base_step import BasePipelineStep, VisionPipelineStep, ProcessingPipelineStep
+    BASE_STEP_AVAILABLE = True
+except ImportError:
+    # 폴백: 기본 클래스
+    class BasePipelineStep:
+        def __init__(self, device=None, config=None, **kwargs):
+            self.device = device or 'cpu'
+            self.config = config or {}
+    
+    class ProcessingPipelineStep(BasePipelineStep):
+        pass
+    
+    BASE_STEP_AVAILABLE = False
+
 # 로거 설정
 logger = logging.getLogger(__name__)
 
-class ClothWarpingStep:
+class VirtualFittingStep(ProcessingPipelineStep):
     """
-    의류 워핑 스텝 - Pipeline Manager 완전 호환
+    가상 피팅 스텝 - BasePipelineStep 완전 호환
+    통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
     - M3 Max MPS 최적화
     - 물리 기반 천 시뮬레이션
     - 다양한 의류 타입 지원
@@ -81,29 +98,44 @@ class ClothWarpingStep:
         'default': {'stretch_factor': 1.1, 'drape_intensity': 0.4, 'wrinkle_factor': 0.4}
     }
     
-    def __init__(self, device: str = "mps", config: Dict[str, Any] = None):
+    def __init__(
+        self, 
+        device: Optional[str] = None, 
+        config: Optional[Dict[str, Any]] = None, 
+        **kwargs
+    ):
         """
-        초기화 - Pipeline Manager 완전 호환 (생성자 인자 수정)
+        🎯 BasePipelineStep 완전 호환 생성자
         
         Args:
-            device: 사용할 디바이스 (mps, cuda, cpu) - 첫 번째 인자
-            config: 설정 딕셔너리 (선택적) - 두 번째 인자
+            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
+            config: 설정 딕셔너리 (선택적)
+            **kwargs: 확장 파라미터들
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0  
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
+                - 기타 스텝별 특화 파라미터들...
         """
-        # 모델 로더는 내부에서 안전하게 처리
-        try:
-            from app.ai_pipeline.utils.model_loader import ModelLoader
-            self.model_loader = ModelLoader(device=device) if ModelLoader else None
-        except ImportError:
-            self.model_loader = None
+        # BasePipelineStep 초기화 (상속)
+        if BASE_STEP_AVAILABLE:
+            super().__init__(device=device, config=config, **kwargs)
+        else:
+            # 폴백 초기화
+            self.device = self._setup_optimal_device(device or 'auto')
+            self.config = config or {}
+            self.device_type = kwargs.get('device_type', 'auto')
+            self.memory_gb = kwargs.get('memory_gb', 16.0)
+            self.is_m3_max = kwargs.get('is_m3_max', False)
+            self.optimization_enabled = kwargs.get('optimization_enabled', True)
+            self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        self.device = self._setup_optimal_device(device)
-        self.config = config or {}
-        
-        # 워핑 설정
+        # 스텝별 특화 설정
         self.warping_config = self.config.get('warping', {
             'physics_enabled': True,
             'deformation_strength': 0.7,
-            'quality_level': 'medium',
+            'quality_level': getattr(self, 'quality_level', 'balanced'),
             'enable_wrinkles': True,
             'enable_fabric_physics': True,
             'adaptive_warping': True
@@ -113,12 +145,12 @@ class ClothWarpingStep:
         self.performance_config = self.config.get('performance', {
             'use_mps': self.device == 'mps',
             'memory_efficient': True,
-            'max_resolution': 1024,
+            'max_resolution': self._get_max_resolution(),
             'enable_caching': True
         })
         
-        # 최적화 수준
-        self.optimization_level = self.config.get('optimization_level', 'speed')  # speed, balanced, quality
+        # 최적화 수준 설정
+        self.optimization_level = kwargs.get('optimization_level', 'speed')  # speed, balanced, quality
         
         # 핵심 컴포넌트들
         self.fabric_simulator = None
@@ -137,11 +169,24 @@ class ClothWarpingStep:
             'warping_quality_avg': 0.0
         }
         
-        logger.info(f"🎯 ClothWarpingStep 초기화 - 디바이스: {self.device}")
+        logger.info(f"🎯 VirtualFittingStep 초기화 - 디바이스: {self.device}")
+        if getattr(self, 'is_m3_max', False):
+            logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {getattr(self, 'memory_gb', 16.0)}GB")
     
     def _setup_optimal_device(self, preferred_device: str) -> str:
         """최적 디바이스 선택"""
         try:
+            if preferred_device == 'auto':
+                if TORCH_AVAILABLE and torch.backends.mps.is_available():
+                    logger.info("✅ Apple Silicon MPS 백엔드 활성화")
+                    return 'mps'
+                elif TORCH_AVAILABLE and torch.cuda.is_available():
+                    logger.info("✅ CUDA 백엔드 활성화")
+                    return 'cuda'
+                else:
+                    logger.info("⚠️ CPU 백엔드 사용")
+                    return 'cpu'
+            
             if preferred_device == 'mps' and TORCH_AVAILABLE and torch.backends.mps.is_available():
                 logger.info("✅ Apple Silicon MPS 백엔드 활성화")
                 return 'mps'
@@ -155,13 +200,27 @@ class ClothWarpingStep:
             logger.warning(f"디바이스 설정 실패: {e}, CPU 사용")
             return 'cpu'
     
+    def _get_max_resolution(self) -> int:
+        """최대 해상도 결정"""
+        memory_gb = getattr(self, 'memory_gb', 16.0)
+        is_m3_max = getattr(self, 'is_m3_max', False)
+        
+        if is_m3_max and memory_gb >= 128:
+            return 2048  # M3 Max 128GB
+        elif is_m3_max or (self.device == 'cuda' and memory_gb >= 64):
+            return 1536  # M3 Max 36GB 또는 고급 GPU
+        elif memory_gb >= 32:
+            return 1024
+        else:
+            return 512
+    
     async def initialize(self) -> bool:
         """
         워핑 시스템 초기화
-        Pipeline Manager가 호출하는 표준 초기화 메서드
+        BasePipelineStep 표준 초기화 메서드
         """
         try:
-            logger.info("🔄 옷 워핑 시스템 초기화 시작...")
+            logger.info("🔄 가상 피팅 시스템 초기화 시작...")
             
             # 1. 기본 요구사항 검증
             if not CV2_AVAILABLE:
@@ -189,12 +248,12 @@ class ClothWarpingStep:
             await self._validate_system()
             
             self.is_initialized = True
-            logger.info("✅ 옷 워핑 시스템 초기화 완료")
+            logger.info("✅ 가상 피팅 시스템 초기화 완료")
             
             return True
             
         except Exception as e:
-            error_msg = f"옷 워핑 시스템 초기화 실패: {e}"
+            error_msg = f"가상 피팅 시스템 초기화 실패: {e}"
             logger.error(f"❌ {error_msg}")
             self.initialization_error = error_msg
             self.is_initialized = False
@@ -217,27 +276,26 @@ class ClothWarpingStep:
         logger.info(f"✅ 사용 가능한 기능들: {available_features}")
     
     # =================================================================
-    # 메인 처리 메서드 - Pipeline Manager 호환 인터페이스
+    # 메인 처리 메서드 - BasePipelineStep 호환 인터페이스
     # =================================================================
     
     async def process(
         self,
-        matching_result: Dict[str, Any],
-        body_measurements: Optional[Dict[str, float]] = None,
-        fabric_type: str = "cotton",
+        input_data: Any,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        옷 워핑 처리 - Pipeline Manager 호환 인터페이스
+        가상 피팅 처리 - BasePipelineStep 호환 인터페이스
         
         Args:
-            matching_result: 기하학적 매칭 결과
-            body_measurements: 신체 치수 정보
-            fabric_type: 천 재질 타입
+            input_data: 기하학적 매칭 결과 또는 Dict 형태의 매칭 결과
             **kwargs: 추가 매개변수
-            
+                - body_measurements: Optional[Dict[str, float]] = None
+                - fabric_type: str = "cotton"
+                - clothing_type: str = "shirt"
+                
         Returns:
-            Dict: 워핑 결과
+            Dict: 가상 피팅 결과
         """
         if not self.is_initialized:
             await self.initialize()
@@ -245,7 +303,19 @@ class ClothWarpingStep:
         start_time = time.time()
         
         try:
-            logger.info(f"🔄 의류 워핑 시작 - 재질: {fabric_type}")
+            # input_data 처리 - 다양한 형태 지원
+            if isinstance(input_data, dict):
+                matching_result = input_data
+            else:
+                # 기존 형태와의 호환성
+                matching_result = input_data
+            
+            # kwargs에서 매개변수 추출
+            body_measurements = kwargs.get('body_measurements', None)
+            fabric_type = kwargs.get('fabric_type', 'cotton')
+            clothing_type = kwargs.get('clothing_type', 'shirt')
+            
+            logger.info(f"🔄 가상 피팅 시작 - 재질: {fabric_type}, 타입: {clothing_type}")
             
             # 1. 매칭 결과에서 필요한 데이터 추출
             warped_clothing = matching_result.get('warped_clothing')
@@ -302,11 +372,11 @@ class ClothWarpingStep:
             # 9. 통계 업데이트
             self._update_performance_stats(processing_time, result['warping_quality'])
             
-            logger.info(f"✅ 워핑 완료 - {processing_time:.3f}초")
+            logger.info(f"✅ 가상 피팅 완료 - {processing_time:.3f}초")
             return result
             
         except Exception as e:
-            error_msg = f"워핑 처리 실패: {e}"
+            error_msg = f"가상 피팅 처리 실패: {e}"
             logger.error(f"❌ {error_msg}")
             return self._create_error_result(error_msg)
     
@@ -346,7 +416,7 @@ class ClothWarpingStep:
         clothing_type: str,
         fabric_type: str
     ) -> Dict[str, Any]:
-        """최종 결과 구성 (Pipeline Manager 호환 형식)"""
+        """최종 결과 구성 (BasePipelineStep 호환 형식)"""
         
         # 메인 결과 이미지
         final_image = texture_result.get('enhanced_image', warping_result['warped_image'])
@@ -364,9 +434,9 @@ class ClothWarpingStep:
         
         return {
             "success": True,
-            "warped_clothing": final_tensor,
-            "warped_mask": mask_tensor,
-            "warped_image_numpy": final_image,
+            "fitted_image": final_tensor,
+            "fitted_mask": mask_tensor,
+            "fitted_image_numpy": final_image,
             "deformation_map": warping_result.get('strain_map'),
             "warping_quality": warping_quality,
             "fabric_analysis": {
@@ -376,7 +446,7 @@ class ClothWarpingStep:
                 "physics_simulated": simulation_result.get('simulation_info', {}).get('physics_enabled', False),
                 "texture_enhanced": 'enhanced_image' in texture_result
             },
-            "warping_info": {
+            "fitting_info": {
                 "clothing_type": clothing_type,
                 "warping_method": "physics_based",
                 "processing_time": processing_time,
@@ -435,13 +505,13 @@ class ClothWarpingStep:
         return {
             "success": False,
             "error": error_message,
-            "warped_clothing": None,
-            "warped_mask": None,
-            "warped_image_numpy": None,
+            "fitted_image": None,
+            "fitted_mask": None,
+            "fitted_image_numpy": None,
             "deformation_map": None,
             "warping_quality": 0.0,
             "fabric_analysis": {},
-            "warping_info": {
+            "fitting_info": {
                 "error_details": error_message,
                 "device": self.device,
                 "processing_time": 0.0
@@ -458,16 +528,16 @@ class ClothWarpingStep:
         
         return {
             "success": True,
-            "warped_clothing": None,
-            "warped_mask": None,
-            "warped_image_numpy": dummy_image,
+            "fitted_image": None,
+            "fitted_mask": None,
+            "fitted_image_numpy": dummy_image,
             "deformation_map": dummy_mask,
             "warping_quality": 0.5,
             "fabric_analysis": {
                 "fallback_mode": True,
                 "reason": reason
             },
-            "warping_info": {
+            "fitting_info": {
                 "warping_method": "fallback",
                 "processing_time": 0.001,
                 "device": self.device,
@@ -559,17 +629,25 @@ class ClothWarpingStep:
             logger.warning(f"통계 업데이트 실패: {e}")
     
     # =================================================================
-    # Pipeline Manager 호환 메서드들
+    # BasePipelineStep 호환 메서드들
     # =================================================================
     
-    async def get_model_info(self) -> Dict[str, Any]:
-        """모델 정보 반환 (Pipeline Manager 호환)"""
+    async def get_step_info(self) -> Dict[str, Any]:
+        """🔍 스텝 정보 반환 (BasePipelineStep 호환)"""
         return {
-            "step_name": "ClothWarping",
+            "step_name": "VirtualFitting",
+            "class_name": self.__class__.__name__,
             "version": "3.0",
             "device": self.device,
+            "device_type": getattr(self, 'device_type', 'unknown'),
+            "memory_gb": getattr(self, 'memory_gb', 16.0),
+            "is_m3_max": getattr(self, 'is_m3_max', False),
+            "optimization_enabled": getattr(self, 'optimization_enabled', True),
+            "quality_level": getattr(self, 'quality_level', 'balanced'),
             "initialized": self.is_initialized,
             "initialization_error": self.initialization_error,
+            "config_keys": list(self.config.keys()),
+            "performance_stats": self.performance_stats.copy(),
             "capabilities": {
                 "physics_simulation": bool(self.fabric_simulator),
                 "advanced_warping": bool(self.advanced_warper),
@@ -578,25 +656,19 @@ class ClothWarpingStep:
             },
             "supported_fabrics": list(self.FABRIC_PROPERTIES.keys()),
             "supported_clothing_types": list(self.CLOTHING_DEFORMATION_PARAMS.keys()),
-            "performance_stats": self.performance_stats,
             "dependencies": {
                 "torch": TORCH_AVAILABLE,
                 "opencv": CV2_AVAILABLE,
                 "scipy": SCIPY_AVAILABLE,
                 "sklearn": SKLEARN_AVAILABLE,
                 "skimage": SKIMAGE_AVAILABLE
-            },
-            "config": {
-                "warping": self.warping_config,
-                "performance": self.performance_config,
-                "optimization_level": self.optimization_level
             }
         }
     
     async def cleanup(self):
-        """리소스 정리 (Pipeline Manager 호환)"""
+        """리소스 정리 (BasePipelineStep 호환)"""
         try:
-            logger.info("🧹 옷 워핑 시스템 리소스 정리 시작...")
+            logger.info("🧹 가상 피팅 시스템 리소스 정리 시작...")
             
             # 컴포넌트들 정리
             if self.fabric_simulator:
@@ -614,12 +686,19 @@ class ClothWarpingStep:
             # GPU 메모리 정리
             if TORCH_AVAILABLE:
                 if self.device == 'mps':
-                    torch.mps.empty_cache()
+                    if hasattr(torch.backends.mps, 'empty_cache'):
+                        torch.backends.mps.empty_cache()
+                    elif hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
                 elif self.device == 'cuda':
                     torch.cuda.empty_cache()
             
+            # 시스템 메모리 정리
+            import gc
+            gc.collect()
+            
             self.is_initialized = False
-            logger.info("✅ 옷 워핑 시스템 리소스 정리 완료")
+            logger.info("✅ 가상 피팅 시스템 리소스 정리 완료")
             
         except Exception as e:
             logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
@@ -794,204 +873,4 @@ class AdvancedClothingWarper:
         """의류 타입별 특화 워핑"""
         
         if clothing_type == "dress":
-            return self._apply_dress_warping(image, deform_params)
-        elif clothing_type == "shirt":
-            return self._apply_shirt_warping(image, deform_params)
-        elif clothing_type == "pants":
-            return self._apply_pants_warping(image, deform_params)
-        else:
-            return image
-    
-    def _apply_dress_warping(self, image: np.ndarray, params: Dict) -> np.ndarray:
-        """드레스 워핑 (A라인 실루엣)"""
-        h, w = image.shape[:2]
-        
-        y_coords, x_coords = np.mgrid[0:h, 0:w]
-        
-        # 아래쪽으로 갈수록 확장
-        expansion_factor = (y_coords / h) * params.get('drape_intensity', 0.7) * 0.1
-        center_x = w // 2
-        
-        offset_x = (x_coords - center_x) * expansion_factor
-        
-        map_x = (x_coords + offset_x).astype(np.float32)
-        map_y = y_coords.astype(np.float32)
-        
-        return cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    
-    def _apply_shirt_warping(self, image: np.ndarray, params: Dict) -> np.ndarray:
-        """셔츠 워핑"""
-        # 기본적으로는 미세한 변형만 적용
-        stretch_factor = params.get('stretch_factor', 1.0)
-        if abs(stretch_factor - 1.0) < 0.01:
-            return image
-        
-        h, w = image.shape[:2]
-        new_w = int(w * stretch_factor)
-        
-        resized = cv2.resize(image, (new_w, h), interpolation=cv2.INTER_LINEAR)
-        
-        # 원래 크기로 crop 또는 pad
-        if new_w > w:
-            start_x = (new_w - w) // 2
-            return resized[:, start_x:start_x + w]
-        else:
-            pad_x = (w - new_w) // 2
-            padded = np.pad(resized, ((0, 0), (pad_x, w - new_w - pad_x), (0, 0)), mode='edge')
-            return padded
-    
-    def _apply_pants_warping(self, image: np.ndarray, params: Dict) -> np.ndarray:
-        """바지 워핑"""
-        # 기본적으로는 변경 없음
-        return image
-    
-    def _apply_deformation_warping(self, image: np.ndarray, deformation_map: np.ndarray) -> np.ndarray:
-        """변형 맵 기반 워핑"""
-        if deformation_map.shape[:2] != image.shape[:2]:
-            deformation_map = cv2.resize(deformation_map, (image.shape[1], image.shape[0]))
-        
-        h, w = image.shape[:2]
-        y_coords, x_coords = np.mgrid[0:h, 0:w]
-        
-        # 변형 맵을 변위로 변환
-        deform_strength = 5.0  # 변형 강도
-        offset_x = (deformation_map - 0.5) * deform_strength
-        offset_y = (deformation_map - 0.5) * deform_strength * 0.5
-        
-        map_x = (x_coords + offset_x).astype(np.float32)
-        map_y = (y_coords + offset_y).astype(np.float32)
-        
-        return cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-    
-    def _generate_strain_map(self, shape: Tuple[int, int], params: Dict) -> np.ndarray:
-        """스트레인 맵 생성"""
-        h, w = shape
-        
-        # 의류의 중앙 부분이 가장 많이 늘어나는 패턴
-        y_center, x_center = h // 2, w // 2
-        y_coords, x_coords = np.mgrid[0:h, 0:w]
-        
-        distance_from_center = np.sqrt((y_coords - y_center)**2 + (x_coords - x_center)**2)
-        max_distance = np.sqrt(y_center**2 + x_center**2)
-        
-        normalized_distance = distance_from_center / max_distance
-        strain_intensity = params.get('stretch_factor', 1.0) - 1.0
-        
-        # 중앙에서 높고 가장자리에서 낮은 스트레인
-        strain_map = (1.0 - normalized_distance) * abs(strain_intensity) + 1.0
-        
-        return strain_map.astype(np.float32)
-
-
-class TextureSynthesizer:
-    """텍스처 합성기 (간소화 버전)"""
-    
-    def __init__(self, device: str = 'cpu', use_advanced_features: bool = False):
-        self.device = device
-        self.use_advanced_features = use_advanced_features and SKIMAGE_AVAILABLE
-    
-    async def synthesize_fabric_details(
-        self,
-        warped_image: np.ndarray,
-        strain_map: np.ndarray,
-        fabric_props: Dict[str, float],
-        clothing_type: str
-    ) -> Dict[str, Any]:
-        """천 디테일 합성"""
-        
-        try:
-            # 1. 기본 품질 개선
-            enhanced_image = self._enhance_basic_quality(warped_image)
-            
-            # 2. 고급 텍스처 분석 (옵션)
-            texture_quality = 0.8  # 기본값
-            if self.use_advanced_features:
-                texture_quality = self._analyze_texture_quality(enhanced_image)
-            
-            # 3. 주름 효과 추가 (간단한 버전)
-            if fabric_props.get('stiffness', 0.5) < 0.6:  # 부드러운 천에만
-                enhanced_image = self._add_simple_wrinkles(enhanced_image, strain_map)
-            
-            return {
-                'enhanced_image': enhanced_image,
-                'texture_quality': texture_quality,
-                'details_added': True,
-                'wrinkles_applied': fabric_props.get('stiffness', 0.5) < 0.6
-            }
-            
-        except Exception as e:
-            logger.warning(f"텍스처 합성 실패: {e}")
-            return {
-                'enhanced_image': warped_image,
-                'texture_quality': 0.7,
-                'details_added': False,
-                'error': str(e)
-            }
-    
-    def _enhance_basic_quality(self, image: np.ndarray) -> np.ndarray:
-        """기본 품질 개선"""
-        if not CV2_AVAILABLE:
-            return image
-        
-        # 1. 가우시안 노이즈 제거
-        denoised = cv2.bilateralFilter(image, 9, 75, 75)
-        
-        # 2. 약간의 선명화
-        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]) * 0.1
-        sharpened = cv2.filter2D(denoised, -1, kernel)
-        
-        return sharpened
-    
-    def _analyze_texture_quality(self, image: np.ndarray) -> float:
-        """텍스처 품질 분석 (고급 기능)"""
-        if not SKIMAGE_AVAILABLE:
-            return 0.8
-        
-        try:
-            # 그레이스케일 변환
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-            
-            # LBP를 사용한 텍스처 분석
-            lbp = local_binary_pattern(gray, 24, 8, method='uniform')
-            
-            # 텍스처 균일성 측정
-            hist, _ = np.histogram(lbp, bins=26, range=(0, 26))
-            hist = hist.astype(float)
-            hist /= (hist.sum() + 1e-7)
-            
-            # 엔트로피 계산 (높을수록 복잡한 텍스처)
-            entropy = -np.sum(hist * np.log2(hist + 1e-7))
-            
-            # 0.5~0.9 범위로 정규화
-            quality = 0.5 + (entropy / 10.0) * 0.4
-            
-            return min(0.9, max(0.5, quality))
-            
-        except Exception as e:
-            logger.warning(f"텍스처 분석 실패: {e}")
-            return 0.8
-    
-    def _add_simple_wrinkles(self, image: np.ndarray, strain_map: np.ndarray) -> np.ndarray:
-        """간단한 주름 효과 추가"""
-        if not CV2_AVAILABLE:
-            return image
-        
-        try:
-            # strain_map에서 높은 변형 영역에 주름 효과 추가
-            h, w = image.shape[:2]
-            
-            if strain_map.shape[:2] != (h, w):
-                strain_map = cv2.resize(strain_map, (w, h))
-            
-            # 주름이 생길 영역 찾기 (높은 strain 영역)
-            wrinkle_mask = (strain_map > np.percentile(strain_map, 70)).astype(np.uint8)
-            
-            # 가벼운 어둡게 처리로 주름 효과 시뮬레이션
-            wrinkle_effect = image.copy().astype(np.float32)
-            wrinkle_effect[wrinkle_mask > 0] *= 0.95  # 5% 어둡게
-            
-            return np.clip(wrinkle_effect, 0, 255).astype(np.uint8)
-            
-        except Exception as e:
-            logger.warning(f"주름 효과 추가 실패: {e}")
-            return image
+            return self
