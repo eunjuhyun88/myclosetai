@@ -1,15 +1,14 @@
-# app/utils/memory_manager.py
+# app/ai_pipeline/utils/memory_manager.py
 """
-MyCloset AI - 지능형 메모리 관리 시스템
+MyCloset AI - 지능형 메모리 관리 시스템 (M3 Max 최적화)
 - 동적 메모리 할당
 - 캐시 최적화  
 - GPU 메모리 모니터링 (MPS/CUDA)
 - 자동 가비지 컬렉션
 - OOM 방지
-- M3 Max 최적화
+- Apple Silicon 최적화
 """
 import os
-import psutil
 import gc
 import threading
 import time
@@ -21,6 +20,14 @@ from contextlib import contextmanager, asynccontextmanager
 import weakref
 from functools import wraps
 import numpy as np
+
+# psutil 선택적 임포트
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    psutil = None
 
 # PyTorch 선택적 임포트
 try:
@@ -47,7 +54,7 @@ class MemoryStats:
     process_memory_mb: float = 0.0
 
 class MemoryManager:
-    """지능형 GPU/CPU 메모리 관리자 - MyCloset AI 최적화"""
+    """지능형 GPU/CPU 메모리 관리자 - Apple Silicon M3 Max 최적화"""
     
     def __init__(self, 
                  device: str = "auto", 
@@ -63,8 +70,11 @@ class MemoryManager:
         
         # 메모리 제한 자동 설정
         if memory_limit_gb is None:
-            total_memory = psutil.virtual_memory().total / 1024**3
-            self.memory_limit_gb = total_memory * 0.8  # 80% 사용
+            if PSUTIL_AVAILABLE:
+                total_memory = psutil.virtual_memory().total / 1024**3
+                self.memory_limit_gb = total_memory * 0.8  # 80% 사용
+            else:
+                self.memory_limit_gb = 16.0  # 기본값
         else:
             self.memory_limit_gb = memory_limit_gb
             
@@ -82,7 +92,7 @@ class MemoryManager:
         self.model_cache = weakref.WeakValueDictionary() if enable_caching else {}
         self.tensor_cache = {} if enable_caching else {}
         self.cache_priority = {} if enable_caching else {}
-        self.image_cache = {} if enable_caching else {}  # 이미지 캐시 추가
+        self.image_cache = {} if enable_caching else {}
         
         # 모니터링 스레드
         self.monitoring_active = False
@@ -149,7 +159,10 @@ class MemoryManager:
                 })
             elif self.device == 'mps' and torch.backends.mps.is_available():
                 # MPS는 시스템 메모리 공유 (M3 Max 최적화)
-                system_memory = psutil.virtual_memory().total / 1024**3
+                if PSUTIL_AVAILABLE:
+                    system_memory = psutil.virtual_memory().total / 1024**3
+                else:
+                    system_memory = 128.0  # M3 Max 기본값
                 info.update({
                     "available": True,
                     "type": "mps",
@@ -168,20 +181,31 @@ class MemoryManager:
     def get_memory_stats(self) -> MemoryStats:
         """현재 메모리 상태 조회"""
         try:
-            # CPU 메모리
-            memory = psutil.virtual_memory()
-            swap = psutil.swap_memory()
-            process = psutil.Process()
-            
-            stats = MemoryStats(
-                cpu_percent=memory.percent,
-                cpu_available_gb=memory.available / 1024**3,
-                cpu_used_gb=memory.used / 1024**3,
-                cpu_total_gb=memory.total / 1024**3,
-                swap_used_gb=swap.used / 1024**3,
-                cache_size_mb=self._get_cache_size_mb(),
-                process_memory_mb=process.memory_info().rss / 1024**2
-            )
+            if PSUTIL_AVAILABLE:
+                # CPU 메모리
+                memory = psutil.virtual_memory()
+                swap = psutil.swap_memory()
+                process = psutil.Process()
+                
+                stats = MemoryStats(
+                    cpu_percent=memory.percent,
+                    cpu_available_gb=memory.available / 1024**3,
+                    cpu_used_gb=memory.used / 1024**3,
+                    cpu_total_gb=memory.total / 1024**3,
+                    swap_used_gb=swap.used / 1024**3,
+                    cache_size_mb=self._get_cache_size_mb(),
+                    process_memory_mb=process.memory_info().rss / 1024**2
+                )
+            else:
+                # psutil 없이 기본값
+                stats = MemoryStats(
+                    cpu_percent=50.0,
+                    cpu_available_gb=64.0,
+                    cpu_used_gb=64.0,
+                    cpu_total_gb=128.0,
+                    cache_size_mb=self._get_cache_size_mb(),
+                    process_memory_mb=1024.0
+                )
             
             # GPU 메모리
             if TORCH_AVAILABLE and self.gpu_info["available"]:
@@ -204,9 +228,9 @@ class MemoryManager:
             # 기본값 반환
             return MemoryStats(
                 cpu_percent=50.0,
-                cpu_available_gb=8.0,
-                cpu_used_gb=8.0,
-                cpu_total_gb=16.0
+                cpu_available_gb=64.0,
+                cpu_used_gb=64.0,
+                cpu_total_gb=128.0
             )
     
     def _get_cache_size_mb(self) -> float:
@@ -311,7 +335,6 @@ class MemoryManager:
                     
                     # 이미지 캐시 부분 정리 (LRU 방식)
                     if len(self.image_cache) > 50:
-                        # 오래된 항목부터 제거
                         items_to_remove = len(self.image_cache) - 30
                         for _ in range(items_to_remove):
                             if self.image_cache:
@@ -368,11 +391,11 @@ class MemoryManager:
         """비상 메모리 정리"""
         try:
             # 모든 약한 참조 정리
-            self.model_cache.clear()
+            if self.enable_caching:
+                self.model_cache.clear()
             
             # 시스템 레벨 정리
             if hasattr(gc, 'set_threshold'):
-                # 가비지 컬렉션 임계값 임시 낮춤
                 gc.set_threshold(100, 10, 10)
                 gc.collect()
                 gc.set_threshold(700, 10, 10)  # 기본값 복원
@@ -407,7 +430,6 @@ class MemoryManager:
                     self._evict_low_priority_cache()
                 
                 if len(self.image_cache) > 50:
-                    # 이미지 캐시 크기 제한
                     excess = len(self.image_cache) - 30
                     for _ in range(excess):
                         if self.image_cache:
@@ -645,6 +667,10 @@ def get_memory_manager(**kwargs) -> MemoryManager:
     if _global_memory_manager is None:
         _global_memory_manager = MemoryManager(**kwargs)
     return _global_memory_manager
+
+def get_global_memory_manager(**kwargs) -> MemoryManager:
+    """전역 메모리 관리자 인스턴스 반환 (별칭)"""
+    return get_memory_manager(**kwargs)
 
 # 편의 함수들
 async def optimize_memory():
