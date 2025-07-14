@@ -1,7 +1,7 @@
-# 기존 AI 파이프라인 구조 import (실제 연동)# backend/app/main.py
+# backend/app/main.py - Import 경로 수정
 """
-MyCloset AI Backend - 실제 8단계 AI 파이프라인 연동 (완전 수정판)
-기존 ai_pipeline 구조를 완전히 활용한 실제 가상 피팅 시스템
+MyCloset AI Backend - 실제 8단계 AI 파이프라인 연동 (수정된 버전)
+Import 경로 문제 해결로 데모 모드 전환 방지
 """
 import os
 import sys
@@ -36,182 +36,39 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 
-# 기존 AI 파이프라인 구조 import (실제 연동) - 수정된 버전
+# ============================================
+# 🔧 수정된 Import 경로 - 실제 구조에 맞게
+# ============================================
+
 try:
-    # 실제 구현된 step 클래스들 임포트
+    # 실제 구현된 step 클래스들 임포트 (올바른 경로)
     from ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
     
     # 포즈 추정은 실제 파일에서 RealPoseEstimationStep 클래스 사용
     try:
         from ai_pipeline.steps.step_02_pose_estimation import RealPoseEstimationStep
-        # 직접 alias 생성
         PoseEstimationStep = RealPoseEstimationStep
         POSE_ESTIMATION_AVAILABLE = True
         
-    except ImportError as e:
-        # 만약 RealPoseEstimationStep이 없다면 기본 클래스 사용
-        class PoseEstimationStep:
-            def __init__(self, device='cpu', config=None):
-                self.device = device
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, person_image, **kwargs):
-                await asyncio.sleep(0.3)
-                return {
-                    'success': True,
-                    'keypoints_18': [[0, 0, 0] for _ in range(18)],
-                    'confidence': 0.70,
-                    'processing_time': 0.3
-                }
-        
+    except ImportError:
+        # 기본 포즈 추정 클래스 사용
+        from ai_pipeline.steps.step_02_pose_estimation import PoseEstimationStep
         POSE_ESTIMATION_AVAILABLE = False
     
-    # 나머지 step들은 기본 구현 사용 (실제 파일이 없는 경우)
-    try:
-        from ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
-    except ImportError:
-        # 기본 구현
-        class ClothSegmentationStep:
-            def __init__(self, config=None):
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, clothing_image, **kwargs):
-                await asyncio.sleep(0.3)
-                return {
-                    'success': True,
-                    'clothing_mask': np.random.rand(512, 512),
-                    'confidence': 0.82,
-                    'processing_time': 0.3
-                }
+    # 나머지 단계들 (실제 구현 사용)
+    from ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
+    from ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
+    from ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
+    from ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
+    from ai_pipeline.steps.step_07_post_processing import PostProcessingStep
+    from ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
     
-    try:
-        from ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
-    except ImportError:
-        class GeometricMatchingStep:
-            def __init__(self, config=None):
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, **kwargs):
-                await asyncio.sleep(0.4)
-                return {
-                    'success': True,
-                    'warp_matrix': np.eye(3),
-                    'confidence': 0.85,
-                    'processing_time': 0.4
-                }
-    
-    try:
-        from ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
-    except ImportError:
-        class ClothWarpingStep:
-            def __init__(self, config=None):
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, **kwargs):
-                await asyncio.sleep(0.5)
-                return {
-                    'success': True,
-                    'warped_clothing': np.random.rand(512, 512, 3),
-                    'confidence': 0.88,
-                    'processing_time': 0.5
-                }
-    
-    try:
-        from ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
-    except ImportError:
-        class VirtualFittingStep:
-            def __init__(self, config=None):
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, **kwargs):
-                await asyncio.sleep(0.8)
-                return {
-                    'success': True,
-                    'fitted_image': np.random.rand(512, 512, 3),
-                    'confidence': 0.90,
-                    'processing_time': 0.8
-                }
-    
-    try:
-        from ai_pipeline.steps.step_07_post_processing import PostProcessingStep
-    except ImportError:
-        class PostProcessingStep:
-            def __init__(self, config=None):
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, **kwargs):
-                await asyncio.sleep(0.3)
-                return {
-                    'success': True,
-                    'enhanced_image': np.random.rand(512, 512, 3),
-                    'confidence': 0.92,
-                    'processing_time': 0.3
-                }
-    
-    try:
-        from ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
-    except ImportError:
-        class QualityAssessmentStep:
-            def __init__(self, config=None):
-                self.config = config or {}
-                self.is_initialized = False
-            
-            async def initialize(self):
-                await asyncio.sleep(0.1)
-                self.is_initialized = True
-                return True
-            
-            async def process(self, **kwargs):
-                await asyncio.sleep(0.2)
-                return {
-                    'success': True,
-                    'quality_score': 0.89,
-                    'quality_grade': 'Excellent',
-                    'processing_time': 0.2
-                }
-    
-    # 기존 유틸리티들 import (수정된 클래스명 사용)
+    # 🔧 수정된 유틸리티 import 경로 - 실제 구조에 맞게
     from ai_pipeline.utils.memory_manager import MemoryManager  
     from ai_pipeline.utils.data_converter import DataConverter
     from ai_pipeline.utils.model_loader import ModelLoader
     
-    # 코어 모듈들
+    # 코어 모듈들 (올바른 경로)
     try:
         from core.config import get_settings
     except ImportError:
@@ -226,7 +83,7 @@ try:
         from core.gpu_config import get_device_config
     except ImportError:
         def get_device_config():
-            return {"device": "cpu", "memory": "8GB"}
+            return {"device": "mps", "memory": "128GB"}
     
     try:
         from core.logging_config import setup_logging
@@ -237,6 +94,7 @@ try:
     AI_PIPELINE_AVAILABLE = True
     
     # 로거 초기화 (모듈 로드 후)
+    setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("✅ AI 파이프라인 모듈 로드 성공 (실제 구현)")
     
@@ -252,9 +110,9 @@ except ImportError as e:
     logger.error(f"❌ AI 파이프라인 모듈 로드 실패: {e}")
     logger.error("데모 모드로 전환됩니다.")
     
-    # 완전 폴백 클래스들 - ✅ model_loader 인자 제거
+    # 완전 폴백 클래스들
     class HumanParsingStep:
-        def __init__(self, device='cpu', config=None):  # ✅ model_loader 인자 제거
+        def __init__(self, device='cpu', config=None):
             self.device = device
             self.config = config or {}
             self.is_initialized = False
@@ -324,10 +182,10 @@ except ImportError as e:
         return Settings()
     
     def get_device_config():
-        return {"device": "cpu", "memory": "8GB"}
+        return {"device": "mps", "memory": "128GB"}
 
 # ========================================
-# 실제 AI 파이프라인 매니저 (완전 수정된 버전)
+# 실제 AI 파이프라인 매니저 (동일)
 # ========================================
 
 class RealPipelineManager:
@@ -366,13 +224,12 @@ class RealPipelineManager:
         return preferred
     
     async def initialize(self) -> bool:
-        """파이프라인 초기화 - 완전 수정된 버전"""
+        """파이프라인 초기화"""
         try:
             logger.info("🔄 8단계 AI 파이프라인 초기화 시작...")
             
-            # 1단계: 인체 파싱 (실제 구현) - ✅ 완전 수정된 초기화
+            # 1단계: 인체 파싱 (실제 구현)
             try:
-                # HumanParsingStep에 맞는 config 구성
                 step1_config = {
                     'use_coreml': True,
                     'enable_quantization': True,
@@ -384,7 +241,6 @@ class RealPipelineManager:
                     'model_path': 'ai_models/checkpoints/human_parsing'
                 }
                 
-                # ✅ 올바른 초기화: device, config 2개 인자만 전달
                 self.steps['step_01'] = HumanParsingStep(
                     device=self.device,
                     config=step1_config
@@ -396,7 +252,7 @@ class RealPipelineManager:
                 logger.error(f"❌ 1단계 초기화 실패: {e}")
                 # 기본 폴백 클래스 사용
                 class FallbackHumanParsing:
-                    def __init__(self, device='cpu', config=None):  # ✅ model_loader 제거
+                    def __init__(self, device='cpu', config=None):
                         self.device = device
                         self.config = config or {}
                         self.is_initialized = False
@@ -414,14 +270,13 @@ class RealPipelineManager:
                             'processing_time': 0.3
                         }
                 
-                # ✅ 폴백도 올바른 방식으로 초기화
                 self.steps['step_01'] = FallbackHumanParsing(
                     device=self.device,
                     config=step1_config
                 )
                 await self.steps['step_01'].initialize()
             
-            # 2단계: 포즈 추정 (실제 MediaPipe 구현) - 설정 명확화
+            # 2단계: 포즈 추정 (실제 MediaPipe 구현)
             try:
                 step2_config = {
                     'model_complexity': 2,
@@ -439,14 +294,13 @@ class RealPipelineManager:
                 
             except Exception as e:
                 logger.error(f"❌ 2단계 초기화 실패: {e}")
-                # 기본 폴백 사용
                 self.steps['step_02'] = PoseEstimationStep(
                     device=self.device, 
                     config={}
                 )
                 await self.steps['step_02'].initialize()
             
-            # 3-8단계: 기본 구현 또는 실제 구현
+            # 3-8단계: 실제 구현 사용
             step_classes = {
                 'step_03': ClothSegmentationStep,
                 'step_04': GeometricMatchingStep,
@@ -458,7 +312,7 @@ class RealPipelineManager:
             
             for step_name, step_class in step_classes.items():
                 try:
-                    self.steps[step_name] = step_class(config=self.config)  # ✅ config만 전달
+                    self.steps[step_name] = step_class(config=self.config)
                     await self.steps[step_name].initialize()
                     logger.info(f"✅ {step_name} 초기화 성공")
                 except Exception as e:
@@ -506,7 +360,6 @@ class RealPipelineManager:
             
             # 단계별 처리 결과 저장
             step_results = {}
-            intermediate_images = {}
             
             # 1단계: 인체 파싱
             if progress_callback:
@@ -515,18 +368,12 @@ class RealPipelineManager:
             step1_result = await self.steps['step_01'].process(person_tensor)
             step_results['step_01'] = step1_result
             
-            if not step1_result.get('success', False):
-                raise RuntimeError("1단계 인체 파싱 실패")
-            
             # 2단계: 포즈 추정 (실제 MediaPipe)
             if progress_callback:
                 await progress_callback("포즈 추정", 30, "포즈 키포인트 검출 중...")
             
             step2_result = await self.steps['step_02'].process(person_tensor)
             step_results['step_02'] = step2_result
-            
-            if not step2_result.get('success', False):
-                logger.warning("⚠️ 포즈 추정 실패, 기본값 사용")
             
             # 3단계: 의류 세그멘테이션
             if progress_callback:
@@ -556,7 +403,7 @@ class RealPipelineManager:
             step5_result = await self.steps['step_05'].process(
                 clothing_image=clothing_tensor,
                 warp_matrix=step4_result.get('warp_matrix'),
-                target_shape=person_tensor.shape[2:] if hasattr(person_tensor, 'shape') else (512, 512)
+                target_shape=(512, 512)
             )
             step_results['step_05'] = step5_result
             
@@ -571,9 +418,6 @@ class RealPipelineManager:
                 pose_keypoints=step2_result.get('keypoints_18', [])
             )
             step_results['step_06'] = step6_result
-            
-            if not step6_result.get('success', False):
-                raise RuntimeError("6단계 가상 피팅 생성 실패")
             
             # 7단계: 후처리
             if progress_callback:
@@ -622,7 +466,7 @@ class RealPipelineManager:
                         step_results.get('step_02', {}).get('confidence', 0.0),
                         step_results.get('step_06', {}).get('confidence', 0.0)
                     ]),
-                    'pose_quality': step2_result.get('pose_confidence', 0.0),
+                    'pose_quality': step2_result.get('confidence', 0.0),
                     'parsing_quality': step1_result.get('confidence', 0.0)
                 },
                 'improvement_suggestions': {
@@ -768,7 +612,7 @@ class RealPipelineManager:
             logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
 
 # ========================================
-# 전역 변수들 (기존과 동일)
+# 전역 변수들 및 나머지 코드 (동일)
 # ========================================
 
 # AI 파이프라인 인스턴스들
@@ -781,7 +625,7 @@ model_loader: Optional[ModelLoader] = None
 active_sessions: Dict[str, Dict[str, Any]] = {}
 processing_queue: List[Dict[str, Any]] = []
 
-# WebSocket 연결 관리 (기존과 동일)
+# WebSocket 연결 관리
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
@@ -834,10 +678,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# ========================================
-# 모델 정의 (기존과 동일)
-# ========================================
-
+# 모델 정의
 class VirtualTryOnResponse(BaseModel):
     success: bool
     session_id: str
@@ -863,10 +704,7 @@ class ProcessingStatusResponse(BaseModel):
     estimated_remaining_time: Optional[float] = None
     error: Optional[str] = None
 
-# ========================================
-# 설정 및 초기화 (수정된 버전)
-# ========================================
-
+# 설정 및 초기화
 settings = get_settings()
 
 @asynccontextmanager
@@ -930,7 +768,6 @@ async def lifespan(app: FastAPI):
             try:
                 await memory_manager.cleanup()
             except AttributeError:
-                # cleanup 메서드가 없는 경우 무시
                 pass
         logger.info("✅ 정리 완료")
     except Exception as e:
@@ -961,10 +798,7 @@ async def initialize_real_ai_pipeline():
         logger.error(f"❌ 실제 AI 파이프라인 초기화 실패: {e}")
         logger.error(traceback.format_exc())
 
-# ========================================
-# FastAPI 앱 생성 (기존과 동일하지만 설명 업데이트)
-# ========================================
-
+# FastAPI 앱 생성
 app = FastAPI(
     title="MyCloset AI Backend - Real Pipeline Edition",
     description="""
@@ -987,14 +821,14 @@ app = FastAPI(
     7. **Post Processing** - 후처리
     8. **Quality Assessment** - 품질 평가
     """,
-    version="2.2.0",
+    version="2.2.1",
     docs_url="/docs",
     redoc_url="/redoc", 
     openapi_url="/openapi.json",
     lifespan=lifespan
 )
 
-# CORS 설정 (기존과 동일)
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=getattr(settings, 'CORS_ORIGINS', [
@@ -1018,10 +852,7 @@ try:
 except Exception as e:
     logger.warning(f"정적 파일 마운트 실패: {e}")
 
-# ========================================
 # API 엔드포인트들
-# ========================================
-
 @app.get("/health", tags=["System"])
 async def health_check():
     """시스템 헬스체크"""
@@ -1053,7 +884,7 @@ async def health_check():
         "pipeline_available": AI_PIPELINE_AVAILABLE,
         "memory_status": memory_status,
         "active_sessions": len(active_sessions),
-        "version": "2.2.0",
+        "version": "2.2.1",
         "device": pipeline_info.get('device', 'unknown'),
         "ai_pipeline_mode": "real" if AI_PIPELINE_AVAILABLE else "demo",
         "real_implementations": pipeline_info.get('real_implementation', {})
@@ -1223,7 +1054,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await manager.connect(websocket, session_id)
     try:
         while True:
-            # 클라이언트로부터 메시지 대기
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(session_id)

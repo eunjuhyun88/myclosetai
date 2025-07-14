@@ -23,7 +23,8 @@ import io
 from app.core.config import get_settings
 from app.core.logging_config import setup_logging
 from app.utils.image_utils import save_temp_image, load_image
-from app.utils.memory_manager import optimize_memory_usage
+
+from app.ai_pipeline.utils.memory_manager import optimize_memory_usage
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
