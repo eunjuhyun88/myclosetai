@@ -70,6 +70,14 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+node_modules/
+frontend/node_modules/
+backend/mycloset_env/
+mycloset_env/
+
+.env
+.DS_Store
+*.log
 
 # Virtual environments
 env/
@@ -273,5 +281,35 @@ frontend/node_modules/
 
 # 환경 설정
 .env
-.env.localbackend/mycloset_env/
+.env.local
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 가상 환경
+venv/
+backend/venv/
 backend/mycloset_env/
+
+# 로그
+*.log
+backend/logs/
+
+# 모델 파일
+backend/ai_models/
+backend/models/
+
+# 환경 설정
+*.env
+backend/.env
+frontend/.env
+
+# 프론트엔드 빌드 및 의존성
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
