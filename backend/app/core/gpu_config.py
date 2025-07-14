@@ -393,3 +393,22 @@ class GPUConfig:
         memory_info = self.get_memory_info()
         logger.info(f"시스템 메모리: {memory_info['system_memory']['total_gb']:.1f}GB")
         logger.info("=" * 50)
+
+
+# 전역 함수들 추가 (호환성 유지)
+def gpu_config():
+    """GPU 설정 함수 - 호환성을 위한 래퍼"""
+    return GPUConfig()
+
+def get_optimal_device():
+    """최적 디바이스 반환"""
+    config = GPUConfig()
+    return config.get_optimal_device()
+
+def get_device_config():
+    """디바이스 설정 반환"""
+    config = GPUConfig()
+    return {
+        'device': config.device_type,
+        'memory': f"{config.memory_settings['total_system_memory_gb']:.0f}GB"
+    }
