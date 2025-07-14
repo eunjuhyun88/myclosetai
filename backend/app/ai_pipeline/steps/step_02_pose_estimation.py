@@ -25,86 +25,41 @@ except ImportError:
     logging.warning("MediaPipe가 설치되지 않았습니다. 대안 방법을 사용합니다.")
 
 logger = logging.getLogger(__name__)
-
 class PoseEstimationStep:
-    """
-    ✅ 2단계: 포즈 추정 - 통일된 생성자 패턴
-    - 자동 디바이스 감지
-    - M3 Max 최적화
-    - 일관된 인터페이스
-    - MediaPipe + OpenPose 호환
-    """
-    
-    # OpenPose 18 키포인트 정의
-    OPENPOSE_18_KEYPOINTS = [
-        "nose", "neck", "right_shoulder", "right_elbow", "right_wrist",
-        "left_shoulder", "left_elbow", "left_wrist", "right_hip", "right_knee",
-        "right_ankle", "left_hip", "left_knee", "left_ankle", "right_eye",
-        "left_eye", "right_ear", "left_ear"
-    ]
-    
-    # MediaPipe 33 키포인트 매핑
-    MEDIAPIPE_KEYPOINT_NAMES = [
-        "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner",
-        "right_eye", "right_eye_outer", "left_ear", "right_ear", "mouth_left",
-        "mouth_right", "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-        "left_wrist", "right_wrist", "left_pinky", "right_pinky", "left_index",
-        "right_index", "left_thumb", "right_thumb", "left_hip", "right_hip",
-        "left_knee", "right_knee", "left_ankle", "right_ankle", "left_heel",
-        "right_heel", "left_foot_index", "right_foot_index"
-    ]
-    
     def __init__(
         self,
-        device: Optional[str] = None,
+        device: Optional[str] = None,  # 🔥 통일된 패턴
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """
-        ✅ 통일된 생성자 - 최적화된 인터페이스
+        """✅ 최적 생성자 패턴 적용"""
         
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 스텝별 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0  
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - model_complexity: int = 2 (MediaPipe 모델 복잡도 0,1,2)
-                - min_detection_confidence: float = 0.7
-                - min_tracking_confidence: float = 0.5
-                - enable_segmentation: bool = False
-                - max_image_size: int = 1024
-                - use_face: bool = True (얼굴 키포인트 사용)
-                - use_hands: bool = False (손 키포인트 사용)
-        """
-        # 💡 지능적 디바이스 자동 감지
+        # === 동일한 최적 패턴 ===
         self.device = self._auto_detect_device(device)
-        
-        # 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
         
-        # 🔧 표준 시스템 파라미터 추출 (일관성)
+        # 표준 시스템 파라미터 (모든 Step 동일)
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        # ⚙️ 스텝별 특화 파라미터를 config에 병합
         self._merge_step_specific_config(kwargs)
-        
-        # ✅ 상태 초기화
         self.is_initialized = False
         
-        # 🎯 기존 클래스별 고유 초기화 로직 실행
+        # ModelLoader 연동
+        from app.ai_pipeline.utils.model_loader import BaseStepMixin
+        if hasattr(BaseStepMixin, '_setup_model_interface'):
+            BaseStepMixin._setup_model_interface(self)
+        
+        # 기존 로직 유지
         self._initialize_step_specific()
         
         self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+    
     
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""

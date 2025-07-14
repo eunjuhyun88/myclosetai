@@ -46,107 +46,65 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class HumanParsingStep:
-    """
-    ✅ 1단계: 인체 파싱 - 통일된 생성자 패턴
-    - 자동 디바이스 감지
-    - M3 Max 최적화
-    - 일관된 인터페이스
-    - 기존 모든 기능 완전 유지
-    """
-    
-    # LIP (Look Into Person) 데이터셋 기반 20개 부위 라벨
-    BODY_PARTS = {
-        0: "Background",
-        1: "Hat", 2: "Hair", 3: "Glove", 4: "Sunglasses",
-        5: "Upper-clothes", 6: "Dress", 7: "Coat", 8: "Socks",
-        9: "Pants", 10: "Jumpsuits", 11: "Scarf", 12: "Skirt",
-        13: "Face", 14: "Left-arm", 15: "Right-arm",
-        16: "Left-leg", 17: "Right-leg", 18: "Left-shoe", 19: "Right-shoe"
-    }
-    
-    # 의류 카테고리 매핑 (다음 단계들을 위한)
-    CLOTHING_CATEGORIES = {
-        "upper": [5, 7],      # Upper-clothes, Coat
-        "lower": [9, 12],     # Pants, Skirt
-        "dress": [6],         # Dress
-        "full_body": [10],    # Jumpsuits
-        "accessories": [1, 3, 4, 8, 11, 18, 19]  # Hat, Glove, etc.
-    }
-    
     def __init__(
         self,
-        device: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs
+        device: Optional[str] = None,  # 🔥 변경: 첫 번째 인자, None으로 자동감지
+        config: Optional[Dict[str, Any]] = None,  # 🔥 변경: 두 번째 인자
+        **kwargs  # 🔥 추가: 확장성
     ):
-        """
-        ✅ 통일된 생성자 - 최적화된 인터페이스
+        """✅ 최적 생성자 패턴 적용"""
         
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 스텝별 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0  
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - use_coreml: bool = True
-                - enable_quantization: bool = True
-                - model_name: str = 'graphonomy'
-                - input_size: tuple = (512, 512)
-                - cache_size: int = 50
-        """
-        # 💡 지능적 디바이스 자동 감지
+        # === 새로운 최적 패턴 ===
         self.device = self._auto_detect_device(device)
-        
-        # 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
         
-        # 🔧 표준 시스템 파라미터 추출 (일관성)
+        # 표준 시스템 파라미터
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        # ⚙️ 스텝별 특화 파라미터를 config에 병합
+        # 스텝별 특화 설정 병합
         self._merge_step_specific_config(kwargs)
         
-        # ✅ 상태 초기화
+        # 상태 초기화
         self.is_initialized = False
         
-        # 🎯 기존 클래스별 고유 초기화 로직 실행
+        # 🔥 ModelLoader 연동
+        from app.ai_pipeline.utils.model_loader import BaseStepMixin
+        if hasattr(BaseStepMixin, '_setup_model_interface'):
+            BaseStepMixin._setup_model_interface(self)
+        
+        # === 기존 로직 완전 유지 ===
         self._initialize_step_specific()
         
         self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
     
-    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
-        """💡 지능적 디바이스 자동 감지"""
+    # 🔥 새로 추가할 헬퍼 메서드들 (파일 끝에 추가)
+    def _auto_detect_device(self, preferred_device):
+        """디바이스 자동 감지"""
         if preferred_device:
             return preferred_device
-
         try:
             import torch
             if torch.backends.mps.is_available():
-                return 'mps'  # M3 Max 우선
+                return 'mps'
             elif torch.cuda.is_available():
-                return 'cuda'  # NVIDIA GPU
+                return 'cuda'
             else:
-                return 'cpu'  # 폴백
+                return 'cpu'
         except ImportError:
             return 'cpu'
 
-    def _detect_m3_max(self) -> bool:
-        """🍎 M3 Max 칩 자동 감지"""
+    def _detect_m3_max(self):
+        """M3 Max 칩 자동 감지"""
         try:
             import platform
             import subprocess
-
-            if platform.system() == 'Darwin':  # macOS
-                # M3 Max 감지 로직
+            if platform.system() == 'Darwin':
                 result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
                                       capture_output=True, text=True)
                 return 'M3' in result.stdout
@@ -154,18 +112,15 @@ class HumanParsingStep:
             pass
         return False
 
-    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
-        """⚙️ 스텝별 특화 설정 병합"""
-        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+    def _merge_step_specific_config(self, kwargs):
+        """스텝별 특화 설정 병합"""
         system_params = {
             'device_type', 'memory_gb', 'is_m3_max', 
             'optimization_enabled', 'quality_level'
         }
-
         for key, value in kwargs.items():
             if key not in system_params:
                 self.config[key] = value
-
     def _initialize_step_specific(self):
         """🎯 기존 초기화 로직 완전 유지"""
         # 인체 파싱 특화 설정

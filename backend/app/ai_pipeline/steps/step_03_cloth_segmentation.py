@@ -35,85 +35,42 @@ except ImportError:
     logging.warning("scikit-learn이 없습니다. K-means 세그멘테이션 비활성화됩니다.")
 
 logger = logging.getLogger(__name__)
-
 class ClothSegmentationStep:
-    """
-    ✅ 3단계: 의류 세그멘테이션 - 통일된 생성자 패턴
-    - 자동 디바이스 감지
-    - M3 Max 최적화
-    - 일관된 인터페이스
-    - 다중 세그멘테이션 방법 지원
-    """
-    
-    # 의류 카테고리 정의
-    CLOTHING_CATEGORIES = {
-        'upper': ['shirt', 't-shirt', 'blouse', 'sweater', 'jacket', 'coat', 'top'],
-        'lower': ['pants', 'jeans', 'skirt', 'shorts', 'trousers', 'bottom'],
-        'full': ['dress', 'jumpsuit', 'overall', 'gown'],
-        'accessories': ['hat', 'scarf', 'gloves', 'shoes', 'bag', 'belt']
-    }
-    
-    # 지원하는 세그멘테이션 방법들
-    SEGMENTATION_METHODS = [
-        'auto', 'rembg', 'model', 'grabcut', 'kmeans', 'threshold'
-    ]
-    
     def __init__(
         self,
-        device: Optional[str] = None,
+        device: Optional[str] = None,  # 🔥 통일된 패턴
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """
-        ✅ 통일된 생성자 - 최적화된 인터페이스
+        """✅ 최적 생성자 패턴 적용"""
         
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 스텝별 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0  
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - method: str = 'auto' (세그멘테이션 방법)
-                - model_name: str = 'u2net'
-                - confidence_threshold: float = 0.5
-                - use_background_removal: bool = True
-                - quality_threshold: float = 0.7
-                - enable_post_processing: bool = True
-                - max_image_size: int = 1024 (M3 Max에서 더 큼)
-                - morphology_enabled: bool = True
-                - gaussian_blur: bool = True
-                - edge_refinement: bool = True
-                - hole_filling: bool = True
-        """
-        # 💡 지능적 디바이스 자동 감지
+        # === 동일한 패턴 적용 ===
         self.device = self._auto_detect_device(device)
-        
-        # 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
         
-        # 🔧 표준 시스템 파라미터 추출 (일관성)
+        # 표준 시스템 파라미터
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        # ⚙️ 스텝별 특화 파라미터를 config에 병합
         self._merge_step_specific_config(kwargs)
-        
-        # ✅ 상태 초기화
         self.is_initialized = False
         
-        # 🎯 기존 클래스별 고유 초기화 로직 실행
+        # ModelLoader 연동
+        from app.ai_pipeline.utils.model_loader import BaseStepMixin
+        if hasattr(BaseStepMixin, '_setup_model_interface'):
+            BaseStepMixin._setup_model_interface(self)
+        
+        # 기존 로직 유지
         self._initialize_step_specific()
         
         self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
     
+    # 🔥 동일한 헬퍼 메서드들 추가
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""
         if preferred_device:

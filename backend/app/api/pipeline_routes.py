@@ -1720,29 +1720,32 @@ def pil_to_base64(image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
         
         # 백그라운드 작업
-        background_tasks.add_task(update_processing_stats, result)
+    background_tasks.add_task(update_processing_stats, result)
         
-        if SCHEMAS_AVAILABLE:
-            return VirtualTryOnResponse(**response_data)
-        else:
-            return response_data
-        
-    except Exception as e:
-        error_msg = f"가상 피팅 처리 실패: {str(e)}"
-        logger.error(error_msg)
-        
-        # 에러 알림
-        if enable_realtime and WEBSOCKET_AVAILABLE:
-            await ws_manager.broadcast_to_session({
-                "type": "error",
-                "session_id": process_id,
-                "message": error_msg,
-                "constructor_pattern": "optimal",
-                "timestamp": time.time()
-            }, process_id)
-        
-        raise HTTPException(status_code=500, detail=error_msg)
-
+    if SCHEMAS_AVAILABLE:
+        return VirtualTryOnResponse(**response_data)
+    else:
+        return response_data
+            
+except Exception as e:
+    error_msg = f"가상 피팅 처리 실패: {str(e)}"
+    logger.error(error_msg)
+    
+    # 에러 알림
+    if enable_realtime and WEBSOCKET_AVAILABLE:
+        await ws_manager.broadcast_to_session({
+            "type": "error",
+            "session_id": process_id,
+            "message": error_msg,
+            "constructor_pattern": "optimal",
+            "timestamp": time.time()
+        }, process_id)
+    
+    # HTTPException 발생
+    raise HTTPException(
+        status_code=500, 
+        detail=error_msg
+    )
 @router.get("/status")
 async def get_pipeline_status():
     """파이프라인 현재 상태 조회"""
