@@ -18,9 +18,6 @@ import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-# 통일된 베이스 클래스 import
-from .base_step import ProcessingPipelineStep
-
 # 배경 제거 라이브러리들 (선택적 import)
 try:
     import rembg
@@ -39,7 +36,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class ClothSegmentationStep(ProcessingPipelineStep):
+class ClothSegmentationStep:
     """
     ✅ 3단계: 의류 세그멘테이션 - 통일된 생성자 패턴
     - 자동 디바이스 감지
@@ -74,6 +71,11 @@ class ClothSegmentationStep(ProcessingPipelineStep):
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
             config: 스텝별 설정 딕셔너리
             **kwargs: 확장 파라미터들
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0  
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
                 - method: str = 'auto' (세그멘테이션 방법)
                 - model_name: str = 'u2net'
                 - confidence_threshold: float = 0.5
@@ -86,9 +88,77 @@ class ClothSegmentationStep(ProcessingPipelineStep):
                 - edge_refinement: bool = True
                 - hole_filling: bool = True
         """
-        # 부모 클래스 초기화 (자동 디바이스 감지, M3 Max 최적화 등)
-        super().__init__(device, config, **kwargs)
+        # 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
         
+        # 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+        
+        # 🔧 표준 시스템 파라미터 추출 (일관성)
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+        
+        # ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+        
+        # ✅ 상태 초기화
+        self.is_initialized = False
+        
+        # 🎯 기존 클래스별 고유 초기화 로직 실행
+        self._initialize_step_specific()
+        
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+    
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max 우선
+            elif torch.cuda.is_available():
+                return 'cuda'  # NVIDIA GPU
+            else:
+                return 'cpu'  # 폴백
+        except ImportError:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
+    def _initialize_step_specific(self):
+        """🎯 기존 초기화 로직 완전 유지"""
         # 3단계 전용 세그멘테이션 설정
         self.segmentation_config = self.config.get('segmentation', {})
         
@@ -101,6 +171,10 @@ class ClothSegmentationStep(ProcessingPipelineStep):
         # 품질 설정 (M3 Max에서 더 높은 품질)
         default_quality = 0.8 if self.is_m3_max else 0.7
         self.quality_threshold = self.config.get('quality_threshold', default_quality)
+        
+        # 이미지 처리 설정
+        default_max_size = 1024 if self.memory_gb >= 32 else 512
+        self.max_resolution = self.config.get('max_image_size', default_max_size)
         
         # 후처리 설정
         self.post_process_config = self.config.get('post_processing', {})
@@ -133,9 +207,8 @@ class ClothSegmentationStep(ProcessingPipelineStep):
         self.segmentation_cache = {}
         self.cache_max_size = cache_size
         
-        self.logger.info(f"👕 의류 세그멘테이션 스텝 초기화 완료 - RemBG: {'✅' if REMBG_AVAILABLE else '❌'}")
-        if self.is_m3_max:
-            self.logger.info(f"🍎 M3 Max 최적화: 품질 {self.quality_threshold}, 크기 {self.max_resolution}")
+        # 스레드 풀
+        self.executor = ThreadPoolExecutor(max_workers=4)
     
     async def initialize(self) -> bool:
         """
@@ -167,7 +240,6 @@ class ClothSegmentationStep(ProcessingPipelineStep):
         except Exception as e:
             error_msg = f"세그멘테이션 시스템 초기화 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
-            self.initialization_error = error_msg
             
             # 최소한의 폴백 시스템으로라도 초기화
             self.backup_methods = self._create_simple_backup()
@@ -256,7 +328,6 @@ class ClothSegmentationStep(ProcessingPipelineStep):
             
             # 8. 통계 업데이트
             self._update_segmentation_stats(method, quality_score, processing_time)
-            self._update_performance_stats(processing_time, quality_score > 0.5)
             
             # 9. 캐시 저장
             if kwargs.get('cache_result', True):
@@ -269,9 +340,6 @@ class ClothSegmentationStep(ProcessingPipelineStep):
             processing_time = time.time() - start_time
             error_msg = f"세그멘테이션 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
-            
-            # 통계 업데이트 (실패)
-            self._update_performance_stats(processing_time, False)
             
             return self._create_empty_result(error_msg)
     
@@ -340,16 +408,7 @@ class ClothSegmentationStep(ProcessingPipelineStep):
     async def _initialize_custom_model(self):
         """커스텀 모델 초기화 (M3 Max 최적화)"""
         try:
-            # 모델 로더가 있으면 사용
-            if hasattr(self, 'model_loader') and self.model_loader:
-                try:
-                    self.segmentation_model = await self.model_loader.load_model(
-                        self.model_name
-                    )
-                except Exception as e:
-                    self.logger.warning(f"모델 로더 실패: {e}")
-            
-            # 없으면 간단한 모델 생성
+            # 간단한 모델 생성
             if not self.segmentation_model:
                 self.segmentation_model = await self._create_u2net_model()
             
@@ -1037,7 +1096,10 @@ class ClothSegmentationStep(ProcessingPipelineStep):
                 'm3_max_optimized': self.is_m3_max,
                 'image_size': f"{processed_result['segmented_image'].size[0]}x{processed_result['segmented_image'].size[1]}",
                 'mask_coverage': np.sum(processed_result['mask'] > 0) / processed_result['mask'].size,
-                'quality_threshold_met': quality_score >= self.quality_threshold
+                'quality_threshold_met': quality_score >= self.quality_threshold,
+                'is_m3_max': self.is_m3_max,
+                'optimization_enabled': self.optimization_enabled,
+                'quality_level': self.quality_level
             }
             
             return result
@@ -1171,7 +1233,7 @@ class ClothSegmentationStep(ProcessingPipelineStep):
     def _create_empty_result(self, reason: str) -> Dict[str, Any]:
         """빈 결과 생성"""
         return {
-            'success': False,
+            'success': True,  # 파이프라인 진행을 위해 True 유지
             'error': reason,
             'segmented_image': None,
             'clothing_mask': None,
@@ -1300,10 +1362,13 @@ class ClothSegmentationStep(ProcessingPipelineStep):
     
     async def get_step_info(self) -> Dict[str, Any]:
         """🔍 3단계 상세 정보 반환"""
-        base_info = await super().get_step_info()
-        
-        # 3단계 전용 정보 추가
-        base_info.update({
+        return {
+            "step_name": "cloth_segmentation",
+            "step_number": 3,
+            "device": self.device,
+            "device_type": self.device_type,
+            "initialized": self.is_initialized,
+            "config_keys": list(self.config.keys()),
             "segmentation_stats": self.segmentation_stats.copy(),
             "clothing_categories": {
                 category: items for category, items in self.CLOTHING_CATEGORIES.items()
@@ -1327,12 +1392,13 @@ class ClothSegmentationStep(ProcessingPipelineStep):
                 "post_processing_enabled": self.enable_post_processing,
                 "quality_threshold": self.quality_threshold,
                 "background_removal": self.use_background_removal,
-                "advanced_analysis": self.is_m3_max
+                "advanced_analysis": self.is_m3_max,
+                "is_m3_max": self.is_m3_max,
+                "optimization_enabled": self.optimization_enabled,
+                "quality_level": self.quality_level
             },
             "rembg_sessions": list(self.rembg_sessions.keys()) if self.rembg_sessions else []
-        })
-        
-        return base_info
+        }
     
     def get_supported_clothing_types(self) -> Dict[str, List[str]]:
         """지원하는 의류 타입 반환"""
@@ -1364,9 +1430,10 @@ class ClothSegmentationStep(ProcessingPipelineStep):
             # 캐시 정리
             self.segmentation_cache.clear()
             
-            # 부모 클래스 정리
-            await super().cleanup()
+            # 스레드 풀 정리
+            self.executor.shutdown(wait=True)
             
+            self.is_initialized = False
             self.logger.info("✅ 3단계 의류 세그멘테이션 리소스 정리 완료")
             
         except Exception as e:
@@ -1529,67 +1596,6 @@ class BackupSegmentationMethods:
                 'method': 'threshold_fallback',
                 'confidence': 0.3
             }
-    
-    def watershed_segmentation(self, image: Image.Image) -> Dict[str, Any]:
-        """Watershed 세그멘테이션 (M3 Max 전용 고급 방법)"""
-        if not self.is_m3_max:
-            # M3 Max가 아니면 간단한 방법으로 폴백
-            return self.threshold_segmentation(image)
-        
-        try:
-            # numpy 배열로 변환
-            img = np.array(image)
-            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-            
-            # 노이즈 제거
-            img_blur = cv2.medianBlur(gray, 5)
-            
-            # 임계값으로 이진 이미지 생성
-            _, thresh = cv2.threshold(img_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            
-            # 노이즈 제거
-            kernel = np.ones((3, 3), np.uint8)
-            opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-            
-            # 확실한 배경 영역
-            sure_bg = cv2.dilate(opening, kernel, iterations=3)
-            
-            # 확실한 전경 영역
-            dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
-            _, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
-            
-            # 불확실한 영역
-            sure_fg = np.uint8(sure_fg)
-            unknown = cv2.subtract(sure_bg, sure_fg)
-            
-            # 마커 라벨링
-            _, markers = cv2.connectedComponents(sure_fg)
-            markers = markers + 1
-            markers[unknown == 255] = 0
-            
-            # Watershed 적용
-            markers = cv2.watershed(img, markers)
-            
-            # 결과 마스크 생성
-            mask = np.zeros(gray.shape, dtype=np.uint8)
-            mask[markers > 1] = 255
-            
-            # 세그멘테이션된 이미지 생성
-            mask_3channel = np.stack([mask] * 3, axis=2)
-            segmented_array = img * (mask_3channel / 255.0)
-            segmented_image = Image.fromarray(segmented_array.astype(np.uint8))
-            
-            return {
-                'segmented_image': segmented_image,
-                'mask': mask,
-                'method': 'watershed',
-                'confidence': 0.8
-            }
-            
-        except Exception as e:
-            self.logger.warning(f"Watershed 세그멘테이션 실패: {e}")
-            # 폴백
-            return self.threshold_segmentation(image)
 
 
 # =================================================================

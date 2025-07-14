@@ -11,7 +11,6 @@ from typing import Dict, Any, Optional, Tuple, List, Union
 import numpy as np
 from PIL import Image
 import cv2
-from abc import ABC, abstractmethod
 
 # PyTorch 선택적 임포트
 try:
@@ -33,131 +32,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# ===============================================================
-# 🎯 최적 생성자 베이스 클래스
-# ===============================================================
-
-class OptimalStepConstructor(ABC):
-    """
-    🎯 최적화된 생성자 패턴
-    - 단순함 + 편의성 + 확장성 + 일관성
-    """
-
-    def __init__(
-        self,
-        device: Optional[str] = None,  # 🔥 핵심 개선: None으로 자동 감지
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
-    ):
-        """
-        ✅ 최적 생성자 - 모든 장점 결합
-
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 스텝별 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0  
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - 기타 스텝별 특화 파라미터들...
-        """
-        # 1. 💡 지능적 디바이스 자동 감지
-        self.device = self._auto_detect_device(device)
-
-        # 2. 📋 기본 설정
-        self.config = config or {}
-        self.step_name = self.__class__.__name__
-        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
-
-        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
-        self.device_type = kwargs.get('device_type', 'auto')
-        self.memory_gb = kwargs.get('memory_gb', 16.0)
-        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
-        self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.quality_level = kwargs.get('quality_level', 'balanced')
-
-        # 4. ⚙️ 스텝별 특화 파라미터를 config에 병합
-        self._merge_step_specific_config(kwargs)
-
-        # 5. ✅ 상태 초기화
-        self.is_initialized = False
-
-        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
-
-    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
-        """💡 지능적 디바이스 자동 감지"""
-        if preferred_device:
-            return preferred_device
-
-        try:
-            import torch
-            if torch.backends.mps.is_available():
-                return 'mps'  # M3 Max 우선
-            elif torch.cuda.is_available():
-                return 'cuda'  # NVIDIA GPU
-            else:
-                return 'cpu'  # 폴백
-        except ImportError:
-            return 'cpu'
-
-    def _detect_m3_max(self) -> bool:
-        """🍎 M3 Max 칩 자동 감지"""
-        try:
-            import platform
-            import subprocess
-
-            if platform.system() == 'Darwin':  # macOS
-                # M3 Max 감지 로직
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-
-    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
-        """⚙️ 스텝별 특화 설정 병합"""
-        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
-        system_params = {
-            'device_type', 'memory_gb', 'is_m3_max', 
-            'optimization_enabled', 'quality_level'
-        }
-
-        for key, value in kwargs.items():
-            if key not in system_params:
-                self.config[key] = value
-
-    @abstractmethod
-    async def initialize(self) -> bool:
-        """스텝 초기화"""
-        pass
-
-    @abstractmethod
-    async def process(self, input_data: Any, **kwargs) -> Dict[str, Any]:
-        """메인 처리"""
-        pass
-
-    async def get_step_info(self) -> Dict[str, Any]:
-        """🔍 스텝 정보 반환"""
-        return {
-            "step_name": self.step_name,
-            "device": self.device,
-            "device_type": self.device_type,
-            "memory_gb": self.memory_gb,
-            "is_m3_max": self.is_m3_max,
-            "optimization_enabled": self.optimization_enabled,
-            "quality_level": self.quality_level,
-            "initialized": self.is_initialized,
-            "config_keys": list(self.config.keys())
-        }
-
-# ===============================================================
-# 🎯 기하학적 매칭 스텝 - 최적 패턴 적용 (기존 기능 100% 유지)
-# ===============================================================
-
-class GeometricMatchingStep(OptimalStepConstructor):
+class GeometricMatchingStep:
     """
     기하학적 매칭 스텝 - 최적 생성자 패턴 적용
     - M3 Max MPS 최적화
@@ -188,38 +63,49 @@ class GeometricMatchingStep(OptimalStepConstructor):
     
     def __init__(
         self,
-        device: Optional[str] = None,  # ✅ 자동 감지 (기존: device: str = "mps")
-        config: Optional[Dict[str, Any]] = None,  # ✅ 기존과 동일
-        **kwargs  # ✅ 모든 추가 파라미터 지원
+        device: Optional[str] = None,  # ✅ 통일된 생성자 패턴
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs
     ):
         """
-        🎯 최적 생성자 - 기하학적 매칭 특화 (기존 시그니처 개선)
+        🎯 최적 생성자 - 기하학적 매칭 특화
         
         Args:
-            device: 사용할 디바이스 (None=자동감지, 기존: "mps")
-            config: 설정 딕셔너리 (기존과 동일)
+            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
+            config: 설정 딕셔너리
             **kwargs: 확장 파라미터들
-                - method: str = 'auto'  # 매칭 방법
+                - device_type: str = "auto"
+                - memory_gb: float = 16.0
+                - is_m3_max: bool = False
+                - optimization_enabled: bool = True
+                - quality_level: str = "balanced"
+                - method: str = 'auto'
                 - max_iterations: int = 1000
-                - convergence_threshold: float = 1e-6
-                - outlier_threshold: float = 0.15
-                - use_pose_guidance: bool = True
-                - adaptive_weights: bool = True
-                - quality_threshold: float = 0.7
-                - tps_regularization: float = 0.1
                 - 기타...
         """
-        # 기존 device 기본값 처리 (하위 호환성)
-        if device is None:
-            device = "mps"  # 기존 기본값 유지
-        
-        # 부모 클래스 초기화 (모든 표준 파라미터 처리)
-        super().__init__(device=device, config=config, **kwargs)
-        
-        # 🔄 기존과 동일한 속성들 설정
+        # 💡 지능적 디바이스 자동 감지
+        self.device = self._auto_detect_device(device)
+
+        # 📋 기본 설정
+        self.config = config or {}
+        self.step_name = self.__class__.__name__
+        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+
+        # 🔧 표준 시스템 파라미터 추출
+        self.device_type = kwargs.get('device_type', 'auto')
+        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+
+        # ⚙️ 스텝별 특화 파라미터를 config에 병합
+        self._merge_step_specific_config(kwargs)
+
+        # ✅ 상태 초기화
+        self.is_initialized = False
         self.initialization_error = None
         
-        # 매칭 설정 (기존과 동일하지만 kwargs 추가 지원)
+        # 매칭 설정 (기존 기능 유지 + kwargs 확장)
         self.matching_config = self.config.get('matching', {
             'method': kwargs.get('method', 'auto'),  # 'tps', 'affine', 'homography', 'auto'
             'max_iterations': kwargs.get('max_iterations', 1000),
@@ -230,14 +116,14 @@ class GeometricMatchingStep(OptimalStepConstructor):
             'quality_threshold': kwargs.get('quality_threshold', 0.7)
         })
         
-        # TPS (Thin Plate Spline) 설정 (기존과 동일하지만 kwargs 추가 지원)
+        # TPS 설정 (M3 Max 최적화)
         self.tps_config = self.config.get('tps', {
             'regularization': kwargs.get('tps_regularization', 0.1),
-            'grid_size': kwargs.get('tps_grid_size', 20),
+            'grid_size': kwargs.get('tps_grid_size', 30 if self.is_m3_max else 20),
             'boundary_padding': kwargs.get('tps_boundary_padding', 0.1)
         })
         
-        # 최적화 설정 (M3 Max 고려한 개선)
+        # 최적화 설정 (M3 Max 고려)
         learning_rate_base = 0.01
         if self.is_m3_max and self.optimization_enabled:
             learning_rate_base *= 1.2  # M3 Max는 더 빠른 학습
@@ -257,37 +143,75 @@ class GeometricMatchingStep(OptimalStepConstructor):
             'method_performance': {}
         }
         
-        # 매칭 알고리즘 컴포넌트들 (기존과 동일)
+        # 매칭 컴포넌트들 초기화
         self.tps_grid = None
         self.ransac_params = None
         self.optimizer_config = None
         
-        # 기존 로거 유지 (하위 호환성)
-        self.logger = logging.getLogger(__name__)
-        
-        self.logger.info(f"🎯 기하학적 매칭 스텝 초기화 - 디바이스: {self.device}")
+        self.logger.info(f"🎯 기하학적 매칭 스텝 초기화 완료 - 디바이스: {self.device}")
     
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
+        """💡 지능적 디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max 우선
+            elif torch.cuda.is_available():
+                return 'cuda'  # NVIDIA GPU
+            else:
+                return 'cpu'  # 폴백
+        except ImportError:
+            return 'cpu'
+
+    def _detect_m3_max(self) -> bool:
+        """🍎 M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+
+            if platform.system() == 'Darwin':  # macOS
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
+        """⚙️ 스텝별 특화 설정 병합"""
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level'
+        }
+
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
+
     async def initialize(self) -> bool:
         """초기화 메서드 (기존과 동일하지만 M3 Max 최적화 추가)"""
         try:
             self.logger.info("🔄 기하학적 매칭 시스템 초기화 시작...")
             
-            # 디바이스 검증 (기존과 동일)
+            # 디바이스 검증
             if not self._validate_device():
                 self.logger.warning(f"⚠️ 디바이스 {self.device} 검증 실패, CPU로 폴백")
                 self.device = "cpu"
             
-            # M3 Max 특화 최적화 추가
+            # M3 Max 특화 최적화
             if self.is_m3_max:
                 await self._initialize_m3_max_optimizations()
             
-            # 매칭 알고리즘 초기화 (기존과 동일)
+            # 매칭 알고리즘 초기화
             await self._initialize_matching_algorithms()
             
-            # 최적화 도구 초기화 (기존과 동일)
+            # 최적화 도구 초기화
             await self._initialize_optimization_tools()
             
-            # 테스트 매칭 수행 (기존과 동일)
+            # 테스트 매칭 수행
             await self._test_system()
             
             self.is_initialized = True
@@ -299,13 +223,13 @@ class GeometricMatchingStep(OptimalStepConstructor):
             self.logger.error(f"❌ {error_msg}")
             self.initialization_error = error_msg
             
-            # 기본 시스템으로 폴백 (기존과 동일)
+            # 기본 시스템으로 폴백
             await self._initialize_fallback_system()
             self.is_initialized = True
             return True
     
     async def _initialize_m3_max_optimizations(self):
-        """M3 Max 특화 최적화 (새로 추가)"""
+        """M3 Max 특화 최적화"""
         try:
             self.logger.info("🍎 M3 Max 최적화 적용...")
             
@@ -316,7 +240,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
                     torch.backends.mps.empty_cache()
             
             # M3 Max용 고성능 파라미터
-            self.matching_config['quality_threshold'] = 0.8  # 더 높은 품질
+            self.matching_config['quality_threshold'] = 0.8
             
             # 고정밀도 모드
             if self.quality_level in ['high', 'ultra']:
@@ -329,7 +253,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             self.logger.warning(f"M3 Max 최적화 실패: {e}")
     
     def _validate_device(self) -> bool:
-        """디바이스 유효성 검사 (기존과 동일)"""
+        """디바이스 유효성 검사"""
         if self.device == 'mps':
             return TORCH_AVAILABLE and torch.backends.mps.is_available()
         elif self.device == 'cuda':
@@ -339,15 +263,15 @@ class GeometricMatchingStep(OptimalStepConstructor):
         return False
     
     async def _initialize_matching_algorithms(self):
-        """매칭 알고리즘 초기화 (기존과 동일하지만 M3 Max 최적화 추가)"""
+        """매칭 알고리즘 초기화"""
         try:
-            # TPS 그리드 초기화 (기존과 동일)
+            # TPS 그리드 초기화
             if SCIPY_AVAILABLE:
                 grid_size = self.tps_config['grid_size']
                 self.tps_grid = np.mgrid[0:grid_size, 0:grid_size].reshape(2, -1).T
                 self.logger.debug("✅ TPS 그리드 초기화 완료")
             
-            # RANSAC 파라미터 설정 (M3 Max 최적화 추가)
+            # RANSAC 파라미터 설정 (M3 Max 최적화)
             max_trials = 1500 if self.is_m3_max else 1000
             residual_threshold = 4.0 if self.is_m3_max else 5.0
             
@@ -361,14 +285,12 @@ class GeometricMatchingStep(OptimalStepConstructor):
             
         except Exception as e:
             self.logger.warning(f"⚠️ 매칭 알고리즘 초기화 실패: {e}")
-            # 기본 파라미터로 설정 (기존과 동일)
             self.tps_grid = None
             self.ransac_params = {'max_trials': 100, 'residual_threshold': 10.0, 'min_samples': 3}
     
     async def _initialize_optimization_tools(self):
-        """최적화 도구 초기화 (기존과 동일하지만 M3 Max 최적화 추가)"""
+        """최적화 도구 초기화"""
         try:
-            # 최적화 기법 설정 (M3 Max는 더 고급 알고리즘)
             method = 'L-BFGS-B' if (SCIPY_AVAILABLE and self.is_m3_max) else ('L-BFGS-B' if SCIPY_AVAILABLE else 'Powell')
             
             self.optimizer_config = {
@@ -386,9 +308,8 @@ class GeometricMatchingStep(OptimalStepConstructor):
             self.optimizer_config = {'method': 'Powell', 'options': {'maxiter': 100}}
     
     async def _test_system(self):
-        """시스템 테스트 (기존과 동일)"""
+        """시스템 테스트"""
         try:
-            # 더미 데이터로 테스트
             test_person_points = [(100, 100), (200, 100), (150, 200)]
             test_clothing_points = [(105, 105), (195, 95), (155, 205)]
             
@@ -405,11 +326,10 @@ class GeometricMatchingStep(OptimalStepConstructor):
             self.logger.warning(f"⚠️ 시스템 테스트 실패: {e}")
     
     async def _initialize_fallback_system(self):
-        """폴백 시스템 초기화 (기존과 동일)"""
+        """폴백 시스템 초기화"""
         try:
             self.logger.info("🔄 기본 매칭 시스템으로 초기화...")
             
-            # 기본 설정
             self.matching_config['method'] = 'similarity'
             self.tps_grid = None
             self.ransac_params = {'max_trials': 50, 'residual_threshold': 15.0, 'min_samples': 2}
@@ -449,23 +369,23 @@ class GeometricMatchingStep(OptimalStepConstructor):
             
             self.logger.info(f"🎯 기하학적 매칭 시작 - 의류: {clothing_type}")
             
-            # 1. 입력 데이터 검증 및 전처리 (기존과 동일)
+            # 1. 입력 데이터 검증 및 전처리
             person_points = self._extract_person_keypoints(pose_keypoints, clothing_type)
             clothing_points = self._extract_clothing_keypoints(clothing_segmentation, clothing_type)
             
             if len(person_points) < 2 or len(clothing_points) < 2:
                 return self._create_empty_result("충분하지 않은 매칭 포인트", clothing_type)
             
-            # 2. 매칭 방법 선택 (M3 Max 최적화 추가)
+            # 2. 매칭 방법 선택 (M3 Max 최적화)
             matching_method = self._select_matching_method(person_points, clothing_points, clothing_type)
             self.logger.info(f"📐 선택된 매칭 방법: {matching_method}")
             
-            # 3. 초기 매칭 수행 (기존과 동일)
+            # 3. 초기 매칭 수행
             initial_match = await self._perform_initial_matching(
                 person_points, clothing_points, matching_method
             )
             
-            # 4. 포즈 기반 정제 (기존과 동일)
+            # 4. 포즈 기반 정제
             if self.matching_config['use_pose_guidance'] and len(pose_keypoints) > 5:
                 refined_match = await self._refine_with_pose_guidance(
                     initial_match, pose_keypoints, clothing_type
@@ -473,7 +393,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             else:
                 refined_match = initial_match
             
-            # 5. 매칭 품질 평가 (기존과 동일)
+            # 5. 매칭 품질 평가
             quality_metrics = self._evaluate_matching_quality(
                 person_points, clothing_points, refined_match
             )
@@ -496,17 +416,17 @@ class GeometricMatchingStep(OptimalStepConstructor):
                         quality_metrics = alternative_quality
                         matching_method = alternative_match.get('method', matching_method)
             
-            # 7. 워핑 파라미터 생성 (기존과 동일)
+            # 7. 워핑 파라미터 생성
             warp_params = self._generate_warp_parameters(refined_match, clothing_segmentation)
             
-            # 8. 최종 결과 구성 (M3 Max 정보 추가)
+            # 8. 최종 결과 구성
             processing_time = time.time() - start_time
             result = self._build_final_result(
                 refined_match, warp_params, quality_metrics, 
                 processing_time, matching_method, clothing_type
             )
             
-            # 9. 통계 업데이트 (기존과 동일)
+            # 9. 통계 업데이트
             self._update_statistics(matching_method, quality_metrics['overall_quality'])
             
             self.logger.info(f"✅ 기하학적 매칭 완료 - 방법: {matching_method}, 품질: {quality_metrics['overall_quality']:.3f}")
@@ -518,7 +438,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return self._create_empty_result(error_msg, clothing_type)
     
     def _extract_person_keypoints(self, pose_keypoints: List[List[float]], clothing_type: str) -> List[Tuple[float, float]]:
-        """인체에서 매칭 포인트 추출 (M3 Max 최적화 추가)"""
+        """인체에서 매칭 포인트 추출 (M3 Max 최적화)"""
         
         try:
             keypoint_mapping = {
@@ -549,7 +469,6 @@ class GeometricMatchingStep(OptimalStepConstructor):
             max_points = 7 if self.is_m3_max else 5
             
             if len(person_points) < min_points and len(pose_keypoints) > 2:
-                # 신뢰도가 높은 포인트들 추가
                 for i, (x, y, conf) in enumerate(pose_keypoints):
                     if conf > 0.5 and len(person_points) < max_points:
                         person_points.append((float(x), float(y)))
@@ -562,7 +481,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return []
     
     def _extract_clothing_keypoints(self, clothing_segmentation: Dict[str, Any], clothing_type: str) -> List[Tuple[float, float]]:
-        """의류에서 매칭 포인트 추출 (기존과 동일)"""
+        """의류에서 매칭 포인트 추출"""
         
         try:
             mask = clothing_segmentation.get('mask')
@@ -595,7 +514,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return []
     
     def _extract_clothing_features(self, contour: np.ndarray, mask: np.ndarray, clothing_type: str) -> List[Tuple[float, float]]:
-        """의류 특징점 추출 (기존과 동일)"""
+        """의류 특징점 추출"""
         
         features = []
         
@@ -604,7 +523,6 @@ class GeometricMatchingStep(OptimalStepConstructor):
             x, y, w, h = cv2.boundingRect(contour)
             
             if clothing_type in ['shirt', 't-shirt', 'blouse']:
-                # 상의: 어깨, 목, 소매 부분
                 features.extend([
                     (x + w * 0.2, y + h * 0.1),  # 왼쪽 어깨
                     (x + w * 0.8, y + h * 0.1),  # 오른쪽 어깨
@@ -614,7 +532,6 @@ class GeometricMatchingStep(OptimalStepConstructor):
                 ])
                 
             elif clothing_type in ['pants', 'jeans', 'trousers']:
-                # 하의: 허리, 무릎, 발목 부분
                 features.extend([
                     (x + w * 0.2, y),            # 왼쪽 허리
                     (x + w * 0.8, y),            # 오른쪽 허리
@@ -625,7 +542,6 @@ class GeometricMatchingStep(OptimalStepConstructor):
                 ])
                 
             elif clothing_type in ['dress', 'gown']:
-                # 드레스: 어깨, 목, 허리 부분
                 features.extend([
                     (x + w * 0.2, y + h * 0.1),  # 왼쪽 어깨
                     (x + w * 0.8, y + h * 0.1),  # 오른쪽 어깨
@@ -644,7 +560,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return []
     
     def _extract_contour_features(self, contour: np.ndarray) -> List[Tuple[float, float]]:
-        """윤곽선 기반 특징점 추출 (기존과 동일)"""
+        """윤곽선 기반 특징점 추출"""
         
         features = []
         
@@ -671,7 +587,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return []
     
     def _select_matching_method(self, person_points: List, clothing_points: List, clothing_type: str) -> str:
-        """매칭 방법 선택 (M3 Max 최적화 추가)"""
+        """매칭 방법 선택 (M3 Max 최적화)"""
         
         method = self.matching_config['method']
         
@@ -714,11 +630,10 @@ class GeometricMatchingStep(OptimalStepConstructor):
                 
         except Exception as e:
             self.logger.warning(f"매칭 방법 {method} 실패: {e}")
-            # 폴백: 단순 변환
             return self._similarity_matching(person_points, clothing_points)
     
     async def _tps_advanced_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
-        """M3 Max 전용 고급 TPS 매칭 (새로 추가)"""
+        """M3 Max 전용 고급 TPS 매칭"""
         
         try:
             if not SCIPY_AVAILABLE:
@@ -757,7 +672,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return await self._tps_matching(person_points, clothing_points)
     
     def _find_optimal_correspondences(self, person_array: np.ndarray, clothing_array: np.ndarray) -> List:
-        """최적 대응점 찾기 (M3 Max 전용, 새로 추가)"""
+        """최적 대응점 찾기 (M3 Max 전용)"""
         
         try:
             # 거리 기반 + 기하학적 제약 조건
@@ -798,7 +713,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return [(person_array[i], clothing_array[i]) for i in range(min_points)]
     
     def _is_geometrically_consistent(self, person_pt: np.ndarray, clothing_pt: np.ndarray, existing_correspondences: List) -> bool:
-        """기하학적 일관성 검사 (M3 Max 전용, 새로 추가)"""
+        """기하학적 일관성 검사 (M3 Max 전용)"""
         
         if len(existing_correspondences) < 2:
             return True
@@ -827,7 +742,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return True
     
     def _compute_advanced_tps_transform(self, source_pts: np.ndarray, target_pts: np.ndarray) -> Dict[str, Any]:
-        """고급 TPS 변환 계산 (M3 Max 전용, 새로 추가)"""
+        """고급 TPS 변환 계산 (M3 Max 전용)"""
         
         try:
             n = len(source_pts)
@@ -888,7 +803,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return self._compute_tps_transform(source_pts, target_pts)
     
     async def _tps_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
-        """Thin Plate Spline 매칭 (기존과 동일)"""
+        """Thin Plate Spline 매칭"""
         
         try:
             if not SCIPY_AVAILABLE:
@@ -941,7 +856,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             raise
     
     def _compute_tps_transform(self, source_pts: np.ndarray, target_pts: np.ndarray) -> Dict[str, Any]:
-        """TPS 변환 매개변수 계산 (기존과 동일)"""
+        """TPS 변환 매개변수 계산"""
         
         try:
             n = len(source_pts)
@@ -999,7 +914,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             }
     
     def _homography_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
-        """Homography 매칭 (기존과 동일)"""
+        """Homography 매칭"""
         
         try:
             person_array = np.array(person_points, dtype=np.float32)
@@ -1036,7 +951,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             raise
     
     def _affine_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
-        """Affine 변환 매칭 (기존과 동일)"""
+        """Affine 변환 매칭"""
         
         try:
             person_array = np.array(person_points, dtype=np.float32)
@@ -1069,7 +984,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             raise
     
     def _similarity_matching(self, person_points: List, clothing_points: List) -> Dict[str, Any]:
-        """유사성 변환 매칭 (회전, 스케일, 평행이동) (기존과 동일)"""
+        """유사성 변환 매칭 (회전, 스케일, 평행이동)"""
         
         try:
             if len(person_points) < 1 or len(clothing_points) < 1:
@@ -1126,7 +1041,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         pose_keypoints: List[List[float]], 
         clothing_type: str
     ) -> Dict[str, Any]:
-        """포즈 기반 매칭 정제 (기존과 동일)"""
+        """포즈 기반 매칭 정제"""
         
         try:
             # 포즈 특성 분석
@@ -1152,7 +1067,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return initial_match
     
     def _analyze_pose_characteristics(self, pose_keypoints: List[List[float]]) -> Dict[str, Any]:
-        """포즈 특성 분석 (기존과 동일)"""
+        """포즈 특성 분석"""
         
         analysis = {}
         
@@ -1183,7 +1098,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         return analysis
     
     def _calculate_pose_adaptation(self, pose_analysis: Dict[str, Any], clothing_type: str) -> Dict[str, float]:
-        """포즈 적응 인수 계산 (기존과 동일)"""
+        """포즈 적응 인수 계산"""
         
         adaptation = {
             'scale_factor': 1.0,
@@ -1213,7 +1128,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         adaptation_factor: Dict[str, float], 
         pose_analysis: Dict[str, Any]
     ) -> List[List[float]]:
-        """포즈에 맞게 변환 조정 (기존과 동일)"""
+        """포즈에 맞게 변환 조정"""
         
         try:
             transform = np.array(original_transform)
@@ -1249,7 +1164,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         clothing_points: List, 
         match_result: Dict[str, Any]
     ) -> Dict[str, float]:
-        """매칭 품질 평가 (기존과 동일)"""
+        """매칭 품질 평가"""
         
         try:
             transform = np.array(match_result['transform'])
@@ -1304,7 +1219,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         transform: np.ndarray, 
         method: str
     ) -> float:
-        """재투영 오차 계산 (기존과 동일)"""
+        """재투영 오차 계산"""
         
         try:
             if not source_points or not target_points:
@@ -1364,7 +1279,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return 1.0
     
     def _evaluate_geometric_consistency(self, transform: np.ndarray, method: str) -> float:
-        """기하학적 일관성 평가 (기존과 동일)"""
+        """기하학적 일관성 평가"""
         
         try:
             if method == 'tps':
@@ -1394,7 +1309,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return 0.5
     
     def _evaluate_transform_stability(self, transform: np.ndarray, method: str) -> float:
-        """변환 안정성 평가 (기존과 동일)"""
+        """변환 안정성 평가"""
         
         try:
             # 조건수 확인
@@ -1424,7 +1339,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             return 0.5
     
     def _get_quality_grade(self, overall_quality: float) -> str:
-        """품질 등급 반환 (기존과 동일)"""
+        """품질 등급 반환"""
         if overall_quality >= 0.9:
             return "excellent"
         elif overall_quality >= 0.8:
@@ -1442,7 +1357,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         clothing_points: List, 
         clothing_type: str
     ) -> Optional[Dict[str, Any]]:
-        """대안 매칭 방법들 시도 (기존과 동일)"""
+        """대안 매칭 방법들 시도"""
         
         alternative_methods = ['affine', 'similarity', 'homography']
         best_result = None
@@ -1466,7 +1381,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         return best_result
     
     def _generate_warp_parameters(self, match_result: Dict[str, Any], clothing_segmentation: Dict[str, Any]) -> Dict[str, Any]:
-        """워핑 파라미터 생성 (기존과 동일)"""
+        """워핑 파라미터 생성"""
         
         try:
             transform = match_result['transform']
@@ -1549,7 +1464,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         }
     
     def _create_empty_result(self, reason: str, clothing_type: str = "unknown") -> Dict[str, Any]:
-        """빈 결과 생성 (기존과 동일)"""
+        """빈 결과 생성"""
         return {
             'success': False,
             'error': reason,
@@ -1577,7 +1492,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
         }
     
     def _update_statistics(self, method: str, quality: float):
-        """통계 업데이트 (기존과 동일)"""
+        """통계 업데이트"""
         try:
             self.matching_stats['total_matches'] += 1
             
@@ -1606,7 +1521,7 @@ class GeometricMatchingStep(OptimalStepConstructor):
             self.logger.warning(f"통계 업데이트 실패: {e}")
     
     async def cleanup(self):
-        """리소스 정리 (기존과 동일)"""
+        """리소스 정리"""
         try:
             # 캐시된 데이터 정리
             if hasattr(self, 'tps_grid'):
@@ -1626,11 +1541,12 @@ class GeometricMatchingStep(OptimalStepConstructor):
         except Exception as e:
             self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
     
-    # Pipeline Manager 호환성 메서드들 (기존과 동일하지만 M3 Max 정보 추가)
-    async def get_model_info(self) -> Dict[str, Any]:
-        """모델 정보 반환 (최적 패턴 호환)"""
+    # 최적 패턴 호환 메서드들
+    async def get_step_info(self) -> Dict[str, Any]:
+        """🔍 스텝 정보 반환 (최적 패턴 호환)"""
         return {
             "step_name": "GeometricMatching",
+            "class_name": self.__class__.__name__,
             "version": "3.0-optimal",
             "device": self.device,
             "device_type": self.device_type,
@@ -1665,17 +1581,18 @@ class GeometricMatchingStep(OptimalStepConstructor):
         }
     
     def get_statistics(self) -> Dict[str, Any]:
-        """통계 정보 반환 (기존과 동일)"""
+        """통계 정보 반환"""
         return self.matching_stats.copy()
     
     def reset_statistics(self):
-        """통계 초기화 (기존과 동일)"""
+        """통계 초기화"""
         self.matching_stats = {
             'total_matches': 0,
             'successful_matches': 0,
             'average_accuracy': 0.0,
             'method_performance': {}
         }
+
 
 # ===============================================================
 # 🔄 하위 호환성 지원 (기존 코드 100% 지원)
