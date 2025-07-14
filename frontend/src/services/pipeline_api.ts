@@ -1,6 +1,6 @@
 /**
  * MyCloset AI 프론트엔드 API 서비스
- * 백엔드 8단계 파이프라인과 통신하는 TypeScript 클라이언트
+ * 백엔드와 통신하는 TypeScript 클라이언트
  */
 
 // 타입 정의
@@ -36,7 +36,7 @@ export interface VirtualTryOnRequest {
   clothing_image: File;
   height: number;
   weight: number;
-  quality_mode: 'fast' | 'balanced' | 'quality';
+  quality_mode?: 'fast' | 'balanced' | 'quality';
 }
 
 export interface VirtualTryOnResponse {
@@ -48,10 +48,10 @@ export interface VirtualTryOnResponse {
   clothing_analysis: ClothingAnalysis;
   fit_score: number;
   recommendations: string[];
-  quality_metrics: QualityMetrics;
+  quality_metrics?: QualityMetrics;
   memory_usage?: Record<string, number>;
   step_times?: Record<string, number>;
-  error_message?: string;
+  error?: string;
 }
 
 export interface PipelineProgress {
@@ -98,7 +98,9 @@ class PipelineAPIClient {
   ): Promise<VirtualTryOnResponse> {
     try {
       // WebSocket 연결 설정 (진행률 업데이트용)
-      const connectionId = await this.setupProgressWebSocket(onProgress);
+      if (onProgress) {
+        await this.setupProgressWebSocket(onProgress);
+      }
 
       // FormData 준비
       const formData = new FormData();
@@ -106,21 +108,22 @@ class PipelineAPIClient {
       formData.append('clothing_image', request.clothing_image);
       formData.append('height', request.height.toString());
       formData.append('weight', request.weight.toString());
-      formData.append('quality_mode', request.quality_mode);
       
-      if (connectionId) {
-        formData.append('connection_id', connectionId);
+      if (request.quality_mode) {
+        formData.append('quality_mode', request.quality_mode);
       }
 
+      console.log('🚀 가상 피팅 API 요청 시작...');
+
       // API 요청
-      const response = await fetch(`${this.baseURL}/api/virtual-tryon-pipeline`, {
+      const response = await fetch(`${this.baseURL}/api/virtual-tryon`, {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
       const result: VirtualTryOnResponse = await response.json();
@@ -128,10 +131,12 @@ class PipelineAPIClient {
       // WebSocket 연결 정리
       this.closeProgressWebSocket();
       
+      console.log('✅ 가상 피팅 API 응답 성공:', result);
       return result;
 
     } catch (error) {
       this.closeProgressWebSocket();
+      console.error('❌ 가상 피팅 API 오류:', error);
       throw new Error(`가상 피팅 처리 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -140,24 +145,22 @@ class PipelineAPIClient {
    * 진행률 WebSocket 설정
    */
   private async setupProgressWebSocket(
-    onProgress?: (progress: PipelineProgress) => void
-  ): Promise<string | null> {
-    if (!onProgress) return null;
-
+    onProgress: (progress: PipelineProgress) => void
+  ): Promise<void> {
     try {
       const ws = new WebSocket(`${this.wsURL}/api/ws/pipeline-progress`);
-      const connectionId = Math.random().toString(36).substring(7);
       
       return new Promise((resolve, reject) => {
         ws.onopen = () => {
           console.log('🔗 WebSocket 연결 성공');
           this.currentWS = ws;
-          resolve(connectionId);
+          resolve();
         };
 
         ws.onmessage = (event) => {
           try {
             const progress: PipelineProgress = JSON.parse(event.data);
+            console.log('📊 진행률 업데이트:', progress);
             onProgress(progress);
           } catch (error) {
             console.error('WebSocket 메시지 파싱 오류:', error);
@@ -184,7 +187,6 @@ class PipelineAPIClient {
 
     } catch (error) {
       console.error('WebSocket 설정 실패:', error);
-      return null;
     }
   }
 
@@ -215,12 +217,12 @@ class PipelineAPIClient {
    * 파이프라인 워밍업
    */
   async warmupPipeline(qualityMode: string = 'balanced'): Promise<void> {
+    const formData = new FormData();
+    formData.append('quality_mode', qualityMode);
+
     const response = await fetch(`${this.baseURL}/api/pipeline/warmup`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `quality_mode=${qualityMode}`,
+      body: formData,
     });
 
     if (!response.ok) {
@@ -261,23 +263,44 @@ class PipelineAPIClient {
     onProgress?: (progress: PipelineProgress) => void
   ): Promise<VirtualTryOnResponse> {
     try {
-      const connectionId = await this.setupProgressWebSocket(onProgress);
+      if (onProgress) {
+        await this.setupProgressWebSocket(onProgress);
+      }
       
-      const response = await fetch(`${this.baseURL}/api/test/dummy-process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: connectionId ? `connection_id=${connectionId}` : '',
+      const response = await fetch(`${this.baseURL}/test`, {
+        method: 'GET',
       });
 
       if (!response.ok) {
         throw new Error(`테스트 실패: ${response.status}`);
       }
 
-      const result = await response.json();
-      this.closeProgressWebSocket();
+      // 더미 응답 생성
+      const result: VirtualTryOnResponse = {
+        success: true,
+        fitted_image: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+        processing_time: 2.5,
+        confidence: 0.85,
+        measurements: {
+          chest: 95,
+          waist: 80,
+          hip: 98,
+          bmi: 23.4
+        },
+        clothing_analysis: {
+          category: "shirt",
+          style: "casual",
+          dominant_color: [120, 150, 180]
+        },
+        fit_score: 0.88,
+        recommendations: [
+          "🧪 테스트 모드로 처리되었습니다",
+          "실제 AI 파이프라인에서 더 정확한 결과를 확인하세요",
+          "이 스타일이 잘 어울립니다!"
+        ]
+      };
       
+      this.closeProgressWebSocket();
       return result;
 
     } catch (error) {
@@ -462,21 +485,6 @@ export class PipelineUtils {
     return '알 수 없는 오류가 발생했습니다. 지원팀에 문의해주세요.';
   }
 }
-
-// React Hook (선택사항)
-export const usePipelineAPI = () => {
-  const apiClient = new PipelineAPIClient();
-
-  return {
-    processVirtualTryOn: apiClient.processVirtualTryOn.bind(apiClient),
-    getPipelineStatus: apiClient.getPipelineStatus.bind(apiClient),
-    warmupPipeline: apiClient.warmupPipeline.bind(apiClient),
-    getSystemStats: apiClient.getSystemStats.bind(apiClient),
-    healthCheck: apiClient.healthCheck.bind(apiClient),
-    testDummyProcess: apiClient.testDummyProcess.bind(apiClient),
-    submitFeedback: apiClient.submitFeedback.bind(apiClient),
-  };
-};
 
 // 기본 export
 export default PipelineAPIClient;

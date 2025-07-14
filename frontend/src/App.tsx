@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { usePipeline, usePipelineHealth } from './hooks/usePipeline';
 
 interface UserMeasurements {
   height: number;
@@ -26,67 +27,87 @@ interface TryOnResult {
 }
 
 const App: React.FC = () => {
+  // 파일 상태
   const [personImage, setPersonImage] = useState<File | null>(null);
   const [clothingImage, setClothingImage] = useState<File | null>(null);
   const [measurements, setMeasurements] = useState<UserMeasurements>({
     height: 170,
     weight: 65
   });
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<TryOnResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
+  // 파일 참조
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
+  // 파이프라인 훅 사용
+  const {
+    isProcessing,
+    progress,
+    progressMessage,
+    result,
+    error,
+    processVirtualTryOn,
+    clearError,
+    clearResult,
+    testConnection,
+    warmupPipeline
+  } = usePipeline({
+    baseURL: 'http://localhost:8000',
+    autoHealthCheck: true,
+    healthCheckInterval: 30000
+  });
+
+  // 헬스체크 훅
+  const { isHealthy, isChecking } = usePipelineHealth({
+    baseURL: 'http://localhost:8000',
+    autoHealthCheck: true,
+    healthCheckInterval: 30000
+  });
+
+  // 파일 업로드 핸들러
   const handleImageUpload = (file: File, type: 'person' | 'clothing') => {
     if (type === 'person') {
       setPersonImage(file);
     } else {
       setClothingImage(file);
     }
-    setError(null);
+    clearError();
   };
 
-  const processVirtualTryOn = async () => {
+  // 가상 피팅 처리
+  const handleVirtualTryOn = async () => {
     if (!personImage || !clothingImage) {
-      setError('Please upload both photos to continue');
       return;
     }
 
-    setIsProcessing(true);
-    setError(null);
-    setResult(null);
+    await processVirtualTryOn({
+      person_image: personImage,
+      clothing_image: clothingImage,
+      height: measurements.height,
+      weight: measurements.weight,
+      quality_mode: 'balanced'
+    });
+  };
 
-    try {
-      const formData = new FormData();
-      formData.append('person_image', personImage);
-      formData.append('clothing_image', clothingImage);
-      formData.append('height', measurements.height.toString());
-      formData.append('weight', measurements.weight.toString());
+  // 서버 상태 색상
+  const getServerStatusColor = () => {
+    if (isChecking) return '#f59e0b'; // 노란색 (확인 중)
+    return isHealthy ? '#4ade80' : '#ef4444'; // 초록색 또는 빨간색
+  };
 
-      const response = await fetch('http://localhost:8000/api/virtual-tryon', {
-        method: 'POST',
-        body: formData,
-      });
+  const getServerStatusText = () => {
+    if (isChecking) return 'Checking...';
+    return isHealthy ? 'Server Online' : 'Server Offline';
+  };
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
+  // 웹소켓 연결 테스트 (개발용)
+  const handleTestConnection = async () => {
+    await testConnection();
+  };
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setResult(data);
-      } else {
-        throw new Error(data.error || 'An error occurred during processing');
-      }
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during processing');
-    } finally {
-      setIsProcessing(false);
-    }
+  // 파이프라인 워밍업 (개발용)
+  const handleWarmup = async () => {
+    await warmupPipeline('balanced');
   };
 
   return (
@@ -115,9 +136,58 @@ const App: React.FC = () => {
                 <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', margin: 0 }}>MyCloset AI</h1>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ height: '0.5rem', width: '0.5rem', backgroundColor: '#4ade80', borderRadius: '50%' }}></div>
-              <span style={{ fontSize: '0.875rem', color: '#4b5563' }}>Server Online</span>
+            
+            {/* 서버 상태 및 개발 도구 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {/* 개발 도구 버튼들 */}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleTestConnection}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    backgroundColor: '#e5e7eb',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing ? 0.5 : 1
+                  }}
+                >
+                  Test
+                </button>
+                <button
+                  onClick={handleWarmup}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    backgroundColor: '#e5e7eb',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing ? 0.5 : 1
+                  }}
+                >
+                  Warmup
+                </button>
+              </div>
+
+              {/* 서버 상태 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ 
+                  height: '0.5rem', 
+                  width: '0.5rem', 
+                  backgroundColor: getServerStatusColor(),
+                  borderRadius: '50%',
+                  transition: 'background-color 0.3s'
+                }}></div>
+                <span style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                  {getServerStatusText()}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -126,7 +196,9 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main style={{ maxWidth: '80rem', margin: '0 auto', padding: '2rem 1rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h2 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#111827', marginBottom: '0.5rem' }}>AI Virtual Try-On</h2>
+          <h2 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#111827', marginBottom: '0.5rem' }}>
+            AI Virtual Try-On
+          </h2>
           <p style={{ color: '#4b5563', maxWidth: '42rem', margin: '0 auto' }}>
             Upload your photo and any clothing item to see how it looks on you. 
             Our AI creates realistic fitting previews in seconds.
@@ -359,19 +431,54 @@ const App: React.FC = () => {
             </div>
           </div>
 
+          {/* Progress Bar */}
+          {isProcessing && (
+            <div style={{ 
+              backgroundColor: '#ffffff', 
+              borderRadius: '0.75rem', 
+              border: '1px solid #e5e7eb', 
+              padding: '1.5rem', 
+              marginBottom: '2rem' 
+            }}>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>
+                처리 중... {progress}%
+              </h3>
+              <div style={{ 
+                width: '100%', 
+                backgroundColor: '#f3f4f6', 
+                borderRadius: '0.5rem', 
+                height: '0.75rem',
+                marginBottom: '0.5rem'
+              }}>
+                <div 
+                  style={{ 
+                    backgroundColor: '#3b82f6', 
+                    height: '0.75rem', 
+                    borderRadius: '0.5rem', 
+                    transition: 'width 0.3s ease',
+                    width: `${progress}%`
+                  }}
+                ></div>
+              </div>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
+                {progressMessage}
+              </p>
+            </div>
+          )}
+
           {/* Generate Button */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
             <button
-              onClick={processVirtualTryOn}
-              disabled={!personImage || !clothingImage || isProcessing}
+              onClick={handleVirtualTryOn}
+              disabled={!personImage || !clothingImage || isProcessing || !isHealthy}
               style={{ 
-                backgroundColor: (!personImage || !clothingImage || isProcessing) ? '#d1d5db' : '#000000',
+                backgroundColor: (!personImage || !clothingImage || isProcessing || !isHealthy) ? '#d1d5db' : '#000000',
                 color: '#ffffff', 
                 padding: '0.75rem 2rem', 
                 borderRadius: '0.5rem', 
                 fontWeight: '500', 
                 border: 'none',
-                cursor: (!personImage || !clothingImage || isProcessing) ? 'not-allowed' : 'pointer',
+                cursor: (!personImage || !clothingImage || isProcessing || !isHealthy) ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s',
                 display: 'flex', 
                 alignItems: 'center', 
@@ -407,7 +514,11 @@ const App: React.FC = () => {
                   <svg style={{ width: '1rem', height: '1rem' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  <span>Generate Try-On</span>
+                  <span>
+                    {!isHealthy ? 'Server Offline' : 
+                     !personImage || !clothingImage ? 'Upload Images First' : 
+                     'Generate Try-On'}
+                  </span>
                 </>
               )}
             </button>
@@ -422,14 +533,28 @@ const App: React.FC = () => {
               padding: '1rem', 
               marginBottom: '2rem' 
             }}>
-              <div style={{ display: 'flex' }}>
-                <svg style={{ flexShrink: 0, height: '1.25rem', width: '1.25rem', color: '#f87171' }} viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <div style={{ marginLeft: '0.75rem' }}>
-                  <h3 style={{ fontSize: '0.875rem', fontWeight: '500', color: '#991b1b', margin: 0 }}>Error</h3>
-                  <p style={{ fontSize: '0.875rem', color: '#b91c1c', marginTop: '0.25rem', margin: 0 }}>{error}</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex' }}>
+                  <svg style={{ flexShrink: 0, height: '1.25rem', width: '1.25rem', color: '#f87171' }} viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <div style={{ marginLeft: '0.75rem' }}>
+                    <h3 style={{ fontSize: '0.875rem', fontWeight: '500', color: '#991b1b', margin: 0 }}>Error</h3>
+                    <p style={{ fontSize: '0.875rem', color: '#b91c1c', marginTop: '0.25rem', margin: 0 }}>{error}</p>
+                  </div>
                 </div>
+                <button
+                  onClick={clearError}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: '#991b1b',
+                    cursor: 'pointer',
+                    padding: '0.25rem'
+                  }}
+                >
+                  ✕
+                </button>
               </div>
             </div>
           )}
@@ -442,7 +567,23 @@ const App: React.FC = () => {
               border: '1px solid #e5e7eb', 
               padding: '1.5rem' 
             }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: '500', color: '#111827', marginBottom: '1.5rem' }}>Your Virtual Try-On</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: '500', color: '#111827', margin: 0 }}>Your Virtual Try-On</h3>
+                <button
+                  onClick={clearResult}
+                  style={{
+                    backgroundColor: '#f3f4f6',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  New Try-On
+                </button>
+              </div>
               
               <div style={{ 
                 display: 'grid', 
@@ -457,17 +598,25 @@ const App: React.FC = () => {
                     style={{ width: '100%', borderRadius: '0.5rem', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                   />
                   <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button style={{ 
-                      flex: 1, 
-                      backgroundColor: '#f3f4f6', 
-                      color: '#374151', 
-                      padding: '0.5rem 1rem', 
-                      borderRadius: '0.5rem', 
-                      fontWeight: '500', 
-                      border: 'none',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s'
-                    }}>
+                    <button 
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = `data:image/jpeg;base64,${result.fitted_image}`;
+                        link.download = 'virtual-tryon-result.jpg';
+                        link.click();
+                      }}
+                      style={{ 
+                        flex: 1, 
+                        backgroundColor: '#f3f4f6', 
+                        color: '#374151', 
+                        padding: '0.5rem 1rem', 
+                        borderRadius: '0.5rem', 
+                        fontWeight: '500', 
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s'
+                      }}
+                    >
                       Download
                     </button>
                     <button style={{ 
@@ -531,30 +680,30 @@ const App: React.FC = () => {
 
                   {/* Details */}
                   <div>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>Details</h4>
-                  <div style={{ backgroundColor: '#f9fafb', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                      <span style={{ color: '#4b5563' }}>Category</span>
-                      <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
-                        {result?.clothing_analysis?.category || 'Unknown'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                      <span style={{ color: '#4b5563' }}>Style</span>
-                      <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
-                        {result?.clothing_analysis?.style || 'Unknown'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                      <span style={{ color: '#4b5563' }}>Processing Time</span>
-                      <span style={{ fontWeight: '500' }}>{result?.processing_time || 0}s</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                      <span style={{ color: '#4b5563' }}>BMI</span>
-                      <span style={{ fontWeight: '500' }}>{result?.measurements?.bmi || 0}</span>
+                    <h4 style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>Details</h4>
+                    <div style={{ backgroundColor: '#f9fafb', borderRadius: '0.5rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                        <span style={{ color: '#4b5563' }}>Category</span>
+                        <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
+                          {result?.clothing_analysis?.category || 'Unknown'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                        <span style={{ color: '#4b5563' }}>Style</span>
+                        <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
+                          {result?.clothing_analysis?.style || 'Unknown'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                        <span style={{ color: '#4b5563' }}>Processing Time</span>
+                        <span style={{ fontWeight: '500' }}>{result?.processing_time?.toFixed(1) || 0}s</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                        <span style={{ color: '#4b5563' }}>BMI</span>
+                        <span style={{ fontWeight: '500' }}>{result?.measurements?.bmi?.toFixed(1) || 0}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
                   {/* Recommendations */}
                   {result.recommendations && result.recommendations.length > 0 && (
