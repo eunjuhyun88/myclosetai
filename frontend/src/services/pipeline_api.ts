@@ -1,872 +1,749 @@
 /**
- * MyCloset AI 프론트엔드 API 서비스 - 완전 수정 버전
- * 백엔드 pipeline_routes.py와 완벽 호환
- * WebSocket 연결 안정화 및 에러 처리 강화
+ * MyCloset AI 파이프라인 API 클라이언트 - 실제 백엔드 완전 호환 버전
+ * 백엔드 실제 엔드포인트와 100% 호환 + Task 기반 처리 지원
  */
 
-// 타입 정의 개선
-export interface UserMeasurements {
-  height: number;
-  weight: number;
-  chest?: number;
-  waist?: number;
-  hip?: number;
-}
+import type {
+  VirtualTryOnRequest,
+  VirtualTryOnResponse,
+  BodyAnalysisResponse,
+  ClothingAnalysisResponse,
+  ProcessingStatus,
+  PipelineStatus,
+  SystemStats,
+  UsePipelineOptions,
+  BrandSizeData,
+  SizeRecommendation,
+  TaskInfo,
+} from '../types/pipeline';
+import { PipelineUtils } from '../utils/pipelineUtils';
 
-export interface ClothingAnalysis {
-  category: string;
-  style: string;
-  dominant_color: number[];
-  material?: string;
-  confidence?: number;
-}
-
-export interface QualityMetrics {
-  ssim: number;
-  lpips: number;
-  fid?: number;
-  fit_overall: number;
-  fit_coverage?: number;
-  fit_shape_consistency?: number;
-  color_preservation?: number;
-  boundary_naturalness?: number;
-}
-
-export interface VirtualTryOnRequest {
-  person_image: File;
-  clothing_image: File;
-  height: number;
-  weight: number;
-  quality_mode?: 'fast' | 'balanced' | 'quality';
-  session_id?: string;
-}
-
-export interface VirtualTryOnResponse {
-  success: boolean;
-  process_id?: string;
-  fitted_image?: string; // base64
-  processing_time: number;
-  confidence: number;
-  measurements: Record<string, number>;
-  clothing_analysis: ClothingAnalysis;
-  fit_score: number;
-  quality_score?: number;
-  recommendations: string[];
-  quality_metrics?: QualityMetrics;
-  pipeline_stages?: Record<string, any>;
-  debug_info?: Record<string, any>;
-  memory_usage?: Record<string, number>;
-  step_times?: Record<string, number>;
-  error?: string;
-}
-
-export interface PipelineProgress {
-  type: 'pipeline_progress' | 'step_update' | 'completed' | 'error' | 'connection_established';
-  session_id?: string;
-  step_id?: number;
-  step_name?: string;
-  progress: number;
-  message: string;
-  timestamp: number;
-  data?: any;
-  status?: 'pending' | 'processing' | 'completed' | 'error';
-}
-
-export interface PipelineStatus {
-  initialized: boolean;
-  device: string;
-  device_type?: string;
-  memory_gb?: number;
-  is_m3_max?: boolean;
-  optimization_enabled?: boolean;
-  steps_loaded: number;
-  total_steps: number;
-  memory_status: Record<string, any>;
-  stats: Record<string, any>;
-  performance_metrics?: Record<string, any>;
-  pipeline_config?: Record<string, any>;
-  pipeline_ready?: boolean;
-}
-
-export interface SystemStats {
-  total_requests: number;
-  successful_requests: number;
-  average_processing_time: number;
-  average_quality_score: number;
-  peak_memory_usage: number;
-  uptime: number;
-}
-
-// 연결 설정 인터페이스
-export interface ConnectionConfig {
-  baseURL?: string;
-  wsURL?: string;
-  autoReconnect?: boolean;
-  maxReconnectAttempts?: number;
-  reconnectInterval?: number;
-  connectionTimeout?: number;
-}
-
-// API 클라이언트 클래스 - 완전 개선
-class PipelineAPIClient {
+export class PipelineAPIClient {
+  /**
+   * ✅ 백엔드 실제 API 구조와 완전 호환되는 클라이언트
+   */
+  
+  private config: UsePipelineOptions;
   private baseURL: string;
-  private wsURL: string;
-  private currentWS: WebSocket | null = null;
-  private connectionAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
-  private reconnectInterval: number = 3000;
-  private connectionTimeout: number = 10000;
-  private autoReconnect: boolean = true;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private device: string;
+  private step_name: string;
+  private defaultHeaders: Record<string, string>;
+  private activeTasks: Map<string, TaskInfo> = new Map();
 
-  constructor(config: ConnectionConfig = {}) {
-    this.baseURL = config.baseURL || 'http://localhost:8000';
-    this.wsURL = config.wsURL || this.baseURL.replace('http', 'ws');
-    this.autoReconnect = config.autoReconnect ?? true;
-    this.maxReconnectAttempts = config.maxReconnectAttempts || 5;
-    this.reconnectInterval = config.reconnectInterval || 3000;
-    this.connectionTimeout = config.connectionTimeout || 10000;
+  constructor(
+    options: UsePipelineOptions = {},
+    ...kwargs: any[]
+  ) {
+    this.device = options.device || PipelineUtils.autoDetectDevice();
+    this.baseURL = options.baseURL || 'http://localhost:8000';
+    this.step_name = 'PipelineAPIClient';
+    
+    this.config = {
+      baseURL: this.baseURL,
+      wsURL: options.wsURL || this.baseURL.replace('http', 'ws'),
+      autoReconnect: options.autoReconnect ?? true,
+      maxReconnectAttempts: options.maxReconnectAttempts || 5,
+      reconnectInterval: options.reconnectInterval || 3000,
+      heartbeatInterval: options.heartbeatInterval || 30000,
+      connectionTimeout: options.connectionTimeout || 10000,
+      
+      device_type: options.device_type || PipelineUtils.autoDetectDeviceType(),
+      memory_gb: options.memory_gb || 16.0,
+      is_m3_max: options.is_m3_max ?? PipelineUtils.detectM3Max(),
+      optimization_enabled: options.optimization_enabled ?? true,
+      quality_level: options.quality_level || 'balanced',
+      
+      autoHealthCheck: options.autoHealthCheck ?? true,
+      healthCheckInterval: options.healthCheckInterval || 30000,
+      persistSession: options.persistSession ?? true,
+      enableDetailedProgress: options.enableDetailedProgress ?? true,
+      enableRetry: options.enableRetry ?? true,
+      maxRetryAttempts: options.maxRetryAttempts || 3,
+      enableTaskTracking: options.enableTaskTracking ?? true,
+      enableBrandIntegration: options.enableBrandIntegration ?? true,
+      
+      ...options,
+    };
+    
+    this._mergeAdditionalConfig(kwargs);
+    
+    this.defaultHeaders = {
+      'Accept': 'application/json',
+    };
+    
+    PipelineUtils.log('info', `🎯 ${this.step_name} 초기화 - 디바이스: ${this.device}`);
   }
 
-  /**
-   * 가상 피팅 처리 요청 - 백엔드 API와 완벽 호환
-   */
-  async processVirtualTryOn(
-    request: VirtualTryOnRequest,
-    onProgress?: (progress: PipelineProgress) => void
-  ): Promise<VirtualTryOnResponse> {
-    try {
-      // 입력 검증
-      this.validateRequest(request);
+  private _mergeAdditionalConfig(kwargs: any[]): void {
+    const systemParams = PipelineUtils.getSystemParams();
 
-      // 세션 ID 생성 (없으면)
-      const sessionId = request.session_id || `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-      // WebSocket 연결 설정 (진행률 업데이트용)
-      let wsConnected = false;
-      if (onProgress) {
-        try {
-          wsConnected = await this.setupProgressWebSocket(sessionId, onProgress);
-          if (!wsConnected) {
-            console.warn('⚠️ WebSocket 연결 실패, 진행률 업데이트 없이 계속 진행');
+    for (const kwarg of kwargs) {
+      if (typeof kwarg === 'object' && kwarg !== null) {
+        for (const [key, value] of Object.entries(kwarg)) {
+          if (!systemParams.has(key) && value !== undefined) {
+            (this.config as any)[key] = value;
           }
-        } catch (error) {
-          console.warn('⚠️ WebSocket 설정 실패:', error);
         }
       }
+    }
+  }
 
-      // FormData 준비 - 백엔드 API 형식에 맞춤
+  // =================================================================
+  // 🔧 기본 HTTP 요청 메서드들
+  // =================================================================
+
+  private async request<T = any>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    
+    const config: RequestInit = {
+      ...options,
+      headers: {
+        ...this.defaultHeaders,
+        ...options.headers,
+      },
+    };
+
+    PipelineUtils.log('info', `🌐 API 요청: ${config.method || 'GET'} ${endpoint}`);
+
+    try {
+      const response = await fetch(url, config);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = {
+          status: response.status,
+          message: errorData.detail || errorData.error || response.statusText,
+          details: errorData
+        };
+        throw error;
+      }
+
+      const data = await response.json();
+      PipelineUtils.log('info', `✅ API 응답 성공: ${endpoint}`);
+      return data;
+
+    } catch (error) {
+      PipelineUtils.log('error', `❌ API 요청 실패: ${endpoint}`, error);
+      throw error;
+    }
+  }
+
+  private async requestWithRetry<T = any>(
+    endpoint: string,
+    options: RequestInit = {},
+    maxRetries: number = this.config.maxRetryAttempts || 3
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.request<T>(endpoint, options);
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt === maxRetries) {
+          break;
+        }
+        
+        if (error && typeof error === 'object' && 'status' in error) {
+          const apiError = error as any;
+          if (apiError.status === 400 || apiError.status === 401 || apiError.status === 403) {
+            break;
+          }
+        }
+        
+        const delay = 1000 * attempt;
+        PipelineUtils.log('warn', `⚠️ API 호출 실패 (${attempt}/${maxRetries}), ${delay}ms 후 재시도...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  }
+
+  // =================================================================
+  // 🔧 메인 API 메서드들 - 백엔드 실제 엔드포인트 호환
+  // =================================================================
+
+  /**
+   * ✅ 메인 가상 피팅 API - /api/virtual-tryon
+   */
+  async processVirtualTryOn(request: VirtualTryOnRequest): Promise<VirtualTryOnResponse> {
+    const timer = PipelineUtils.createPerformanceTimer('가상 피팅 API 요청');
+    
+    try {
+      this._validateRequest(request);
+
       const formData = new FormData();
       formData.append('person_image', request.person_image);
       formData.append('clothing_image', request.clothing_image);
       formData.append('height', request.height.toString());
       formData.append('weight', request.weight.toString());
-      formData.append('quality_mode', request.quality_mode || 'balanced');
-      formData.append('enable_realtime', wsConnected ? 'true' : 'false');
-      formData.append('session_id', sessionId);
+      
+      // ✅ 백엔드 실제 파라미터들
+      if (request.chest) formData.append('chest', request.chest.toString());
+      if (request.waist) formData.append('waist', request.waist.toString());
+      if (request.hip) formData.append('hip', request.hip.toString());
+      
+      formData.append('clothing_type', request.clothing_type || 'shirt');
+      formData.append('fabric_type', request.fabric_type || 'cotton');
+      formData.append('style_preference', request.style_preference || 'regular');
+      formData.append('quality_level', request.quality_level || 'balanced');
+      
+      formData.append('session_id', request.session_id || PipelineUtils.generateSessionId());
+      formData.append('enable_realtime', String(request.enable_realtime || false));
 
-      console.log('🚀 가상 피팅 API 요청 시작...', {
-        sessionId,
-        qualityMode: request.quality_mode,
-        wsConnected
-      });
+      // 백엔드 호환 시스템 설정
+      formData.append('device_type', this.config.device_type || 'auto');
+      formData.append('optimization_enabled', String(this.config.optimization_enabled));
+      formData.append('is_m3_max', String(this.config.is_m3_max));
+      formData.append('memory_gb', String(this.config.memory_gb));
 
-      // API 요청
-      const response = await fetch(`${this.baseURL}/api/pipeline/virtual-tryon`, {
-        method: 'POST',
-        body: formData,
-      });
+      PipelineUtils.log('info', '🚀 가상 피팅 API 요청 시작');
 
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.detail || errorData.error || errorMessage;
-        } catch {
-          // JSON 파싱 실패 시 기본 메시지 사용
+      // ✅ 실제 백엔드 엔드포인트 사용
+      const result = await this.requestWithRetry<VirtualTryOnResponse>(
+        '/api/virtual-tryon',  // ❌ '/api/virtual-tryon-pipeline'에서 수정
+        {
+          method: 'POST',
+          body: formData,
         }
-        throw new Error(errorMessage);
+      );
+
+      timer.end();
+      PipelineUtils.log('info', '✅ 가상 피팅 API 응답 성공');
+      
+      // Task 추적 활성화 시 저장
+      if (this.config.enableTaskTracking && result.task_id) {
+        this.activeTasks.set(result.task_id, {
+          task_id: result.task_id,
+          status: 'processing',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          progress_percentage: 0,
+          current_stage: 'started'
+        });
       }
-
-      const result: VirtualTryOnResponse = await response.json();
       
-      // WebSocket 연결 정리
-      this.closeProgressWebSocket();
-      
-      console.log('✅ 가상 피팅 API 응답 성공:', {
-        success: result.success,
-        processingTime: result.processing_time,
-        fitScore: result.fit_score,
-        processId: result.process_id
-      });
-
       return result;
 
     } catch (error) {
-      this.closeProgressWebSocket();
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ 가상 피팅 API 오류:', errorMessage);
+      timer.end();
+      const errorMessage = this._extractErrorMessage(error);
+      PipelineUtils.log('error', '❌ 가상 피팅 API 오류', errorMessage);
       throw new Error(`가상 피팅 처리 실패: ${errorMessage}`);
     }
   }
 
   /**
-   * 입력 검증
+   * ✅ 신체 분석 API - /api/analyze-body
    */
-  private validateRequest(request: VirtualTryOnRequest): void {
+  async analyzeBody(image: File): Promise<BodyAnalysisResponse> {
+    try {
+      if (!PipelineUtils.validateImageType(image)) {
+        throw new Error('지원되지 않는 이미지 형식입니다.');
+      }
+
+      const formData = new FormData();
+      formData.append('image', image);
+
+      const result = await this.request<BodyAnalysisResponse>(
+        '/api/analyze-body',  // ✅ 백엔드 실제 엔드포인트
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      PipelineUtils.log('info', '✅ 신체 분석 완료');
+      return result;
+
+    } catch (error) {
+      const errorMessage = this._extractErrorMessage(error);
+      PipelineUtils.log('error', '❌ 신체 분석 실패', errorMessage);
+      throw new Error(`신체 분석 실패: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * ✅ 의류 분석 API - /api/analyze-clothing
+   */
+  async analyzeClothing(image: File): Promise<ClothingAnalysisResponse> {
+    try {
+      if (!PipelineUtils.validateImageType(image)) {
+        throw new Error('지원되지 않는 이미지 형식입니다.');
+      }
+
+      const formData = new FormData();
+      formData.append('image', image);
+
+      const result = await this.request<ClothingAnalysisResponse>(
+        '/api/analyze-clothing',  // ✅ 백엔드 실제 엔드포인트
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      PipelineUtils.log('info', '✅ 의류 분석 완료');
+      return result;
+
+    } catch (error) {
+      const errorMessage = this._extractErrorMessage(error);
+      PipelineUtils.log('error', '❌ 의류 분석 실패', errorMessage);
+      throw new Error(`의류 분석 실패: ${errorMessage}`);
+    }
+  }
+
+  // =================================================================
+  // 🔧 Task 기반 처리 API들 - 백엔드 실제 구조
+  // =================================================================
+
+  /**
+   * ✅ 처리 상태 조회 - /api/processing-status/{task_id}
+   */
+  async getProcessingStatus(taskId: string): Promise<ProcessingStatus> {
+    try {
+      const result = await this.request<ProcessingStatus>(
+        `/api/processing-status/${taskId}`  // ✅ 백엔드 실제 엔드포인트
+      );
+
+      // 로컬 Task 정보 업데이트
+      if (this.activeTasks.has(taskId)) {
+        const taskInfo = this.activeTasks.get(taskId)!;
+        taskInfo.status = result.status as any;
+        taskInfo.progress_percentage = result.progress_percentage;
+        taskInfo.current_stage = result.current_stage;
+        taskInfo.updated_at = new Date().toISOString();
+        this.activeTasks.set(taskId, taskInfo);
+      }
+
+      return result;
+
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 처리 상태 조회 실패', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ 지원 모델 조회 - /api/supported-models
+   */
+  async getSupportedModels(): Promise<string[]> {
+    try {
+      const result = await this.request<{models: string[]}>(
+        '/api/supported-models'  // ✅ 백엔드 실제 엔드포인트
+      );
+
+      return result.models || [];
+
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 지원 모델 조회 실패', error);
+      return [];
+    }
+  }
+
+  /**
+   * Task 취소 (추가 구현)
+   */
+  async cancelTask(taskId: string): Promise<boolean> {
+    try {
+      await this.request(`/api/cancel-task/${taskId}`, {
+        method: 'POST',
+      });
+
+      // 로컬에서 제거
+      if (this.activeTasks.has(taskId)) {
+        const taskInfo = this.activeTasks.get(taskId)!;
+        taskInfo.status = 'cancelled';
+        taskInfo.updated_at = new Date().toISOString();
+        this.activeTasks.set(taskId, taskInfo);
+      }
+
+      return true;
+
+    } catch (error) {
+      PipelineUtils.log('error', '❌ Task 취소 실패', error);
+      return false;
+    }
+  }
+
+  /**
+   * Task 기록 조회
+   */
+  getTaskHistory(): TaskInfo[] {
+    return Array.from(this.activeTasks.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+
+  // =================================================================
+  // 🔧 브랜드 사이즈 관련 API들 - 프로젝트 핵심 기능
+  // =================================================================
+
+  /**
+   * ✅ 브랜드 사이즈 데이터 조회
+   */
+  async getBrandSizes(brand: string): Promise<BrandSizeData> {
+    try {
+      const result = await this.request<BrandSizeData>(
+        `/api/brands/${encodeURIComponent(brand)}/sizes`
+      );
+
+      return result;
+
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 브랜드 사이즈 조회 실패', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ 사이즈 추천
+   */
+  async getSizeRecommendation(
+    measurements: any,
+    brand: string, 
+    item: string
+  ): Promise<SizeRecommendation> {
+    try {
+      const result = await this.request<SizeRecommendation>(
+        '/api/size-recommendation',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            measurements,
+            brand,
+            item
+          }),
+        }
+      );
+
+      return result;
+
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 사이즈 추천 실패', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 브랜드 호환성 조회
+   */
+  async getBrandCompatibility(measurements: any): Promise<any> {
+    try {
+      const result = await this.request(
+        '/api/brand-compatibility',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ measurements }),
+        }
+      );
+
+      return result;
+
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 브랜드 호환성 조회 실패', error);
+      throw error;
+    }
+  }
+
+  // =================================================================
+  // 🔧 파이프라인 관리 API들
+  // =================================================================
+
+  async getPipelineStatus(): Promise<PipelineStatus> {
+    try {
+      return await this.request<PipelineStatus>('/api/pipeline/status');
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 파이프라인 상태 조회 실패', error);
+      throw error;
+    }
+  }
+
+  async initializePipeline(): Promise<boolean> {
+    try {
+      const response = await this.request('/api/pipeline/initialize', {
+        method: 'POST',
+      });
+      return response.initialized || false;
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 파이프라인 초기화 실패', error);
+      return false;
+    }
+  }
+
+  async warmupPipeline(qualityMode: string = 'balanced'): Promise<boolean> {
+    try {
+      const formData = new FormData();
+      formData.append('quality_mode', qualityMode);
+      formData.append('device_type', this.config.device_type || 'auto');
+      formData.append('optimization_enabled', String(this.config.optimization_enabled));
+
+      const response = await this.request('/api/pipeline/warmup', {
+        method: 'POST',
+        body: formData,
+      });
+
+      return response.success || false;
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 파이프라인 워밍업 실패', error);
+      return false;
+    }
+  }
+
+  async getMemoryStatus(): Promise<any> {
+    try {
+      return await this.request('/api/pipeline/memory');
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 메모리 상태 조회 실패', error);
+      throw error;
+    }
+  }
+
+  async cleanupMemory(): Promise<boolean> {
+    try {
+      await this.request('/api/pipeline/cleanup', {
+        method: 'POST',
+      });
+      return true;
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 메모리 정리 실패', error);
+      return false;
+    }
+  }
+
+  async getModelsInfo(): Promise<any> {
+    try {
+      return await this.request('/api/pipeline/models/info');
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 모델 정보 조회 실패', error);
+      throw error;
+    }
+  }
+
+  // =================================================================
+  // 🔧 시스템 API들
+  // =================================================================
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await this.request('/health');
+      return response.status === 'healthy';
+    } catch {
+      return false;
+    }
+  }
+
+  async getSystemStats(): Promise<SystemStats> {
+    try {
+      return await this.request<SystemStats>('/stats');
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 시스템 통계 조회 실패', error);
+      throw error;
+    }
+  }
+
+  async getServerInfo(): Promise<any> {
+    try {
+      return await this.request('/');
+    } catch (error) {
+      PipelineUtils.log('error', '❌ 서버 정보 조회 실패', error);
+      throw error;
+    }
+  }
+
+  // =================================================================
+  // 🔧 내부 헬퍼 메서드들
+  // =================================================================
+
+  private _validateRequest(request: VirtualTryOnRequest): void {
     if (!request.person_image || !request.clothing_image) {
       throw new Error('사용자 이미지와 의류 이미지는 필수입니다.');
+    }
+
+    if (!PipelineUtils.validateImageType(request.person_image)) {
+      throw new Error('사용자 이미지 형식이 올바르지 않습니다.');
+    }
+    
+    if (!PipelineUtils.validateImageType(request.clothing_image)) {
+      throw new Error('의류 이미지 형식이 올바르지 않습니다.');
+    }
+
+    if (!PipelineUtils.validateFileSize(request.person_image)) {
+      throw new Error('사용자 이미지 크기가 너무 큽니다. (최대 10MB)');
+    }
+
+    if (!PipelineUtils.validateFileSize(request.clothing_image)) {
+      throw new Error('의류 이미지 크기가 너무 큽니다. (최대 10MB)');
     }
 
     if (request.height <= 0 || request.weight <= 0) {
       throw new Error('유효한 키와 몸무게를 입력해주세요.');
     }
-
-    // 파일 크기 검증 (10MB)
-    const maxSize = 10 * 1024 * 1024;
-    if (request.person_image.size > maxSize) {
-      throw new Error('사용자 이미지가 10MB를 초과합니다.');
-    }
-    if (request.clothing_image.size > maxSize) {
-      throw new Error('의류 이미지가 10MB를 초과합니다.');
-    }
-
-    // 파일 타입 검증
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(request.person_image.type)) {
-      throw new Error('사용자 이미지는 JPG, PNG, WebP 형식만 지원됩니다.');
-    }
-    if (!allowedTypes.includes(request.clothing_image.type)) {
-      throw new Error('의류 이미지는 JPG, PNG, WebP 형식만 지원됩니다.');
-    }
   }
 
-  /**
-   * 진행률 WebSocket 설정 - 향상된 안정성
-   */
-  private async setupProgressWebSocket(
-    sessionId: string,
-    onProgress: (progress: PipelineProgress) => void
-  ): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-      try {
-        const wsUrl = `${this.wsURL}/api/ws/pipeline-progress`;
-        console.log('🔗 WebSocket 연결 시도:', wsUrl);
-        
-        const ws = new WebSocket(wsUrl);
-        let connectionResolved = false;
-
-        // 연결 타임아웃 설정
-        const connectionTimer = setTimeout(() => {
-          if (!connectionResolved) {
-            connectionResolved = true;
-            ws.close();
-            console.error('❌ WebSocket 연결 타임아웃');
-            resolve(false); // 타임아웃 시 false 반환 (에러가 아님)
-          }
-        }, this.connectionTimeout);
-
-        ws.onopen = () => {
-          if (!connectionResolved) {
-            connectionResolved = true;
-            clearTimeout(connectionTimer);
-            this.currentWS = ws;
-            this.connectionAttempts = 0;
-            
-            console.log('✅ WebSocket 연결 성공');
-            
-            // 세션 구독 메시지 전송
-            try {
-              ws.send(JSON.stringify({
-                type: 'subscribe_session',
-                session_id: sessionId
-              }));
-              console.log('📡 세션 구독:', sessionId);
-            } catch (error) {
-              console.warn('⚠️ 세션 구독 실패:', error);
-            }
-
-            // 하트비트 시작
-            this.startHeartbeat();
-            
-            resolve(true);
-          }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            
-            // 진행률 메시지만 콜백으로 전달
-            if (data.type === 'pipeline_progress' || 
-                data.type === 'step_update' || 
-                data.type === 'completed' || 
-                data.type === 'error') {
-              
-              console.log('📊 진행률 업데이트:', {
-                type: data.type,
-                step: data.step_name || data.data?.step_name,
-                progress: data.progress || data.data?.progress,
-                message: data.message || data.data?.message
-              });
-              
-              // 프론트엔드 형식으로 변환
-              const progress: PipelineProgress = {
-                type: data.type,
-                session_id: data.session_id || sessionId,
-                step_id: data.step_id || data.data?.step_id || 0,
-                step_name: data.step_name || data.data?.step_name || '',
-                progress: data.progress || data.data?.progress || 0,
-                message: data.message || data.data?.message || '',
-                timestamp: data.timestamp || Date.now() / 1000,
-                status: data.data?.status || 'processing'
-              };
-              
-              onProgress(progress);
-            } else {
-              console.log('📨 기타 WebSocket 메시지:', data.type);
-            }
-          } catch (error) {
-            console.error('❌ WebSocket 메시지 파싱 오류:', error);
-          }
-        };
-
-        ws.onerror = (error) => {
-          if (!connectionResolved) {
-            connectionResolved = true;
-            clearTimeout(connectionTimer);
-            console.error('❌ WebSocket 연결 오류:', error);
-            resolve(false); // 에러 시 false 반환
-          }
-        };
-
-        ws.onclose = (event) => {
-          if (!connectionResolved) {
-            connectionResolved = true;
-            clearTimeout(connectionTimer);
-          }
-          
-          this.stopHeartbeat();
-          this.currentWS = null;
-          
-          console.log('🔌 WebSocket 연결 종료:', event.code, event.reason);
-          
-          // 자동 재연결 시도
-          if (this.autoReconnect && 
-              this.connectionAttempts < this.maxReconnectAttempts && 
-              event.code !== 1000) { // 정상 종료가 아닌 경우
-            this.scheduleReconnect(sessionId, onProgress);
-          }
-        };
-
-      } catch (error) {
-        console.error('❌ WebSocket 생성 실패:', error);
-        resolve(false);
+  private _extractErrorMessage(error: any): string {
+    if (error && typeof error === 'object') {
+      if ('message' in error) {
+        return error.message;
       }
-    });
-  }
-
-  /**
-   * 재연결 스케줄링
-   */
-  private scheduleReconnect(sessionId: string, onProgress: (progress: PipelineProgress) => void): void {
-    this.connectionAttempts++;
-    const delay = this.reconnectInterval * this.connectionAttempts;
+      if ('detail' in error) {
+        return error.detail;
+      }
+      if ('status' in error) {
+        return PipelineUtils.getHTTPErrorMessage(error.status);
+      }
+    }
     
-    console.log(`🔄 WebSocket 재연결 시도 ${this.connectionAttempts}/${this.maxReconnectAttempts} (${delay}ms 후)`);
+    return error instanceof Error ? error.message : 'Unknown error';
+  }
+
+  // =================================================================
+  // 🔧 백엔드 패턴 호환 메서드들
+  // =================================================================
+
+  async initialize(): Promise<boolean> {
+    PipelineUtils.log('info', '🔄 PipelineAPIClient 초기화 중...');
     
-    setTimeout(() => {
-      this.setupProgressWebSocket(sessionId, onProgress);
-    }, delay);
-  }
-
-  /**
-   * 하트비트 시작
-   */
-  private startHeartbeat(): void {
-    this.heartbeatTimer = setInterval(() => {
-      if (this.currentWS?.readyState === WebSocket.OPEN) {
-        try {
-          this.currentWS.send(JSON.stringify({
-            type: 'ping',
-            timestamp: Date.now()
-          }));
-        } catch (error) {
-          console.warn('⚠️ 하트비트 전송 실패:', error);
-        }
+    try {
+      const isHealthy = await this.healthCheck();
+      
+      if (isHealthy) {
+        PipelineUtils.log('info', '✅ PipelineAPIClient 초기화 완료');
+        return true;
+      } else {
+        PipelineUtils.log('error', '❌ PipelineAPIClient 초기화 실패 - 서버 비정상');
+        return false;
       }
-    }, 30000); // 30초마다
-  }
-
-  /**
-   * 하트비트 중지
-   */
-  private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
+    } catch (error) {
+      PipelineUtils.log('error', '❌ PipelineAPIClient 초기화 중 오류', error);
+      return false;
     }
   }
 
-  /**
-   * WebSocket 연결 종료
-   */
-  private closeProgressWebSocket(): void {
-    this.autoReconnect = false; // 수동 종료 시 재연결 비활성화
-    this.stopHeartbeat();
+  async process(data: any, ...kwargs: any[]): Promise<{ success: boolean; [key: string]: any }> {
+    const timer = PipelineUtils.createPerformanceTimer('API 요청 처리');
     
-    if (this.currentWS) {
-      this.currentWS.close(1000, 'Client disconnect');
-      this.currentWS = null;
-    }
-  }
-
-  /**
-   * 파이프라인 상태 조회
-   */
-  async getPipelineStatus(): Promise<PipelineStatus> {
     try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/status`);
+      let result: any;
       
-      if (!response.ok) {
-        throw new Error(`상태 조회 실패: ${response.status}`);
+      if (data && typeof data === 'object' && 'person_image' in data) {
+        result = await this.processVirtualTryOn(data, ...kwargs);
+      } else {
+        result = await this.request('/api/pipeline/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
       }
       
-      return await response.json();
-    } catch (error) {
-      console.error('❌ 파이프라인 상태 조회 실패:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 파이프라인 초기화
-   */
-  async initializePipeline(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/initialize`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`초기화 실패: ${response.status}`);
-      }
-
-      const result = await response.json();
-      return result.initialized || false;
-    } catch (error) {
-      console.error('❌ 파이프라인 초기화 실패:', error);
-      return false;
-    }
-  }
-
-  /**
-   * 파이프라인 워밍업
-   */
-  async warmupPipeline(qualityMode: string = 'balanced'): Promise<boolean> {
-    try {
-      const formData = new FormData();
-      formData.append('quality_mode', qualityMode);
-
-      const response = await fetch(`${this.baseURL}/api/pipeline/warmup`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || '워밍업 실패');
-      }
-
-      const result = await response.json();
-      return result.success || false;
-    } catch (error) {
-      console.error('❌ 파이프라인 워밍업 실패:', error);
-      return false;
-    }
-  }
-
-  /**
-   * 메모리 상태 조회
-   */
-  async getMemoryStatus(): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/memory`);
+      const processingTime = timer.end();
       
-      if (!response.ok) {
-        throw new Error(`메모리 상태 조회 실패: ${response.status}`);
-      }
+      return {
+        success: true,
+        step_name: this.step_name,
+        result,
+        processing_time: processingTime / 1000,
+        device: this.device,
+        device_type: this.config.device_type,
+      };
       
-      return await response.json();
     } catch (error) {
-      console.error('❌ 메모리 상태 조회 실패:', error);
-      throw error;
+      const processingTime = timer.end();
+      PipelineUtils.log('error', '❌ API 처리 실패', error);
+      
+      return {
+        success: false,
+        step_name: this.step_name,
+        error: this._extractErrorMessage(error),
+        processing_time: processingTime / 1000,
+        device: this.device,
+      };
     }
   }
 
-  /**
-   * 메모리 정리
-   */
-  async cleanupMemory(): Promise<boolean> {
+  async cleanup(): Promise<void> {
+    PipelineUtils.log('info', '🧹 PipelineAPIClient: 리소스 정리 중...');
+    
     try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/cleanup`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`메모리 정리 실패: ${response.status}`);
-      }
-
-      return true;
+      // 활성 Task들 정리
+      this.activeTasks.clear();
+      
+      PipelineUtils.log('info', '✅ PipelineAPIClient 리소스 정리 완료');
     } catch (error) {
-      console.error('❌ 메모리 정리 실패:', error);
-      return false;
+      PipelineUtils.log('warn', '⚠️ PipelineAPIClient 리소스 정리 중 오류', error);
     }
   }
 
-  /**
-   * 모델 정보 조회
-   */
-  async getModelsInfo(): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/models/info`);
-      
-      if (!response.ok) {
-        throw new Error(`모델 정보 조회 실패: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('❌ 모델 정보 조회 실패:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 헬스 체크
-   */
-  async healthCheck(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/health`);
-      return response.ok;
-    } catch (error) {
-      console.error('❌ 헬스체크 실패:', error);
-      return false;
-    }
-  }
-
-  /**
-   * 실시간 업데이트 테스트
-   */
-  async testRealtimeUpdates(
-    processId?: string,
-    onProgress?: (progress: PipelineProgress) => void
-  ): Promise<any> {
-    try {
-      const testProcessId = processId || `test_${Date.now()}`;
-      
-      // WebSocket 연결
-      if (onProgress) {
-        await this.setupProgressWebSocket(testProcessId, onProgress);
-      }
-
-      const response = await fetch(`${this.baseURL}/api/pipeline/test/realtime/${testProcessId}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`테스트 실패: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      // 잠시 후 WebSocket 연결 정리
-      setTimeout(() => {
-        this.closeProgressWebSocket();
-      }, 10000); // 10초 후
-
-      return result;
-    } catch (error) {
-      this.closeProgressWebSocket();
-      console.error('❌ 실시간 테스트 실패:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 디버그 정보 조회
-   */
-  async getDebugConfig(): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/debug/config`);
-      
-      if (!response.ok) {
-        throw new Error(`디버그 정보 조회 실패: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('❌ 디버그 정보 조회 실패:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 파이프라인 재시작 (개발용)
-   */
-  async restartPipeline(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/dev/restart`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error(`재시작 실패: ${response.status}`);
-      }
-
-      const result = await response.json();
-      return result.success || false;
-    } catch (error) {
-      console.error('❌ 파이프라인 재시작 실패:', error);
-      return false;
-    }
-  }
-
-  /**
-   * WebSocket 연결 상태 확인
-   */
-  isWebSocketConnected(): boolean {
-    return this.currentWS?.readyState === WebSocket.OPEN;
-  }
-
-  /**
-   * 연결 통계 조회
-   */
-  getConnectionStats(): any {
+  getClientInfo(): any {
     return {
-      wsConnected: this.isWebSocketConnected(),
-      connectionAttempts: this.connectionAttempts,
-      maxReconnectAttempts: this.maxReconnectAttempts,
-      autoReconnect: this.autoReconnect,
+      step_name: this.step_name,
+      device: this.device,
+      device_type: this.config.device_type,
       baseURL: this.baseURL,
-      wsURL: this.wsURL
+      wsURL: this.config.wsURL,
+      is_m3_max: this.config.is_m3_max,
+      optimization_enabled: this.config.optimization_enabled,
+      quality_level: this.config.quality_level,
+      memory_gb: this.config.memory_gb,
+      configuration: {
+        enableRetry: this.config.enableRetry,
+        maxRetryAttempts: this.config.maxRetryAttempts,
+        enableDetailedProgress: this.config.enableDetailedProgress,
+        persistSession: this.config.persistSession,
+        enableTaskTracking: this.config.enableTaskTracking,
+        enableBrandIntegration: this.config.enableBrandIntegration,
+      },
+      capabilities: {
+        virtual_tryon: true,
+        body_analysis: true,
+        clothing_analysis: true,
+        task_tracking: this.config.enableTaskTracking,
+        brand_integration: this.config.enableBrandIntegration,
+        realtime_updates: true,
+        file_upload: true,
+        memory_management: true,
+        debug_mode: true,
+      },
+      active_tasks: this.activeTasks.size,
     };
+  }
+
+  // =================================================================
+  // 🔧 편의 메서드들
+  // =================================================================
+
+  updateConfig(newConfig: Partial<UsePipelineOptions>): void {
+    this.config = { ...this.config, ...newConfig };
+    
+    if (newConfig.baseURL) {
+      this.baseURL = newConfig.baseURL;
+    }
+    
+    PipelineUtils.log('info', '⚙️ PipelineAPIClient 설정 업데이트');
+  }
+
+  getConfig(): UsePipelineOptions {
+    return { ...this.config };
+  }
+
+  setDefaultHeaders(headers: Record<string, string>): void {
+    this.defaultHeaders = { ...this.defaultHeaders, ...headers };
+  }
+
+  setAuthToken(token: string): void {
+    this.defaultHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
+  removeAuthToken(): void {
+    delete this.defaultHeaders['Authorization'];
   }
 }
 
-// 유틸리티 함수들
-export class PipelineUtils {
-  /**
-   * 이미지 파일을 base64로 변환
-   */
-  static async fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]); // "data:image/...;base64," 부분 제거
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  /**
-   * base64를 이미지 URL로 변환
-   */
-  static base64ToImageURL(base64: string): string {
-    return `data:image/png;base64,${base64}`;
-  }
-
-  /**
-   * 파일 크기 검증
-   */
-  static validateFileSize(file: File, maxSizeMB: number = 10): boolean {
-    const maxSizeBytes = maxSizeMB * 1024 * 1024;
-    return file.size <= maxSizeBytes;
-  }
-
-  /**
-   * 이미지 파일 타입 검증
-   */
-  static validateImageType(file: File): boolean {
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    return allowedTypes.includes(file.type);
-  }
-
-  /**
-   * 처리 시간을 사용자 친화적 형식으로 변환
-   */
-  static formatProcessingTime(seconds: number): string {
-    if (seconds < 1) {
-      return `${Math.round(seconds * 1000)}ms`;
-    } else if (seconds < 60) {
-      return `${seconds.toFixed(1)}초`;
-    } else {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = Math.round(seconds % 60);
-      return `${minutes}분 ${remainingSeconds}초`;
-    }
-  }
-
-  /**
-   * 품질 점수를 등급으로 변환
-   */
-  static getQualityGrade(score: number): {
-    grade: string;
-    color: string;
-    description: string;
-  } {
-    if (score >= 0.9) {
-      return {
-        grade: 'Excellent',
-        color: 'text-green-600',
-        description: '완벽한 품질'
-      };
-    } else if (score >= 0.8) {
-      return {
-        grade: 'Good',
-        color: 'text-blue-600',
-        description: '우수한 품질'
-      };
-    } else if (score >= 0.6) {
-      return {
-        grade: 'Fair',
-        color: 'text-yellow-600',
-        description: '양호한 품질'
-      };
-    } else {
-      return {
-        grade: 'Poor',
-        color: 'text-red-600',
-        description: '개선 필요'
-      };
-    }
-  }
-
-  /**
-   * 메모리 사용량을 사용자 친화적 형식으로 변환
-   */
-  static formatMemoryUsage(bytes: number): string {
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let size = bytes;
-    let unitIndex = 0;
-
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-
-    return `${size.toFixed(1)} ${units[unitIndex]}`;
-  }
-
-  /**
-   * 에러 메시지를 사용자 친화적으로 변환
-   */
-  static getUserFriendlyError(error: string): string {
-    const errorMappings: Record<string, string> = {
-      'Network Error': '네트워크 연결을 확인해주세요.',
-      'timeout': '처리 시간이 초과되었습니다. 다시 시도해주세요.',
-      'invalid image': '지원되지 않는 이미지 형식입니다.',
-      'file too large': '파일 크기가 너무 큽니다. 10MB 이하로 업로드해주세요.',
-      'server error': '서버에 일시적인 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
-      'connection failed': 'WebSocket 연결에 실패했습니다.',
-      'pipeline not ready': '파이프라인이 준비되지 않았습니다.',
-      'initialization failed': '파이프라인 초기화에 실패했습니다.',
-    };
-
-    const lowerError = error.toLowerCase();
-    for (const [key, message] of Object.entries(errorMappings)) {
-      if (lowerError.includes(key)) {
-        return message;
-      }
-    }
-
-    return '알 수 없는 오류가 발생했습니다. 지원팀에 문의해주세요.';
-  }
-
-  /**
-   * 진행률을 백분율 문자열로 변환
-   */
-  static formatProgress(progress: number): string {
-    return `${Math.round(Math.max(0, Math.min(100, progress)))}%`;
-  }
-
-  /**
-   * 세션 ID 생성
-   */
-  static generateSessionId(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  }
-
-  /**
-   * 파일 정보 요약
-   */
-  static getFileInfo(file: File): {
-    name: string;
-    size: string;
-    type: string;
-    valid: boolean;
-  } {
-    return {
-      name: file.name,
-      size: PipelineUtils.formatMemoryUsage(file.size),
-      type: file.type,
-      valid: PipelineUtils.validateImageType(file) && PipelineUtils.validateFileSize(file)
-    };
-  }
-
-  /**
-   * 처리 결과 요약
-   */
-  static summarizeResult(result: VirtualTryOnResponse): {
-    success: boolean;
-    processingTime: string;
-    qualityGrade: ReturnType<typeof PipelineUtils.getQualityGrade>;
-    fitScore: string;
-    recommendationCount: number;
-  } {
-    const qualityScore = result.quality_score || result.fit_score || 0;
-    
-    return {
-      success: result.success,
-      processingTime: PipelineUtils.formatProcessingTime(result.processing_time),
-      qualityGrade: PipelineUtils.getQualityGrade(qualityScore),
-      fitScore: PipelineUtils.formatProgress(result.fit_score * 100),
-      recommendationCount: result.recommendations?.length || 0
-    };
-  }
-}
-
-// React Hook 형태로 사용할 수 있는 함수 (선택사항)
-export const usePipelineAPI = (config?: ConnectionConfig) => {
-  const apiClient = new PipelineAPIClient(config);
-
-  return {
-    // 주요 API 메서드들
-    processVirtualTryOn: apiClient.processVirtualTryOn.bind(apiClient),
-    getPipelineStatus: apiClient.getPipelineStatus.bind(apiClient),
-    initializePipeline: apiClient.initializePipeline.bind(apiClient),
-    warmupPipeline: apiClient.warmupPipeline.bind(apiClient),
-    
-    // 메모리 관리
-    getMemoryStatus: apiClient.getMemoryStatus.bind(apiClient),
-    cleanupMemory: apiClient.cleanupMemory.bind(apiClient),
-    
-    // 정보 조회
-    getModelsInfo: apiClient.getModelsInfo.bind(apiClient),
-    healthCheck: apiClient.healthCheck.bind(apiClient),
-    getDebugConfig: apiClient.getDebugConfig.bind(apiClient),
-    
-    // 테스트 및 개발
-    testRealtimeUpdates: apiClient.testRealtimeUpdates.bind(apiClient),
-    restartPipeline: apiClient.restartPipeline.bind(apiClient),
-    
-    // 상태 조회
-    isWebSocketConnected: apiClient.isWebSocketConnected.bind(apiClient),
-    getConnectionStats: apiClient.getConnectionStats.bind(apiClient),
-  };
-};
-
-// 기본 export
 export default PipelineAPIClient;
