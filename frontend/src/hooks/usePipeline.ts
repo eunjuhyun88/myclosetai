@@ -1,442 +1,79 @@
 /**
- * MyCloset AI 개선된 파이프라인 React Hook
- * 완전한 WebSocket 통합과 향상된 에러 처리
+ * MyCloset AI 메인 파이프라인 React Hook
+ * 백엔드 통일된 생성자 패턴을 따른 React Hook
+ * - 모듈화된 구조로 순환참조 제거
+ * - 안정적인 WebSocket 및 API 연결
+ * - M3 Max 최적화 및 백엔드 완전 호환
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 
-// 타입 정의 개선
-export interface UserMeasurements {
-  height: number;
-  weight: number;
-  chest?: number;
-  waist?: number;
-  hip?: number;
-}
+// 타입 import
+import type {
+  UsePipelineOptions,
+  UsePipelineState,
+  UsePipelineActions,
+  VirtualTryOnRequest,
+  VirtualTryOnResponse,
+  PipelineProgress,
+  PipelineStatus,
+  SystemStats,
+  PipelineStep,
+} from '../types/pipeline';
 
-export interface ClothingAnalysis {
-  category: string;
-  style: string;
-  dominant_color: number[];
-  material?: string;
-  confidence?: number;
-}
+// 서비스 import
+import WebSocketManager from '../services/WebSocketManager';
+import PipelineAPIClient from '../services/PipelineAPIClient';
+import { PipelineUtils } from '../utils/pipelineUtils';
 
-export interface QualityMetrics {
-  ssim: number;
-  lpips: number;
-  fid?: number;
-  fit_overall: number;
-  fit_coverage?: number;
-  fit_shape_consistency?: number;
-  color_preservation?: number;
-  boundary_naturalness?: number;
-}
+// =================================================================
+// 🔧 메인 Hook - 백엔드 통일된 패턴 적용
+// =================================================================
 
-export interface VirtualTryOnRequest {
-  person_image: File;
-  clothing_image: File;
-  height: number;
-  weight: number;
-  quality_mode: 'fast' | 'balanced' | 'quality';
-  session_id?: string;
-}
-
-export interface VirtualTryOnResponse {
-  success: boolean;
-  fitted_image?: string; // base64
-  processing_time: number;
-  confidence: number;
-  measurements: Record<string, number>;
-  clothing_analysis: ClothingAnalysis;
-  fit_score: number;
-  recommendations: string[];
-  quality_metrics: QualityMetrics;
-  memory_usage?: Record<string, number>;
-  step_times?: Record<string, number>;
-  error_message?: string;
-  session_id?: string;
-}
-
-export interface PipelineProgress {
-  type: 'pipeline_progress' | 'step_update' | 'connection_established' | 'error' | 'completed';
-  session_id?: string;
-  step_id?: number;
-  step_name?: string;
-  progress: number;
-  message: string;
-  timestamp: number;
-  data?: any;
-  steps?: Array<{
-    id: number;
-    name: string;
-    status: 'pending' | 'processing' | 'completed' | 'error';
-    progress: number;
-    error?: string;
-  }>;
-}
-
-export interface PipelineStatus {
-  status: string;
-  device: string;
-  memory_usage: Record<string, number>;
-  models_loaded: string[];
-  active_connections: number;
-  pipeline_ready: boolean;
-}
-
-export interface SystemStats {
-  total_requests: number;
-  successful_requests: number;
-  average_processing_time: number;
-  average_quality_score: number;
-  peak_memory_usage: number;
-  uptime: number;
-  current_connections: number;
-}
-
-export interface ConnectionConfig {
-  baseURL?: string;
-  wsURL?: string;
-  autoReconnect?: boolean;
-  maxReconnectAttempts?: number;
-  reconnectInterval?: number;
-  heartbeatInterval?: number;
-  connectionTimeout?: number;
-}
-
-export interface UsePipelineOptions extends ConnectionConfig {
-  autoHealthCheck?: boolean;
-  healthCheckInterval?: number;
-  persistSession?: boolean;
-  enableDetailedProgress?: boolean;
-}
-
-export interface UsePipelineState {
-  // 처리 상태
-  isProcessing: boolean;
-  progress: number;
-  progressMessage: string;
-  currentStep: string;
-  stepProgress: number;
+export const usePipeline = (
+  options: UsePipelineOptions = {},
+  ...kwargs: any[] // 🎯 백엔드 패턴과 호환
+): UsePipelineState & UsePipelineActions => {
   
-  // 결과 및 에러
-  result: VirtualTryOnResponse | null;
-  error: string | null;
-  
-  // 연결 상태
-  isConnected: boolean;
-  isHealthy: boolean;
-  connectionAttempts: number;
-  lastConnectionAttempt: Date | null;
-  
-  // 시스템 정보
-  pipelineStatus: PipelineStatus | null;
-  systemStats: SystemStats | null;
-  
-  // 세션 정보
-  sessionId: string | null;
-  
-  // 상세 진행 정보
-  steps: Array<{
-    id: number;
-    name: string;
-    status: 'pending' | 'processing' | 'completed' | 'error';
-    progress: number;
-    error?: string;
-    duration?: number;
-  }>;
-}
-
-export interface UsePipelineActions {
-  // 주요 기능
-  processVirtualTryOn: (request: VirtualTryOnRequest) => Promise<void>;
-  
-  // 상태 관리
-  clearResult: () => void;
-  clearError: () => void;
-  reset: () => void;
-  
-  // 연결 관리
-  connect: () => Promise<boolean>;
-  disconnect: () => void;
-  reconnect: () => Promise<boolean>;
-  
-  // 정보 조회
-  checkHealth: () => Promise<boolean>;
-  getPipelineStatus: () => Promise<void>;
-  getSystemStats: () => Promise<void>;
-  
-  // 파이프라인 관리
-  warmupPipeline: (qualityMode?: string) => Promise<void>;
-  testConnection: () => Promise<void>;
-  
-  // 유틸리티
-  exportLogs: () => void;
-  sendHeartbeat: () => void;
-}
-
-// WebSocket 연결 관리 클래스
-class WebSocketManager {
-  private ws: WebSocket | null = null;
-  private url: string;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts: number;
-  private reconnectInterval: number;
-  private heartbeatInterval: number;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
-  private connectionTimeout: number;
-  private autoReconnect: boolean;
-  
-  private onMessageCallback?: (data: any) => void;
-  private onConnectedCallback?: () => void;
-  private onDisconnectedCallback?: () => void;
-  private onErrorCallback?: (error: Event) => void;
-
-  constructor(url: string, config: ConnectionConfig = {}) {
-    this.url = url;
-    this.maxReconnectAttempts = config.maxReconnectAttempts || 5;
-    this.reconnectInterval = config.reconnectInterval || 3000;
-    this.heartbeatInterval = config.heartbeatInterval || 30000;
-    this.connectionTimeout = config.connectionTimeout || 10000;
-    this.autoReconnect = config.autoReconnect ?? true;
-  }
-
-  connect(): Promise<boolean> {
-    return new Promise((resolve) => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        resolve(true);
-        return;
-      }
-
-      try {
-        this.ws = new WebSocket(this.url);
-        
-        const connectionTimer = setTimeout(() => {
-          if (this.ws?.readyState !== WebSocket.OPEN) {
-            this.ws?.close();
-            console.error('WebSocket 연결 타임아웃');
-            resolve(false);
-          }
-        }, this.connectionTimeout);
-
-        this.ws.onopen = () => {
-          clearTimeout(connectionTimer);
-          this.reconnectAttempts = 0;
-          console.log('✅ WebSocket 연결 성공:', this.url);
-          
-          this.startHeartbeat();
-          this.onConnectedCallback?.();
-          resolve(true);
-        };
-
-        this.ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.onMessageCallback?.(data);
-          } catch (error) {
-            console.error('WebSocket 메시지 파싱 오류:', error);
-          }
-        };
-
-        this.ws.onclose = (event) => {
-          clearTimeout(connectionTimer);
-          this.stopHeartbeat();
-          console.log('🔌 WebSocket 연결 종료:', event.code, event.reason);
-          
-          this.onDisconnectedCallback?.();
-          
-          if (this.autoReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.scheduleReconnect();
-          }
-          
-          if (this.reconnectAttempts === 0) {
-            resolve(false);
-          }
-        };
-
-        this.ws.onerror = (error) => {
-          clearTimeout(connectionTimer);
-          console.error('❌ WebSocket 오류:', error);
-          this.onErrorCallback?.(error);
-          
-          if (this.reconnectAttempts === 0) {
-            resolve(false);
-          }
-        };
-
-      } catch (error) {
-        console.error('WebSocket 생성 실패:', error);
-        resolve(false);
-      }
-    });
-  }
-
-  private scheduleReconnect(): void {
-    this.reconnectAttempts++;
-    console.log(`🔄 재연결 시도 ${this.reconnectAttempts}/${this.maxReconnectAttempts} (${this.reconnectInterval}ms 후)`);
-    
-    setTimeout(() => {
-      this.connect();
-    }, this.reconnectInterval * this.reconnectAttempts);
-  }
-
-  private startHeartbeat(): void {
-    this.heartbeatTimer = setInterval(() => {
-      this.send({ type: 'ping', timestamp: Date.now() });
-    }, this.heartbeatInterval);
-  }
-
-  private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-  }
-
-  send(data: any): boolean {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      try {
-        this.ws.send(JSON.stringify(data));
-        return true;
-      } catch (error) {
-        console.error('WebSocket 메시지 전송 실패:', error);
-        return false;
-      }
-    }
-    return false;
-  }
-
-  disconnect(): void {
-    this.autoReconnect = false;
-    this.stopHeartbeat();
-    
-    if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
-      this.ws = null;
-    }
-  }
-
-  isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
-
-  setOnMessage(callback: (data: any) => void): void {
-    this.onMessageCallback = callback;
-  }
-
-  setOnConnected(callback: () => void): void {
-    this.onConnectedCallback = callback;
-  }
-
-  setOnDisconnected(callback: () => void): void {
-    this.onDisconnectedCallback = callback;
-  }
-
-  setOnError(callback: (error: Event) => void): void {
-    this.onErrorCallback = callback;
-  }
-
-  getReconnectAttempts(): number {
-    return this.reconnectAttempts;
-  }
-}
-
-// 유틸리티 클래스
-export class PipelineUtils {
-  /**
-   * 파일 크기 검증
-   */
-  static validateFileSize(file: File, maxSizeMB: number = 10): boolean {
-    const maxSizeBytes = maxSizeMB * 1024 * 1024;
-    return file.size <= maxSizeBytes;
-  }
-
-  /**
-   * 이미지 파일 타입 검증
-   */
-  static validateImageType(file: File): boolean {
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    return allowedTypes.includes(file.type);
-  }
-
-  /**
-   * 처리 시간을 사용자 친화적 형식으로 변환
-   */
-  static formatProcessingTime(seconds: number): string {
-    if (seconds < 1) {
-      return `${Math.round(seconds * 1000)}ms`;
-    } else if (seconds < 60) {
-      return `${seconds.toFixed(1)}초`;
-    } else {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = Math.round(seconds % 60);
-      return `${minutes}분 ${remainingSeconds}초`;
-    }
-  }
-
-  /**
-   * 에러 메시지를 사용자 친화적으로 변환
-   */
-  static getUserFriendlyError(error: string): string {
-    const errorMappings: Record<string, string> = {
-      'Network Error': '네트워크 연결을 확인해주세요.',
-      'timeout': '처리 시간이 초과되었습니다. 다시 시도해주세요.',
-      'invalid image': '지원되지 않는 이미지 형식입니다.',
-      'file too large': '파일 크기가 너무 큽니다. 10MB 이하로 업로드해주세요.',
-      'server error': '서버에 일시적인 문제가 발생했습니다.',
-      'connection failed': 'WebSocket 연결에 실패했습니다.',
-      'pipeline not ready': '파이프라인이 준비되지 않았습니다.',
+  // 💡 지능적 설정 통합 (백엔드 패턴 호환)
+  const config = useMemo(() => {
+    const baseConfig: UsePipelineOptions = {
+      baseURL: options.baseURL || 'http://localhost:8000',
+      wsURL: options.wsURL || options.baseURL?.replace('http', 'ws') || 'ws://localhost:8000',
+      autoReconnect: options.autoReconnect ?? true,
+      maxReconnectAttempts: options.maxReconnectAttempts || 5,
+      reconnectInterval: options.reconnectInterval || 3000,
+      heartbeatInterval: options.heartbeatInterval || 30000,
+      connectionTimeout: options.connectionTimeout || 10000,
+      
+      // 🔧 백엔드 호환 시스템 파라미터
+      device: options.device || PipelineUtils.autoDetectDevice(),
+      device_type: options.device_type || PipelineUtils.autoDetectDeviceType(),
+      memory_gb: options.memory_gb || 16.0,
+      is_m3_max: options.is_m3_max ?? PipelineUtils.detectM3Max(),
+      optimization_enabled: options.optimization_enabled ?? true,
+      quality_level: options.quality_level || 'balanced',
+      
+      // Hook 전용 설정들
+      autoHealthCheck: options.autoHealthCheck ?? true,
+      healthCheckInterval: options.healthCheckInterval || 30000,
+      persistSession: options.persistSession ?? true,
+      enableDetailedProgress: options.enableDetailedProgress ?? true,
+      enableRetry: options.enableRetry ?? true,
+      maxRetryAttempts: options.maxRetryAttempts || 3,
+      
+      ...options,
     };
+    
+    // ⚙️ 추가 파라미터 병합 (백엔드 패턴)
+    return PipelineUtils.mergeStepSpecificConfig(
+      baseConfig,
+      kwargs.reduce((acc, kwarg) => ({ ...acc, ...kwarg }), {}),
+      PipelineUtils.getSystemParams()
+    );
+  }, [options, kwargs]);
 
-    const lowerError = error.toLowerCase();
-    for (const [key, message] of Object.entries(errorMappings)) {
-      if (lowerError.includes(key)) {
-        return message;
-      }
-    }
-
-    return '알 수 없는 오류가 발생했습니다. 지원팀에 문의해주세요.';
-  }
-
-  /**
-   * 품질 점수를 등급으로 변환
-   */
-  static getQualityGrade(score: number): {
-    grade: string;
-    color: string;
-    description: string;
-  } {
-    if (score >= 0.9) {
-      return { grade: 'Excellent', color: 'text-green-600', description: '완벽한 품질' };
-    } else if (score >= 0.8) {
-      return { grade: 'Good', color: 'text-blue-600', description: '우수한 품질' };
-    } else if (score >= 0.6) {
-      return { grade: 'Fair', color: 'text-yellow-600', description: '양호한 품질' };
-    } else {
-      return { grade: 'Poor', color: 'text-red-600', description: '개선 필요' };
-    }
-  }
-}
-
-// 메인 Hook
-export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState & UsePipelineActions => {
-  // 기본 설정
-  const config = useMemo(() => ({
-    baseURL: options.baseURL || 'http://localhost:8000',
-    wsURL: options.wsURL || options.baseURL?.replace('http', 'ws') || 'ws://localhost:8000',
-    autoReconnect: options.autoReconnect ?? true,
-    maxReconnectAttempts: options.maxReconnectAttempts || 5,
-    reconnectInterval: options.reconnectInterval || 3000,
-    heartbeatInterval: options.heartbeatInterval || 30000,
-    connectionTimeout: options.connectionTimeout || 10000,
-    autoHealthCheck: options.autoHealthCheck ?? true,
-    healthCheckInterval: options.healthCheckInterval || 30000,
-    persistSession: options.persistSession ?? true,
-    enableDetailedProgress: options.enableDetailedProgress ?? true,
-  }), [options]);
-
-  // 상태 관리
+  // 상태 관리 (백엔드 패턴과 호환)
   const [state, setState] = useState<UsePipelineState>({
     isProcessing: false,
     progress: 0,
@@ -455,19 +92,51 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
     steps: []
   });
 
-  // WebSocket 관리자
+  // 서비스 인스턴스들 (백엔드 패턴 적용)
   const wsManager = useRef<WebSocketManager | null>(null);
+  const apiClient = useRef<PipelineAPIClient | null>(null);
   const healthCheckTimer = useRef<NodeJS.Timeout | null>(null);
   const messageLog = useRef<any[]>([]);
+  const isInitialized = useRef<boolean>(false);
 
   // 상태 업데이트 헬퍼
   const updateState = useCallback((updates: Partial<UsePipelineState>) => {
     setState(prev => ({ ...prev, ...updates }));
   }, []);
 
-  // WebSocket 메시지 핸들러
+  // =================================================================
+  // 🔧 서비스 초기화 메서드들 (백엔드 패턴 적용)
+  // =================================================================
+
+  /**
+   * API 클라이언트 초기화 (백엔드 패턴 적용)
+   */
+  const initializeAPIClient = useCallback(() => {
+    if (!apiClient.current) {
+      // 백엔드 통일된 생성자 패턴 적용
+      apiClient.current = new PipelineAPIClient(config, ...kwargs);
+      PipelineUtils.log('info', '✅ API 클라이언트 초기화 완료');
+    }
+  }, [config, kwargs]);
+
+  /**
+   * WebSocket 관리자 초기화 (백엔드 패턴 적용)
+   */
+  const initializeWebSocketManager = useCallback(() => {
+    if (!wsManager.current) {
+      const wsUrl = `${config.wsURL}/api/ws/pipeline-progress`;
+      // 백엔드 통일된 생성자 패턴 적용
+      wsManager.current = new WebSocketManager(wsUrl, config, ...kwargs);
+      PipelineUtils.log('info', '✅ WebSocket 관리자 초기화 완료');
+    }
+  }, [config, kwargs]);
+
+  // =================================================================
+  // 🔧 WebSocket 메시지 처리
+  // =================================================================
+
   const handleWebSocketMessage = useCallback((data: PipelineProgress) => {
-    console.log('📨 WebSocket 메시지:', data);
+    PipelineUtils.log('info', '📨 WebSocket 메시지 수신', data.type);
     messageLog.current.push({ ...data, receivedAt: new Date() });
 
     switch (data.type) {
@@ -513,11 +182,17 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         break;
 
       default:
-        console.log('알 수 없는 메시지 타입:', data.type);
+        PipelineUtils.log('warn', '알 수 없는 메시지 타입', data.type);
     }
   }, [updateState, state.sessionId, state.currentStep, state.steps]);
 
-  // WebSocket 연결 설정
+  // =================================================================
+  // 🔧 연결 관리 메서드들
+  // =================================================================
+
+  /**
+   * WebSocket 연결 설정 (백엔드 패턴 적용)
+   */
   const connect = useCallback(async (): Promise<boolean> => {
     if (wsManager.current?.isConnected()) {
       return true;
@@ -529,9 +204,13 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
     });
 
     try {
-      const wsUrl = `${config.wsURL}/api/ws/pipeline-progress`;
-      wsManager.current = new WebSocketManager(wsUrl, config);
+      initializeWebSocketManager();
 
+      if (!wsManager.current) {
+        throw new Error('WebSocket 관리자 초기화 실패');
+      }
+
+      // 메시지 핸들러 설정
       wsManager.current.setOnMessage(handleWebSocketMessage);
       wsManager.current.setOnConnected(() => {
         updateState({ isConnected: true, error: null });
@@ -549,72 +228,67 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
       const connected = await wsManager.current.connect();
       
       if (connected && state.sessionId) {
-        // 세션 구독
-        wsManager.current.send({
-          type: 'subscribe_session',
-          session_id: state.sessionId
-        });
+        wsManager.current.subscribeToSession(state.sessionId);
       }
 
       return connected;
     } catch (error) {
-      console.error('WebSocket 연결 실패:', error);
+      PipelineUtils.log('error', '❌ WebSocket 연결 실패', error);
       updateState({
         isConnected: false,
         error: PipelineUtils.getUserFriendlyError('connection failed')
       });
       return false;
     }
-  }, [config, handleWebSocketMessage, state.connectionAttempts, state.sessionId, updateState]);
+  }, [
+    config, 
+    handleWebSocketMessage, 
+    state.connectionAttempts, 
+    state.sessionId, 
+    updateState,
+    initializeWebSocketManager
+  ]);
 
-  // WebSocket 연결 해제
   const disconnect = useCallback(() => {
     wsManager.current?.disconnect();
     updateState({ isConnected: false });
   }, [updateState]);
 
-  // 재연결
   const reconnect = useCallback(async (): Promise<boolean> => {
     disconnect();
-    await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+    await new Promise(resolve => setTimeout(resolve, 1000));
     return await connect();
   }, [disconnect, connect]);
 
-  // 가상 피팅 처리
+  // =================================================================
+  // 🔧 메인 처리 메서드 (백엔드 패턴 호환)
+  // =================================================================
+
+  /**
+   * 가상 피팅 처리 (백엔드 패턴 호환)
+   */
   const processVirtualTryOn = useCallback(async (request: VirtualTryOnRequest) => {
+    const timer = PipelineUtils.createPerformanceTimer('가상 피팅 전체 처리');
+    
     try {
-      // 입력 검증
-      if (!PipelineUtils.validateImageType(request.person_image)) {
-        throw new Error('사용자 이미지 형식이 올바르지 않습니다.');
-      }
+      // 서비스 초기화
+      initializeAPIClient();
       
-      if (!PipelineUtils.validateImageType(request.clothing_image)) {
-        throw new Error('의류 이미지 형식이 올바르지 않습니다.');
-      }
-
-      if (!PipelineUtils.validateFileSize(request.person_image)) {
-        throw new Error('사용자 이미지 크기가 너무 큽니다. (최대 10MB)');
-      }
-
-      if (!PipelineUtils.validateFileSize(request.clothing_image)) {
-        throw new Error('의류 이미지 크기가 너무 큽니다. (최대 10MB)');
-      }
-
       // WebSocket 연결 확인
       if (!wsManager.current?.isConnected()) {
-        console.log('🔄 WebSocket 재연결 시도...');
+        PipelineUtils.log('info', '🔄 WebSocket 재연결 시도...');
         const connected = await connect();
         if (!connected) {
-          throw new Error('WebSocket 연결에 실패했습니다.');
+          PipelineUtils.log('warn', '⚠️ WebSocket 연결 실패, 진행률 업데이트 없이 계속 진행');
         }
       }
 
       // 세션 ID 생성 또는 재사용
       const sessionId = request.session_id || 
                        (config.persistSession && state.sessionId) || 
-                       `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                       PipelineUtils.generateSessionId();
 
-      // 처리 시작
+      // 처리 시작 상태 설정
       updateState({
         isProcessing: true,
         progress: 0,
@@ -634,35 +308,18 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         ] : []
       });
 
-      console.log('🎯 가상 피팅 처리 시작:', { ...request, sessionId });
+      PipelineUtils.log('info', '🎯 가상 피팅 처리 시작', { sessionId });
 
       // 세션 구독
-      wsManager.current?.send({
-        type: 'subscribe_session',
+      wsManager.current?.subscribeToSession(sessionId);
+
+      // API 처리 (백엔드 통일된 인터페이스 사용)
+      const result = await apiClient.current!.processVirtualTryOn({
+        ...request,
         session_id: sessionId
-      });
+      }, ...kwargs);
 
-      // FormData 준비
-      const formData = new FormData();
-      formData.append('person_image', request.person_image);
-      formData.append('clothing_image', request.clothing_image);
-      formData.append('height', request.height.toString());
-      formData.append('weight', request.weight.toString());
-      formData.append('quality_mode', request.quality_mode);
-      formData.append('session_id', sessionId);
-
-      // API 요청
-      const response = await fetch(`${config.baseURL}/api/virtual-tryon-pipeline`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
-      }
-
-      const result: VirtualTryOnResponse = await response.json();
+      const processingTime = timer.end();
 
       updateState({
         isProcessing: false,
@@ -672,9 +329,12 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         sessionId: result.session_id || sessionId
       });
 
-      console.log('✅ 가상 피팅 처리 완료:', result);
+      PipelineUtils.log('info', '✅ 가상 피팅 처리 완료', { 
+        processingTime: processingTime / 1000 
+      });
 
     } catch (error) {
+      timer.end();
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
       const friendlyError = PipelineUtils.getUserFriendlyError(errorMessage);
       
@@ -685,11 +345,21 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         progressMessage: ''
       });
 
-      console.error('❌ 가상 피팅 처리 실패:', error);
+      PipelineUtils.log('error', '❌ 가상 피팅 처리 실패', error);
     }
-  }, [config, connect, state.sessionId, updateState]);
+  }, [
+    config, 
+    connect, 
+    state.sessionId, 
+    updateState, 
+    initializeAPIClient,
+    kwargs
+  ]);
 
-  // 기타 액션들
+  // =================================================================
+  // 🔧 상태 관리 액션들
+  // =================================================================
+
   const clearResult = useCallback(() => {
     updateState({
       result: null,
@@ -716,42 +386,46 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
     });
   }, [updateState]);
 
+  // =================================================================
+  // 🔧 정보 조회 액션들
+  // =================================================================
+
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch(`${config.baseURL}/health`);
-      const isHealthy = response.ok;
+      initializeAPIClient();
+      const isHealthy = await apiClient.current!.healthCheck();
       updateState({ isHealthy });
       return isHealthy;
     } catch (error) {
-      console.error('헬스체크 실패:', error);
+      PipelineUtils.log('error', '헬스체크 실패', error);
       updateState({ isHealthy: false });
       return false;
     }
-  }, [config.baseURL, updateState]);
+  }, [updateState, initializeAPIClient]);
 
   const getPipelineStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${config.baseURL}/api/pipeline/status`);
-      if (response.ok) {
-        const pipelineStatus = await response.json();
-        updateState({ pipelineStatus });
-      }
+      initializeAPIClient();
+      const pipelineStatus = await apiClient.current!.getPipelineStatus();
+      updateState({ pipelineStatus });
     } catch (error) {
-      console.error('파이프라인 상태 조회 실패:', error);
+      PipelineUtils.log('error', '파이프라인 상태 조회 실패', error);
     }
-  }, [config.baseURL, updateState]);
+  }, [updateState, initializeAPIClient]);
 
   const getSystemStats = useCallback(async () => {
     try {
-      const response = await fetch(`${config.baseURL}/stats`);
-      if (response.ok) {
-        const systemStats = await response.json();
-        updateState({ systemStats });
-      }
+      initializeAPIClient();
+      const systemStats = await apiClient.current!.getSystemStats();
+      updateState({ systemStats });
     } catch (error) {
-      console.error('시스템 통계 조회 실패:', error);
+      PipelineUtils.log('error', '시스템 통계 조회 실패', error);
     }
-  }, [config.baseURL, updateState]);
+  }, [updateState, initializeAPIClient]);
+
+  // =================================================================
+  // 🔧 파이프라인 관리 액션들
+  // =================================================================
 
   const warmupPipeline = useCallback(async (qualityMode: string = 'balanced') => {
     try {
@@ -760,23 +434,18 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         progressMessage: '파이프라인 워밍업 중...'
       });
 
-      const response = await fetch(`${config.baseURL}/api/pipeline/warmup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `quality_mode=${qualityMode}`,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || '워밍업 실패');
-      }
+      initializeAPIClient();
+      const success = await apiClient.current!.warmupPipeline(qualityMode);
       
       updateState({
         isProcessing: false,
-        progressMessage: '워밍업 완료'
+        progressMessage: success ? '워밍업 완료' : '워밍업 실패'
       });
 
-      console.log('✅ 파이프라인 워밍업 완료');
+      PipelineUtils.log(
+        success ? 'info' : 'error', 
+        success ? '✅ 파이프라인 워밍업 완료' : '❌ 파이프라인 워밍업 실패'
+      );
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '워밍업 실패';
@@ -786,9 +455,9 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         progressMessage: ''
       });
 
-      console.error('❌ 파이프라인 워밍업 실패:', error);
+      PipelineUtils.log('error', '❌ 파이프라인 워밍업 실패', error);
     }
-  }, [config.baseURL, updateState]);
+  }, [updateState, initializeAPIClient]);
 
   const testConnection = useCallback(async () => {
     try {
@@ -797,14 +466,13 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         progressMessage: '연결 테스트 중...'
       });
 
-      // WebSocket 테스트
       const wsConnected = await connect();
+      const healthOk = await checkHealth();
+
       if (!wsConnected) {
         throw new Error('WebSocket 연결 실패');
       }
 
-      // API 테스트
-      const healthOk = await checkHealth();
       if (!healthOk) {
         throw new Error('API 헬스체크 실패');
       }
@@ -815,7 +483,7 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         error: null
       });
 
-      console.log('✅ 연결 테스트 완료');
+      PipelineUtils.log('info', '✅ 연결 테스트 완료');
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '연결 테스트 실패';
@@ -825,9 +493,13 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
         progressMessage: ''
       });
 
-      console.error('❌ 연결 테스트 실패:', error);
+      PipelineUtils.log('error', '❌ 연결 테스트 실패', error);
     }
   }, [connect, checkHealth, updateState]);
+
+  // =================================================================
+  // 🔧 유틸리티 액션들
+  // =================================================================
 
   const sendHeartbeat = useCallback(() => {
     wsManager.current?.send({ type: 'ping', timestamp: Date.now() });
@@ -838,6 +510,9 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
       state,
       messageLog: messageLog.current,
       connectionAttempts: wsManager.current?.getReconnectAttempts() || 0,
+      wsInfo: wsManager.current?.getWebSocketInfo(),
+      clientInfo: apiClient.current?.getClientInfo(),
+      config,
       timestamp: new Date().toISOString()
     };
     
@@ -848,17 +523,92 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
     a.download = `pipeline_logs_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [state]);
+  }, [state, config]);
 
-  // 자동 연결
-  useEffect(() => {
-    connect();
-    return () => {
+  // =================================================================
+  // 🔧 생명주기 관리 (백엔드 패턴 적용)
+  // =================================================================
+
+  /**
+   * ✅ 통일된 초기화 (백엔드 패턴 호환)
+   */
+  const initializeHook = useCallback(async () => {
+    if (isInitialized.current) return;
+    
+    PipelineUtils.log('info', '🔄 usePipeline Hook 초기화 중...');
+    
+    try {
+      // 브라우저 호환성 확인
+      const compatibility = PipelineUtils.checkBrowserCompatibility();
+      if (!compatibility.overall) {
+        PipelineUtils.log('error', '❌ 브라우저 호환성 부족', compatibility);
+        updateState({
+          error: '브라우저가 필요한 기능을 지원하지 않습니다.'
+        });
+        return;
+      }
+      
+      // 서비스들 초기화
+      initializeAPIClient();
+      initializeWebSocketManager();
+      
+      // 자동 연결
+      await connect();
+      
+      isInitialized.current = true;
+      PipelineUtils.log('info', '✅ usePipeline Hook 초기화 완료');
+      
+    } catch (error) {
+      PipelineUtils.log('error', '❌ usePipeline Hook 초기화 실패', error);
+      updateState({
+        error: PipelineUtils.getUserFriendlyError('initialization failed')
+      });
+    }
+  }, [connect, initializeAPIClient, initializeWebSocketManager, updateState]);
+
+  /**
+   * ✅ 백엔드 패턴: 리소스 정리
+   */
+  const cleanupHook = useCallback(async () => {
+    PipelineUtils.log('info', '🧹 usePipeline Hook: 리소스 정리 중...');
+    
+    try {
+      // 헬스체크 타이머 정리
+      if (healthCheckTimer.current) {
+        clearInterval(healthCheckTimer.current);
+        healthCheckTimer.current = null;
+      }
+      
+      // 서비스들 정리
+      await wsManager.current?.cleanup();
+      await apiClient.current?.cleanup();
+      
+      // 연결 해제
       disconnect();
-    };
-  }, [connect, disconnect]);
+      
+      // 상태 초기화
+      isInitialized.current = false;
+      
+      PipelineUtils.log('info', '✅ usePipeline Hook 리소스 정리 완료');
+    } catch (error) {
+      PipelineUtils.log('warn', '⚠️ usePipeline Hook 리소스 정리 중 오류', error);
+    }
+  }, [disconnect]);
 
-  // 자동 헬스체크
+  // =================================================================
+  // 🔧 Effect들
+  // =================================================================
+
+  // 초기화 Effect
+  useEffect(() => {
+    initializeHook();
+    
+    return () => {
+      cleanupHook();
+    };
+  }, [initializeHook, cleanupHook]);
+
+  // 자동 헬스체크 Effect
   useEffect(() => {
     if (config.autoHealthCheck) {
       checkHealth();
@@ -868,20 +618,15 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
       return () => {
         if (healthCheckTimer.current) {
           clearInterval(healthCheckTimer.current);
+          healthCheckTimer.current = null;
         }
       };
     }
   }, [config.autoHealthCheck, config.healthCheckInterval, checkHealth]);
 
-  // 정리
-  useEffect(() => {
-    return () => {
-      if (healthCheckTimer.current) {
-        clearInterval(healthCheckTimer.current);
-      }
-      disconnect();
-    };
-  }, [disconnect]);
+  // =================================================================
+  // 🔧 Hook 반환값
+  // =================================================================
 
   return {
     // 상태
@@ -905,24 +650,23 @@ export const usePipeline = (options: UsePipelineOptions = {}): UsePipelineState 
   };
 };
 
-// 편의 Hook들
+// =================================================================
+// 🔧 편의 Hook들 (백엔드 패턴 호환)
+// =================================================================
+
 export const usePipelineStatus = (options: UsePipelineOptions = {}) => {
   const [status, setStatus] = useState<PipelineStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const baseURL = options.baseURL || 'http://localhost:8000';
+  const apiClient = useMemo(() => new PipelineAPIClient(options), [options]);
 
   const fetchStatus = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${baseURL}/api/pipeline/status`);
-      if (!response.ok) {
-        throw new Error(`상태 조회 실패: ${response.status}`);
-      }
-      const pipelineStatus = await response.json();
+      const pipelineStatus = await apiClient.getPipelineStatus();
       setStatus(pipelineStatus);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '상태 조회 실패';
@@ -930,7 +674,7 @@ export const usePipelineStatus = (options: UsePipelineOptions = {}) => {
     } finally {
       setIsLoading(false);
     }
-  }, [baseURL]);
+  }, [apiClient]);
 
   useEffect(() => {
     fetchStatus();
@@ -949,23 +693,22 @@ export const usePipelineHealth = (options: UsePipelineOptions = {}) => {
   const [isChecking, setIsChecking] = useState(false);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
 
-  const baseURL = options.baseURL || 'http://localhost:8000';
+  const apiClient = useMemo(() => new PipelineAPIClient(options), [options]);
 
   const checkHealth = useCallback(async () => {
     setIsChecking(true);
 
     try {
-      const response = await fetch(`${baseURL}/health`);
-      const healthy = response.ok;
+      const healthy = await apiClient.healthCheck();
       setIsHealthy(healthy);
       setLastCheck(new Date());
     } catch (error) {
       setIsHealthy(false);
-      console.error('헬스체크 실패:', error);
+      PipelineUtils.log('error', '헬스체크 실패', error);
     } finally {
       setIsChecking(false);
     }
-  }, [baseURL]);
+  }, [apiClient]);
 
   useEffect(() => {
     checkHealth();
@@ -983,6 +726,19 @@ export const usePipelineHealth = (options: UsePipelineOptions = {}) => {
     lastCheck,
     checkHealth
   };
+};
+
+// =================================================================
+// 🔄 하위 호환성 지원 (백엔드 패턴 호환)
+// =================================================================
+
+export const createPipelineHook = (
+  config: UsePipelineOptions = {}
+) => {
+  /**
+   * 🔄 기존 팩토리 함수 호환 (기존 프론트엔드 호환)
+   */
+  return () => usePipeline(config);
 };
 
 export default usePipeline;

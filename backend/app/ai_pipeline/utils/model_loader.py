@@ -1,11 +1,13 @@
-# app/ai_pipeline/utils/model_loader.py
+# app/ai_pipeline/utils/model_loader.py - 완전한 버전
 """
-🍎 M3 Max 최적화 실제 AI 모델 로더 - 완전한 기능 복원
-✅ 최적 생성자 패턴 적용 + 모든 기능 복원 + 더미 모델 제거
+🍎 M3 Max 최적화 실제 AI 모델 로더 - 완전한 기능 복원 + Step 연동
+✅ 최적 생성자 패턴 적용 + 모든 기능 복원 + Step 클래스 통합
 - 8단계 파이프라인에 필요한 모든 실제 AI 모델들
 - M3 Max MPS 최적화
 - 메모리 효율적 모델 로딩
 - ModelRegistry, ModelMemoryManager 포함
+- 실제 PyTorch 모델 클래스들 포함
+- Step 클래스와 완벽 연동
 """
 
 import os
@@ -79,17 +81,20 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# 모델 타입 enum
+# ==============================================
+# 모델 타입 및 설정 클래스들 (원본 유지)
+# ==============================================
+
 class ModelType(Enum):
     """AI 모델 타입"""
-    HUMAN_PARSING = "human_parsing"  # Graphonomy, PGN
-    POSE_ESTIMATION = "pose_estimation"  # OpenPose, MediaPipe
-    CLOTH_SEGMENTATION = "cloth_segmentation"  # U2Net, SAM
-    GEOMETRIC_MATCHING = "geometric_matching"  # TPS, GMM
-    CLOTH_WARPING = "cloth_warping"  # HR-VITON, PF-AFN
-    VIRTUAL_FITTING = "virtual_fitting"  # OOTD, DreamPose
-    DIFFUSION = "diffusion"  # Stable Diffusion 기반
-    SEGMENTATION = "segmentation"  # 일반 세그멘테이션
+    HUMAN_PARSING = "human_parsing"
+    POSE_ESTIMATION = "pose_estimation"
+    CLOTH_SEGMENTATION = "cloth_segmentation"
+    GEOMETRIC_MATCHING = "geometric_matching"
+    CLOTH_WARPING = "cloth_warping"
+    VIRTUAL_FITTING = "virtual_fitting"
+    DIFFUSION = "diffusion"
+    SEGMENTATION = "segmentation"
 
 @dataclass
 class ModelConfig:
@@ -100,8 +105,8 @@ class ModelConfig:
     checkpoint_path: Optional[str] = None
     config_path: Optional[str] = None
     device: str = "auto"
-    precision: str = "fp16"  # fp16, fp32, int8
-    optimization_level: str = "balanced"  # fast, balanced, quality
+    precision: str = "fp16"
+    optimization_level: str = "balanced"
     cache_enabled: bool = True
     input_size: tuple = (512, 512)
     num_classes: Optional[int] = None
@@ -112,7 +117,7 @@ class ModelConfig:
             self.model_type = ModelType(self.model_type)
 
 # ==============================================
-# 모델 레지스트리 - 완전한 기능 복원
+# 모델 레지스트리 - 원본 기능 유지
 # ==============================================
 
 class ModelRegistry:
@@ -138,7 +143,7 @@ class ModelRegistry:
                       model_class: Type, 
                       default_config: Dict[str, Any] = None,
                       loader_func: Optional[Callable] = None):
-        """모델 등록 - 안전한 버전"""
+        """모델 등록"""
         with self._lock:
             try:
                 self.registered_models[name] = {
@@ -152,7 +157,7 @@ class ModelRegistry:
                 logger.error(f"모델 등록 실패 {name}: {e}")
     
     def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
-        """모델 정보 조회 - 안전한 버전"""
+        """모델 정보 조회"""
         with self._lock:
             try:
                 return self.registered_models.get(name)
@@ -161,7 +166,7 @@ class ModelRegistry:
                 return None
     
     def list_models(self) -> List[str]:
-        """등록된 모델 목록 - 안전한 버전"""
+        """등록된 모델 목록"""
         with self._lock:
             try:
                 return list(self.registered_models.keys())
@@ -183,15 +188,15 @@ class ModelRegistry:
                 return False
 
 # ==============================================
-# 모델 메모리 관리자 - 완전한 기능 복원
+# 모델 메모리 관리자 - 원본 기능 유지
 # ==============================================
 
 class ModelMemoryManager:
-    """모델 메모리 관리자 - 안전한 버전"""
+    """모델 메모리 관리자"""
     
     def __init__(self, device: str = "mps"):
         self.device = device
-        self.memory_threshold = 0.8  # 80% 메모리 사용 임계점
+        self.memory_threshold = 0.8
         
     def get_available_memory(self) -> float:
         """사용 가능한 메모리 (GB) 반환"""
@@ -201,20 +206,19 @@ class ModelMemoryManager:
                 allocated_memory = torch.cuda.memory_allocated()
                 return (total_memory - allocated_memory) / 1024**3
             elif self.device == "mps":
-                # M3 Max는 128GB 메모리 가정
                 try:
                     import psutil
                     memory = psutil.virtual_memory()
                     return memory.available / 1024**3
                 except ImportError:
-                    return 64.0  # 기본값
+                    return 64.0
             else:
                 try:
                     import psutil
                     memory = psutil.virtual_memory()
                     return memory.available / 1024**3
                 except ImportError:
-                    return 8.0  # 기본값
+                    return 8.0
         except Exception as e:
             logger.warning(f"메모리 조회 실패: {e}")
             return 8.0
@@ -227,7 +231,6 @@ class ModelMemoryManager:
             if self.device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             elif self.device == "mps" and torch.backends.mps.is_available():
-                # MPS 메모리 정리
                 try:
                     if hasattr(torch.backends.mps, 'empty_cache'):
                         torch.backends.mps.empty_cache()
@@ -249,7 +252,78 @@ class ModelMemoryManager:
             return False
 
 # ==============================================
-# 8단계 파이프라인에 필요한 실제 AI 모델들
+# 🔥 Step 클래스와 ModelLoader 연동 인터페이스
+# ==============================================
+
+class StepModelInterface:
+    """Step 클래스와 ModelLoader 간 인터페이스"""
+    
+    def __init__(self, model_loader: 'ModelLoader', step_name: str):
+        self.model_loader = model_loader
+        self.step_name = step_name
+        self.loaded_models: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+    
+    async def get_model(self, model_name: str, **kwargs) -> Optional[Any]:
+        """Step에서 필요한 모델 요청"""
+        try:
+            with self._lock:
+                cache_key = f"{self.step_name}_{model_name}"
+                
+                # 캐시 확인
+                if cache_key in self.loaded_models:
+                    return self.loaded_models[cache_key]
+                
+                # 모델 로드
+                model = await self.model_loader.load_model(model_name, **kwargs)
+                
+                if model:
+                    self.loaded_models[cache_key] = model
+                    logger.info(f"📦 {self.step_name}에 {model_name} 모델 전달 완료")
+                
+                return model
+                
+        except Exception as e:
+            logger.error(f"❌ {self.step_name}에서 {model_name} 모델 로드 실패: {e}")
+            return None
+    
+    async def get_recommended_model(self) -> Optional[Any]:
+        """Step별 권장 모델 자동 선택"""
+        model_recommendations = {
+            'HumanParsingStep': 'human_parsing_graphonomy',
+            'PoseEstimationStep': 'pose_estimation_openpose', 
+            'ClothSegmentationStep': 'cloth_segmentation_u2net',
+            'GeometricMatchingStep': 'geometric_matching_gmm',
+            'ClothWarpingStep': 'cloth_warping_tom',
+            'VirtualFittingStep': 'virtual_fitting_hrviton',
+            'PostProcessingStep': 'post_processing_enhancer',
+            'QualityAssessmentStep': 'quality_assessment_combined'
+        }
+        
+        recommended_model = model_recommendations.get(self.step_name)
+        if recommended_model:
+            return await self.get_model(recommended_model)
+        
+        logger.warning(f"⚠️ {self.step_name}에 대한 권장 모델이 없습니다")
+        return None
+    
+    def unload_models(self):
+        """Step의 모든 모델 언로드"""
+        try:
+            with self._lock:
+                for model_name, model in self.loaded_models.items():
+                    if hasattr(model, 'cpu'):
+                        model.cpu()
+                    del model
+                
+                self.loaded_models.clear()
+                logger.info(f"🗑️ {self.step_name} 모델들 언로드 완료")
+                
+        except Exception as e:
+            logger.error(f"❌ {self.step_name} 모델 언로드 실패: {e}")
+
+# ==============================================
+# 실제 AI 모델 클래스들 - 원본 전체 복원
 # ==============================================
 
 class GraphonomyModel(nn.Module):
@@ -269,7 +343,7 @@ class GraphonomyModel(nn.Module):
         # 분류 헤드
         self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
         
-        # 보조 분류기 (훈련시)
+        # 보조 분류기
         self.aux_classifier = nn.Conv2d(1024, num_classes, kernel_size=1)
         
     def _build_backbone(self):
@@ -567,7 +641,7 @@ class U2NetModel(nn.Module):
         
         return torch.sigmoid(d0), torch.sigmoid(d1), torch.sigmoid(d2), torch.sigmoid(d3), torch.sigmoid(d4), torch.sigmoid(d5), torch.sigmoid(d6)
 
-# RSU 블록들 (U²-Net 구성 요소) - 완전한 구현
+# RSU 블록들 (U²-Net 구성 요소) - 전체 구현
 class RSU7(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU7, self).__init__()
@@ -921,81 +995,89 @@ class ResnetBlock(nn.Module):
         return x + self.conv_block(x)
 
 # ==============================================
-# 메인 모델 로더 클래스 - 완전한 기능 복원
+# 메인 ModelLoader 클래스 - 완전한 기능 + Step 연동
 # ==============================================
 
 class ModelLoader:
     """
-    🍎 M3 Max 최적화 실제 AI 모델 로더
-    ✅ 최적 생성자 패턴 적용 + 완전한 기능 복원
-    8단계 파이프라인에 필요한 모든 모델 지원
+    🍎 M3 Max 최적화 실제 AI 모델 로더 - 완전한 기능 + Step 연동
+    ✅ 최적 생성자 패턴 적용 + 완전한 기능 복원 + Step 클래스 통합
     """
     
     def __init__(
         self,
-        device: Optional[str] = None,  # 🔥 최적 패턴: None으로 자동 감지
+        device: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
+        **kwargs
     ):
-        """
-        ✅ 최적 생성자 - 모델 로더 특화
-
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 모델 로더 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0  
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - model_cache_dir: str = "./ai_models"  # 실제 모델 경로
-                - use_fp16: bool = True  # FP16 사용 여부
-                - max_cached_models: int = 10  # 최대 캐시 모델 수
-                - lazy_loading: bool = True  # 지연 로딩
-                - coreml_optimization: bool = True  # CoreML 최적화 (M3 Max)
-                - auto_quantization: bool = False  # 자동 양자화
-                - memory_mapping: bool = True  # 메모리 매핑
-                - enable_fallback: bool = True  # 대체 모델 활성화
-        """
-        # 1. 💡 지능적 디바이스 자동 감지
+        """✅ 최적화된 생성자 - Step 클래스 연동 개선"""
+        
+        # 기본 설정
         self.device = self._auto_detect_device(device)
-
-        # 2. 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"utils.{self.step_name}")
-
-        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
+        
+        # 시스템 파라미터 설정
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
-
-        # 4. ⚙️ 모델 로더 특화 파라미터
+        
+        # 모델 로더 특화 파라미터
         self.model_cache_dir = Path(kwargs.get('model_cache_dir', './ai_models'))
         self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
         self.max_cached_models = kwargs.get('max_cached_models', 10)
         self.lazy_loading = kwargs.get('lazy_loading', True)
-        self.coreml_optimization = kwargs.get('coreml_optimization', self.is_m3_max and COREML_AVAILABLE)
-        self.auto_quantization = kwargs.get('auto_quantization', False)
-        self.memory_mapping = kwargs.get('memory_mapping', True)
         self.enable_fallback = kwargs.get('enable_fallback', True)
-
-        # 5. ⚙️ 스텝별 특화 파라미터를 config에 병합
+        
+        # 🔥 새로운 기능: Step 인터페이스 관리
+        self.step_interfaces: Dict[str, StepModelInterface] = {}
+        self._interface_lock = threading.RLock()
+        
+        # 기존 초기화
         self._merge_step_specific_config(kwargs)
-
-        # 6. ✅ 상태 초기화
         self.is_initialized = False
-
-        # 7. 🎯 기존 클래스별 고유 초기화 로직 실행
         self._initialize_step_specific()
-
-        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
-
+        
+        self.logger.info(f"🎯 ModelLoader 초기화 완료 - 디바이스: {self.device}")
+    
+    def create_step_interface(self, step_name: str) -> StepModelInterface:
+        """Step 클래스를 위한 모델 인터페이스 생성"""
+        try:
+            with self._interface_lock:
+                if step_name not in self.step_interfaces:
+                    interface = StepModelInterface(self, step_name)
+                    self.step_interfaces[step_name] = interface
+                    self.logger.info(f"🔗 {step_name} 인터페이스 생성 완료")
+                
+                return self.step_interfaces[step_name]
+                
+        except Exception as e:
+            self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
+            return StepModelInterface(self, step_name)
+    
+    def get_step_interface(self, step_name: str) -> Optional[StepModelInterface]:
+        """기존 Step 인터페이스 조회"""
+        with self._interface_lock:
+            return self.step_interfaces.get(step_name)
+    
+    def cleanup_step_interface(self, step_name: str):
+        """Step 인터페이스 정리"""
+        try:
+            with self._interface_lock:
+                if step_name in self.step_interfaces:
+                    interface = self.step_interfaces[step_name]
+                    interface.unload_models()
+                    del self.step_interfaces[step_name]
+                    self.logger.info(f"🗑️ {step_name} 인터페이스 정리 완료")
+                    
+        except Exception as e:
+            self.logger.error(f"❌ {step_name} 인터페이스 정리 실패: {e}")
+    
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
-        """💡 지능적 디바이스 자동 감지"""
+        """디바이스 자동 감지"""
         if preferred_device:
             return preferred_device
 
@@ -1004,46 +1086,43 @@ class ModelLoader:
 
         try:
             if torch.backends.mps.is_available():
-                return 'mps'  # M3 Max 우선
+                return 'mps'
             elif torch.cuda.is_available():
-                return 'cuda'  # NVIDIA GPU
+                return 'cuda'
             else:
-                return 'cpu'  # 폴백
+                return 'cpu'
         except:
             return 'cpu'
-
+    
     def _detect_m3_max(self) -> bool:
-        """🍎 M3 Max 칩 자동 감지"""
+        """M3 Max 칩 감지"""
         try:
             import platform
             import subprocess
-
-            if platform.system() == 'Darwin':  # macOS
-                # M3 Max 감지 로직
+            
+            if platform.system() == 'Darwin':
                 result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
                                       capture_output=True, text=True)
                 return 'M3' in result.stdout
         except:
             pass
         return False
-
+    
     def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
-        """⚙️ 스텝별 특화 설정 병합"""
-        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
+        """설정 병합"""
         system_params = {
             'device_type', 'memory_gb', 'is_m3_max', 
             'optimization_enabled', 'quality_level',
             'model_cache_dir', 'use_fp16', 'max_cached_models',
-            'lazy_loading', 'coreml_optimization', 'auto_quantization', 
-            'memory_mapping', 'enable_fallback'
+            'lazy_loading', 'enable_fallback'
         }
 
         for key, value in kwargs.items():
             if key not in system_params:
                 self.config[key] = value
-
+    
     def _initialize_step_specific(self):
-        """🎯 기존 초기화 로직 완전 유지"""
+        """기본 초기화"""
         # 핵심 구성 요소들
         self.registry = ModelRegistry()
         self.memory_manager = ModelMemoryManager(device=self.device)
@@ -1064,7 +1143,7 @@ class ModelLoader:
         
         # M3 Max 특화 설정
         if self.is_m3_max:
-            self.use_fp16 = True  # M3 Max는 FP16 최적화
+            self.use_fp16 = True
             if COREML_AVAILABLE:
                 self.logger.info("🍎 CoreML 최적화 활성화됨")
         
@@ -1078,7 +1157,6 @@ class ModelLoader:
 
     def _initialize_model_registry(self):
         """실제 AI 모델들 등록 - 정확한 경로 포함"""
-        # 실제 MyCloset AI 프로젝트 모델 경로들
         base_models_dir = self.model_cache_dir
         
         model_configs = {
@@ -1111,7 +1189,7 @@ class ModelLoader:
                 input_size=(320, 320)
             ),
             
-            # Step 04: Geometric Matching - GMM (HR-VITON)
+            # Step 04: Geometric Matching - GMM
             "geometric_matching_gmm": ModelConfig(
                 name="geometric_matching_gmm",
                 model_type=ModelType.GEOMETRIC_MATCHING,
@@ -1120,7 +1198,7 @@ class ModelLoader:
                 input_size=(512, 384)
             ),
             
-            # Step 05: Cloth Warping - TOM (HR-VITON)
+            # Step 05: Cloth Warping - TOM
             "cloth_warping_tom": ModelConfig(
                 name="cloth_warping_tom",
                 model_type=ModelType.CLOTH_WARPING,
@@ -1129,7 +1207,7 @@ class ModelLoader:
                 input_size=(512, 384)
             ),
             
-            # Step 06: Virtual Fitting - HR-VITON 완전 모델
+            # Step 06: Virtual Fitting - HR-VITON
             "virtual_fitting_hrviton": ModelConfig(
                 name="virtual_fitting_hrviton",
                 model_type=ModelType.VIRTUAL_FITTING,
@@ -1323,12 +1401,11 @@ class ModelLoader:
             return None
 
     async def _create_diffusion_model(self, model_config: ModelConfig):
-        """Diffusion 모델 생성 (OOTD 등)"""
+        """Diffusion 모델 생성"""
         try:
             if DIFFUSERS_AVAILABLE:
                 from diffusers import StableDiffusionPipeline
                 
-                # 체크포인트 경로가 있으면 로컬에서 로드
                 if model_config.checkpoint_path and Path(model_config.checkpoint_path).exists():
                     pipeline = StableDiffusionPipeline.from_pretrained(
                         model_config.checkpoint_path,
@@ -1337,7 +1414,6 @@ class ModelLoader:
                         requires_safety_checker=False
                     )
                 else:
-                    # Hugging Face에서 로드
                     pipeline = StableDiffusionPipeline.from_pretrained(
                         "runwayml/stable-diffusion-v1-5",
                         torch_dtype=torch.float16 if self.use_fp16 else torch.float32,
@@ -1386,7 +1462,6 @@ class ModelLoader:
                 model.load_state_dict(cleaned_state_dict, strict=False)
                 self.logger.info(f"✅ 체크포인트 로드 완료: {checkpoint_path}")
             
-            # Diffusion 파이프라인인 경우는 이미 from_pretrained에서 처리됨
             else:
                 self.logger.info(f"📝 체크포인트 로드 건너뜀 (파이프라인): {model_config.name}")
                 
@@ -1432,7 +1507,7 @@ class ModelLoader:
             return model
 
     async def _load_fallback_model(self, model_name: str) -> Optional[Any]:
-        """대체 모델 로드 (MediaPipe, RemBG 등) - 더미 모델 제거"""
+        """대체 모델 로드 (MediaPipe, RemBG 등)"""
         try:
             fallback_model = None
             
@@ -1789,8 +1864,13 @@ class ModelLoader:
     def cleanup(self):
         """리소스 정리"""
         try:
+            # Step 인터페이스들 정리
+            with self._interface_lock:
+                for step_name in list(self.step_interfaces.keys()):
+                    self.cleanup_step_interface(step_name)
+            
+            # 모델 캐시 정리
             with self._lock:
-                # 모든 모델 언로드
                 for cache_key, model in list(self.model_cache.items()):
                     try:
                         if hasattr(model, 'cpu'):
@@ -1835,7 +1915,7 @@ class ModelLoader:
                 self.logger.info("📝 해당 모델들은 대체 모델로 로드됩니다")
             
             # M3 Max 최적화 설정
-            if self.coreml_optimization and COREML_AVAILABLE:
+            if COREML_AVAILABLE and self.is_m3_max:
                 self.logger.info("🍎 CoreML 최적화 설정 완료")
             
             self.logger.info(f"✅ 실제 AI 모델 로더 초기화 완료 - {len(self.model_configs)}개 모델 등록됨")
@@ -1859,10 +1939,7 @@ class ModelLoader:
             "config_keys": list(self.config.keys()),
             "specialized_features": {
                 "use_fp16": self.use_fp16,
-                "coreml_optimization": self.coreml_optimization,
                 "lazy_loading": self.lazy_loading,
-                "auto_quantization": self.auto_quantization,
-                "memory_mapping": self.memory_mapping,
                 "max_cached_models": self.max_cached_models,
                 "enable_fallback": self.enable_fallback
             },
@@ -1892,7 +1969,56 @@ class ModelLoader:
             pass
 
 # ==============================================
-# 유틸리티 함수들
+# Step 클래스 연동 믹스인
+# ==============================================
+
+class BaseStepMixin:
+    """Step 클래스들이 상속받을 ModelLoader 연동 믹스인"""
+    
+    def _setup_model_interface(self, model_loader: Optional[ModelLoader] = None):
+        """모델 인터페이스 설정"""
+        try:
+            if model_loader is None:
+                # 전역 모델 로더 사용
+                model_loader = get_global_model_loader()
+            
+            self.model_interface = model_loader.create_step_interface(
+                self.__class__.__name__
+            )
+            
+            logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료")
+            
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
+            self.model_interface = None
+    
+    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+        """모델 로드 (Step에서 사용)"""
+        try:
+            if not hasattr(self, 'model_interface') or self.model_interface is None:
+                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
+                return None
+            
+            if model_name:
+                return await self.model_interface.get_model(model_name)
+            else:
+                # 권장 모델 자동 로드
+                return await self.model_interface.get_recommended_model()
+                
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
+            return None
+    
+    def cleanup_models(self):
+        """모델 정리"""
+        try:
+            if hasattr(self, 'model_interface') and self.model_interface:
+                self.model_interface.unload_models()
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
+
+# ==============================================
+# 유틸리티 함수들 (원본 기능 유지)
 # ==============================================
 
 def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple, normalize: bool = True) -> torch.Tensor:
@@ -1999,33 +2125,43 @@ def postprocess_pose(output: torch.Tensor, original_size: tuple, confidence_thre
         return {'keypoints': [], 'pafs': None, 'heatmaps': None}
 
 # ==============================================
-# 편의 함수들 (하위 호환성)
+# 전역 모델 로더 관리
 # ==============================================
 
-def create_model_loader(
-    device: str = "mps",
-    use_fp16: bool = True,
-    **kwargs
-) -> ModelLoader:
-    """모델 로더 생성 (하위 호환)"""
-    return ModelLoader(
-        device=device,
-        use_fp16=use_fp16,
-        **kwargs
-    )
-
-# 전역 모델 로더 (선택적)
 _global_model_loader: Optional[ModelLoader] = None
 
 @lru_cache(maxsize=1)
 def get_global_model_loader() -> ModelLoader:
     """전역 ModelLoader 인스턴스 반환"""
+    global _global_model_loader
+    
     try:
-        return ModelLoader()
+        if _global_model_loader is None:
+            _global_model_loader = ModelLoader()
+        return _global_model_loader
     except Exception as e:
         logger.error(f"전역 ModelLoader 생성 실패: {e}")
         # 최소한의 ModelLoader 생성 시도
-        return ModelLoader(device="cpu", enable_fallback=False)
+        return ModelLoader(device="cpu", enable_fallback=True)
+
+def cleanup_global_loader():
+    """전역 로더 정리"""
+    global _global_model_loader
+    
+    try:
+        if _global_model_loader:
+            _global_model_loader.cleanup()
+            _global_model_loader = None
+        # 캐시 클리어
+        get_global_model_loader.cache_clear()
+        logger.info("✅ 전역 ModelLoader 정리 완료")
+    except Exception as e:
+        logger.warning(f"전역 로더 정리 실패: {e}")
+
+# 편의 함수들
+def create_model_loader(device: str = "mps", use_fp16: bool = True, **kwargs) -> ModelLoader:
+    """모델 로더 생성 (하위 호환)"""
+    return ModelLoader(device=device, use_fp16=use_fp16, **kwargs)
 
 async def load_model_async(model_name: str, config: Optional[ModelConfig] = None) -> Optional[Any]:
     """전역 로더를 사용한 비동기 모델 로드"""
@@ -2052,17 +2188,6 @@ def load_model_sync(model_name: str, config: Optional[ModelConfig] = None) -> Op
         logger.error(f"동기 모델 로드 실패: {e}")
         return None
 
-def cleanup_global_loader():
-    """전역 로더 정리"""
-    try:
-        loader = get_global_model_loader()
-        if hasattr(loader, 'cleanup'):
-            loader.cleanup()
-        # 캐시 클리어
-        get_global_model_loader.cache_clear()
-    except Exception as e:
-        logger.warning(f"전역 로더 정리 실패: {e}")
-
 # 모듈 레벨에서 안전한 정리 함수 등록
 import atexit
 atexit.register(cleanup_global_loader)
@@ -2074,6 +2199,8 @@ __all__ = [
     'ModelType',
     'ModelRegistry',
     'ModelMemoryManager',
+    'StepModelInterface',
+    'BaseStepMixin',
     'GraphonomyModel',
     'OpenPoseModel', 
     'U2NetModel',
@@ -2087,5 +2214,6 @@ __all__ = [
     'load_model_sync',
     'preprocess_image',
     'postprocess_segmentation',
-    'postprocess_pose'
+    'postprocess_pose',
+    'cleanup_global_loader'
 ]

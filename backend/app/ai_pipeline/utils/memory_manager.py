@@ -1,7 +1,8 @@
 # app/ai_pipeline/utils/memory_manager.py
 """
 MyCloset AI - 지능형 메모리 관리 시스템 (M3 Max 최적화)
-✅ 최적 생성자 패턴 적용 - await 에러 해결
+✅ 최적 생성자 패턴 적용 + create_memory_manager 함수 추가
+🔥 핵심: 누락된 팩토리 함수들 모두 추가
 """
 import os
 import gc
@@ -587,6 +588,10 @@ class MemoryManager:
         except:
             pass
 
+# ============================================
+# 🔥 핵심: 누락된 팩토리 함수들 모두 추가
+# ============================================
+
 # 전역 메모리 관리자 인스턴스 (싱글톤)
 _global_memory_manager: Optional[MemoryManager] = None
 
@@ -600,6 +605,60 @@ def get_memory_manager(**kwargs) -> MemoryManager:
 def get_global_memory_manager(**kwargs) -> MemoryManager:
     """전역 메모리 관리자 인스턴스 반환 (별칭)"""
     return get_memory_manager(**kwargs)
+
+# 🔥 핵심: main.py에서 찾는 함수 추가
+def create_memory_manager(device: str = "auto", **kwargs) -> MemoryManager:
+    """
+    🔥 메모리 관리자 팩토리 함수 - main.py에서 사용
+    
+    Args:
+        device: 사용할 디바이스
+        **kwargs: 추가 설정
+    
+    Returns:
+        MemoryManager 인스턴스
+    """
+    try:
+        logger.info(f"📦 MemoryManager 생성 - 디바이스: {device}")
+        manager = MemoryManager(device=device, **kwargs)
+        return manager
+    except Exception as e:
+        logger.error(f"❌ MemoryManager 생성 실패: {e}")
+        # 실패 시에도 기본 인스턴스 반환
+        return MemoryManager(device="cpu")
+
+# 추가 팩토리 함수들
+def create_optimized_memory_manager(
+    device: str = "auto",
+    memory_gb: float = 16.0,
+    is_m3_max: bool = None,
+    optimization_enabled: bool = True
+) -> MemoryManager:
+    """최적화된 메모리 관리자 생성"""
+    if is_m3_max is None:
+        is_m3_max = _detect_m3_max()
+    
+    return MemoryManager(
+        device=device,
+        memory_gb=memory_gb,
+        is_m3_max=is_m3_max,
+        optimization_enabled=optimization_enabled,
+        auto_cleanup=True,
+        enable_caching=True
+    )
+
+def _detect_m3_max() -> bool:
+    """M3 Max 감지 헬퍼"""
+    try:
+        import platform
+        import subprocess
+        if platform.system() == 'Darwin':
+            result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                  capture_output=True, text=True)
+            return 'M3' in result.stdout
+    except:
+        pass
+    return False
 
 # ============================================
 # 🔥 핵심: optimize_memory_usage 함수 - 동기로 수정
@@ -684,6 +743,30 @@ def check_memory():
     manager = get_memory_manager()
     return manager.check_memory_pressure()
 
+def check_memory_available(min_gb: float = 1.0) -> bool:
+    """사용 가능한 메모리 확인"""
+    try:
+        manager = get_memory_manager()
+        stats = manager.get_memory_stats()
+        return stats.cpu_available_gb >= min_gb
+    except Exception:
+        return True  # 확인 실패 시 true 반환
+
+def get_memory_info() -> Dict[str, Any]:
+    """메모리 정보 조회"""
+    try:
+        manager = get_memory_manager()
+        stats = manager.get_memory_stats()
+        return {
+            "device": manager.device,
+            "cpu_total_gb": stats.cpu_total_gb,
+            "cpu_available_gb": stats.cpu_available_gb,
+            "gpu_total_gb": stats.gpu_total_gb,
+            "gpu_allocated_gb": stats.gpu_allocated_gb
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 # 데코레이터
 def memory_efficient(clear_before: bool = True, clear_after: bool = True):
     """메모리 효율적 실행 데코레이터"""
@@ -713,8 +796,15 @@ __all__ = [
     'MemoryStats',
     'get_memory_manager',
     'get_global_memory_manager',
+    'create_memory_manager',  # 🔥 핵심 추가
+    'create_optimized_memory_manager',
     'optimize_memory_usage',
     'optimize_memory',
     'check_memory',
+    'check_memory_available',  # 🔥 핵심 추가
+    'get_memory_info',
     'memory_efficient'
 ]
+
+# 모듈 로드 확인
+logger.info("✅ MemoryManager 모듈 로드 완료 - 모든 팩토리 함수 포함")

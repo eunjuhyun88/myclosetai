@@ -31,79 +31,37 @@ except ImportError:
     cdist = None
 
 logger = logging.getLogger(__name__)
-
 class GeometricMatchingStep:
-    """
-    기하학적 매칭 스텝 - 최적 생성자 패턴 적용
-    - M3 Max MPS 최적화
-    - 고급 매칭 알고리즘 (TPS, Affine, Homography)
-    - 포즈 기반 적응형 매칭
-    - 실시간 매칭 품질 평가
-    - 기존 기능 100% 유지
-    """
-    
-    # 의류별 핵심 매칭 포인트 정의 (기존과 동일)
-    MATCHING_POINTS = {
-        'shirt': {
-            'keypoints': ['left_shoulder', 'right_shoulder', 'neck', 'left_wrist', 'right_wrist'],
-            'clothing_points': ['left_shoulder', 'right_shoulder', 'collar', 'left_cuff', 'right_cuff'],
-            'priority_weights': [1.0, 1.0, 0.8, 0.7, 0.7]
-        },
-        'pants': {
-            'keypoints': ['left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'],
-            'clothing_points': ['left_waist', 'right_waist', 'left_knee', 'right_knee', 'left_hem', 'right_hem'],
-            'priority_weights': [1.0, 1.0, 0.8, 0.8, 0.6, 0.6]
-        },
-        'dress': {
-            'keypoints': ['left_shoulder', 'right_shoulder', 'neck', 'left_hip', 'right_hip'],
-            'clothing_points': ['left_shoulder', 'right_shoulder', 'collar', 'left_waist', 'right_waist'],
-            'priority_weights': [1.0, 1.0, 0.8, 0.7, 0.7]
-        }
-    }
-    
     def __init__(
         self,
-        device: Optional[str] = None,  # ✅ 통일된 생성자 패턴
+        device: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """
-        🎯 최적 생성자 - 기하학적 매칭 특화
+        """✅ 최적 생성자 패턴 적용"""
         
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - method: str = 'auto'
-                - max_iterations: int = 1000
-                - 기타...
-        """
-        # 💡 지능적 디바이스 자동 감지
+        # 동일한 패턴...
         self.device = self._auto_detect_device(device)
-
-        # 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
-
-        # 🔧 표준 시스템 파라미터 추출
+        
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
-
-        # ⚙️ 스텝별 특화 파라미터를 config에 병합
+        
         self._merge_step_specific_config(kwargs)
-
-        # ✅ 상태 초기화
         self.is_initialized = False
-        self.initialization_error = None
+        
+        from app.ai_pipeline.utils.model_loader import BaseStepMixin
+        if hasattr(BaseStepMixin, '_setup_model_interface'):
+            BaseStepMixin._setup_model_interface(self)
+        
+        self._initialize_step_specific()
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+    
         
         # 매칭 설정 (기존 기능 유지 + kwargs 확장)
         self.matching_config = self.config.get('matching', {
