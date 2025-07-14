@@ -1,7 +1,7 @@
 # app/ai_pipeline/steps/step_07_post_processing.py
 """
 7단계: 후처리 (Post Processing) - 품질 향상
-MyCloset AI 가상 피팅 파이프라인의 최종 단계 (기존 구조에 맞춰 수정)
+MyCloset AI 가상 피팅 파이프라인의 최종 단계 - model_loader 수정 버전
 
 🎯 주요 기능:
 - Real-ESRGAN: Super Resolution (2x, 4x 해상도 향상)
@@ -34,19 +34,6 @@ from PIL import Image, ImageFilter, ImageEnhance
 from concurrent.futures import ThreadPoolExecutor
 import json
 
-# 현재 구조에 맞는 절대 임포트 사용
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
-try:
-    # 기존 ai_pipeline 구조의 utils 사용
-    from app.ai_pipeline.utils.model_loader import ModelLoader
-    from app.ai_pipeline.utils.memory_manager import MemoryManager
-    from app.ai_pipeline.utils.data_converter import DataConverter
-except ImportError:
-    # 폴백: 로컬 구현 사용
-    from .fallback_utils import ModelLoader, MemoryManager, DataConverter
-
 logger = logging.getLogger(__name__)
 
 class PostProcessingStep:
@@ -55,115 +42,81 @@ class PostProcessingStep:
     기존 ai_pipeline 구조에 맞춘 통합 후처리 시스템
     """
     
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, device: str = "mps", config: Dict[str, Any] = None):
         """
         Args:
-            config: 설정 딕셔너리 (기존 pipeline_manager에서 전달)
+            device: 사용할 디바이스 (mps, cuda, cpu)
+            config: 설정 딕셔너리
         """
         self.config = config or {}
         
         # 디바이스 설정 (M3 Max 최적화)
-        self.device = self._get_optimal_device()
+        self.device = self._get_optimal_device(device)
         
-        # 기존 core/gpu_config.py 설정 활용
+        # model_loader는 내부에서 생성하거나 전역에서 가져옴
         try:
-            from app.core.gpu_config import get_device_config
-            device_config = get_device_config()
-            self.device = device_config.get('device', self.device)
+            from app.ai_pipeline.utils.model_loader import get_global_model_loader
+            self.model_loader = get_global_model_loader()
         except ImportError:
-            logger.warning("GPU config 모듈을 찾을 수 없음 - 기본 설정 사용")
-        
-        # 모델 로더 초기화
-        try:
-            self.model_loader = ModelLoader()
-        except Exception as e:
-            logger.warning(f"ModelLoader 초기화 실패: {e}")
+            logger.warning("ModelLoader 초기화 실패 - 기본 처리로 진행")
             self.model_loader = None
         
         # 메모리 관리 초기화  
         try:
+            from app.ai_pipeline.utils.memory_manager import MemoryManager
             self.memory_manager = MemoryManager()
-        except Exception as e:
-            logger.warning(f"MemoryManager 초기화 실패: {e}")
+        except ImportError:
+            logger.warning("MemoryManager 초기화 실패")
             self.memory_manager = None
         
-        # 후처리 설정 (기존 구조와 호환)
+        # 후처리 설정
         self.enhancement_config = self.config.get('post_processing', {
             'super_resolution': True,    # Real-ESRGAN
-            'face_enhancement': True,    # GFPGAN  
+            'face_enhancement': True,    # GFPGAN
             'image_restoration': True,   # CodeFormer
             'color_correction': True,    # 색상 보정
             'noise_reduction': True,     # 노이즈 제거
             'edge_enhancement': True,    # 엣지 향상
-            'lighting_adjustment': True, # 조명 조정
-            'quality_assessment': True   # 품질 평가
+            'quality_level': 'high'      # 품질 수준
         })
         
-        # M3 Max 성능 최적화 설정
+        # M3 Max 최적화 설정
         self.use_mps = self.device == 'mps' and torch.backends.mps.is_available()
-        self.use_parallel = self.config.get('parallel_processing', True)
-        self.max_workers = self.config.get('max_workers', 8)  # M3 Max 14코어 활용
-        self.batch_size = self.config.get('batch_size', 4)    # 128GB RAM 활용
+        self.batch_size = self.config.get('batch_size', 1)
+        self.tile_size = self.config.get('tile_size', 512)
         
-        # 품질 레벨별 설정 (기존 pipeline과 호환)
-        self.quality_presets = {
-            'fast': {        # 빠른 처리 (데모용)
-                'sr_scale': 1,
-                'enhancement_strength': 0.3,
-                'face_enhancement': False,
-                'iterations': 1,
-                'processing_time_target': 5.0  # 5초 목표
-            },
-            'balanced': {    # 균형잡힌 품질 (일반 사용)
-                'sr_scale': 2,
-                'enhancement_strength': 0.6,
-                'face_enhancement': True,
-                'iterations': 2,
-                'processing_time_target': 15.0  # 15초 목표
-            },
-            'high': {        # 고품질 (권장)
-                'sr_scale': 2,
-                'enhancement_strength': 0.8,
-                'face_enhancement': True,
-                'iterations': 3,
-                'processing_time_target': 30.0  # 30초 목표
-            },
-            'ultra': {       # M3 Max 전용 최고 품질
-                'sr_scale': 4,
-                'enhancement_strength': 1.0,
-                'face_enhancement': True,
-                'iterations': 4,
-                'processing_time_target': 60.0  # 1분 목표
-            }
-        }
-        
-        # AI 모델들 (기존 models 디렉토리 구조 활용)
-        self.real_esrgan = None      # models/ai_models/checkpoints/
-        self.gfpgan = None           # models/ai_models/gfpgan/
-        self.codeformer = None       # models/ai_models/codeformer/
+        # 모델 인스턴스들
+        self.real_esrgan = None
+        self.gfpgan = None
+        self.codeformer = None
         
         # 전통적 처리 도구들
         self.color_enhancer = None
         self.noise_reducer = None
         self.edge_enhancer = None
-        self.quality_assessor = None
         
-        # 캐시 디렉토리 (기존 cache 활용)
-        self.cache_dir = Path(__file__).parent.parent / "cache"
-        self.cache_dir.mkdir(exist_ok=True)
-        
+        # 초기화 상태
         self.is_initialized = False
         
-        logger.info(f"🎯 Step 7 후처리 초기화 - 디바이스: {self.device}")
+        # 성능 통계
+        self.processing_stats = {
+            'total_images': 0,
+            'average_time': 0.0,
+            'enhancement_success_rate': 0.0
+        }
+        
+        logger.info(f"🎨 Step 7 후처리 초기화 - 디바이스: {self.device}")
     
-    def _get_optimal_device(self) -> str:
+    def _get_optimal_device(self, preferred_device: str) -> str:
         """최적 디바이스 선택"""
-        if torch.backends.mps.is_available():
-            return 'mps'  # M3 Max Metal Performance Shaders
-        elif torch.cuda.is_available():
-            return 'cuda'
-        else:
-            return 'cpu'
+        if preferred_device == 'auto':
+            if torch.backends.mps.is_available():
+                return 'mps'  # M3 Max Metal Performance Shaders
+            elif torch.cuda.is_available():
+                return 'cuda'
+            else:
+                return 'cpu'
+        return preferred_device
     
     async def initialize(self) -> bool:
         """후처리 모델들 초기화"""
@@ -212,81 +165,74 @@ class PostProcessingStep:
     async def _init_real_esrgan(self) -> bool:
         """Real-ESRGAN Super Resolution 모델 초기화"""
         try:
-            # 기존 models 디렉토리 구조 활용
             model_path = self._get_model_path('real_esrgan', 'RealESRGAN_x4plus.pth')
             
-            if os.path.exists(model_path):
-                if self.model_loader:
-                    self.real_esrgan = await self.model_loader.load_model(
-                        'real_esrgan', 
-                        model_path, 
-                        device=self.device
-                    )
-                    logger.info("✅ Real-ESRGAN 모델 로드 완료")
-                    return True
-                else:
-                    # 폴백: 직접 로드
-                    self.real_esrgan = self._load_real_esrgan_fallback(model_path)
-                    return self.real_esrgan is not None
+            if os.path.exists(model_path) and self.model_loader:
+                self.real_esrgan = await self.model_loader.load_model(
+                    'real_esrgan', 
+                    model_path, 
+                    device=self.device
+                )
+                logger.info("✅ Real-ESRGAN 모델 로드 완료")
+                return True
             else:
-                logger.warning(f"⚠️ Real-ESRGAN 모델 파일 없음: {model_path}")
-                return False
+                # 폴백: 기본 업스케일링
+                self.real_esrgan = BasicUpscaler()
+                logger.info("📄 Real-ESRGAN 폴백 모드 사용")
+                return True
                 
         except Exception as e:
             logger.warning(f"Real-ESRGAN 초기화 실패: {e}")
-            return False
+            self.real_esrgan = BasicUpscaler()
+            return True
     
     async def _init_gfpgan(self) -> bool:
         """GFPGAN 얼굴 향상 모델 초기화"""
         try:
             model_path = self._get_model_path('gfpgan', 'GFPGANv1.4.pth')
             
-            if os.path.exists(model_path):
-                if self.model_loader:
-                    self.gfpgan = await self.model_loader.load_model(
-                        'gfpgan', 
-                        model_path, 
-                        device=self.device
-                    )
-                    logger.info("✅ GFPGAN 모델 로드 완료")
-                    return True
-                else:
-                    # 폴백: 기본 얼굴 향상
-                    self.gfpgan = BasicFaceEnhancer()
-                    return True
+            if os.path.exists(model_path) and self.model_loader:
+                self.gfpgan = await self.model_loader.load_model(
+                    'gfpgan', 
+                    model_path, 
+                    device=self.device
+                )
+                logger.info("✅ GFPGAN 모델 로드 완료")
+                return True
             else:
-                logger.warning(f"⚠️ GFPGAN 모델 파일 없음: {model_path}")
-                return False
+                # 폴백: 기본 얼굴 향상
+                self.gfpgan = BasicFaceEnhancer()
+                logger.info("📄 GFPGAN 폴백 모드 사용")
+                return True
                 
         except Exception as e:
             logger.warning(f"GFPGAN 초기화 실패: {e}")
-            return False
+            self.gfpgan = BasicFaceEnhancer()
+            return True
     
     async def _init_codeformer(self) -> bool:
         """CodeFormer 이미지 복원 모델 초기화"""
         try:
             model_path = self._get_model_path('codeformer', 'codeformer.pth')
             
-            if os.path.exists(model_path):
-                if self.model_loader:
-                    self.codeformer = await self.model_loader.load_model(
-                        'codeformer', 
-                        model_path, 
-                        device=self.device
-                    )
-                    logger.info("✅ CodeFormer 모델 로드 완료")
-                    return True
-                else:
-                    # 폴백: 기본 이미지 복원
-                    self.codeformer = BasicImageRestorer()
-                    return True
+            if os.path.exists(model_path) and self.model_loader:
+                self.codeformer = await self.model_loader.load_model(
+                    'codeformer', 
+                    model_path, 
+                    device=self.device
+                )
+                logger.info("✅ CodeFormer 모델 로드 완료")
+                return True
             else:
-                logger.warning(f"⚠️ CodeFormer 모델 파일 없음: {model_path}")
-                return False
+                # 폴백: 기본 이미지 복원
+                self.codeformer = BasicImageRestorer()
+                logger.info("📄 CodeFormer 폴백 모드 사용")
+                return True
                 
         except Exception as e:
             logger.warning(f"CodeFormer 초기화 실패: {e}")
-            return False
+            self.codeformer = BasicImageRestorer()
+            return True
     
     async def _init_color_enhancer(self) -> bool:
         """색상 향상기 초기화"""
@@ -316,649 +262,916 @@ class PostProcessingStep:
             return False
     
     def _get_model_path(self, model_type: str, filename: str) -> str:
-        """모델 파일 경로 반환 (기존 구조 호환)"""
-        # 기존 models/ai_models/ 구조 사용
-        model_base_dir = self.config.get('model_dir', 'models/ai_models')
-        
-        # 절대 경로로 변환
-        if not os.path.isabs(model_base_dir):
-            # app/ 디렉토리 기준으로 상대 경로 계산
-            project_root = Path(__file__).parent.parent.parent.parent
-            model_base_dir = project_root / model_base_dir
-        
-        model_path = Path(model_base_dir) / model_type / filename
-        return str(model_path)
+        """모델 파일 경로 반환"""
+        base_path = self.config.get('models_base_path', 'app/ai_pipeline/models/ai_models')
+        return os.path.join(base_path, model_type, filename)
     
     async def process(
-        self,
-        fitted_image: Union[Image.Image, torch.Tensor, np.ndarray],
-        step_results: Optional[Dict[str, Any]] = None,  # 이전 단계들의 결과
-        quality_level: str = "high",
-        custom_options: Optional[Dict[str, Any]] = None
+        self, 
+        input_image: Union[np.ndarray, torch.Tensor, str],
+        enhancement_options: Optional[Dict[str, Any]] = None,
+        quality_target: float = 0.8
     ) -> Dict[str, Any]:
         """
-        Step 7: 후처리 품질 향상 실행 (기존 pipeline과 호환)
+        후처리 메인 처리 함수
         
         Args:
-            fitted_image: Step 6에서 받은 가상 피팅 결과 이미지
-            step_results: 이전 단계들의 결과 (Step 1-6)
-            quality_level: 품질 레벨 (fast, balanced, high, ultra)
-            custom_options: 커스텀 향상 옵션
+            input_image: 입력 이미지
+            enhancement_options: 향상 옵션
+            quality_target: 목표 품질 (0.0-1.0)
             
         Returns:
-            기존 pipeline 형식과 호환되는 결과
+            후처리 결과
         """
         if not self.is_initialized:
-            # Graceful degradation: 초기화 실패시 기본 처리
-            logger.warning("⚠️ Step 7 후처리가 초기화되지 않음 - 기본 처리로 진행")
-            return await self._fallback_processing(fitted_image, quality_level)
+            raise RuntimeError("후처리 시스템이 초기화되지 않았습니다.")
         
         start_time = time.time()
         
         try:
-            # 기존 pipeline과 호환되는 로깅
-            logger.info(f"🎨 Step 7: 후처리 품질 향상 시작")
-            logger.info(f"   📋 품질 레벨: {quality_level}")
-            logger.info(f"   💻 디바이스: {self.device}")
+            # 1. 입력 전처리
+            image_tensor = await self._preprocess_input(input_image)
+            original_shape = image_tensor.shape
             
-            # 입력 이미지 정규화 및 검증
-            current_image = self._normalize_input(fitted_image)
-            if current_image is None:
-                raise ValueError("유효하지 않은 입력 이미지")
+            logger.info(f"🎨 후처리 시작 - 크기: {original_shape}")
             
-            # 이전 단계 결과에서 참조 이미지 추출
-            original_person = None
-            if step_results:
-                # Step 1 결과에서 원본 사람 이미지
-                if 'step_01' in step_results:
-                    original_person = step_results['step_01'].get('original_person')
-                # 또는 전역 입력에서
-                elif 'original_person' in step_results:
-                    original_person = step_results['original_person']
+            # 2. 향상 옵션 설정
+            options = {**self.enhancement_config, **(enhancement_options or {})}
             
-            # 품질 설정 적용
-            quality_settings = self.quality_presets.get(quality_level, self.quality_presets['high'])
-            if custom_options:
-                quality_settings.update(custom_options)
+            # 3. 순차적 향상 처리
+            enhanced_image = image_tensor.clone()
+            processing_log = []
             
-            # 메모리 상태 확인 (M3 Max 128GB 활용)
-            memory_info = {}
-            if self.memory_manager:
-                memory_info = self.memory_manager.get_memory_info()
-                logger.info(f"   🧠 메모리 사용량: {memory_info.get('used_percent', 0):.1f}%")
+            # Super Resolution (해상도 향상)
+            if options.get('super_resolution', True) and self.real_esrgan:
+                logger.info("🔍 Super Resolution 적용 중...")
+                enhanced_image, sr_metrics = await self._apply_super_resolution(enhanced_image)
+                processing_log.append({'step': 'super_resolution', 'metrics': sr_metrics})
             
-            # M3 Max 병렬 처리 vs 순차 처리 선택
-            use_parallel_for_this_task = (
-                self.use_parallel and 
-                quality_level in ['high', 'ultra'] and
-                memory_info.get('available_gb', 16) > 8  # 8GB 이상 여유시
+            # Face Enhancement (얼굴 향상)
+            if options.get('face_enhancement', True) and self.gfpgan:
+                logger.info("👤 얼굴 향상 적용 중...")
+                enhanced_image, face_metrics = await self._apply_face_enhancement(enhanced_image)
+                processing_log.append({'step': 'face_enhancement', 'metrics': face_metrics})
+            
+            # Image Restoration (전체 복원)
+            if options.get('image_restoration', True) and self.codeformer:
+                logger.info("🔧 이미지 복원 적용 중...")
+                enhanced_image, restoration_metrics = await self._apply_image_restoration(enhanced_image)
+                processing_log.append({'step': 'image_restoration', 'metrics': restoration_metrics})
+            
+            # Color Correction (색상 보정)
+            if options.get('color_correction', True) and self.color_enhancer:
+                logger.info("🌈 색상 보정 적용 중...")
+                enhanced_image, color_metrics = await self._apply_color_correction(enhanced_image)
+                processing_log.append({'step': 'color_correction', 'metrics': color_metrics})
+            
+            # Noise Reduction (노이즈 제거)
+            if options.get('noise_reduction', True) and self.noise_reducer:
+                logger.info("🔇 노이즈 제거 적용 중...")
+                enhanced_image, noise_metrics = await self._apply_noise_reduction(enhanced_image)
+                processing_log.append({'step': 'noise_reduction', 'metrics': noise_metrics})
+            
+            # Edge Enhancement (엣지 향상)
+            if options.get('edge_enhancement', True) and self.edge_enhancer:
+                logger.info("📐 엣지 향상 적용 중...")
+                enhanced_image, edge_metrics = await self._apply_edge_enhancement(enhanced_image)
+                processing_log.append({'step': 'edge_enhancement', 'metrics': edge_metrics})
+            
+            # 4. 후처리 및 품질 평가
+            final_image = await self._postprocess_output(enhanced_image)
+            quality_score = await self._evaluate_enhancement_quality(
+                original=image_tensor, 
+                enhanced=final_image
             )
             
-            if use_parallel_for_this_task:
-                logger.info("🚀 M3 Max 병렬 처리 파이프라인 실행")
-                result_data = await self._process_parallel_pipeline(
-                    current_image, original_person, quality_settings
-                )
-            else:
-                logger.info("⚡ 순차 처리 파이프라인 실행")
-                result_data = await self._process_sequential_pipeline(
-                    current_image, original_person, quality_settings  
-                )
+            # 5. 결과 구성
+            processing_time = time.time() - start_time
             
-            # 최종 품질 평가 (기존 pipeline과 호환)
-            quality_assessment = await self._assess_final_quality(
-                fitted_image, result_data['enhanced_image'], step_results
-            )
-            
-            total_processing_time = time.time() - start_time
-            
-            # 기존 pipeline 형식과 호환되는 결과 생성
-            final_result = {
-                "success": True,
-                "step": "step_07_post_processing",
-                "step_name": "후처리 품질 향상",
-                
-                # 메인 결과
-                "enhanced_image": result_data['enhanced_image'],
-                "original_image": fitted_image,
-                
-                # 처리 정보 (기존 형식 호환)
-                "processing_info": {
-                    "step_number": 7,
-                    "quality_level": quality_level,
-                    "total_processing_time": total_processing_time,
-                    "device_used": self.device,
-                    "parallel_processing": use_parallel_for_this_task,
-                    "enhancements_applied": result_data['enhancements_applied'],
-                    "processing_times": result_data['processing_times'],
-                    "memory_peak_usage": memory_info.get('peak_usage_gb', 0),
-                    "models_used": self._get_models_used()
-                },
-                
-                # 품질 메트릭 (기존 형식 호환)
-                "quality_metrics": {
-                    "improvement_score": quality_assessment['overall_improvement'],
-                    "sharpness_gain": quality_assessment['sharpness_improvement'],
-                    "color_enhancement": quality_assessment['color_improvement'],
-                    "noise_reduction": quality_assessment['noise_reduction'],
-                    "detail_preservation": quality_assessment['detail_preservation'],
-                    "face_quality_gain": quality_assessment.get('face_quality_improvement', 0.0)
-                },
-                
-                # 모델 정보
-                "model_info": {
-                    "real_esrgan_used": self.real_esrgan is not None,
-                    "gfpgan_used": self.gfpgan is not None,
-                    "codeformer_used": self.codeformer is not None,
-                    "sr_scale_factor": quality_settings.get('sr_scale', 1),
-                    "enhancement_strength": quality_settings.get('enhancement_strength', 0.8)
-                },
-                
-                # 성능 정보
-                "performance_info": {
-                    "target_time": quality_settings.get('processing_time_target', 30.0),
-                    "actual_time": total_processing_time,
-                    "efficiency_ratio": quality_settings.get('processing_time_target', 30.0) / total_processing_time,
-                    "device_utilization": "high" if use_parallel_for_this_task else "medium"
-                }
+            result = {
+                'success': True,
+                'enhanced_image': final_image,
+                'original_shape': original_shape,
+                'final_shape': final_image.shape,
+                'quality_score': quality_score,
+                'processing_time': processing_time,
+                'enhancement_log': processing_log,
+                'applied_enhancements': [log['step'] for log in processing_log],
+                'target_achieved': quality_score >= quality_target,
+                'device_used': self.device,
+                'config_used': options
             }
             
-            # 성능 로깅 (기존 스타일 호환)
-            efficiency = final_result['performance_info']['efficiency_ratio']
-            logger.info(f"✅ Step 7 후처리 완료")
-            logger.info(f"   ⏱️ 처리 시간: {total_processing_time:.2f}초")
-            logger.info(f"   📈 개선도: {quality_assessment['overall_improvement']:.3f}")
-            logger.info(f"   🎯 효율성: {'우수' if efficiency >= 1.0 else '보통' if efficiency >= 0.5 else '개선필요'}")
-            logger.info(f"   🔧 적용된 향상: {len(result_data['enhancements_applied'])}개")
+            # 6. 통계 업데이트
+            self._update_processing_stats(processing_time, quality_score)
             
-            return final_result
+            logger.info(f"✅ 후처리 완료 - 품질: {quality_score:.3f}, 시간: {processing_time:.2f}초")
+            
+            return result
             
         except Exception as e:
-            logger.error(f"❌ Step 7 후처리 실패: {e}")
-            # 오류시 fallback 처리
-            return await self._fallback_processing(fitted_image, quality_level, error=str(e))
-    
-    async def _fallback_processing(
-        self, 
-        image: Union[Image.Image, torch.Tensor, np.ndarray], 
-        quality_level: str,
-        error: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """폴백 기본 처리"""
-        start_time = time.time()
-        
-        # 기본 이미지 정규화
-        processed_image = self._normalize_input(image)
-        if processed_image is None:
-            processed_image = Image.new('RGB', (512, 512), color='gray')
-        
-        # 기본 향상 처리
-        enhanced_image = processed_image.copy()
-        
-        # 간단한 향상들
-        try:
-            if quality_level in ['high', 'ultra']:
-                # 대비 향상
-                enhancer = ImageEnhance.Contrast(enhanced_image)
-                enhanced_image = enhancer.enhance(1.1)
-                
-                # 선명도 향상
-                enhancer = ImageEnhance.Sharpness(enhanced_image)
-                enhanced_image = enhancer.enhance(1.1)
-        except:
-            pass
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step": "step_07_post_processing",
-            "step_name": "후처리 품질 향상 (폴백)",
-            "enhanced_image": enhanced_image,
-            "original_image": image,
-            "processing_info": {
-                "step_number": 7,
-                "quality_level": quality_level,
-                "total_processing_time": processing_time,
-                "device_used": "cpu",
-                "parallel_processing": False,
-                "enhancements_applied": ["basic_enhancement"],
-                "processing_times": {"basic_enhancement": processing_time},
-                "fallback_reason": error or "모델 초기화 실패"
-            },
-            "quality_metrics": {
-                "improvement_score": 0.1,
-                "sharpness_gain": 0.05,
-                "color_enhancement": 0.05,
-                "noise_reduction": 0.0,
-                "detail_preservation": 0.95
-            }
-        }
-    
-    # 나머지 메서드들은 기본 구현으로 유지하되 임포트 오류 처리 추가
-    async def _process_parallel_pipeline(
-        self,
-        image: Image.Image,
-        reference: Optional[Image.Image],
-        settings: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """M3 Max 최적화 병렬 처리 파이프라인"""
-        
-        processing_times = {}
-        enhancements_applied = []
-        current_image = image.copy()
-        
-        # 1단계: Super Resolution (가장 무거운 작업 우선)
-        if self.enhancement_config.get('super_resolution') and self.real_esrgan:
-            step_start = time.time()
-            current_image = await self._apply_super_resolution(
-                current_image, settings.get('sr_scale', 2)
-            )
-            processing_times['super_resolution'] = time.time() - step_start
-            enhancements_applied.append('super_resolution')
-        
-        # 기본 향상들 (병렬이나 순차 처리)
-        basic_enhancements = [
-            ('color_correction', self._apply_color_correction, [current_image, reference, settings.get('enhancement_strength', 0.7)]),
-            ('noise_reduction', self._apply_noise_reduction, [current_image, settings.get('enhancement_strength', 0.7)]),
-            ('edge_enhancement', self._apply_edge_enhancement, [current_image, settings.get('enhancement_strength', 0.7)])
-        ]
-        
-        for enhancement_name, enhancement_func, args in basic_enhancements:
-            if self.enhancement_config.get(enhancement_name, True):
-                step_start = time.time()
-                try:
-                    result = await enhancement_func(*args)
-                    if result is not None:
-                        current_image = result
-                        enhancements_applied.append(enhancement_name)
-                except Exception as e:
-                    logger.warning(f"{enhancement_name} 실패: {e}")
-                processing_times[enhancement_name] = time.time() - step_start
-        
-        return {
-            'enhanced_image': current_image,
-            'enhancements_applied': enhancements_applied,
-            'processing_times': processing_times
-        }
-    
-    async def _process_sequential_pipeline(
-        self,
-        image: Image.Image,
-        reference: Optional[Image.Image],
-        settings: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """순차 처리 파이프라인 (호환성 모드)"""
-        return await self._process_parallel_pipeline(image, reference, settings)
-    
-    async def _apply_super_resolution(self, image: Image.Image, scale_factor: int) -> Image.Image:
-        """Super Resolution 적용 (폴백 포함)"""
-        if not self.real_esrgan or scale_factor <= 1:
-            return image
-        
-        try:
-            # 실제 Real-ESRGAN 처리는 복잡하므로 기본 업스케일링으로 폴백
-            width, height = image.size
-            new_size = (width * scale_factor, height * scale_factor)
-            return image.resize(new_size, Image.LANCZOS)
-        except Exception as e:
-            logger.warning(f"Super Resolution 실패: {e}")
-            return image
-    
-    async def _apply_color_correction(
-        self, 
-        image: Image.Image, 
-        reference: Optional[Image.Image], 
-        strength: float
-    ) -> Image.Image:
-        """색상 보정 적용"""
-        if not self.color_enhancer:
-            return image
-        
-        try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self.color_enhancer.enhance_colors, image, reference, strength
-            )
-        except Exception as e:
-            logger.warning(f"색상 보정 실패: {e}")
-            return image
-    
-    async def _apply_noise_reduction(self, image: Image.Image, strength: float) -> Image.Image:
-        """노이즈 제거 적용"""
-        if not self.noise_reducer:
-            return image
-        
-        try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self.noise_reducer.reduce_noise, image, strength
-            )
-        except Exception as e:
-            logger.warning(f"노이즈 제거 실패: {e}")
-            return image
-    
-    async def _apply_edge_enhancement(self, image: Image.Image, strength: float) -> Image.Image:
-        """엣지 향상 적용"""
-        if not self.edge_enhancer:
-            return image
-        
-        try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self.edge_enhancer.enhance_edges, image, strength
-            )
-        except Exception as e:
-            logger.warning(f"엣지 향상 실패: {e}")
-            return image
-    
-    def _normalize_input(self, image: Union[Image.Image, torch.Tensor, np.ndarray]) -> Optional[Image.Image]:
-        """입력 이미지를 PIL.Image로 정규화"""
-        if image is None:
-            return None
-        
-        try:
-            if isinstance(image, Image.Image):
-                return image.convert('RGB')
-            elif isinstance(image, torch.Tensor):
-                return self._tensor_to_pil(image)
-            elif isinstance(image, np.ndarray):
-                return Image.fromarray(image).convert('RGB')
-            else:
-                logger.warning(f"지원하지 않는 이미지 타입: {type(image)}")
-                return None
-        except Exception as e:
-            logger.error(f"이미지 정규화 실패: {e}")
-            return None
-    
-    def _tensor_to_pil(self, tensor: torch.Tensor) -> Image.Image:
-        """텐서를 PIL 이미지로 변환"""
-        try:
-            if tensor.dim() == 4:
-                tensor = tensor.squeeze(0)
-            if tensor.shape[0] <= 3:
-                tensor = tensor.permute(1, 2, 0)
-            
-            tensor = torch.clamp(tensor, 0, 1)
-            array = (tensor.cpu().numpy() * 255).astype(np.uint8)
-            return Image.fromarray(array)
-        except Exception as e:
-            logger.error(f"텐서 변환 실패: {e}")
-            return Image.new('RGB', (512, 512), color='gray')
-    
-    async def _assess_final_quality(
-        self, 
-        original: Union[Image.Image, torch.Tensor, np.ndarray], 
-        enhanced: Image.Image, 
-        step_results: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, float]:
-        """최종 품질 평가"""
-        try:
-            # 원본 이미지 정규화
-            orig_image = self._normalize_input(original)
-            if orig_image is None:
-                return self._default_quality_metrics()
-            
-            # 기본적인 품질 메트릭 계산
-            orig_array = np.array(orig_image)
-            enh_array = np.array(enhanced)
-            
-            # 크기 맞추기
-            if orig_array.shape != enh_array.shape:
-                enhanced_resized = enhanced.resize(orig_image.size, Image.LANCZOS)
-                enh_array = np.array(enhanced_resized)
-            
-            # 선명도 개선
-            orig_sharpness = self._calculate_sharpness(orig_array)
-            enh_sharpness = self._calculate_sharpness(enh_array)
-            sharpness_improvement = (enh_sharpness - orig_sharpness) / (orig_sharpness + 1e-6)
-            
-            # 색상 향상
-            color_improvement = self._calculate_color_enhancement(orig_array, enh_array)
-            
-            # 노이즈 감소
-            noise_reduction = self._calculate_noise_reduction(orig_array, enh_array)
-            
-            # 디테일 보존
-            detail_preservation = self._calculate_detail_preservation(orig_array, enh_array)
-            
-            # 전체 개선도
-            overall_improvement = (
-                sharpness_improvement * 0.3 +
-                color_improvement * 0.25 +
-                noise_reduction * 0.25 +
-                detail_preservation * 0.2
-            )
+            error_msg = f"후처리 실패: {str(e)}"
+            logger.error(error_msg)
             
             return {
-                'overall_improvement': float(max(0, min(1, overall_improvement))),
-                'sharpness_improvement': float(max(0, min(1, sharpness_improvement))),
-                'color_improvement': float(max(0, min(1, color_improvement))),
-                'noise_reduction': float(max(0, min(1, noise_reduction))),
-                'detail_preservation': float(max(0, min(1, detail_preservation)))
+                'success': False,
+                'error': error_msg,
+                'processing_time': time.time() - start_time
             }
+    
+    async def _preprocess_input(self, input_image: Union[np.ndarray, torch.Tensor, str]) -> torch.Tensor:
+        """입력 전처리"""
+        try:
+            if isinstance(input_image, str):
+                # Base64 디코딩
+                import base64
+                import io
+                from PIL import Image
+                
+                if input_image.startswith('data:image'):
+                    header, data = input_image.split(',', 1)
+                    image_data = base64.b64decode(data)
+                else:
+                    image_data = base64.b64decode(input_image)
+                
+                pil_image = Image.open(io.BytesIO(image_data))
+                image_np = np.array(pil_image)
+                
+            elif isinstance(input_image, np.ndarray):
+                image_np = input_image.copy()
+                
+            elif isinstance(input_image, torch.Tensor):
+                return input_image.to(self.device)
+                
+            else:
+                raise ValueError(f"지원하지 않는 입력 타입: {type(input_image)}")
+            
+            # NumPy를 PyTorch 텐서로 변환
+            if len(image_np.shape) == 3 and image_np.shape[2] == 3:
+                # HWC -> CHW
+                tensor = torch.from_numpy(image_np.transpose(2, 0, 1)).float()
+                
+                # 정규화 (0-255 -> 0-1)
+                if tensor.max() > 1.0:
+                    tensor = tensor / 255.0
+                
+                # 배치 차원 추가
+                if len(tensor.shape) == 3:
+                    tensor = tensor.unsqueeze(0)
+                
+                return tensor.to(self.device)
+            
+            else:
+                raise ValueError(f"지원하지 않는 이미지 형태: {image_np.shape}")
+                
+        except Exception as e:
+            logger.error(f"입력 전처리 실패: {e}")
+            # 기본 더미 텐서 반환
+            return torch.zeros(1, 3, 512, 512, device=self.device)
+    
+    async def _apply_super_resolution(self, image: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """Super Resolution 적용"""
+        try:
+            start_time = time.time()
+            
+            if hasattr(self.real_esrgan, 'enhance'):
+                # 실제 Real-ESRGAN 모델
+                enhanced = await asyncio.to_thread(self.real_esrgan.enhance, image)
+            else:
+                # 폴백: 기본 업스케일링
+                enhanced = await asyncio.to_thread(self.real_esrgan.upscale, image)
+            
+            processing_time = time.time() - start_time
+            
+            # 품질 메트릭 계산
+            metrics = {
+                'processing_time': processing_time,
+                'scale_factor': enhanced.shape[-1] / image.shape[-1],
+                'improvement_score': self._calculate_sharpness_improvement(image, enhanced)
+            }
+            
+            return enhanced, metrics
+            
+        except Exception as e:
+            logger.warning(f"Super Resolution 실패: {e}")
+            return image, {'error': str(e)}
+    
+    async def _apply_face_enhancement(self, image: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """얼굴 향상 적용"""
+        try:
+            start_time = time.time()
+            
+            if hasattr(self.gfpgan, 'enhance'):
+                enhanced = await asyncio.to_thread(self.gfpgan.enhance, image)
+            else:
+                enhanced = await asyncio.to_thread(self.gfpgan.process, image)
+            
+            processing_time = time.time() - start_time
+            
+            metrics = {
+                'processing_time': processing_time,
+                'face_regions_processed': self._count_face_regions(image),
+                'enhancement_strength': 0.7  # 기본값
+            }
+            
+            return enhanced, metrics
+            
+        except Exception as e:
+            logger.warning(f"얼굴 향상 실패: {e}")
+            return image, {'error': str(e)}
+    
+    async def _apply_image_restoration(self, image: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """이미지 복원 적용"""
+        try:
+            start_time = time.time()
+            
+            if hasattr(self.codeformer, 'restore'):
+                enhanced = await asyncio.to_thread(self.codeformer.restore, image)
+            else:
+                enhanced = await asyncio.to_thread(self.codeformer.process, image)
+            
+            processing_time = time.time() - start_time
+            
+            metrics = {
+                'processing_time': processing_time,
+                'artifacts_removed': self._estimate_artifacts_removed(image, enhanced),
+                'detail_preservation': self._calculate_detail_preservation(image, enhanced)
+            }
+            
+            return enhanced, metrics
+            
+        except Exception as e:
+            logger.warning(f"이미지 복원 실패: {e}")
+            return image, {'error': str(e)}
+    
+    async def _apply_color_correction(self, image: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """색상 보정 적용"""
+        try:
+            start_time = time.time()
+            
+            enhanced = await asyncio.to_thread(self.color_enhancer.correct_colors, image)
+            
+            processing_time = time.time() - start_time
+            
+            metrics = {
+                'processing_time': processing_time,
+                'color_balance_improvement': self._calculate_color_balance_improvement(image, enhanced),
+                'saturation_adjustment': self._calculate_saturation_change(image, enhanced)
+            }
+            
+            return enhanced, metrics
+            
+        except Exception as e:
+            logger.warning(f"색상 보정 실패: {e}")
+            return image, {'error': str(e)}
+    
+    async def _apply_noise_reduction(self, image: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """노이즈 제거 적용"""
+        try:
+            start_time = time.time()
+            
+            enhanced = await asyncio.to_thread(self.noise_reducer.reduce_noise, image)
+            
+            processing_time = time.time() - start_time
+            
+            metrics = {
+                'processing_time': processing_time,
+                'noise_reduction_amount': self._calculate_noise_reduction(image, enhanced),
+                'detail_preservation': self._calculate_detail_preservation(image, enhanced)
+            }
+            
+            return enhanced, metrics
+            
+        except Exception as e:
+            logger.warning(f"노이즈 제거 실패: {e}")
+            return image, {'error': str(e)}
+    
+    async def _apply_edge_enhancement(self, image: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """엣지 향상 적용"""
+        try:
+            start_time = time.time()
+            
+            enhanced = await asyncio.to_thread(self.edge_enhancer.enhance_edges, image)
+            
+            processing_time = time.time() - start_time
+            
+            metrics = {
+                'processing_time': processing_time,
+                'edge_strength_improvement': self._calculate_edge_improvement(image, enhanced),
+                'sharpness_gain': self._calculate_sharpness_improvement(image, enhanced)
+            }
+            
+            return enhanced, metrics
+            
+        except Exception as e:
+            logger.warning(f"엣지 향상 실패: {e}")
+            return image, {'error': str(e)}
+    
+    async def _postprocess_output(self, image: torch.Tensor) -> torch.Tensor:
+        """출력 후처리"""
+        try:
+            # 텐서 정규화 및 클리핑
+            image = torch.clamp(image, 0.0, 1.0)
+            
+            # 최종 품질 조정
+            if self.enhancement_config.get('final_adjustment', True):
+                image = self._apply_final_adjustments(image)
+            
+            return image
+            
+        except Exception as e:
+            logger.warning(f"출력 후처리 실패: {e}")
+            return image
+    
+    def _apply_final_adjustments(self, image: torch.Tensor) -> torch.Tensor:
+        """최종 조정 적용"""
+        try:
+            # 약간의 선명도 향상
+            if self.enhancement_config.get('final_sharpening', True):
+                image = self._apply_unsharp_mask(image, strength=0.2)
+            
+            # 색상 미세 조정
+            if self.enhancement_config.get('final_color_boost', True):
+                image = self._boost_colors(image, factor=0.1)
+            
+            return image
+            
+        except Exception as e:
+            logger.warning(f"최종 조정 실패: {e}")
+            return image
+    
+    def _apply_unsharp_mask(self, image: torch.Tensor, strength: float = 0.2) -> torch.Tensor:
+        """언샵 마스크 적용"""
+        try:
+            # 가우시안 블러
+            blurred = F.conv2d(
+                image,
+                self._get_gaussian_kernel(5, 1.0).to(image.device),
+                padding=2,
+                groups=image.shape[1]
+            )
+            
+            # 언샵 마스크
+            unsharp = image + strength * (image - blurred)
+            
+            return torch.clamp(unsharp, 0.0, 1.0)
+            
+        except Exception as e:
+            logger.warning(f"언샵 마스크 실패: {e}")
+            return image
+    
+    def _boost_colors(self, image: torch.Tensor, factor: float = 0.1) -> torch.Tensor:
+        """색상 부스트"""
+        try:
+            # RGB를 HSV로 변환 (근사)
+            # 단순화된 채도 증가
+            mean_brightness = torch.mean(image, dim=1, keepdim=True)
+            color_deviation = image - mean_brightness
+            
+            # 채도 증가
+            boosted = image + factor * color_deviation
+            
+            return torch.clamp(boosted, 0.0, 1.0)
+            
+        except Exception as e:
+            logger.warning(f"색상 부스트 실패: {e}")
+            return image
+    
+    def _get_gaussian_kernel(self, size: int, sigma: float) -> torch.Tensor:
+        """가우시안 커널 생성"""
+        coords = torch.arange(size, dtype=torch.float32)
+        coords -= size // 2
+        
+        g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+        g /= g.sum()
+        
+        # 2D 커널
+        kernel = g[:, None] * g[None, :]
+        
+        # 3채널용으로 확장
+        kernel = kernel.expand(3, 1, size, size)
+        
+        return kernel
+    
+    async def _evaluate_enhancement_quality(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """향상 품질 평가"""
+        try:
+            # 여러 품질 메트릭 조합
+            
+            # 1. 선명도 개선
+            sharpness_gain = self._calculate_sharpness_improvement(original, enhanced)
+            
+            # 2. 디테일 보존
+            detail_preservation = self._calculate_detail_preservation(original, enhanced)
+            
+            # 3. 색상 자연스러움
+            color_naturalness = self._calculate_color_naturalness(enhanced)
+            
+            # 4. 아티팩트 수준
+            artifact_level = self._estimate_artifact_level(enhanced)
+            
+            # 종합 점수
+            quality_score = (
+                sharpness_gain * 0.3 +
+                detail_preservation * 0.25 +
+                color_naturalness * 0.25 +
+                (1.0 - artifact_level) * 0.2
+            )
+            
+            return max(0.0, min(1.0, quality_score))
             
         except Exception as e:
             logger.warning(f"품질 평가 실패: {e}")
-            return self._default_quality_metrics()
+            return 0.5
     
-    def _default_quality_metrics(self) -> Dict[str, float]:
-        """기본 품질 메트릭"""
-        return {
-            'overall_improvement': 0.5,
-            'sharpness_improvement': 0.2,
-            'color_improvement': 0.15,
-            'noise_reduction': 0.1,
-            'detail_preservation': 0.9
-        }
-    
-    def _calculate_sharpness(self, image: np.ndarray) -> float:
-        """라플라시안 분산으로 선명도 계산"""
+    def _calculate_sharpness_improvement(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """선명도 개선 계산"""
         try:
-            if len(image.shape) == 3:
-                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            # 라플라시안 분산으로 선명도 측정
+            laplacian_kernel = torch.tensor([[[0, -1, 0], [-1, 4, -1], [0, -1, 0]]], 
+                                          dtype=torch.float32, device=original.device)
+            
+            orig_sharpness = self._calculate_laplacian_variance(original, laplacian_kernel)
+            enhanced_sharpness = self._calculate_laplacian_variance(enhanced, laplacian_kernel)
+            
+            if orig_sharpness > 0:
+                improvement = (enhanced_sharpness - orig_sharpness) / orig_sharpness
+                return max(0.0, min(1.0, improvement + 0.5))  # 0.5 기준점
+            
+            return 0.5
+            
+        except Exception as e:
+            logger.warning(f"선명도 개선 계산 실패: {e}")
+            return 0.5
+    
+    def _calculate_laplacian_variance(self, image: torch.Tensor, kernel: torch.Tensor) -> float:
+        """라플라시안 분산 계산"""
+        try:
+            # 그레이스케일 변환
+            if image.shape[1] == 3:
+                gray = 0.299 * image[:, 0:1] + 0.587 * image[:, 1:2] + 0.114 * image[:, 2:3]
             else:
                 gray = image
-            return cv2.Laplacian(gray, cv2.CV_64F).var()
-        except:
-            return 100.0  # 기본값
+            
+            # 라플라시안 적용
+            laplacian = F.conv2d(gray, kernel.unsqueeze(0), padding=1)
+            
+            return float(torch.var(laplacian))
+            
+        except Exception as e:
+            logger.warning(f"라플라시안 분산 계산 실패: {e}")
+            return 0.0
     
-    def _calculate_color_enhancement(self, original: np.ndarray, enhanced: np.ndarray) -> float:
-        """색상 향상도 계산"""
-        try:
-            # 채도 비교
-            orig_hsv = cv2.cvtColor(original, cv2.COLOR_RGB2HSV)
-            enh_hsv = cv2.cvtColor(enhanced, cv2.COLOR_RGB2HSV)
-            
-            orig_sat = np.mean(orig_hsv[:, :, 1])
-            enh_sat = np.mean(enh_hsv[:, :, 1])
-            
-            return (enh_sat - orig_sat) / (orig_sat + 1e-6)
-        except:
-            return 0.15
-    
-    def _calculate_noise_reduction(self, original: np.ndarray, enhanced: np.ndarray) -> float:
-        """노이즈 감소량 계산"""
-        try:
-            # 고주파 성분 비교
-            orig_gray = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY) if len(original.shape) == 3 else original
-            enh_gray = cv2.cvtColor(enhanced, cv2.COLOR_RGB2GRAY) if len(enhanced.shape) == 3 else enhanced
-            
-            orig_noise = np.std(cv2.Laplacian(orig_gray, cv2.CV_64F))
-            enh_noise = np.std(cv2.Laplacian(enh_gray, cv2.CV_64F))
-            
-            return (orig_noise - enh_noise) / (orig_noise + 1e-6)
-        except:
-            return 0.1
-    
-    def _calculate_detail_preservation(self, original: np.ndarray, enhanced: np.ndarray) -> float:
+    def _calculate_detail_preservation(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
         """디테일 보존도 계산"""
         try:
-            # 간단한 구조적 유사도
-            if len(original.shape) == 3:
-                orig_gray = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY)
-            else:
-                orig_gray = original
-                
-            if len(enhanced.shape) == 3:
-                enh_gray = cv2.cvtColor(enhanced, cv2.COLOR_RGB2GRAY)
-            else:
-                enh_gray = enhanced
+            # 고주파 성분 비교
+            orig_details = self._extract_high_frequency(original)
+            enhanced_details = self._extract_high_frequency(enhanced)
             
-            # 크기 맞추기
-            if orig_gray.shape != enh_gray.shape:
-                enh_gray = cv2.resize(enh_gray, orig_gray.shape[::-1])
+            # 상관관계 계산
+            correlation = F.cosine_similarity(
+                orig_details.flatten(), 
+                enhanced_details.flatten(), 
+                dim=0
+            )
             
-            # 단순 상관계수
-            correlation = np.corrcoef(orig_gray.flatten(), enh_gray.flatten())[0, 1]
-            return abs(correlation)
-        except:
-            return 0.9
+            return float((correlation + 1.0) / 2.0)  # -1~1을 0~1로 변환
+            
+        except Exception as e:
+            logger.warning(f"디테일 보존도 계산 실패: {e}")
+            return 0.5
     
-    def _get_models_used(self) -> List[str]:
-        """사용된 모델 목록"""
-        models = []
-        if self.real_esrgan is not None:
-            models.append("Real-ESRGAN")
-        if self.gfpgan is not None:
-            models.append("GFPGAN")
-        if self.codeformer is not None:
-            models.append("CodeFormer")
-        if self.color_enhancer is not None:
-            models.append("ColorEnhancer")
-        if self.noise_reducer is not None:
-            models.append("NoiseReducer")
-        if self.edge_enhancer is not None:
-            models.append("EdgeEnhancer")
-        return models
+    def _extract_high_frequency(self, image: torch.Tensor) -> torch.Tensor:
+        """고주파 성분 추출"""
+        try:
+            # 고주파 필터 (라플라시안)
+            kernel = torch.tensor([[[0, -1, 0], [-1, 4, -1], [0, -1, 0]]], 
+                                dtype=torch.float32, device=image.device)
+            
+            if image.shape[1] == 3:
+                # 그레이스케일 변환
+                gray = 0.299 * image[:, 0:1] + 0.587 * image[:, 1:2] + 0.114 * image[:, 2:3]
+            else:
+                gray = image
+            
+            high_freq = F.conv2d(gray, kernel.unsqueeze(0), padding=1)
+            
+            return high_freq
+            
+        except Exception as e:
+            logger.warning(f"고주파 성분 추출 실패: {e}")
+            return torch.zeros_like(image[:, 0:1])
     
-    def _load_real_esrgan_fallback(self, model_path: str):
-        """Real-ESRGAN 폴백 로드"""
-        # 실제 구현에서는 Real-ESRGAN 모델을 로드
-        # 여기서는 플레이스홀더
-        logger.info("Real-ESRGAN 폴백 로더 사용")
-        return BasicSuperResolution()
+    def _calculate_color_naturalness(self, image: torch.Tensor) -> float:
+        """색상 자연스러움 계산"""
+        try:
+            # RGB 값 분포 분석
+            r_mean = torch.mean(image[:, 0])
+            g_mean = torch.mean(image[:, 1])
+            b_mean = torch.mean(image[:, 2])
+            
+            # 색상 균형 검사 (자연스러운 이미지는 적절한 균형을 가짐)
+            color_balance = 1.0 - torch.std(torch.tensor([r_mean, g_mean, b_mean]))
+            
+            # 채도 검사 (과도한 채도는 부자연스러움)
+            saturation = torch.std(image, dim=1).mean()
+            saturation_score = 1.0 - torch.clamp(saturation - 0.2, 0, 1)
+            
+            # 조합
+            naturalness = (color_balance * 0.6 + saturation_score * 0.4)
+            
+            return float(torch.clamp(naturalness, 0.0, 1.0))
+            
+        except Exception as e:
+            logger.warning(f"색상 자연스러움 계산 실패: {e}")
+            return 0.5
     
-    async def get_model_info(self) -> Dict[str, Any]:
-        """모델 정보 반환"""
+    def _estimate_artifact_level(self, image: torch.Tensor) -> float:
+        """아티팩트 수준 추정"""
+        try:
+            # 블로킹 아티팩트 검출
+            blocking_score = self._detect_blocking_artifacts(image)
+            
+            # 링잉 아티팩트 검출
+            ringing_score = self._detect_ringing_artifacts(image)
+            
+            # 전체 아티팩트 수준
+            artifact_level = (blocking_score + ringing_score) / 2.0
+            
+            return float(torch.clamp(artifact_level, 0.0, 1.0))
+            
+        except Exception as e:
+            logger.warning(f"아티팩트 수준 추정 실패: {e}")
+            return 0.3
+    
+    def _detect_blocking_artifacts(self, image: torch.Tensor) -> torch.Tensor:
+        """블로킹 아티팩트 검출"""
+        try:
+            # 8x8 블록 경계 불연속성 검사
+            b, c, h, w = image.shape
+            
+            # 수직 경계 검사
+            vertical_diff = torch.abs(image[:, :, :, 8::8] - image[:, :, :, 7::8])
+            
+            # 수평 경계 검사  
+            horizontal_diff = torch.abs(image[:, :, 8::8, :] - image[:, :, 7::8, :])
+            
+            # 평균 불연속성
+            blocking_level = (torch.mean(vertical_diff) + torch.mean(horizontal_diff)) / 2.0
+            
+            return blocking_level
+            
+        except Exception as e:
+            logger.warning(f"블로킹 아티팩트 검출 실패: {e}")
+            return torch.tensor(0.0)
+    
+    def _detect_ringing_artifacts(self, image: torch.Tensor) -> torch.Tensor:
+        """링잉 아티팩트 검출"""
+        try:
+            # 라플라시안으로 엣지 주변 진동 검출
+            laplacian_kernel = torch.tensor([[[0, -1, 0], [-1, 4, -1], [0, -1, 0]]], 
+                                          dtype=torch.float32, device=image.device)
+            
+            # 그레이스케일 변환
+            if image.shape[1] == 3:
+                gray = 0.299 * image[:, 0:1] + 0.587 * image[:, 1:2] + 0.114 * image[:, 2:3]
+            else:
+                gray = image
+            
+            # 라플라시안 적용
+            laplacian = F.conv2d(gray, laplacian_kernel.unsqueeze(0), padding=1)
+            
+            # 링잉은 라플라시안의 과도한 변동으로 나타남
+            ringing_level = torch.std(laplacian)
+            
+            return ringing_level / 10.0  # 정규화
+            
+        except Exception as e:
+            logger.warning(f"링잉 아티팩트 검출 실패: {e}")
+            return torch.tensor(0.0)
+    
+    def _count_face_regions(self, image: torch.Tensor) -> int:
+        """얼굴 영역 카운트 (간단 버전)"""
+        try:
+            # 간단한 얼굴 영역 추정
+            # 실제로는 얼굴 검출기를 사용해야 함
+            return 1  # 기본값
+            
+        except Exception as e:
+            logger.warning(f"얼굴 영역 카운트 실패: {e}")
+            return 0
+    
+    def _estimate_artifacts_removed(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """제거된 아티팩트 추정"""
+        try:
+            orig_artifacts = self._estimate_artifact_level(original)
+            enhanced_artifacts = self._estimate_artifact_level(enhanced)
+            
+            artifacts_removed = float(orig_artifacts - enhanced_artifacts)
+            
+            return max(0.0, artifacts_removed)
+            
+        except Exception as e:
+            logger.warning(f"아티팩트 제거 추정 실패: {e}")
+            return 0.0
+    
+    def _calculate_color_balance_improvement(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """색상 균형 개선 계산"""
+        try:
+            orig_balance = self._calculate_color_naturalness(original)
+            enhanced_balance = self._calculate_color_naturalness(enhanced)
+            
+            improvement = enhanced_balance - orig_balance
+            
+            return float(max(0.0, improvement))
+            
+        except Exception as e:
+            logger.warning(f"색상 균형 개선 계산 실패: {e}")
+            return 0.0
+    
+    def _calculate_saturation_change(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """채도 변화 계산"""
+        try:
+            orig_saturation = torch.std(original, dim=1).mean()
+            enhanced_saturation = torch.std(enhanced, dim=1).mean()
+            
+            saturation_change = float(enhanced_saturation - orig_saturation)
+            
+            return saturation_change
+            
+        except Exception as e:
+            logger.warning(f"채도 변화 계산 실패: {e}")
+            return 0.0
+    
+    def _calculate_noise_reduction(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """노이즈 감소량 계산"""
+        try:
+            # 고주파 노이즈 비교
+            orig_noise = torch.std(self._extract_high_frequency(original))
+            enhanced_noise = torch.std(self._extract_high_frequency(enhanced))
+            
+            noise_reduction = float(orig_noise - enhanced_noise)
+            
+            return max(0.0, noise_reduction)
+            
+        except Exception as e:
+            logger.warning(f"노이즈 감소량 계산 실패: {e}")
+            return 0.0
+    
+    def _calculate_edge_improvement(self, original: torch.Tensor, enhanced: torch.Tensor) -> float:
+        """엣지 개선 계산"""
+        try:
+            # 엣지 강도 비교
+            orig_edges = self._calculate_edge_strength(original)
+            enhanced_edges = self._calculate_edge_strength(enhanced)
+            
+            edge_improvement = float(enhanced_edges - orig_edges)
+            
+            return max(0.0, edge_improvement)
+            
+        except Exception as e:
+            logger.warning(f"엣지 개선 계산 실패: {e}")
+            return 0.0
+    
+    def _calculate_edge_strength(self, image: torch.Tensor) -> torch.Tensor:
+        """엣지 강도 계산"""
+        try:
+            # Sobel 필터
+            sobel_x = torch.tensor([[[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]], 
+                                 dtype=torch.float32, device=image.device)
+            sobel_y = torch.tensor([[[-1, -2, -1], [0, 0, 0], [1, 2, 1]]], 
+                                 dtype=torch.float32, device=image.device)
+            
+            # 그레이스케일 변환
+            if image.shape[1] == 3:
+                gray = 0.299 * image[:, 0:1] + 0.587 * image[:, 1:2] + 0.114 * image[:, 2:3]
+            else:
+                gray = image
+            
+            # Sobel 적용
+            edge_x = F.conv2d(gray, sobel_x.unsqueeze(0), padding=1)
+            edge_y = F.conv2d(gray, sobel_y.unsqueeze(0), padding=1)
+            
+            # 엣지 크기
+            edge_magnitude = torch.sqrt(edge_x ** 2 + edge_y ** 2)
+            
+            return torch.mean(edge_magnitude)
+            
+        except Exception as e:
+            logger.warning(f"엣지 강도 계산 실패: {e}")
+            return torch.tensor(0.0)
+    
+    def _update_processing_stats(self, processing_time: float, quality_score: float):
+        """처리 통계 업데이트"""
+        try:
+            self.processing_stats['total_images'] += 1
+            
+            # 평균 시간 업데이트
+            total_images = self.processing_stats['total_images']
+            old_avg_time = self.processing_stats['average_time']
+            self.processing_stats['average_time'] = (
+                (old_avg_time * (total_images - 1) + processing_time) / total_images
+            )
+            
+            # 성공률 업데이트 (품질 점수 0.6 이상을 성공으로 간주)
+            success_count = self.processing_stats.get('success_count', 0)
+            if quality_score >= 0.6:
+                success_count += 1
+            
+            self.processing_stats['success_count'] = success_count
+            self.processing_stats['enhancement_success_rate'] = success_count / total_images
+            
+        except Exception as e:
+            logger.warning(f"통계 업데이트 실패: {e}")
+    
+    async def get_processing_stats(self) -> Dict[str, Any]:
+        """처리 통계 반환"""
         return {
-            "step_name": "PostProcessing",
-            "step_number": 7,
-            "device": self.device,
-            "use_mps": self.use_mps,
-            "initialized": self.is_initialized,
-            "parallel_processing": self.use_parallel,
-            "max_workers": self.max_workers,
-            "models_loaded": {
-                "real_esrgan": self.real_esrgan is not None,
-                "gfpgan": self.gfpgan is not None,
-                "codeformer": self.codeformer is not None
+            **self.processing_stats,
+            'device': self.device,
+            'models_loaded': {
+                'real_esrgan': self.real_esrgan is not None,
+                'gfpgan': self.gfpgan is not None,
+                'codeformer': self.codeformer is not None,
+                'color_enhancer': self.color_enhancer is not None,
+                'noise_reducer': self.noise_reducer is not None,
+                'edge_enhancer': self.edge_enhancer is not None
             },
-            "enhancement_config": self.enhancement_config,
-            "quality_presets": list(self.quality_presets.keys())
+            'is_initialized': self.is_initialized
         }
     
     async def cleanup(self):
         """리소스 정리"""
-        models = [self.real_esrgan, self.gfpgan, self.codeformer]
-        
-        for model in models:
-            if model:
-                try:
-                    del model
-                except:
-                    pass
-        
-        self.real_esrgan = None
-        self.gfpgan = None
-        self.codeformer = None
-        self.color_enhancer = None
-        self.noise_reducer = None
-        self.edge_enhancer = None
-        
-        self.is_initialized = False
-        logger.info("🧹 Step 7 후처리 리소스 정리 완료")
+        try:
+            # 모델 정리
+            if self.real_esrgan and hasattr(self.real_esrgan, 'cleanup'):
+                await self.real_esrgan.cleanup()
+            
+            if self.gfpgan and hasattr(self.gfpgan, 'cleanup'):
+                await self.gfpgan.cleanup()
+            
+            if self.codeformer and hasattr(self.codeformer, 'cleanup'):
+                await self.codeformer.cleanup()
+            
+            # 메모리 정리
+            if self.memory_manager:
+                await self.memory_manager.cleanup()
+            
+            # GPU 메모리 정리
+            if self.use_mps:
+                torch.mps.empty_cache()
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            self.is_initialized = False
+            logger.info("✅ Step 7 후처리 리소스 정리 완료")
+            
+        except Exception as e:
+            logger.warning(f"리소스 정리 중 오류: {e}")
 
 
-# 헬퍼 클래스들 (폴백 구현)
+# === 폴백 클래스들 ===
 
-class BasicSuperResolution:
-    """기본 Super Resolution (Real-ESRGAN 폴백)"""
-    def enhance(self, image: np.ndarray, scale: int = 2) -> np.ndarray:
-        h, w = image.shape[:2]
-        return cv2.resize(image, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
+class BasicUpscaler:
+    """기본 업스케일러 (Real-ESRGAN 폴백)"""
+    
+    def __init__(self, scale_factor: int = 2):
+        self.scale_factor = scale_factor
+    
+    def upscale(self, image: torch.Tensor) -> torch.Tensor:
+        """기본 바이큐빅 업스케일링"""
+        try:
+            b, c, h, w = image.shape
+            new_h, new_w = h * self.scale_factor, w * self.scale_factor
+            
+            upscaled = F.interpolate(
+                image, 
+                size=(new_h, new_w), 
+                mode='bicubic', 
+                align_corners=False
+            )
+            
+            return upscaled
+            
+        except Exception as e:
+            logger.warning(f"기본 업스케일링 실패: {e}")
+            return image
+
 
 class BasicFaceEnhancer:
-    """기본 얼굴 향상 (GFPGAN 폴백)"""
-    def enhance(self, image: np.ndarray) -> np.ndarray:
-        return image  # 플레이스홀더
+    """기본 얼굴 향상기 (GFPGAN 폴백)"""
+    
+    def process(self, image: torch.Tensor) -> torch.Tensor:
+        """기본 얼굴 향상"""
+        try:
+            # 간단한 선명화 적용
+            kernel = torch.tensor([[[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]]], 
+                                dtype=torch.float32, device=image.device) / 8.0
+            
+            if image.shape[1] == 3:
+                enhanced = F.conv2d(image, kernel.repeat(3, 1, 1, 1), padding=1, groups=3)
+            else:
+                enhanced = F.conv2d(image, kernel, padding=1)
+            
+            return torch.clamp(enhanced, 0.0, 1.0)
+            
+        except Exception as e:
+            logger.warning(f"기본 얼굴 향상 실패: {e}")
+            return image
+
 
 class BasicImageRestorer:
-    """기본 이미지 복원 (CodeFormer 폴백)"""
-    def restore(self, image: np.ndarray) -> np.ndarray:
-        return image  # 플레이스홀더
+    """기본 이미지 복원기 (CodeFormer 폴백)"""
+    
+    def process(self, image: torch.Tensor) -> torch.Tensor:
+        """기본 이미지 복원"""
+        try:
+            # 가우시안 노이즈 제거
+            kernel_size = 3
+            sigma = 0.5
+            
+            # 가우시안 커널 생성
+            coords = torch.arange(kernel_size, dtype=torch.float32, device=image.device)
+            coords -= kernel_size // 2
+            g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+            g /= g.sum()
+            
+            kernel = g[:, None] * g[None, :]
+            kernel = kernel.expand(image.shape[1], 1, kernel_size, kernel_size)
+            
+            # 적용
+            restored = F.conv2d(image, kernel, padding=kernel_size//2, groups=image.shape[1])
+            
+            return restored
+            
+        except Exception as e:
+            logger.warning(f"기본 이미지 복원 실패: {e}")
+            return image
+
 
 class ColorEnhancer:
     """색상 향상기"""
     
-    def enhance_colors(
-        self, 
-        image: Image.Image, 
-        reference: Optional[Image.Image] = None, 
-        strength: float = 0.7
-    ) -> Image.Image:
-        """색상 향상"""
+    def correct_colors(self, image: torch.Tensor) -> torch.Tensor:
+        """색상 보정"""
         try:
-            # 대비 향상
-            enhancer = ImageEnhance.Contrast(image)
-            enhanced = enhancer.enhance(1.0 + strength * 0.2)
+            # 간단한 색상 균형 조정
+            r_mean = torch.mean(image[:, 0])
+            g_mean = torch.mean(image[:, 1])
+            b_mean = torch.mean(image[:, 2])
             
-            # 채도 조정
-            enhancer = ImageEnhance.Color(enhanced)
-            enhanced = enhancer.enhance(1.0 + strength * 0.15)
+            overall_mean = (r_mean + g_mean + b_mean) / 3.0
             
-            # 밝기 조정 (필요시)
-            if reference:
-                brightness_factor = self._calculate_brightness_adjustment(image, reference)
-                enhancer = ImageEnhance.Brightness(enhanced)
-                enhanced = enhancer.enhance(brightness_factor)
+            # 각 채널 조정
+            r_factor = overall_mean / (r_mean + 1e-8)
+            g_factor = overall_mean / (g_mean + 1e-8)
+            b_factor = overall_mean / (b_mean + 1e-8)
             
-            return enhanced
+            # 부드러운 조정 (너무 급격하지 않게)
+            r_factor = 1.0 + 0.1 * (r_factor - 1.0)
+            g_factor = 1.0 + 0.1 * (g_factor - 1.0)
+            b_factor = 1.0 + 0.1 * (b_factor - 1.0)
+            
+            corrected = image.clone()
+            corrected[:, 0] *= r_factor
+            corrected[:, 1] *= g_factor
+            corrected[:, 2] *= b_factor
+            
+            return torch.clamp(corrected, 0.0, 1.0)
             
         except Exception as e:
-            logger.warning(f"색상 향상 실패: {e}")
+            logger.warning(f"색상 보정 실패: {e}")
             return image
-    
-    def _calculate_brightness_adjustment(self, image: Image.Image, reference: Image.Image) -> float:
-        """밝기 조정 계산"""
-        try:
-            img_brightness = np.mean(np.array(image.convert('L')))
-            ref_brightness = np.mean(np.array(reference.convert('L')))
-            
-            ratio = ref_brightness / (img_brightness + 1e-6)
-            return max(0.8, min(1.3, ratio))  # 극단적 조정 방지
-        except:
-            return 1.0
 
 
 class NoiseReducer:
     """노이즈 제거기"""
     
-    def reduce_noise(self, image: Image.Image, strength: float = 0.7) -> Image.Image:
+    def reduce_noise(self, image: torch.Tensor) -> torch.Tensor:
         """노이즈 제거"""
         try:
-            img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            # 양방향 필터 근사 (가우시안 블러)
+            kernel_size = 5
+            sigma = 1.0
             
-            # 양방향 필터로 노이즈 제거
-            h = int(10 * strength)
-            denoised = cv2.bilateralFilter(img_cv, 9, h, h)
+            # 가우시안 커널 생성
+            coords = torch.arange(kernel_size, dtype=torch.float32, device=image.device)
+            coords -= kernel_size // 2
+            g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+            g /= g.sum()
             
-            # 추가 디노이징 (강도에 따라)
-            if strength > 0.5:
-                denoised = cv2.fastNlMeansDenoisingColored(denoised, None, h, h, 7, 21)
+            kernel = g[:, None] * g[None, :]
+            kernel = kernel.expand(image.shape[1], 1, kernel_size, kernel_size)
             
-            denoised_rgb = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
-            return Image.fromarray(denoised_rgb)
+            # 노이즈 제거
+            denoised = F.conv2d(image, kernel, padding=kernel_size//2, groups=image.shape[1])
+            
+            # 원본과 블렌딩 (디테일 보존)
+            blending_factor = 0.7
+            result = blending_factor * denoised + (1 - blending_factor) * image
+            
+            return result
             
         except Exception as e:
             logger.warning(f"노이즈 제거 실패: {e}")
@@ -968,20 +1181,138 @@ class NoiseReducer:
 class EdgeEnhancer:
     """엣지 향상기"""
     
-    def enhance_edges(self, image: Image.Image, strength: float = 0.7) -> Image.Image:
+    def enhance_edges(self, image: torch.Tensor) -> torch.Tensor:
         """엣지 향상"""
         try:
             # 언샵 마스크 적용
-            radius = 1 + strength * 2
-            percent = int(100 + strength * 100)
-            threshold = int(2 + strength * 3)
+            # 1. 가우시안 블러
+            kernel_size = 5
+            sigma = 1.0
             
-            enhanced = image.filter(ImageFilter.UnsharpMask(
-                radius=radius, percent=percent, threshold=threshold
-            ))
+            coords = torch.arange(kernel_size, dtype=torch.float32, device=image.device)
+            coords -= kernel_size // 2
+            g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+            g /= g.sum()
             
-            return enhanced
+            kernel = g[:, None] * g[None, :]
+            kernel = kernel.expand(image.shape[1], 1, kernel_size, kernel_size)
+            
+            blurred = F.conv2d(image, kernel, padding=kernel_size//2, groups=image.shape[1])
+            
+            # 2. 언샵 마스크
+            strength = 0.3
+            enhanced = image + strength * (image - blurred)
+            
+            return torch.clamp(enhanced, 0.0, 1.0)
             
         except Exception as e:
             logger.warning(f"엣지 향상 실패: {e}")
             return image
+
+
+# === 테스트 함수 ===
+async def test_post_processing():
+    """후처리 테스트"""
+    
+    print("🎨 Step 7 후처리 테스트 시작")
+    print("=" * 50)
+    
+    # 1. 후처리 시스템 초기화
+    post_processor = PostProcessingStep(
+        device='cpu',  # 또는 'mps'
+        config={
+            'post_processing': {
+                'super_resolution': True,
+                'face_enhancement': True,
+                'image_restoration': True,
+                'color_correction': True,
+                'noise_reduction': True,
+                'edge_enhancement': True,
+                'quality_level': 'high'
+            }
+        }
+    )
+    
+    # 2. 초기화
+    success = await post_processor.initialize()
+    if not success:
+        print("❌ 후처리 시스템 초기화 실패")
+        return
+    
+    print("✅ 후처리 시스템 초기화 완료")
+    
+    # 3. 테스트 이미지 생성
+    print("📝 테스트 이미지 생성 중...")
+    test_image = torch.randn(1, 3, 256, 256)  # 더미 이미지
+    
+    # 4. 후처리 실행
+    print("🚀 후처리 시작...")
+    
+    result = await post_processor.process(
+        input_image=test_image,
+        enhancement_options={
+            'super_resolution': True,
+            'face_enhancement': False,  # 얼굴이 없는 더미 이미지
+            'color_correction': True
+        },
+        quality_target=0.8
+    )
+    
+    # 5. 결과 출력
+    if result['success']:
+        print("\n" + "="*50)
+        print("🎨 후처리 결과")
+        print("="*50)
+        
+        print(f"✅ 처리 성공!")
+        print(f"⏱️ 처리 시간: {result['processing_time']:.2f}초")
+        print(f"📊 품질 점수: {result['quality_score']:.3f}")
+        print(f"🎯 목표 달성: {'예' if result['target_achieved'] else '아니오'}")
+        print(f"🔧 사용된 디바이스: {result['device_used']}")
+        
+        print(f"\n🔄 적용된 향상:")
+        for enhancement in result['applied_enhancements']:
+            print(f"  • {enhancement.replace('_', ' ').title()}")
+        
+        print(f"\n📋 세부 로그:")
+        for i, log_entry in enumerate(result['enhancement_log'], 1):
+            step = log_entry['step'].replace('_', ' ').title()
+            metrics = log_entry['metrics']
+            
+            print(f"  {i}. {step}:")
+            if 'processing_time' in metrics:
+                print(f"     - 처리 시간: {metrics['processing_time']:.3f}초")
+            
+            for key, value in metrics.items():
+                if key != 'processing_time' and not key.startswith('error'):
+                    if isinstance(value, (int, float)):
+                        print(f"     - {key.replace('_', ' ').title()}: {value:.3f}")
+                    else:
+                        print(f"     - {key.replace('_', ' ').title()}: {value}")
+        
+        # 6. 통계 정보
+        stats = await post_processor.get_processing_stats()
+        print(f"\n📊 처리 통계:")
+        print(f"  • 총 처리 이미지: {stats['total_images']}")
+        print(f"  • 평균 처리 시간: {stats['average_time']:.2f}초")
+        print(f"  • 향상 성공률: {stats['enhancement_success_rate']:.1%}")
+        
+        print(f"\n🤖 로드된 모델:")
+        for model_name, loaded in stats['models_loaded'].items():
+            status = "✅" if loaded else "❌"
+            print(f"  {status} {model_name.replace('_', ' ').title()}")
+        
+    else:
+        print(f"❌ 후처리 실패: {result['error']}")
+    
+    # 7. 정리
+    await post_processor.cleanup()
+    print("\n✅ 테스트 완료")
+
+
+if __name__ == "__main__":
+    print("🎨 실제 후처리 시스템 테스트")
+    print("=" * 50)
+    
+    # 테스트 실행
+    asyncio.run(test_post_processing())
