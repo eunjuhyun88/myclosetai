@@ -31,7 +31,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class RealPoseEstimationStep:
+class PoseEstimationStep:
     """
     🎯 실제로 작동하는 포즈 추정 단계
     
@@ -835,11 +835,11 @@ class RealPoseEstimationStep:
 
 
 # === 사용 예시 ===
-async def test_real_pose_estimation():
+async def test_pose_estimation():
     """실제 포즈 추정 테스트"""
     
     # 1. 시스템 초기화
-    pose_estimator = RealPoseEstimationStep(
+    pose_estimator = PoseEstimationStep(
         device='mps',  # M3 Max
         config={
             'model_complexity': 2,
@@ -895,4 +895,4 @@ async def test_real_pose_estimation():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(test_real_pose_estimation())
+    asyncio.run(test_pose_estimation())
