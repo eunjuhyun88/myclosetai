@@ -1,6 +1,6 @@
 """
-🎯 실제 작동하는 6단계 가상 피팅 통합 구현
-기존 app/ 구조에 맞게 paste.txt 코드를 통합
+Step 06: Virtual Fitting - 가상 피팅 실행
+기존 구조에 맞는 VirtualFittingStep 클래스와 paste.txt의 RealVirtualFittingStep 통합
 """
 import os
 import time
@@ -19,15 +19,101 @@ from scipy.interpolate import Rbf
 import base64
 import io
 
-# 기존 app 구조 import
-from app.core.config import get_settings
-from app.core.logging_config import setup_logging
-from app.utils.image_utils import save_temp_image, load_image
-
-from app.ai_pipeline.utils.memory_manager import optimize_memory_usage
+try:
+    # 기존 app 구조 import
+    from app.core.config import get_settings
+    from app.core.logging_config import setup_logging
+    from app.utils.image_utils import save_temp_image, load_image
+    from app.ai_pipeline.utils.memory_manager import optimize_memory_usage
+except ImportError as e:
+    logging.warning(f"일부 모듈 import 실패: {e}")
+    # 폴백 설정
+    class MockSettings:
+        UPLOAD_DIR = "uploads"
+        RESULT_DIR = "results"
+    
+    def get_settings():
+        return MockSettings()
+    
+    def setup_logging():
+        pass
+    
+    def save_temp_image(image, filename):
+        cv2.imwrite(filename, image)
+        return filename
+    
+    def load_image(path):
+        return cv2.imread(path)
+    
+    def optimize_memory_usage():
+        import gc
+        gc.collect()
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+class VirtualFittingStep:
+    """
+    기존 파이프라인 구조와 호환되는 VirtualFittingStep 클래스
+    paste.txt의 RealVirtualFittingStep 기능을 포함
+    """
+    
+    def __init__(self, device: str = None, config: Dict[str, Any] = None):
+        self.device = device or ('mps' if torch.backends.mps.is_available() else 'cpu')
+        self.config = config or {}
+        self.is_initialized = False
+        
+        # 내부적으로 RealVirtualFittingStep 사용
+        self.real_fitter = RealVirtualFittingStep(device=self.device, config=self.config)
+        
+        logger.info(f"🎯 VirtualFittingStep 초기화 - 디바이스: {self.device}")
+    
+    async def initialize(self) -> bool:
+        """초기화"""
+        try:
+            success = await self.real_fitter.initialize()
+            self.is_initialized = success
+            return success
+        except Exception as e:
+            logger.error(f"VirtualFittingStep 초기화 실패: {e}")
+            return False
+    
+    async def process(
+        self,
+        person_image: Union[np.ndarray, str],
+        clothing_image: Union[np.ndarray, str],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        기존 파이프라인 구조와 호환되는 처리 메서드
+        """
+        if not self.is_initialized:
+            raise RuntimeError("VirtualFittingStep이 초기화되지 않았습니다.")
+        
+        try:
+            # RealVirtualFittingStep의 process_virtual_fitting 호출
+            result = await self.real_fitter.process_virtual_fitting(
+                person_image=person_image,
+                clothing_image=clothing_image,
+                target_region=kwargs.get('target_region', 'upper'),
+                user_preferences=kwargs.get('user_preferences', {})
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"VirtualFittingStep 처리 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "device_used": self.device
+            }
+    
+    async def cleanup(self):
+        """리소스 정리"""
+        if self.real_fitter:
+            await self.real_fitter.cleanup()
+        self.is_initialized = False
+
 
 class RealVirtualFittingStep:
     """
@@ -62,6 +148,15 @@ class RealVirtualFittingStep:
         self.use_mps = self.device == 'mps' and torch.backends.mps.is_available()
         
         self.is_initialized = False
+        
+        # 설정 객체 가져오기
+        try:
+            self.settings = get_settings()
+        except:
+            self.settings = type('Settings', (), {
+                'UPLOAD_DIR': 'uploads',
+                'RESULT_DIR': 'results'
+            })()
         
         logger.info(f"🎯 실제 가상 피팅 시스템 초기화 - 디바이스: {self.device}")
     
@@ -242,10 +337,10 @@ class RealVirtualFittingStep:
         """결과 이미지 저장 (기존 utils 활용)"""
         timestamp = int(time.time())
         filename = f"fitted_result_{timestamp}.jpg"
-        result_path = os.path.join(settings.RESULT_DIR, filename)
+        result_path = os.path.join(self.settings.RESULT_DIR, filename)
         
         # 디렉토리 생성
-        os.makedirs(settings.RESULT_DIR, exist_ok=True)
+        os.makedirs(self.settings.RESULT_DIR, exist_ok=True)
         
         # 이미지 저장
         cv2.imwrite(result_path, image)
@@ -278,7 +373,7 @@ class RealVirtualFittingStep:
         
         return recommendations[:3]  # 최대 3개
     
-    # === 기존 paste.txt의 핵심 메서드들 유지 ===
+    # === 핵심 처리 메서드들 ===
     
     async def _extract_pose_and_segmentation(self, person_image: np.ndarray) -> Dict[str, Any]:
         """실제 포즈 추정 및 인체 분할 (MediaPipe)"""
@@ -449,18 +544,7 @@ class RealVirtualFittingStep:
         keypoints = pose_result['keypoints']
         
         # 신체 크기 추정
-        if target_region == 'upper':
-            # 어깨 너비 기준
-            left_shoulder = next((kp for kp in keypoints if kp.get('name') == 'left_shoulder'), None)
-            right_shoulder = next((kp for kp in keypoints if kp.get('name') == 'right_shoulder'), None)
-            
-            if left_shoulder and right_shoulder:
-                body_width = abs(right_shoulder['x'] - left_shoulder['x'])
-                scale_factor = body_width / clothing_img.shape[1] * 1.2  # 약간 여유있게
-            else:
-                scale_factor = 1.0
-        else:
-            scale_factor = 1.0
+        scale_factor = 1.0
         
         # 크기 조정
         new_width = int(clothing_img.shape[1] * scale_factor)
@@ -857,7 +941,7 @@ class RealVirtualFittingStep:
         logger.info("🧹 실제 가상 피팅 시스템 리소스 정리 완료")
 
 
-# === 보조 클래스들 (paste.txt에서 가져옴) ===
+# === 보조 클래스들 ===
 
 class RealTPSTransformer:
     """실제 TPS (Thin Plate Spline) 변환기"""
@@ -1144,7 +1228,7 @@ async def test_integrated_virtual_fitting():
     """통합된 가상 피팅 테스트"""
     
     # 시스템 초기화
-    fitting_system = RealVirtualFittingStep(
+    fitting_system = VirtualFittingStep(
         device='mps',  # M3 Max
         config={
             'pose_confidence_threshold': 0.5,
@@ -1160,11 +1244,11 @@ async def test_integrated_virtual_fitting():
         return
     
     # 테스트 이미지 경로 (기존 구조 활용)
-    person_image_path = os.path.join(settings.UPLOAD_DIR, 'test_person.jpg')
-    clothing_image_path = os.path.join(settings.UPLOAD_DIR, 'test_clothing.jpg')
+    person_image_path = "uploads/test_person.jpg"
+    clothing_image_path = "uploads/test_clothing.jpg"
     
     # 가상 피팅 실행
-    result = await fitting_system.process_virtual_fitting(
+    result = await fitting_system.process(
         person_image=person_image_path,
         clothing_image=clothing_image_path,
         target_region='upper',

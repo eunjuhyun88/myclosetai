@@ -462,7 +462,7 @@ class MemoryManager:
                 
                 # 자동 정리 실행
                 if self.auto_cleanup:
-                    self.smart_cleanup()
+                    asyncio.create_task(self.smart_cleanup())
                 
                 time.sleep(self.monitoring_interval)
                 
@@ -646,3 +646,6 @@ def memory_efficient(clear_before: bool = True, clear_after: bool = True):
         else:
             return sync_wrapper
     return decorator
+
+# GPUMemoryManager 별칭 (하위 호환성)
+GPUMemoryManager = MemoryManager
