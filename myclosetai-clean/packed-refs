@@ -1,0 +1,6 @@
+# pack-refs with: peeled fully-peeled sorted 
+1bdb70ed3b55a4007a7a48b34841b84b77d1dc42 refs/heads/beer
+04bdb67fbd734ab6a16a66b8308eed87d55cd496 refs/heads/clean
+09a6e48dd049f1006ed1928f3b603b8efeb298ca refs/heads/main
+d7e2b0261a59bcf4d15b6ce8b1ad41fd2e4f1219 refs/heads/safe-backup
+175caac952211ea9b91ff9094ad0d1bff3c0ee03 refs/heads/soju

@@ -5,6 +5,8 @@
 # AI 모델 디렉토리 전체 제외
 ai_models/
 backend/ai_models/
+node_modules/
+frontend/node_modules/
 
 # 하지만 설정 파일들은 포함
 !ai_models/model_config.yaml
