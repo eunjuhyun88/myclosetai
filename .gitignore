@@ -74,6 +74,26 @@ node_modules/
 frontend/node_modules/
 backend/mycloset_env/
 mycloset_env/
+# 환경
+mycloset_env/
+.env
+*.env
+
+# 빌드 & 캐시
+dist/
+build/
+.cache/
+
+# 모델 및 결과물
+*.pt
+*.ckpt
+models/
+
+# 노드
+node_modules/
+
+# 시스템 파일
+.DS_Store
 
 .env
 .DS_Store
