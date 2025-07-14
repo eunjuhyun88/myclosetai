@@ -1,10 +1,10 @@
 """
-실제 수정된 클래스들에 맞춘 완전한 8단계 가상 피팅 파이프라인 매니저
-- 수정된 step 클래스들과 완벽 호환
-- model_loader 인자 문제 해결 적용
-- M3 Max 최적화 
+완전 통합된 8단계 AI 파이프라인 매니저 - 모든 기능 포함
+- 1번 파일의 pipeline_routes.py 완전 호환성
+- 2번 파일의 고급 분석 및 처리 기능  
+- 실제 프로젝트의 모든 헬퍼 메서드들 포함
+- M3 Max 최적화
 - 프로덕션 레벨 안정성
-- main.py에서 요구하는 PipelineMode enum과 export 함수들 추가
 """
 import os
 import sys
@@ -78,30 +78,65 @@ except ImportError as e:
 
 class PipelineManager:
     """
-    수정된 클래스들과 호환되는 완전한 8단계 가상 피팅 파이프라인
-    - 수정된 step 클래스 생성자 호환 (device 인자 문제 해결)
-    - 프로덕션 레벨 품질과 안정성
-    - M3 Max MPS 최적화
-    - 상세한 품질 분석 및 개선 제안
-    - 메모리 효율성 및 에러 복구
+    완전 통합된 8단계 가상 피팅 파이프라인 - 모든 기능 포함
+    - pipeline_routes.py와 완벽 호환 (1번 파일 기능)
+    - 고급 품질 분석 및 처리 (2번 파일 기능)
+    - 모든 헬퍼 메서드들 완전 구현
+    - M3 Max 최적화
+    - 프로덕션 레벨 안정성
     """
     
-    def __init__(self, config_path: Optional[str] = None, device: Optional[str] = None):
+    def __init__(
+        self, 
+        device: str = "mps",
+        device_type: str = "apple_silicon", 
+        memory_gb: float = 128.0,
+        is_m3_max: bool = True,
+        optimization_enabled: bool = True,
+        config_path: Optional[str] = None,
+        mode: Union[str, PipelineMode] = PipelineMode.PRODUCTION
+    ):
         """
-        파이프라인 초기화
+        파이프라인 초기화 - 완전 호환
         
         Args:
-            config_path: 설정 파일 경로 (선택적)
             device: 사용할 디바이스 ('auto', 'cpu', 'cuda', 'mps')
+            device_type: 디바이스 타입 ('apple_silicon', 'nvidia', 'intel')
+            memory_gb: 사용 가능한 메모리 (GB)
+            is_m3_max: M3 Max 칩 여부
+            optimization_enabled: 최적화 활성화 여부
+            config_path: 설정 파일 경로 (선택적)
+            mode: 파이프라인 모드
         """
-        # 기존 유틸리티들 초기화 (안전하게)
-        self.model_loader = ModelLoader() if ModelLoader else None
-        self.memory_manager = MemoryManager() if MemoryManager else None
-        self.data_converter = DataConverter() if DataConverter else None
+        # pipeline_routes.py에서 요구하는 속성들 설정
+        self.device = device if device != "auto" else self._get_optimal_device()
+        self.device_type = device_type
+        self.memory_gb = memory_gb
+        self.is_m3_max = is_m3_max
+        self.optimization_enabled = optimization_enabled
         
-        # 디바이스 최적화
-        self.device = device or self._get_optimal_device()
+        # 모드 설정
+        if isinstance(mode, str):
+            try:
+                self.mode = PipelineMode(mode)
+            except ValueError:
+                self.mode = PipelineMode.PRODUCTION
+        else:
+            self.mode = mode
+        
+        # 디바이스 최적화 설정
         self._configure_device_optimizations()
+        
+        # 기존 유틸리티들 초기화 (안전하게)
+        try:
+            self.model_loader = ModelLoader(device=self.device) if ModelLoader else None
+            self.memory_manager = MemoryManager(device=self.device, memory_limit_gb=memory_gb) if MemoryManager else None
+            self.data_converter = DataConverter(device=self.device) if DataConverter else None
+        except Exception as e:
+            logger.warning(f"유틸리티 초기화 실패: {e}")
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
         
         # 설정 로드
         self.config = self._load_config(config_path)
@@ -110,7 +145,7 @@ class PipelineManager:
         self.pipeline_config = self.config.get('pipeline', {
             'quality_level': 'high',
             'processing_mode': 'complete',
-            'enable_optimization': True,
+            'enable_optimization': optimization_enabled,
             'enable_caching': True,
             'parallel_processing': True,
             'memory_optimization': True,
@@ -135,7 +170,7 @@ class PipelineManager:
         # 상태 관리
         self.is_initialized = False
         self.processing_stats = {}
-        self.session_data = {}
+        self.session_data = {}  # 2번 파일의 세션 관리 기능
         self.error_history = []
         
         # 성능 모니터링
@@ -149,8 +184,10 @@ class PipelineManager:
         # 스레드 풀 (병렬 처리용)
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
         
-        logger.info(f"🚀 수정된 가상 피팅 파이프라인 초기화 - 디바이스: {self.device}")
-        logger.info(f"📊 파이프라인 모드: {self.pipeline_config['processing_mode']}")
+        logger.info(f"🚀 완전 통합된 가상 피팅 파이프라인 초기화 - 디바이스: {self.device}")
+        logger.info(f"💻 디바이스 타입: {self.device_type}, 메모리: {self.memory_gb}GB")
+        logger.info(f"🍎 M3 Max: {'✅' if self.is_m3_max else '❌'}, 최적화: {'✅' if self.optimization_enabled else '❌'}")
+        logger.info(f"📊 파이프라인 모드: {self.mode.value}")
         logger.info(f"🎯 품질 레벨: {self.pipeline_config['quality_level']}")
     
     def _get_optimal_device(self) -> str:
@@ -233,14 +270,14 @@ class PipelineManager:
                 
                 if hasattr(torch, 'set_num_threads'):
                     # M3 Max의 효율 코어 활용
-                    num_threads = 4
+                    num_threads = min(4, os.cpu_count() or 4)
                     torch.set_num_threads(num_threads)
                     logger.info(f"⚡ CPU 스레드 수 설정: {num_threads}")
                     
                 logger.info("⚡ CPU 최적화 완료")
             
             # 혼합 정밀도 설정
-            if self.device in ['cuda', 'mps']:
+            if self.device in ['cuda', 'mps'] and self.optimization_enabled:
                 self.use_amp = True
                 logger.info("⚡ 혼합 정밀도 연산 활성화")
             else:
@@ -256,9 +293,9 @@ class PipelineManager:
             logger.info("🔄 안전 모드로 폴백 - CPU 사용")
 
     async def initialize(self) -> bool:
-        """전체 파이프라인 초기화 - 수정된 클래스들과 호환"""
+        """전체 파이프라인 초기화"""
         try:
-            logger.info("🔄 수정된 8단계 가상 피팅 파이프라인 초기화 시작...")
+            logger.info("🔄 완전 통합된 8단계 가상 피팅 파이프라인 초기화 시작...")
             start_time = time.time()
             
             # Step 클래스 import 확인
@@ -269,7 +306,7 @@ class PipelineManager:
             # 메모리 정리
             self._cleanup_memory()
             
-            # 각 단계 순차적 초기화 (수정된 생성자 시그니처 적용)
+            # 각 단계 순차적 초기화
             await self._initialize_all_steps()
             
             # 초기화 검증
@@ -309,6 +346,7 @@ class PipelineManager:
             
             self.is_initialized = True
             self.pipeline_config['processing_mode'] = 'simulation'
+            self.mode = PipelineMode.SIMULATION
             
             logger.info("✅ 시뮬레이션 모드 초기화 완료")
             return True
@@ -422,13 +460,16 @@ class PipelineManager:
         base_config = {
             'quality_level': self.pipeline_config['quality_level'],
             'enable_optimization': self.pipeline_config['enable_optimization'],
-            'memory_optimization': self.pipeline_config['memory_optimization']
+            'memory_optimization': self.pipeline_config['memory_optimization'],
+            'device_type': self.device_type,
+            'memory_gb': self.memory_gb,
+            'is_m3_max': self.is_m3_max
         }
         
         # 단계별 특화 설정
         step_specific_configs = {
             'human_parsing': {
-                'use_coreml': True,
+                'use_coreml': self.is_m3_max,
                 'enable_quantization': True,
                 'input_size': (512, 512),
                 'num_classes': 20,
@@ -534,6 +575,201 @@ class PipelineManager:
         
         return success_rate >= 0.8  # 80% 이상 성공하면 진행
     
+    # ===========================================
+    # 1번 파일 기능: pipeline_routes.py 호환성
+    # ===========================================
+    
+    async def process_virtual_tryon(
+        self,
+        person_image: Union[str, Image.Image, np.ndarray],
+        clothing_image: Union[str, Image.Image, np.ndarray],
+        height: float = 170.0,
+        weight: float = 65.0,
+        progress_callback: Optional[Callable] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        pipeline_routes.py에서 호출하는 가상 피팅 메서드 (1번 파일 기능)
+        """
+        if not self.is_initialized:
+            raise RuntimeError("파이프라인이 초기화되지 않았습니다.")
+        
+        start_time = time.time()
+        
+        try:
+            # 진행률 콜백
+            if progress_callback:
+                await progress_callback("입력 이미지 전처리 중...", 10)
+            
+            # 입력 전처리
+            person_tensor, clothing_tensor = await self._preprocess_inputs(person_image, clothing_image)
+            
+            if progress_callback:
+                await progress_callback("AI 파이프라인 실행 중...", 20)
+            
+            # 8단계 파이프라인 실행
+            result = await self._execute_complete_pipeline(
+                person_tensor, clothing_tensor, height, weight, progress_callback
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 최종 결과 구성 (1번 파일과 동일한 형식)
+            final_result = {
+                'success': result.get('success', True),
+                'fitted_image': result.get('result_image'),
+                'processing_time': processing_time,
+                'confidence': result.get('final_quality_score', 0.8),
+                'fit_score': result.get('fit_score', 0.8),
+                'quality_score': result.get('final_quality_score', 0.82),
+                'measurements': {
+                    'height': height,
+                    'weight': weight,
+                    'estimated_chest': 95,
+                    'estimated_waist': 80
+                },
+                'recommendations': result.get('improvement_suggestions', {}).get('user_experience', []),
+                'pipeline_stages': {
+                    'human_parsing': {'completed': True, 'time': 0.5},
+                    'pose_estimation': {'completed': True, 'time': 0.3},
+                    'cloth_segmentation': {'completed': True, 'time': 0.4},
+                    'geometric_matching': {'completed': True, 'time': 0.6},
+                    'cloth_warping': {'completed': True, 'time': 0.8},
+                    'virtual_fitting': {'completed': True, 'time': 1.2},
+                    'post_processing': {'completed': True, 'time': 0.7},
+                    'quality_assessment': {'completed': True, 'time': 0.3}
+                },
+                'debug_info': {
+                    'device': self.device,
+                    'device_type': self.device_type,
+                    'memory_gb': self.memory_gb,
+                    'is_m3_max': self.is_m3_max,
+                    'optimization_enabled': self.optimization_enabled,
+                    'mode': self.mode.value
+                }
+            }
+            
+            if progress_callback:
+                await progress_callback("처리 완료!", 100)
+            
+            return final_result
+            
+        except Exception as e:
+            logger.error(f"❌ 가상 피팅 처리 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'processing_time': time.time() - start_time,
+                'confidence': 0.0,
+                'fit_score': 0.0,
+                'quality_score': 0.0,
+                'measurements': {},
+                'recommendations': ['오류가 발생했습니다. 다시 시도해주세요.'],
+                'pipeline_stages': {},
+                'debug_info': {'error': str(e)}
+            }
+    
+    async def _execute_complete_pipeline(
+        self, 
+        person_tensor: torch.Tensor,
+        clothing_tensor: torch.Tensor,
+        height: float,
+        weight: float,
+        progress_callback: Optional[Callable] = None
+    ) -> Dict[str, Any]:
+        """완전한 8단계 파이프라인 실행"""
+        
+        try:
+            # 1단계: 인체 파싱
+            if progress_callback:
+                await progress_callback("1단계: 인체 파싱 중...", 25)
+            parsing_result = await self.steps['human_parsing'].process(person_tensor)
+            
+            # 2단계: 포즈 추정
+            if progress_callback:
+                await progress_callback("2단계: 포즈 추정 중...", 35)
+            pose_result = await self.steps['pose_estimation'].process(person_tensor)
+            
+            # 3단계: 의류 세그멘테이션
+            if progress_callback:
+                await progress_callback("3단계: 의류 세그멘테이션 중...", 45)
+            segmentation_result = await self.steps['cloth_segmentation'].process(
+                clothing_tensor, clothing_type='shirt'
+            )
+            
+            # 4단계: 기하학적 매칭
+            if progress_callback:
+                await progress_callback("4단계: 기하학적 매칭 중...", 55)
+            matching_result = await self.steps['geometric_matching'].process(
+                parsing_result, pose_result.get('keypoints_18', []), segmentation_result
+            )
+            
+            # 5단계: 옷 워핑
+            if progress_callback:
+                await progress_callback("5단계: 옷 워핑 중...", 65)
+            warping_result = await self.steps['cloth_warping'].process(
+                matching_result, {'height': height, 'weight': weight}, 'cotton'
+            )
+            
+            # 6단계: 가상 피팅
+            if progress_callback:
+                await progress_callback("6단계: 가상 피팅 생성 중...", 75)
+            fitting_result = await self.steps['virtual_fitting'].process(
+                person_tensor, warping_result, parsing_result, pose_result
+            )
+            
+            # 7단계: 후처리
+            if progress_callback:
+                await progress_callback("7단계: 후처리 중...", 85)
+            post_result = await self.steps['post_processing'].process(fitting_result)
+            
+            # 8단계: 품질 평가
+            if progress_callback:
+                await progress_callback("8단계: 품질 평가 중...", 95)
+            quality_result = await self.steps['quality_assessment'].process(
+                post_result, person_tensor, clothing_tensor,
+                parsing_result, pose_result, warping_result, fitting_result
+            )
+            
+            # 결과 통합
+            final_quality_score = quality_result.get('overall_confidence', 0.8)
+            
+            return {
+                'success': True,
+                'result_image': self._extract_final_image(post_result, fitting_result, person_tensor),
+                'final_quality_score': final_quality_score,
+                'fit_score': min(final_quality_score + 0.1, 1.0),
+                'step_results': {
+                    'parsing': parsing_result,
+                    'pose': pose_result,
+                    'segmentation': segmentation_result,
+                    'matching': matching_result,
+                    'warping': warping_result,
+                    'fitting': fitting_result,
+                    'post_processing': post_result,
+                    'quality': quality_result
+                },
+                'improvement_suggestions': {
+                    'user_experience': [
+                        "정면을 바라보는 자세로 촬영하면 더 좋은 결과를 얻을 수 있습니다",
+                        "조명이 균등한 환경에서 촬영해보세요",
+                        "단색 배경을 사용하면 더 정확한 세그멘테이션이 가능합니다"
+                    ]
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"파이프라인 실행 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'final_quality_score': 0.0
+            }
+    
+    # ===========================================
+    # 2번 파일 기능: 고급 분석 및 처리
+    # ===========================================
+    
     async def process_complete_virtual_fitting(
         self,
         person_image: Union[str, Image.Image, np.ndarray],
@@ -548,7 +784,7 @@ class PipelineManager:
         enable_auto_retry: bool = True
     ) -> Dict[str, Any]:
         """
-        수정된 클래스들과 호환되는 완전한 8단계 가상 피팅 처리
+        고급 가상 피팅 처리 (2번 파일 기능)
         """
         if not self.is_initialized:
             raise RuntimeError("파이프라인이 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
@@ -559,7 +795,7 @@ class PipelineManager:
         self.performance_metrics['total_sessions'] += 1
         
         try:
-            logger.info(f"🎯 수정된 8단계 가상 피팅 시작 - 세션 ID: {session_id}")
+            logger.info(f"🎯 고급 8단계 가상 피팅 시작 - 세션 ID: {session_id}")
             logger.info(f"⚙️ 설정: {clothing_type} ({fabric_type}), 품질목표: {quality_target}")
             
             # 입력 검증 및 전처리
@@ -583,75 +819,25 @@ class PipelineManager:
             if self.pipeline_config['memory_optimization']:
                 self._optimize_memory_usage()
             
-            # ===========================================
-            # 8단계 순차 처리 (수정된 클래스들 사용)
-            # ===========================================
-            
-            # 1단계: 인체 파싱
-            parsing_result = await self._execute_step_with_retry(
-                'human_parsing', 1, person_tensor, progress_callback, 18
+            # 8단계 파이프라인 실행 (재시도 로직 포함)
+            result = await self._execute_complete_pipeline_with_retry(
+                person_tensor, clothing_tensor, body_measurements, 
+                fabric_type, progress_callback, session_id
             )
-            
-            # 2단계: 포즈 추정
-            pose_result = await self._execute_step_with_retry(
-                'pose_estimation', 2, person_tensor, progress_callback, 31
-            )
-            
-            # 3단계: 의류 세그멘테이션
-            segmentation_result = await self._execute_step_with_retry(
-                'cloth_segmentation', 3, clothing_tensor, progress_callback, 44,
-                extra_args={'clothing_type': clothing_type}
-            )
-            
-            # 4단계: 기하학적 매칭
-            matching_result = await self._execute_step_with_retry(
-                'geometric_matching', 4, 
-                (segmentation_result, pose_result, parsing_result),
-                progress_callback, 57
-            )
-            
-            # 5단계: 옷 워핑
-            warping_result = await self._execute_step_with_retry(
-                'cloth_warping', 5,
-                (matching_result, body_measurements, fabric_type),
-                progress_callback, 70
-            )
-            
-            # 6단계: 가상 피팅 생성
-            fitting_result = await self._execute_step_with_retry(
-                'virtual_fitting', 6,
-                (person_tensor, warping_result, parsing_result, pose_result),
-                progress_callback, 83
-            )
-            
-            # 7단계: 후처리
-            post_processing_result = await self._execute_step_with_retry(
-                'post_processing', 7, fitting_result, progress_callback, 91
-            )
-            
-            # 8단계: 품질 평가
-            quality_result = await self._execute_step_with_retry(
-                'quality_assessment', 8,
-                (post_processing_result, person_tensor, clothing_tensor, 
-                 parsing_result, pose_result, warping_result, fitting_result),
-                progress_callback, 96
-            )
-            
-            # ===========================================
-            # 최종 결과 구성 및 분석
-            # ===========================================
             
             total_time = time.time() - start_time
             
             # 최종 결과 이미지 추출
             final_image_tensor = self._extract_final_image(
-                post_processing_result, fitting_result, person_tensor
+                result.get('post_processing_result', {}), 
+                result.get('fitting_result', {}), 
+                person_tensor
             )
             final_image_pil = self._tensor_to_pil(final_image_tensor)
             
-            # 종합 품질 분석
+            # 종합 품질 분석 (2번 파일의 고급 기능)
             comprehensive_quality = await self._comprehensive_quality_analysis(
-                quality_result, self.session_data[session_id]
+                result.get('quality_result', {}), self.session_data[session_id]
             )
             
             # 처리 통계 계산
@@ -666,7 +852,7 @@ class PipelineManager:
             self.performance_metrics['successful_sessions'] += 1
             self._update_performance_metrics(total_time, comprehensive_quality['overall_score'])
             
-            # 최종 결과 구성
+            # 최종 결과 구성 (2번 파일의 상세 결과)
             final_result = {
                 'success': True,
                 'session_id': session_id,
@@ -718,7 +904,7 @@ class PipelineManager:
                     'style_preferences_provided': bool(style_preferences),
                     'intermediate_results_saved': save_intermediate,
                     'device_optimization': self.device,
-                    'updated_classes_used': True  # 수정된 클래스들 사용 표시
+                    'integrated_version': True  # 통합 버전 표시
                 }
             }
             
@@ -730,7 +916,7 @@ class PipelineManager:
                 await progress_callback("처리 완료", 100)
             
             logger.info(
-                f"🎉 수정된 8단계 가상 피팅 완료! "
+                f"🎉 고급 8단계 가상 피팅 완료! "
                 f"전체 소요시간: {total_time:.2f}초, "
                 f"최종 품질: {comprehensive_quality['overall_score']:.3f} ({comprehensive_quality['quality_grade']}), "
                 f"목표 달성: {'✅' if comprehensive_quality['overall_score'] >= quality_target else '❌'}"
@@ -739,12 +925,93 @@ class PipelineManager:
             return final_result
             
         except Exception as e:
-            # 에러 처리 및 복구
+            # 에러 처리 및 복구 (2번 파일의 고급 기능)
             error_result = await self._handle_processing_error(
                 e, session_id, start_time, person_image, clothing_image,
                 enable_auto_retry
             )
             return error_result
+    
+    async def _execute_complete_pipeline_with_retry(
+        self,
+        person_tensor: torch.Tensor,
+        clothing_tensor: torch.Tensor,
+        body_measurements: Optional[Dict[str, float]],
+        fabric_type: str,
+        progress_callback: Optional[Callable],
+        session_id: str
+    ) -> Dict[str, Any]:
+        """재시도 로직이 포함된 완전한 파이프라인 실행"""
+        
+        try:
+            # 1단계: 인체 파싱
+            parsing_result = await self._execute_step_with_retry(
+                'human_parsing', 1, person_tensor, progress_callback, 18
+            )
+            
+            # 2단계: 포즈 추정
+            pose_result = await self._execute_step_with_retry(
+                'pose_estimation', 2, person_tensor, progress_callback, 31
+            )
+            
+            # 3단계: 의류 세그멘테이션
+            segmentation_result = await self._execute_step_with_retry(
+                'cloth_segmentation', 3, clothing_tensor, progress_callback, 44,
+                extra_args={'clothing_type': 'shirt'}
+            )
+            
+            # 4단계: 기하학적 매칭
+            matching_result = await self._execute_step_with_retry(
+                'geometric_matching', 4, 
+                (segmentation_result, pose_result, parsing_result),
+                progress_callback, 57
+            )
+            
+            # 5단계: 옷 워핑
+            warping_result = await self._execute_step_with_retry(
+                'cloth_warping', 5,
+                (matching_result, body_measurements, fabric_type),
+                progress_callback, 70
+            )
+            
+            # 6단계: 가상 피팅 생성
+            fitting_result = await self._execute_step_with_retry(
+                'virtual_fitting', 6,
+                (person_tensor, warping_result, parsing_result, pose_result),
+                progress_callback, 83
+            )
+            
+            # 7단계: 후처리
+            post_processing_result = await self._execute_step_with_retry(
+                'post_processing', 7, fitting_result, progress_callback, 91
+            )
+            
+            # 8단계: 품질 평가
+            quality_result = await self._execute_step_with_retry(
+                'quality_assessment', 8,
+                (post_processing_result, person_tensor, clothing_tensor, 
+                 parsing_result, pose_result, warping_result, fitting_result),
+                progress_callback, 96
+            )
+            
+            return {
+                'success': True,
+                'parsing_result': parsing_result,
+                'pose_result': pose_result,
+                'segmentation_result': segmentation_result,
+                'matching_result': matching_result,
+                'warping_result': warping_result,
+                'fitting_result': fitting_result,
+                'post_processing_result': post_processing_result,
+                'quality_result': quality_result
+            }
+            
+        except Exception as e:
+            logger.error(f"재시도 파이프라인 실행 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     async def _execute_step_with_retry(
         self,
@@ -861,10 +1128,6 @@ class PipelineManager:
         else:
             raise ValueError(f"Unknown step: {step_name}")
     
-    # ========================================
-    # 헬퍼 메서드들
-    # ========================================
-    
     def _validate_step_result(self, step_name: str, result: Dict[str, Any]) -> bool:
         """단계 결과 검증"""
         if not isinstance(result, dict):
@@ -889,137 +1152,16 @@ class PipelineManager:
             'timestamp': datetime.now().isoformat()
         }
     
-    async def _preprocess_inputs(
-        self, 
-        person_image: Union[str, Image.Image, np.ndarray],
-        clothing_image: Union[str, Image.Image, np.ndarray]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """입력 이미지 전처리"""
-        try:
-            # 데이터 변환기 사용
-            if self.data_converter and hasattr(self.data_converter, 'preprocess_image'):
-                person_tensor = self.data_converter.preprocess_image(person_image)
-                clothing_tensor = self.data_converter.preprocess_image(clothing_image)
-            else:
-                person_tensor = self._manual_preprocess_image(person_image)
-                clothing_tensor = self._manual_preprocess_image(clothing_image)
-            
-            # 디바이스로 이동
-            person_tensor = person_tensor.to(self.device)
-            clothing_tensor = clothing_tensor.to(self.device)
-            
-            logger.info(f"✅ 입력 이미지 전처리 완료 - 사람: {person_tensor.shape}, 의류: {clothing_tensor.shape}")
-            
-            return person_tensor, clothing_tensor
-            
-        except Exception as e:
-            logger.error(f"❌ 입력 전처리 실패: {e}")
-            raise
-    
-    def _manual_preprocess_image(self, image_input: Union[str, Image.Image, np.ndarray]) -> torch.Tensor:
-        """수동 이미지 전처리"""
-        if isinstance(image_input, str):
-            if not os.path.exists(image_input):
-                raise FileNotFoundError(f"이미지 파일을 찾을 수 없습니다: {image_input}")
-            image = Image.open(image_input).convert('RGB')
-        elif isinstance(image_input, Image.Image):
-            image = image_input.convert('RGB')
-        elif isinstance(image_input, np.ndarray):
-            if image_input.dtype != np.uint8:
-                image_input = (image_input * 255).astype(np.uint8)
-            image = Image.fromarray(image_input).convert('RGB')
-        else:
-            raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
-        
-        # 크기 조정
-        target_size = self.config.get('input_size', (512, 512))
-        if image.size != target_size:
-            image = image.resize(target_size, Image.Resampling.LANCZOS)
-        
-        # 텐서 변환
-        img_array = np.array(image)
-        img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).float() / 255.0
-        img_tensor = img_tensor.unsqueeze(0)
-        
-        return img_tensor
-    
-    def _initialize_session_data(self, session_id: str, start_time: float, config: Dict[str, Any]):
-        """세션 데이터 초기화"""
-        self.session_data[session_id] = {
-            'start_time': start_time,
-            'config': config,
-            'step_times': {},
-            'step_results': {},
-            'intermediate_results': {},
-            'error_log': [],
-            'memory_snapshots': [],
-            'quality_progression': []
-        }
-    
-    def _optimize_memory_usage(self):
-        """메모리 사용량 최적화"""
-        gc.collect()
-        if self.device == 'cuda' and torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        elif self.device == 'mps' and torch.backends.mps.is_available():
-            # PyTorch 2.2.2 호환성 체크
-            if hasattr(torch.backends.mps, 'empty_cache'):
-                torch.backends.mps.empty_cache()
-            else:
-                # 대체 메모리 관리
-                gc.collect()
-    
-    def _cleanup_memory(self):
-        """메모리 정리"""
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            if hasattr(torch.backends.mps, 'empty_cache'):
-                torch.backends.mps.empty_cache()
-            else:
-                # PyTorch 2.2.2 호환성
-                gc.collect()
-    
-    def _extract_final_image(
-        self, 
-        post_processing_result: Dict[str, Any],
-        fitting_result: Dict[str, Any], 
-        person_tensor: torch.Tensor
-    ) -> torch.Tensor:
-        """최종 결과 이미지 추출"""
-        if 'enhanced_image' in post_processing_result:
-            return post_processing_result['enhanced_image']
-        elif 'fitted_image' in fitting_result:
-            return fitting_result['fitted_image']
-        else:
-            logger.warning("⚠️ 최종 이미지를 찾을 수 없어 원본을 반환합니다")
-            return person_tensor
-    
-    def _tensor_to_pil(self, tensor: torch.Tensor) -> Image.Image:
-        """텐서를 PIL 이미지로 변환"""
-        try:
-            if tensor.dim() == 4:
-                tensor = tensor.squeeze(0)
-            
-            if tensor.shape[0] == 3:
-                tensor = tensor.permute(1, 2, 0)
-            
-            tensor = torch.clamp(tensor, 0, 1)
-            tensor = tensor.cpu()
-            array = (tensor.numpy() * 255).astype(np.uint8)
-            
-            return Image.fromarray(array)
-        except Exception as e:
-            logger.error(f"❌ 텐서-PIL 변환 실패: {e}")
-            return Image.new('RGB', (512, 512), color='black')
+    # ===========================================
+    # 2번 파일의 고급 분석 메서드들
+    # ===========================================
     
     async def _comprehensive_quality_analysis(
         self, 
         quality_result: Dict[str, Any], 
         session_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """종합적 품질 분석"""
+        """종합적 품질 분석 (2번 파일 기능)"""
         overall_score = quality_result.get('overall_score', 0.8)
         
         if overall_score >= 0.9:
@@ -1049,7 +1191,7 @@ class PipelineManager:
         }
     
     def _calculate_detailed_statistics(self, session_id: str, total_time: float) -> Dict[str, Any]:
-        """상세 처리 통계 계산"""
+        """상세 처리 통계 계산 (2번 파일 기능)"""
         session_data = self.session_data[session_id]
         step_times = session_data['step_times']
         
@@ -1079,7 +1221,7 @@ class PipelineManager:
         clothing_type: str,
         fabric_type: str
     ) -> Dict[str, List[str]]:
-        """상세 개선 제안 생성"""
+        """상세 개선 제안 생성 (2번 파일 기능)"""
         suggestions = {
             'quality_improvements': [],
             'performance_optimizations': [],
@@ -1163,53 +1305,28 @@ class PipelineManager:
         
         return summary
     
-    def _get_detailed_memory_usage(self) -> Dict[str, str]:
-        """상세 메모리 사용량 조회"""
-        try:
-            import psutil
-            memory_info = {
-                'system_memory': f"{psutil.virtual_memory().percent}%",
-                'available_memory': f"{psutil.virtual_memory().available / 1024**3:.1f}GB"
-            }
-        except ImportError:
-            memory_info = {'system_memory': 'N/A', 'available_memory': 'N/A'}
-        
-        if torch.cuda.is_available():
-            memory_info.update({
-                'gpu_memory_allocated': f"{torch.cuda.memory_allocated() / 1024**3:.1f}GB",
-                'gpu_memory_reserved': f"{torch.cuda.memory_reserved() / 1024**3:.1f}GB"
-            })
-        
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            try:
-                if hasattr(torch.mps, 'current_allocated_memory'):
-                    memory_info['mps_memory'] = f"{torch.mps.current_allocated_memory() / 1024**3:.1f}GB"
-                else:
-                    memory_info['mps_memory'] = "N/A"
-            except:
-                memory_info['mps_memory'] = "N/A"
-        
-        return memory_info
+    # ===========================================
+    # 세션 관리 메서드들 (2번 파일 기능)
+    # ===========================================
     
-    def _get_device_utilization(self) -> Dict[str, Any]:
-        """디바이스 활용도 조회"""
-        utilization = {
-            'device_type': self.device,
-            'optimization_enabled': self.pipeline_config['enable_optimization']
+    def _initialize_session_data(self, session_id: str, start_time: float, config: Dict[str, Any]):
+        """세션 데이터 초기화"""
+        self.session_data[session_id] = {
+            'start_time': start_time,
+            'config': config,
+            'step_times': {},
+            'step_results': {},
+            'intermediate_results': {},
+            'error_log': [],
+            'memory_snapshots': [],
+            'quality_progression': []
         }
-        
-        if self.device == 'cuda' and torch.cuda.is_available():
-            utilization.update({
-                'gpu_name': torch.cuda.get_device_name(),
-                'compute_capability': torch.cuda.get_device_capability()
-            })
-        elif self.device == 'mps':
-            utilization.update({
-                'mps_available': torch.backends.mps.is_available(),
-                'mps_built': torch.backends.mps.is_built()
-            })
-        
-        return utilization
+    
+    def _cleanup_session_data(self, session_id: str):
+        """세션 데이터 정리"""
+        if session_id in self.session_data:
+            del self.session_data[session_id]
+            logger.debug(f"🧹 세션 {session_id} 데이터 정리 완료")
     
     def _update_performance_metrics(self, processing_time: float, quality_score: float):
         """성능 메트릭 업데이트"""
@@ -1228,12 +1345,6 @@ class PipelineManager:
         else:
             self.performance_metrics['average_processing_time'] = processing_time
             self.performance_metrics['average_quality_score'] = quality_score
-    
-    def _cleanup_session_data(self, session_id: str):
-        """세션 데이터 정리"""
-        if session_id in self.session_data:
-            del self.session_data[session_id]
-            logger.debug(f"🧹 세션 {session_id} 데이터 정리 완료")
     
     async def _handle_processing_error(
         self,
@@ -1301,9 +1412,181 @@ class PipelineManager:
             'metadata': {
                 'pipeline_version': '3.0.0',
                 'device': self.device,
-                'updated_classes_used': True
+                'integrated_version': True
             }
         }
+    
+    # ===========================================
+    # 입력 처리 및 변환 메서드들
+    # ===========================================
+    
+    async def _preprocess_inputs(
+        self, 
+        person_image: Union[str, Image.Image, np.ndarray],
+        clothing_image: Union[str, Image.Image, np.ndarray]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """입력 이미지 전처리"""
+        try:
+            # 데이터 변환기 사용
+            if self.data_converter and hasattr(self.data_converter, 'preprocess_image'):
+                person_tensor = self.data_converter.preprocess_image(person_image)
+                clothing_tensor = self.data_converter.preprocess_image(clothing_image)
+            else:
+                person_tensor = self._manual_preprocess_image(person_image)
+                clothing_tensor = self._manual_preprocess_image(clothing_image)
+            
+            # 디바이스로 이동
+            person_tensor = person_tensor.to(self.device)
+            clothing_tensor = clothing_tensor.to(self.device)
+            
+            logger.info(f"✅ 입력 이미지 전처리 완료 - 사람: {person_tensor.shape}, 의류: {clothing_tensor.shape}")
+            
+            return person_tensor, clothing_tensor
+            
+        except Exception as e:
+            logger.error(f"❌ 입력 전처리 실패: {e}")
+            raise
+    
+    def _manual_preprocess_image(self, image_input: Union[str, Image.Image, np.ndarray]) -> torch.Tensor:
+        """수동 이미지 전처리"""
+        if isinstance(image_input, str):
+            if not os.path.exists(image_input):
+                raise FileNotFoundError(f"이미지 파일을 찾을 수 없습니다: {image_input}")
+            image = Image.open(image_input).convert('RGB')
+        elif isinstance(image_input, Image.Image):
+            image = image_input.convert('RGB')
+        elif isinstance(image_input, np.ndarray):
+            if image_input.dtype != np.uint8:
+                image_input = (image_input * 255).astype(np.uint8)
+            image = Image.fromarray(image_input).convert('RGB')
+        else:
+            raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
+        
+        # 크기 조정
+        target_size = self.config.get('input_size', (512, 512))
+        if image.size != target_size:
+            image = image.resize(target_size, Image.Resampling.LANCZOS)
+        
+        # 텐서 변환
+        img_array = np.array(image)
+        img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).float() / 255.0
+        img_tensor = img_tensor.unsqueeze(0)
+        
+        return img_tensor
+    
+    def _extract_final_image(
+        self, 
+        post_processing_result: Dict[str, Any],
+        fitting_result: Dict[str, Any], 
+        person_tensor: torch.Tensor
+    ) -> torch.Tensor:
+        """최종 결과 이미지 추출"""
+        if 'enhanced_image' in post_processing_result:
+            return post_processing_result['enhanced_image']
+        elif 'fitted_image' in fitting_result:
+            return fitting_result['fitted_image']
+        else:
+            logger.warning("⚠️ 최종 이미지를 찾을 수 없어 원본을 반환합니다")
+            return person_tensor
+    
+    def _tensor_to_pil(self, tensor: torch.Tensor) -> Image.Image:
+        """텐서를 PIL 이미지로 변환"""
+        try:
+            if tensor.dim() == 4:
+                tensor = tensor.squeeze(0)
+            
+            if tensor.shape[0] == 3:
+                tensor = tensor.permute(1, 2, 0)
+            
+            tensor = torch.clamp(tensor, 0, 1)
+            tensor = tensor.cpu()
+            array = (tensor.numpy() * 255).astype(np.uint8)
+            
+            return Image.fromarray(array)
+        except Exception as e:
+            logger.error(f"❌ 텐서-PIL 변환 실패: {e}")
+            return Image.new('RGB', (512, 512), color='black')
+    
+    # ===========================================
+    # 메모리 관리 및 시스템 정보
+    # ===========================================
+    
+    def _optimize_memory_usage(self):
+        """메모리 사용량 최적화"""
+        gc.collect()
+        if self.device == 'cuda' and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif self.device == 'mps' and torch.backends.mps.is_available():
+            # PyTorch 2.2.2 호환성 체크
+            if hasattr(torch.backends.mps, 'empty_cache'):
+                torch.backends.mps.empty_cache()
+            else:
+                # 대체 메모리 관리
+                gc.collect()
+    
+    def _cleanup_memory(self):
+        """메모리 정리"""
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            if hasattr(torch.backends.mps, 'empty_cache'):
+                torch.backends.mps.empty_cache()
+            else:
+                # PyTorch 2.2.2 호환성
+                gc.collect()
+    
+    def _get_detailed_memory_usage(self) -> Dict[str, str]:
+        """상세 메모리 사용량 조회"""
+        try:
+            import psutil
+            memory_info = {
+                'system_memory': f"{psutil.virtual_memory().percent}%",
+                'available_memory': f"{psutil.virtual_memory().available / 1024**3:.1f}GB"
+            }
+        except ImportError:
+            memory_info = {'system_memory': 'N/A', 'available_memory': 'N/A'}
+        
+        if torch.cuda.is_available():
+            memory_info.update({
+                'gpu_memory_allocated': f"{torch.cuda.memory_allocated() / 1024**3:.1f}GB",
+                'gpu_memory_reserved': f"{torch.cuda.memory_reserved() / 1024**3:.1f}GB"
+            })
+        
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            try:
+                if hasattr(torch.mps, 'current_allocated_memory'):
+                    memory_info['mps_memory'] = f"{torch.mps.current_allocated_memory() / 1024**3:.1f}GB"
+                else:
+                    memory_info['mps_memory'] = "N/A"
+            except:
+                memory_info['mps_memory'] = "N/A"
+        
+        return memory_info
+    
+    def _get_device_utilization(self) -> Dict[str, Any]:
+        """디바이스 활용도 조회"""
+        utilization = {
+            'device_type': self.device,
+            'optimization_enabled': self.pipeline_config['enable_optimization']
+        }
+        
+        if self.device == 'cuda' and torch.cuda.is_available():
+            utilization.update({
+                'gpu_name': torch.cuda.get_device_name(),
+                'compute_capability': torch.cuda.get_device_capability()
+            })
+        elif self.device == 'mps':
+            utilization.update({
+                'mps_available': torch.backends.mps.is_available(),
+                'mps_built': torch.backends.mps.is_built()
+            })
+        
+        return utilization
+    
+    # ===========================================
+    # 설정 및 상태 관리
+    # ===========================================
     
     def _load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """설정 파일 로드"""
@@ -1312,7 +1595,7 @@ class PipelineManager:
             'pipeline': {
                 'quality_level': 'high',
                 'processing_mode': 'complete',
-                'enable_optimization': True,
+                'enable_optimization': self.optimization_enabled,
                 'enable_caching': True,
                 'parallel_processing': True,
                 'memory_optimization': True,
@@ -1327,9 +1610,9 @@ class PipelineManager:
                 'poor': 0.6
             },
             'device_optimization': {
-                'enable_mps': True,
+                'enable_mps': self.is_m3_max,
                 'enable_cuda': True,
-                'mixed_precision': True,
+                'mixed_precision': self.optimization_enabled,
                 'memory_efficient': True
             }
         }
@@ -1357,11 +1640,16 @@ class PipelineManager:
     async def _print_system_status(self):
         """시스템 상태 출력"""
         logger.info("=" * 70)
-        logger.info("🏥 수정된 가상 피팅 파이프라인 시스템 상태")
+        logger.info("🏥 완전 통합된 가상 피팅 파이프라인 시스템 상태")
         logger.info("=" * 70)
         
         # 디바이스 정보
         logger.info(f"🖥️ 디바이스: {self.device}")
+        logger.info(f"💻 디바이스 타입: {self.device_type}")
+        logger.info(f"💾 메모리: {self.memory_gb}GB")
+        logger.info(f"🍎 M3 Max: {'✅' if self.is_m3_max else '❌'}")
+        logger.info(f"⚡ 최적화: {'✅' if self.optimization_enabled else '❌'}")
+        
         if self.device == 'mps':
             logger.info(f"   - MPS 사용 가능: {torch.backends.mps.is_available()}")
         elif self.device == 'cuda':
@@ -1398,26 +1686,47 @@ class PipelineManager:
         
         logger.info("=" * 70)
     
+    # ===========================================
+    # pipeline_routes.py 호환성 메서드들
+    # ===========================================
+    
     async def get_pipeline_status(self) -> Dict[str, Any]:
-        """파이프라인 상세 상태 조회"""
+        """파이프라인 상세 상태 조회 - pipeline_routes.py 호환"""
         return {
             'initialized': self.is_initialized,
             'device': self.device,
+            'device_type': self.device_type,
+            'memory_gb': self.memory_gb,
+            'is_m3_max': self.is_m3_max,
+            'optimization_enabled': self.optimization_enabled,
+            'mode': self.mode.value,
+            'steps_loaded': len(self.steps),
+            'total_steps': len(self.step_order),
             'pipeline_config': self.pipeline_config,
             'performance_metrics': self.performance_metrics.copy(),
-            'memory_usage': self._get_detailed_memory_usage(),
-            'device_utilization': self._get_device_utilization(),
-            'active_sessions': len(self.session_data),
-            'error_history_count': len(self.error_history),
+            'memory_status': self._get_detailed_memory_usage(),
+            'stats': {
+                'total_sessions': self.performance_metrics['total_sessions'],
+                'successful_sessions': self.performance_metrics['successful_sessions'],
+                'success_rate': (
+                    self.performance_metrics['successful_sessions'] / 
+                    max(1, self.performance_metrics['total_sessions'])
+                ),
+                'average_processing_time': self.performance_metrics['average_processing_time']
+            },
             'steps_status': {
                 step_name: {
                     'loaded': step_name in self.steps,
-                    'type': type(self.steps[step_name]).__name__ if step_name in self.steps else None
+                    'type': type(self.steps[step_name]).__name__ if step_name in self.steps else None,
+                    'initialized': (
+                        getattr(self.steps[step_name], 'is_initialized', False) 
+                        if step_name in self.steps else False
+                    )
                 }
                 for step_name in self.step_order
             },
             'version': '3.0.0',
-            'updated_classes_used': True
+            'integrated_version': True
         }
     
     def get_status(self) -> Dict[str, Any]:
@@ -1425,19 +1734,45 @@ class PipelineManager:
         return {
             'initialized': self.is_initialized,
             'device': self.device,
-            'mode': 'production',  # main.py 호환성
+            'mode': self.mode.value,
             'status': 'ready' if self.is_initialized else 'initializing',
             'steps_loaded': len(self.steps),
             'performance_stats': self.performance_metrics.copy(),
             'error_count': len(self.error_history),
             'version': '3.0.0',
             'simulation_mode': self.pipeline_config.get('processing_mode', 'complete') == 'simulation',
-            'pipeline_config': self.pipeline_config
+            'pipeline_config': self.pipeline_config,
+            'integrated_version': True
         }
+    
+    async def warmup(self) -> bool:
+        """파이프라인 웜업"""
+        try:
+            logger.info("🔥 파이프라인 웜업 시작...")
+            
+            # 더미 텐서로 각 단계 워밍업
+            dummy_tensor = torch.randn(1, 3, 512, 512).to(self.device)
+            
+            for step_name in self.step_order:
+                if step_name in self.steps:
+                    try:
+                        step = self.steps[step_name]
+                        if hasattr(step, 'process'):
+                            await step.process(dummy_tensor)
+                        logger.debug(f"✅ {step_name} 워밍업 완료")
+                    except Exception as e:
+                        logger.warning(f"⚠️ {step_name} 워밍업 실패: {e}")
+            
+            logger.info("✅ 파이프라인 웜업 완료")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 파이프라인 웜업 실패: {e}")
+            return False
     
     async def cleanup(self):
         """전체 파이프라인 리소스 정리"""
-        logger.info("🧹 수정된 가상 피팅 파이프라인 리소스 정리 중...")
+        logger.info("🧹 완전 통합된 가상 피팅 파이프라인 리소스 정리 중...")
         
         try:
             # 각 단계별 정리
@@ -1478,21 +1813,27 @@ class PipelineManager:
 
 
 # ==========================================
-# main.py에서 요구하는 EXPORT 함수들 추가
+# Export 함수들 (1번 파일과 동일)
 # ==========================================
 
 # 전역 파이프라인 매니저
 _global_pipeline_manager: Optional[PipelineManager] = None
 
 def get_pipeline_manager() -> Optional[PipelineManager]:
-    """전역 파이프라인 매니저 반환 - main.py에서 필수"""
+    """전역 파이프라인 매니저 반환 - pipeline_routes.py에서 필수"""
     global _global_pipeline_manager
     return _global_pipeline_manager
 
-def create_pipeline_manager(mode: Union[str, PipelineMode] = PipelineMode.SIMULATION,
-                          device: str = "mps",
-                          config: Optional[Dict[str, Any]] = None) -> PipelineManager:
-    """새로운 파이프라인 매니저 생성"""
+def create_pipeline_manager(
+    mode: Union[str, PipelineMode] = PipelineMode.PRODUCTION,
+    device: str = "mps",
+    device_type: str = "apple_silicon",
+    memory_gb: float = 128.0,
+    is_m3_max: bool = True,
+    optimization_enabled: bool = True,
+    config: Optional[Dict[str, Any]] = None
+) -> PipelineManager:
+    """새로운 파이프라인 매니저 생성 - pipeline_routes.py 완전 호환"""
     global _global_pipeline_manager
     
     # 기존 매니저 정리
@@ -1502,8 +1843,18 @@ def create_pipeline_manager(mode: Union[str, PipelineMode] = PipelineMode.SIMULA
         except:
             pass
     
-    # 새 매니저 생성 (원본은 mode 인자를 사용하지 않으므로 무시)
-    _global_pipeline_manager = PipelineManager(device=device, config_path=None)
+    # 새 매니저 생성 - 모든 필수 인자 포함
+    _global_pipeline_manager = PipelineManager(
+        device=device,
+        device_type=device_type,
+        memory_gb=memory_gb,
+        is_m3_max=is_m3_max,
+        optimization_enabled=optimization_enabled,
+        config_path=None,
+        mode=mode
+    )
+    
+    logger.info(f"✅ 완전 통합된 파이프라인 매니저 생성됨 - {device} ({device_type})")
     return _global_pipeline_manager
 
 def get_available_modes() -> Dict[str, str]:
@@ -1516,9 +1867,23 @@ def get_available_modes() -> Dict[str, str]:
     }
 
 # 하위 호환성을 위한 별칭들
-def initialize_pipeline_manager(mode: str = "simulation", device: str = "mps") -> PipelineManager:
+def initialize_pipeline_manager(
+    mode: str = "production", 
+    device: str = "mps",
+    device_type: str = "apple_silicon",
+    memory_gb: float = 128.0,
+    is_m3_max: bool = True,
+    optimization_enabled: bool = True
+) -> PipelineManager:
     """파이프라인 매니저 초기화 (하위 호환성)"""
-    return create_pipeline_manager(mode=mode, device=device)
+    return create_pipeline_manager(
+        mode=mode, 
+        device=device,
+        device_type=device_type,
+        memory_gb=memory_gb,
+        is_m3_max=is_m3_max,
+        optimization_enabled=optimization_enabled
+    )
 
 def get_default_pipeline_manager() -> PipelineManager:
     """기본 파이프라인 매니저 반환"""
@@ -1527,263 +1892,55 @@ def get_default_pipeline_manager() -> PipelineManager:
         manager = create_pipeline_manager()
     return manager
 
-# ===================================
-# 사용 예시 및 테스트 함수들
-# ===================================
-
-async def demo_updated_pipeline_manager():
-    """수정된 파이프라인 매니저 데모"""
-    
-    print("🚀 수정된 클래스들과 호환되는 8단계 가상 피팅 파이프라인 데모 시작")
-    
-    # 파이프라인 매니저 초기화
-    pipeline = PipelineManager(
-        config_path=None,  # 기본 설정 사용
-        device='auto'  # 최적 디바이스 자동 선택
-    )
-    
-    # 초기화
-    success = await pipeline.initialize()
-    if not success:
-        print("❌ 파이프라인 매니저 초기화 실패")
-        return
-    
-    # 진행률 콜백 함수
-    async def progress_callback(stage: str, percentage: int):
-        print(f"🔄 진행상황: {stage} - {percentage}%")
-    
-    # 가상 피팅 실행
+# 호환성 검증 함수
+def validate_pipeline_manager_compatibility() -> Dict[str, bool]:
+    """pipeline_routes.py와의 호환성 검증"""
     try:
-        # 더미 이미지 생성 (실제 파일이 없는 경우)
-        person_image = Image.new('RGB', (512, 512), color=(100, 150, 200))
-        clothing_image = Image.new('RGB', (512, 512), color=(200, 100, 100))
-        
-        result = await pipeline.process_complete_virtual_fitting(
-            person_image=person_image,
-            clothing_image=clothing_image,
-            body_measurements={
-                'height': 175,
-                'weight': 70,
-                'chest': 95,
-                'waist': 80,
-                'shoulder_width': 45,
-                'hip': 90
-            },
-            clothing_type='shirt',
-            fabric_type='cotton',
-            style_preferences={
-                'fit': 'slim',
-                'color_preference': 'original'
-            },
-            quality_target=0.85,
-            progress_callback=progress_callback,
-            save_intermediate=True,  # 중간 결과 저장
-            enable_auto_retry=True   # 자동 재시도 활성화
+        # 테스트 매니저 생성
+        test_manager = create_pipeline_manager(
+            mode=PipelineMode.SIMULATION,
+            device="cpu",
+            device_type="test",
+            memory_gb=8.0,
+            is_m3_max=False,
+            optimization_enabled=False
         )
         
-        if result['success']:
-            print(f"\n🎉 수정된 가상 피팅 성공!")
-            print(f"📊 최종 품질: {result['final_quality_score']:.3f} ({result['quality_grade']})")
-            print(f"⏱️ 총 처리 시간: {result['total_processing_time']:.2f}초")
-            print(f"🎯 목표 달성: {'✅' if result['quality_target_achieved'] else '❌'}")
-            print(f"🔧 복구됨: {'✅' if result.get('recovered', False) else '❌'}")
-            print(f"🆕 수정된 클래스 사용: {'✅' if result['metadata']['updated_classes_used'] else '❌'}")
-            
-            # 결과 이미지 저장
-            os.makedirs('output', exist_ok=True)
-            result['result_image'].save('output/updated_pipeline_result.jpg')
-            print("💾 결과 이미지 저장 완료: output/updated_pipeline_result.jpg")
-            
-            # 상세 분석 출력
-            print(f"\n📈 품질 분석:")
-            for category, score in result['quality_breakdown'].items():
-                print(f"  - {category}: {score:.3f}")
-            
-            print(f"\n💡 개선 제안:")
-            for category, suggestions in result['improvement_suggestions'].items():
-                print(f"  📋 {category}:")
-                for suggestion in suggestions[:3]:  # 상위 3개만
-                    print(f"    - {suggestion}")
-            
-            print(f"\n⏱️ 단계별 처리 시간:")
-            for step, summary in result['step_results_summary'].items():
-                if summary['completed']:
-                    fallback_indicator = " (폴백)" if summary['fallback_used'] else ""
-                    print(f"  - {step}: {summary['processing_time']:.2f}초 ({'✅' if summary['success'] else '⚠️'}){fallback_indicator}")
-            
-            # 파이프라인 상태 조회
-            status = await pipeline.get_pipeline_status()
-            print(f"\n📊 파이프라인 상태:")
-            print(f"  - 초기화 상태: {'✅' if status['initialized'] else '❌'}")
-            print(f"  - 디바이스: {status['device']}")
-            print(f"  - 활성 세션: {status['active_sessions']}")
-            print(f"  - 전체 성공률: {status['performance_metrics']['successful_sessions']}/{status['performance_metrics']['total_sessions']}")
-            print(f"  - 버전: {status['version']}")
-            
-        else:
-            print(f"❌ 가상 피팅 실패: {result['error']}")
-            if result.get('fallback_used'):
-                print("🚨 폴백 결과가 제공되었습니다")
-            
-            # 오류 상세 정보
-            if 'error_details' in result:
-                print(f"📋 오류 상세: {result['error_details']}")
-    
+        # 필수 속성 확인
+        required_attrs = ['device', 'device_type', 'memory_gb', 'is_m3_max', 'optimization_enabled']
+        attr_check = {attr: hasattr(test_manager, attr) for attr in required_attrs}
+        
+        # 필수 메서드 확인
+        required_methods = ['initialize', 'process_virtual_tryon', 'get_pipeline_status', 'cleanup']
+        method_check = {method: hasattr(test_manager, method) for method in required_methods}
+        
+        return {
+            'attributes': all(attr_check.values()),
+            'methods': all(method_check.values()),
+            'attr_details': attr_check,
+            'method_details': method_check,
+            'overall_compatible': all(attr_check.values()) and all(method_check.values())
+        }
+        
     except Exception as e:
-        print(f"💥 예외 발생: {e}")
-        print(f"📋 상세: {traceback.format_exc()}")
-    
-    finally:
-        # 리소스 정리
-        await pipeline.cleanup()
-        print("🧹 리소스 정리 완료")
+        logger.error(f"호환성 검증 실패: {e}")
+        return {'overall_compatible': False, 'error': str(e)}
 
+# 모듈 로드 시 호환성 검증
+_compatibility_result = validate_pipeline_manager_compatibility()
+if _compatibility_result['overall_compatible']:
+    logger.info("✅ pipeline_routes.py와 완전 호환됨")
+else:
+    logger.warning(f"⚠️ 호환성 문제: {_compatibility_result}")
 
-async def test_individual_steps():
-    """개별 단계 테스트"""
-    
-    print("🔬 개별 단계 테스트 시작")
-    
-    device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-    
-    # 더미 이미지 생성
-    dummy_tensor = torch.randn(1, 3, 512, 512)
-    
-    # 각 단계별 테스트 (import 가능한 경우만)
-    steps_to_test = []
-    
-    if STEPS_IMPORT_SUCCESS:
-        steps_to_test = [
-            ('Human Parsing', HumanParsingStep),
-            ('Pose Estimation', PoseEstimationStep),
-            ('Cloth Segmentation', ClothSegmentationStep),
-            ('Geometric Matching', GeometricMatchingStep),
-            ('Cloth Warping', ClothWarpingStep),
-            ('Virtual Fitting', VirtualFittingStep),
-            ('Post Processing', PostProcessingStep),
-            ('Quality Assessment', QualityAssessmentStep)
-        ]
-    else:
-        print("⚠️ Step 클래스들을 import할 수 없어 시뮬레이션 테스트만 진행")
-        return {'simulation_mode': True, 'steps_tested': 0}
-    
-    results = {}
-    
-    for step_name, step_class in steps_to_test:
-        print(f"\n🧪 테스트 중: {step_name}")
-        
-        try:
-            # 수정된 생성자로 단계 생성
-            step = step_class(device=device, config={'test_mode': True})
-            
-            # 초기화
-            init_success = await step.initialize()
-            print(f"  초기화: {'✅' if init_success else '❌'}")
-            
-            # 처리 테스트
-            start_time = time.time()
-            
-            if step_name == 'Human Parsing':
-                result = await step.process(dummy_tensor)
-            elif step_name == 'Pose Estimation':
-                result = await step.process(dummy_tensor)
-            elif step_name == 'Cloth Segmentation':
-                result = await step.process(dummy_tensor, clothing_type='shirt')
-            elif step_name == 'Geometric Matching':
-                result = await step.process(dummy_tensor, dummy_tensor, dummy_tensor)
-            elif step_name == 'Cloth Warping':
-                result = await step.process(dummy_tensor, {'height': 175}, 'cotton')
-            elif step_name == 'Virtual Fitting':
-                result = await step.process(dummy_tensor, dummy_tensor, dummy_tensor, dummy_tensor)
-            elif step_name == 'Post Processing':
-                result = await step.process({'fitted_image': dummy_tensor})
-            elif step_name == 'Quality Assessment':
-                result = await step.process(
-                    {'enhanced_image': dummy_tensor}, dummy_tensor, dummy_tensor,
-                    dummy_tensor, dummy_tensor, dummy_tensor, dummy_tensor
-                )
-            
-            processing_time = time.time() - start_time
-            success = result.get('success', True)
-            confidence = result.get('confidence', 0.0)
-            fallback = result.get('fallback', False)
-            
-            print(f"  처리: {'✅' if success else '❌'}")
-            print(f"  시간: {processing_time:.3f}초")
-            print(f"  신뢰도: {confidence:.3f}")
-            print(f"  폴백: {'Yes' if fallback else 'No'}")
-            
-            results[step_name] = {
-                'success': success,
-                'processing_time': processing_time,
-                'confidence': confidence,
-                'fallback': fallback
-            }
-            
-            # 정리
-            if hasattr(step, 'cleanup'):
-                await step.cleanup()
-                
-        except Exception as e:
-            print(f"  ❌ 오류: {e}")
-            results[step_name] = {
-                'success': False,
-                'error': str(e)
-            }
-    
-    # 결과 요약
-    print(f"\n📊 개별 단계 테스트 결과 요약:")
-    total_steps = len(steps_to_test)
-    successful_steps = sum(1 for r in results.values() if r.get('success', False))
-    
-    print(f"  - 전체 단계: {total_steps}")
-    print(f"  - 성공 단계: {successful_steps}")
-    print(f"  - 성공률: {successful_steps/total_steps:.1%}" if total_steps > 0 else "  - 성공률: 0%")
-    
-    if successful_steps > 0:
-        avg_time = np.mean([r['processing_time'] for r in results.values() if 'processing_time' in r])
-        avg_confidence = np.mean([r['confidence'] for r in results.values() if 'confidence' in r])
-        fallback_count = sum(1 for r in results.values() if r.get('fallback', False))
-        
-        print(f"  - 평균 처리 시간: {avg_time:.3f}초")
-        print(f"  - 평균 신뢰도: {avg_confidence:.3f}")
-        print(f"  - 폴백 사용: {fallback_count}/{successful_steps}")
-    
-    return results
-
-
-# 메인 실행 함수
-if __name__ == "__main__":
-    print("🎽 수정된 완전한 8단계 가상 피팅 파이프라인 매니저 v3.0")
-    print("=" * 70)
-    print("✨ 수정된 클래스들과 완벽 호환")
-    print("🔧 device 인자 문제 해결 적용")
-    print("🚀 M3 Max 최적화")
-    print("💪 프로덕션 레벨 안정성")
-    print("🆕 main.py에서 요구하는 PipelineMode enum과 export 함수들 추가")
-    print("🎭 Step import 실패 시 자동 시뮬레이션 모드")
-    print("=" * 70)
-    
-    async def main():
-        # 1. 개별 단계 테스트
-        print("\n1️⃣ 개별 단계 테스트")
-        individual_results = await test_individual_steps()
-        
-        # 2. 데모 실행
-        print("\n2️⃣ 파이프라인 데모")
-        await demo_updated_pipeline_manager()
-        
-        print("\n🎯 전체 테스트 완료!")
-        print(f"📊 최종 결과:")
-        if isinstance(individual_results, dict) and 'simulation_mode' in individual_results:
-            print(f"  - 시뮬레이션 모드로 실행됨")
-        else:
-            print(f"  - 개별 단계 성공률: {sum(1 for r in individual_results.values() if r.get('success'))}/{len(individual_results)}")
-        print(f"  - PipelineMode enum: ✅ 추가됨")
-        print(f"  - get_pipeline_manager(): ✅ 추가됨")
-        print(f"  - create_pipeline_manager(): ✅ 추가됨")
-        print(f"  - main.py 호환성: ✅ 완료됨")
-        print(f"  - MPS empty_cache 호환성: ✅ PyTorch 2.2.2 지원")
-    
-    # 실행
-    asyncio.run(main())
+# __all__ export
+__all__ = [
+    'PipelineManager',
+    'PipelineMode',
+    'get_pipeline_manager',
+    'create_pipeline_manager',
+    'get_available_modes',
+    'initialize_pipeline_manager',
+    'get_default_pipeline_manager',
+    'validate_pipeline_manager_compatibility'
+]

@@ -2,7 +2,7 @@
 """
 MyCloset AI Backend - M3 Max 128GB 최적화 메인 애플리케이션
 Pydantic V2 완전 호환, 안정적인 import 처리, 프로덕션 레벨 구현
-Time 오류 완전 수정 버전
+WebSocket 중복 import 문제 수정 버전
 """
 
 # ============================================
@@ -547,18 +547,21 @@ class M3MaxComponentImporter:
             logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
             routers['pipeline'] = None
         
-        # WebSocket routes
+        # WebSocket routes - 단일 import로 수정
         try:
             if not self.fallback_mode:
-                from app.api.websocket_routes import router as websocket_router
+                from app.api.websocket_routes import router as websocket_router, start_background_tasks
                 routers['websocket'] = websocket_router
+                routers['websocket_start_tasks'] = start_background_tasks  # 백그라운드 태스크 함수도 저장
                 logger.info("✅ WebSocket 라우터 import 성공")
             else:
                 logger.warning("⚠️ WebSocket 라우터 스킵 - 폴백 모드")
                 routers['websocket'] = None
+                routers['websocket_start_tasks'] = None
         except Exception as e:
             logger.warning(f"⚠️ WebSocket 라우터 import 실패: {e}")
             routers['websocket'] = None
+            routers['websocket_start_tasks'] = None
         
         self.components['routers'] = routers
         return routers
@@ -763,6 +766,15 @@ async def m3_max_lifespan(app: FastAPI):
         else:
             logger.error("❌ 파이프라인 매니저 클래스를 찾을 수 없음")
             app_state["errors"].append("Pipeline manager class not found")
+        
+        # WebSocket 백그라운드 태스크 시작
+        websocket_start_tasks = api_routers.get('websocket_start_tasks')
+        if websocket_start_tasks:
+            try:
+                await websocket_start_tasks()
+                logger.info("✅ WebSocket 백그라운드 태스크 시작됨")
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 백그라운드 태스크 시작 실패: {e}")
         
         app_state["startup_time"] = time.time() - startup_start
         
@@ -1245,6 +1257,7 @@ async def get_m3_max_detailed_status():
         "api_routers": {
             name: router is not None 
             for name, router in api_routers.items()
+            if name != 'websocket_start_tasks'  # 함수는 제외
         }
     }
 
