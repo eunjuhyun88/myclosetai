@@ -89,335 +89,243 @@ class MemoryManager:
         self.max_history_length = 100
         
         # 캐시 관리 (약한 참조 사용)
-        self.model_cache = weakref.WeakValueDictionary() if enable_caching else {}
-        self.tensor_cache = {} if enable_caching else {}
-        self.cache_priority = {} if enable_caching else {}
-        self.image_cache = {} if enable_caching else {}
+        self.model_cache = weakref.WeakValueDictionary()
+        self.tensor_cache = {}
+        self.image_cache = {}
+        self.cache_priority = {}
         
-        # 모니터링 스레드
+        # 스레드 안전성
+        self._lock = threading.RLock()
+        
+        # 모니터링
         self.monitoring_active = False
-        self.monitoring_thread: Optional[threading.Thread] = None
-        self._lock = threading.Lock()
+        self.monitoring_thread = None
         
-        # 콜백 함수들
-        self.warning_callbacks: List[Callable] = []
-        self.critical_callbacks: List[Callable] = []
+        # 최적화 플래그
+        self.cleanup_triggered = False
+        self.last_cleanup = time.time()
+        self.cleanup_cooldown = 5.0  # 5초 쿨다운
         
-        # GPU 정보 감지
-        self.gpu_info = self._detect_gpu_info()
-        
-        # 초기화
-        if auto_cleanup:
-            self.start_monitoring()
-        
-        logger.info(f"MemoryManager 초기화 완료")
-        logger.info(f"- Device: {self.device}")
-        logger.info(f"- Memory Limit: {self.memory_limit_gb:.1f}GB")
-        logger.info(f"- GPU Info: {self.gpu_info}")
+        logger.info(f"🧠 MemoryManager 초기화 - 디바이스: {self.device}, 메모리 제한: {self.memory_limit_gb:.1f}GB")
     
-    def _detect_optimal_device(self, preferred: str) -> str:
+    def _detect_optimal_device(self, device: str) -> str:
         """최적 디바이스 자동 감지"""
-        if preferred != "auto":
-            return preferred
+        if device != "auto":
+            return device
             
-        if not TORCH_AVAILABLE:
-            return "cpu"
-            
-        try:
-            # M3 Max MPS 우선
+        if TORCH_AVAILABLE:
             if torch.backends.mps.is_available():
-                return "mps"
-            # CUDA 다음
+                return "mps"  # Apple Silicon
             elif torch.cuda.is_available():
                 return "cuda"
-            else:
-                return "cpu"
-        except Exception as e:
-            logger.warning(f"디바이스 감지 실패: {e}")
-            return "cpu"
-    
-    def _detect_gpu_info(self) -> Dict[str, Any]:
-        """GPU 정보 감지"""
-        info = {
-            "available": False,
-            "type": "none",
-            "memory_gb": 0.0,
-            "name": "CPU Only"
-        }
         
-        if not TORCH_AVAILABLE:
-            return info
-            
-        try:
-            if self.device == 'cuda' and torch.cuda.is_available():
-                props = torch.cuda.get_device_properties(0)
-                info.update({
-                    "available": True,
-                    "type": "cuda",
-                    "memory_gb": props.total_memory / 1024**3,
-                    "name": props.name
-                })
-            elif self.device == 'mps' and torch.backends.mps.is_available():
-                # MPS는 시스템 메모리 공유 (M3 Max 최적화)
-                if PSUTIL_AVAILABLE:
-                    system_memory = psutil.virtual_memory().total / 1024**3
-                else:
-                    system_memory = 128.0  # M3 Max 기본값
-                info.update({
-                    "available": True,
-                    "type": "mps",
-                    "memory_gb": system_memory * 0.7,  # 70% 할당
-                    "name": "Apple Silicon MPS"
-                })
-        except Exception as e:
-            logger.error(f"GPU 정보 감지 실패: {e}")
-        
-        return info
+        return "cpu"
     
-    async def get_memory_status(self) -> Dict[str, Any]:
-        """현재 메모리 상태 조회 (비동기)"""
-        return self.get_memory_stats().__dict__
-    
+    # 메모리 상태 조회
     def get_memory_stats(self) -> MemoryStats:
         """현재 메모리 상태 조회"""
-        try:
-            if PSUTIL_AVAILABLE:
-                # CPU 메모리
-                memory = psutil.virtual_memory()
-                swap = psutil.swap_memory()
-                process = psutil.Process()
-                
-                stats = MemoryStats(
-                    cpu_percent=memory.percent,
-                    cpu_available_gb=memory.available / 1024**3,
-                    cpu_used_gb=memory.used / 1024**3,
-                    cpu_total_gb=memory.total / 1024**3,
-                    swap_used_gb=swap.used / 1024**3,
-                    cache_size_mb=self._get_cache_size_mb(),
-                    process_memory_mb=process.memory_info().rss / 1024**2
-                )
-            else:
-                # psutil 없이 기본값
-                stats = MemoryStats(
-                    cpu_percent=50.0,
-                    cpu_available_gb=64.0,
-                    cpu_used_gb=64.0,
-                    cpu_total_gb=128.0,
-                    cache_size_mb=self._get_cache_size_mb(),
-                    process_memory_mb=1024.0
-                )
-            
-            # GPU 메모리
-            if TORCH_AVAILABLE and self.gpu_info["available"]:
-                try:
-                    if self.device == 'cuda':
-                        stats.gpu_allocated_gb = torch.cuda.memory_allocated() / 1024**3
-                        stats.gpu_reserved_gb = torch.cuda.memory_reserved() / 1024**3
-                        stats.gpu_total_gb = self.gpu_info["memory_gb"]
-                    elif self.device == 'mps':
-                        # MPS 메모리 상태 (M3 Max)
-                        stats.gpu_allocated_gb = torch.mps.current_allocated_memory() / 1024**3
-                        stats.gpu_total_gb = self.gpu_info["memory_gb"]
-                except Exception as e:
-                    logger.debug(f"GPU 메모리 상태 조회 실패: {e}")
-            
-            return stats
-            
-        except Exception as e:
-            logger.error(f"메모리 상태 조회 실패: {e}")
-            # 기본값 반환
-            return MemoryStats(
-                cpu_percent=50.0,
-                cpu_available_gb=64.0,
-                cpu_used_gb=64.0,
-                cpu_total_gb=128.0
-            )
-    
-    def _get_cache_size_mb(self) -> float:
-        """캐시 크기 계산 (MB)"""
-        if not self.enable_caching:
-            return 0.0
-            
-        total_size = 0
+        stats = MemoryStats(
+            cpu_percent=0.0,
+            cpu_available_gb=0.0,
+            cpu_used_gb=0.0,
+            cpu_total_gb=0.0
+        )
         
         try:
+            # CPU 메모리
+            if PSUTIL_AVAILABLE:
+                vm = psutil.virtual_memory()
+                stats.cpu_percent = vm.percent
+                stats.cpu_total_gb = vm.total / 1024**3
+                stats.cpu_used_gb = vm.used / 1024**3
+                stats.cpu_available_gb = vm.available / 1024**3
+                stats.swap_used_gb = psutil.swap_memory().used / 1024**3
+                
+                # 프로세스 메모리
+                process = psutil.Process()
+                stats.process_memory_mb = process.memory_info().rss / 1024**2
+            
+            # GPU 메모리 (PyTorch)
+            if TORCH_AVAILABLE:
+                if self.device == "cuda" and torch.cuda.is_available():
+                    stats.gpu_allocated_gb = torch.cuda.memory_allocated() / 1024**3
+                    stats.gpu_reserved_gb = torch.cuda.memory_reserved() / 1024**3
+                    stats.gpu_total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                elif self.device == "mps" and torch.backends.mps.is_available():
+                    # MPS는 시스템 RAM 공유
+                    stats.gpu_allocated_gb = torch.mps.current_allocated_memory() / 1024**3 if hasattr(torch.mps, 'current_allocated_memory') else 0.0
+            
+            # 캐시 크기
+            stats.cache_size_mb = self._calculate_cache_size()
+            
+        except Exception as e:
+            logger.warning(f"메모리 상태 조회 실패: {e}")
+        
+        return stats
+    
+    def _calculate_cache_size(self) -> float:
+        """캐시 크기 계산 (MB)"""
+        try:
+            size_mb = 0.0
+            
             # 텐서 캐시
             for tensor in self.tensor_cache.values():
-                if TORCH_AVAILABLE and isinstance(tensor, torch.Tensor):
-                    total_size += tensor.numel() * tensor.element_size()
-                elif isinstance(tensor, np.ndarray):
-                    total_size += tensor.nbytes
+                if hasattr(tensor, 'numel') and hasattr(tensor, 'element_size'):
+                    size_mb += tensor.numel() * tensor.element_size() / 1024**2
             
-            # 이미지 캐시
-            for img_data in self.image_cache.values():
-                if isinstance(img_data, (bytes, bytearray)):
-                    total_size += len(img_data)
-                elif isinstance(img_data, np.ndarray):
-                    total_size += img_data.nbytes
-                    
-        except Exception as e:
-            logger.debug(f"캐시 크기 계산 실패: {e}")
-        
-        return total_size / 1024**2
+            # 이미지 캐시 (대략적 계산)
+            size_mb += len(self.image_cache) * 2.0  # 평균 2MB per image
+            
+            return size_mb
+        except:
+            return 0.0
     
     def check_memory_pressure(self) -> Dict[str, Any]:
         """메모리 압박 상태 확인"""
         stats = self.get_memory_stats()
         
-        pressure_info = {
-            'cpu_pressure': 'none',
-            'gpu_pressure': 'none',
-            'process_pressure': 'none',
-            'overall_pressure': 'none',
-            'recommendations': [],
-            'stats': stats.__dict__
-        }
+        cpu_pressure = stats.cpu_percent / 100.0
+        gpu_pressure = 0.0
         
-        # CPU 메모리 압박 확인
-        if stats.cpu_percent > self.critical_threshold * 100:
-            pressure_info['cpu_pressure'] = 'critical'
-            pressure_info['recommendations'].append('💥 CPU 메모리 임계: 즉시 정리 필요')
-        elif stats.cpu_percent > self.warning_threshold * 100:
-            pressure_info['cpu_pressure'] = 'warning'
-            pressure_info['recommendations'].append('⚠️ CPU 메모리 사용량 높음')
-        
-        # GPU 메모리 압박 확인
         if stats.gpu_total_gb > 0:
-            gpu_usage_ratio = stats.gpu_allocated_gb / stats.gpu_total_gb
-            if gpu_usage_ratio > self.critical_threshold:
-                pressure_info['gpu_pressure'] = 'critical'
-                pressure_info['recommendations'].append('💥 GPU 메모리 임계: 모델 언로드 필요')
-            elif gpu_usage_ratio > self.warning_threshold:
-                pressure_info['gpu_pressure'] = 'warning'
-                pressure_info['recommendations'].append('⚠️ GPU 메모리 사용량 높음')
+            gpu_pressure = stats.gpu_allocated_gb / stats.gpu_total_gb
         
-        # 프로세스 메모리 확인
-        if stats.process_memory_mb > self.memory_limit_gb * 1024 * 0.9:
-            pressure_info['process_pressure'] = 'critical'
-            pressure_info['recommendations'].append('💥 프로세스 메모리 한계 근접')
+        overall_pressure = max(cpu_pressure, gpu_pressure)
         
-        # 전체 압박 수준 결정
-        pressures = [pressure_info['cpu_pressure'], pressure_info['gpu_pressure'], pressure_info['process_pressure']]
-        if 'critical' in pressures:
-            pressure_info['overall_pressure'] = 'critical'
-        elif 'warning' in pressures:
-            pressure_info['overall_pressure'] = 'warning'
+        status = "normal"
+        if overall_pressure > self.critical_threshold:
+            status = "critical"
+        elif overall_pressure > self.warning_threshold:
+            status = "warning"
         
-        return pressure_info
+        return {
+            "status": status,
+            "cpu_pressure": cpu_pressure,
+            "gpu_pressure": gpu_pressure,
+            "overall_pressure": overall_pressure,
+            "stats": stats,
+            "recommendations": self._get_memory_recommendations(overall_pressure)
+        }
     
-    async def cleanup(self):
+    def _get_memory_recommendations(self, pressure: float) -> List[str]:
+        """메모리 압박에 따른 권장사항"""
+        recommendations = []
+        
+        if pressure > self.critical_threshold:
+            recommendations.extend([
+                "즉시 캐시 정리 실행",
+                "불필요한 모델 언로드",
+                "배치 크기 축소",
+                "이미지 해상도 감소"
+            ])
+        elif pressure > self.warning_threshold:
+            recommendations.extend([
+                "주기적 캐시 정리",
+                "메모리 모니터링 강화",
+                "필요시 배치 크기 조정"
+            ])
+        else:
+            recommendations.append("현재 메모리 상태 양호")
+        
+        return recommendations
+    
+    # 메모리 최적화
+    async def cleanup(self, aggressive: bool = False):
         """비동기 메모리 정리"""
-        await asyncio.get_event_loop().run_in_executor(None, self.clear_cache, True)
-    
-    def clear_cache(self, aggressive: bool = False):
-        """캐시 정리"""
-        if not self.enable_caching:
+        current_time = time.time()
+        
+        # 쿨다운 체크
+        if current_time - self.last_cleanup < self.cleanup_cooldown and not aggressive:
             return
-            
+        
         try:
             with self._lock:
-                cleared_items = 0
+                self.cleanup_triggered = True
                 
+                # 캐시 정리
                 if aggressive:
-                    # 모든 캐시 정리
-                    cleared_items += len(self.tensor_cache)
-                    self.tensor_cache.clear()
-                    self.cache_priority.clear()
-                    self.image_cache.clear()
-                    logger.info(f"🧹 전체 캐시 정리: {cleared_items}개 항목")
+                    self.clear_cache(aggressive=True)
                 else:
-                    # 우선순위가 낮은 캐시만 정리
-                    to_remove = [k for k, v in self.cache_priority.items() if v < 0.5]
-                    for key in to_remove:
-                        self.tensor_cache.pop(key, None)
-                        self.cache_priority.pop(key, None)
-                        cleared_items += 1
-                    
-                    # 이미지 캐시 부분 정리 (LRU 방식)
-                    if len(self.image_cache) > 50:
-                        items_to_remove = len(self.image_cache) - 30
-                        for _ in range(items_to_remove):
-                            if self.image_cache:
-                                self.image_cache.popitem()
-                                cleared_items += 1
-                    
-                    logger.info(f"🧹 선택적 캐시 정리: {cleared_items}개 항목")
+                    await self.smart_cleanup()
                 
-                # GPU 캐시 정리
+                # 가비지 컬렉션
+                gc.collect()
+                
+                # GPU 메모리 정리
                 if TORCH_AVAILABLE:
-                    if self.device == 'cuda' and torch.cuda.is_available():
+                    if self.device == "cuda":
                         torch.cuda.empty_cache()
-                        torch.cuda.synchronize()
-                    elif self.device == 'mps' and torch.backends.mps.is_available():
+                    elif self.device == "mps":
                         torch.mps.empty_cache()
                 
-                # Python 가비지 컬렉션
-                collected = gc.collect()
-                logger.debug(f"🗑️ 가비지 컬렉션: {collected}개 객체 정리")
+                self.last_cleanup = current_time
+                self.cleanup_triggered = False
+                
+                logger.debug("🧹 메모리 정리 완료")
+                
+        except Exception as e:
+            logger.error(f"메모리 정리 실패: {e}")
+    
+    def clear_cache(self, cache_type: str = "all", aggressive: bool = False):
+        """캐시 정리"""
+        try:
+            with self._lock:
+                cleared_count = 0
+                
+                if cache_type in ["all", "tensor"]:
+                    if aggressive:
+                        cleared_count += len(self.tensor_cache)
+                        self.tensor_cache.clear()
+                        self.cache_priority.clear()
+                    else:
+                        # 우선순위 낮은 것만 정리
+                        to_remove = [k for k, v in self.cache_priority.items() if v < 0.3]
+                        for key in to_remove:
+                            self.tensor_cache.pop(key, None)
+                            self.cache_priority.pop(key, None)
+                        cleared_count += len(to_remove)
+                
+                if cache_type in ["all", "image"]:
+                    if aggressive:
+                        cleared_count += len(self.image_cache)
+                        self.image_cache.clear()
+                    else:
+                        # 오래된 이미지부터 절반 정리
+                        items = list(self.image_cache.items())
+                        remove_count = len(items) // 2
+                        for i in range(remove_count):
+                            key, _ = items[i]
+                            self.image_cache.pop(key, None)
+                        cleared_count += remove_count
+                
+                if cleared_count > 0:
+                    logger.debug(f"🗑️ 캐시 정리 완료: {cleared_count}개 항목")
                 
         except Exception as e:
             logger.error(f"캐시 정리 실패: {e}")
     
-    def smart_cleanup(self):
+    async def smart_cleanup(self):
         """지능형 메모리 정리"""
-        pressure = self.check_memory_pressure()
+        pressure_info = self.check_memory_pressure()
+        pressure = pressure_info["overall_pressure"]
         
-        if pressure['overall_pressure'] == 'critical':
-            logger.warning("💥 메모리 임계 상태 - 적극적 정리 실행")
+        if pressure > self.critical_threshold:
+            # 긴급 정리
             self.clear_cache(aggressive=True)
+            await asyncio.sleep(0.1)  # 정리 시간 확보
             
-            # 추가 정리 작업
-            self._emergency_cleanup()
-            
-            # 콜백 실행
-            for callback in self.critical_callbacks:
-                try:
-                    callback(pressure)
-                except Exception as e:
-                    logger.error(f"Critical callback 실행 실패: {e}")
-                    
-        elif pressure['overall_pressure'] == 'warning':
-            logger.info("⚠️ 메모리 사용량 높음 - 부분 정리 실행")
+        elif pressure > self.warning_threshold:
+            # 선택적 정리
             self.clear_cache(aggressive=False)
-            
-            # 콜백 실행
-            for callback in self.warning_callbacks:
-                try:
-                    callback(pressure)
-                except Exception as e:
-                    logger.error(f"Warning callback 실행 실패: {e}")
+            self._evict_low_priority_cache()
     
-    def _emergency_cleanup(self):
-        """비상 메모리 정리"""
-        try:
-            # 모든 약한 참조 정리
-            if self.enable_caching:
-                self.model_cache.clear()
-            
-            # 시스템 레벨 정리
-            if hasattr(gc, 'set_threshold'):
-                gc.set_threshold(100, 10, 10)
-                gc.collect()
-                gc.set_threshold(700, 10, 10)  # 기본값 복원
-            
-            logger.info("🚨 비상 메모리 정리 완료")
-            
-        except Exception as e:
-            logger.error(f"비상 정리 실패: {e}")
-    
-    # 캐시 관리 메서드들
-    def add_to_cache(self, key: str, data: Any, priority: float = 0.5, cache_type: str = "tensor") -> bool:
+    # 캐시 관리
+    def add_to_cache(self, key: str, data: Any, cache_type: str = "tensor", priority: float = 0.5) -> bool:
         """캐시에 데이터 추가"""
         if not self.enable_caching:
             return False
-            
+        
         try:
-            # 메모리 압박 시 캐시 추가 거부
-            pressure = self.check_memory_pressure()
-            if pressure['overall_pressure'] == 'critical':
-                logger.warning("메모리 부족으로 캐시 추가 거부")
-                return False
-            
             with self._lock:
                 if cache_type == "image":
                     self.image_cache[key] = data
@@ -562,68 +470,7 @@ class MemoryManager:
                 logger.error(f"메모리 모니터링 오류: {e}")
                 time.sleep(10)
     
-    # 유틸리티 메서드들
-    async def get_usage_stats(self) -> Dict[str, Any]:
-        """사용 통계 (기존 호환성)"""
-        stats = self.get_memory_stats()
-        return {
-            "memory_usage_mb": stats.cpu_used_gb * 1024,
-            "memory_free_mb": stats.cpu_available_gb * 1024,
-            "memory_percentage": stats.cpu_percent,
-            "process_memory_mb": stats.process_memory_mb,
-            "gpu_memory_gb": stats.gpu_allocated_gb,
-            "cache_size_mb": stats.cache_size_mb
-        }
-    
-    def add_warning_callback(self, callback: Callable):
-        """경고 콜백 추가"""
-        self.warning_callbacks.append(callback)
-    
-    def add_critical_callback(self, callback: Callable):
-        """위험 콜백 추가"""
-        self.critical_callbacks.append(callback)
-    
-    def get_memory_report(self) -> Dict[str, Any]:
-        """상세 메모리 보고서"""
-        current_stats = self.get_memory_stats()
-        pressure = self.check_memory_pressure()
-        
-        report = {
-            'timestamp': time.time(),
-            'device_info': self.gpu_info,
-            'current_stats': current_stats.__dict__,
-            'pressure_analysis': pressure,
-            'cache_info': {
-                'enabled': self.enable_caching,
-                'tensor_cache_size': len(self.tensor_cache) if self.enable_caching else 0,
-                'image_cache_size': len(self.image_cache) if self.enable_caching else 0,
-                'cache_size_mb': current_stats.cache_size_mb,
-                'model_cache_size': len(self.model_cache) if self.enable_caching else 0
-            },
-            'monitoring': {
-                'active': self.monitoring_active,
-                'history_length': len(self.stats_history),
-                'interval_seconds': self.monitoring_interval
-            },
-            'configuration': {
-                'memory_limit_gb': self.memory_limit_gb,
-                'warning_threshold': self.warning_threshold,
-                'critical_threshold': self.critical_threshold,
-                'auto_cleanup': self.auto_cleanup
-            }
-        }
-        
-        # 최근 추세 분석
-        if len(self.stats_history) >= 5:
-            recent_stats = self.stats_history[-5:]
-            report['trends'] = {
-                'cpu_trend_percent': recent_stats[-1].cpu_percent - recent_stats[0].cpu_percent,
-                'gpu_trend_gb': recent_stats[-1].gpu_allocated_gb - recent_stats[0].gpu_allocated_gb,
-                'process_trend_mb': recent_stats[-1].process_memory_mb - recent_stats[0].process_memory_mb
-            }
-        
-        return report
-    
+    # 성능 최적화
     def optimize_for_inference(self):
         """추론 최적화 설정"""
         if not TORCH_AVAILABLE:
@@ -649,6 +496,29 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"추론 최적화 실패: {e}")
     
+    # 유틸리티 메서드들
+    async def get_usage_stats(self) -> Dict[str, Any]:
+        """사용 통계 (기존 호환성)"""
+        stats = self.get_memory_stats()
+        pressure_info = self.check_memory_pressure()
+        
+        return {
+            "memory_usage": {
+                "cpu_percent": stats.cpu_percent,
+                "cpu_used_gb": stats.cpu_used_gb,
+                "cpu_total_gb": stats.cpu_total_gb,
+                "gpu_allocated_gb": stats.gpu_allocated_gb,
+                "gpu_total_gb": stats.gpu_total_gb,
+                "cache_size_mb": stats.cache_size_mb
+            },
+            "pressure": pressure_info,
+            "cache_info": {
+                "tensor_cache_size": len(self.tensor_cache),
+                "image_cache_size": len(self.image_cache),
+                "model_cache_size": len(self.model_cache)
+            }
+        }
+    
     def __del__(self):
         """소멸자"""
         try:
@@ -671,6 +541,77 @@ def get_memory_manager(**kwargs) -> MemoryManager:
 def get_global_memory_manager(**kwargs) -> MemoryManager:
     """전역 메모리 관리자 인스턴스 반환 (별칭)"""
     return get_memory_manager(**kwargs)
+
+# ============================================
+# 🔥 핵심: 누락된 optimize_memory_usage 함수
+# ============================================
+
+def optimize_memory_usage(device: str = None, aggressive: bool = False) -> Dict[str, Any]:
+    """
+    🔥 메모리 사용량 최적화 (누락된 함수)
+    
+    Args:
+        device: 대상 디바이스 ('mps', 'cuda', 'cpu')
+        aggressive: 공격적 정리 여부
+    
+    Returns:
+        최적화 결과 정보
+    """
+    try:
+        manager = get_memory_manager(device=device or "auto")
+        
+        # 최적화 전 상태
+        before_stats = manager.get_memory_stats()
+        
+        # 메모리 정리
+        manager.clear_cache(aggressive=aggressive)
+        
+        # PyTorch 메모리 정리
+        if TORCH_AVAILABLE:
+            gc.collect()
+            if manager.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif manager.device == "mps" and torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        
+        # 최적화 후 상태
+        after_stats = manager.get_memory_stats()
+        
+        # 결과 계산
+        freed_cpu = before_stats.cpu_used_gb - after_stats.cpu_used_gb
+        freed_gpu = before_stats.gpu_allocated_gb - after_stats.gpu_allocated_gb
+        freed_cache = before_stats.cache_size_mb - after_stats.cache_size_mb
+        
+        result = {
+            "success": True,
+            "device": manager.device,
+            "freed_memory": {
+                "cpu_gb": max(0, freed_cpu),
+                "gpu_gb": max(0, freed_gpu),
+                "cache_mb": max(0, freed_cache)
+            },
+            "before": {
+                "cpu_used_gb": before_stats.cpu_used_gb,
+                "gpu_allocated_gb": before_stats.gpu_allocated_gb,
+                "cache_size_mb": before_stats.cache_size_mb
+            },
+            "after": {
+                "cpu_used_gb": after_stats.cpu_used_gb,
+                "gpu_allocated_gb": after_stats.gpu_allocated_gb,
+                "cache_size_mb": after_stats.cache_size_mb
+            }
+        }
+        
+        logger.info(f"🧹 메모리 최적화 완료 - CPU: {freed_cpu:.2f}GB, GPU: {freed_gpu:.2f}GB, 캐시: {freed_cache:.1f}MB")
+        return result
+        
+    except Exception as e:
+        logger.error(f"메모리 최적화 실패: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "device": device or "unknown"
+        }
 
 # 편의 함수들
 async def optimize_memory():
