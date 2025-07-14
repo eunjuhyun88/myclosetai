@@ -25,6 +25,7 @@ try:
     from ..utils.model_loader import ModelLoader, ModelConfig
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
+    
 except ImportError:
     # 폴백 - 전역에서 가져오기
     from app.ai_pipeline.utils.model_loader import ModelLoader, ModelConfig
