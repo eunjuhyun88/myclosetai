@@ -13,6 +13,17 @@ CHECKPOINTS_ROOT = AI_MODELS_ROOT / "checkpoints"
 
 # 분석된 체크포인트 모델들
 ANALYZED_MODELS = {
+    "clip-vit-base-patch32": {
+        "name": "clip-vit-base-patch32",
+        "type": "text_image",
+        "step": "auxiliary",
+        "path": CHECKPOINTS_ROOT / "clip-vit-base-patch32",
+        "ready": True,
+        "size_mb": 580.7,
+        "priority": 11,
+        "checkpoints": [{'name': 'pytorch_model.bin', 'path': 'pytorch_model.bin', 'size_mb': 577.2, 'type': '.bin'}],  # 상위 3개만
+        "total_checkpoints": 1
+    },
     "clip-vit-large-patch14": {
         "name": "clip-vit-large-patch14",
         "type": "text_image",
@@ -46,6 +57,17 @@ ANALYZED_MODELS = {
         "checkpoints": [{'name': 'pytorch_model.bin', 'path': 'checkpoints/ootd/text_encoder/pytorch_model.bin', 'size_mb': 469.5, 'type': '.bin'}, {'name': 'diffusion_pytorch_model.bin', 'path': 'checkpoints/ootd/vae/diffusion_pytorch_model.bin', 'size_mb': 319.2, 'type': '.bin'}, {'name': 'body_pose_model.pth', 'path': 'checkpoints/openpose/ckpts/body_pose_model.pth', 'size_mb': 199.6, 'type': '.pth'}],  # 상위 3개만
         "total_checkpoints": 5
     },
+    "shared_encoder": {
+        "name": "shared_encoder",
+        "type": "virtual_tryon",
+        "step": "step_06_virtual_fitting",
+        "path": CHECKPOINTS_ROOT / "shared_encoder",
+        "ready": True,
+        "size_mb": 1735.3,
+        "priority": 3,
+        "checkpoints": [{'name': 'pytorch_model.bin', 'path': 'clip-vit-base-patch32/pytorch_model.bin', 'size_mb': 577.2, 'type': '.bin'}],  # 상위 3개만
+        "total_checkpoints": 1
+    },
     "stable-diffusion-v1-5": {
         "name": "stable-diffusion-v1-5",
         "type": "diffusion",
@@ -57,12 +79,45 @@ ANALYZED_MODELS = {
         "checkpoints": [{'name': 'v1-5-pruned.ckpt', 'path': 'v1-5-pruned.ckpt', 'size_mb': 7346.9, 'type': '.ckpt'}, {'name': 'v1-5-pruned-emaonly.ckpt', 'path': 'v1-5-pruned-emaonly.ckpt', 'size_mb': 4067.8, 'type': '.ckpt'}, {'name': 'pytorch_model.fp16.bin', 'path': 'text_encoder/pytorch_model.fp16.bin', 'size_mb': 234.8, 'type': '.bin'}],  # 상위 3개만
         "total_checkpoints": 11
     },
+    "step_01_human_parsing": {
+        "name": "step_01_human_parsing",
+        "type": "human_parsing",
+        "step": "step_01_human_parsing",
+        "path": CHECKPOINTS_ROOT / "step_01_human_parsing",
+        "ready": True,
+        "size_mb": 1033.2,
+        "priority": 4,
+        "checkpoints": [{'name': 'graphonomy_lip.pth', 'path': 'graphonomy_lip.pth', 'size_mb': 255.1, 'type': '.pth'}, {'name': 'graphonomy_atr.pth', 'path': 'graphonomy_atr.pth', 'size_mb': 255.1, 'type': '.pth'}, {'name': 'rng_state.pth', 'path': 'segformer_b2_clothes/rng_state.pth', 'size_mb': 0.0, 'type': '.pth'}],  # 상위 3개만
+        "total_checkpoints": 7
+    },
+    "step_03_cloth_segmentation": {
+        "name": "step_03_cloth_segmentation",
+        "type": "human_parsing",
+        "step": "step_01_human_parsing",
+        "path": CHECKPOINTS_ROOT / "step_03_cloth_segmentation",
+        "ready": True,
+        "size_mb": 374.8,
+        "priority": 5,
+        "checkpoints": [{'name': 'mobile_sam.pt', 'path': 'mobile_sam.pt', 'size_mb': 38.8, 'type': '.pt'}, {'name': 'u2net.pth', 'path': 'u2net.pth', 'size_mb': 168.1, 'type': '.pth'}],  # 상위 3개만
+        "total_checkpoints": 2
+    },
+    "step_07_post_processing": {
+        "name": "step_07_post_processing",
+        "type": "auxiliary",
+        "step": "auxiliary",
+        "path": CHECKPOINTS_ROOT / "step_07_post_processing",
+        "ready": True,
+        "size_mb": 63.9,
+        "priority": 102,
+        "checkpoints": [{'name': 'RealESRGAN_x4plus.pth', 'path': 'RealESRGAN_x4plus.pth', 'size_mb': 63.9, 'type': '.pth'}],  # 상위 3개만
+        "total_checkpoints": 1
+    },
 }
 
 # 단계별 최적 모델 매핑
 STEP_OPTIMAL_MODELS = {
     "auxiliary": "clip-vit-large-patch14",
-    "step_01_human_parsing": "human_parsing",
+    "step_01_human_parsing": "step_01_human_parsing",
     "step_06_virtual_fitting": "ootdiffusion_hf",
 }
 
