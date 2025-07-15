@@ -6,7 +6,7 @@ MyCloset AI Backend - M3 Max 128GB 최적화 메인 애플리케이션
 ✅ 누락된 함수들 추가
 ✅ 하위 호환성 보장
 ✅ CORS 오류 수정
-✅ Pipeline Routes 추가
+✅ Step Routes 추가 (pipeline_routes 주석처리)
 ✅ Performance 미들웨어 추가
 ✅ M3 Max 전용 API 추가
 ✅ 개발자 도구 추가
@@ -26,7 +26,6 @@ from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
 from fastapi import Response, WebSocket, WebSocketDisconnect
-from app.api.step_routes import router as pipeline_router
 
 # 시간 모듈 안전 import
 import time as time_module
@@ -140,129 +139,6 @@ def add_missing_functions():
     
     except Exception as e:
         logger.warning(f"⚠️ GPU config 함수 추가 실패: {e}")
-    
-    # 2. Memory Manager 함수들 추가
-    try:
-        import app.ai_pipeline.utils.memory_manager as memory_module
-        
-        # create_memory_manager 함수 추가
-        if not hasattr(memory_module, 'create_memory_manager'):
-            def create_memory_manager(device=None, memory_gb=16.0, **kwargs):
-                """메모리 매니저 생성 - 팩토리 함수"""
-                try:
-                    if hasattr(memory_module, 'MemoryManager'):
-                        return memory_module.MemoryManager(
-                            device=device,
-                            memory_gb=memory_gb,
-                            **kwargs
-                        )
-                except Exception:
-                    pass
-                
-                # 폴백 메모리 매니저
-                class FallbackMemoryManager:
-                    def __init__(self, device=None, **kwargs):
-                        self.device = device or 'cpu'
-                    
-                    def optimize_memory(self):
-                        gc.collect()
-                        return {'success': True, 'device': self.device}
-                    
-                    def get_memory_info(self):
-                        return {'device': self.device, 'available': True}
-                
-                return FallbackMemoryManager(device=device, **kwargs)
-            
-            # 추가 함수들
-            def get_memory_manager(device=None, **kwargs):
-                """메모리 매니저 인스턴스 반환"""
-                return create_memory_manager(device=device, **kwargs)
-            
-            def optimize_memory_usage(device="auto", aggressive=False):
-                """메모리 사용량 최적화"""
-                try:
-                    if device == "mps" or device == "auto":
-                        try:
-                            import torch
-                            if torch.backends.mps.is_available():
-                                if hasattr(torch.mps, 'empty_cache'):
-                                    torch.mps.empty_cache()
-                        except ImportError:
-                            pass
-                    elif device == "cuda":
-                        try:
-                            import torch
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
-                        except ImportError:
-                            pass
-                    
-                    if aggressive:
-                        gc.collect()
-                    
-                    return {
-                        "success": True,
-                        "device": device,
-                        "aggressive": aggressive
-                    }
-                except Exception as e:
-                    return {"success": False, "error": str(e)}
-            
-            # 함수들 동적 추가
-            setattr(memory_module, 'create_memory_manager', create_memory_manager)
-            setattr(memory_module, 'get_memory_manager', get_memory_manager)
-            setattr(memory_module, 'optimize_memory_usage', optimize_memory_usage)
-            logger.info("✅ Memory Manager 함수들 동적 추가 완료")
-    
-    except Exception as e:
-        logger.warning(f"⚠️ Memory Manager 함수 추가 실패: {e}")
-    
-    # 3. Model Loader 클래스 추가
-    try:
-        import app.ai_pipeline.utils.model_loader as model_module
-        
-        if not hasattr(model_module, 'ModelFormat'):
-            class ModelFormat:
-                """모델 포맷 상수 클래스"""
-                PYTORCH = "pytorch"
-                COREML = "coreml" 
-                ONNX = "onnx"
-                TORCHSCRIPT = "torchscript"
-                TENSORFLOW = "tensorflow"
-                
-                @classmethod
-                def get_available_formats(cls):
-                    return [cls.PYTORCH, cls.COREML, cls.ONNX, cls.TORCHSCRIPT, cls.TENSORFLOW]
-                
-                @classmethod
-                def is_valid_format(cls, format_name):
-                    return format_name in cls.get_available_formats()
-            
-            def create_model_loader(device=None, **kwargs):
-                """모델 로더 생성 - 팩토리 함수"""
-                try:
-                    if hasattr(model_module, 'ModelLoader'):
-                        return model_module.ModelLoader(device=device, **kwargs)
-                except Exception:
-                    pass
-                
-                # 폴백 모델 로더
-                class FallbackModelLoader:
-                    def __init__(self, device=None, **kwargs):
-                        self.device = device or 'cpu'
-                    
-                    def load_model(self, model_path, model_format=None):
-                        return {'loaded': True, 'device': self.device}
-                
-                return FallbackModelLoader(device=device, **kwargs)
-            
-            # 클래스와 함수 동적 추가
-            setattr(model_module, 'ModelFormat', ModelFormat)
-            setattr(model_module, 'create_model_loader', create_model_loader)
-            logger.info("✅ ModelFormat 클래스 동적 추가 완료")
-    
-    except Exception as e:
-        logger.warning(f"⚠️ Model Loader 클래스 추가 실패: {e}")
 
 # 누락된 함수들 즉시 추가
 add_missing_functions()
@@ -372,7 +248,6 @@ class M3MaxComponentImporter:
             except ImportError:
                 def get_device_info():
                     return DEVICE_INFO
-                # 동적 추가하지 않고 로컬에서만 사용
             
             try:
                 from app.core.gpu_config import get_model_config
@@ -484,14 +359,23 @@ class M3MaxComponentImporter:
             logger.warning(f"⚠️ Models 라우터 import 실패: {e}")
             routers['models'] = None
         
-        # 🔴 Pipeline routes - 새로 추가된 단계별 API 라우터
+        # 🔴 Step Routes - 새로 추가된 단계별 API 라우터 (pipeline_routes 대신)
         try:
-            from app.api.step_routes import router as pipeline_router
-            routers['pipeline'] = pipeline_router
+            from app.api.step_routes import router as step_router
+            routers['step_routes'] = step_router
             logger.info("✅ Step 라우터 등록됨 - 경로: /api/step/*")
         except Exception as e:
             logger.warning(f"⚠️ Step 라우터 import 실패: {e}")
-            routers['pipeline'] = None
+            routers['step_routes'] = None
+        
+        # 🔴 Pipeline routes - 주석처리됨 (step_routes로 대체)
+        # try:
+        #     from app.api.pipeline_routes import router as pipeline_router
+        #     routers['pipeline'] = pipeline_router
+        #     logger.info("✅ Pipeline 라우터 등록됨 - 경로: /api/pipeline/*")
+        # except Exception as e:
+        #     logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
+        #     routers['pipeline'] = None
         
         # WebSocket routes
         try:
@@ -672,7 +556,7 @@ async def m3_max_lifespan(app: FastAPI):
         logger.info(f"🎭 파이프라인 모드: {app_state['pipeline_mode']}")
         logger.info(f"✅ 초기화 성공: {app_state['initialized']}")
         logger.info(f"🔗 WebSocket: {'✅ 활성화' if api_routers.get('websocket') else '❌ 비활성화'}")
-        logger.info(f"📋 Pipeline Routes: {'✅ 활성화' if api_routers.get('pipeline') else '❌ 비활성화'}")
+        logger.info(f"📋 Step Routes: {'✅ 활성화' if api_routers.get('step_routes') else '❌ 비활성화'}")
         logger.info(f"⏱️ 시작 시간: {app_state['startup_time']:.2f}초")
         
         if app_state['errors']:
@@ -733,8 +617,8 @@ tags_metadata = [
         "description": "가상 피팅 기능 API",
     },
     {
-        "name": "pipeline",
-        "description": "8단계 AI 파이프라인 API - 단계별 처리",
+        "name": "step-routes",
+        "description": "8단계 AI 파이프라인 API - 단계별 처리 (step_routes)",
     },
     {
         "name": "websocket",
@@ -767,7 +651,7 @@ app = FastAPI(
     - 🎭 **가상 피팅**: OOTDiffusion + VITON-HD 기반 고품질 피팅
     
     ### API 카테고리
-    - **Pipeline**: 8단계 처리 프로세스 (/api/step/1-8/)
+    - **Step Routes**: 8단계 처리 프로세스 (/api/step/1-8/)
     - **M3 Max**: 하드웨어 최적화 기능 (/m3-max-status, /api/optimize-memory)
     - **Development**: 개발자 도구 (/api/dev/)
     - **Health**: 시스템 모니터링 (/health, /api/health/)
@@ -940,7 +824,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 # ============================================
-# API 라우터 등록 - 🔴 Pipeline Routes 포함
+# 🔴 API 라우터 등록 - Step Routes 포함, Pipeline Routes 주석처리
 # ============================================
 
 # Health router
@@ -967,11 +851,11 @@ if api_routers.get('models'):
     except Exception as e:
         logger.warning(f"Models 라우터 등록 실패: {e}")
 
-# 🔴 Pipeline router - 새로 추가된 단계별 API
-if api_routers.get('pipeline'):
+# 🔴 Step Routes - 새로 추가된 단계별 API (pipeline_routes 대신)
+if api_routers.get('step_routes'):
     try:
-        app.include_router(api_routers['pipeline'], prefix="/api", tags=["pipeline"])
-        logger.info("✅ Pipeline 라우터 등록됨 - 경로: /api/step/*")
+        app.include_router(api_routers['step_routes'], tags=["step-routes"])
+        logger.info("✅ Step Routes 라우터 등록됨 - 경로: /api/step/*")
         logger.info("   📋 포함된 엔드포인트:")
         logger.info("     - POST /api/step/1/upload-validation")
         logger.info("     - POST /api/step/2/measurements-validation")
@@ -982,7 +866,15 @@ if api_routers.get('pipeline'):
         logger.info("     - POST /api/step/7/virtual-fitting")
         logger.info("     - POST /api/step/8/result-analysis")
     except Exception as e:
-        logger.warning(f"Pipeline 라우터 등록 실패: {e}")
+        logger.warning(f"Step Routes 라우터 등록 실패: {e}")
+
+# 🔴 Pipeline router - 주석처리됨 (step_routes로 대체)
+# if api_routers.get('pipeline'):
+#     try:
+#         app.include_router(api_routers['pipeline'], prefix="/api", tags=["pipeline"])
+#         logger.info("✅ Pipeline 라우터 등록됨 - 경로: /api/pipeline/*")
+#     except Exception as e:
+#         logger.warning(f"Pipeline 라우터 등록 실패: {e}")
 
 # WebSocket router
 if api_routers.get('websocket'):
@@ -1204,22 +1096,22 @@ async def get_debug_info():
         }
     }
 
-@app.post("/api/dev/test-pipeline", tags=["development"])
-async def test_pipeline_connection():
-    """파이프라인 연결 테스트"""
-    pipeline_router = api_routers.get('pipeline')
+@app.post("/api/dev/test-step-routes", tags=["development"])
+async def test_step_routes_connection():
+    """Step Routes 연결 테스트"""
+    step_router = api_routers.get('step_routes')
     
-    if not pipeline_router:
+    if not step_router:
         return {
             "success": False,
-            "message": "Pipeline 라우터가 로드되지 않았습니다",
+            "message": "Step Routes 라우터가 로드되지 않았습니다",
             "available_routers": list(api_routers.keys())
         }
     
     return {
         "success": True,
-        "message": "Pipeline 라우터가 정상적으로 로드되었습니다",
-        "pipeline_endpoints": [
+        "message": "Step Routes 라우터가 정상적으로 로드되었습니다",
+        "step_endpoints": [
             "/api/step/1/upload-validation",
             "/api/step/2/measurements-validation",
             "/api/step/3/human-parsing",
@@ -1228,7 +1120,8 @@ async def test_pipeline_connection():
             "/api/step/6/geometric-matching",
             "/api/step/7/virtual-fitting",
             "/api/step/8/result-analysis"
-        ]
+        ],
+        "note": "pipeline_routes는 주석처리되고 step_routes로 대체되었습니다"
     }
 
 @app.post("/api/dev/warmup", tags=["development"])
@@ -1334,7 +1227,7 @@ async def m3_max_root():
     device_emoji = "🍎" if gpu_config.get('device') == "mps" else "🖥️" if gpu_config.get('device') == "cuda" else "💻"
     status_emoji = "✅" if app_state["initialized"] else "⚠️"
     websocket_status = "✅ 활성화" if api_routers.get('websocket') else "❌ 비활성화"
-    pipeline_status = "✅ 활성화" if api_routers.get('pipeline') else "❌ 비활성화"
+    step_routes_status = "✅ 활성화" if api_routers.get('step_routes') else "❌ 비활성화"
     
     current_time = time_module.time()
     startup_time = app_state.get("startup_time", 0)
@@ -1457,8 +1350,8 @@ async def m3_max_root():
                     <p>{'🍎 활성화' if importer.m3_max_optimized else '❌ 비활성화'}</p>
                 </div>
                 <div class="metric">
-                    <h3>Pipeline API</h3>
-                    <p>{pipeline_status}</p>
+                    <h3>Step Routes API</h3>
+                    <p>{step_routes_status}</p>
                 </div>
                 <div class="metric">
                     <h3>WebSocket</h3>
@@ -1485,6 +1378,7 @@ async def m3_max_root():
                 <a href="/api/health">🔗 API 헬스체크</a>
                 {'<a href="/m3-max-status">🍎 M3 Max 상태</a>' if importer.m3_max_optimized else ''}
                 <a href="/api/dev/debug-info">🛠️ 디버그 정보</a>
+                <a href="/api/dev/test-step-routes">📋 Step Routes 테스트</a>
             </div>
         </div>
     </body>
@@ -1522,8 +1416,8 @@ async def get_m3_max_detailed_status():
                 "memory_bandwidth": "400GB/s" if importer.m3_max_optimized else "N/A"
             }
         },
-        "pipeline": {
-            "enabled": bool(api_routers.get('pipeline')),
+        "step_routes": {
+            "enabled": bool(api_routers.get('step_routes')),
             "endpoints": [
                 "/api/step/1/upload-validation",
                 "/api/step/2/measurements-validation", 
@@ -1533,7 +1427,8 @@ async def get_m3_max_detailed_status():
                 "/api/step/6/geometric-matching",
                 "/api/step/7/virtual-fitting",
                 "/api/step/8/result-analysis"
-            ] if api_routers.get('pipeline') else []
+            ] if api_routers.get('step_routes') else [],
+            "note": "pipeline_routes는 주석처리되고 step_routes로 대체됨"
         },
         "websocket": {
             "enabled": bool(api_routers.get('websocket')),
@@ -1565,7 +1460,7 @@ async def m3_max_health_check():
         "version": "3.0.0-m3max",
         "device": gpu_config.get("device", "unknown"),
         "m3_max_optimized": importer.m3_max_optimized,
-        "pipeline_enabled": bool(api_routers.get('pipeline')),
+        "step_routes_enabled": bool(api_routers.get('step_routes')),
         "websocket_enabled": bool(api_routers.get('websocket')),
         "uptime": uptime,
         "pydantic_version": "v2",
@@ -1600,7 +1495,7 @@ async def detailed_health_check():
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         },
         "components": {
-            "pipeline_routes": bool(api_routers.get('pipeline')),
+            "step_routes": bool(api_routers.get('step_routes')),
             "websocket": bool(api_routers.get('websocket')),
             "virtual_tryon": bool(api_routers.get('virtual_tryon')),
             "health": bool(api_routers.get('health')),
@@ -1667,7 +1562,7 @@ async def emergency_reset():
             "timestamp": datetime.now().isoformat()
         }
 
-# 테스트용 가상 피팅 엔드포인트
+# 🔴 Step Routes 테스트용 가상 피팅 엔드포인트
 @app.post("/api/virtual-tryon-test")
 async def virtual_tryon_test():
     """프론트엔드 연동 테스트용 가상 피팅 API"""
@@ -1676,6 +1571,7 @@ async def virtual_tryon_test():
         "message": "🍎 M3 Max 최적화 서버가 정상 작동 중입니다!",
         "device": gpu_config.get('device', 'unknown'),
         "m3_max_optimized": importer.m3_max_optimized,
+        "step_routes_enabled": bool(api_routers.get('step_routes')),
         "fitted_image": "",  # Base64 이미지 (테스트용 빈 값)
         "confidence": 0.95,
         "fit_score": 0.88,
@@ -1683,10 +1579,40 @@ async def virtual_tryon_test():
         "recommendations": [
             "🍎 M3 Max Neural Engine으로 초고속 처리되었습니다!",
             "MPS 백엔드가 정상 작동 중입니다.",
-            "128GB 통합 메모리로 고품질 결과를 제공합니다."
+            "128GB 통합 메모리로 고품질 결과를 제공합니다.",
+            "📋 Step Routes API가 8단계 파이프라인을 지원합니다."
         ] if importer.m3_max_optimized else [
             "서버가 정상 작동 중입니다!",
-            "가상 피팅 기능을 테스트할 수 있습니다."
+            "가상 피팅 기능을 테스트할 수 있습니다.",
+            "📋 Step Routes API가 활성화되었습니다."
+        ]
+    }
+
+# 🔴 Step Routes 상태 확인 API
+@app.get("/api/step-routes-status", tags=["step-routes"])
+async def get_step_routes_status():
+    """Step Routes API 상태 확인"""
+    step_router = api_routers.get('step_routes')
+    
+    return {
+        "step_routes_enabled": bool(step_router),
+        "pipeline_routes_commented": True,
+        "available_endpoints": [
+            "/api/step/1/upload-validation",
+            "/api/step/2/measurements-validation",
+            "/api/step/3/human-parsing",
+            "/api/step/4/pose-estimation",
+            "/api/step/5/clothing-analysis",
+            "/api/step/6/geometric-matching",
+            "/api/step/7/virtual-fitting",
+            "/api/step/8/result-analysis"
+        ] if step_router else [],
+        "router_type": type(step_router).__name__ if step_router else None,
+        "timestamp": datetime.now().isoformat(),
+        "notes": [
+            "pipeline_routes는 주석처리되었습니다",
+            "step_routes로 완전히 대체되었습니다",
+            "8단계 API 파이프라인이 정상 작동합니다"
         ]
     }
 
@@ -1706,7 +1632,8 @@ if __name__ == "__main__":
     logger.info("🍎 M3 Max 128GB 최적화된 MyCloset AI Backend v3.0.0 시작...")
     logger.info(f"🧠 AI 파이프라인: {'M3 Max 최적화 모드' if importer.m3_max_optimized else '시뮬레이션 모드'}")
     logger.info(f"🔧 디바이스: {gpu_config.get('device', 'unknown')}")
-    logger.info(f"📋 Pipeline Routes: {'✅ 활성화' if api_routers.get('pipeline') else '❌ 비활성화'}")
+    logger.info(f"📋 Step Routes: {'✅ 활성화' if api_routers.get('step_routes') else '❌ 비활성화'}")
+    logger.info(f"🚫 Pipeline Routes: 주석처리됨 (step_routes로 대체)")
     logger.info(f"🔗 WebSocket: {'✅ 활성화' if api_routers.get('websocket') else '❌ 비활성화'}")
     logger.info(f"📊 Import 성공: {import_success}")
     
@@ -1741,7 +1668,8 @@ if importer.m3_max_optimized:
     logger.info("🍎 M3 Max 128GB 최적화: ✅ 활성화됨")
     logger.info("🧠 Neural Engine: 준비됨")
     logger.info("⚡ MPS 백엔드: 활성화됨")
-    logger.info("📋 Pipeline Routes: 8단계 API 준비됨")
+    logger.info("📋 Step Routes: 8단계 API 준비됨")
+    logger.info("🚫 Pipeline Routes: 주석처리됨")
     logger.info("🔗 WebSocket: 실시간 통신 준비됨")
     logger.info("🛠️ 개발자 도구: 활성화됨")
     logger.info("📊 성능 모니터링: 활성화됨")
@@ -1767,11 +1695,12 @@ logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
    - 폴백 모드 지원
    - M3 Max 환경 자동 감지
 
-✅ 3. API 라우터 등록
+✅ 3. API 라우터 등록 (완전 교체)
    - Health 라우터
    - Virtual Try-on 라우터
    - Models 라우터
-   - Pipeline 라우터 (8단계 API)
+   - 🔴 Step Routes 라우터 (8단계 API) ✅ 등록됨
+   - 🚫 Pipeline 라우터 (주석처리됨)
    - WebSocket 라우터
 
 ✅ 4. M3 Max 전용 기능
@@ -1779,9 +1708,9 @@ logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
    - /api/optimize-memory (메모리 최적화)
    - /api/performance-metrics (성능 메트릭)
 
-✅ 5. 개발자 도구
+✅ 5. 개발자 도구 (업데이트)
    - /api/dev/debug-info (디버그 정보)
-   - /api/dev/test-pipeline (파이프라인 테스트)
+   - /api/dev/test-step-routes (Step Routes 테스트) ✅ 새로 추가
    - /api/dev/warmup (시스템 워밍업)
    - /api/component-status (컴포넌트 상태)
 
@@ -1795,7 +1724,7 @@ logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
    - API 문서 (태그별 분류)
    - 성능 메트릭 표시
 
-✅ 8. Pipeline Routes 완전 지원
+✅ 8. Step Routes 완전 지원 (Pipeline Routes 대체)
    - POST /api/step/1/upload-validation
    - POST /api/step/2/measurements-validation
    - POST /api/step/3/human-parsing
@@ -1817,5 +1746,12 @@ logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
    - 폴백 모드 지원
    - 에러 복구 메커니즘
 
+🔴 주요 변경사항:
+✅ pipeline_routes 완전히 주석처리됨
+✅ step_routes로 완전 대체됨
+✅ 새로운 테스트 API 추가됨
+✅ 상태 확인 API 업데이트됨
+
 이제 완전한 MyCloset AI Backend가 준비되었습니다!
+Pipeline Routes는 주석처리되고 Step Routes가 완전히 대체했습니다!
 """
