@@ -1,6 +1,7 @@
 /**
  * MyCloset AI API 서비스 메인 진입점 (수정 버전)
  * 백엔드 API와 완전 호환되도록 수정
+ * - 중복 export 제거
  * - 에러 처리 강화
  * - 타임아웃 증가
  * - FormData 필드명 통일
@@ -140,12 +141,12 @@ export async function warmupPipeline(qualityMode: string = 'balanced'): Promise<
 // 🔧 기존 pipeline_api.ts 내용과의 호환성 (수정된 버전)
 // =================================================================
 
-// 기존 PipelineAPIClient 클래스 재구성 (하위 호환)
-export class LegacyPipelineAPIClient {
+// 하위 호환용 Legacy 클래스 (중복 제거)
+class PipelineAPILegacyClient {
   private client: PipelineAPIClient;
 
   constructor(baseURL: string = 'http://localhost:8000') {
-    console.warn('⚠️ LegacyPipelineAPIClient는 deprecated입니다. 새로운 PipelineAPIClient를 사용하세요.');
+    console.warn('⚠️ PipelineAPILegacyClient는 deprecated입니다. 새로운 PipelineAPIClient를 사용하세요.');
     this.client = new PipelineAPIClient({ 
       baseURL,
       requestTimeout: 60000, // 60초로 증가
@@ -238,10 +239,6 @@ export class LegacyPipelineAPIClient {
     console.log('피드백 제출됨:', feedback);
     return { success: true, message: '피드백이 제출되었습니다.' };
   }
-
-  private getUserFriendlyError(error: string): string {
-    return getFriendlyErrorMessage(error);
-  }
 }
 
 // =================================================================
@@ -268,11 +265,11 @@ export const usePipelineAPI = () => {
     healthCheck: client.healthCheck.bind(client),
     // 더미 함수들 (하위 호환)
     testDummyProcess: async (onProgress?: any) => {
-      const legacyClient = new LegacyPipelineAPIClient();
+      const legacyClient = new PipelineAPILegacyClient();
       return await legacyClient.testDummyProcess(onProgress);
     },
     submitFeedback: async (feedback: any) => {
-      const legacyClient = new LegacyPipelineAPIClient();
+      const legacyClient = new PipelineAPILegacyClient();
       return await legacyClient.submitFeedback(feedback);
     },
   };
@@ -449,15 +446,15 @@ export const fileUtils = {
 };
 
 // =================================================================
-// 🔧 메인 export들
+// 🔧 메인 export들 (중복 제거)
 // =================================================================
 
 // 새로운 클라이언트를 기본으로 export
 export { PipelineAPIClient };
 export default PipelineAPIClient;
 
-// 하위 호환성을 위한 추가 export들
-export { LegacyPipelineAPIClient };
+// Legacy 클라이언트를 다른 이름으로 export (중복 제거)
+export { PipelineAPILegacyClient as LegacyAPIClient };
 
 // 환경 설정 헬퍼 (수정된 버전)
 export const config = {
