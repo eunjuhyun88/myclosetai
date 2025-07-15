@@ -102,13 +102,17 @@ class QualityMetrics:
 
 class QualityAssessmentStep:
     """
-    실제로 작동하는 품질 평가 시스템 - 최적 생성자 패턴 적용
-    통일된 생성자: def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
+    8단계: 품질 평가 - 최적 생성자 패턴 적용
+    
+    실제로 작동하는 품질 평가 시스템:
     - M3 Max 128GB 최적화
     - 실제 SSIM, PSNR, MSE 계산
     - 컴퓨터 비전 기반 품질 메트릭
     - 자동 개선 제안 생성
     - 상세한 분석 리포트
+    
+    통일된 생성자 패턴:
+    def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None, **kwargs)
     """
     
     # 천 재질별 품질 기준 정의
@@ -133,13 +137,13 @@ class QualityAssessmentStep:
     }
     
     def __init__(
-        self, 
-        device: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs
+        self,
+        device: Optional[str] = None,  # 🔥 최적 패턴: 첫 번째 인자, None으로 자동감지
+        config: Optional[Dict[str, Any]] = None,  # 🔥 최적 패턴: 두 번째 인자
+        **kwargs  # 🔥 최적 패턴: 확장성을 위한 **kwargs
     ):
         """
-        🎯 최적 생성자 패턴 - 모든 MyCloset AI Step과 호환
+        ✅ 최적 생성자 패턴 - 모든 MyCloset AI Step과 호환
         
         Args:
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
@@ -152,6 +156,8 @@ class QualityAssessmentStep:
                 - quality_level: str = "balanced"
                 - 기타 스텝별 특화 파라미터들...
         """
+        # === 새로운 최적 패턴 적용 ===
+        
         # 1. 💡 지능적 디바이스 자동 감지
         self.device = self._auto_detect_device(device)
 
@@ -173,10 +179,22 @@ class QualityAssessmentStep:
         # 5. ✅ 상태 초기화
         self.is_initialized = False
 
-        # 6. 🎯 기존 클래스별 고유 초기화 로직 실행
+        # 6. 🔗 ModelLoader 연동 (if available)
+        try:
+            from app.ai_pipeline.utils.model_loader import BaseStepMixin
+            if hasattr(BaseStepMixin, '_setup_model_interface'):
+                BaseStepMixin._setup_model_interface(self)
+        except ImportError:
+            pass  # ModelLoader가 없어도 정상 동작
+
+        # 7. 🎯 기존 클래스별 고유 초기화 로직 실행 (기존 로직 완전 유지)
         self._initialize_step_specific()
 
-        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+        self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device}")
+    
+    # =================================================================
+    # 최적 생성자 패턴 - 공통 헬퍼 메서드들
+    # =================================================================
     
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""
@@ -224,7 +242,8 @@ class QualityAssessmentStep:
                 self.config[key] = value
 
     def _initialize_step_specific(self):
-        """🎯 기존 초기화 로직 완전 유지"""
+        """🎯 기존 초기화 로직 완전 유지 - 품질 평가 특화 설정"""
+        
         # M3 Max 특화 설정
         self._configure_m3_max_optimizations()
         
@@ -249,7 +268,7 @@ class QualityAssessmentStep:
         })
         
         # 최적화 수준
-        self.optimization_level = kwargs.get('optimization_level', 'balanced')
+        self.optimization_level = self.config.get('optimization_level', 'balanced')
         if self.is_m3_max and self.optimization_enabled:
             self.optimization_level = 'ultra'
         
@@ -357,10 +376,16 @@ class QualityAssessmentStep:
         else:
             return 512
     
+    # =================================================================
+    # Step 표준 메서드들 (모든 Step이 동일하게 구현)
+    # =================================================================
+    
     async def initialize(self) -> bool:
         """
-        품질 평가 시스템 초기화
-        표준 초기화 메서드
+        ✅ 표준 초기화 메서드 - 모든 Step이 동일한 시그니처
+        
+        Returns:
+            bool: 초기화 성공 여부
         """
         try:
             self.logger.info("🔄 품질 평가 시스템 초기화 시작...")
@@ -417,106 +442,13 @@ class QualityAssessmentStep:
             self.is_initialized = False
             return False
     
-    async def _initialize_m3_max_components(self):
-        """M3 Max 전용 컴포넌트 초기화"""
-        self.logger.info("🍎 M3 Max 전용 품질 평가 컴포넌트 초기화...")
-        
-        # Metal Performance Shaders 설정
-        if self.device == 'mps' and TORCH_AVAILABLE:
-            try:
-                # MPS 백엔드 테스트
-                test_tensor = torch.randn(1, 3, 512, 512).to(self.device)
-                _ = torch.mean(test_tensor)
-                del test_tensor
-                self.logger.info("✅ M3 Max MPS 백엔드 테스트 완료")
-            except Exception as e:
-                self.logger.warning(f"MPS 테스트 실패: {e}")
-        
-        # 고성능 메모리 관리
-        if self.memory_gb >= 128:
-            import gc
-            gc.collect()
-            self.logger.info("✅ M3 Max 128GB 메모리 관리 설정")
-    
-    async def _initialize_face_detector(self):
-        """얼굴 검출기 초기화"""
-        try:
-            # OpenCV Haar 캐스케이드 사용
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            self.face_detector = cv2.CascadeClassifier(cascade_path)
-            
-            if self.face_detector.empty():
-                self.logger.warning("⚠️ 얼굴 검출기 로드 실패")
-                self.face_detector = None
-            else:
-                self.logger.info("✅ 얼굴 검출기 로드 완료")
-                
-        except Exception as e:
-            self.logger.warning(f"얼굴 검출기 초기화 실패: {e}")
-            self.face_detector = None
-    
-    async def _warmup_m3_max_pipeline(self):
-        """M3 Max 파이프라인 워밍업"""
-        self.logger.info("🔥 M3 Max 품질 평가 파이프라인 워밍업...")
-        
-        try:
-            # M3 Max 128GB는 더 큰 워밍업 이미지 사용
-            if self.memory_gb >= 128:
-                warmup_size = (1024, 1024)
-            else:
-                warmup_size = (512, 512)
-            
-            # 작은 더미 이미지로 워밍업
-            dummy_image = np.ones((*warmup_size, 3), dtype=np.uint8) * 128
-            
-            # 각 컴포넌트 워밍업
-            if self.perceptual_analyzer and hasattr(self.perceptual_analyzer, 'warmup'):
-                await self.perceptual_analyzer.warmup()
-            
-            if self.technical_analyzer and hasattr(self.technical_analyzer, 'warmup'):
-                await self.technical_analyzer.warmup()
-            
-            if self.aesthetic_analyzer and hasattr(self.aesthetic_analyzer, 'warmup'):
-                await self.aesthetic_analyzer.warmup()
-            
-            self.logger.info("✅ M3 Max 품질 평가 파이프라인 워밍업 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"M3 Max 워밍업 실패: {e}")
-    
-    async def _validate_system(self):
-        """시스템 검증"""
-        available_features = []
-        
-        if CV2_AVAILABLE:
-            available_features.append('basic_quality_assessment')
-        if TORCH_AVAILABLE:
-            available_features.append('neural_processing')
-        if SCIPY_AVAILABLE:
-            available_features.append('advanced_statistics')
-        if SKLEARN_AVAILABLE:
-            available_features.append('machine_learning_metrics')
-        if SKIMAGE_AVAILABLE:
-            available_features.append('texture_analysis')
-        if self.is_m3_max:
-            available_features.append('m3_max_acceleration')
-        
-        if not available_features:
-            raise RuntimeError("사용 가능한 품질 평가 기능이 없습니다")
-        
-        self.logger.info(f"✅ 사용 가능한 기능들: {available_features}")
-    
-    # =================================================================
-    # 메인 처리 메서드 - 기존 로직 완전 유지
-    # =================================================================
-    
     async def process(
         self,
         input_data: Union[Dict[str, Any], np.ndarray, torch.Tensor],
         **kwargs
     ) -> Dict[str, Any]:
         """
-        품질 평가 처리 - 기존 로직 완전 유지
+        ✅ 표준 처리 메서드 - 모든 Step이 동일한 시그니처
         
         Args:
             input_data: 가상 피팅 결과 또는 이미지 데이터
@@ -527,7 +459,10 @@ class QualityAssessmentStep:
                 - clothing_type: str = "shirt"
                 
         Returns:
-            Dict: 품질 평가 결과
+            Dict[str, Any]: 처리 결과 (표준 형식)
+                - success: bool (필수)
+                - step_name: str (필수)
+                - 기타 처리 결과들...
         """
         if not self.is_initialized:
             await self.initialize()
@@ -656,7 +591,7 @@ class QualityAssessmentStep:
                     metrics, fitted_img, person_img, clothing_img, fabric_type
                 )
             
-            # 17. 최종 결과 구성
+            # 17. 최종 결과 구성 (표준 형식)
             processing_time = time.time() - start_time
             result = self._build_final_result(
                 metrics, recommendations, detailed_analysis,
@@ -672,7 +607,102 @@ class QualityAssessmentStep:
         except Exception as e:
             error_msg = f"품질 평가 처리 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
-            return self._create_error_result(error_msg)
+            return {
+                "success": False,
+                "step_name": self.__class__.__name__,
+                "error": error_msg,
+                "processing_time": time.time() - start_time
+            }
+    
+    # =================================================================
+    # 최적 생성자 호환 메서드들 (표준 인터페이스)
+    # =================================================================
+    
+    async def get_step_info(self) -> Dict[str, Any]:
+        """🔍 Step 정보 반환 (표준 인터페이스)"""
+        return {
+            "step_name": "QualityAssessment",
+            "class_name": self.__class__.__name__,
+            "version": "4.0-m3max",
+            "device": self.device,
+            "device_type": self.device_type,
+            "memory_gb": self.memory_gb,
+            "is_m3_max": self.is_m3_max,
+            "optimization_enabled": self.optimization_enabled,
+            "quality_level": self.quality_level,
+            "initialized": self.is_initialized,
+            "initialization_error": self.initialization_error,
+            "config_keys": list(self.config.keys()),
+            "performance_stats": self.performance_stats.copy(),
+            "capabilities": {
+                "perceptual_analysis": bool(self.perceptual_analyzer),
+                "technical_analysis": bool(self.technical_analyzer),
+                "aesthetic_analysis": bool(self.aesthetic_analyzer),
+                "face_detection": bool(self.face_detector),
+                "neural_processing": TORCH_AVAILABLE and self.device != 'cpu',
+                "m3_max_acceleration": self.is_m3_max and self.device == 'mps'
+            },
+            "supported_fabrics": list(self.FABRIC_QUALITY_STANDARDS.keys()),
+            "supported_clothing_types": list(self.CLOTHING_QUALITY_WEIGHTS.keys()),
+            "quality_settings": {
+                "optimization_level": self.optimization_level,
+                "max_resolution": self._get_max_resolution(),
+                "quality_level": self._get_quality_level(),
+                "quality_thresholds": self.quality_thresholds
+            }
+        }
+    
+    async def cleanup(self):
+        """🧹 리소스 정리 (표준 인터페이스)"""
+        try:
+            self.logger.info("🧹 품질 평가 시스템 리소스 정리 시작...")
+            
+            # 컴포넌트들 정리
+            if self.perceptual_analyzer:
+                if hasattr(self.perceptual_analyzer, 'cleanup'):
+                    await self.perceptual_analyzer.cleanup()
+                del self.perceptual_analyzer
+                self.perceptual_analyzer = None
+            
+            if self.technical_analyzer:
+                if hasattr(self.technical_analyzer, 'cleanup'):
+                    await self.technical_analyzer.cleanup()
+                del self.technical_analyzer
+                self.technical_analyzer = None
+            
+            if self.aesthetic_analyzer:
+                if hasattr(self.aesthetic_analyzer, 'cleanup'):
+                    await self.aesthetic_analyzer.cleanup()
+                del self.aesthetic_analyzer
+                self.aesthetic_analyzer = None
+            
+            if self.face_detector:
+                del self.face_detector
+                self.face_detector = None
+            
+            # GPU 메모리 정리
+            if TORCH_AVAILABLE:
+                if self.device == 'mps':
+                    if hasattr(torch.backends.mps, 'empty_cache'):
+                        torch.backends.mps.empty_cache()
+                    elif hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                elif self.device == 'cuda':
+                    torch.cuda.empty_cache()
+            
+            # 시스템 메모리 정리
+            import gc
+            gc.collect()
+            
+            self.is_initialized = False
+            self.logger.info("✅ 품질 평가 시스템 리소스 정리 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
+    
+    # =================================================================
+    # 내부 처리 메서드들 (기존 로직 완전 유지)
+    # =================================================================
     
     async def _optimize_m3_max_memory(self):
         """M3 Max 메모리 최적화"""
@@ -694,9 +724,94 @@ class QualityAssessmentStep:
         except Exception as e:
             self.logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
     
-    # =================================================================
-    # 평가 메서드들 - 기존 로직 완전 유지
-    # =================================================================
+    async def _initialize_m3_max_components(self):
+        """M3 Max 전용 컴포넌트 초기화"""
+        self.logger.info("🍎 M3 Max 전용 품질 평가 컴포넌트 초기화...")
+        
+        # Metal Performance Shaders 설정
+        if self.device == 'mps' and TORCH_AVAILABLE:
+            try:
+                # MPS 백엔드 테스트
+                test_tensor = torch.randn(1, 3, 512, 512).to(self.device)
+                _ = torch.mean(test_tensor)
+                del test_tensor
+                self.logger.info("✅ M3 Max MPS 백엔드 테스트 완료")
+            except Exception as e:
+                self.logger.warning(f"MPS 테스트 실패: {e}")
+        
+        # 고성능 메모리 관리
+        if self.memory_gb >= 128:
+            import gc
+            gc.collect()
+            self.logger.info("✅ M3 Max 128GB 메모리 관리 설정")
+    
+    async def _initialize_face_detector(self):
+        """얼굴 검출기 초기화"""
+        try:
+            # OpenCV Haar 캐스케이드 사용
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            self.face_detector = cv2.CascadeClassifier(cascade_path)
+            
+            if self.face_detector.empty():
+                self.logger.warning("⚠️ 얼굴 검출기 로드 실패")
+                self.face_detector = None
+            else:
+                self.logger.info("✅ 얼굴 검출기 로드 완료")
+                
+        except Exception as e:
+            self.logger.warning(f"얼굴 검출기 초기화 실패: {e}")
+            self.face_detector = None
+    
+    async def _warmup_m3_max_pipeline(self):
+        """M3 Max 파이프라인 워밍업"""
+        self.logger.info("🔥 M3 Max 품질 평가 파이프라인 워밍업...")
+        
+        try:
+            # M3 Max 128GB는 더 큰 워밍업 이미지 사용
+            if self.memory_gb >= 128:
+                warmup_size = (1024, 1024)
+            else:
+                warmup_size = (512, 512)
+            
+            # 작은 더미 이미지로 워밍업
+            dummy_image = np.ones((*warmup_size, 3), dtype=np.uint8) * 128
+            
+            # 각 컴포넌트 워밍업
+            if self.perceptual_analyzer and hasattr(self.perceptual_analyzer, 'warmup'):
+                await self.perceptual_analyzer.warmup()
+            
+            if self.technical_analyzer and hasattr(self.technical_analyzer, 'warmup'):
+                await self.technical_analyzer.warmup()
+            
+            if self.aesthetic_analyzer and hasattr(self.aesthetic_analyzer, 'warmup'):
+                await self.aesthetic_analyzer.warmup()
+            
+            self.logger.info("✅ M3 Max 품질 평가 파이프라인 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"M3 Max 워밍업 실패: {e}")
+    
+    async def _validate_system(self):
+        """시스템 검증"""
+        available_features = []
+        
+        if CV2_AVAILABLE:
+            available_features.append('basic_quality_assessment')
+        if TORCH_AVAILABLE:
+            available_features.append('neural_processing')
+        if SCIPY_AVAILABLE:
+            available_features.append('advanced_statistics')
+        if SKLEARN_AVAILABLE:
+            available_features.append('machine_learning_metrics')
+        if SKIMAGE_AVAILABLE:
+            available_features.append('texture_analysis')
+        if self.is_m3_max:
+            available_features.append('m3_max_acceleration')
+        
+        if not available_features:
+            raise RuntimeError("사용 가능한 품질 평가 기능이 없습니다")
+        
+        self.logger.info(f"✅ 사용 가능한 기능들: {available_features}")
     
     def _prepare_image_data(self, image_data) -> np.ndarray:
         """이미지 데이터 준비"""
@@ -711,6 +826,45 @@ class QualityAssessmentStep:
             except:
                 self.logger.warning("이미지 데이터 변환 실패 - 더미 데이터 생성")
                 return np.ones((512, 512, 3), dtype=np.uint8) * 128
+    
+    def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
+        """PyTorch 텐서를 NumPy 배열로 변환"""
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch가 필요합니다")
+        
+        try:
+            # GPU에서 CPU로 이동
+            if tensor.is_cuda or (hasattr(tensor, 'is_mps') and tensor.is_mps):
+                tensor = tensor.cpu()
+            
+            # 차원 정리
+            if tensor.dim() == 4:
+                tensor = tensor.squeeze(0)  # [1, C, H, W] -> [C, H, W]
+            
+            if is_mask:
+                if tensor.dim() == 3:
+                    tensor = tensor.squeeze(0)  # [1, H, W] -> [H, W]
+                array = tensor.numpy().astype(np.uint8)
+                if array.max() <= 1.0:
+                    array = array * 255
+            else:
+                if tensor.dim() == 3 and tensor.size(0) == 3:
+                    tensor = tensor.permute(1, 2, 0)  # [3, H, W] -> [H, W, 3]
+                
+                array = tensor.numpy()
+                if array.max() <= 1.0:
+                    array = array * 255
+                array = array.astype(np.uint8)
+            
+            return array
+            
+        except Exception as e:
+            self.logger.error(f"텐서 변환 실패: {e}")
+            raise
+    
+    # =================================================================
+    # 품질 평가 메서드들 (기존 로직 완전 유지)
+    # =================================================================
     
     async def _evaluate_fit_accuracy(self, fitted: np.ndarray, person: Optional[np.ndarray], fitted_result: Dict) -> float:
         """핏 정확도 평가"""
@@ -990,7 +1144,7 @@ class QualityAssessmentStep:
             return 0.5
     
     # =================================================================
-    # 결과 생성 및 분석 메서드들 - 기존 로직 완전 유지
+    # 결과 생성 메서드들 (기존 로직 완전 유지)
     # =================================================================
     
     def _build_final_result(
@@ -1002,10 +1156,11 @@ class QualityAssessmentStep:
         fabric_type: str,
         clothing_type: str
     ) -> Dict[str, Any]:
-        """최종 결과 구성 (호환 형식)"""
+        """최종 결과 구성 (표준 형식 호환)"""
         
         return {
-            "success": True,
+            "success": True,  # 표준 성공 필드
+            "step_name": self.__class__.__name__,  # 표준 스텝명 필드
             "overall_score": float(metrics.overall_score),
             "grade": metrics.get_grade().value,
             "letter_grade": self._get_letter_grade(metrics.overall_score),
@@ -1161,43 +1316,8 @@ class QualityAssessmentStep:
             return {'error': '상세 분석 생성에 실패했습니다.'}
     
     # =================================================================
-    # 유틸리티 메서드들 - 기존 로직 완전 유지
+    # 헬퍼 및 유틸리티 메서드들 (기존 로직 완전 유지)
     # =================================================================
-    
-    def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
-        """PyTorch 텐서를 NumPy 배열로 변환"""
-        if not TORCH_AVAILABLE:
-            raise RuntimeError("PyTorch가 필요합니다")
-        
-        try:
-            # GPU에서 CPU로 이동
-            if tensor.is_cuda or (hasattr(tensor, 'is_mps') and tensor.is_mps):
-                tensor = tensor.cpu()
-            
-            # 차원 정리
-            if tensor.dim() == 4:
-                tensor = tensor.squeeze(0)  # [1, C, H, W] -> [C, H, W]
-            
-            if is_mask:
-                if tensor.dim() == 3:
-                    tensor = tensor.squeeze(0)  # [1, H, W] -> [H, W]
-                array = tensor.numpy().astype(np.uint8)
-                if array.max() <= 1.0:
-                    array = array * 255
-            else:
-                if tensor.dim() == 3 and tensor.size(0) == 3:
-                    tensor = tensor.permute(1, 2, 0)  # [3, H, W] -> [H, W, 3]
-                
-                array = tensor.numpy()
-                if array.max() <= 1.0:
-                    array = array * 255
-                array = array.astype(np.uint8)
-            
-            return array
-            
-        except Exception as e:
-            self.logger.error(f"텐서 변환 실패: {e}")
-            raise
     
     def _get_used_features(self) -> List[str]:
         """사용된 기능들 목록"""
@@ -1246,26 +1366,6 @@ class QualityAssessmentStep:
             self.logger.warning(f"메모리 사용량 추정 실패: {e}")
             return {'estimated_usage_gb': 2.0}
     
-    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
-        """에러 결과 생성"""
-        return {
-            "success": False,
-            "error": error_message,
-            "overall_score": 0.0,
-            "grade": "error",
-            "letter_grade": "F",
-            "metrics": {},
-            "recommendations": [],
-            "detailed_analysis": {},
-            "quality_info": {
-                "error_details": error_message,
-                "device": self.device,
-                "device_type": self.device_type,
-                "m3_max_optimized": self.is_m3_max,
-                "processing_time": 0.0
-            }
-        }
-    
     def _create_fallback_result(self, reason: str) -> Dict[str, Any]:
         """폴백 결과 생성 (최소 기능)"""
         self.logger.warning(f"폴백 모드: {reason}")
@@ -1287,6 +1387,7 @@ class QualityAssessmentStep:
         
         return {
             "success": True,
+            "step_name": self.__class__.__name__,
             "overall_score": fallback_metrics.overall_score,
             "grade": fallback_metrics.get_grade().value,
             "letter_grade": self._get_letter_grade(fallback_metrics.overall_score),
@@ -1303,10 +1404,6 @@ class QualityAssessmentStep:
                 "m3_max_optimized": self.is_m3_max
             }
         }
-    
-    # =================================================================
-    # 추가 헬퍼 메서드들 - 기존 로직 완전 유지
-    # =================================================================
     
     def _analyze_image_properties(self, image: np.ndarray) -> Dict[str, Any]:
         """이미지 속성 분석"""
@@ -1588,106 +1685,6 @@ class QualityAssessmentStep:
             
         except Exception as e:
             self.logger.warning(f"통계 업데이트 실패: {e}")
-    
-    # =================================================================
-    # 최적 생성자 호환 메서드들
-    # =================================================================
-    
-    async def get_step_info(self) -> Dict[str, Any]:
-        """🔍 스텝 정보 반환 (최적 생성자 호환)"""
-        return {
-            "step_name": "QualityAssessment",
-            "class_name": self.__class__.__name__,
-            "version": "4.0-m3max",
-            "device": self.device,
-            "device_type": self.device_type,
-            "memory_gb": self.memory_gb,
-            "is_m3_max": self.is_m3_max,
-            "optimization_enabled": self.optimization_enabled,
-            "quality_level": self.quality_level,
-            "initialized": self.is_initialized,
-            "initialization_error": self.initialization_error,
-            "config_keys": list(self.config.keys()),
-            "performance_stats": self.performance_stats.copy(),
-            "capabilities": {
-                "perceptual_analysis": bool(self.perceptual_analyzer),
-                "technical_analysis": bool(self.technical_analyzer),
-                "aesthetic_analysis": bool(self.aesthetic_analyzer),
-                "face_detection": bool(self.face_detector),
-                "neural_processing": TORCH_AVAILABLE and self.device != 'cpu',
-                "m3_max_acceleration": self.is_m3_max and self.device == 'mps'
-            },
-            "supported_fabrics": list(self.FABRIC_QUALITY_STANDARDS.keys()),
-            "supported_clothing_types": list(self.CLOTHING_QUALITY_WEIGHTS.keys()),
-            "quality_settings": {
-                "optimization_level": self.optimization_level,
-                "max_resolution": self._get_max_resolution(),
-                "quality_level": self._get_quality_level(),
-                "quality_thresholds": self.quality_thresholds
-            },
-            "dependencies": {
-                "torch": TORCH_AVAILABLE,
-                "opencv": CV2_AVAILABLE,
-                "pil": PIL_AVAILABLE,
-                "scipy": SCIPY_AVAILABLE,
-                "sklearn": SKLEARN_AVAILABLE,
-                "skimage": SKIMAGE_AVAILABLE
-            },
-            "config": {
-                "assessment": self.assessment_config,
-                "performance": self.performance_config,
-                "optimization_level": self.optimization_level,
-                "metric_weights": self.metric_weights
-            }
-        }
-    
-    async def cleanup(self):
-        """리소스 정리 (최적 생성자 호환)"""
-        try:
-            self.logger.info("🧹 품질 평가 시스템 리소스 정리 시작...")
-            
-            # 컴포넌트들 정리
-            if self.perceptual_analyzer:
-                if hasattr(self.perceptual_analyzer, 'cleanup'):
-                    await self.perceptual_analyzer.cleanup()
-                del self.perceptual_analyzer
-                self.perceptual_analyzer = None
-            
-            if self.technical_analyzer:
-                if hasattr(self.technical_analyzer, 'cleanup'):
-                    await self.technical_analyzer.cleanup()
-                del self.technical_analyzer
-                self.technical_analyzer = None
-            
-            if self.aesthetic_analyzer:
-                if hasattr(self.aesthetic_analyzer, 'cleanup'):
-                    await self.aesthetic_analyzer.cleanup()
-                del self.aesthetic_analyzer
-                self.aesthetic_analyzer = None
-            
-            if self.face_detector:
-                del self.face_detector
-                self.face_detector = None
-            
-            # GPU 메모리 정리
-            if TORCH_AVAILABLE:
-                if self.device == 'mps':
-                    if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
-                    elif hasattr(torch.mps, 'synchronize'):
-                        torch.mps.synchronize()
-                elif self.device == 'cuda':
-                    torch.cuda.empty_cache()
-            
-            # 시스템 메모리 정리
-            import gc
-            gc.collect()
-            
-            self.is_initialized = False
-            self.logger.info("✅ 품질 평가 시스템 리소스 정리 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
 
 
 # =================================================================

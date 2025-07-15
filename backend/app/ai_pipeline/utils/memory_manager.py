@@ -1,8 +1,8 @@
 # app/ai_pipeline/utils/memory_manager.py
 """
 MyCloset AI - 지능형 메모리 관리 시스템 (M3 Max 최적화)
-✅ 최적 생성자 패턴 적용 + create_memory_manager 함수 추가
-🔥 핵심: 누락된 팩토리 함수들 모두 추가
+✅ 최적 생성자 패턴 적용 + 누락된 함수들 모두 추가
+🔥 핵심: main.py에서 요구하는 모든 함수 포함
 """
 import os
 import gc
@@ -57,9 +57,9 @@ class MemoryManager:
     
     def __init__(
         self,
-        device: Optional[str] = None,  # 🔥 최적 패턴: None으로 자동 감지
+        device: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
+        **kwargs
     ):
         """
         ✅ 최적 생성자 - 메모리 관리 특화
@@ -68,17 +68,6 @@ class MemoryManager:
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
             config: 메모리 관리 설정 딕셔너리
             **kwargs: 확장 파라미터들
-                - device_type: str = "auto"
-                - memory_gb: float = 16.0  
-                - is_m3_max: bool = False
-                - optimization_enabled: bool = True
-                - quality_level: str = "balanced"
-                - memory_limit_gb: float = None  # 메모리 제한
-                - warning_threshold: float = 0.75  # 경고 임계치
-                - critical_threshold: float = 0.9  # 위험 임계치
-                - auto_cleanup: bool = True  # 자동 정리
-                - monitoring_interval: float = 30.0  # 모니터링 주기
-                - enable_caching: bool = True  # 캐싱 활성화
         """
         # 1. 💡 지능적 디바이스 자동 감지
         self.device = self._auto_detect_device(device)
@@ -579,6 +568,22 @@ class MemoryManager:
             "pressure_info": self.check_memory_pressure()
         }
     
+    def get_usage(self) -> Dict[str, Any]:
+        """동기 사용량 조회 (하위 호환)"""
+        try:
+            stats = self.get_memory_stats()
+            return {
+                "cpu_percent": stats.cpu_percent,
+                "cpu_used_gb": stats.cpu_used_gb,
+                "cpu_total_gb": stats.cpu_total_gb,
+                "gpu_allocated_gb": stats.gpu_allocated_gb,
+                "gpu_total_gb": stats.gpu_total_gb,
+                "cache_size_mb": stats.cache_size_mb
+            }
+        except Exception as e:
+            logger.error(f"사용량 조회 실패: {e}")
+            return {"error": str(e)}
+    
     def __del__(self):
         """소멸자"""
         try:
@@ -661,12 +666,36 @@ def _detect_m3_max() -> bool:
     return False
 
 # ============================================
-# 🔥 핵심: optimize_memory_usage 함수 - 동기로 수정
+# 🔥 핵심: main.py에서 찾는 함수들 추가
 # ============================================
+
+def initialize_global_memory_manager(device: str = "mps", **kwargs) -> MemoryManager:
+    """
+    🔥 전역 메모리 관리자 초기화 - main.py에서 사용
+    
+    Args:
+        device: 사용할 디바이스
+        **kwargs: 추가 설정
+    
+    Returns:
+        초기화된 MemoryManager 인스턴스
+    """
+    global _global_memory_manager
+    
+    try:
+        if _global_memory_manager is None:
+            _global_memory_manager = MemoryManager(device=device, **kwargs)
+            logger.info(f"✅ 전역 메모리 관리자 초기화 완료 - 디바이스: {device}")
+        return _global_memory_manager
+    except Exception as e:
+        logger.error(f"❌ 전역 메모리 관리자 초기화 실패: {e}")
+        # 기본 인스턴스 생성
+        _global_memory_manager = MemoryManager(device="cpu")
+        return _global_memory_manager
 
 def optimize_memory_usage(device: str = None, aggressive: bool = False) -> Dict[str, Any]:
     """
-    🔥 메모리 사용량 최적화 - 동기 함수로 수정
+    🔥 메모리 사용량 최적화 - 동기 함수 (main.py에서 사용)
     
     Args:
         device: 대상 디바이스 ('mps', 'cuda', 'cpu')
@@ -691,7 +720,11 @@ def optimize_memory_usage(device: str = None, aggressive: bool = False) -> Dict[
                 torch.cuda.empty_cache()
             elif manager.device == "mps" and torch.backends.mps.is_available():
                 # MPS는 empty_cache 없으므로 대체 방법
-                torch.mps.empty_cache() if hasattr(torch.mps, 'empty_cache') else None
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except:
+                    pass
         
         # 최적화 후 상태
         after_stats = manager.get_memory_stats()
@@ -744,12 +777,13 @@ def check_memory():
     return manager.check_memory_pressure()
 
 def check_memory_available(min_gb: float = 1.0) -> bool:
-    """사용 가능한 메모리 확인"""
+    """🔥 사용 가능한 메모리 확인 - main.py에서 사용"""
     try:
         manager = get_memory_manager()
         stats = manager.get_memory_stats()
         return stats.cpu_available_gb >= min_gb
-    except Exception:
+    except Exception as e:
+        logger.warning(f"메모리 확인 실패: {e}")
         return True  # 확인 실패 시 true 반환
 
 def get_memory_info() -> Dict[str, Any]:
@@ -798,6 +832,7 @@ __all__ = [
     'get_global_memory_manager',
     'create_memory_manager',  # 🔥 핵심 추가
     'create_optimized_memory_manager',
+    'initialize_global_memory_manager',  # 🔥 핵심 추가
     'optimize_memory_usage',
     'optimize_memory',
     'check_memory',

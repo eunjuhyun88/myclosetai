@@ -1,7 +1,7 @@
-# app/ai_pipeline/utils/model_loader.py - 완전한 버전
+# app/ai_pipeline/utils/model_loader.py
 """
 🍎 M3 Max 최적화 실제 AI 모델 로더 - 완전한 기능 복원 + Step 연동
-✅ 최적 생성자 패턴 적용 + 모든 기능 복원 + Step 클래스 통합
+✅ 최적 생성자 패턴 적용 + 모든 기능 복원 + Step 클래스 통합 + 실제 AI 모델들
 - 8단계 파이프라인에 필요한 모든 실제 AI 모델들
 - M3 Max MPS 최적화
 - 메모리 효율적 모델 로딩
@@ -82,8 +82,27 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 모델 타입 및 설정 클래스들 (원본 유지)
+# 🔥 핵심: ModelFormat 클래스 - main.py에서 요구
 # ==============================================
+
+class ModelFormat(Enum):
+    """🔥 모델 포맷 정의 - main.py에서 필수"""
+    PYTORCH = "pytorch"
+    SAFETENSORS = "safetensors"
+    ONNX = "onnx"
+    DIFFUSERS = "diffusers"
+    TRANSFORMERS = "transformers"
+    CHECKPOINT = "checkpoint"
+    PICKLE = "pickle"
+    COREML = "coreml"
+    TENSORRT = "tensorrt"
+
+class ModelPrecision(Enum):
+    """모델 정밀도 정의"""
+    FP32 = "fp32"
+    FP16 = "fp16"
+    BF16 = "bf16"
+    INT8 = "int8"
 
 class ModelType(Enum):
     """AI 모델 타입"""
@@ -876,7 +895,7 @@ class GeometricMatchingModel(nn.Module):
     def _build_correlation_layer(self):
         """상관관계 계산 레이어"""
         return nn.Sequential(
-            nn.Conv2d(256, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+            nn.Conv2d(512, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
             nn.Conv2d(128, 64, 3, 1, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
             nn.Conv2d(64, 1, 1, 1, 0), nn.Sigmoid()
         )
@@ -896,8 +915,11 @@ class GeometricMatchingModel(nn.Module):
         source_feat = self.feature_extractor(source_img)
         target_feat = self.feature_extractor(target_img)
         
+        # 특징 결합
+        combined_feat = torch.cat([source_feat, target_feat], dim=1)
+        
         # 상관관계 계산
-        correlation_map = self.correlation(torch.cat([source_feat, target_feat], dim=1))
+        correlation_map = self.correlation(combined_feat)
         
         # TPS 파라미터 회귀
         tps_params = self.regression(correlation_map)
@@ -2188,19 +2210,73 @@ def load_model_sync(model_name: str, config: Optional[ModelConfig] = None) -> Op
         logger.error(f"동기 모델 로드 실패: {e}")
         return None
 
+# 🔥 핵심: 모델 포맷 감지 및 변환 함수들
+def detect_model_format(model_path: Union[str, Path]) -> ModelFormat:
+    """파일 확장자로 모델 포맷 감지"""
+    path = Path(model_path)
+    
+    if path.suffix == '.pth' or path.suffix == '.pt':
+        return ModelFormat.PYTORCH
+    elif path.suffix == '.safetensors':
+        return ModelFormat.SAFETENSORS
+    elif path.suffix == '.onnx':
+        return ModelFormat.ONNX
+    elif path.suffix == '.mlmodel':
+        return ModelFormat.COREML
+    elif path.is_dir():
+        # 디렉토리 내용으로 판단
+        if (path / "config.json").exists():
+            if (path / "model.safetensors").exists():
+                return ModelFormat.TRANSFORMERS
+            elif any(path.glob("*.bin")):
+                return ModelFormat.DIFFUSERS
+        return ModelFormat.DIFFUSERS  # 기본값
+    else:
+        return ModelFormat.PYTORCH  # 기본값
+
+def load_model_with_format(
+    model_path: Union[str, Path],
+    model_format: ModelFormat,
+    device: str = "mps"
+) -> Any:
+    """간편한 모델 로딩 함수"""
+    try:
+        loader = get_global_model_loader()
+        
+        # 모델 설정 생성
+        config = ModelConfig(
+            name=Path(model_path).stem,
+            model_type=ModelType.VIRTUAL_FITTING,  # 기본값
+            model_class="HRVITONModel",
+            checkpoint_path=str(model_path),
+            device=device
+        )
+        
+        # 동기 로딩
+        return load_model_sync(config.name, config)
+        
+    except Exception as e:
+        logger.error(f"모델 로딩 실패: {e}")
+        return None
+
 # 모듈 레벨에서 안전한 정리 함수 등록
 import atexit
 atexit.register(cleanup_global_loader)
 
 # 모듈 익스포트
 __all__ = [
+    # 핵심 클래스들
     'ModelLoader',
+    'ModelFormat',  # 🔥 main.py 필수
     'ModelConfig', 
     'ModelType',
+    'ModelPrecision',
     'ModelRegistry',
     'ModelMemoryManager',
     'StepModelInterface',
     'BaseStepMixin',
+    
+    # 실제 AI 모델 클래스들
     'GraphonomyModel',
     'OpenPoseModel', 
     'U2NetModel',
@@ -2208,12 +2284,21 @@ __all__ = [
     'HRVITONModel',
     'RSU7', 'RSU6', 'RSU5', 'RSU4', 'RSU4F', 'REBNCONV',
     'ResnetBlock',
+    
+    # 팩토리 함수들
     'create_model_loader',
     'get_global_model_loader',
     'load_model_async',
     'load_model_sync',
+    
+    # 유틸리티 함수들
+    'detect_model_format',
+    'load_model_with_format',
     'preprocess_image',
     'postprocess_segmentation',
     'postprocess_pose',
     'cleanup_global_loader'
 ]
+
+# 모듈 로드 확인
+logger.info("✅ ModelLoader 모듈 로드 완료 - 모든 AI 모델 클래스 및 팩토리 함수 포함")
