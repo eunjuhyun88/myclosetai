@@ -1,4 +1,5 @@
 /**
+ * 파일명: frontend/src/services/WebSocketManager.ts
  * MyCloset AI WebSocket 관리자
  * 실제 백엔드 WebSocket과 완전 호환되는 프로덕션 수준 WebSocket 클라이언트
  * - 자동 재연결 및 상태 관리
@@ -120,7 +121,7 @@ export default class WebSocketManager {
   // 메시지 필터링 및 처리
   private messageFilters: Array<(message: any) => boolean> = [];
   private messageTransformers: Array<(message: any) => any> = [];
-  
+
   constructor(url: string, options: UsePipelineOptions = {}, ...kwargs: any[]) {
     this.config = {
       url,
@@ -446,7 +447,7 @@ export default class WebSocketManager {
         this.handleHeartbeatMessage(data);
         return true;
         
-      case 'connection_ack':
+      case 'connection_established':
         this.handleConnectionAck(data);
         return true;
         
