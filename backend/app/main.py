@@ -26,6 +26,7 @@ from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
 from fastapi import Response, WebSocket, WebSocketDisconnect
+from app.api.step_routes import router as pipeline_router
 
 # 시간 모듈 안전 import
 import time as time_module
@@ -485,11 +486,11 @@ class M3MaxComponentImporter:
         
         # 🔴 Pipeline routes - 새로 추가된 단계별 API 라우터
         try:
-            from app.api.pipeline_routes import router as pipeline_router
+            from app.api.step_routes import router as pipeline_router
             routers['pipeline'] = pipeline_router
-            logger.info("✅ Pipeline 라우터 import 성공 - 단계별 API 포함")
+            logger.info("✅ Step 라우터 등록됨 - 경로: /api/step/*")
         except Exception as e:
-            logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
+            logger.warning(f"⚠️ Step 라우터 import 실패: {e}")
             routers['pipeline'] = None
         
         # WebSocket routes
