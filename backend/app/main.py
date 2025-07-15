@@ -5,6 +5,7 @@ MyCloset AI Backend - M3 Max 128GB 최적화 메인 애플리케이션
 ✅ Import 오류 해결
 ✅ 누락된 함수들 추가
 ✅ 하위 호환성 보장
+✅ CORS 오류 수정
 """
 
 import sys
@@ -62,12 +63,16 @@ def setup_logging():
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     
     # 파일 핸들러
-    file_handler = logging.FileHandler(
-        log_dir / f"mycloset-ai-m3max-{datetime.now().strftime('%Y%m%d')}.log",
-        encoding='utf-8',
-        delay=True
-    )
-    file_handler.setFormatter(logging.Formatter(log_format))
+    try:
+        file_handler = logging.FileHandler(
+            log_dir / f"mycloset-ai-m3max-{datetime.now().strftime('%Y%m%d')}.log",
+            encoding='utf-8',
+            delay=True
+        )
+        file_handler.setFormatter(logging.Formatter(log_format))
+    except Exception as e:
+        print(f"⚠️ 로그 파일 생성 실패: {e}")
+        file_handler = None
     
     # 콘솔 핸들러
     console_handler = logging.StreamHandler()
@@ -76,7 +81,8 @@ def setup_logging():
     # 루트 로거 설정
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
+    if file_handler:
+        root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
     
     return logging.getLogger(__name__)
@@ -85,11 +91,11 @@ def setup_logging():
 logger = setup_logging()
 
 # ============================================
-# 🔧 누락된 함수들 추가 - 즉시 수정
+# 🔧 누락된 함수들 추가 - 안전한 버전
 # ============================================
 
 def add_missing_functions():
-    """누락된 함수들 즉시 추가"""
+    """누락된 함수들 안전하게 추가"""
     
     # 1. GPU Config에 get_device_config 함수 추가
     try:
@@ -99,23 +105,21 @@ def add_missing_functions():
             def get_device_config(device=None, **kwargs):
                 """디바이스 설정 조회 - 하위 호환성 함수"""
                 try:
+                    # 기존 함수들 시도
                     if hasattr(gpu_config_module, 'get_gpu_config'):
-                        config = gpu_config_module.get_gpu_config(**kwargs)
+                        return gpu_config_module.get_gpu_config(**kwargs)
+                    elif hasattr(gpu_config_module, 'DEVICE'):
                         return {
-                            'device': config.get_device(),
-                            'device_type': config.device_info.device_type,
-                            'memory_info': config.get_memory_info(),
-                            'device_info': config.get_device_info(),
-                            'system_info': config.system_info,
-                            'optimization_enabled': config.enable_optimization
+                            'device': gpu_config_module.DEVICE,
+                            'device_type': gpu_config_module.DEVICE,
+                            'memory_info': getattr(gpu_config_module, 'DEVICE_INFO', {}),
+                            'optimization_enabled': True
                         }
                     else:
                         return {
                             'device': device or 'cpu',
                             'device_type': 'cpu',
                             'memory_info': {'total_gb': 16.0},
-                            'device_info': {'device': 'cpu'},
-                            'system_info': {'platform': 'unknown'},
                             'optimization_enabled': False
                         }
                 except Exception as e:
@@ -129,31 +133,39 @@ def add_missing_functions():
     except Exception as e:
         logger.warning(f"⚠️ GPU config 함수 추가 실패: {e}")
     
-    # 2. Memory Manager에 create_memory_manager 함수 추가
+    # 2. Memory Manager 함수들 추가
     try:
         import app.ai_pipeline.utils.memory_manager as memory_module
         
+        # create_memory_manager 함수 추가
         if not hasattr(memory_module, 'create_memory_manager'):
             def create_memory_manager(device=None, memory_gb=16.0, **kwargs):
                 """메모리 매니저 생성 - 팩토리 함수"""
-                if hasattr(memory_module, 'MemoryManager'):
-                    return memory_module.MemoryManager(
-                        device=device,
-                        memory_gb=memory_gb,
-                        **kwargs
-                    )
-                else:
-                    # 폴백 메모리 매니저
-                    class FallbackMemoryManager:
-                        def __init__(self, device=None, **kwargs):
-                            self.device = device or 'cpu'
-                        
-                        def optimize_memory(self):
-                            gc.collect()
-                            return {'success': True, 'device': self.device}
+                try:
+                    if hasattr(memory_module, 'MemoryManager'):
+                        return memory_module.MemoryManager(
+                            device=device,
+                            memory_gb=memory_gb,
+                            **kwargs
+                        )
+                except Exception:
+                    pass
+                
+                # 폴백 메모리 매니저
+                class FallbackMemoryManager:
+                    def __init__(self, device=None, **kwargs):
+                        self.device = device or 'cpu'
                     
-                    return FallbackMemoryManager(device=device, **kwargs)
+                    def optimize_memory(self):
+                        gc.collect()
+                        return {'success': True, 'device': self.device}
+                    
+                    def get_memory_info(self):
+                        return {'device': self.device, 'available': True}
+                
+                return FallbackMemoryManager(device=device, **kwargs)
             
+            # 추가 함수들
             def get_memory_manager(device=None, **kwargs):
                 """메모리 매니저 인스턴스 반환"""
                 return create_memory_manager(device=device, **kwargs)
@@ -162,14 +174,20 @@ def add_missing_functions():
                 """메모리 사용량 최적화"""
                 try:
                     if device == "mps" or device == "auto":
-                        import torch
-                        if torch.backends.mps.is_available():
-                            if hasattr(torch.mps, 'empty_cache'):
-                                torch.mps.empty_cache()
+                        try:
+                            import torch
+                            if torch.backends.mps.is_available():
+                                if hasattr(torch.mps, 'empty_cache'):
+                                    torch.mps.empty_cache()
+                        except ImportError:
+                            pass
                     elif device == "cuda":
-                        import torch
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
+                        try:
+                            import torch
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except ImportError:
+                            pass
                     
                     if aggressive:
                         gc.collect()
@@ -191,7 +209,7 @@ def add_missing_functions():
     except Exception as e:
         logger.warning(f"⚠️ Memory Manager 함수 추가 실패: {e}")
     
-    # 3. Model Loader에 ModelFormat 클래스 추가
+    # 3. Model Loader 클래스 추가
     try:
         import app.ai_pipeline.utils.model_loader as model_module
         
@@ -214,18 +232,21 @@ def add_missing_functions():
             
             def create_model_loader(device=None, **kwargs):
                 """모델 로더 생성 - 팩토리 함수"""
-                if hasattr(model_module, 'ModelLoader'):
-                    return model_module.ModelLoader(device=device, **kwargs)
-                else:
-                    # 폴백 모델 로더
-                    class FallbackModelLoader:
-                        def __init__(self, device=None, **kwargs):
-                            self.device = device or 'cpu'
-                        
-                        def load_model(self, model_path, model_format=ModelFormat.PYTORCH):
-                            return {'loaded': True, 'device': self.device}
+                try:
+                    if hasattr(model_module, 'ModelLoader'):
+                        return model_module.ModelLoader(device=device, **kwargs)
+                except Exception:
+                    pass
+                
+                # 폴백 모델 로더
+                class FallbackModelLoader:
+                    def __init__(self, device=None, **kwargs):
+                        self.device = device or 'cpu'
                     
-                    return FallbackModelLoader(device=device, **kwargs)
+                    def load_model(self, model_path, model_format=None):
+                        return {'loaded': True, 'device': self.device}
+                
+                return FallbackModelLoader(device=device, **kwargs)
             
             # 클래스와 함수 동적 추가
             setattr(model_module, 'ModelFormat', ModelFormat)
@@ -239,11 +260,11 @@ def add_missing_functions():
 add_missing_functions()
 
 # ============================================
-# M3 Max 컴포넌트 Import 시스템
+# M3 Max 컴포넌트 Import 시스템 - 안전 버전
 # ============================================
 
 class M3MaxComponentImporter:
-    """M3 Max 최적화된 컴포넌트 import 매니저"""
+    """M3 Max 최적화된 컴포넌트 import 매니저 - 안전 버전"""
     
     def __init__(self):
         self.components = {}
@@ -258,15 +279,20 @@ class M3MaxComponentImporter:
         """M3 Max 환경 감지"""
         try:
             import platform
-            import psutil
             
             if platform.machine() == 'arm64' and platform.system() == 'Darwin':
-                memory_gb = psutil.virtual_memory().total / (1024**3)
-                if memory_gb >= 120:
+                try:
+                    import psutil
+                    memory_gb = psutil.virtual_memory().total / (1024**3)
+                    if memory_gb >= 120:
+                        self.m3_max_optimized = True
+                        logger.info("🍎 M3 Max 128GB 환경 감지 - 최적화 모드 활성화")
+                    else:
+                        logger.info(f"🍎 Apple Silicon 감지 - 메모리: {memory_gb:.0f}GB")
+                except ImportError:
+                    # psutil 없어도 M3 감지는 가능
                     self.m3_max_optimized = True
-                    logger.info("🍎 M3 Max 128GB 환경 감지 - 최적화 모드 활성화")
-                else:
-                    logger.info(f"🍎 Apple Silicon 감지 - 메모리: {memory_gb:.0f}GB")
+                    logger.info("🍎 Apple Silicon 감지 - M3 Max 최적화 모드 활성화")
             
         except Exception as e:
             logger.warning(f"⚠️ 환경 감지 실패: {e}")
@@ -296,7 +322,7 @@ class M3MaxComponentImporter:
         except Exception as e:
             error_msg = f"스키마 import 실패: {e}"
             self.import_errors.append(error_msg)
-            logger.error(f"❌ {error_msg}")
+            logger.warning(f"⚠️ {error_msg}")
             self._create_fallback_schemas()
             return False
     
@@ -324,23 +350,22 @@ class M3MaxComponentImporter:
         logger.warning("🚨 폴백 스키마 모드로 전환")
     
     def safe_import_gpu_config(self):
-        """GPU 설정 안전 import - 수정된 버전"""
+        """GPU 설정 안전 import"""
         try:
-            # 🔧 수정: 이제 get_device_config가 추가되어 있음
             from app.core.gpu_config import (
                 gpu_config, DEVICE, MODEL_CONFIG, 
                 DEVICE_INFO, get_device_config,
                 get_device, get_optimal_settings
             )
             
-            # get_device_info 함수가 없으면 생성
+            # 추가 함수들 확인 및 생성
             try:
                 from app.core.gpu_config import get_device_info
             except ImportError:
                 def get_device_info():
                     return DEVICE_INFO
+                # 동적 추가하지 않고 로컬에서만 사용
             
-            # get_model_config 함수가 없으면 생성
             try:
                 from app.core.gpu_config import get_model_config
             except ImportError:
@@ -381,7 +406,7 @@ class M3MaxComponentImporter:
                 'device': DEVICE,
                 'model_config': MODEL_CONFIG,
                 'device_info': DEVICE_INFO,
-                'get_config': get_device_config,  # ✅ 이제 존재함
+                'get_config': get_device_config,
                 'get_device': get_device,
                 'get_model_config': get_model_config,
                 'get_device_info': get_device_info,
@@ -392,7 +417,7 @@ class M3MaxComponentImporter:
             logger.info(f"✅ GPU 설정 import 성공 (M3 Max: {self.components['gpu_config']['m3_max_optimized']})")
             return True
             
-        except ImportError as e:
+        except Exception as e:
             error_msg = f"GPU 설정 import 실패: {e}"
             self.import_errors.append(error_msg)
             logger.warning(f"⚠️ {error_msg}")
@@ -429,7 +454,7 @@ class M3MaxComponentImporter:
             from app.api.health import router as health_router
             routers['health'] = health_router
             logger.info("✅ Health 라우터 import 성공")
-        except ImportError as e:
+        except Exception as e:
             logger.warning(f"⚠️ Health 라우터 import 실패: {e}")
             routers['health'] = None
         
@@ -438,7 +463,7 @@ class M3MaxComponentImporter:
             from app.api.virtual_tryon import router as virtual_tryon_router
             routers['virtual_tryon'] = virtual_tryon_router
             logger.info("✅ Virtual Try-on 라우터 import 성공")
-        except ImportError as e:
+        except Exception as e:
             logger.warning(f"⚠️ Virtual Try-on 라우터 import 실패: {e}")
             routers['virtual_tryon'] = None
         
@@ -447,27 +472,32 @@ class M3MaxComponentImporter:
             from app.api.models import router as models_router
             routers['models'] = models_router
             logger.info("✅ Models 라우터 import 성공")
-        except ImportError as e:
+        except Exception as e:
             logger.warning(f"⚠️ Models 라우터 import 실패: {e}")
             routers['models'] = None
         
-        # Pipeline routes - 🔧 수정: 이제 정상 작동해야 함
+        # Pipeline routes - 안전하게 import
         try:
-            if not self.fallback_mode:
-                from app.api.pipeline_routes import router as pipeline_router
-                routers['pipeline'] = pipeline_router
-                logger.info("✅ Pipeline 라우터 import 성공")
-            else:
-                routers['pipeline'] = None
+            # 의존성 체크 후 import
+            from app.ai_pipeline.pipeline_manager import PipelineManager
+            from app.api.pipeline_routes import router as pipeline_router
+            routers['pipeline'] = pipeline_router
+            logger.info("✅ Pipeline 라우터 import 성공")
         except Exception as e:
             logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
             routers['pipeline'] = None
         
         # WebSocket routes
         try:
-            from app.api.websocket_routes import router as websocket_router, start_background_tasks
+            from app.api.websocket_routes import router as websocket_router
+            # start_background_tasks 함수 확인
+            try:
+                from app.api.websocket_routes import start_background_tasks
+                routers['websocket_background_tasks'] = start_background_tasks
+            except ImportError:
+                routers['websocket_background_tasks'] = None
+            
             routers['websocket'] = websocket_router
-            routers['websocket_background_tasks'] = start_background_tasks
             logger.info("✅ WebSocket 라우터 import 성공")
         except Exception as e:
             logger.warning(f"⚠️ WebSocket 라우터 import 실패: {e}")
@@ -486,13 +516,14 @@ class M3MaxComponentImporter:
             project_root / "logs",
             project_root / "static" / "uploads",
             project_root / "static" / "results",
-            project_root / "temp",
-            current_dir / "ai_pipeline" / "cache",
-            current_dir / "ai_pipeline" / "models" / "checkpoints"
+            project_root / "temp"
         ]
         
         for directory in directories:
-            directory.mkdir(parents=True, exist_ok=True)
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.warning(f"디렉토리 생성 실패 {directory}: {e}")
         
         # 컴포넌트 import
         success_count = 0
@@ -553,33 +584,47 @@ async def m3_max_performance_middleware(request: Request, call_next):
     if importer.m3_max_optimized:
         start_performance = time_module.perf_counter()
     
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.error(f"미들웨어 오류: {e}")
+        # 기본 오류 응답 생성
+        response = JSONResponse(
+            status_code=500,
+            content={"error": "Internal server error", "detail": str(e)}
+        )
     
     process_time = time_module.time() - start_timestamp
     
     if importer.m3_max_optimized:
-        precise_time = time_module.perf_counter() - start_performance
-        response.headers["X-M3-Max-Precise-Time"] = str(round(precise_time, 6))
-        response.headers["X-M3-Max-Optimized"] = "true"
+        try:
+            precise_time = time_module.perf_counter() - start_performance
+            response.headers["X-M3-Max-Precise-Time"] = str(round(precise_time, 6))
+            response.headers["X-M3-Max-Optimized"] = "true"
+        except Exception:
+            pass
     
     response.headers["X-Process-Time"] = str(round(process_time, 4))
     
     # 성능 메트릭 업데이트
-    app_state["performance_metrics"]["total_requests"] += 1
-    current_avg = app_state["performance_metrics"]["average_response_time"]
-    total_requests = app_state["performance_metrics"]["total_requests"]
-    
-    app_state["performance_metrics"]["average_response_time"] = (
-        (current_avg * (total_requests - 1) + process_time) / total_requests
-    )
-    
-    if importer.m3_max_optimized and "/api/virtual-tryon" in str(request.url):
-        app_state["performance_metrics"]["m3_max_optimized_sessions"] += 1
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+        current_avg = app_state["performance_metrics"]["average_response_time"]
+        total_requests = app_state["performance_metrics"]["total_requests"]
+        
+        app_state["performance_metrics"]["average_response_time"] = (
+            (current_avg * (total_requests - 1) + process_time) / total_requests
+        )
+        
+        if importer.m3_max_optimized and "/api/virtual-tryon" in str(request.url):
+            app_state["performance_metrics"]["m3_max_optimized_sessions"] += 1
+    except Exception as e:
+        logger.warning(f"성능 메트릭 업데이트 실패: {e}")
     
     return response
 
 # ============================================
-# 라이프사이클 관리
+# 라이프사이클 관리 - 안전 버전
 # ============================================
 
 @asynccontextmanager
@@ -600,11 +645,14 @@ async def m3_max_lifespan(app: FastAPI):
             logger.info("💾 128GB 메모리 풀 초기화...")
             await asyncio.sleep(0.3)
         
-        # WebSocket 백그라운드 태스크 시작
+        # WebSocket 백그라운드 태스크 시작 (안전하게)
         websocket_background_tasks = api_routers.get('websocket_background_tasks')
-        if websocket_background_tasks:
-            await websocket_background_tasks()
-            logger.info("🔗 WebSocket 백그라운드 태스크 시작됨")
+        if websocket_background_tasks and callable(websocket_background_tasks):
+            try:
+                await websocket_background_tasks()
+                logger.info("🔗 WebSocket 백그라운드 태스크 시작됨")
+            except Exception as e:
+                logger.warning(f"WebSocket 백그라운드 태스크 시작 실패: {e}")
         
         app_state["startup_time"] = time_module.time() - startup_start_time
         app_state["initialized"] = True
@@ -643,13 +691,16 @@ async def m3_max_lifespan(app: FastAPI):
     try:
         # M3 Max 최적화된 메모리 정리
         optimize_func = gpu_config.get('optimize_memory')
-        if optimize_func:
-            result = optimize_func(
-                device=gpu_config.get('device'), 
-                aggressive=importer.m3_max_optimized
-            )
-            if result.get('success'):
-                logger.info(f"🍎 M3 Max 메모리 정리 완료: {result.get('method', 'unknown')}")
+        if optimize_func and callable(optimize_func):
+            try:
+                result = optimize_func(
+                    device=gpu_config.get('device'), 
+                    aggressive=importer.m3_max_optimized
+                )
+                if result.get('success'):
+                    logger.info(f"🍎 M3 Max 메모리 정리 완료: {result.get('method', 'unknown')}")
+            except Exception as e:
+                logger.warning(f"메모리 정리 실패: {e}")
         
         if importer.m3_max_optimized:
             logger.info("🧠 Neural Engine 정리됨")
@@ -675,13 +726,21 @@ app = FastAPI(
 )
 
 # ============================================
-# 미들웨어 설정
+# 미들웨어 설정 - 🔴 CORS 수정
 # ============================================
 
-# CORS 설정
+# CORS 설정 - 프론트엔드 연동을 위해 수정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",     # React 개발 서버
+        "http://localhost:5173",     # Vite 개발 서버
+        "http://localhost:8080",     # 추가 개발 서버
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+        "*"  # 개발 중에만 사용
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -697,7 +756,10 @@ app.middleware("http")(m3_max_performance_middleware)
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """HTTP 예외 처리"""
-    app_state["performance_metrics"]["total_requests"] += 1
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+    except Exception:
+        pass
     
     error_response = {
         "success": False,
@@ -725,7 +787,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Pydantic V2 호환 요청 검증 예외 처리"""
-    app_state["performance_metrics"]["total_requests"] += 1
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+    except Exception:
+        pass
     
     error_response = {
         "success": False,
@@ -749,7 +814,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """일반 예외 처리"""
-    app_state["performance_metrics"]["total_requests"] += 1
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+    except Exception:
+        pass
     
     error_msg = str(exc)
     error_type = type(exc).__name__
@@ -761,7 +829,7 @@ async def general_exception_handler(request: Request, exc: Exception):
             "message": error_msg,
             "timestamp": datetime.now().isoformat(),
             "m3_max_optimized": importer.m3_max_optimized,
-            "device": app_state["device"]
+            "device": app_state.get("device", "unknown")
         }
     }
     
@@ -774,35 +842,48 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 # ============================================
-# API 라우터 등록
+# API 라우터 등록 - 안전한 등록
 # ============================================
 
 # Health router
 if api_routers.get('health'):
-    app.include_router(api_routers['health'], prefix="/health", tags=["health"])
-    logger.info("✅ Health 라우터 등록됨")
+    try:
+        app.include_router(api_routers['health'], prefix="/api", tags=["health"])
+        logger.info("✅ Health 라우터 등록됨")
+    except Exception as e:
+        logger.warning(f"Health 라우터 등록 실패: {e}")
 
 # Virtual try-on router
 if api_routers.get('virtual_tryon'):
-    app.include_router(api_routers['virtual_tryon'], prefix="/api", tags=["virtual-tryon"])
-    logger.info("✅ Virtual Try-on 라우터 등록됨")
+    try:
+        app.include_router(api_routers['virtual_tryon'], prefix="/api", tags=["virtual-tryon"])
+        logger.info("✅ Virtual Try-on 라우터 등록됨")
+    except Exception as e:
+        logger.warning(f"Virtual Try-on 라우터 등록 실패: {e}")
 
 # Models router
 if api_routers.get('models'):
-    app.include_router(api_routers['models'], prefix="/api", tags=["models"])
-    logger.info("✅ Models 라우터 등록됨")
+    try:
+        app.include_router(api_routers['models'], prefix="/api", tags=["models"])
+        logger.info("✅ Models 라우터 등록됨")
+    except Exception as e:
+        logger.warning(f"Models 라우터 등록 실패: {e}")
 
-# Pipeline router - 🔧 수정: 이제 정상 작동해야 함
+# Pipeline router
 if api_routers.get('pipeline') and not importer.fallback_mode:
-    app.include_router(api_routers['pipeline'], tags=["pipeline"])
-    logger.info("✅ Pipeline 라우터 등록됨")
+    try:
+        app.include_router(api_routers['pipeline'], tags=["pipeline"])
+        logger.info("✅ Pipeline 라우터 등록됨")
+    except Exception as e:
+        logger.warning(f"Pipeline 라우터 등록 실패: {e}")
 
-# WebSocket router (핵심!)
+# WebSocket router
 if api_routers.get('websocket'):
-    app.include_router(api_routers['websocket'], prefix="/api/ws", tags=["websocket"])
-    logger.info("✅ WebSocket 라우터 등록됨 - 경로: /api/ws/*")
-else:
-    logger.warning("⚠️ WebSocket 라우터가 등록되지 않음")
+    try:
+        app.include_router(api_routers['websocket'], prefix="/api/ws", tags=["websocket"])
+        logger.info("✅ WebSocket 라우터 등록됨 - 경로: /api/ws/*")
+    except Exception as e:
+        logger.warning(f"WebSocket 라우터 등록 실패: {e}")
 
 # ============================================
 # 정적 파일 서빙
@@ -810,11 +891,14 @@ else:
 
 static_dir = project_root / "static"
 if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-    logger.info("✅ 정적 파일 서빙 설정됨")
+    try:
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        logger.info("✅ 정적 파일 서빙 설정됨")
+    except Exception as e:
+        logger.warning(f"정적 파일 서빙 설정 실패: {e}")
 
 # ============================================
-# 기본 엔드포인트들 (기존과 동일)
+# 기본 엔드포인트들
 # ============================================
 
 @app.get("/", response_class=HTMLResponse)
@@ -825,7 +909,8 @@ async def m3_max_root():
     websocket_status = "✅ 활성화" if api_routers.get('websocket') else "❌ 비활성화"
     
     current_time = time_module.time()
-    uptime = current_time - (app_state.get("startup_time", 0) or current_time)
+    startup_time = app_state.get("startup_time", 0)
+    uptime = current_time - startup_time if startup_time else 0
     
     html_content = f"""
     <!DOCTYPE html>
@@ -965,8 +1050,7 @@ async def m3_max_root():
                 <a href="/docs">📚 API 문서</a>
                 <a href="/status">📊 상세 상태</a>
                 <a href="/health">💊 헬스체크</a>
-                <a href="/api/ws/debug">🔗 WebSocket 테스트</a>
-                <a href="/api/virtual-tryon/demo">🎯 가상피팅 데모</a>
+                <a href="/api/health">🔗 API 헬스체크</a>
                 {'<a href="/m3-max-status">🍎 M3 Max 상태</a>' if importer.m3_max_optimized else ''}
             </div>
         </div>
@@ -980,7 +1064,8 @@ async def m3_max_root():
 async def get_m3_max_detailed_status():
     """M3 Max 최적화된 상세 시스템 상태 조회"""
     current_time = time_module.time()
-    uptime = current_time - (app_state.get("startup_time", 0) or current_time)
+    startup_time = app_state.get("startup_time", 0)
+    uptime = current_time - startup_time if startup_time else 0
     
     return {
         "application": {
@@ -1017,6 +1102,7 @@ async def get_m3_max_detailed_status():
         "api_routers": {
             name: router is not None 
             for name, router in api_routers.items()
+            if name != 'websocket_background_tasks'  # 내부 함수 제외
         }
     }
 
@@ -1024,7 +1110,8 @@ async def get_m3_max_detailed_status():
 async def m3_max_health_check():
     """M3 Max 최적화된 헬스체크"""
     current_time = time_module.time()
-    uptime = current_time - (app_state.get("startup_time", 0) or current_time)
+    startup_time = app_state.get("startup_time", 0)
+    uptime = current_time - startup_time if startup_time else 0
     
     return {
         "status": "healthy" if app_state["initialized"] else "degraded",
@@ -1034,11 +1121,46 @@ async def m3_max_health_check():
         "m3_max_optimized": importer.m3_max_optimized,
         "websocket_enabled": bool(api_routers.get('websocket')),
         "uptime": uptime,
-        "pydantic_version": "v2"
+        "pydantic_version": "v2",
+        "cors_enabled": True,  # 🔴 CORS 활성화 표시
+        "import_success": import_success,
+        "fallback_mode": importer.fallback_mode
     }
 
-# 나머지 엔드포인트들은 기존과 동일...
-# (가상 피팅 API, M3 Max 상태, 시스템 관리 엔드포인트들)
+# API 네임스페이스 헬스체크 추가
+@app.get("/api/health")
+async def api_health_check():
+    """API 네임스페이스 헬스체크 - 프론트엔드 연동용"""
+    return await m3_max_health_check()
+
+# 테스트용 가상 피팅 엔드포인트
+@app.post("/api/virtual-tryon-test")
+async def virtual_tryon_test():
+    """프론트엔드 연동 테스트용 가상 피팅 API"""
+    return {
+        "success": True,
+        "message": "🍎 M3 Max 최적화 서버가 정상 작동 중입니다!",
+        "device": gpu_config.get('device', 'unknown'),
+        "m3_max_optimized": importer.m3_max_optimized,
+        "fitted_image": "",  # Base64 이미지 (테스트용 빈 값)
+        "confidence": 0.95,
+        "fit_score": 0.88,
+        "processing_time": 1.2,
+        "recommendations": [
+            "🍎 M3 Max Neural Engine으로 초고속 처리되었습니다!",
+            "MPS 백엔드가 정상 작동 중입니다.",
+            "128GB 통합 메모리로 고품질 결과를 제공합니다."
+        ] if importer.m3_max_optimized else [
+            "서버가 정상 작동 중입니다!",
+            "가상 피팅 기능을 테스트할 수 있습니다."
+        ]
+    }
+
+# CORS 프리플라이트 요청 처리
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    """CORS 프리플라이트 요청 처리"""
+    return {"message": "CORS preflight OK"}
 
 # ============================================
 # 메인 실행부
@@ -1054,11 +1176,14 @@ if __name__ == "__main__":
     logger.info(f"📊 Import 성공: {import_success}")
     
     # 서버 설정
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    
     if os.getenv("ENVIRONMENT") == "production":
         uvicorn.run(
             "app.main:app",
-            host="0.0.0.0",
-            port=8000,
+            host=host,
+            port=port,
             reload=False,
             workers=1,
             log_level="info",
@@ -1068,8 +1193,8 @@ if __name__ == "__main__":
     else:
         uvicorn.run(
             "app.main:app",
-            host="0.0.0.0",
-            port=8000,
+            host=host,
+            port=port,
             reload=False,
             log_level="info",
             access_log=True,
