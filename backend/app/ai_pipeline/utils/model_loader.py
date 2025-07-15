@@ -2259,6 +2259,267 @@ def load_model_with_format(
         logger.error(f"모델 로딩 실패: {e}")
         return None
 
+# backend/app/ai_pipeline/utils/model_loader.py 끝부분에 추가할 함수들
+
+import logging
+import os
+from typing import Dict, Any, Optional
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+class ModelFormat:
+    """AI 모델 형식 정의"""
+    
+    PYTORCH = "pytorch"
+    ONNX = "onnx" 
+    TENSORRT = "tensorrt"
+    COREML = "coreml"  # Apple Core ML for M3 Max
+    SAFETENSORS = "safetensors"
+    
+    @classmethod
+    def get_optimized_format(cls, device: str = "mps") -> str:
+        """디바이스에 최적화된 모델 형식 반환"""
+        if device == "mps":
+            return cls.COREML  # M3 Max에서는 Core ML 추천
+        elif device == "cuda":
+            return cls.TENSORRT
+        return cls.PYTORCH
+    
+    @classmethod
+    def is_supported(cls, format_name: str) -> bool:
+        """지원되는 형식인지 확인"""
+        supported_formats = [cls.PYTORCH, cls.ONNX, cls.COREML, cls.SAFETENSORS]
+        return format_name.lower() in [f.lower() for f in supported_formats]
+
+# ===============================================================
+# 🔧 핵심 해결: initialize_global_model_loader 함수 추가
+# ===============================================================
+
+def initialize_global_model_loader(
+    device: str = "mps",
+    memory_gb: float = 128.0,
+    optimization_enabled: bool = True,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    전역 모델 로더 초기화
+    ✅ import 오류 해결을 위한 핵심 함수
+    
+    Args:
+        device: 사용할 디바이스 (mps, cuda, cpu)
+        memory_gb: 총 메모리 용량 (GB)
+        optimization_enabled: 최적화 활성화 여부
+        **kwargs: 추가 설정
+    
+    Returns:
+        Dict[str, Any]: 초기화된 로더 설정
+    """
+    try:
+        logger.info(f"🤖 전역 ModelLoader 초기화: {device}, {memory_gb}GB")
+        
+        # 글로벌 모델 로더 설정
+        loader_config = {
+            "device": device,
+            "memory_gb": memory_gb,
+            "optimization_enabled": optimization_enabled,
+            "cache_enabled": True,
+            "lazy_loading": True,
+            "memory_efficient": True,
+            "model_format": ModelFormat.get_optimized_format(device)
+        }
+        
+        # M3 Max 특화 설정
+        if device == "mps":
+            is_m3_max = memory_gb >= 64
+            loader_config.update({
+                "use_neural_engine": True,
+                "use_unified_memory": True,
+                "optimization_level": "maximum" if is_m3_max else "balanced",
+                "coreml_enabled": True,
+                "batch_size": 4 if is_m3_max else 2,
+                "precision": "float16",
+                "memory_pooling": True
+            })
+            
+            if is_m3_max:
+                loader_config.update({
+                    "m3_max_optimizations": {
+                        "neural_engine": True,
+                        "metal_shaders": True,
+                        "unified_memory": True,
+                        "pipeline_parallel": True,
+                        "memory_bandwidth": "400GB/s"
+                    }
+                })
+        
+        elif device == "cuda":
+            loader_config.update({
+                "mixed_precision": optimization_enabled,
+                "tensorrt_enabled": optimization_enabled,
+                "batch_size": 8,
+                "memory_growth": True
+            })
+        
+        else:  # CPU
+            loader_config.update({
+                "num_threads": os.cpu_count() or 4,
+                "batch_size": 1,
+                "memory_mapping": True
+            })
+        
+        # 경로 설정
+        model_paths = {
+            "base_dir": Path("app/ai_pipeline/models/ai_models"),
+            "cache_dir": Path("app/ai_pipeline/cache"),
+            "checkpoints_dir": Path("app/ai_pipeline/models/ai_models/checkpoints")
+        }
+        
+        # 디렉토리 생성
+        for path in model_paths.values():
+            path.mkdir(parents=True, exist_ok=True)
+        
+        loader_config["paths"] = {str(k): str(v) for k, v in model_paths.items()}
+        
+        # 글로벌 인스턴스 설정 (필요시 추후 사용)
+        _set_global_loader_config(loader_config)
+        
+        logger.info("✅ 전역 ModelLoader 초기화 완료")
+        return loader_config
+        
+    except Exception as e:
+        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
+        # 기본 설정 반환
+        return {
+            "device": device,
+            "memory_gb": memory_gb,
+            "optimization_enabled": False,
+            "cache_enabled": False,
+            "error": str(e)
+        }
+
+# ===============================================================
+# 글로벌 설정 관리
+# ===============================================================
+
+_global_loader_config: Optional[Dict[str, Any]] = None
+
+def _set_global_loader_config(config: Dict[str, Any]):
+    """글로벌 로더 설정 저장"""
+    global _global_loader_config
+    _global_loader_config = config
+
+def get_global_loader_config() -> Optional[Dict[str, Any]]:
+    """글로벌 로더 설정 반환"""
+    return _global_loader_config
+
+def is_global_loader_initialized() -> bool:
+    """글로벌 로더 초기화 상태 확인"""
+    return _global_loader_config is not None
+
+# ===============================================================
+# 추가 유틸리티 함수들
+# ===============================================================
+
+def get_model_memory_requirements(model_name: str, device: str = "mps") -> Dict[str, Any]:
+    """모델별 메모리 요구사항 반환"""
+    
+    # 기본 모델별 메모리 요구사항 (추정치)
+    memory_estimates = {
+        "graphonomy": {"cpu": 2.0, "cuda": 1.5, "mps": 1.2},  # GB
+        "hr_viton": {"cpu": 4.0, "cuda": 3.0, "mps": 2.5},
+        "u2net": {"cpu": 1.0, "cuda": 0.8, "mps": 0.6},
+        "real_esrgan": {"cpu": 1.5, "cuda": 1.2, "mps": 1.0},
+        "gfpgan": {"cpu": 2.5, "cuda": 2.0, "mps": 1.8},
+        "openpose": {"cpu": 3.0, "cuda": 2.2, "mps": 2.0}
+    }
+    
+    base_memory = memory_estimates.get(model_name, {"cpu": 2.0, "cuda": 1.5, "mps": 1.0})
+    
+    return {
+        "model_name": model_name,
+        "estimated_memory_gb": base_memory.get(device, 1.0),
+        "device": device,
+        "optimization_available": device in ["mps", "cuda"],
+        "recommended_batch_size": 4 if device == "mps" else 8 if device == "cuda" else 1
+    }
+
+def check_model_compatibility(model_name: str, device: str = "mps", memory_gb: float = 128.0) -> Dict[str, Any]:
+    """모델 호환성 검사"""
+    
+    requirements = get_model_memory_requirements(model_name, device)
+    estimated_memory = requirements["estimated_memory_gb"]
+    
+    # 여유 메모리 확인 (30% 여유분 고려)
+    available_memory = memory_gb * 0.7
+    compatible = estimated_memory <= available_memory
+    
+    compatibility_info = {
+        "model_name": model_name,
+        "device": device,
+        "compatible": compatible,
+        "estimated_memory_gb": estimated_memory,
+        "available_memory_gb": available_memory,
+        "memory_usage_percent": (estimated_memory / memory_gb) * 100,
+        "recommendations": []
+    }
+    
+    # 추천사항 생성
+    if not compatible:
+        compatibility_info["recommendations"].extend([
+            f"메모리 부족: {estimated_memory:.1f}GB 필요, {available_memory:.1f}GB 사용 가능",
+            "낮은 품질 모드 사용 권장",
+            "배치 크기 감소 권장"
+        ])
+    elif compatibility_info["memory_usage_percent"] > 50:
+        compatibility_info["recommendations"].append("메모리 사용량이 높음 - 성능 모니터링 권장")
+    else:
+        compatibility_info["recommendations"].append("최적 호환성 - 고품질 모드 사용 가능")
+    
+    # M3 Max 특화 추천
+    if device == "mps" and memory_gb >= 64:
+        compatibility_info["recommendations"].append("🍎 M3 Max 최적화 모드 활용 가능")
+    
+    return compatibility_info
+
+def cleanup_model_loader():
+    """모델 로더 정리"""
+    global _global_loader_config
+    
+    try:
+        if _global_loader_config:
+            logger.info("🧹 전역 ModelLoader 정리 중...")
+            
+            # 캐시 정리
+            cache_dir = _global_loader_config.get("paths", {}).get("cache_dir")
+            if cache_dir and Path(cache_dir).exists():
+                # 캐시 파일 정리 (필요시)
+                pass
+            
+            # 메모리 정리
+            try:
+                import torch
+                device = _global_loader_config.get("device", "cpu")
+                
+                if device == "mps" and torch.backends.mps.is_available():
+                    torch.mps.empty_cache()
+                elif device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                import gc
+                gc.collect()
+                
+            except ImportError:
+                pass
+            
+            _global_loader_config = None
+            logger.info("✅ 전역 ModelLoader 정리 완료")
+        
+    except Exception as e:
+        logger.error(f"❌ ModelLoader 정리 실패: {e}")
+
+
+logger.info("✅ ModelLoader 초기화 함수 추가 완료 - import 오류 해결")
 # 모듈 레벨에서 안전한 정리 함수 등록
 import atexit
 atexit.register(cleanup_global_loader)
@@ -2298,6 +2559,13 @@ __all__ = [
     'postprocess_segmentation',
     'postprocess_pose',
     'cleanup_global_loader'
+     "ModelFormat",
+    "initialize_global_model_loader",  # 핵심 해결 함수
+    "get_global_loader_config",
+    "is_global_loader_initialized", 
+    "get_model_memory_requirements",
+    "check_model_compatibility",
+    "cleanup_model_loader"
 ]
 
 # 모듈 로드 확인

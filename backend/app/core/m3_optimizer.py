@@ -1,17 +1,20 @@
-# backend/app/core/m3_optimizer.py
+# backend/app/core/m3_optimizer.py 수정
 """
-M3 Max 전용 최적화 모듈
+M3 Max 전용 최적화 모듈 - 파이프라인 라우터 호환성 수정
 """
 import os
 import logging
 import torch
 from typing import Dict, Any, Optional
+import platform
+import subprocess
 
 logger = logging.getLogger(__name__)
 
 class M3Optimizer:
     """
     Apple M3 Max 전용 최적화 클래스
+    ✅ 파이프라인 라우터와 완전 호환
     """
     
     def __init__(self, device_name: str, memory_gb: float, is_m3_max: bool, optimization_level: str):
@@ -141,132 +144,100 @@ class M3Optimizer:
             "mps_available": torch.backends.mps.is_available() if self.is_m3_max else False
         }
 
-# ================================================================
-# backend/app/ai_pipeline/utils/memory_manager.py에 추가할 함수
+# ===============================================================
+# 🔧 파이프라인 라우터 호환성 함수들
+# ===============================================================
 
-def initialize_global_memory_manager(device: str = "mps", memory_gb: float = 128.0):
+def create_m3_optimizer_for_pipeline(
+    device: str = "mps",
+    memory_gb: float = 128.0,
+    optimization_level: str = "maximum"
+) -> M3Optimizer:
     """
-    전역 메모리 매니저 초기화
-    
-    Args:
-        device: 사용할 디바이스
-        memory_gb: 총 메모리 용량
+    파이프라인 라우터용 M3 Optimizer 생성
+    ✅ 4개 필수 인자 모두 제공
     """
+    device_name = _detect_chip_name()
+    is_m3_max = _detect_m3_max(memory_gb)
+    
+    return M3Optimizer(
+        device_name=device_name,
+        memory_gb=memory_gb,
+        is_m3_max=is_m3_max,
+        optimization_level=optimization_level
+    )
+
+def _detect_chip_name() -> str:
+    """칩 이름 자동 감지"""
     try:
-        import gc
-        import torch
-        
-        logger.info(f"🔧 전역 메모리 매니저 초기화: {device}, {memory_gb}GB")
-        
-        # 메모리 정리
-        gc.collect()
-        
-        if device == "mps" and torch.backends.mps.is_available():
-            # MPS 메모리 설정
-            logger.info(f"🍎 M3 Max MPS 메모리 매니저 초기화")
-            
-            # 환경변수 설정
-            os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
-            os.environ["PYTORCH_MPS_LOW_WATERMARK_RATIO"] = "0.0"
-            
-            # Unified Memory 최적화
-            logger.info("💾 Unified Memory 최적화 설정")
-            
-        logger.info("✅ 전역 메모리 매니저 초기화 완료")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ 메모리 매니저 초기화 실패: {e}")
-        return False
+        if platform.system() == 'Darwin':  # macOS
+            result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                  capture_output=True, text=True, timeout=5)
+            chip_info = result.stdout.strip()
+            if 'M3' in chip_info:
+                return chip_info
+            else:
+                return "Apple Silicon"
+        else:
+            return "Generic Device"
+    except:
+        return "Apple M3 Max"  # 기본값
 
-# ================================================================
-# backend/app/ai_pipeline/utils/model_loader.py에 추가할 클래스와 함수
-
-class ModelFormat:
-    """AI 모델 형식 정의"""
-    
-    PYTORCH = "pytorch"
-    ONNX = "onnx" 
-    TENSORRT = "tensorrt"
-    COREML = "coreml"  # Apple Core ML for M3 Max
-    SAFETENSORS = "safetensors"
-    
-    @classmethod
-    def get_optimized_format(cls, device: str = "mps") -> str:
-        """디바이스에 최적화된 모델 형식 반환"""
-        if device == "mps":
-            return cls.COREML  # M3 Max에서는 Core ML 추천
-        elif device == "cuda":
-            return cls.TENSORRT
-        return cls.PYTORCH
-    
-    @classmethod
-    def is_supported(cls, format_name: str) -> bool:
-        """지원되는 형식인지 확인"""
-        supported_formats = [cls.PYTORCH, cls.ONNX, cls.COREML, cls.SAFETENSORS]
-        return format_name.lower() in [f.lower() for f in supported_formats]
-
-def initialize_global_model_loader(device: str = "mps"):
-    """전역 모델 로더 초기화"""
+def _detect_m3_max(memory_gb: float) -> bool:
+    """M3 Max 감지"""
     try:
-        logger.info(f"🤖 전역 ModelLoader 초기화: {device}")
+        if platform.system() == 'Darwin':
+            result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                  capture_output=True, text=True, timeout=5)
+            chip_info = result.stdout.strip()
+            return 'M3' in chip_info and ('Max' in chip_info or memory_gb >= 64)
+    except:
+        pass
+    
+    # 메모리 기준 추정
+    return memory_gb >= 64
+
+# ===============================================================
+# Config 클래스 추가 (import 오류 해결)
+# ===============================================================
+
+class Config:
+    """
+    기본 설정 클래스
+    ✅ import 오류 해결용
+    """
+    
+    def __init__(self, **kwargs):
+        self.device = kwargs.get('device', 'mps')
+        self.memory_gb = kwargs.get('memory_gb', 128.0)
+        self.quality_level = kwargs.get('quality_level', 'high')
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
         
-        # 글로벌 모델 로더 설정
-        loader_config = {
-            "device": device,
-            "cache_enabled": True,
-            "lazy_loading": True,
-            "memory_efficient": True
+        # M3 Max 정보
+        self.is_m3_max = _detect_m3_max(self.memory_gb)
+        self.device_name = _detect_chip_name()
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """설정을 딕셔너리로 변환"""
+        return {
+            'device': self.device,
+            'memory_gb': self.memory_gb,
+            'quality_level': self.quality_level,
+            'optimization_enabled': self.optimization_enabled,
+            'is_m3_max': self.is_m3_max,
+            'device_name': self.device_name
         }
-        
-        if device == "mps":
-            loader_config.update({
-                "use_neural_engine": True,
-                "use_unified_memory": True,
-                "optimization_level": "maximum"
-            })
-        
-        logger.info("✅ 전역 ModelLoader 초기화 완료")
-        return loader_config
-        
-    except Exception as e:
-        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
-        return None
 
-# ================================================================
-# backend/app/core/gpu_config.py에 추가할 함수
+# ===============================================================
+# 모듈 export
+# ===============================================================
 
-def check_memory_available(required_gb: float = 4.0) -> bool:
-    """
-    M3 Max 메모리 사용 가능 여부 확인
-    
-    Args:
-        required_gb: 필요한 메모리 용량 (GB)
-    
-    Returns:
-        bool: 메모리 사용 가능 여부
-    """
-    try:
-        import psutil
-        import torch
-        
-        # 시스템 메모리 확인
-        memory = psutil.virtual_memory()
-        available_gb = memory.available / (1024**3)
-        
-        logger.info(f"💾 시스템 메모리: {memory.total / (1024**3):.1f}GB")
-        logger.info(f"💾 사용 가능: {available_gb:.1f}GB") 
-        logger.info(f"💾 요구사항: {required_gb:.1f}GB")
-        
-        # MPS 메모리 확인 (M3 Max)
-        if torch.backends.mps.is_available():
-            logger.info("🍎 M3 Max Unified Memory 사용 중")
-            # Unified Memory에서는 시스템 메모리와 GPU 메모리가 통합
-            return available_gb >= required_gb
-        
-        return available_gb >= required_gb
-        
-    except Exception as e:
-        logger.warning(f"⚠️ 메모리 확인 실패: {e}")
-        return True  # 안전하게 True 반환
+__all__ = [
+    'M3Optimizer',
+    'Config',
+    'create_m3_optimizer_for_pipeline',
+    '_detect_chip_name',
+    '_detect_m3_max'
+]
+
+logger.info("🍎 M3 Optimizer 모듈 로드 완료 - 파이프라인 라우터 호환성 적용")
