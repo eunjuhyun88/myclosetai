@@ -1,6 +1,7 @@
 # app/core/config.py
 """
-최적 설정 시스템 - 순환 참조 수정 및 M3 Max 최적화
+MyCloset AI - M3 Max 128GB 최적화 통합 설정 시스템
+PipelineManager 호환성 완전 해결, Config 클래스 제대로 export
 """
 import os
 import platform
@@ -70,62 +71,49 @@ def collect_system_info() -> Dict[str, Any]:
     }
 
 # ===============================================================
-# 🎯 최적 설정 베이스 클래스
+# 🎯 핵심 Config 클래스 (PipelineManager 호환성)
 # ===============================================================
 
-class OptimalConfigBase(ABC):
+class Config:
     """
-    🎯 최적화된 설정 베이스 클래스
-    - 자동 환경 감지
-    - 지능적 기본값
-    - 확장성
-    - 일관성
+    🎯 PipelineManager 호환 Config 클래스
+    - pipeline_manager.py에서 필요로 하는 표준 Config
+    - 기존 코드 100% 호환성 보장
     """
-
-    def __init__(
-        self,
-        env: Optional[str] = None,  # 환경 (None=자동감지)
-        config_path: Optional[str] = None,  # 설정 파일 경로
-        **kwargs  # 확장 파라미터
-    ):
+    
+    def __init__(self, 
+                 environment: str = None,
+                 device: str = "mps",
+                 is_m3_max: bool = None,
+                 **kwargs):
         """
-        ✅ 최적 설정 생성자 - 순환 참조 해결
-
+        Config 초기화 (PipelineManager 호환)
+        
         Args:
-            env: 환경 (None=자동감지, 'development', 'production', 'testing')
-            config_path: 외부 설정 파일 경로
-            **kwargs: 확장 파라미터들
+            environment: 환경 (development/production/testing)
+            device: 사용할 디바이스 (mps/cuda/cpu)
+            is_m3_max: M3 Max 여부
+            **kwargs: 추가 설정들
         """
-        # 1. 📋 시스템 정보 수집 (먼저 수집)
+        # 시스템 정보 수집
         self.system_info = collect_system_info()
         
-        # 2. 💡 지능적 환경 자동 감지
-        self.env = self._auto_detect_environment(env)
+        # 기본 설정
+        self.environment = environment or self._auto_detect_environment()
+        self.device = device
+        self.is_m3_max = is_m3_max if is_m3_max is not None else self.system_info['is_m3_max']
         
-        # 3. 🔧 기본 설정 생성
-        self._config = self._create_base_config()
+        # 기본 속성들 설정
+        self._setup_core_properties()
         
-        # 4. ⚙️ kwargs 파라미터 병합
-        self._merge_kwargs_config(kwargs)
-        
-        # 5. 📁 외부 설정 파일 로드
-        if config_path and os.path.exists(config_path):
-            self._load_external_config(config_path)
-        
-        # 6. 🌍 환경변수 오버라이드
-        self._apply_environment_overrides()
-        
-        # 7. ✨ 환경별 최적화 적용
-        self._apply_environment_optimizations()
-        
-        logger.info(f"🎯 {self.__class__.__name__} 초기화 완료 - 환경: {self.env}")
-
-    def _auto_detect_environment(self, preferred_env: Optional[str]) -> str:
-        """💡 지능적 환경 자동 감지"""
-        if preferred_env:
-            return preferred_env
-
-        # 환경변수 확인
+        # kwargs로 받은 추가 설정들 적용
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+            
+        logger.info(f"🎯 Config 초기화 완료 - 환경: {self.environment}, 디바이스: {self.device}")
+    
+    def _auto_detect_environment(self) -> str:
+        """환경 자동 감지"""
         env_var = os.getenv('APP_ENV', os.getenv('ENVIRONMENT', ''))
         if env_var.lower() in ['development', 'dev']:
             return 'development'
@@ -138,20 +126,113 @@ class OptimalConfigBase(ABC):
         if os.getenv('DEBUG', '').lower() in ['true', '1']:
             return 'development'
         
-        # 개발 환경 감지 (일반적인 개발 도구들)
-        dev_indicators = [
-            '.git',
-            'requirements-dev.txt',
-            'docker-compose.yml',
-            'Dockerfile.dev'
-        ]
+        return 'development'  # 기본값
+    
+    def _setup_core_properties(self):
+        """핵심 속성들 설정"""
+        # 디바이스 관련 설정
+        self.use_gpu = self.device != 'cpu'
+        self.enable_mps = self.device == 'mps'
+        self.enable_cuda = self.device == 'cuda'
         
+        # M3 Max 관련 설정
+        if self.is_m3_max:
+            self.optimization_level = 'maximum'
+            self.batch_size = 4
+            self.max_workers = 8
+            self.memory_pool_gb = 32
+            self.neural_engine_enabled = True
+            self.metal_performance_shaders = True
+        else:
+            self.optimization_level = 'balanced'
+            self.batch_size = 1
+            self.max_workers = 4
+            self.memory_pool_gb = 8
+            self.neural_engine_enabled = False
+            self.metal_performance_shaders = False
+        
+        # 환경별 설정
+        if self.environment == 'development':
+            self.debug = True
+            self.log_level = 'DEBUG'
+            self.reload = True
+        elif self.environment == 'production':
+            self.debug = False
+            self.log_level = 'INFO'
+            self.reload = False
+        else:  # testing
+            self.debug = True
+            self.log_level = 'WARNING'
+            self.reload = False
+    
+    # PipelineManager가 필요로 하는 메서드들
+    def get(self, key: str, default: Any = None) -> Any:
+        """설정값 가져오기"""
+        return getattr(self, key, default)
+    
+    def set(self, key: str, value: Any):
+        """설정값 설정하기"""
+        setattr(self, key, value)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """설정을 딕셔너리로 반환"""
+        return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+
+# ===============================================================
+# 🎯 최적 설정 베이스 클래스
+# ===============================================================
+
+class OptimalConfigBase(ABC):
+    """최적화된 설정 베이스 클래스"""
+
+    def __init__(self, env: Optional[str] = None, config_path: Optional[str] = None, **kwargs):
+        # 시스템 정보 수집
+        self.system_info = collect_system_info()
+        
+        # 환경 자동 감지
+        self.env = self._auto_detect_environment(env)
+        
+        # 기본 설정 생성
+        self._config = self._create_base_config()
+        
+        # kwargs 파라미터 병합
+        self._merge_kwargs_config(kwargs)
+        
+        # 외부 설정 파일 로드
+        if config_path and os.path.exists(config_path):
+            self._load_external_config(config_path)
+        
+        # 환경변수 오버라이드
+        self._apply_environment_overrides()
+        
+        # 환경별 최적화 적용
+        self._apply_environment_optimizations()
+        
+        logger.info(f"🎯 {self.__class__.__name__} 초기화 완료 - 환경: {self.env}")
+
+    def _auto_detect_environment(self, preferred_env: Optional[str]) -> str:
+        """환경 자동 감지"""
+        if preferred_env:
+            return preferred_env
+
+        env_var = os.getenv('APP_ENV', os.getenv('ENVIRONMENT', ''))
+        if env_var.lower() in ['development', 'dev']:
+            return 'development'
+        elif env_var.lower() in ['production', 'prod']:
+            return 'production'
+        elif env_var.lower() in ['testing', 'test']:
+            return 'testing'
+        
+        if os.getenv('DEBUG', '').lower() in ['true', '1']:
+            return 'development'
+        
+        # 개발 환경 감지
+        dev_indicators = ['.git', 'requirements-dev.txt', 'docker-compose.yml']
         current_dir = Path.cwd()
         for indicator in dev_indicators:
             if (current_dir / indicator).exists():
                 return 'development'
         
-        # 기본값: production (안전한 선택)
         return 'production'
 
     @abstractmethod
@@ -160,16 +241,12 @@ class OptimalConfigBase(ABC):
         pass
 
     def _merge_kwargs_config(self, kwargs: Dict[str, Any]):
-        """⚙️ kwargs 파라미터 병합"""
+        """kwargs 파라미터 병합"""
         for key, value in kwargs.items():
-            if key in self._config:
-                self._config[key] = value
-            else:
-                # 새로운 설정 추가
-                self._config[key] = value
+            self._config[key] = value
 
     def _load_external_config(self, config_path: str):
-        """📁 외부 설정 파일 로드"""
+        """외부 설정 파일 로드"""
         try:
             import json
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -180,7 +257,7 @@ class OptimalConfigBase(ABC):
             logger.warning(f"외부 설정 로드 실패 ({config_path}): {e}")
 
     def _apply_environment_overrides(self):
-        """🌍 환경변수 오버라이드"""
+        """환경변수 오버라이드"""
         env_mappings = {
             'APP_NAME': 'app_name',
             'HOST': 'host',
@@ -196,7 +273,6 @@ class OptimalConfigBase(ABC):
         for env_var, config_key in env_mappings.items():
             env_value = os.getenv(env_var)
             if env_value is not None:
-                # 타입 변환
                 if config_key == 'port':
                     self._config[config_key] = int(env_value)
                 elif config_key == 'debug':
@@ -207,7 +283,7 @@ class OptimalConfigBase(ABC):
                     self._config[config_key] = env_value
 
     def _apply_environment_optimizations(self):
-        """✨ 환경별 최적화"""
+        """환경별 최적화"""
         if self.env == 'development':
             self._apply_development_optimizations()
         elif self.env == 'production':
@@ -216,7 +292,7 @@ class OptimalConfigBase(ABC):
             self._apply_testing_optimizations()
 
     def _apply_development_optimizations(self):
-        """🔧 개발 환경 최적화"""
+        """개발 환경 최적화"""
         self._config.update({
             'debug': True,
             'log_level': 'DEBUG',
@@ -224,11 +300,11 @@ class OptimalConfigBase(ABC):
             'workers': 1,
             'enable_profiling': True,
             'enable_hot_reload': True,
-            'cors_origins': ['*']  # 개발시 모든 origin 허용
+            'cors_origins': ['*']
         })
 
     def _apply_production_optimizations(self):
-        """🚀 프로덕션 환경 최적화"""
+        """프로덕션 환경 최적화"""
         optimal_workers = min(self.system_info['cpu_count'], 8)
         
         self._config.update({
@@ -242,27 +318,26 @@ class OptimalConfigBase(ABC):
             'keepalive': 2
         })
         
-        # M3 Max 프로덕션 최적화
         if self.system_info['is_m3_max']:
             self._config.update({
-                'workers': min(12, optimal_workers * 2),  # M3 Max는 더 많은 워커
+                'workers': min(12, optimal_workers * 2),
                 'max_memory_usage': '64GB',
                 'enable_mps_optimization': True
             })
 
     def _apply_testing_optimizations(self):
-        """🧪 테스트 환경 최적화"""
+        """테스트 환경 최적화"""
         self._config.update({
             'debug': True,
-            'log_level': 'WARNING',  # 테스트시 로그 줄이기
+            'log_level': 'WARNING',
             'workers': 1,
             'timeout': 30,
-            'database_url': 'sqlite:///:memory:',  # 인메모리 DB
+            'database_url': 'sqlite:///:memory:',
             'cache_enabled': False
         })
 
     def _deep_merge(self, base_dict: Dict, merge_dict: Dict):
-        """🔗 딕셔너리 깊은 병합"""
+        """딕셔너리 깊은 병합"""
         for key, value in merge_dict.items():
             if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
                 self._deep_merge(base_dict[key], value)
@@ -303,20 +378,14 @@ class OptimalConfigBase(ABC):
 # ===============================================================
 
 class AppConfig(OptimalConfigBase):
-    """
-    🎯 애플리케이션 메인 설정
-    - FastAPI 설정
-    - 서버 설정
-    - 보안 설정
-    - CORS 설정
-    """
+    """애플리케이션 메인 설정"""
 
     def _create_base_config(self) -> Dict[str, Any]:
         """기본 애플리케이션 설정 생성"""
         return {
             # 애플리케이션 기본 정보
             'app_name': 'MyCloset AI',
-            'app_version': '2.0.0',
+            'app_version': '3.0.0',
             'app_description': 'AI-powered virtual try-on platform',
             'api_prefix': '/api',
             
@@ -339,7 +408,7 @@ class AppConfig(OptimalConfigBase):
             # 보안 설정
             'secret_key': self._generate_secret_key(),
             'algorithm': 'HS256',
-            'access_token_expire_minutes': 1440,  # 24시간
+            'access_token_expire_minutes': 1440,
             'allowed_hosts': ['*'],
             
             # CORS 설정
@@ -361,11 +430,11 @@ class AppConfig(OptimalConfigBase):
             # 캐시 설정
             'redis_url': 'redis://localhost:6379/0',
             'cache_enabled': True,
-            'cache_ttl': 3600,  # 1시간
+            'cache_ttl': 3600,
             
             # 파일 업로드 설정
             'upload_dir': './static/uploads',
-            'max_file_size': 10 * 1024 * 1024,  # 10MB
+            'max_file_size': 10 * 1024 * 1024,
             'allowed_extensions': ['.jpg', '.jpeg', '.png', '.webp'],
             
             # 시스템 정보
@@ -374,7 +443,7 @@ class AppConfig(OptimalConfigBase):
         }
 
     def _generate_secret_key(self) -> str:
-        """🔐 시크릿 키 생성"""
+        """시크릿 키 생성"""
         import secrets
         return secrets.token_urlsafe(32)
 
@@ -404,13 +473,7 @@ class AppConfig(OptimalConfigBase):
 # ===============================================================
 
 class AIConfig(OptimalConfigBase):
-    """
-    🎯 AI 모델 및 파이프라인 설정
-    - 모델 경로
-    - 디바이스 설정
-    - 성능 최적화
-    - M3 Max 특화
-    """
+    """AI 모델 및 파이프라인 설정"""
 
     def _create_base_config(self) -> Dict[str, Any]:
         """기본 AI 설정 생성"""
@@ -483,7 +546,7 @@ class AIConfig(OptimalConfigBase):
         }
 
     def _auto_detect_device(self) -> str:
-        """🖥️ AI 디바이스 자동 감지"""
+        """AI 디바이스 자동 감지"""
         try:
             import torch
             if torch.backends.mps.is_available() and self.system_info['is_m3_max']:
@@ -496,7 +559,7 @@ class AIConfig(OptimalConfigBase):
             return 'cpu'
 
     def _get_device_type(self, device: str) -> str:
-        """🔧 디바이스 타입 결정"""
+        """디바이스 타입 결정"""
         if device == 'mps':
             return 'apple_silicon'
         elif device == 'cuda':
@@ -505,10 +568,10 @@ class AIConfig(OptimalConfigBase):
             return 'cpu'
 
     def _get_optimal_memory_usage(self) -> str:
-        """💾 최적 메모리 사용량 계산"""
+        """최적 메모리 사용량 계산"""
         available_gb = self.system_info['available_memory_gb']
         
-        if available_gb >= 128:  # M3 Max 128GB
+        if available_gb >= 128:
             return '64GB'
         elif available_gb >= 64:
             return '32GB'
@@ -520,11 +583,10 @@ class AIConfig(OptimalConfigBase):
             return '4GB'
 
     def _get_optimal_batch_size(self, device: str) -> int:
-        """📦 최적 배치 크기 계산"""
+        """최적 배치 크기 계산"""
         memory_gb = self.system_info['available_memory_gb']
         
         if device == 'mps' and self.system_info['is_m3_max']:
-            # M3 Max는 더 큰 배치 크기 가능
             if memory_gb >= 128:
                 return 8
             elif memory_gb >= 64:
@@ -532,14 +594,12 @@ class AIConfig(OptimalConfigBase):
             else:
                 return 2
         elif device == 'cuda':
-            # NVIDIA GPU
             return 4
         else:
-            # CPU
             return 1
 
     def _get_optimal_quality_level(self) -> str:
-        """🎨 최적 품질 레벨 결정"""
+        """최적 품질 레벨 결정"""
         if self.system_info['is_m3_max']:
             return 'ultra'
         elif self.system_info['available_memory_gb'] >= 32:
@@ -550,7 +610,7 @@ class AIConfig(OptimalConfigBase):
             return 'basic'
 
     def _get_optimal_concurrent_requests(self) -> int:
-        """🚀 최적 동시 요청 수 계산"""
+        """최적 동시 요청 수 계산"""
         memory_gb = self.system_info['available_memory_gb']
         cpu_count = self.system_info['cpu_count']
         
@@ -566,90 +626,66 @@ class AIConfig(OptimalConfigBase):
 # ===============================================================
 
 class Settings:
-    """
-    🎯 통합 설정 관리자
-    - 모든 설정을 하나로 통합
-    - 편의 속성 제공
-    - 캐싱 지원
-    """
+    """통합 설정 관리자"""
 
-    def __init__(
-        self,
-        env: Optional[str] = None,
-        config_path: Optional[str] = None,
-        **kwargs
-    ):
-        """
-        통합 설정 초기화
-        
-        Args:
-            env: 환경 (None=자동감지)
-            config_path: 설정 파일 경로
-            **kwargs: 추가 설정
-        """
+    def __init__(self, env: Optional[str] = None, config_path: Optional[str] = None, **kwargs):
+        """통합 설정 초기화"""
         self.app = AppConfig(env=env, config_path=config_path, **kwargs)
         self.ai = AIConfig(env=env, config_path=config_path, **kwargs)
         
-        # 편의 속성들 (하위 호환성)
+        # 편의 속성들 설정
         self._setup_convenience_properties()
         
         logger.info("🎯 통합 설정 시스템 초기화 완료")
 
     def _setup_convenience_properties(self):
         """편의 속성 설정 (기존 코드 호환성)"""
-        # property로 정의된 속성들은 제외
-        reserved_properties = {
-            'APP_NAME', 'DEBUG', 'HOST', 'PORT', 'DATABASE_URL', 
-            'CORS_ORIGINS', 'DEVICE', 'USE_GPU', 'IS_M3_MAX'
-        }
-        
-        # 앱 설정 직접 접근 (property 충돌 방지)
-        for key, value in self.app.to_dict().items():
-            attr_name = key.upper()
-            if attr_name not in reserved_properties:
-                setattr(self, attr_name, value)
-        
-        # AI 설정 직접 접근 (AI_ 접두사, property 충돌 방지)
-        for key, value in self.ai.to_dict().items():
-            attr_name = f'AI_{key.upper()}'
-            if attr_name not in reserved_properties:
-                setattr(self, attr_name, value)
+        # 하위 호환성을 위한 직접 속성 설정
+        self.APP_NAME = self.app.get('app_name')
+        self.DEBUG = self.app.get('debug')
+        self.HOST = self.app.get('host')
+        self.PORT = self.app.get('port')
+        self.DATABASE_URL = self.app.get('database_url')
+        self.CORS_ORIGINS = self.app.get('cors_origins')
+        self.DEVICE = self.ai.get('device')
+        self.USE_GPU = self.ai.get('device') != 'cpu'
+        self.IS_M3_MAX = self.ai.get('is_m3_max', False)
 
-    # 주요 속성들 (하위 호환성)
+    # 주요 속성들
     @property
-    def APP_NAME(self) -> str:
+    def app_name(self) -> str:
         return self.app.get('app_name')
 
     @property
-    def DEBUG(self) -> bool:
+    def debug(self) -> bool:
         return self.app.get('debug')
 
     @property
-    def HOST(self) -> str:
+    def host(self) -> str:
         return self.app.get('host')
 
     @property
-    def PORT(self) -> int:
+    def port(self) -> int:
         return self.app.get('port')
 
     @property
-    def DATABASE_URL(self) -> str:
+    def database_url(self) -> str:
         return self.app.get('database_url')
 
     @property
-    def CORS_ORIGINS(self) -> List[str]:
+    def cors_origins(self) -> List[str]:
         return self.app.get('cors_origins')
 
     @property
-    def DEVICE(self) -> str:
+    def device(self) -> str:
         return self.ai.get('device')
 
     @property
-    def USE_GPU(self) -> bool:
+    def use_gpu(self) -> bool:
         return self.ai.get('device') != 'cpu'
 
     @property
-    def IS_M3_MAX(self) -> bool:
+    def is_m3_max(self) -> bool:
         return self.ai.get('is_m3_max', False)
 
 # ===============================================================
@@ -657,11 +693,7 @@ class Settings:
 # ===============================================================
 
 @lru_cache()
-def get_settings(
-    env: Optional[str] = None,
-    config_path: Optional[str] = None,
-    **kwargs
-) -> Settings:
+def get_settings(env: Optional[str] = None, config_path: Optional[str] = None, **kwargs) -> Settings:
     """전역 설정 인스턴스 (캐시됨)"""
     return Settings(env=env, config_path=config_path, **kwargs)
 
@@ -676,6 +708,19 @@ def get_app_config() -> AppConfig:
 def get_ai_config() -> AIConfig:
     """AI 설정 반환"""
     return settings.ai
+
+def create_config(**kwargs) -> Config:
+    """표준 Config 인스턴스 생성 (PipelineManager 호환)"""
+    return Config(**kwargs)
+
+def get_config(**kwargs) -> Config:
+    """Config 인스턴스 반환 (PipelineManager 호환)"""
+    return create_config(
+        environment=settings.app.env,
+        device=settings.ai.get('device'),
+        is_m3_max=settings.ai.get('is_m3_max'),
+        **kwargs
+    )
 
 # 하위 호환성 지원 (기존 코드 100% 지원)
 APP_NAME = settings.APP_NAME
@@ -695,8 +740,19 @@ if USE_GPU:
     logger.info(f"🎮 GPU 가속 활성화: {DEVICE}")
 
 __all__ = [
-    'OptimalConfigBase', 'AppConfig', 'AIConfig', 'Settings',
-    'get_settings', 'settings', 'get_app_config', 'get_ai_config',
+    # 핵심 클래스들
+    'Config', 'OptimalConfigBase', 'AppConfig', 'AIConfig', 'Settings',
+    
+    # 팩토리 함수들
+    'get_settings', 'get_app_config', 'get_ai_config', 'create_config', 'get_config',
+    
+    # 전역 설정
+    'settings',
+    
+    # 하위 호환성
     'APP_NAME', 'DEBUG', 'HOST', 'PORT', 'DATABASE_URL', 
-    'DEVICE', 'USE_GPU', 'IS_M3_MAX'
+    'DEVICE', 'USE_GPU', 'IS_M3_MAX',
+    
+    # 유틸리티 함수들
+    'detect_m3_max', 'get_available_memory', 'collect_system_info'
 ]
