@@ -1,9 +1,10 @@
 /**
- * MyCloset AI 프론트엔드 완전한 타입 정의
+ * MyCloset AI 프론트엔드 완전한 타입 정의 (최종 통합 버전)
  * 실제 백엔드 API 구조와 100% 호환되는 TypeScript 타입들
  * - 8단계 가상 피팅 파이프라인
  * - WebSocket 실시간 진행률
  * - 백엔드 스키마 완전 호환
+ * - App.tsx와 usePipeline Hook 완전 호환
  */
 
 // =================================================================
@@ -23,7 +24,7 @@ export type FabricType = 'cotton' | 'silk' | 'wool' | 'polyester' | 'linen' | 'd
 export type StylePreference = 'tight' | 'slim' | 'regular' | 'loose' | 'oversized';
 
 // =================================================================
-// 🔧 Hook 설정 타입들
+// 🔧 Hook 설정 타입들 (완전 통합)
 // =================================================================
 
 export interface UsePipelineOptions {
@@ -82,10 +83,23 @@ export interface UsePipelineOptions {
   // 실험적 기능
   enableExperimentalFeatures?: boolean;
   experimentalFlags?: string[];
+  
+  // 8단계 파이프라인 전용 설정 (추가됨)
+  enableStepTracking?: boolean;
+  enableRealTimeUpdates?: boolean;
+  stepTimeout?: number;
+  autoRetrySteps?: boolean;
+  maxStepRetries?: number;
+  
+  // WebSocket 프로토콜 설정 (추가됨)
+  wsProtocols?: string[];
+  messageQueueSize?: number;
+  enableCompression?: boolean;
+  cacheTimeout?: number;
 }
 
 // =================================================================
-// 🔧 요청/응답 타입들 (백엔드 스키마 완전 호환)
+// 🔧 사용자 측정값 타입들
 // =================================================================
 
 export interface UserMeasurements {
@@ -101,6 +115,10 @@ export interface UserMeasurements {
   wrist?: number;
   ankle?: number;
 }
+
+// =================================================================
+// 🔧 요청/응답 타입들 (백엔드 스키마 완전 호환)
+// =================================================================
 
 export interface VirtualTryOnRequest {
   // 필수 입력
@@ -141,6 +159,11 @@ export interface VirtualTryOnRequest {
   client_version?: string;
   platform?: string;
   timestamp?: string;
+  
+  // 8단계 파이프라인 전용 (추가됨)
+  enable_step_tracking?: boolean;
+  experimental_features?: string[];
+  custom_parameters?: Record<string, any>;
 }
 
 export interface ClothingAnalysis {
@@ -241,17 +264,22 @@ export interface VirtualTryOnResponse {
   size_recommendations?: Record<string, string>;
   styling_suggestions?: string[];
   similar_products?: any[];
+  
+  // 8단계 파이프라인 전용 (추가됨)
+  experimental_results?: Record<string, any>;
+  debug_data?: Record<string, any>;
 }
 
 // =================================================================
-// 🔧 파이프라인 진행률 타입들
+// 🔧 파이프라인 진행률 타입들 (완전 통합)
 // =================================================================
 
 export interface PipelineStep {
   id: number;
   name: string;
+  korean?: string; // 한국어 이름 (App.tsx 호환)
   description?: string;
-  status: ProcessingStatusEnum;
+  status: ProcessingStatusEnum | 'skipped' | 'timeout'; // 추가 상태들
   progress: number;
   start_time?: string;
   end_time?: string;
@@ -263,7 +291,7 @@ export interface PipelineStep {
 
 export interface PipelineProgress {
   // 기본 정보
-  type: 'connection_established' | 'pipeline_progress' | 'step_update' | 'completed' | 'error' | 'warning' | 'debug';
+  type: 'connection_established' | 'pipeline_progress' | 'step_start' | 'step_progress' | 'step_complete' | 'step_error' | 'pipeline_completed' | 'pipeline_error' | 'step_update' | 'completed' | 'error' | 'warning' | 'debug';
   session_id?: string;
   task_id?: string;
   timestamp: number;
@@ -280,6 +308,10 @@ export interface PipelineProgress {
   eta?: number;
   processing_speed?: number;
   memory_usage?: Record<string, number>;
+  
+  // 결과 데이터 (추가됨)
+  result?: any;
+  processing_time?: number;
   
   // 메타데이터
   debug_info?: Record<string, any>;
@@ -501,7 +533,7 @@ export interface SizeRecommendation {
 }
 
 // =================================================================
-// 🔧 Hook 상태 타입들
+// 🔧 Hook 상태 타입들 (완전 통합)
 // =================================================================
 
 export interface UsePipelineState {
@@ -529,16 +561,22 @@ export interface UsePipelineState {
   
   // 세션 관리
   sessionId: string | null;
-  currentTaskId: string | null;
+  currentTaskId?: string | null;
   
   // 상세 진행률
   steps: PipelineStep[];
-  activeTask: TaskInfo | null;
+  activeTask?: TaskInfo | null;
+  
+  // 8단계 파이프라인 확장 (추가됨)
+  currentPipelineStep: number;
+  pipelineSteps: PipelineStep[];
+  stepResults: { [stepId: number]: any };
+  sessionActive: boolean;
   
   // 메타데이터
   lastProcessingTime?: number;
-  totalRequestsCount: number;
-  successfulRequestsCount: number;
+  totalRequestsCount?: number;
+  successfulRequestsCount?: number;
   
   // 캐시 상태
   cachedResults?: Map<string, VirtualTryOnResponse>;
@@ -565,30 +603,30 @@ export interface UsePipelineActions {
   checkHealth: () => Promise<boolean>;
   getPipelineStatus: () => Promise<void>;
   getSystemStats: () => Promise<void>;
-  getSystemHealth: () => Promise<void>;
+  getSystemHealth?: () => Promise<void>;
   
   // 파이프라인 관리
-  warmupPipeline: (qualityMode?: QualityLevel) => Promise<void>;
+  warmupPipeline: (qualityMode?: QualityLevel | string) => Promise<void>;
   testConnection: () => Promise<void>;
   
   // Task 관리
-  getTaskStatus: (taskId: string) => Promise<ProcessingStatus | null>;
-  cancelTask: (taskId: string) => Promise<boolean>;
-  retryTask: (taskId: string) => Promise<boolean>;
-  getTaskHistory: () => TaskInfo[];
+  getTaskStatus?: (taskId: string) => Promise<ProcessingStatus | null>;
+  cancelTask?: (taskId: string) => Promise<boolean>;
+  retryTask?: (taskId: string) => Promise<boolean>;
+  getTaskHistory?: () => TaskInfo[];
   
   // 브랜드/사이즈 기능
-  getBrandSizes: (brand: string) => Promise<BrandSizeData | null>;
-  getSizeRecommendation: (measurements: UserMeasurements, brand: string, item: string) => Promise<SizeRecommendation | null>;
+  getBrandSizes?: (brand: string) => Promise<BrandSizeData | null>;
+  getSizeRecommendation?: (measurements: UserMeasurements, brand: string, item: string) => Promise<SizeRecommendation | null>;
   
   // 유틸리티
   sendHeartbeat: () => void;
   exportLogs: () => void;
-  clearCache: () => void;
+  clearCache?: () => void;
   
   // 실험적 기능
-  enableExperimentalFeature: (feature: string) => void;
-  disableExperimentalFeature: (feature: string) => void;
+  enableExperimentalFeature?: (feature: string) => void;
+  disableExperimentalFeature?: (feature: string) => void;
 }
 
 // =================================================================
@@ -628,7 +666,7 @@ export interface PipelineEvent {
 export type PipelineEventHandler = (event: PipelineEvent) => void;
 
 // =================================================================
-// 🔧 설정 검증 타입들
+// 🔧 브라우저 호환성 타입들
 // =================================================================
 
 export interface BrowserCompatibility {
@@ -649,9 +687,15 @@ export interface SystemRequirements {
 }
 
 // =================================================================
-// 🔧 Union 타입들 및 유틸리티 타입들
+// 🔧 유틸리티 타입들 (완전 통합)
 // =================================================================
 
+// 진행률 콜백 타입
+export type ProgressCallback = (progress: PipelineProgress) => void;
+export type ErrorCallback = (error: APIError) => void;
+export type CompleteCallback = (result: VirtualTryOnResponse) => void;
+
+// Hook 합성 타입
 export type PipelineHookConfig = UsePipelineOptions;
 export type PipelineHookState = UsePipelineState & UsePipelineActions;
 
@@ -667,13 +711,8 @@ export type ExtendedVirtualTryOnResponse = VirtualTryOnResponse & {
   debug_data?: Record<string, any>;
 };
 
-// 진행률 콜백 타입
-export type ProgressCallback = (progress: PipelineProgress) => void;
-export type ErrorCallback = (error: APIError) => void;
-export type CompleteCallback = (result: VirtualTryOnResponse) => void;
-
 // =================================================================
-// 🔧 내보내기
+// 🔧 모든 타입 내보내기 (완전 통합)
 // =================================================================
 
 export type {
@@ -706,6 +745,27 @@ export type {
   CompleteCallback,
   PipelineEvent,
   PipelineEventHandler,
+  
+  // 확장 타입들
+  ExtendedVirtualTryOnRequest,
+  ExtendedVirtualTryOnResponse,
+  PipelineHookConfig,
+  PipelineHookState,
+  
+  // 시스템 타입들
+  SystemHealth,
+  BrowserCompatibility,
+  SystemRequirements,
+  UserMeasurements,
+  ClothingAnalysis,
+  BodyAnalysis,
+  QualityMetrics,
+  ProcessingDiagnostics,
+  BrandSizeData,
+  SizeRecommendation,
+  APIError,
+  ValidationError,
+  RateLimitError,
 };
 
 // 기본 내보내기
