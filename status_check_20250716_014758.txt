@@ -1,0 +1,24 @@
+MyCloset AI - 상태 체크 리포트 (읽기 전용)
+생성일시: #오후
+프로젝트: /Users/gimdudeul/MVP/mycloset-ai
+
+=== 요약 ===
+총 이슈 수: 6
+누락 패키지: 3
+누락 모델: 1
+누락 파일: 1
+경고사항: 1
+
+=== 권장사항 ===
+누락 패키지:
+  opencv-python
+  pillow
+  pandas
+
+누락 모델:
+  VITON-HD
+
+기타 권장사항:
+  pip install rembg
+  pip install onnxruntime
+  pip install scikit-image
