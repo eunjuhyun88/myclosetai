@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePipeline, usePipelineHealth } from './hooks/usePipeline';
+import { fileUtils, devTools } from './services/api';
 
 interface UserMeasurements {
   height: number;
@@ -53,12 +54,18 @@ const App: React.FC = () => {
 
   // 단계별 결과 저장
   const [stepResults, setStepResults] = useState<{[key: number]: any}>({});
+  
+  // 파일 검증 에러
+  const [fileErrors, setFileErrors] = useState<{
+    person?: string;
+    clothing?: string;
+  }>({});
 
   // 파일 참조
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
-  // 파이프라인 훅 사용
+  // 파이프라인 훅 사용 (수정된 설정)
   const {
     isProcessing,
     progress,
@@ -69,12 +76,18 @@ const App: React.FC = () => {
     processVirtualTryOn,
     clearError,
     clearResult,
+    reset,
     testConnection,
-    warmupPipeline
+    warmupPipeline,
+    cancelCurrentRequest
   } = usePipeline({
     baseURL: 'http://localhost:8000',
     autoHealthCheck: true,
-    healthCheckInterval: 30000
+    healthCheckInterval: 30000,
+    requestTimeout: 60000, // 60초로 증가
+    enableDebugMode: true,
+    enableRetry: true,
+    maxRetryAttempts: 3
   });
 
   // 헬스체크 훅
@@ -84,13 +97,41 @@ const App: React.FC = () => {
     healthCheckInterval: 30000
   });
 
-  // 파일 업로드 핸들러
+  // 파일 업로드 핸들러 (수정된 버전)
   const handleImageUpload = (file: File, type: 'person' | 'clothing') => {
+    // 파일 검증
+    const validation = fileUtils.validateImageFile(file);
+    
+    if (!validation.valid) {
+      setFileErrors(prev => ({
+        ...prev,
+        [type]: validation.error
+      }));
+      return;
+    }
+
+    // 에러 초기화
+    setFileErrors(prev => ({
+      ...prev,
+      [type]: undefined
+    }));
+
     if (type === 'person') {
       setPersonImage(file);
+      console.log('✅ 사용자 이미지 업로드:', {
+        name: file.name,
+        size: fileUtils.formatFileSize(file.size),
+        type: file.type
+      });
     } else {
       setClothingImage(file);
+      console.log('✅ 의류 이미지 업로드:', {
+        name: file.name,
+        size: fileUtils.formatFileSize(file.size),
+        type: file.type
+      });
     }
+    
     clearError();
   };
 
@@ -110,7 +151,7 @@ const App: React.FC = () => {
     }
   };
 
-  // 단계별 처리 함수
+  // 단계별 처리 함수 (수정된 버전)
   const processCurrentStep = async () => {
     try {
       switch (currentStep) {
@@ -119,6 +160,16 @@ const App: React.FC = () => {
             alert('사용자 이미지와 의류 이미지를 모두 업로드해주세요.');
             return;
           }
+          
+          // 파일 재검증
+          const personValidation = fileUtils.validateImageFile(personImage);
+          const clothingValidation = fileUtils.validateImageFile(clothingImage);
+          
+          if (!personValidation.valid || !clothingValidation.valid) {
+            alert('업로드된 파일에 문제가 있습니다. 다시 확인해주세요.');
+            return;
+          }
+          
           goToNextStep();
           break;
 
@@ -127,6 +178,17 @@ const App: React.FC = () => {
             alert('올바른 키와 몸무게를 입력해주세요.');
             return;
           }
+          
+          if (measurements.height < 100 || measurements.height > 250) {
+            alert('키는 100cm~250cm 범위로 입력해주세요.');
+            return;
+          }
+          
+          if (measurements.weight < 30 || measurements.weight > 300) {
+            alert('몸무게는 30kg~300kg 범위로 입력해주세요.');
+            return;
+          }
+          
           goToNextStep();
           break;
 
@@ -154,8 +216,9 @@ const App: React.FC = () => {
           alert('가상 피팅이 완료되었습니다!');
           break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('단계 처리 중 오류:', error);
+      alert(`단계 처리 중 오류가 발생했습니다: ${error.message}`);
     }
   };
 
@@ -173,22 +236,37 @@ const App: React.FC = () => {
     }, 1500);
   };
 
-  // 가상 피팅 전체 처리
+  // 가상 피팅 전체 처리 (수정된 버전)
   const processVirtualFitting = async () => {
-    if (!personImage || !clothingImage) return;
+    if (!personImage || !clothingImage) {
+      alert('이미지 파일이 누락되었습니다.');
+      return;
+    }
 
-    await processVirtualTryOn({
-      person_image: personImage,
-      clothing_image: clothingImage,
-      height: measurements.height,
-      weight: measurements.weight,
-      quality_mode: 'balanced'
-    });
+    try {
+      console.log('🎯 가상 피팅 API 호출 시작');
+      
+      const response = await processVirtualTryOn({
+        person_image: personImage,
+        clothing_image: clothingImage,
+        height: measurements.height,
+        weight: measurements.weight,
+        quality_mode: 'balanced',
+        enable_realtime: true,
+        session_id: `app_session_${Date.now()}`
+      });
 
-    // 처리 완료 후 다음 단계로
-    setTimeout(() => {
-      goToNextStep();
-    }, 2000);
+      console.log('✅ 가상 피팅 API 응답:', response);
+
+      // 처리 완료 후 다음 단계로
+      setTimeout(() => {
+        goToNextStep();
+      }, 2000);
+
+    } catch (error: any) {
+      console.error('❌ 가상 피팅 실패:', error);
+      alert(`가상 피팅 처리 중 오류가 발생했습니다: ${error.message}`);
+    }
   };
 
   // 단계 처리 시뮬레이션
@@ -210,9 +288,12 @@ const App: React.FC = () => {
   const canProceedToNext = () => {
     switch (currentStep) {
       case 1:
-        return personImage && clothingImage;
+        return personImage && clothingImage && 
+               !fileErrors.person && !fileErrors.clothing;
       case 2:
-        return measurements.height > 0 && measurements.weight > 0;
+        return measurements.height > 0 && measurements.weight > 0 &&
+               measurements.height >= 100 && measurements.height <= 250 &&
+               measurements.weight >= 30 && measurements.weight <= 300;
       case 3:
       case 4:
       case 5:
@@ -238,14 +319,62 @@ const App: React.FC = () => {
     return isHealthy ? 'Server Online' : 'Server Offline';
   };
 
-  // 웹소켓 연결 테스트
+  // 웹소켓 연결 테스트 (수정된 버전)
   const handleTestConnection = async () => {
-    await testConnection();
+    try {
+      await testConnection();
+    } catch (error) {
+      console.error('연결 테스트 실패:', error);
+    }
   };
 
-  // 파이프라인 워밍업
+  // 파이프라인 워밍업 (수정된 버전)
   const handleWarmup = async () => {
-    await warmupPipeline('balanced');
+    try {
+      await warmupPipeline('balanced');
+    } catch (error) {
+      console.error('워밍업 실패:', error);
+    }
+  };
+
+  // 개발 도구 함수들
+  const handleDevTest = async () => {
+    const result = await devTools.testAPI();
+    console.log('개발 도구 테스트 결과:', result);
+    alert(result.message);
+  };
+
+  const handleDummyTest = async () => {
+    try {
+      const result = await devTools.testDummyVirtualTryOn();
+      console.log('더미 테스트 결과:', result);
+      alert(result.message);
+    } catch (error: any) {
+      console.error('더미 테스트 실패:', error);
+      alert(`더미 테스트 실패: ${error.message}`);
+    }
+  };
+
+  // 요청 취소 핸들러
+  const handleCancelRequest = () => {
+    if (isProcessing) {
+      cancelCurrentRequest();
+      reset();
+      alert('요청이 취소되었습니다.');
+    }
+  };
+
+  // 파일 드래그 앤 드롭 지원
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, type: 'person' | 'clothing') => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0 && files[0].type.startsWith('image/')) {
+      handleImageUpload(files[0], type);
+    }
   };
 
   // 단계별 컨텐츠 렌더링
@@ -280,7 +409,7 @@ const App: React.FC = () => {
       <div style={{ 
         backgroundColor: '#ffffff', 
         borderRadius: '0.75rem', 
-        border: '1px solid #e5e7eb', 
+        border: fileErrors.person ? '2px solid #ef4444' : '1px solid #e5e7eb', 
         padding: '1.5rem' 
       }}>
         <h3 style={{ fontSize: '1.125rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>Your Photo</h3>
@@ -325,12 +454,14 @@ const App: React.FC = () => {
               padding: '0.25rem 0.5rem', 
               borderRadius: '0.25rem' 
             }}>
-              {personImage.name}
+              {personImage.name} ({fileUtils.formatFileSize(personImage.size)})
             </div>
           </div>
         ) : (
           <div 
             onClick={() => personImageRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, 'person')}
             style={{ 
               border: '2px dashed #d1d5db', 
               borderRadius: '0.5rem', 
@@ -346,7 +477,21 @@ const App: React.FC = () => {
               <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <p style={{ fontSize: '0.875rem', color: '#4b5563', marginBottom: '0.25rem', margin: 0 }}>Upload your photo</p>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>PNG, JPG up to 10MB</p>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>PNG, JPG, WebP up to 50MB</p>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>또는 드래그 앤 드롭</p>
+          </div>
+        )}
+        {fileErrors.person && (
+          <div style={{ 
+            marginTop: '0.5rem', 
+            padding: '0.5rem', 
+            backgroundColor: '#fef2f2', 
+            border: '1px solid #fecaca', 
+            borderRadius: '0.25rem', 
+            fontSize: '0.875rem', 
+            color: '#b91c1c' 
+          }}>
+            {fileErrors.person}
           </div>
         )}
         <input
@@ -362,7 +507,7 @@ const App: React.FC = () => {
       <div style={{ 
         backgroundColor: '#ffffff', 
         borderRadius: '0.75rem', 
-        border: '1px solid #e5e7eb', 
+        border: fileErrors.clothing ? '2px solid #ef4444' : '1px solid #e5e7eb', 
         padding: '1.5rem' 
       }}>
         <h3 style={{ fontSize: '1.125rem', fontWeight: '500', color: '#111827', marginBottom: '1rem' }}>Clothing Item</h3>
@@ -407,12 +552,14 @@ const App: React.FC = () => {
               padding: '0.25rem 0.5rem', 
               borderRadius: '0.25rem' 
             }}>
-              {clothingImage.name}
+              {clothingImage.name} ({fileUtils.formatFileSize(clothingImage.size)})
             </div>
           </div>
         ) : (
           <div 
             onClick={() => clothingImageRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, 'clothing')}
             style={{ 
               border: '2px dashed #d1d5db', 
               borderRadius: '0.5rem', 
@@ -428,7 +575,21 @@ const App: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a4 4 0 004-4V5z" />
             </svg>
             <p style={{ fontSize: '0.875rem', color: '#4b5563', marginBottom: '0.25rem', margin: 0 }}>Upload clothing item</p>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>PNG, JPG up to 10MB</p>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>PNG, JPG, WebP up to 50MB</p>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>또는 드래그 앤 드롭</p>
+          </div>
+        )}
+        {fileErrors.clothing && (
+          <div style={{ 
+            marginTop: '0.5rem', 
+            padding: '0.5rem', 
+            backgroundColor: '#fef2f2', 
+            border: '1px solid #fecaca', 
+            borderRadius: '0.25rem', 
+            fontSize: '0.875rem', 
+            color: '#b91c1c' 
+          }}>
+            {fileErrors.clothing}
           </div>
         )}
         <input
@@ -471,9 +632,13 @@ const App: React.FC = () => {
               fontSize: '0.875rem',
               outline: 'none'
             }}
-            min="140"
-            max="220"
+            min="100"
+            max="250"
+            placeholder="170"
           />
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+            100-250cm 범위
+          </div>
         </div>
         <div>
           <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>Weight (kg)</label>
@@ -490,10 +655,28 @@ const App: React.FC = () => {
               outline: 'none'
             }}
             min="30"
-            max="150"
+            max="300"
+            placeholder="65"
           />
+          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+            30-300kg 범위
+          </div>
         </div>
       </div>
+      
+      {/* BMI 계산 표시 */}
+      {measurements.height > 0 && measurements.weight > 0 && (
+        <div style={{ 
+          marginTop: '1rem', 
+          padding: '0.75rem', 
+          backgroundColor: '#f9fafb', 
+          borderRadius: '0.5rem' 
+        }}>
+          <div style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+            BMI: {(measurements.weight / Math.pow(measurements.height / 100, 2)).toFixed(1)}
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -603,6 +786,23 @@ const App: React.FC = () => {
               ></div>
             </div>
             <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>{progressMessage}</p>
+            
+            {/* 취소 버튼 */}
+            <button
+              onClick={handleCancelRequest}
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                borderRadius: '0.5rem',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.875rem'
+              }}
+            >
+              취소
+            </button>
           </div>
         )}
 
@@ -634,28 +834,47 @@ const App: React.FC = () => {
           }}>
             {/* Result Image */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <img
-                src={`data:image/jpeg;base64,${result.fitted_image}`}
-                alt="Virtual try-on result"
-                style={{ width: '100%', borderRadius: '0.5rem', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-              />
+              {result.fitted_image || result.result_image ? (
+                <img
+                  src={`data:image/jpeg;base64,${result.fitted_image || result.result_image}`}
+                  alt="Virtual try-on result"
+                  style={{ width: '100%', borderRadius: '0.5rem', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                />
+              ) : (
+                <div style={{ 
+                  width: '100%', 
+                  height: '20rem', 
+                  backgroundColor: '#f3f4f6', 
+                  borderRadius: '0.5rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  color: '#6b7280'
+                }}>
+                  결과 이미지 없음
+                </div>
+              )}
+              
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button 
                   onClick={() => {
-                    const link = document.createElement('a');
-                    link.href = `data:image/jpeg;base64,${result.fitted_image}`;
-                    link.download = 'virtual-tryon-result.jpg';
-                    link.click();
+                    if (result.fitted_image || result.result_image) {
+                      const link = document.createElement('a');
+                      link.href = `data:image/jpeg;base64,${result.fitted_image || result.result_image}`;
+                      link.download = 'virtual-tryon-result.jpg';
+                      link.click();
+                    }
                   }}
+                  disabled={!result.fitted_image && !result.result_image}
                   style={{ 
                     flex: 1, 
-                    backgroundColor: '#f3f4f6', 
+                    backgroundColor: result.fitted_image || result.result_image ? '#f3f4f6' : '#e5e7eb', 
                     color: '#374151', 
                     padding: '0.5rem 1rem', 
                     borderRadius: '0.5rem', 
                     fontWeight: '500', 
                     border: 'none',
-                    cursor: 'pointer',
+                    cursor: result.fitted_image || result.result_image ? 'pointer' : 'not-allowed',
                     transition: 'background-color 0.2s'
                   }}
                 >
@@ -767,6 +986,15 @@ const App: React.FC = () => {
     );
   };
 
+  // 컴포넌트 마운트 시 개발 도구 정보 출력
+  useEffect(() => {
+    console.log('🛠️ MyCloset AI App 시작됨');
+    console.log('📋 개발 도구 사용법:');
+    console.log('  - devTools.testAPI(): API 연결 테스트');
+    console.log('  - devTools.testDummyVirtualTryOn(): 더미 가상 피팅 테스트');
+    console.log('  - devTools.exportDebugInfo(): 디버그 정보 내보내기');
+  }, []);
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif' }}>
       {/* Header */}
@@ -830,7 +1058,56 @@ const App: React.FC = () => {
                 >
                   Warmup
                 </button>
+                <button
+                  onClick={handleDevTest}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    backgroundColor: '#e5e7eb',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing ? 0.5 : 1
+                  }}
+                >
+                  DevTest
+                </button>
+                <button
+                  onClick={handleDummyTest}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    backgroundColor: '#e5e7eb',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing ? 0.5 : 1
+                  }}
+                >
+                  Dummy
+                </button>
               </div>
+
+              {/* 진행률 표시 (처리 중일 때) */}
+              {isProcessing && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ 
+                    width: '0.75rem', 
+                    height: '0.75rem', 
+                    border: '2px solid #3b82f6', 
+                    borderTop: '2px solid transparent', 
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }}></div>
+                  <span style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                    {progress}%
+                  </span>
+                </div>
+              )}
 
               {/* 서버 상태 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -939,6 +1216,33 @@ const App: React.FC = () => {
           </button>
 
           <div style={{ display: 'flex', gap: '0.75rem' }}>
+            {/* 리셋 버튼 (처리 중이 아닐 때만) */}
+            {!isProcessing && (currentStep > 1 || result) && (
+              <button
+                onClick={() => {
+                  reset();
+                  setCurrentStep(1);
+                  setCompletedSteps([]);
+                  setPersonImage(null);
+                  setClothingImage(null);
+                  setStepResults({});
+                  setFileErrors({});
+                }}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#6b7280',
+                  color: '#ffffff',
+                  borderRadius: '0.5rem',
+                  fontWeight: '500',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                처음부터
+              </button>
+            )}
+
             {currentStep < 8 && (
               <button
                 onClick={processCurrentStep}
@@ -1073,6 +1377,21 @@ const App: React.FC = () => {
                 <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>See how the clothing looks on you with AI-powered fitting analysis.</p>
               </div>
             </div>
+            
+            {/* 개발 도구 정보 */}
+            <div style={{ 
+              marginTop: '1.5rem', 
+              padding: '1rem', 
+              backgroundColor: '#f9fafb', 
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              color: '#4b5563'
+            }}>
+              <p style={{ margin: 0, fontWeight: '500' }}>🛠️ 개발자 도구:</p>
+              <p style={{ margin: '0.25rem 0 0 0' }}>
+                콘솔에서 <code>devTools.testAPI()</code>, <code>devTools.testDummyVirtualTryOn()</code> 등을 사용할 수 있습니다.
+              </p>
+            </div>
           </div>
         )}
       </main>
@@ -1086,6 +1405,14 @@ const App: React.FC = () => {
           to {
             transform: rotate(360deg);
           }
+        }
+        
+        code {
+          background-color: #f3f4f6;
+          padding: 0.125rem 0.25rem;
+          border-radius: 0.25rem;
+          font-family: 'Courier New', monospace;
+          font-size: 0.8em;
         }
       `}</style>
     </div>
