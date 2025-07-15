@@ -1,32 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePipeline, usePipelineHealth } from './hooks/usePipeline';
+import type { VirtualTryOnRequest, UserMeasurements, VirtualTryOnResponse } from './types/api';
 
-interface UserMeasurements {
-  height: number;
-  weight: number;
-}
-
-interface TryOnResult {
-  success: boolean;
-  fitted_image: string;
-  processing_time: number;
-  confidence: number;
-  measurements: {
-    chest: number;
-    waist: number;
-    hip: number;
-    bmi: number;
-  };
-  clothing_analysis: {
-    category: string;
-    style: string;
-    dominant_color: number[];
-  };
-  fit_score: number;
-  recommendations: string[];
-}
-
-// 8단계 정의
+// 8단계 정의 (usePipeline과 동일)
 const PIPELINE_STEPS = [
   { id: 1, name: '이미지 업로드', description: '사용자 사진과 의류 이미지를 업로드합니다' },
   { id: 2, name: '신체 측정', description: '키와 몸무게 등 신체 정보를 입력합니다' },
@@ -39,7 +15,7 @@ const PIPELINE_STEPS = [
 ];
 
 const App: React.FC = () => {
-  // 현재 단계 관리
+  // 현재 단계 관리 (UI용)
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   
@@ -58,7 +34,7 @@ const App: React.FC = () => {
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
-  // 파이프라인 훅 사용
+  // 파이프라인 훅 사용 (수정된 Hook)
   const {
     isProcessing,
     progress,
@@ -66,15 +42,27 @@ const App: React.FC = () => {
     currentStep: pipelineStep,
     result,
     error,
+    isConnected,
+    currentPipelineStep,
+    pipelineSteps,
+    stepResults: hookStepResults,
+    sessionId,
+    sessionActive,
+    
+    // 액션들
     processVirtualTryOn,
     clearError,
     clearResult,
     testConnection,
-    warmupPipeline
+    warmupPipeline,
+    reset
   } = usePipeline({
     baseURL: 'http://localhost:8000',
     autoHealthCheck: true,
-    healthCheckInterval: 30000
+    healthCheckInterval: 30000,
+    autoReconnect: true,
+    enableStepTracking: true,
+    enableRealTimeUpdates: true
   });
 
   // 헬스체크 훅
@@ -159,7 +147,7 @@ const App: React.FC = () => {
     }
   };
 
-  // API를 통한 단계별 처리
+  // API를 통한 단계별 처리 (시뮬레이션)
   const processStepWithAPI = async (stepType: string, message: string) => {
     if (!personImage || !clothingImage) return;
 
@@ -173,22 +161,35 @@ const App: React.FC = () => {
     }, 1500);
   };
 
-  // 가상 피팅 전체 처리
+  // 가상 피팅 전체 처리 (실제 Hook 사용)
   const processVirtualFitting = async () => {
     if (!personImage || !clothingImage) return;
 
-    await processVirtualTryOn({
-      person_image: personImage,
-      clothing_image: clothingImage,
-      height: measurements.height,
-      weight: measurements.weight,
-      quality_mode: 'balanced'
-    });
+    try {
+      const request: VirtualTryOnRequest = {
+        person_image: personImage,
+        clothing_image: clothingImage,
+        height: measurements.height,
+        weight: measurements.weight,
+        chest: measurements.chest,
+        waist: measurements.waist,
+        hip: measurements.hip,
+        shoulder_width: measurements.shoulder_width,
+        quality_mode: 'balanced',
+        enable_realtime: true,
+        save_intermediate: false
+      };
 
-    // 처리 완료 후 다음 단계로
-    setTimeout(() => {
-      goToNextStep();
-    }, 2000);
+      await processVirtualTryOn(request);
+
+      // 처리 완료 후 다음 단계로
+      setTimeout(() => {
+        goToNextStep();
+      }, 2000);
+      
+    } catch (error) {
+      console.error('가상 피팅 실패:', error);
+    }
   };
 
   // 단계 처리 시뮬레이션
@@ -238,6 +239,15 @@ const App: React.FC = () => {
     return isHealthy ? 'Server Online' : 'Server Offline';
   };
 
+  // WebSocket 연결 상태 표시
+  const getWebSocketStatusColor = () => {
+    return isConnected ? '#4ade80' : '#ef4444';
+  };
+
+  const getWebSocketStatusText = () => {
+    return isConnected ? 'WebSocket Connected' : 'WebSocket Disconnected';
+  };
+
   // 웹소켓 연결 테스트
   const handleTestConnection = async () => {
     await testConnection();
@@ -246,6 +256,17 @@ const App: React.FC = () => {
   // 파이프라인 워밍업
   const handleWarmup = async () => {
     await warmupPipeline('balanced');
+  };
+
+  // 전체 리셋
+  const handleReset = () => {
+    reset();
+    setCurrentStep(1);
+    setCompletedSteps([]);
+    setPersonImage(null);
+    setClothingImage(null);
+    setMeasurements({ height: 170, weight: 65 });
+    setStepResults({});
   };
 
   // 단계별 컨텐츠 렌더링
@@ -493,6 +514,40 @@ const App: React.FC = () => {
             max="150"
           />
         </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>Chest (cm)</label>
+          <input
+            type="number"
+            value={measurements.chest || ''}
+            onChange={(e) => setMeasurements(prev => ({ ...prev, chest: Number(e.target.value) || undefined }))}
+            style={{ 
+              width: '100%', 
+              padding: '0.5rem 0.75rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.5rem', 
+              fontSize: '0.875rem',
+              outline: 'none'
+            }}
+            placeholder="Optional"
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>Waist (cm)</label>
+          <input
+            type="number"
+            value={measurements.waist || ''}
+            onChange={(e) => setMeasurements(prev => ({ ...prev, waist: Number(e.target.value) || undefined }))}
+            style={{ 
+              width: '100%', 
+              padding: '0.5rem 0.75rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.5rem', 
+              fontSize: '0.875rem',
+              outline: 'none'
+            }}
+            placeholder="Optional"
+          />
+        </div>
       </div>
     </div>
   );
@@ -500,6 +555,7 @@ const App: React.FC = () => {
   const renderProcessingStep = () => {
     const stepData = PIPELINE_STEPS[currentStep - 1];
     const stepResult = stepResults[currentStep];
+    const hookStep = pipelineSteps.find(step => step.id === currentStep);
 
     return (
       <div style={{ textAlign: 'center', maxWidth: '28rem', margin: '0 auto' }}>
@@ -516,7 +572,7 @@ const App: React.FC = () => {
               justifyContent: 'center', 
               marginBottom: '1rem' 
             }}>
-              {stepResult?.success ? (
+              {stepResult?.success || hookStep?.status === 'completed' ? (
                 <svg style={{ width: '2rem', height: '2rem', color: '#22c55e' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -534,6 +590,32 @@ const App: React.FC = () => {
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827' }}>{stepData.name}</h3>
             <p style={{ color: '#4b5563', marginTop: '0.5rem' }}>{stepData.description}</p>
           </div>
+
+          {/* Hook 진행률 표시 */}
+          {hookStep && hookStep.status === 'processing' && (
+            <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+              <div style={{ 
+                width: '100%', 
+                backgroundColor: '#f3f4f6', 
+                borderRadius: '0.5rem', 
+                height: '0.75rem',
+                marginBottom: '0.5rem'
+              }}>
+                <div 
+                  style={{ 
+                    backgroundColor: '#3b82f6', 
+                    height: '0.75rem', 
+                    borderRadius: '0.5rem', 
+                    transition: 'width 0.3s',
+                    width: `${hookStep.progress}%`
+                  }}
+                ></div>
+              </div>
+              <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                {progressMessage || `${hookStep.korean} 처리 중...`}
+              </p>
+            </div>
+          )}
 
           {stepResult && (
             <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '0.5rem' }}>
@@ -583,6 +665,7 @@ const App: React.FC = () => {
           <p style={{ color: '#4b5563', marginTop: '0.5rem' }}>딥러닝 모델이 최종 결과를 생성하고 있습니다</p>
         </div>
 
+        {/* 실시간 진행률 (Hook에서 받아옴) */}
         {isProcessing && (
           <div style={{ marginTop: '1rem' }}>
             <div style={{ 
@@ -603,6 +686,14 @@ const App: React.FC = () => {
               ></div>
             </div>
             <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>{progressMessage}</p>
+            
+            {/* 현재 파이프라인 단계 표시 */}
+            {currentPipelineStep > 0 && (
+              <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                현재 단계: {pipelineSteps.find(s => s.id === currentPipelineStep)?.korean || pipelineStep}
+                {sessionId && <span style={{ display: 'block', marginTop: '0.25rem' }}>세션: {sessionId.substring(0, 8)}...</span>}
+              </div>
+            )}
           </div>
         )}
 
@@ -634,18 +725,22 @@ const App: React.FC = () => {
           }}>
             {/* Result Image */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <img
-                src={`data:image/jpeg;base64,${result.fitted_image}`}
-                alt="Virtual try-on result"
-                style={{ width: '100%', borderRadius: '0.5rem', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-              />
+              {result.fitted_image && (
+                <img
+                  src={`data:image/jpeg;base64,${result.fitted_image}`}
+                  alt="Virtual try-on result"
+                  style={{ width: '100%', borderRadius: '0.5rem', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                />
+              )}
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button 
                   onClick={() => {
-                    const link = document.createElement('a');
-                    link.href = `data:image/jpeg;base64,${result.fitted_image}`;
-                    link.download = 'virtual-tryon-result.jpg';
-                    link.click();
+                    if (result.fitted_image) {
+                      const link = document.createElement('a');
+                      link.href = `data:image/jpeg;base64,${result.fitted_image}`;
+                      link.download = 'virtual-tryon-result.jpg';
+                      link.click();
+                    }
                   }}
                   style={{ 
                     flex: 1, 
@@ -744,6 +839,12 @@ const App: React.FC = () => {
                     <span style={{ color: '#4b5563' }}>BMI</span>
                     <span style={{ fontWeight: '500' }}>{result?.measurements?.bmi?.toFixed(1) || 0}</span>
                   </div>
+                  {sessionId && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                      <span style={{ color: '#4b5563' }}>Session</span>
+                      <span style={{ fontWeight: '500', fontSize: '0.75rem' }}>{sessionId}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -830,20 +931,53 @@ const App: React.FC = () => {
                 >
                   Warmup
                 </button>
+                <button
+                  onClick={handleReset}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    backgroundColor: '#fef3c7',
+                    color: '#92400e',
+                    border: 'none',
+                    borderRadius: '0.25rem',
+                    cursor: isProcessing ? 'not-allowed' : 'pointer',
+                    opacity: isProcessing ? 0.5 : 1
+                  }}
+                >
+                  Reset
+                </button>
               </div>
 
-              {/* 서버 상태 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ 
-                  height: '0.5rem', 
-                  width: '0.5rem', 
-                  backgroundColor: getServerStatusColor(),
-                  borderRadius: '50%',
-                  transition: 'background-color 0.3s'
-                }}></div>
-                <span style={{ fontSize: '0.875rem', color: '#4b5563' }}>
-                  {getServerStatusText()}
-                </span>
+              {/* 연결 상태들 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem' }}>
+                {/* 서버 상태 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ 
+                    height: '0.5rem', 
+                    width: '0.5rem', 
+                    backgroundColor: getServerStatusColor(),
+                    borderRadius: '50%',
+                    transition: 'background-color 0.3s'
+                  }}></div>
+                  <span style={{ color: '#4b5563' }}>
+                    {getServerStatusText()}
+                  </span>
+                </div>
+
+                {/* WebSocket 상태 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ 
+                    height: '0.5rem', 
+                    width: '0.5rem', 
+                    backgroundColor: getWebSocketStatusColor(),
+                    borderRadius: '50%',
+                    transition: 'background-color 0.3s'
+                  }}></div>
+                  <span style={{ color: '#4b5563' }}>
+                    {getWebSocketStatusText()}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -910,6 +1044,18 @@ const App: React.FC = () => {
           <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '0.5rem', padding: '1rem' }}>
             <h3 style={{ fontWeight: '600', color: '#1e40af', margin: 0 }}>{PIPELINE_STEPS[currentStep - 1]?.name}</h3>
             <p style={{ color: '#1d4ed8', fontSize: '0.875rem', marginTop: '0.25rem', margin: 0 }}>{PIPELINE_STEPS[currentStep - 1]?.description}</p>
+            
+            {/* 실시간 파이프라인 정보 */}
+            {sessionActive && (
+              <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#1e40af' }}>
+                <span>활성 세션: {sessionId?.substring(0, 8)}...</span>
+                {currentPipelineStep > 0 && (
+                  <span style={{ marginLeft: '1rem' }}>
+                    처리 중: {pipelineSteps.find(s => s.id === currentPipelineStep)?.korean}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

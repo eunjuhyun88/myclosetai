@@ -283,7 +283,48 @@ except ImportError:
             for k, v in kwargs.items():
                 setattr(self, k, v)
 
-# 6. WebSocket 매니저 (실제 구조 기반)
+# 6. M3 Optimizer (실제 구조 기반)
+try:
+    from ..core.m3_optimizer import M3Optimizer, initialize_global_memory_manager, check_memory_available
+    M3_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    M3_OPTIMIZER_AVAILABLE = False
+    
+    # M3 Optimizer 폴백
+    class M3Optimizer:
+        def __init__(self, device_name: str, memory_gb: float, is_m3_max: bool, optimization_level: str):
+            self.device_name = device_name
+            self.memory_gb = memory_gb
+            self.is_m3_max = is_m3_max
+            self.optimization_level = optimization_level
+            self.config = {"device": "mps" if is_m3_max else "cpu"}
+            self.pipeline_settings = {"stages": 8, "neural_engine": is_m3_max}
+        
+        def optimize_model(self, model):
+            return model
+        
+        def get_optimization_info(self):
+            return {
+                "device_name": self.device_name,
+                "memory_gb": self.memory_gb,
+                "is_m3_max": self.is_m3_max,
+                "optimization_level": self.optimization_level,
+                "config": self.config,
+                "pipeline_settings": self.pipeline_settings
+            }
+        
+        def cleanup(self):
+            pass
+    
+    def initialize_global_memory_manager(device: str = "mps", memory_gb: float = 128.0):
+        logger.info(f"🔧 폴백 메모리 매니저 초기화: {device}, {memory_gb}GB")
+        return True
+    
+    def check_memory_available(required_gb: float = 4.0) -> bool:
+        logger.info(f"💾 메모리 체크 (폴백): {required_gb}GB 요구")
+        return True
+
+# 7. WebSocket 매니저 (실제 구조 기반)
 try:
     from ..api.websocket_routes import manager as ws_manager, create_progress_callback
     WEBSOCKET_AVAILABLE = True
@@ -337,6 +378,7 @@ router = APIRouter(
 # 전역 변수들 (기존 패턴 유지)
 pipeline_manager_instance: Optional[PipelineManager] = None
 active_connections: Dict[str, Any] = {}
+m3_optimizer_instance: Optional[M3Optimizer] = None
 
 # ============================================
 # 🔧 M3 Max 감지 함수 (기존 함수명 유지)
@@ -473,7 +515,20 @@ class M3MaxOptimizedPipelineManager:
         }
         
         # 메모리 관리
-        self.memory_manager = MemoryManager(device=self.device, memory_gb=self.memory_gb)
+        if M3_OPTIMIZER_AVAILABLE:
+            # M3 Optimizer 메모리 관리자 사용
+            self.memory_manager = MemoryManager(device=self.device, memory_gb=self.memory_gb)
+            
+            # M3 Optimizer 인스턴스 생성
+            self.m3_optimizer = M3Optimizer(
+                device_name=self.device_name,
+                memory_gb=self.memory_gb,
+                is_m3_max=self.is_m3_max,
+                optimization_level=self.optimization_level
+            )
+        else:
+            self.memory_manager = MemoryManager(device=self.device, memory_gb=self.memory_gb)
+            self.m3_optimizer = None
         
         logger.info(f"🍎 M3 Max 파이프라인 초기화 - 디바이스: {self.device}, 메모리: {self.memory_gb}GB")
 
@@ -555,6 +610,14 @@ class M3MaxOptimizedPipelineManager:
     def _setup_m3_max_optimization(self):
         """M3 Max 특화 최적화"""
         try:
+            # M3 Optimizer 사용 (우선)
+            if self.m3_optimizer and M3_OPTIMIZER_AVAILABLE:
+                # M3 Optimizer가 자동으로 최적화 설정 적용
+                optimization_info = self.m3_optimizer.get_optimization_info()
+                logger.info(f"🚀 M3 Optimizer 최적화 적용: {optimization_info}")
+                return
+            
+            # 폴백 최적화 (기존 방식)
             import torch
             if self.device == 'mps' and torch.backends.mps.is_available():
                 # MPS 메모리 최적화
@@ -568,7 +631,7 @@ class M3MaxOptimizedPipelineManager:
                 if self.is_m3_max and self.memory_gb >= 64:
                     os.environ["PYTORCH_MPS_PREFERRED_DEVICE"] = "0"
                 
-                logger.info("🚀 M3 Max MPS 최적화 적용")
+                logger.info("🚀 M3 Max MPS 최적화 적용 (폴백)")
             
             # CPU 최적화 (M3 Max 16코어 활용)
             if hasattr(torch, 'set_num_threads'):
@@ -1079,8 +1142,12 @@ class M3MaxOptimizedPipelineManager:
                 "pipeline_manager_available": PIPELINE_MANAGER_AVAILABLE,
                 "schemas_available": SCHEMAS_AVAILABLE,
                 "websocket_available": WEBSOCKET_AVAILABLE,
-                "utils_available": UTILS_AVAILABLE
+                "utils_available": UTILS_AVAILABLE,
+                "m3_optimizer_available": M3_OPTIMIZER_AVAILABLE
             },
+            
+            # M3 Optimizer 정보
+            "m3_optimizer_info": self.m3_optimizer.get_optimization_info() if self.m3_optimizer else None,
             
             # 버전 정보
             "version_info": {
@@ -1095,11 +1162,16 @@ class M3MaxOptimizedPipelineManager:
         try:
             logger.info("🧹 M3 Max 파이프라인 정리 시작...")
             
+            # M3 Optimizer 정리 (우선)
+            if self.m3_optimizer and M3_OPTIMIZER_AVAILABLE:
+                self.m3_optimizer.cleanup()
+                logger.info("✅ M3 Optimizer 정리 완료")
+            
             # 메모리 관리자 정리
             if hasattr(self.memory_manager, 'cleanup'):
                 await self.memory_manager.cleanup()
             
-            # PyTorch 캐시 정리
+            # 폴백 PyTorch 캐시 정리
             try:
                 import torch
                 if self.device == 'mps' and torch.backends.mps.is_available():
@@ -1410,7 +1482,8 @@ async def health_check():
                 "pipeline_manager_available": PIPELINE_MANAGER_AVAILABLE,
                 "schemas_available": SCHEMAS_AVAILABLE,
                 "websocket_available": WEBSOCKET_AVAILABLE,
-                "utils_available": UTILS_AVAILABLE
+                "utils_available": UTILS_AVAILABLE,
+                "m3_optimizer_available": M3_OPTIMIZER_AVAILABLE
             },
             "timestamp": time.time()
         }
@@ -1777,8 +1850,163 @@ async def get_debug_config():
             "timestamp": time.time()
         }
 
-@router.post("/dev/restart")
-async def restart_pipeline():
+@router.get("/m3-optimizer/info")
+async def get_m3_optimizer_info():
+    """M3 Optimizer 정보 조회"""
+    try:
+        m3_optimizer = get_m3_optimizer()
+        device_name, memory_gb, is_m3_max, optimization_level = detect_m3_max()
+        
+        if m3_optimizer and M3_OPTIMIZER_AVAILABLE:
+            optimizer_info = m3_optimizer.get_optimization_info()
+        else:
+            optimizer_info = {
+                "device_name": device_name,
+                "memory_gb": memory_gb,
+                "is_m3_max": is_m3_max,
+                "optimization_level": optimization_level,
+                "status": "fallback_mode"
+            }
+        
+        return {
+            "m3_optimizer_available": M3_OPTIMIZER_AVAILABLE,
+            "optimizer_info": optimizer_info,
+            "memory_check": check_memory_available(required_gb=4.0),
+            "neural_engine_status": "active" if is_m3_max else "unavailable",
+            "unified_memory": f"{memory_gb}GB" if is_m3_max else "N/A",
+            "recommendations": [
+                "M3 Max Neural Engine 활성화됨" if is_m3_max else "표준 CPU 처리",
+                f"최적화 레벨: {optimization_level}",
+                "Unified Memory 활용 중" if is_m3_max and memory_gb >= 64 else "표준 메모리 사용"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"M3 Optimizer 정보 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/m3-optimizer/memory-check")
+async def check_m3_memory(required_gb: float = 4.0):
+    """M3 Max 메모리 체크"""
+    try:
+        memory_available = check_memory_available(required_gb=required_gb)
+        device_name, memory_gb, is_m3_max, optimization_level = detect_m3_max()
+        
+        # 상세 메모리 정보 수집
+        memory_info = {
+            "required_gb": required_gb,
+            "available": memory_available,
+            "total_memory_gb": memory_gb,
+            "is_m3_max": is_m3_max,
+            "unified_memory": is_m3_max and memory_gb >= 64
+        }
+        
+        # 추가 메모리 정보
+        try:
+            import psutil
+            vm = psutil.virtual_memory()
+            memory_info.update({
+                "system_total_gb": round(vm.total / (1024**3), 1),
+                "system_available_gb": round(vm.available / (1024**3), 1),
+                "system_used_percent": vm.percent
+            })
+        except:
+            pass
+        
+        return {
+            "memory_check": memory_info,
+            "recommendation": "메모리 충분" if memory_available else "메모리 부족",
+            "optimization_suggestions": [
+                "M3 Max Unified Memory 활용" if is_m3_max else "표준 메모리 관리",
+                f"권장 메모리: {required_gb}GB",
+                "메모리 정리 실행" if not memory_available else "현재 메모리 상태 양호"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"메모리 체크 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/m3-optimizer/optimize")
+async def optimize_with_m3():
+    """M3 Optimizer로 최적화 실행"""
+    try:
+        m3_optimizer = get_m3_optimizer()
+        
+        if not m3_optimizer:
+            raise HTTPException(
+                status_code=503,
+                detail="M3 Optimizer가 초기화되지 않았습니다"
+            )
+        
+        # 메모리 체크
+        if not check_memory_available(required_gb=4.0):
+            logger.warning("⚠️ 메모리 부족 상태에서 최적화 실행")
+        
+        # 최적화 정보 수집
+        optimization_info = m3_optimizer.get_optimization_info()
+        
+        # 전역 메모리 매니저 재초기화
+        device = "mps" if optimization_info.get("is_m3_max") else "cpu"
+        memory_gb = optimization_info.get("memory_gb", 128.0)
+        
+        memory_init_success = initialize_global_memory_manager(
+            device=device,
+            memory_gb=memory_gb
+        )
+        
+        return {
+            "message": "M3 Optimizer 최적화 실행 완료",
+            "optimization_info": optimization_info,
+            "memory_manager_initialized": memory_init_success,
+            "device": device,
+            "memory_gb": memory_gb,
+            "neural_engine_active": optimization_info.get("is_m3_max", False),
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"M3 Optimizer 최적화 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/m3-optimizer/cleanup")
+async def cleanup_m3_optimizer():
+    """M3 Optimizer 정리"""
+    try:
+        m3_optimizer = get_m3_optimizer()
+        
+        if m3_optimizer:
+            m3_optimizer.cleanup()
+            logger.info("✅ M3 Optimizer 정리 완료")
+        
+        # 추가 메모리 정리
+        try:
+            import torch
+            import gc
+            
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+                logger.info("✅ MPS 캐시 정리 완료")
+            
+            gc.collect()
+            logger.info("✅ 가비지 컬렉션 완료")
+            
+        except Exception as e:
+            logger.warning(f"추가 정리 실패: {e}")
+        
+        return {
+            "message": "M3 Optimizer 정리 완료",
+            "cleaned_components": [
+                "M3 Optimizer",
+                "MPS 캐시",
+                "Python 가비지 컬렉션"
+            ],
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"M3 Optimizer 정리 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     """개발용 파이프라인 재시작 - 기존 함수명 유지"""
     global pipeline_manager_instance
     
@@ -1973,6 +2201,7 @@ logger.info("🍎 M3 Max 최적화 파이프라인 API 라우터 완전 로드 �
 logger.info(f"🔧 Core: {'✅' if CORE_AVAILABLE else '❌'}")
 logger.info(f"🔧 Services: {'✅' if SERVICES_AVAILABLE else '❌'}")
 logger.info(f"🔧 Pipeline Manager: {'✅' if PIPELINE_MANAGER_AVAILABLE else '❌'}")
+logger.info(f"🔧 M3 Optimizer: {'✅' if M3_OPTIMIZER_AVAILABLE else '❌'}")
 logger.info(f"📋 Schemas: {'✅' if SCHEMAS_AVAILABLE else '❌'}")
 logger.info(f"🌐 WebSocket: {'✅' if WEBSOCKET_AVAILABLE else '❌'}")
 logger.info(f"🛠️ Utils: {'✅' if UTILS_AVAILABLE else '❌'}")
