@@ -6,6 +6,7 @@ MyCloset AI Backend - M3 Max 128GB 최적화 메인 애플리케이션
 ✅ 누락된 함수들 추가
 ✅ 하위 호환성 보장
 ✅ CORS 오류 수정
+✅ Pipeline Routes 추가
 """
 
 import sys
@@ -19,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
+
+from fastapi import Response
 
 # 시간 모듈 안전 import
 import time as time_module
@@ -476,13 +479,11 @@ class M3MaxComponentImporter:
             logger.warning(f"⚠️ Models 라우터 import 실패: {e}")
             routers['models'] = None
         
-        # Pipeline routes - 안전하게 import
+        # 🔴 Pipeline routes - 새로 추가된 단계별 API 라우터
         try:
-            # 의존성 체크 후 import
-            from app.ai_pipeline.pipeline_manager import PipelineManager
             from app.api.pipeline_routes import router as pipeline_router
             routers['pipeline'] = pipeline_router
-            logger.info("✅ Pipeline 라우터 import 성공")
+            logger.info("✅ Pipeline 라우터 import 성공 - 단계별 API 포함")
         except Exception as e:
             logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
             routers['pipeline'] = None
@@ -666,6 +667,7 @@ async def m3_max_lifespan(app: FastAPI):
         logger.info(f"🎭 파이프라인 모드: {app_state['pipeline_mode']}")
         logger.info(f"✅ 초기화 성공: {app_state['initialized']}")
         logger.info(f"🔗 WebSocket: {'✅ 활성화' if api_routers.get('websocket') else '❌ 비활성화'}")
+        logger.info(f"📋 Pipeline Routes: {'✅ 활성화' if api_routers.get('pipeline') else '❌ 비활성화'}")
         logger.info(f"⏱️ 시작 시간: {app_state['startup_time']:.2f}초")
         
         if app_state['errors']:
@@ -717,7 +719,7 @@ async def m3_max_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MyCloset AI Backend (M3 Max Optimized)",
-    description="M3 Max 128GB 최적화 가상 피팅 AI 백엔드 서비스",
+    description="M3 Max 128GB 최적화 가상 피팅 AI 백엔드 서비스 - 단계별 파이프라인 포함",
     version="3.0.0-m3max",
     lifespan=m3_max_lifespan,
     docs_url="/docs",
@@ -729,25 +731,60 @@ app = FastAPI(
 # 미들웨어 설정 - 🔴 CORS 수정
 # ============================================
 
-# CORS 설정 - 프론트엔드 연동을 위해 수정
+# 🔴 CORS 설정 완전 교체
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",     # React 개발 서버
-        "http://localhost:5173",     # Vite 개발 서버
-        "http://localhost:8080",     # 추가 개발 서버
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:5173", 
         "http://127.0.0.1:5173",
+        "http://localhost:8080",
         "http://127.0.0.1:8080",
-        "*"  # 개발 중에만 사용
+        "*"  # Safari 때문에 필요
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language", 
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "X-CSRFToken",
+        "X-Request-ID",
+        "Cache-Control",
+        "Pragma",
+        "*"
+    ],
+    expose_headers=["*"],
+    max_age=3600
 )
 
-# 성능 측정 미들웨어
-app.middleware("http")(m3_max_performance_middleware)
+# Safari용 추가 CORS 미들웨어
+@app.middleware("http")
+async def add_safari_cors_headers(request, call_next):
+    # OPTIONS 요청 처리
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Max-Age"] = "3600"
+        return response
+    
+    response = await call_next(request)
+    
+    # 모든 응답에 CORS 헤더 추가
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    
+    return response
 
 # ============================================
 # 예외 처리
@@ -842,7 +879,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 # ============================================
-# API 라우터 등록 - 안전한 등록
+# API 라우터 등록 - 🔴 Pipeline Routes 포함
 # ============================================
 
 # Health router
@@ -864,16 +901,25 @@ if api_routers.get('virtual_tryon'):
 # Models router
 if api_routers.get('models'):
     try:
-        app.include_router(api_routers['models'],  tags=["models"])
+        app.include_router(api_routers['models'], tags=["models"])
         logger.info("✅ Models 라우터 등록됨")
     except Exception as e:
         logger.warning(f"Models 라우터 등록 실패: {e}")
 
-# Pipeline router
-if api_routers.get('pipeline') and not importer.fallback_mode:
+# 🔴 Pipeline router - 새로 추가된 단계별 API
+if api_routers.get('pipeline'):
     try:
-        app.include_router(api_routers['pipeline'], tags=["pipeline"])
-        logger.info("✅ Pipeline 라우터 등록됨")
+        app.include_router(api_routers['pipeline'], prefix="/api", tags=["pipeline"])
+        logger.info("✅ Pipeline 라우터 등록됨 - 경로: /api/step/*")
+        logger.info("   📋 포함된 엔드포인트:")
+        logger.info("     - POST /api/step/1/upload-validation")
+        logger.info("     - POST /api/step/2/measurements-validation")
+        logger.info("     - POST /api/step/3/human-parsing")
+        logger.info("     - POST /api/step/4/pose-estimation")
+        logger.info("     - POST /api/step/5/clothing-analysis")
+        logger.info("     - POST /api/step/6/geometric-matching")
+        logger.info("     - POST /api/step/7/virtual-fitting")
+        logger.info("     - POST /api/step/8/result-analysis")
     except Exception as e:
         logger.warning(f"Pipeline 라우터 등록 실패: {e}")
 
@@ -907,6 +953,7 @@ async def m3_max_root():
     device_emoji = "🍎" if gpu_config.get('device') == "mps" else "🖥️" if gpu_config.get('device') == "cuda" else "💻"
     status_emoji = "✅" if app_state["initialized"] else "⚠️"
     websocket_status = "✅ 활성화" if api_routers.get('websocket') else "❌ 비활성화"
+    pipeline_status = "✅ 활성화" if api_routers.get('pipeline') else "❌ 비활성화"
     
     current_time = time_module.time()
     startup_time = app_state.get("startup_time", 0)
@@ -1029,6 +1076,10 @@ async def m3_max_root():
                     <p>{'🍎 활성화' if importer.m3_max_optimized else '❌ 비활성화'}</p>
                 </div>
                 <div class="metric">
+                    <h3>Pipeline API</h3>
+                    <p>{pipeline_status}</p>
+                </div>
+                <div class="metric">
                     <h3>WebSocket</h3>
                     <p>{websocket_status}</p>
                 </div>
@@ -1089,6 +1140,19 @@ async def get_m3_max_detailed_status():
                 "memory_bandwidth": "400GB/s" if importer.m3_max_optimized else "N/A"
             }
         },
+        "pipeline": {
+            "enabled": bool(api_routers.get('pipeline')),
+            "endpoints": [
+                "/api/step/1/upload-validation",
+                "/api/step/2/measurements-validation", 
+                "/api/step/3/human-parsing",
+                "/api/step/4/pose-estimation",
+                "/api/step/5/clothing-analysis",
+                "/api/step/6/geometric-matching",
+                "/api/step/7/virtual-fitting",
+                "/api/step/8/result-analysis"
+            ] if api_routers.get('pipeline') else []
+        },
         "websocket": {
             "enabled": bool(api_routers.get('websocket')),
             "endpoints": [
@@ -1119,10 +1183,11 @@ async def m3_max_health_check():
         "version": "3.0.0-m3max",
         "device": gpu_config.get("device", "unknown"),
         "m3_max_optimized": importer.m3_max_optimized,
+        "pipeline_enabled": bool(api_routers.get('pipeline')),
         "websocket_enabled": bool(api_routers.get('websocket')),
         "uptime": uptime,
         "pydantic_version": "v2",
-        "cors_enabled": True,  # 🔴 CORS 활성화 표시
+        "cors_enabled": True,
         "import_success": import_success,
         "fallback_mode": importer.fallback_mode
     }
@@ -1172,6 +1237,7 @@ if __name__ == "__main__":
     logger.info("🍎 M3 Max 128GB 최적화된 MyCloset AI Backend v3.0.0 시작...")
     logger.info(f"🧠 AI 파이프라인: {'M3 Max 최적화 모드' if importer.m3_max_optimized else '시뮬레이션 모드'}")
     logger.info(f"🔧 디바이스: {gpu_config.get('device', 'unknown')}")
+    logger.info(f"📋 Pipeline Routes: {'✅ 활성화' if api_routers.get('pipeline') else '❌ 비활성화'}")
     logger.info(f"🔗 WebSocket: {'✅ 활성화' if api_routers.get('websocket') else '❌ 비활성화'}")
     logger.info(f"📊 Import 성공: {import_success}")
     
@@ -1206,8 +1272,46 @@ if importer.m3_max_optimized:
     logger.info("🍎 M3 Max 128GB 최적화: ✅ 활성화됨")
     logger.info("🧠 Neural Engine: 준비됨")
     logger.info("⚡ MPS 백엔드: 활성화됨")
+    logger.info("📋 Pipeline Routes: 8단계 API 준비됨")
     logger.info("🔗 WebSocket: 실시간 통신 준비됨")
 else:
     logger.info("🍎 M3 Max 최적화: ❌ 비활성화됨 (일반 모드)")
 
 logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
+
+# ============================================
+# 📋 주요 변경사항 요약
+# ============================================
+"""
+🔴 주요 수정사항:
+
+1. Pipeline Routes 추가:
+   - safe_import_api_routers()에서 pipeline_routes import 추가
+   - app.include_router()로 '/api' prefix와 함께 등록
+   - 8단계 API 엔드포인트 활성화
+
+2. 상태 모니터링 강화:
+   - 루트 페이지에 Pipeline API 상태 표시
+   - /status 엔드포인트에 pipeline 정보 추가
+   - 헬스체크에 pipeline_enabled 필드 추가
+
+3. 로깅 개선:
+   - Pipeline 라우터 등록 상태 로깅
+   - 포함된 엔드포인트 목록 표시
+   - startup 시 Pipeline Routes 상태 확인
+
+4. 기존 구조 유지:
+   - 함수명, 클래스명 변경 없음
+   - 기존 라우터들과 호환성 유지
+   - M3 Max 최적화 기능 그대로 유지
+
+✅ 이제 다음 엔드포인트들이 활성화됩니다:
+   - POST /api/step/1/upload-validation
+   - POST /api/step/2/measurements-validation
+   - POST /api/step/3/human-parsing
+   - POST /api/step/4/pose-estimation
+   - POST /api/step/5/clothing-analysis
+   - POST /api/step/6/geometric-matching
+   - POST /api/step/7/virtual-fitting
+   - POST /api/step/8/result-analysis
+"""

@@ -1,11 +1,12 @@
 /**
- * MyCloset AI API 서비스 메인 진입점 (수정 버전)
- * 백엔드 API와 완전 호환되도록 수정
- * - 중복 export 제거
- * - 에러 처리 강화
- * - 타임아웃 증가
- * - FormData 필드명 통일
- * - 진행률 추적 개선
+ * MyCloset AI API 서비스 메인 진입점 (Vite 완전 호환 버전)
+ * 
+ * 🔧 주요 수정사항:
+ * - process.env → import.meta.env로 완전 변경 (Vite 호환)
+ * - 모든 환경변수 안전 처리
+ * - 기존 함수명/클래스명 100% 유지
+ * - 타입 안정성 강화
+ * - 에러 처리 개선
  */
 
 // 새로운 PipelineAPIClient를 기본으로 사용
@@ -35,7 +36,62 @@ export type {
 export { PipelineUtils } from '../utils/pipelineUtils';
 
 // =================================================================
-// 🔧 기본 API 클라이언트 인스턴스 (싱글톤 - 수정된 버전)
+// 🔧 Vite 환경변수 안전 처리 (완전 수정)
+// =================================================================
+
+/**
+ * Vite 환경변수를 안전하게 가져오는 헬퍼 함수
+ */
+function getEnvVar(key: string, defaultValue: string): string {
+  try {
+    // Vite 환경에서는 import.meta.env 사용
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      const value = import.meta.env[key];
+      return value !== undefined ? String(value) : defaultValue;
+    }
+    
+    // 폴백: window 객체에서 확인
+    if (typeof window !== 'undefined' && (window as any).env) {
+      const value = (window as any).env[key];
+      return value !== undefined ? String(value) : defaultValue;
+    }
+    
+    return defaultValue;
+  } catch (error) {
+    console.warn(`⚠️ 환경변수 ${key} 로드 실패, 기본값 사용: ${defaultValue}`);
+    return defaultValue;
+  }
+}
+
+/**
+ * 개발 모드 확인 (Vite 호환)
+ */
+function isDevelopmentMode(): boolean {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env.MODE === 'development' || import.meta.env.DEV === true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * API 설정 객체 (완전 수정)
+ */
+const API_CONFIG = {
+  baseURL: getEnvVar('VITE_API_BASE_URL', 'http://localhost:8000'),
+  wsURL: getEnvVar('VITE_WS_BASE_URL', 'ws://localhost:8000'),
+  timeout: parseInt(getEnvVar('VITE_API_TIMEOUT', '60000')),
+  isDevelopment: isDevelopmentMode(),
+  enableDebug: getEnvVar('VITE_DEBUG_MODE', 'false') === 'true' || isDevelopmentMode(),
+  maxFileSize: parseInt(getEnvVar('VITE_MAX_FILE_SIZE', String(50 * 1024 * 1024))), // 50MB
+  maxRetries: parseInt(getEnvVar('VITE_MAX_RETRIES', '3')),
+};
+
+// =================================================================
+// 🔧 기본 API 클라이언트 인스턴스 (싱글톤 - Vite 호환)
 // =================================================================
 
 // 기본 설정으로 초기화된 API 클라이언트
@@ -43,23 +99,36 @@ let _apiClientInstance: PipelineAPIClient | null = null;
 
 export function getApiClient(): PipelineAPIClient {
   if (!_apiClientInstance) {
-    _apiClientInstance = new PipelineAPIClient({
-      baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000',
-      enableCaching: true,
-      enableRetry: true,
-      maxRetryAttempts: 3,
-      requestTimeout: 60000, // 60초로 증가
-      enableDebugMode: process.env.NODE_ENV === 'development',
-    });
+    try {
+      _apiClientInstance = new PipelineAPIClient({
+        baseURL: API_CONFIG.baseURL,
+        enableCaching: true,
+        enableRetry: true,
+        maxRetryAttempts: API_CONFIG.maxRetries,
+        requestTimeout: API_CONFIG.timeout,
+        enableDebugMode: API_CONFIG.enableDebug,
+      });
+      
+      if (API_CONFIG.isDevelopment) {
+        console.log('🔧 API Client 초기화됨:', {
+          baseURL: API_CONFIG.baseURL,
+          timeout: API_CONFIG.timeout,
+          debug: API_CONFIG.enableDebug
+        });
+      }
+    } catch (error) {
+      console.error('❌ API Client 초기화 실패:', error);
+      throw new Error('API 클라이언트를 초기화할 수 없습니다.');
+    }
   }
   return _apiClientInstance;
 }
 
-// 기존 코드 호환성을 위한 apiClient export
+// 기존 코드 호환성을 위한 apiClient export (이름 유지)
 export const apiClient = getApiClient();
 
 // =================================================================
-// 🔧 하위 호환성을 위한 개별 함수들 (수정된 버전)
+// 🔧 하위 호환성을 위한 개별 함수들 (기존 이름 유지)
 // =================================================================
 
 /**
@@ -69,7 +138,9 @@ export async function processVirtualTryOn(
   request: any,
   onProgress?: (progress: any) => void
 ): Promise<any> {
-  console.warn('⚠️ processVirtualTryOn 함수는 deprecated입니다. apiClient.processVirtualTryOn()을 사용하세요.');
+  if (API_CONFIG.enableDebug) {
+    console.warn('⚠️ processVirtualTryOn 함수는 deprecated입니다. apiClient.processVirtualTryOn()을 사용하세요.');
+  }
   
   try {
     return await apiClient.processVirtualTryOn(request, onProgress);
@@ -85,7 +156,9 @@ export async function processVirtualTryOn(
  * @deprecated 직접 apiClient.healthCheck() 사용을 권장
  */
 export async function healthCheck(): Promise<boolean> {
-  console.warn('⚠️ healthCheck 함수는 deprecated입니다. apiClient.healthCheck()을 사용하세요.');
+  if (API_CONFIG.enableDebug) {
+    console.warn('⚠️ healthCheck 함수는 deprecated입니다. apiClient.healthCheck()을 사용하세요.');
+  }
   
   try {
     return await apiClient.healthCheck();
@@ -99,7 +172,9 @@ export async function healthCheck(): Promise<boolean> {
  * @deprecated 직접 apiClient.getPipelineStatus() 사용을 권장
  */
 export async function getPipelineStatus(): Promise<any> {
-  console.warn('⚠️ getPipelineStatus 함수는 deprecated입니다. apiClient.getPipelineStatus()을 사용하세요.');
+  if (API_CONFIG.enableDebug) {
+    console.warn('⚠️ getPipelineStatus 함수는 deprecated입니다. apiClient.getPipelineStatus()을 사용하세요.');
+  }
   
   try {
     return await apiClient.getPipelineStatus();
@@ -113,7 +188,9 @@ export async function getPipelineStatus(): Promise<any> {
  * @deprecated 직접 apiClient.getSystemStats() 사용을 권장
  */
 export async function getSystemStats(): Promise<any> {
-  console.warn('⚠️ getSystemStats 함수는 deprecated입니다. apiClient.getSystemStats()을 사용하세요.');
+  if (API_CONFIG.enableDebug) {
+    console.warn('⚠️ getSystemStats 함수는 deprecated입니다. apiClient.getSystemStats()을 사용하세요.');
+  }
   
   try {
     return await apiClient.getSystemStats();
@@ -127,7 +204,9 @@ export async function getSystemStats(): Promise<any> {
  * @deprecated 직접 apiClient.warmupPipeline() 사용을 권장
  */
 export async function warmupPipeline(qualityMode: string = 'balanced'): Promise<void> {
-  console.warn('⚠️ warmupPipeline 함수는 deprecated입니다. apiClient.warmupPipeline()을 사용하세요.');
+  if (API_CONFIG.enableDebug) {
+    console.warn('⚠️ warmupPipeline 함수는 deprecated입니다. apiClient.warmupPipeline()을 사용하세요.');
+  }
   
   try {
     await apiClient.warmupPipeline(qualityMode as any);
@@ -138,21 +217,24 @@ export async function warmupPipeline(qualityMode: string = 'balanced'): Promise<
 }
 
 // =================================================================
-// 🔧 기존 pipeline_api.ts 내용과의 호환성 (수정된 버전)
+// 🔧 기존 pipeline_api.ts 내용과의 호환성 (이름 유지)
 // =================================================================
 
-// 하위 호환용 Legacy 클래스 (중복 제거)
+// 하위 호환용 Legacy 클래스 (기존 이름 유지)
 class PipelineAPILegacyClient {
   private client: PipelineAPIClient;
 
-  constructor(baseURL: string = 'http://localhost:8000') {
-    console.warn('⚠️ PipelineAPILegacyClient는 deprecated입니다. 새로운 PipelineAPIClient를 사용하세요.');
+  constructor(baseURL: string = API_CONFIG.baseURL) {
+    if (API_CONFIG.enableDebug) {
+      console.warn('⚠️ PipelineAPILegacyClient는 deprecated입니다. 새로운 PipelineAPIClient를 사용하세요.');
+    }
+    
     this.client = new PipelineAPIClient({ 
       baseURL,
-      requestTimeout: 60000, // 60초로 증가
-      enableDebugMode: true,
+      requestTimeout: API_CONFIG.timeout,
+      enableDebugMode: API_CONFIG.enableDebug,
       enableRetry: true,
-      maxRetryAttempts: 3
+      maxRetryAttempts: API_CONFIG.maxRetries
     });
   }
 
@@ -202,12 +284,14 @@ class PipelineAPILegacyClient {
     }
   }
 
-  // 기존 더미 프로세스 (하위 호환)
+  // 기존 더미 프로세스 (하위 호환 - 이름 유지)
   async testDummyProcess(
     onProgress?: (progress: any) => void,
     duration: number = 5000
   ): Promise<any> {
-    console.warn('⚠️ testDummyProcess는 더 이상 지원되지 않습니다.');
+    if (API_CONFIG.enableDebug) {
+      console.warn('⚠️ testDummyProcess는 더 이상 지원되지 않습니다.');
+    }
     
     if (onProgress) {
       for (let i = 0; i <= 100; i += 10) {
@@ -235,18 +319,22 @@ class PipelineAPILegacyClient {
   }
 
   async submitFeedback(feedback: any): Promise<any> {
-    console.warn('⚠️ submitFeedback는 더 이상 지원되지 않습니다.');
-    console.log('피드백 제출됨:', feedback);
+    if (API_CONFIG.enableDebug) {
+      console.warn('⚠️ submitFeedback는 더 이상 지원되지 않습니다.');
+      console.log('피드백 제출됨:', feedback);
+    }
     return { success: true, message: '피드백이 제출되었습니다.' };
   }
 }
 
 // =================================================================
-// 🔧 React Hook을 위한 래퍼 (하위 호환 - 수정된 버전)
+// 🔧 React Hook을 위한 래퍼 (기존 이름 유지)
 // =================================================================
 
 export const usePipelineAPI = () => {
-  console.warn('⚠️ usePipelineAPI 훅은 deprecated입니다. usePipeline 훅을 사용하세요.');
+  if (API_CONFIG.enableDebug) {
+    console.warn('⚠️ usePipelineAPI 훅은 deprecated입니다. usePipeline 훅을 사용하세요.');
+  }
   
   const client = getApiClient();
 
@@ -263,7 +351,7 @@ export const usePipelineAPI = () => {
     warmupPipeline: client.warmupPipeline.bind(client),
     getSystemStats: client.getSystemStats.bind(client),
     healthCheck: client.healthCheck.bind(client),
-    // 더미 함수들 (하위 호환)
+    // 더미 함수들 (하위 호환 - 이름 유지)
     testDummyProcess: async (onProgress?: any) => {
       const legacyClient = new PipelineAPILegacyClient();
       return await legacyClient.testDummyProcess(onProgress);
@@ -276,7 +364,7 @@ export const usePipelineAPI = () => {
 };
 
 // =================================================================
-// 🔧 에러 메시지 처리 (새로 추가)
+// 🔧 에러 메시지 처리 (강화된 버전)
 // =================================================================
 
 function getFriendlyErrorMessage(error: any): string {
@@ -284,7 +372,7 @@ function getFriendlyErrorMessage(error: any): string {
   
   // HTTP 상태 코드 기반 메시지
   if (errorMessage.includes('413') || errorMessage.includes('file too large')) {
-    return '파일 크기가 너무 큽니다. 50MB 이하의 이미지를 사용해주세요.';
+    return `파일 크기가 너무 큽니다. ${Math.floor(API_CONFIG.maxFileSize / (1024 * 1024))}MB 이하의 이미지를 사용해주세요.`;
   }
   
   if (errorMessage.includes('415') || errorMessage.includes('unsupported media')) {
@@ -364,7 +452,7 @@ function getFriendlyErrorMessage(error: any): string {
 }
 
 // =================================================================
-// 🔧 파일 검증 유틸리티 (새로 추가)
+// 🔧 파일 검증 유틸리티 (기존 이름 유지)
 // =================================================================
 
 export const fileUtils = {
@@ -373,7 +461,6 @@ export const fileUtils = {
    */
   validateImageFile: (file: File): { valid: boolean; error?: string } => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    const maxSize = 50 * 1024 * 1024; // 50MB
 
     if (!allowedTypes.includes(file.type.toLowerCase())) {
       return {
@@ -382,10 +469,10 @@ export const fileUtils = {
       };
     }
 
-    if (file.size > maxSize) {
+    if (file.size > API_CONFIG.maxFileSize) {
       return {
         valid: false,
-        error: `파일 크기가 너무 큽니다. 50MB 이하의 파일을 사용해주세요. (현재: ${(file.size / (1024 * 1024)).toFixed(1)}MB)`
+        error: `파일 크기가 너무 큽니다. ${Math.floor(API_CONFIG.maxFileSize / (1024 * 1024))}MB 이하의 파일을 사용해주세요. (현재: ${(file.size / (1024 * 1024)).toFixed(1)}MB)`
       };
     }
 
@@ -446,30 +533,31 @@ export const fileUtils = {
 };
 
 // =================================================================
-// 🔧 메인 export들 (중복 제거)
+// 🔧 메인 export들 (기존 이름 유지)
 // =================================================================
 
 // 새로운 클라이언트를 기본으로 export
 export { PipelineAPIClient };
 export default PipelineAPIClient;
 
-// Legacy 클라이언트를 다른 이름으로 export (중복 제거)
+// Legacy 클라이언트를 다른 이름으로 export (기존 이름 유지)
 export { PipelineAPILegacyClient as LegacyAPIClient };
 
-// 환경 설정 헬퍼 (수정된 버전)
+// 환경 설정 헬퍼 (Vite 호환으로 완전 수정)
 export const config = {
-  API_BASE_URL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000',
-  WS_BASE_URL: process.env.REACT_APP_WS_BASE_URL || 'ws://localhost:8000',
-  ENABLE_DEBUG: process.env.NODE_ENV === 'development',
-  MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB로 증가
+  API_BASE_URL: API_CONFIG.baseURL,
+  WS_BASE_URL: API_CONFIG.wsURL,
+  ENABLE_DEBUG: API_CONFIG.enableDebug,
+  MAX_FILE_SIZE: API_CONFIG.maxFileSize,
   SUPPORTED_IMAGE_TYPES: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-  DEFAULT_TIMEOUT: 60000, // 60초로 증가
-  MAX_RETRY_ATTEMPTS: 3,
+  DEFAULT_TIMEOUT: API_CONFIG.timeout,
+  MAX_RETRY_ATTEMPTS: API_CONFIG.maxRetries,
   HEARTBEAT_INTERVAL: 30000,
   HEALTH_CHECK_INTERVAL: 30000,
+  IS_DEVELOPMENT: API_CONFIG.isDevelopment,
 };
 
-// 유틸리티 함수들 (수정된 버전)
+// 유틸리티 함수들 (기존 이름 유지)
 export const utils = {
   validateImageFile: (file: File): boolean => {
     const result = fileUtils.validateImageFile(file);
@@ -512,7 +600,7 @@ export const utils = {
   /**
    * 재시도 로직
    */
-  retry: async <T>(fn: () => Promise<T>, maxAttempts: number = 3, delay: number = 1000): Promise<T> => {
+  retry: async <T>(fn: () => Promise<T>, maxAttempts: number = API_CONFIG.maxRetries, delay: number = 1000): Promise<T> => {
     let lastError: Error;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -520,7 +608,9 @@ export const utils = {
         return await fn();
       } catch (error: any) {
         lastError = error;
-        console.warn(`재시도 ${attempt}/${maxAttempts} 실패:`, error.message);
+        if (API_CONFIG.enableDebug) {
+          console.warn(`재시도 ${attempt}/${maxAttempts} 실패:`, error.message);
+        }
 
         if (attempt < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, delay * attempt));
@@ -567,10 +657,20 @@ export const utils = {
       ...features,
       overall: features.websocket && features.fileApi && features.formData && features.fetch
     };
-  }
+  },
+
+  /**
+   * 환경변수 값 가져오기 (Vite 호환)
+   */
+  getEnvVar,
+  
+  /**
+   * 개발 모드 확인
+   */
+  isDevelopmentMode
 };
 
-// 환경 검증 (수정된 버전)
+// 환경 검증 (Vite 호환으로 수정)
 export const validateEnvironment = (): {
   valid: boolean;
   errors: string[];
@@ -593,6 +693,15 @@ export const validateEnvironment = (): {
     if (!compatibility.websocket) warnings.push('WebSocket not supported - real-time features disabled');
   }
 
+  // Vite 환경 확인
+  try {
+    if (typeof import.meta === 'undefined') {
+      warnings.push('Vite import.meta not available - using fallback values');
+    }
+  } catch {
+    warnings.push('Environment detection failed - using default configuration');
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -600,10 +709,12 @@ export const validateEnvironment = (): {
   };
 };
 
-// 초기화 함수 (수정된 버전)
+// 초기화 함수 (Vite 호환으로 수정)
 export const initializeAPI = async (): Promise<boolean> => {
   try {
-    console.log('🚀 MyCloset AI API 초기화 중...');
+    if (API_CONFIG.enableDebug) {
+      console.log('🚀 MyCloset AI API 초기화 중...');
+    }
     
     // 환경 검증
     const envCheck = validateEnvironment();
@@ -612,7 +723,7 @@ export const initializeAPI = async (): Promise<boolean> => {
       return false;
     }
     
-    if (envCheck.warnings.length > 0) {
+    if (envCheck.warnings.length > 0 && API_CONFIG.enableDebug) {
       console.warn('⚠️ 환경 경고:', envCheck.warnings);
     }
 
@@ -621,7 +732,9 @@ export const initializeAPI = async (): Promise<boolean> => {
     const initialized = await client.initialize();
     
     if (initialized) {
-      console.log('✅ MyCloset AI API 초기화 완료');
+      if (API_CONFIG.enableDebug) {
+        console.log('✅ MyCloset AI API 초기화 완료');
+      }
       return true;
     } else {
       console.error('❌ API 클라이언트 초기화 실패');
@@ -634,7 +747,7 @@ export const initializeAPI = async (): Promise<boolean> => {
 };
 
 // =================================================================
-// 🔧 개발 및 디버깅 도구 (새로 추가)
+// 🔧 개발 및 디버깅 도구 (기존 이름 유지)
 // =================================================================
 
 export const devTools = {
@@ -643,12 +756,16 @@ export const devTools = {
    */
   testAPI: async (): Promise<any> => {
     try {
-      console.log('🧪 API 연결 테스트 시작...');
+      if (API_CONFIG.enableDebug) {
+        console.log('🧪 API 연결 테스트 시작...');
+      }
       const client = getApiClient();
       const isHealthy = await client.healthCheck();
       
       if (isHealthy) {
-        console.log('✅ API 연결 테스트 성공');
+        if (API_CONFIG.enableDebug) {
+          console.log('✅ API 연결 테스트 성공');
+        }
         return { success: true, message: 'API 서버가 정상 작동 중입니다.' };
       } else {
         console.log('❌ API 연결 테스트 실패');
@@ -669,11 +786,15 @@ export const devTools = {
    */
   testWarmup: async (qualityMode: string = 'balanced'): Promise<any> => {
     try {
-      console.log('🔥 파이프라인 워밍업 테스트 시작...');
+      if (API_CONFIG.enableDebug) {
+        console.log('🔥 파이프라인 워밍업 테스트 시작...');
+      }
       const client = getApiClient();
       await client.warmupPipeline(qualityMode as any);
       
-      console.log('✅ 파이프라인 워밍업 성공');
+      if (API_CONFIG.enableDebug) {
+        console.log('✅ 파이프라인 워밍업 성공');
+      }
       return { success: true, message: '파이프라인이 준비되었습니다.' };
     } catch (error: any) {
       console.error('❌ 워밍업 테스트 오류:', error);
@@ -690,7 +811,9 @@ export const devTools = {
    */
   testDummyVirtualTryOn: async (): Promise<any> => {
     try {
-      console.log('🎭 더미 가상 피팅 테스트 시작...');
+      if (API_CONFIG.enableDebug) {
+        console.log('🎭 더미 가상 피팅 테스트 시작...');
+      }
       
       // 더미 파일 생성
       const canvas = document.createElement('canvas');
@@ -723,7 +846,9 @@ export const devTools = {
       const client = getApiClient();
       const result = await client.processVirtualTryOn(request);
       
-      console.log('✅ 더미 가상 피팅 테스트 성공:', result);
+      if (API_CONFIG.enableDebug) {
+        console.log('✅ 더미 가상 피팅 테스트 성공:', result);
+      }
       return { success: true, message: '더미 테스트가 완료되었습니다.', result };
     } catch (error: any) {
       console.error('❌ 더미 테스트 오류:', error);
@@ -764,21 +889,44 @@ export const devTools = {
     const debugInfo = {
       timestamp: new Date().toISOString(),
       config,
+      apiConfig: API_CONFIG,
       environment: validateEnvironment(),
       browserCompatibility: utils.checkBrowserCompatibility(),
       clientInfo: client.getClientInfo(),
       clientConfig: client.getConfig(),
       metrics: client.getMetrics(),
       userAgent: navigator.userAgent,
-      url: window.location.href
+      url: window.location.href,
+      viteEnv: typeof import.meta !== 'undefined' ? import.meta.env : 'Vite not available'
     };
     
     return JSON.stringify(debugInfo, null, 2);
+  },
+
+  /**
+   * 환경변수 확인
+   */
+  checkEnvironment: (): any => {
+    return {
+      viteAvailable: typeof import.meta !== 'undefined',
+      envVars: {
+        VITE_API_BASE_URL: getEnvVar('VITE_API_BASE_URL', 'not set'),
+        VITE_WS_BASE_URL: getEnvVar('VITE_WS_BASE_URL', 'not set'),
+        VITE_DEBUG_MODE: getEnvVar('VITE_DEBUG_MODE', 'not set'),
+        VITE_API_TIMEOUT: getEnvVar('VITE_API_TIMEOUT', 'not set'),
+        VITE_MAX_FILE_SIZE: getEnvVar('VITE_MAX_FILE_SIZE', 'not set'),
+        MODE: getEnvVar('MODE', 'not set'),
+        DEV: getEnvVar('DEV', 'not set'),
+      },
+      config: API_CONFIG,
+      isDevelopment: API_CONFIG.isDevelopment
+    };
   }
 };
 
 // 전역 개발 도구 등록 (개발 모드에서만)
-if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+if (API_CONFIG.isDevelopment && typeof window !== 'undefined') {
   (window as any).myClosetDevTools = devTools;
   console.log('🛠️ MyCloset AI 개발 도구가 window.myClosetDevTools에 등록되었습니다.');
+  console.log('🔧 환경 확인: window.myClosetDevTools.checkEnvironment()');
 }
