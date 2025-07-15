@@ -848,7 +848,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Health router
 if api_routers.get('health'):
     try:
-        app.include_router(api_routers['health'], prefix="/api", tags=["health"])
+        app.include_router(api_routers['health'], tags=["health"])
         logger.info("✅ Health 라우터 등록됨")
     except Exception as e:
         logger.warning(f"Health 라우터 등록 실패: {e}")
@@ -856,7 +856,7 @@ if api_routers.get('health'):
 # Virtual try-on router
 if api_routers.get('virtual_tryon'):
     try:
-        app.include_router(api_routers['virtual_tryon'], prefix="/api", tags=["virtual-tryon"])
+        app.include_router(api_routers['virtual_tryon'], tags=["virtual-tryon"])
         logger.info("✅ Virtual Try-on 라우터 등록됨")
     except Exception as e:
         logger.warning(f"Virtual Try-on 라우터 등록 실패: {e}")
@@ -864,7 +864,7 @@ if api_routers.get('virtual_tryon'):
 # Models router
 if api_routers.get('models'):
     try:
-        app.include_router(api_routers['models'], prefix="/api", tags=["models"])
+        app.include_router(api_routers['models'],  tags=["models"])
         logger.info("✅ Models 라우터 등록됨")
     except Exception as e:
         logger.warning(f"Models 라우터 등록 실패: {e}")

@@ -1379,7 +1379,7 @@ def set_pipeline_manager(manager: M3MaxOptimizedPipelineManager):
 # ============================================
 
 router = APIRouter(
-    prefix="/api/pipeline",
+    prefix="/api",
     tags=["Pipeline"],
     responses={
         500: {"description": "Internal Server Error"},
