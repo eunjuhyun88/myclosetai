@@ -1,5 +1,5 @@
 /**
- * MyCloset AI 파이프라인 API 클라이언트
+ * MyCloset AI 파이프라인 API 클라이언트 (완전한 수정 버전)
  * 실제 백엔드 API 구조와 100% 호환되는 프로덕션 수준 HTTP 클라이언트
  * - 완전한 에러 처리 및 재시도 로직
  * - 파일 업로드 및 진행률 추적
@@ -195,7 +195,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 핵심 HTTP 요청 메서드들
+  // 🔧 핵심 HTTP 요청 메서드들 (수정됨)
   // =================================================================
 
   private async request<T = any>(
@@ -251,7 +251,7 @@ export default class PipelineAPIClient {
         abortController.abort();
       }, this.config.timeout);
 
-      // 요청 옵션 구성
+      // 🔧 수정: FormData인 경우 Content-Type 헤더 제거
       const requestOptions: RequestInit = {
         ...options,
         headers: {
@@ -263,12 +263,20 @@ export default class PipelineAPIClient {
         signal: abortController.signal,
       };
 
+      // FormData인 경우 Content-Type 헤더 제거 (브라우저가 자동 설정)
+      if (options.body instanceof FormData) {
+        delete (requestOptions.headers as any)['Content-Type'];
+        delete (requestOptions.headers as any)['Accept'];
+        (requestOptions.headers as any)['Accept'] = '*/*';
+      }
+
       if (this.config.enableDebug) {
         PipelineUtils.debug('🌐 API 요청 시작', {
           url,
           method: requestOptions.method || 'GET',
           requestId,
-          attempt: attemptNum
+          attempt: attemptNum,
+          isFormData: options.body instanceof FormData
         });
       }
 
@@ -317,7 +325,7 @@ export default class PipelineAPIClient {
       const errorData = await this.parseErrorResponse(response);
       throw this.createAPIError(
         `http_${response.status}`,
-        errorData.message || response.statusText,
+        errorData.message || errorData.detail || response.statusText,
         errorData,
         this.getRetryAfter(response)
       );
@@ -386,7 +394,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 메인 API 메서드들 (백엔드 완전 호환)
+  // 🔧 메인 API 메서드들 (백엔드 완전 호환) - 수정됨
   // =================================================================
 
   async processVirtualTryOn(
@@ -437,8 +445,8 @@ export default class PipelineAPIClient {
     const formData = new FormData();
     
     // 필수 파일들
-    formData.append('person_image', request.person_image);
-    formData.append('clothing_image', request.clothing_image);
+    formData.append('person_image', request.person_image, request.person_image.name);
+    formData.append('clothing_image', request.clothing_image, request.clothing_image.name);
     
     // 신체 측정값
     formData.append('height', request.height.toString());
@@ -451,7 +459,7 @@ export default class PipelineAPIClient {
     if (request.shoulder_width) formData.append('shoulder_width', request.shoulder_width.toString());
     
     // 의류 정보
-    formData.append('clothing_type', request.clothing_type || 'shirt');
+    formData.append('clothing_type', request.clothing_type || 'upper_body');
     formData.append('fabric_type', request.fabric_type || 'cotton');
     formData.append('style_preference', request.style_preference || 'regular');
     
@@ -529,7 +537,7 @@ export default class PipelineAPIClient {
             const errorData = JSON.parse(xhr.responseText);
             reject(this.createAPIError(
               `http_${xhr.status}`,
-              errorData.message || xhr.statusText,
+              errorData.message || errorData.detail || xhr.statusText,
               errorData
             ));
           } catch {
