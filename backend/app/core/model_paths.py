@@ -12,19 +12,12 @@ AI_MODELS_ROOT = Path(__file__).parent.parent.parent / "ai_models"
 
 # 발견된 모델 경로 매핑
 DETECTED_MODELS = {
-    "ootdiffusion": {
-        "name": "OOTDiffusion (Hugging Face)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/ootdiffusion_hf"),
-        "type": "virtual_tryon",
-        "ready": True,
-        "priority": 1
-    },
     "ootdiffusion_additional": {
         "name": "OOTDiffusion (Checkpoints)",
         "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion"),
         "type": "virtual_tryon_additional",
         "ready": True,
-        "priority": 2
+        "priority": 99
     },
     "stable_diffusion": {
         "name": "Stable Diffusion v1.5",
@@ -32,13 +25,6 @@ DETECTED_MODELS = {
         "type": "base_diffusion",
         "ready": True,
         "priority": 2
-    },
-    "sam": {
-        "name": "Segment Anything (SAM)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/sam"),
-        "type": "segmentation",
-        "ready": True,
-        "priority": 3
     },
     "graphonomy": {
         "name": "Graphonomy (Human Parsing)",
@@ -68,20 +54,6 @@ DETECTED_MODELS = {
         "ready": True,
         "priority": 5
     },
-    "viton_gen": {
-        "name": "VITON-HD Generator",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/gen.pth"),
-        "type": "virtual_tryon",
-        "ready": True,
-        "priority": 6
-    },
-    "resnet50": {
-        "name": "ResNet50 Features",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/resnet50_features.pth"),
-        "type": "feature_extractor",
-        "ready": True,
-        "priority": 7
-    },
     "hr_viton": {
         "name": "HR-VITON",
         "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/HR-VITON"),
@@ -89,14 +61,7 @@ DETECTED_MODELS = {
         "ready": True,
         "priority": 8
     },
-    "viton_hd": {
-        "name": "VITON-HD",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/VITON-HD"),
-        "type": "virtual_tryon",
-        "ready": True,
-        "priority": 8
-    }
-}
+}}
 
 # 타입별 모델 그룹핑
 def get_models_by_type(model_type: str) -> List[str]:
