@@ -84,93 +84,106 @@ class ClothWarpingStep:
     
     def __init__(
         self,
-        device: Optional[str] = None,  # ✅ 통일된 생성자 패턴
+        device: Optional[str] = None,  # 🔥 최적 생성자 패턴 - 기존 복잡한 생성자 완전 호환
         config: Optional[Dict[str, Any]] = None,
-        **kwargs  # ✅ 기존 복잡한 생성자의 모든 파라미터 지원
+        **kwargs  # 🔥 기존 복잡한 파라미터들을 모두 kwargs로 처리
     ):
-        """
-        🎯 최적 생성자 - 의류 워핑 특화 (기존 복잡한 생성자 100% 호환)
+        """✅ 최적화된 생성자 - 기존 복잡한 생성자 완전 호환"""
         
-        Args:
-            device: 사용할 디바이스 (None=자동감지)
-            config: 설정 딕셔너리
-            **kwargs: 확장 파라미터들 (기존 복잡한 생성자의 모든 파라미터 지원)
-                # 🔄 기존 5단계 생성자 파라미터들 100% 호환:
-                - device_type: str = "apple_silicon"
-                - memory_gb: float = 128.0
-                - is_m3_max: bool = True
-                - optimization_enabled: bool = True
-                - config_path: Optional[str] = None
-                
-                # ✅ 워핑 특화 파라미터들:
-                - physics_enabled: bool = True
-                - deformation_strength: float = 0.7
-                - enable_wrinkles: bool = True
-                - enable_fabric_physics: bool = True
-                - adaptive_warping: bool = True
-                - max_resolution: int = auto-detect
-                - optimization_level: str = "balanced"
-                - 기타 모든 파라미터...
-        """
-        # 기존 device 기본값 처리 (하위 호환성)
-        if device is None:
-            device = "mps"  # 기존 기본값 유지
-        
-        # 💡 지능적 디바이스 자동 감지
+        # === 새로운 최적 패턴 ===
         self.device = self._auto_detect_device(device)
-
-        # 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
-
-        # 🔧 표준 시스템 파라미터 추출
+        
+        # 표준 시스템 파라미터
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
-
-        # ⚙️ 스텝별 특화 파라미터를 config에 병합
+        
+        # 🔄 기존 복잡한 파라미터들 호환 처리
+        self._handle_legacy_parameters(kwargs)
+        
+        # 스텝별 특화 설정 병합
         self._merge_step_specific_config(kwargs)
-
-        # ✅ 상태 초기화
+        
+        # 상태 초기화
         self.is_initialized = False
         
-        # 🔄 기존 복잡한 생성자 파라미터들 자동 처리
-        self._process_legacy_parameters(kwargs)
+        # 🔥 ModelLoader 연동
+        try:
+            from app.ai_pipeline.utils.model_loader import BaseStepMixin
+            if hasattr(BaseStepMixin, '_setup_model_interface'):
+                BaseStepMixin._setup_model_interface(self)
+        except ImportError:
+            pass
+        
+        # === 기존 로직 완전 유지 ===
+        self._initialize_step_specific()
+        
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
+    
+    def _handle_legacy_parameters(self, kwargs):
+        """🔄 기존 복잡한 파라미터들 완전 호환"""
+        legacy_mappings = {
+            'config_path': kwargs.get('config_path', None),
+            'warping_method': kwargs.get('warping_method', 'physics_based'),
+            'physics_enabled': kwargs.get('physics_enabled', True),
+            'deformation_strength': kwargs.get('deformation_strength', 0.7),
+            'enable_wrinkles': kwargs.get('enable_wrinkles', True),
+            'enable_fabric_physics': kwargs.get('enable_fabric_physics', True),
+            'adaptive_warping': kwargs.get('adaptive_warping', True),
+            'max_resolution': kwargs.get('max_resolution', None),
+            'optimization_level': kwargs.get('optimization_level', None)
+        }
+        
+        # config_path가 있으면 추가 설정 로드
+        config_path = legacy_mappings.get('config_path')
+        if config_path and os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    file_config = json.load(f)
+                    for key, value in file_config.items():
+                        if key not in self.config:
+                            self.config[key] = value
+                self.logger.info(f"📁 설정 파일 로드: {config_path}")
+            except Exception as e:
+                self.logger.warning(f"설정 파일 로드 실패: {e}")
+        
+        # 레거시 매핑을 config에 병합
+        for key, value in legacy_mappings.items():
+            if value is not None:
+                self.config[key] = value
+    
+    def _initialize_step_specific(self):
+        """🎯 기존 초기화 로직 완전 유지"""
         
         # M3 Max 특화 설정
         self._configure_m3_max_optimizations()
         
-        # model_loader는 내부에서 안전하게 처리
-        try:
-            from app.ai_pipeline.utils.model_loader import ModelLoader
-            self.model_loader = ModelLoader(device=self.device) if ModelLoader else None
-        except ImportError:
-            self.model_loader = None
-        
         # 워핑 설정 (기존과 동일하지만 kwargs 추가 지원)
         self.warping_config = self.config.get('warping', {
-            'physics_enabled': kwargs.get('physics_enabled', True),
-            'deformation_strength': kwargs.get('deformation_strength', 0.7),
+            'physics_enabled': self.config.get('physics_enabled', True),
+            'deformation_strength': self.config.get('deformation_strength', 0.7),
             'quality_level': self._get_optimal_quality_level(),
-            'enable_wrinkles': kwargs.get('enable_wrinkles', True),
-            'enable_fabric_physics': kwargs.get('enable_fabric_physics', True),
-            'adaptive_warping': kwargs.get('adaptive_warping', True)
+            'enable_wrinkles': self.config.get('enable_wrinkles', True),
+            'enable_fabric_physics': self.config.get('enable_fabric_physics', True),
+            'adaptive_warping': self.config.get('adaptive_warping', True)
         })
         
         # 성능 설정 (M3 Max 최적화)
         self.performance_config = self.config.get('performance', {
             'use_mps': self.device == 'mps',
             'memory_efficient': True,
-            'max_resolution': kwargs.get('max_resolution', self._get_optimal_max_resolution()),
+            'max_resolution': self.config.get('max_resolution', self._get_optimal_max_resolution()),
             'enable_caching': True,
             'batch_processing': self.memory_gb > 64
         })
         
         # 최적화 수준 결정 (M3 Max 고려)
-        self.optimization_level = kwargs.get('optimization_level', self._get_optimal_optimization_level())
+        self.optimization_level = self.config.get('optimization_level', self._get_optimal_optimization_level())
         
         # 핵심 컴포넌트들 (기존과 동일)
         self.fabric_simulator = None
@@ -189,78 +202,6 @@ class ClothWarpingStep:
             'm3_max_optimized': self.is_m3_max,
             'memory_usage_gb': 0.0
         }
-        
-        logger.info(f"🎯 ClothWarpingStep 최적 초기화 완료")
-        logger.info(f"💻 M3 Max: {'✅' if self.is_m3_max else '❌'}, 메모리: {self.memory_gb}GB")
-        logger.info(f"⚡ 최적화: {'✅' if self.optimization_enabled else '❌'} (레벨: {self.optimization_level})")
-    
-    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
-        """💡 지능적 디바이스 자동 감지"""
-        if preferred_device:
-            return preferred_device
-
-        try:
-            import torch
-            if torch.backends.mps.is_available():
-                return 'mps'  # M3 Max 우선
-            elif torch.cuda.is_available():
-                return 'cuda'  # NVIDIA GPU
-            else:
-                return 'cpu'  # 폴백
-        except ImportError:
-            return 'cpu'
-
-    def _detect_m3_max(self) -> bool:
-        """🍎 M3 Max 칩 자동 감지"""
-        try:
-            import platform
-            import subprocess
-
-            if platform.system() == 'Darwin':  # macOS
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-
-    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
-        """⚙️ 스텝별 특화 설정 병합"""
-        system_params = {
-            'device_type', 'memory_gb', 'is_m3_max', 
-            'optimization_enabled', 'quality_level'
-        }
-
-        for key, value in kwargs.items():
-            if key not in system_params:
-                self.config[key] = value
-    
-    def _process_legacy_parameters(self, kwargs: Dict[str, Any]):
-        """🔄 기존 복잡한 생성자 파라미터들 자동 처리 (100% 호환)"""
-        
-        # config_path가 있으면 추가 설정 로드 (기존과 동일)
-        config_path = kwargs.get('config_path')
-        if config_path and os.path.exists(config_path):
-            try:
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    file_config = json.load(f)
-                    # 기존 config와 병합 (파일 설정이 우선순위 낮음)
-                    for key, value in file_config.items():
-                        if key not in self.config:
-                            self.config[key] = value
-                self.logger.info(f"📁 설정 파일 로드: {config_path}")
-            except Exception as e:
-                self.logger.warning(f"설정 파일 로드 실패: {e}")
-        
-        # 기존 5단계 생성자의 모든 특수 파라미터들 처리
-        legacy_mappings = {
-            'device_type': 'device_type',  # 이미 처리됨
-            'memory_gb': 'memory_gb',      # 이미 처리됨
-            'is_m3_max': 'is_m3_max',      # 이미 처리됨
-            'optimization_enabled': 'optimization_enabled'  # 이미 처리됨
-        }
-        
-        self.logger.debug("🔄 기존 생성자 파라미터 호환성 처리 완료")
     
     def _get_optimal_quality_level(self) -> str:
         """최적 품질 수준 결정 - M3 Max는 기본적으로 높은 품질"""
@@ -417,6 +358,516 @@ class ClothWarpingStep:
             
             # 각 컴포넌트 워밍업
             if self.fabric_simulator:
+                await self.fabric_simulator.warmup()
+            
+            if self.advanced_warper:
+                await self.advanced_warper.warmup()
+            
+            if self.texture_synthesizer:
+                await self.texture_synthesizer.warmup()
+                
+            # GPU 메모리 정리
+            if TORCH_AVAILABLE:
+                if self.device == 'mps':
+                    if hasattr(torch.backends.mps, 'empty_cache'):
+                        torch.backends.mps.empty_cache()
+                    elif hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                elif self.device == 'cuda':
+                    torch.cuda.empty_cache()
+            
+            logger.info("✅ M3 Max 파이프라인 워밍업 완료")
+        except Exception as e:
+            logger.warning(f"M3 Max 워밍업 실패: {e}")
+    
+    async def _validate_system(self):
+        """시스템 검증"""
+        available_features = []
+        
+        if CV2_AVAILABLE:
+            available_features.append('basic_warping')
+        if SCIPY_AVAILABLE:
+            available_features.append('advanced_warping')
+        if TORCH_AVAILABLE:
+            available_features.append('neural_processing')
+        if self.is_m3_max:
+            available_features.append('m3_max_acceleration')
+        
+        if not available_features:
+            raise RuntimeError("사용 가능한 워핑 기능이 없습니다")
+        
+        logger.info(f"✅ 사용 가능한 기능들: {available_features}")
+    
+    # =================================================================
+    # 메인 처리 메서드 - 최적 패턴 (기존과 동일)
+    # =================================================================
+    
+    async def process(
+        self,
+        matching_result: Dict[str, Any],
+        body_measurements: Optional[Dict[str, float]] = None,
+        fabric_type: str = "cotton",
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        옷 워핑 처리 - 최적 패턴 (기존과 동일)
+        
+        Args:
+            matching_result: 기하학적 매칭 결과
+            body_measurements: 신체 치수 정보
+            fabric_type: 천 재질 타입
+            **kwargs: 추가 매개변수
+            
+        Returns:
+            Dict: 워핑 결과
+        """
+        if not self.is_initialized:
+            await self.initialize()
+        
+        start_time = time.time()
+        
+        try:
+            logger.info(f"🔄 의류 워핑 시작 - 재질: {fabric_type}")
+            
+            # M3 Max 메모리 최적화
+            if self.is_m3_max:
+                await self._optimize_m3_max_memory()
+            
+            # 1. 매칭 결과에서 필요한 데이터 추출
+            warped_clothing = matching_result.get('warped_clothing')
+            warped_mask = matching_result.get('warped_mask')
+            transform_matrix = matching_result.get('transform_matrix', np.eye(3))
+            matched_pairs = matching_result.get('matched_pairs', [])
+            
+            # 2. 입력 데이터 검증
+            if warped_clothing is None:
+                logger.warning("⚠️ 워핑된 의류 이미지가 없음 - 폴백 모드")
+                return self._create_fallback_result("워핑된 의류 이미지 없음")
+            
+            # 3. 데이터 타입 변환
+            cloth_img = self._prepare_image_data(warped_clothing)
+            cloth_mask = self._prepare_mask_data(warped_mask) if warped_mask is not None else None
+            
+            # 4. 천 특성 설정
+            fabric_props = self.FABRIC_PROPERTIES.get(fabric_type, self.FABRIC_PROPERTIES['default'])
+            clothing_type = kwargs.get('clothing_type', 'shirt')
+            deform_params = self.CLOTHING_DEFORMATION_PARAMS.get(clothing_type, self.CLOTHING_DEFORMATION_PARAMS['default'])
+            
+            # 5. 물리 시뮬레이션
+            logger.info("🧵 천 물리 시뮬레이션...")
+            simulated_result = await self.fabric_simulator.simulate_fabric_physics(
+                cloth_img, cloth_mask, fabric_props, body_measurements
+            )
+            
+            # 6. 고급 워핑 적용
+            logger.info("🔧 고급 워핑 적용...")
+            warping_result = await self.advanced_warper.apply_advanced_warping(
+                simulated_result['fabric_image'],
+                simulated_result.get('deformation_map', np.zeros(cloth_img.shape[:2])),
+                matched_pairs,
+                clothing_type,
+                deform_params
+            )
+            
+            # 7. 텍스처 합성 및 디테일 추가
+            logger.info("✨ 텍스처 합성...")
+            texture_result = await self.texture_synthesizer.synthesize_fabric_details(
+                warping_result['warped_image'],
+                warping_result.get('strain_map', np.ones(cloth_img.shape[:2])),
+                fabric_props,
+                clothing_type
+            )
+            
+            # 8. 최종 결과 구성 (최적 패턴 정보 추가)
+            processing_time = time.time() - start_time
+            result = self._build_final_result(
+                texture_result, warping_result, simulated_result,
+                processing_time, clothing_type, fabric_type
+            )
+            
+            # 9. 통계 업데이트
+            self._update_performance_stats(processing_time, result['warping_quality'])
+            
+            logger.info(f"✅ 워핑 완료 - {processing_time:.3f}초 (M3 Max: {self.is_m3_max})")
+            return result
+            
+        except Exception as e:
+            error_msg = f"워핑 처리 실패: {e}"
+            logger.error(f"❌ {error_msg}")
+            return self._create_error_result(error_msg)
+    
+    async def _optimize_m3_max_memory(self):
+        """M3 Max 메모리 최적화"""
+        if not self.is_m3_max:
+            return
+        
+        try:
+            import gc
+            gc.collect()
+            
+            if TORCH_AVAILABLE and self.device == 'mps':
+                if hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+                elif hasattr(torch.mps, 'synchronize'):
+                    torch.mps.synchronize()
+                
+            logger.debug("🍎 M3 Max 메모리 최적화 완료")
+            
+        except Exception as e:
+            logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
+    
+    def _prepare_image_data(self, image_data) -> np.ndarray:
+        """이미지 데이터 준비"""
+        if TORCH_AVAILABLE and isinstance(image_data, torch.Tensor):
+            return self._tensor_to_numpy(image_data)
+        elif isinstance(image_data, np.ndarray):
+            return image_data
+        else:
+            # PIL 이미지나 기타 형식
+            try:
+                return np.array(image_data)
+            except:
+                logger.warning("이미지 데이터 변환 실패 - 더미 데이터 생성")
+                return np.ones((256, 256, 3), dtype=np.uint8) * 128
+    
+    def _prepare_mask_data(self, mask_data) -> np.ndarray:
+        """마스크 데이터 준비"""
+        if TORCH_AVAILABLE and isinstance(mask_data, torch.Tensor):
+            return self._tensor_to_numpy(mask_data, is_mask=True)
+        elif isinstance(mask_data, np.ndarray):
+            return mask_data.astype(np.uint8)
+        else:
+            try:
+                return np.array(mask_data, dtype=np.uint8)
+            except:
+                logger.warning("마스크 데이터 변환 실패 - 기본 마스크 생성")
+                return np.ones((256, 256), dtype=np.uint8) * 255
+    
+    def _build_final_result(
+        self,
+        texture_result: Dict[str, Any],
+        warping_result: Dict[str, Any],
+        simulation_result: Dict[str, Any],
+        processing_time: float,
+        clothing_type: str,
+        fabric_type: str
+    ) -> Dict[str, Any]:
+        """최종 결과 구성 (최적 패턴 호환 형식, 기존과 동일하지만 개선)"""
+        
+        # 메인 결과 이미지
+        final_image = texture_result.get('enhanced_image', warping_result['warped_image'])
+        
+        # 텐서로 변환 (Pipeline Manager 호환)
+        if TORCH_AVAILABLE:
+            final_tensor = self._numpy_to_tensor(final_image)
+            mask_tensor = self._numpy_to_tensor(warping_result.get('warped_mask', np.ones(final_image.shape[:2])), is_mask=True)
+        else:
+            final_tensor = None
+            mask_tensor = None
+        
+        # 품질 점수 계산
+        warping_quality = self._calculate_warping_quality(warping_result, texture_result)
+        
+        return {
+            "success": True,
+            "warped_clothing": final_tensor,
+            "warped_mask": mask_tensor,
+            "warped_image_numpy": final_image,
+            "deformation_map": warping_result.get('strain_map'),
+            "warping_quality": warping_quality,
+            "fabric_analysis": {
+                "fabric_type": fabric_type,
+                "stiffness": self.FABRIC_PROPERTIES.get(fabric_type, {}).get('stiffness', 0.4),
+                "deformation_applied": True,
+                "physics_simulated": simulation_result.get('simulation_info', {}).get('physics_enabled', False),
+                "texture_enhanced": 'enhanced_image' in texture_result
+            },
+            "warping_info": {
+                "clothing_type": clothing_type,
+                "warping_method": "physics_based",
+                "processing_time": processing_time,
+                "device": self.device,
+                "device_type": self.device_type,
+                "m3_max_optimized": self.is_m3_max,
+                "memory_gb": self.memory_gb,
+                "features_used": self._get_used_features(),
+                "quality_level": self.optimization_level,
+                "optimal_constructor": True  # 최적 생성자 사용 표시
+            },
+            "performance_info": {
+                "optimization_enabled": self.optimization_enabled,
+                "memory_usage": self._estimate_memory_usage(),
+                "gpu_acceleration": self.device != 'cpu'
+            }
+        }
+    
+    def _calculate_warping_quality(self, warping_result: Dict, texture_result: Dict) -> float:
+        """워핑 품질 점수 계산"""
+        try:
+            quality_factors = []
+            
+            # 1. 변형 일관성 (strain map 기반)
+            if 'strain_map' in warping_result:
+                strain_consistency = 1.0 - np.std(warping_result['strain_map'])
+                quality_factors.append(strain_consistency * 0.3)
+            
+            # 2. 텍스처 품질
+            if 'texture_quality' in texture_result:
+                quality_factors.append(texture_result['texture_quality'] * 0.3)
+            else:
+                quality_factors.append(0.7)  # 기본값
+            
+            # 3. 기하학적 일관성
+            if 'deformation_stats' in warping_result:
+                geo_consistency = min(1.0, warping_result['deformation_stats'].get('uniformity', 0.8))
+                quality_factors.append(geo_consistency * 0.4)
+            else:
+                quality_factors.append(0.8)  # 기본값
+            
+            # M3 Max 보너스 (더 정확한 처리)
+            if self.is_m3_max and self.optimization_enabled:
+                quality_factors = [q * 1.05 for q in quality_factors]
+            
+            return max(0.0, min(1.0, sum(quality_factors)))
+            
+        except Exception as e:
+            logger.warning(f"품질 계산 실패: {e}")
+            return 0.7  # 기본값
+    
+    def _get_used_features(self) -> List[str]:
+        """사용된 기능들 목록 (최적 생성자 추가)"""
+        features = ['basic_warping', 'optimal_constructor']
+        
+        if self.fabric_simulator and self.warping_config['physics_enabled']:
+            features.append('physics_simulation')
+        if SCIPY_AVAILABLE:
+            features.append('advanced_interpolation')
+        if TORCH_AVAILABLE:
+            features.append('neural_processing')
+        if self.texture_synthesizer:
+            features.append('texture_synthesis')
+        if self.is_m3_max:
+            features.append('m3_max_acceleration')
+        if self.device == 'mps':
+            features.append('metal_performance_shaders')
+        
+        return features
+    
+    def _estimate_memory_usage(self) -> Dict[str, float]:
+        """메모리 사용량 추정"""
+        try:
+            import psutil
+            memory_info = {
+                'system_usage_percent': psutil.virtual_memory().percent,
+                'available_gb': psutil.virtual_memory().available / (1024**3)
+            }
+            
+            if TORCH_AVAILABLE:
+                if self.device == 'mps' and hasattr(torch.mps, 'current_allocated_memory'):
+                    memory_info['mps_allocated_gb'] = torch.mps.current_allocated_memory() / (1024**3)
+                elif self.device == 'cuda':
+                    memory_info['gpu_allocated_gb'] = torch.cuda.memory_allocated() / (1024**3)
+            
+            return memory_info
+            
+        except Exception as e:
+            logger.warning(f"메모리 사용량 추정 실패: {e}")
+            return {'estimated_usage_gb': 2.0}
+    
+    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
+        """에러 결과 생성 (최적 생성자 정보 추가)"""
+        return {
+            "success": False,
+            "error": error_message,
+            "warped_clothing": None,
+            "warped_mask": None,
+            "warped_image_numpy": None,
+            "deformation_map": None,
+            "warping_quality": 0.0,
+            "fabric_analysis": {},
+            "warping_info": {
+                "error_details": error_message,
+                "device": self.device,
+                "device_type": self.device_type,
+                "m3_max_optimized": self.is_m3_max,
+                "processing_time": 0.0,
+                "optimal_constructor": True
+            }
+        }
+    
+    def _create_fallback_result(self, reason: str) -> Dict[str, Any]:
+        """폴백 결과 생성 (최소 기능, 최적 생성자 정보 추가)"""
+        logger.warning(f"폴백 모드: {reason}")
+        
+        # 기본 이미지 생성 (더미)
+        dummy_image = np.ones((256, 256, 3), dtype=np.uint8) * 128
+        dummy_mask = np.ones((256, 256), dtype=np.uint8) * 255
+        
+        return {
+            "success": True,
+            "warped_clothing": None,
+            "warped_mask": None,
+            "warped_image_numpy": dummy_image,
+            "deformation_map": dummy_mask,
+            "warping_quality": 0.5,
+            "fabric_analysis": {
+                "fallback_mode": True,
+                "reason": reason
+            },
+            "warping_info": {
+                "warping_method": "fallback",
+                "processing_time": 0.001,
+                "device": self.device,
+                "device_type": self.device_type,
+                "m3_max_optimized": self.is_m3_max,
+                "fallback_reason": reason,
+                "optimal_constructor": True
+            }
+        }
+    
+    # =================================================================
+    # 유틸리티 메서드들 (기존과 동일)
+    # =================================================================
+    
+    def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
+        """PyTorch 텐서를 NumPy 배열로 변환"""
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch가 필요합니다")
+        
+        try:
+            # GPU에서 CPU로 이동
+            if tensor.is_cuda or (hasattr(tensor, 'is_mps') and tensor.is_mps):
+                tensor = tensor.cpu()
+            
+            # 차원 정리
+            if tensor.dim() == 4:
+                tensor = tensor.squeeze(0)  # [1, C, H, W] -> [C, H, W]
+            
+            if is_mask:
+                if tensor.dim() == 3:
+                    tensor = tensor.squeeze(0)  # [1, H, W] -> [H, W]
+                array = tensor.numpy().astype(np.uint8)
+                if array.max() <= 1.0:
+                    array = array * 255
+            else:
+                if tensor.dim() == 3 and tensor.size(0) == 3:
+                    tensor = tensor.permute(1, 2, 0)  # [3, H, W] -> [H, W, 3]
+                
+                array = tensor.numpy()
+                if array.max() <= 1.0:
+                    array = array * 255
+                array = array.astype(np.uint8)
+            
+            return array
+            
+        except Exception as e:
+            logger.error(f"텐서 변환 실패: {e}")
+            raise
+    
+    def _numpy_to_tensor(self, array: np.ndarray, is_mask: bool = False) -> torch.Tensor:
+        """NumPy 배열을 PyTorch 텐서로 변환"""
+        if not TORCH_AVAILABLE:
+            return None
+        
+        try:
+            if is_mask:
+                if len(array.shape) == 2:
+                    array = array[np.newaxis, :]  # [H, W] -> [1, H, W]
+                tensor = torch.from_numpy(array.astype(np.float32) / 255.0)
+                tensor = tensor.unsqueeze(0)  # [1, H, W] -> [1, 1, H, W]
+            else:
+                if len(array.shape) == 3 and array.shape[2] == 3:
+                    array = array.transpose(2, 0, 1)  # [H, W, 3] -> [3, H, W]
+                tensor = torch.from_numpy(array.astype(np.float32) / 255.0)
+                tensor = tensor.unsqueeze(0)  # [3, H, W] -> [1, 3, H, W]
+            
+            return tensor.to(self.device)
+            
+        except Exception as e:
+            logger.warning(f"텐서 변환 실패: {e}")
+            return None
+    
+    def _update_performance_stats(self, processing_time: float, quality_score: float):
+        """성능 통계 업데이트"""
+        try:
+            self.performance_stats['total_processed'] += 1
+            total = self.performance_stats['total_processed']
+            
+            # 평균 처리 시간 업데이트
+            current_avg = self.performance_stats['average_time']
+            self.performance_stats['average_time'] = (current_avg * (total - 1) + processing_time) / total
+            
+            # 평균 품질 업데이트
+            current_quality_avg = self.performance_stats['warping_quality_avg']
+            self.performance_stats['warping_quality_avg'] = (current_quality_avg * (total - 1) + quality_score) / total
+            
+            # 성공률 업데이트 (품질 0.5 이상이면 성공)
+            success_count = sum(1 for _ in range(total) if quality_score > 0.5)
+            self.performance_stats['success_rate'] = success_count / total
+            
+            # 메모리 사용량 업데이트
+            memory_usage = self._estimate_memory_usage()
+            if 'available_gb' in memory_usage:
+                self.performance_stats['memory_usage_gb'] = self.memory_gb - memory_usage['available_gb']
+            
+        except Exception as e:
+            logger.warning(f"통계 업데이트 실패: {e}")
+    
+    # =================================================================
+    # 최적 패턴 호환 메서드들 (기존과 동일하지만 최적 생성자 정보 추가)
+    # =================================================================
+    
+    async def get_step_info(self) -> Dict[str, Any]:
+        """🔍 스텝 정보 반환 (최적 패턴 호환)"""
+        return {
+            "step_name": "ClothWarping",
+            "class_name": self.__class__.__name__,
+            "version": "5.0-optimal",
+            "device": self.device,
+            "device_type": self.device_type,
+            "memory_gb": self.memory_gb,
+            "is_m3_max": self.is_m3_max,
+            "optimization_enabled": self.optimization_enabled,
+            "quality_level": self.quality_level,
+            "initialized": self.is_initialized,
+            "initialization_error": self.initialization_error,
+            "optimal_constructor": True,
+            "capabilities": {
+                "physics_simulation": bool(self.fabric_simulator),
+                "advanced_warping": bool(self.advanced_warper),
+                "texture_synthesis": bool(self.texture_synthesizer),
+                "neural_processing": TORCH_AVAILABLE and self.device != 'cpu',
+                "m3_max_acceleration": self.is_m3_max and self.device == 'mps'
+            },
+            "supported_fabrics": list(self.FABRIC_PROPERTIES.keys()),
+            "supported_clothing_types": list(self.CLOTHING_DEFORMATION_PARAMS.keys()),
+            "performance_stats": self.performance_stats,
+            "quality_settings": {
+                "optimization_level": self.optimization_level,
+                "max_resolution": self._get_optimal_max_resolution(),
+                "quality_level": self._get_optimal_quality_level()
+            },
+            "dependencies": {
+                "torch": TORCH_AVAILABLE,
+                "opencv": CV2_AVAILABLE,
+                "scipy": SCIPY_AVAILABLE,
+                "sklearn": SKLEARN_AVAILABLE,
+                "skimage": SKIMAGE_AVAILABLE
+            },
+            "config": {
+                "warping": self.warping_config,
+                "performance": self.performance_config,
+                "optimization_level": self.optimization_level
+            }
+        }
+    
+    async def cleanup(self):
+        """리소스 정리 (최적 패턴 호환)"""
+        try:
+            logger.info("🧹 옷 워핑 시스템 리소스 정리 시작...")
+            
+            # 컴포넌트들 정리
+            if self.fabric_simulator:
                 await self.fabric_simulator.cleanup()
                 self.fabric_simulator = None
             
@@ -451,6 +902,48 @@ class ClothWarpingStep:
             
         except Exception as e:
             logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
+    
+    # =================================================================
+    # 🔥 새로 추가할 헬퍼 메서드들 (최적 생성자 패턴)
+    # =================================================================
+    
+    def _auto_detect_device(self, preferred_device):
+        """디바이스 자동 감지"""
+        if preferred_device:
+            return preferred_device
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+            else:
+                return 'cpu'
+        except ImportError:
+            return 'cpu'
+
+    def _detect_m3_max(self):
+        """M3 Max 칩 자동 감지"""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+
+    def _merge_step_specific_config(self, kwargs):
+        """스텝별 특화 설정 병합"""
+        system_params = {
+            'device_type', 'memory_gb', 'is_m3_max', 
+            'optimization_enabled', 'quality_level'
+        }
+        for key, value in kwargs.items():
+            if key not in system_params:
+                self.config[key] = value
 
 
 # =================================================================
@@ -1188,503 +1681,4 @@ def create_m3_max_cloth_warping_step(
         is_m3_max=True,
         optimization_enabled=True,
         **kwargs
-    ).warmup()
-            
-        if self.advanced_warper:
-                await self.advanced_warper.warmup()
-            
-        if self.texture_synthesizer:
-                await self.texture_synthesizer.warmup()
-                logger.info("✅ M3 Max 파이프라인 워밍업 완료")
-        except Exception as e:
-                logger.warning(f"M3 Max 워밍업 실패: {e}")
-    
-    async def _validate_system(self):
-        """시스템 검증"""
-        available_features = []
-        
-        if CV2_AVAILABLE:
-            available_features.append('basic_warping')
-        if SCIPY_AVAILABLE:
-            available_features.append('advanced_warping')
-        if TORCH_AVAILABLE:
-            available_features.append('neural_processing')
-        if self.is_m3_max:
-            available_features.append('m3_max_acceleration')
-        
-        if not available_features:
-            raise RuntimeError("사용 가능한 워핑 기능이 없습니다")
-        
-        logger.info(f"✅ 사용 가능한 기능들: {available_features}")
-    
-    # =================================================================
-    # 메인 처리 메서드 - 최적 패턴 (기존과 동일)
-    # =================================================================
-    
-    async def process(
-        self,
-        matching_result: Dict[str, Any],
-        body_measurements: Optional[Dict[str, float]] = None,
-        fabric_type: str = "cotton",
-        **kwargs
-    ) -> Dict[str, Any]:
-        """
-        옷 워핑 처리 - 최적 패턴 (기존과 동일)
-        
-        Args:
-            matching_result: 기하학적 매칭 결과
-            body_measurements: 신체 치수 정보
-            fabric_type: 천 재질 타입
-            **kwargs: 추가 매개변수
-            
-        Returns:
-            Dict: 워핑 결과
-        """
-        if not self.is_initialized:
-            await self.initialize()
-        
-        start_time = time.time()
-        
-        try:
-            logger.info(f"🔄 의류 워핑 시작 - 재질: {fabric_type}")
-            
-            # M3 Max 메모리 최적화
-            if self.is_m3_max:
-                await self._optimize_m3_max_memory()
-            
-            # 1. 매칭 결과에서 필요한 데이터 추출
-            warped_clothing = matching_result.get('warped_clothing')
-            warped_mask = matching_result.get('warped_mask')
-            transform_matrix = matching_result.get('transform_matrix', np.eye(3))
-            matched_pairs = matching_result.get('matched_pairs', [])
-            
-            # 2. 입력 데이터 검증
-            if warped_clothing is None:
-                logger.warning("⚠️ 워핑된 의류 이미지가 없음 - 폴백 모드")
-                return self._create_fallback_result("워핑된 의류 이미지 없음")
-            
-            # 3. 데이터 타입 변환
-            cloth_img = self._prepare_image_data(warped_clothing)
-            cloth_mask = self._prepare_mask_data(warped_mask) if warped_mask is not None else None
-            
-            # 4. 천 특성 설정
-            fabric_props = self.FABRIC_PROPERTIES.get(fabric_type, self.FABRIC_PROPERTIES['default'])
-            clothing_type = kwargs.get('clothing_type', 'shirt')
-            deform_params = self.CLOTHING_DEFORMATION_PARAMS.get(clothing_type, self.CLOTHING_DEFORMATION_PARAMS['default'])
-            
-            # 5. 물리 시뮬레이션
-            logger.info("🧵 천 물리 시뮬레이션...")
-            simulated_result = await self.fabric_simulator.simulate_fabric_physics(
-                cloth_img, cloth_mask, fabric_props, body_measurements
-            )
-            
-            # 6. 고급 워핑 적용
-            logger.info("🔧 고급 워핑 적용...")
-            warping_result = await self.advanced_warper.apply_advanced_warping(
-                simulated_result['fabric_image'],
-                simulated_result.get('deformation_map', np.zeros(cloth_img.shape[:2])),
-                matched_pairs,
-                clothing_type,
-                deform_params
-            )
-            
-            # 7. 텍스처 합성 및 디테일 추가
-            logger.info("✨ 텍스처 합성...")
-            texture_result = await self.texture_synthesizer.synthesize_fabric_details(
-                warping_result['warped_image'],
-                warping_result.get('strain_map', np.ones(cloth_img.shape[:2])),
-                fabric_props,
-                clothing_type
-            )
-            
-            # 8. 최종 결과 구성 (최적 패턴 정보 추가)
-            processing_time = time.time() - start_time
-            result = self._build_final_result(
-                texture_result, warping_result, simulated_result,
-                processing_time, clothing_type, fabric_type
-            )
-            
-            # 9. 통계 업데이트
-            self._update_performance_stats(processing_time, result['warping_quality'])
-            
-            logger.info(f"✅ 워핑 완료 - {processing_time:.3f}초 (M3 Max: {self.is_m3_max})")
-            return result
-            
-        except Exception as e:
-            error_msg = f"워핑 처리 실패: {e}"
-            logger.error(f"❌ {error_msg}")
-            return self._create_error_result(error_msg)
-    
-    async def _optimize_m3_max_memory(self):
-        """M3 Max 메모리 최적화"""
-        if not self.is_m3_max:
-            return
-        
-        try:
-            import gc
-            gc.collect()
-            
-            if TORCH_AVAILABLE and self.device == 'mps':
-                if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
-                elif hasattr(torch.mps, 'synchronize'):
-                    torch.mps.synchronize()
-                
-            logger.debug("🍎 M3 Max 메모리 최적화 완료")
-            
-        except Exception as e:
-            logger.warning(f"M3 Max 메모리 최적화 실패: {e}")
-    
-    def _prepare_image_data(self, image_data) -> np.ndarray:
-        """이미지 데이터 준비"""
-        if TORCH_AVAILABLE and isinstance(image_data, torch.Tensor):
-            return self._tensor_to_numpy(image_data)
-        elif isinstance(image_data, np.ndarray):
-            return image_data
-        else:
-            # PIL 이미지나 기타 형식
-            try:
-                return np.array(image_data)
-            except:
-                logger.warning("이미지 데이터 변환 실패 - 더미 데이터 생성")
-                return np.ones((256, 256, 3), dtype=np.uint8) * 128
-    
-    def _prepare_mask_data(self, mask_data) -> np.ndarray:
-        """마스크 데이터 준비"""
-        if TORCH_AVAILABLE and isinstance(mask_data, torch.Tensor):
-            return self._tensor_to_numpy(mask_data, is_mask=True)
-        elif isinstance(mask_data, np.ndarray):
-            return mask_data.astype(np.uint8)
-        else:
-            try:
-                return np.array(mask_data, dtype=np.uint8)
-            except:
-                logger.warning("마스크 데이터 변환 실패 - 기본 마스크 생성")
-                return np.ones((256, 256), dtype=np.uint8) * 255
-    
-    def _build_final_result(
-        self,
-        texture_result: Dict[str, Any],
-        warping_result: Dict[str, Any],
-        simulation_result: Dict[str, Any],
-        processing_time: float,
-        clothing_type: str,
-        fabric_type: str
-    ) -> Dict[str, Any]:
-        """최종 결과 구성 (최적 패턴 호환 형식, 기존과 동일하지만 개선)"""
-        
-        # 메인 결과 이미지
-        final_image = texture_result.get('enhanced_image', warping_result['warped_image'])
-        
-        # 텐서로 변환 (Pipeline Manager 호환)
-        if TORCH_AVAILABLE:
-            final_tensor = self._numpy_to_tensor(final_image)
-            mask_tensor = self._numpy_to_tensor(warping_result.get('warped_mask', np.ones(final_image.shape[:2])), is_mask=True)
-        else:
-            final_tensor = None
-            mask_tensor = None
-        
-        # 품질 점수 계산
-        warping_quality = self._calculate_warping_quality(warping_result, texture_result)
-        
-        return {
-            "success": True,
-            "warped_clothing": final_tensor,
-            "warped_mask": mask_tensor,
-            "warped_image_numpy": final_image,
-            "deformation_map": warping_result.get('strain_map'),
-            "warping_quality": warping_quality,
-            "fabric_analysis": {
-                "fabric_type": fabric_type,
-                "stiffness": self.FABRIC_PROPERTIES.get(fabric_type, {}).get('stiffness', 0.4),
-                "deformation_applied": True,
-                "physics_simulated": simulation_result.get('simulation_info', {}).get('physics_enabled', False),
-                "texture_enhanced": 'enhanced_image' in texture_result
-            },
-            "warping_info": {
-                "clothing_type": clothing_type,
-                "warping_method": "physics_based",
-                "processing_time": processing_time,
-                "device": self.device,
-                "device_type": self.device_type,
-                "m3_max_optimized": self.is_m3_max,
-                "memory_gb": self.memory_gb,
-                "features_used": self._get_used_features(),
-                "quality_level": self.optimization_level,
-                "optimal_constructor": True  # 최적 생성자 사용 표시
-            },
-            "performance_info": {
-                "optimization_enabled": self.optimization_enabled,
-                "memory_usage": self._estimate_memory_usage(),
-                "gpu_acceleration": self.device != 'cpu'
-            }
-        }
-    
-    def _calculate_warping_quality(self, warping_result: Dict, texture_result: Dict) -> float:
-        """워핑 품질 점수 계산"""
-        try:
-            quality_factors = []
-            
-            # 1. 변형 일관성 (strain map 기반)
-            if 'strain_map' in warping_result:
-                strain_consistency = 1.0 - np.std(warping_result['strain_map'])
-                quality_factors.append(strain_consistency * 0.3)
-            
-            # 2. 텍스처 품질
-            if 'texture_quality' in texture_result:
-                quality_factors.append(texture_result['texture_quality'] * 0.3)
-            else:
-                quality_factors.append(0.7)  # 기본값
-            
-            # 3. 기하학적 일관성
-            if 'deformation_stats' in warping_result:
-                geo_consistency = min(1.0, warping_result['deformation_stats'].get('uniformity', 0.8))
-                quality_factors.append(geo_consistency * 0.4)
-            else:
-                quality_factors.append(0.8)  # 기본값
-            
-            # M3 Max 보너스 (더 정확한 처리)
-            if self.is_m3_max and self.optimization_enabled:
-                quality_factors = [q * 1.05 for q in quality_factors]
-            
-            return max(0.0, min(1.0, sum(quality_factors)))
-            
-        except Exception as e:
-            logger.warning(f"품질 계산 실패: {e}")
-            return 0.7  # 기본값
-    
-    def _get_used_features(self) -> List[str]:
-        """사용된 기능들 목록 (최적 생성자 추가)"""
-        features = ['basic_warping', 'optimal_constructor']
-        
-        if self.fabric_simulator and self.warping_config['physics_enabled']:
-            features.append('physics_simulation')
-        if SCIPY_AVAILABLE:
-            features.append('advanced_interpolation')
-        if TORCH_AVAILABLE:
-            features.append('neural_processing')
-        if self.texture_synthesizer:
-            features.append('texture_synthesis')
-        if self.is_m3_max:
-            features.append('m3_max_acceleration')
-        if self.device == 'mps':
-            features.append('metal_performance_shaders')
-        
-        return features
-    
-    def _estimate_memory_usage(self) -> Dict[str, float]:
-        """메모리 사용량 추정"""
-        try:
-            import psutil
-            memory_info = {
-                'system_usage_percent': psutil.virtual_memory().percent,
-                'available_gb': psutil.virtual_memory().available / (1024**3)
-            }
-            
-            if TORCH_AVAILABLE:
-                if self.device == 'mps' and hasattr(torch.mps, 'current_allocated_memory'):
-                    memory_info['mps_allocated_gb'] = torch.mps.current_allocated_memory() / (1024**3)
-                elif self.device == 'cuda':
-                    memory_info['gpu_allocated_gb'] = torch.cuda.memory_allocated() / (1024**3)
-            
-            return memory_info
-            
-        except Exception as e:
-            logger.warning(f"메모리 사용량 추정 실패: {e}")
-            return {'estimated_usage_gb': 2.0}
-    
-    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
-        """에러 결과 생성 (최적 생성자 정보 추가)"""
-        return {
-            "success": False,
-            "error": error_message,
-            "warped_clothing": None,
-            "warped_mask": None,
-            "warped_image_numpy": None,
-            "deformation_map": None,
-            "warping_quality": 0.0,
-            "fabric_analysis": {},
-            "warping_info": {
-                "error_details": error_message,
-                "device": self.device,
-                "device_type": self.device_type,
-                "m3_max_optimized": self.is_m3_max,
-                "processing_time": 0.0,
-                "optimal_constructor": True
-            }
-        }
-    
-    def _create_fallback_result(self, reason: str) -> Dict[str, Any]:
-        """폴백 결과 생성 (최소 기능, 최적 생성자 정보 추가)"""
-        logger.warning(f"폴백 모드: {reason}")
-        
-        # 기본 이미지 생성 (더미)
-        dummy_image = np.ones((256, 256, 3), dtype=np.uint8) * 128
-        dummy_mask = np.ones((256, 256), dtype=np.uint8) * 255
-        
-        return {
-            "success": True,
-            "warped_clothing": None,
-            "warped_mask": None,
-            "warped_image_numpy": dummy_image,
-            "deformation_map": dummy_mask,
-            "warping_quality": 0.5,
-            "fabric_analysis": {
-                "fallback_mode": True,
-                "reason": reason
-            },
-            "warping_info": {
-                "warping_method": "fallback",
-                "processing_time": 0.001,
-                "device": self.device,
-                "device_type": self.device_type,
-                "m3_max_optimized": self.is_m3_max,
-                "fallback_reason": reason,
-                "optimal_constructor": True
-            }
-        }
-    
-    # =================================================================
-    # 유틸리티 메서드들 (기존과 동일)
-    # =================================================================
-    
-    def _tensor_to_numpy(self, tensor: torch.Tensor, is_mask: bool = False) -> np.ndarray:
-        """PyTorch 텐서를 NumPy 배열로 변환"""
-        if not TORCH_AVAILABLE:
-            raise RuntimeError("PyTorch가 필요합니다")
-        
-        try:
-            # GPU에서 CPU로 이동
-            if tensor.is_cuda or (hasattr(tensor, 'is_mps') and tensor.is_mps):
-                tensor = tensor.cpu()
-            
-            # 차원 정리
-            if tensor.dim() == 4:
-                tensor = tensor.squeeze(0)  # [1, C, H, W] -> [C, H, W]
-            
-            if is_mask:
-                if tensor.dim() == 3:
-                    tensor = tensor.squeeze(0)  # [1, H, W] -> [H, W]
-                array = tensor.numpy().astype(np.uint8)
-                if array.max() <= 1.0:
-                    array = array * 255
-            else:
-                if tensor.dim() == 3 and tensor.size(0) == 3:
-                    tensor = tensor.permute(1, 2, 0)  # [3, H, W] -> [H, W, 3]
-                
-                array = tensor.numpy()
-                if array.max() <= 1.0:
-                    array = array * 255
-                array = array.astype(np.uint8)
-            
-            return array
-            
-        except Exception as e:
-            logger.error(f"텐서 변환 실패: {e}")
-            raise
-    
-    def _numpy_to_tensor(self, array: np.ndarray, is_mask: bool = False) -> torch.Tensor:
-        """NumPy 배열을 PyTorch 텐서로 변환"""
-        if not TORCH_AVAILABLE:
-            return None
-        
-        try:
-            if is_mask:
-                if len(array.shape) == 2:
-                    array = array[np.newaxis, :]  # [H, W] -> [1, H, W]
-                tensor = torch.from_numpy(array.astype(np.float32) / 255.0)
-                tensor = tensor.unsqueeze(0)  # [1, H, W] -> [1, 1, H, W]
-            else:
-                if len(array.shape) == 3 and array.shape[2] == 3:
-                    array = array.transpose(2, 0, 1)  # [H, W, 3] -> [3, H, W]
-                tensor = torch.from_numpy(array.astype(np.float32) / 255.0)
-                tensor = tensor.unsqueeze(0)  # [3, H, W] -> [1, 3, H, W]
-            
-            return tensor.to(self.device)
-            
-        except Exception as e:
-            logger.warning(f"텐서 변환 실패: {e}")
-            return None
-    
-    def _update_performance_stats(self, processing_time: float, quality_score: float):
-        """성능 통계 업데이트"""
-        try:
-            self.performance_stats['total_processed'] += 1
-            total = self.performance_stats['total_processed']
-            
-            # 평균 처리 시간 업데이트
-            current_avg = self.performance_stats['average_time']
-            self.performance_stats['average_time'] = (current_avg * (total - 1) + processing_time) / total
-            
-            # 평균 품질 업데이트
-            current_quality_avg = self.performance_stats['warping_quality_avg']
-            self.performance_stats['warping_quality_avg'] = (current_quality_avg * (total - 1) + quality_score) / total
-            
-            # 성공률 업데이트 (품질 0.5 이상이면 성공)
-            success_count = sum(1 for _ in range(total) if quality_score > 0.5)
-            self.performance_stats['success_rate'] = success_count / total
-            
-            # 메모리 사용량 업데이트
-            memory_usage = self._estimate_memory_usage()
-            if 'available_gb' in memory_usage:
-                self.performance_stats['memory_usage_gb'] = self.memory_gb - memory_usage['available_gb']
-            
-        except Exception as e:
-            logger.warning(f"통계 업데이트 실패: {e}")
-    
-    # =================================================================
-    # 최적 패턴 호환 메서드들 (기존과 동일하지만 최적 생성자 정보 추가)
-    # =================================================================
-    
-    async def get_step_info(self) -> Dict[str, Any]:
-        """🔍 스텝 정보 반환 (최적 패턴 호환)"""
-        return {
-            "step_name": "ClothWarping",
-            "class_name": self.__class__.__name__,
-            "version": "5.0-optimal",
-            "device": self.device,
-            "device_type": self.device_type,
-            "memory_gb": self.memory_gb,
-            "is_m3_max": self.is_m3_max,
-            "optimization_enabled": self.optimization_enabled,
-            "quality_level": self.quality_level,
-            "initialized": self.is_initialized,
-            "initialization_error": self.initialization_error,
-            "optimal_constructor": True,
-            "capabilities": {
-                "physics_simulation": bool(self.fabric_simulator),
-                "advanced_warping": bool(self.advanced_warper),
-                "texture_synthesis": bool(self.texture_synthesizer),
-                "neural_processing": TORCH_AVAILABLE and self.device != 'cpu',
-                "m3_max_acceleration": self.is_m3_max and self.device == 'mps'
-            },
-            "supported_fabrics": list(self.FABRIC_PROPERTIES.keys()),
-            "supported_clothing_types": list(self.CLOTHING_DEFORMATION_PARAMS.keys()),
-            "performance_stats": self.performance_stats,
-            "quality_settings": {
-                "optimization_level": self.optimization_level,
-                "max_resolution": self._get_optimal_max_resolution(),
-                "quality_level": self._get_optimal_quality_level()
-            },
-            "dependencies": {
-                "torch": TORCH_AVAILABLE,
-                "opencv": CV2_AVAILABLE,
-                "scipy": SCIPY_AVAILABLE,
-                "sklearn": SKLEARN_AVAILABLE,
-                "skimage": SKIMAGE_AVAILABLE
-            },
-            "config": {
-                "warping": self.warping_config,
-                "performance": self.performance_config,
-                "optimization_level": self.optimization_level
-            }
-        }
-    
-    async def cleanup(self):
-        """리소스 정리 (최적 패턴 호환)"""
-        try:
-            logger.info("🧹 옷 워핑 시스템 리소스 정리 시작...")
-            
-            # 컴포넌트들 정리
-            if self.fabric_simulator:
-                await self.fabric_simulator
+    )

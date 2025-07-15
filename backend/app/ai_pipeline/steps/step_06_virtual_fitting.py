@@ -83,17 +83,17 @@ class VirtualFittingStep:
     }
     
     def __init__(
-        self, 
-        device: Optional[str] = None,  # ✅ 통일된 생성자 패턴
+        self,
+        device: Optional[str] = None,  # 🔥 최적 패턴: None으로 자동 감지
         config: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs  # 🚀 확장성: 무제한 추가 파라미터
     ):
         """
-        🎯 최적 생성자 - 가상 피팅 특화
-        
+        ✅ 최적 생성자 - 모든 장점 결합
+
         Args:
             device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 설정 딕셔너리 (선택적)
+            config: 스텝별 설정 딕셔너리
             **kwargs: 확장 파라미터들
                 - device_type: str = "auto"
                 - memory_gb: float = 16.0  
@@ -101,67 +101,39 @@ class VirtualFittingStep:
                 - optimization_enabled: bool = True
                 - quality_level: str = "balanced"
                 - optimization_level: str = "speed"
+                - physics_enabled: bool = True
+                - deformation_strength: float = 0.7
+                - enable_wrinkles: bool = True
+                - enable_fabric_physics: bool = True
+                - adaptive_warping: bool = True
                 - 기타 스텝별 특화 파라미터들...
         """
-        # 💡 지능적 디바이스 자동 감지
+        # 1. 💡 지능적 디바이스 자동 감지
         self.device = self._auto_detect_device(device)
 
-        # 📋 기본 설정
+        # 2. 📋 기본 설정
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
 
-        # 🔧 표준 시스템 파라미터 추출
+        # 3. 🔧 표준 시스템 파라미터 추출 (일관성)
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
 
-        # ⚙️ 스텝별 특화 파라미터를 config에 병합
+        # 4. ⚙️ 스텝별 특화 파라미터를 config에 병합
         self._merge_step_specific_config(kwargs)
 
-        # ✅ 상태 초기화
+        # 5. ✅ 상태 초기화
         self.is_initialized = False
         self.initialization_error = None
-        
-        # 스텝별 특화 설정
-        self.warping_config = self.config.get('warping', {
-            'physics_enabled': kwargs.get('physics_enabled', True),
-            'deformation_strength': kwargs.get('deformation_strength', 0.7),
-            'quality_level': self.quality_level,
-            'enable_wrinkles': kwargs.get('enable_wrinkles', True),
-            'enable_fabric_physics': kwargs.get('enable_fabric_physics', True),
-            'adaptive_warping': kwargs.get('adaptive_warping', True)
-        })
-        
-        # 성능 설정
-        self.performance_config = self.config.get('performance', {
-            'use_mps': self.device == 'mps',
-            'memory_efficient': True,
-            'max_resolution': self._get_max_resolution(),
-            'enable_caching': True
-        })
-        
-        # 최적화 수준 설정
-        self.optimization_level = kwargs.get('optimization_level', 'speed')  # speed, balanced, quality
-        
-        # 핵심 컴포넌트들
-        self.fabric_simulator = None
-        self.advanced_warper = None
-        self.texture_synthesizer = None
-        
-        # 성능 통계
-        self.performance_stats = {
-            'total_processed': 0,
-            'average_time': 0.0,
-            'success_rate': 0.0,
-            'warping_quality_avg': 0.0
-        }
-        
-        logger.info(f"🎯 VirtualFittingStep 초기화 - 디바이스: {self.device}")
-        if self.is_m3_max:
-            logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {self.memory_gb}GB")
+
+        # 6. 🎯 기존 클래스별 고유 초기화 로직 실행
+        self._initialize_step_specific()
+
+        self.logger.info(f"🎯 {self.step_name} 초기화 - 디바이스: {self.device}")
     
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""
@@ -186,6 +158,7 @@ class VirtualFittingStep:
             import subprocess
 
             if platform.system() == 'Darwin':  # macOS
+                # M3 Max 감지 로직
                 result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
                                       capture_output=True, text=True)
                 return 'M3' in result.stdout
@@ -195,6 +168,7 @@ class VirtualFittingStep:
 
     def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
         """⚙️ 스텝별 특화 설정 병합"""
+        # 시스템 파라미터 제외하고 모든 kwargs를 config에 병합
         system_params = {
             'device_type', 'memory_gb', 'is_m3_max', 
             'optimization_enabled', 'quality_level'
@@ -203,6 +177,55 @@ class VirtualFittingStep:
         for key, value in kwargs.items():
             if key not in system_params:
                 self.config[key] = value
+
+    def _initialize_step_specific(self):
+        """🎯 각 클래스별 고유 초기화 - 기존 로직 완전 유지"""
+        # 가상 피팅 특화 설정
+        self.warping_config = self.config.get('warping', {
+            'physics_enabled': self.config.get('physics_enabled', True),
+            'deformation_strength': self.config.get('deformation_strength', 0.7),
+            'quality_level': self.quality_level,
+            'enable_wrinkles': self.config.get('enable_wrinkles', True),
+            'enable_fabric_physics': self.config.get('enable_fabric_physics', True),
+            'adaptive_warping': self.config.get('adaptive_warping', True)
+        })
+        
+        # 성능 설정
+        self.performance_config = self.config.get('performance', {
+            'use_mps': self.device == 'mps',
+            'memory_efficient': True,
+            'max_resolution': self._get_max_resolution(),
+            'enable_caching': True
+        })
+        
+        # 최적화 수준 설정
+        self.optimization_level = self.config.get('optimization_level', 'speed')  # speed, balanced, quality
+        
+        # 핵심 컴포넌트들
+        self.fabric_simulator = None
+        self.advanced_warper = None
+        self.texture_synthesizer = None
+        
+        # 성능 통계
+        self.performance_stats = {
+            'total_processed': 0,
+            'average_time': 0.0,
+            'success_rate': 0.0,
+            'warping_quality_avg': 0.0
+        }
+        
+        # M3 Max 추가 최적화
+        if self.is_m3_max:
+            self._apply_m3_max_specific_config()
+    
+    def _apply_m3_max_specific_config(self):
+        """M3 Max 전용 최적화 설정"""
+        self.performance_config.update({
+            'mps_optimization': True,
+            'memory_fraction': 0.8,
+            'use_unified_memory': True
+        })
+        self.logger.info(f"🍎 M3 Max 최적화 활성화 - 메모리: {self.memory_gb}GB")
     
     def _get_max_resolution(self) -> int:
         """최대 해상도 결정"""
@@ -217,8 +240,10 @@ class VirtualFittingStep:
     
     async def initialize(self) -> bool:
         """
-        워핑 시스템 초기화
-        최적 패턴 표준 초기화 메서드
+        Step 초기화
+        
+        Returns:
+            bool: 초기화 성공 여부
         """
         try:
             logger.info("🔄 가상 피팅 시스템 초기화 시작...")
@@ -303,27 +328,33 @@ class VirtualFittingStep:
         
         logger.info(f"✅ 사용 가능한 기능들: {available_features}")
     
-    # =================================================================
-    # 메인 처리 메서드 - 최적 패턴 호환 인터페이스
-    # =================================================================
-    
     async def process(
         self,
         input_data: Any,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        가상 피팅 처리 - 최적 패턴 호환 인터페이스
+        메인 처리 로직
         
         Args:
-            input_data: 기하학적 매칭 결과 또는 Dict 형태의 매칭 결과
-            **kwargs: 추가 매개변수
+            input_data: 입력 데이터 (각 Step마다 다를 수 있음)
+            **kwargs: 추가 파라미터
                 - body_measurements: Optional[Dict[str, float]] = None
                 - fabric_type: str = "cotton"
                 - clothing_type: str = "shirt"
+                - cloth_image: Optional[np.ndarray] = None
                 
         Returns:
-            Dict: 가상 피팅 결과
+            Dict[str, Any]: 처리 결과
+                - success: bool (필수)
+                - fitted_image: Optional[torch.Tensor]
+                - fitted_image_numpy: np.ndarray
+                - fitted_mask: Optional[torch.Tensor]
+                - deformation_map: Optional[np.ndarray]
+                - warping_quality: float
+                - fabric_analysis: Dict
+                - fitting_info: Dict
+                - 기타 Step별 결과 데이터
         """
         if not self.is_initialized:
             await self.initialize()
@@ -342,14 +373,15 @@ class VirtualFittingStep:
             body_measurements = kwargs.get('body_measurements', None)
             fabric_type = kwargs.get('fabric_type', 'cotton')
             clothing_type = kwargs.get('clothing_type', 'shirt')
+            cloth_image = kwargs.get('cloth_image', None)
             
             logger.info(f"🔄 가상 피팅 시작 - 재질: {fabric_type}, 타입: {clothing_type}")
             
             # 1. 매칭 결과에서 필요한 데이터 추출
-            warped_clothing = matching_result.get('warped_clothing')
-            warped_mask = matching_result.get('warped_mask')
-            transform_matrix = matching_result.get('transform_matrix', np.eye(3))
-            matched_pairs = matching_result.get('matched_pairs', [])
+            warped_clothing = matching_result.get('warped_clothing') if isinstance(matching_result, dict) else cloth_image
+            warped_mask = matching_result.get('warped_mask') if isinstance(matching_result, dict) else None
+            transform_matrix = matching_result.get('transform_matrix', np.eye(3)) if isinstance(matching_result, dict) else np.eye(3)
+            matched_pairs = matching_result.get('matched_pairs', []) if isinstance(matching_result, dict) else []
             
             # 2. 입력 데이터 검증
             if warped_clothing is None:
@@ -405,7 +437,12 @@ class VirtualFittingStep:
         except Exception as e:
             error_msg = f"가상 피팅 처리 실패: {e}"
             logger.error(f"❌ {error_msg}")
-            return self._create_error_result(error_msg)
+            return {
+                "success": False,
+                "step_name": self.__class__.__name__,
+                "error": error_msg,
+                "processing_time": time.time() - start_time
+            }
     
     def _prepare_image_data(self, image_data) -> np.ndarray:
         """이미지 데이터 준비"""
@@ -461,6 +498,7 @@ class VirtualFittingStep:
         
         return {
             "success": True,
+            "step_name": self.__class__.__name__,
             "fitted_image": final_tensor,
             "fitted_mask": mask_tensor,
             "fitted_image_numpy": final_image,
@@ -543,27 +581,6 @@ class VirtualFittingStep:
         
         return features
     
-    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
-        """에러 결과 생성"""
-        return {
-            "success": False,
-            "error": error_message,
-            "fitted_image": None,
-            "fitted_mask": None,
-            "fitted_image_numpy": None,
-            "deformation_map": None,
-            "warping_quality": 0.0,
-            "fabric_analysis": {},
-            "fitting_info": {
-                "error_details": error_message,
-                "device": self.device,
-                "device_type": self.device_type,
-                "m3_max_optimized": self.is_m3_max,
-                "processing_time": 0.0,
-                "optimal_constructor": True
-            }
-        }
-    
     def _create_fallback_result(self, reason: str) -> Dict[str, Any]:
         """폴백 결과 생성 (최소 기능)"""
         logger.warning(f"폴백 모드: {reason}")
@@ -574,6 +591,7 @@ class VirtualFittingStep:
         
         return {
             "success": True,
+            "step_name": self.__class__.__name__,
             "fitted_image": None,
             "fitted_mask": None,
             "fitted_image_numpy": dummy_image,
@@ -681,11 +699,51 @@ class VirtualFittingStep:
     # 최적 패턴 호환 메서드들
     # =================================================================
     
+    def cleanup(self):
+        """리소스 정리 (선택적)"""
+        try:
+            logger.info("🧹 가상 피팅 시스템 리소스 정리 시작...")
+            
+            # 컴포넌트들 정리
+            if self.fabric_simulator:
+                if hasattr(self.fabric_simulator, 'cleanup'):
+                    self.fabric_simulator.cleanup()
+                self.fabric_simulator = None
+            
+            if self.advanced_warper:
+                if hasattr(self.advanced_warper, 'cleanup'):
+                    self.advanced_warper.cleanup()
+                del self.advanced_warper
+                self.advanced_warper = None
+            
+            if self.texture_synthesizer:
+                if hasattr(self.texture_synthesizer, 'cleanup'):
+                    self.texture_synthesizer.cleanup()
+                del self.texture_synthesizer
+                self.texture_synthesizer = None
+            
+            # GPU 메모리 정리
+            if TORCH_AVAILABLE:
+                if self.device == 'mps':
+                    if hasattr(torch.backends.mps, 'empty_cache'):
+                        torch.backends.mps.empty_cache()
+                elif self.device == 'cuda':
+                    torch.cuda.empty_cache()
+            
+            # 시스템 메모리 정리
+            import gc
+            gc.collect()
+            
+            self.is_initialized = False
+            logger.info("✅ 가상 피팅 시스템 리소스 정리 완료")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
+
     async def get_step_info(self) -> Dict[str, Any]:
-        """🔍 스텝 정보 반환 (최적 패턴 호환)"""
+        """Step 정보 반환 (선택적)"""
         return {
-            "step_name": "VirtualFitting",
-            "class_name": self.__class__.__name__,
+            "step_name": self.__class__.__name__,
             "version": "6.0-optimal",
             "device": self.device,
             "device_type": self.device_type,
@@ -713,55 +771,8 @@ class VirtualFittingStep:
                 "scipy": SCIPY_AVAILABLE,
                 "sklearn": SKLEARN_AVAILABLE,
                 "skimage": SKIMAGE_AVAILABLE
-            },
-            "config": {
-                "warping": self.warping_config,
-                "performance": self.performance_config,
-                "optimization_level": self.optimization_level
             }
         }
-    
-    async def cleanup(self):
-        """리소스 정리 (최적 패턴 호환)"""
-        try:
-            logger.info("🧹 가상 피팅 시스템 리소스 정리 시작...")
-            
-            # 컴포넌트들 정리
-            if self.fabric_simulator:
-                await self.fabric_simulator.cleanup()
-                self.fabric_simulator = None
-            
-            if self.advanced_warper:
-                if hasattr(self.advanced_warper, 'cleanup'):
-                    await self.advanced_warper.cleanup()
-                del self.advanced_warper
-                self.advanced_warper = None
-            
-            if self.texture_synthesizer:
-                if hasattr(self.texture_synthesizer, 'cleanup'):
-                    await self.texture_synthesizer.cleanup()
-                del self.texture_synthesizer
-                self.texture_synthesizer = None
-            
-            # GPU 메모리 정리
-            if TORCH_AVAILABLE:
-                if self.device == 'mps':
-                    if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
-                    elif hasattr(torch.mps, 'synchronize'):
-                        torch.mps.synchronize()
-                elif self.device == 'cuda':
-                    torch.cuda.empty_cache()
-            
-            # 시스템 메모리 정리
-            import gc
-            gc.collect()
-            
-            self.is_initialized = False
-            logger.info("✅ 가상 피팅 시스템 리소스 정리 완료")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ 리소스 정리 중 오류: {e}")
 
 
 # =================================================================
@@ -860,7 +871,7 @@ class FabricSimulator:
         
         return deformation_strength.astype(np.float32)
     
-    async def cleanup(self):
+    def cleanup(self):
         """리소스 정리"""
         pass
 
@@ -1019,7 +1030,7 @@ class AdvancedClothingWarper:
         
         return strain_map.astype(np.float32)
     
-    async def cleanup(self):
+    def cleanup(self):
         """리소스 정리"""
         pass
 
@@ -1133,7 +1144,7 @@ class TextureSynthesizer:
             logger.warning(f"주름 효과 추가 실패: {e}")
             return image
     
-    async def cleanup(self):
+    def cleanup(self):
         """리소스 정리"""
         pass
 

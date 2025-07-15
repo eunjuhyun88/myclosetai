@@ -1,6 +1,8 @@
+# app/api/websocket_routes.py
 """
 MyCloset AI Backend - 완전 안전한 WebSocket 라우터
 🛡️ 순환참조 완전 제거 + 에러 구조 완전 해결
+✅ 모든 누락된 함수 추가 + Import 에러 해결
 """
 
 import asyncio
@@ -15,7 +17,14 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from enum import Enum
 
-import psutil
+# psutil 안전한 import
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    psutil = None
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse
 
@@ -110,6 +119,43 @@ def get_gpu_info_safe() -> Dict[str, Any]:
             
     except Exception as e:
         logger.error(f"❌ GPU 정보 수집 실패: {e}")
+        return {"available": False, "error": str(e)}
+
+def get_cpu_info_safe() -> Dict[str, Any]:
+    """CPU 정보 안전한 수집"""
+    try:
+        if not PSUTIL_AVAILABLE:
+            return {"available": False, "error": "psutil not available"}
+        
+        return {
+            "available": True,
+            "usage_percent": psutil.cpu_percent(interval=1),
+            "core_count": psutil.cpu_count(),
+            "core_count_logical": psutil.cpu_count(logical=True)
+        }
+    except Exception as e:
+        logger.error(f"❌ CPU 정보 수집 실패: {e}")
+        return {"available": False, "error": str(e)}
+
+def get_memory_info_safe() -> Dict[str, Any]:
+    """메모리 정보 안전한 수집"""
+    try:
+        if not PSUTIL_AVAILABLE:
+            return {"available": False, "error": "psutil not available"}
+        
+        memory = psutil.virtual_memory()
+        return {
+            "available": True,
+            "total": memory.total,
+            "available_bytes": memory.available,
+            "used": memory.used,
+            "percent": memory.percent,
+            "total_gb": memory.total / (1024**3),
+            "available_gb": memory.available / (1024**3),
+            "used_gb": memory.used / (1024**3)
+        }
+    except Exception as e:
+        logger.error(f"❌ 메모리 정보 수집 실패: {e}")
         return {"available": False, "error": str(e)}
 
 # ========================
@@ -750,21 +796,9 @@ async def handle_unknown_message_safe(message_type: str, client_id: str):
 async def get_comprehensive_system_info_safe() -> Dict[str, Any]:
     """완전 안전한 시스템 정보 수집"""
     try:
-        # 기본 시스템 정보
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
-        
         system_info = {
-            "cpu": {
-                "usage_percent": cpu_percent,
-                "core_count": psutil.cpu_count()
-            },
-            "memory": {
-                "total": memory.total,
-                "available": memory.available,
-                "used": memory.used,
-                "percent": memory.percent
-            },
+            "cpu": get_cpu_info_safe(),
+            "memory": get_memory_info_safe(),
             "gpu": get_gpu_info_safe(),
             "connections": manager.get_connection_stats(),
             "timestamp": time.time()
@@ -772,33 +806,31 @@ async def get_comprehensive_system_info_safe() -> Dict[str, Any]:
         
         # 안전한 추가 정보 수집
         try:
-            # CPU 주파수 (선택적)
-            freq = psutil.cpu_freq()
-            if freq:
-                system_info["cpu"]["frequency"] = freq._asdict()
+            if PSUTIL_AVAILABLE:
+                # 디스크 정보 (선택적)
+                disk = psutil.disk_usage('/')
+                system_info["disk"] = {
+                    "total": disk.total,
+                    "used": disk.used,
+                    "free": disk.free,
+                    "percent": (disk.used / disk.total) * 100,
+                    "total_gb": disk.total / (1024**3),
+                    "used_gb": disk.used / (1024**3),
+                    "free_gb": disk.free / (1024**3)
+                }
         except:
             pass
         
         try:
-            # 디스크 정보 (선택적)
-            disk = psutil.disk_usage('/')
-            system_info["disk"] = {
-                "total": disk.total,
-                "used": disk.used,
-                "free": disk.free,
-                "percent": (disk.used / disk.total) * 100
-            }
-        except:
-            pass
-        
-        try:
-            # 프로세스 정보 (선택적)
-            process = psutil.Process()
-            system_info["process"] = {
-                "cpu_percent": process.cpu_percent(),
-                "memory_percent": process.memory_percent(),
-                "num_threads": process.num_threads()
-            }
+            if PSUTIL_AVAILABLE:
+                # 프로세스 정보 (선택적)
+                process = psutil.Process()
+                system_info["process"] = {
+                    "cpu_percent": process.cpu_percent(),
+                    "memory_percent": process.memory_percent(),
+                    "num_threads": process.num_threads(),
+                    "pid": process.pid
+                }
         except:
             pass
         
@@ -1077,7 +1109,7 @@ async def websocket_debug_safe():
         
         function createConnection(type) {
             try {
-                const ws = new WebSocket(`ws://localhost:8000/api/ws/${type}`);
+                const ws = new WebSocket(`ws://localhost:8001/api/ws/${type}`);
                 
                 ws.onopen = () => {
                     updateStatus(type, true);
@@ -1159,6 +1191,54 @@ async def websocket_debug_safe():
     """)
 
 # ========================
+# 🔥 핵심: 누락된 함수들 모두 추가
+# ========================
+
+async def start_background_tasks():
+    """백그라운드 태스크 시작 - main.py에서 호출"""
+    try:
+        await manager.start()
+        logger.info("🚀 WebSocket 백그라운드 태스크 시작")
+    except Exception as e:
+        logger.error(f"❌ 백그라운드 태스크 시작 실패: {e}")
+
+async def stop_background_tasks():
+    """백그라운드 태스크 중지"""
+    try:
+        await manager.stop()
+        logger.info("🛑 WebSocket 백그라운드 태스크 중지")
+    except Exception as e:
+        logger.error(f"❌ 백그라운드 태스크 중지 실패: {e}")
+
+def cleanup_websocket_resources():
+    """WebSocket 리소스 정리 - 동기 함수"""
+    try:
+        # 동기적으로 실행할 수 있는 정리 작업만
+        logger.info("🧹 WebSocket 리소스 정리")
+        
+        # 통계 초기화
+        manager._stats = {
+            "total_connections": 0,
+            "current_connections": 0,
+            "total_messages": 0,
+            "errors": 0,
+            "reconnections": 0,
+            "start_time": time.time()
+        }
+        
+        logger.info("✅ WebSocket 리소스 정리 완료")
+    except Exception as e:
+        logger.error(f"❌ 리소스 정리 실패: {e}")
+
+def get_websocket_stats() -> Dict[str, Any]:
+    """WebSocket 통계 조회"""
+    return manager.get_connection_stats()
+
+def get_websocket_manager():
+    """WebSocket 매니저 인스턴스 반환"""
+    return manager
+
+# ========================
 # 안전한 초기화 및 정리
 # ========================
 
@@ -1180,7 +1260,7 @@ async def stop_safe_websocket_system():
         logger.error(f"❌ WebSocket 시스템 중지 실패: {e}")
 
 # ========================
-# 모듈 exports (안전)
+# 모듈 exports (안전 + 완전)
 # ========================
 
 __all__ = [
@@ -1189,7 +1269,16 @@ __all__ = [
     'create_safe_pipeline_callbacks',
     'start_safe_websocket_system',
     'stop_safe_websocket_system',
+    'start_background_tasks',  # 🔥 추가
+    'stop_background_tasks',   # 🔥 추가
+    'cleanup_websocket_resources',  # 🔥 추가
+    'get_websocket_stats',     # 🔥 추가
+    'get_websocket_manager',   # 🔥 추가
     'MessageType',
     'PipelineStatus',
-    'WebSocketState'
+    'WebSocketState',
+    'SafeConnectionManager'
 ]
+
+# 모듈 로드 확인
+logger.info("✅ WebSocket 라우터 모듈 로드 완료 - 모든 함수 포함")
