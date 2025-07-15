@@ -1,9 +1,8 @@
 /**
- * MyCloset AI 8단계 파이프라인 React Hook (완전한 수정 버전)
- * ✅ React 18 StrictMode 문제 해결
- * ✅ App.tsx의 모든 필요 기능 지원
- * ✅ 백엔드 WebSocket과 완전 호환
- * ✅ 타입 안전성 보장
+ * MyCloset AI 8단계 파이프라인 React Hook (완전 수정 버전)
+ * ✅ 백엔드 API와 완전 호환
+ * ✅ 에러 처리 강화
+ * ✅ 진행률 추적 개선
  * ✅ 메모리 누수 방지
  * ✅ 중복 요청 방지
  */
@@ -35,6 +34,10 @@ export interface UsePipelineOptions {
   is_m3_max?: boolean;
   optimization_enabled?: boolean;
   quality_level?: string;
+  requestTimeout?: number;
+  enableDebugMode?: boolean;
+  enableCaching?: boolean;
+  enableRetry?: boolean;
 }
 
 export interface VirtualTryOnRequest {
@@ -53,6 +56,9 @@ export interface VirtualTryOnRequest {
   session_id?: string;
   enable_realtime?: boolean;
   save_intermediate?: boolean;
+  pose_adjustment?: boolean;
+  color_preservation?: boolean;
+  texture_enhancement?: boolean;
 }
 
 export interface VirtualTryOnResponse {
@@ -76,6 +82,14 @@ export interface VirtualTryOnResponse {
   session_id?: string;
   task_id?: string;
   error_message?: string;
+  result_image?: string;
+  warped_cloth?: string;
+  parsing_visualization?: string;
+  quality_metrics?: {
+    overall_score: number;
+    fit_score: number;
+    realism_score: number;
+  };
 }
 
 export interface PipelineProgress {
@@ -105,7 +119,7 @@ export interface PipelineStep {
 }
 
 // =================================================================
-// 🔧 개선된 WebSocket 관리자 (메모리 누수 방지)
+// 🔧 개선된 WebSocket 관리자 (메모리 누수 방지 + 에러 처리 강화)
 // =================================================================
 
 class SafeWebSocketManager {
@@ -167,7 +181,7 @@ class SafeWebSocketManager {
           this.ws?.close();
           this.isConnecting = false;
           resolve(false);
-        }, 10000);
+        }, 15000); // 15초로 증가
 
         this.ws.onopen = () => {
           if (this.isDestroyed) return;
@@ -194,7 +208,7 @@ class SafeWebSocketManager {
             console.log('📨 WebSocket 메시지 수신:', data.type);
             this.onMessageCallback?.(data);
           } catch (error) {
-            console.error('❌ WebSocket 메시지 파싱 오류:', error);
+            console.error('❌ WebSocket 메시지 파싱 오류:', error, event.data);
           }
         };
 
@@ -211,8 +225,10 @@ class SafeWebSocketManager {
             console.log('🔌 WebSocket 연결 종료:', event.code, event.reason);
             this.onDisconnectedCallback?.();
             
-            // 자동 재연결 시도
-            this.scheduleReconnect();
+            // 자동 재연결 시도 (비정상 종료인 경우)
+            if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
+              this.scheduleReconnect();
+            }
           }
         };
 
@@ -377,7 +393,7 @@ class SafeWebSocketManager {
 }
 
 // =================================================================
-// 🔧 개선된 API 클라이언트 (재시도 및 캐싱)
+// 🔧 개선된 API 클라이언트 (에러 처리 강화 + 타임아웃 증가)
 // =================================================================
 
 class SafeAPIClient {
@@ -385,6 +401,7 @@ class SafeAPIClient {
   private abortController: AbortController | null = null;
   private cache = new Map<string, { data: any; timestamp: number }>();
   private cacheTimeout = 30000; // 30초
+  private requestTimeout = 60000; // 60초로 증가
 
   constructor(baseURL: string = 'http://localhost:8000') {
     this.baseURL = baseURL.replace(/\/$/, '');
@@ -427,29 +444,44 @@ class SafeAPIClient {
         const response = await fetch(url, {
           ...options,
           signal: this.abortController.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-          }
+          // FormData인 경우 Content-Type 헤더 제거 (브라우저가 자동 설정)
+          headers: options.body instanceof FormData 
+            ? { ...options.headers }
+            : {
+                'Content-Type': 'application/json',
+                ...options.headers
+              }
         });
 
         if (response.ok) {
           return response;
         }
 
-        // HTTP 오류도 재시도
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // 응답 내용 로깅
+        const errorText = await response.text();
+        console.error(`❌ HTTP ${response.status} 오류:`, errorText);
+
+        // HTTP 오류도 재시도 (5xx 에러만)
+        if (response.status >= 500) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        } else {
+          // 4xx 에러는 재시도하지 않음
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
 
       } catch (error: any) {
         lastError = error;
         
         if (error.name === 'AbortError') {
+          console.log('🚫 요청이 취소됨');
           throw error; // 취소된 요청은 재시도하지 않음
         }
 
+        console.error(`❌ 요청 실패 (시도 ${attempt + 1}/${maxRetries}):`, error.message);
+
         if (attempt < maxRetries - 1) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-          console.log(`🔄 API 재시도 ${attempt + 1}/${maxRetries} (${delay}ms 후)`);
+          console.log(`🔄 ${delay}ms 후 재시도...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -465,10 +497,22 @@ class SafeAPIClient {
     console.log('🎯 가상 피팅 처리 시작');
 
     const formData = new FormData();
+    
+    // 백엔드 API 스펙에 맞게 필드 구성
     formData.append('person_image', request.person_image);
     formData.append('clothing_image', request.clothing_image);
     formData.append('height', request.height.toString());
     formData.append('weight', request.weight.toString());
+    
+    // 선택적 필드들
+    if (request.chest) formData.append('chest', request.chest.toString());
+    if (request.waist) formData.append('waist', request.waist.toString());
+    if (request.hip) formData.append('hip', request.hip.toString());
+    if (request.shoulder_width) formData.append('shoulder_width', request.shoulder_width.toString());
+    
+    formData.append('clothing_type', request.clothing_type || 'upper_body');
+    formData.append('fabric_type', request.fabric_type || 'cotton');
+    formData.append('style_preference', request.style_preference || 'regular');
     formData.append('quality_mode', request.quality_mode || 'balanced');
     
     if (request.session_id) {
@@ -479,6 +523,16 @@ class SafeAPIClient {
       formData.append('enable_realtime', 'true');
     }
 
+    // 디버그: 전송되는 데이터 확인
+    console.log('📤 전송 데이터:', {
+      personImageSize: request.person_image.size,
+      clothingImageSize: request.clothing_image.size,
+      height: request.height,
+      weight: request.weight,
+      qualityMode: request.quality_mode,
+      sessionId: request.session_id
+    });
+
     try {
       const response = await this.fetchWithRetry(`${this.baseURL}/api/virtual-tryon`, {
         method: 'POST',
@@ -486,11 +540,27 @@ class SafeAPIClient {
       });
 
       const result = await response.json();
-      console.log('✅ 가상 피팅 처리 완료');
+      console.log('✅ 가상 피팅 처리 완료:', result);
       return result;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ 가상 피팅 처리 실패:', error);
+      
+      // 사용자 친화적 에러 메시지
+      if (error.message.includes('413')) {
+        throw new Error('파일 크기가 너무 큽니다. 더 작은 이미지를 사용해주세요.');
+      } else if (error.message.includes('415')) {
+        throw new Error('지원되지 않는 파일 형식입니다. JPG, PNG 파일을 사용해주세요.');
+      } else if (error.message.includes('400')) {
+        throw new Error('잘못된 요청입니다. 입력 정보를 확인해주세요.');
+      } else if (error.message.includes('500')) {
+        throw new Error('서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      } else if (error.message.includes('timeout')) {
+        throw new Error('요청 시간이 초과되었습니다. 다시 시도해주세요.');
+      } else if (error.message.includes('network')) {
+        throw new Error('네트워크 연결을 확인해주세요.');
+      }
+      
       throw error;
     }
   }
@@ -519,12 +589,12 @@ class SafeAPIClient {
     console.log('🔥 파이프라인 워밍업 시작');
 
     try {
+      const formData = new FormData();
+      formData.append('quality_mode', qualityMode);
+
       const response = await this.fetchWithRetry(`${this.baseURL}/api/pipeline/warmup`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `quality_mode=${qualityMode}`,
+        body: formData,
       });
 
       if (!response.ok) {
@@ -563,6 +633,7 @@ class SafeAPIClient {
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
+      console.log('🚫 현재 요청 취소됨');
     }
   }
 
@@ -646,11 +717,13 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     healthCheckInterval: options.healthCheckInterval || 30000,
     autoReconnect: options.autoReconnect ?? true,
     maxReconnectAttempts: options.maxReconnectAttempts || 3,
+    requestTimeout: options.requestTimeout || 60000,
+    enableDebugMode: options.enableDebugMode ?? false,
     ...options
   }), [options]);
 
   // =================================================================
-  // 🔧 WebSocket 메시지 핸들러
+  // 🔧 WebSocket 메시지 핸들러 (수정된 버전)
   // =================================================================
 
   const handleWebSocketMessage = useCallback((data: PipelineProgress) => {
@@ -676,7 +749,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
           setCurrentPipelineStep(data.step_id);
           setPipelineSteps(prev => prev.map(step => 
             step.id === data.step_id 
-              ? { ...step, status: 'processing', progress: 0 }
+              ? { ...step, status: 'processing', progress: 0, start_time: new Date().toISOString() }
               : step
           ));
           setProgressMessage(data.message || `${PIPELINE_STEPS.find(s => s.id === data.step_id)?.korean} 처리 시작`);
@@ -691,6 +764,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
               ? { ...step, progress: data.progress }
               : step
           ));
+          setProgressMessage(data.message || `${PIPELINE_STEPS.find(s => s.id === data.step_id)?.korean} 처리 중... ${data.progress}%`);
         }
         break;
 
@@ -700,9 +774,16 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
           setStepResults(prev => ({ ...prev, [data.step_id!]: stepResult }));
           setPipelineSteps(prev => prev.map(step => 
             step.id === data.step_id 
-              ? { ...step, status: 'completed', progress: 100 }
+              ? { 
+                  ...step, 
+                  status: 'completed', 
+                  progress: 100,
+                  end_time: new Date().toISOString(),
+                  duration: data.processing_time || 0
+                }
               : step
           ));
+          setProgressMessage(data.message || `${PIPELINE_STEPS.find(s => s.id === data.step_id)?.korean} 완료`);
         }
         break;
 
@@ -710,7 +791,13 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
         if (data.step_id) {
           setPipelineSteps(prev => prev.map(step => 
             step.id === data.step_id 
-              ? { ...step, status: 'failed', progress: 0 }
+              ? { 
+                  ...step, 
+                  status: 'failed', 
+                  progress: 0,
+                  error_message: data.message,
+                  end_time: new Date().toISOString()
+                }
               : step
           ));
           setError(data.message || `단계 ${data.step_id} 처리 실패`);
@@ -722,6 +809,11 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
         setProgress(100);
         setProgressMessage('8단계 파이프라인 완료!');
         setSessionActive(false);
+        
+        // 결과가 있으면 설정
+        if (data.result) {
+          setResult(data.result);
+        }
         break;
 
       case 'pipeline_error':
@@ -792,7 +884,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
   }, [config.baseURL, config.wsURL, handleWebSocketMessage, mounted, config]);
 
   // =================================================================
-  // 🔧 메인 API 함수들 (App.tsx 완전 호환)
+  // 🔧 메인 API 함수들 (App.tsx 완전 호환 - 수정 버전)
   // =================================================================
 
   const processVirtualTryOn = useCallback(async (request: VirtualTryOnRequest): Promise<VirtualTryOnResponse | void> => {
@@ -801,12 +893,21 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     try {
       initializeServices();
 
+      // 입력 검증
+      if (!request.person_image || !request.clothing_image) {
+        throw new Error('사용자 이미지와 의류 이미지는 필수입니다.');
+      }
+
+      if (request.height <= 0 || request.weight <= 0) {
+        throw new Error('올바른 키와 몸무게를 입력해주세요.');
+      }
+
       // 새 세션 시작
       const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(newSessionId);
       setSessionActive(true);
 
-      // WebSocket 연결 확인
+      // WebSocket 연결 확인 (선택적)
       if (!wsManager.current?.isConnected()) {
         console.log('🔄 WebSocket 재연결 시도...');
         await wsManager.current?.connect();
@@ -833,14 +934,22 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
 
       console.log('🎯 8단계 가상 피팅 처리 시작', { sessionId: newSessionId });
 
-      // 세션 구독
-      wsManager.current?.subscribeToSession(newSessionId);
+      // 세션 구독 (WebSocket이 연결된 경우에만)
+      if (wsManager.current?.isConnected()) {
+        wsManager.current.subscribeToSession(newSessionId);
+      }
 
-      // API 처리
+      // API 처리 (진행률 콜백 포함)
       const response = await apiClient.current!.processVirtualTryOn({
         ...request,
         session_id: newSessionId,
-        enable_realtime: true
+        enable_realtime: wsManager.current?.isConnected() || false
+      }, (progress) => {
+        // 진행률 업데이트
+        if (mounted) {
+          setProgress(progress.progress);
+          setProgressMessage(progress.message);
+        }
       });
 
       if (mounted) {
@@ -854,7 +963,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
       console.log('✅ 8단계 가상 피팅 처리 완료');
       return response;
 
-    } catch (error) {
+    } catch (error: any) {
       if (!mounted) return;
 
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
@@ -895,6 +1004,9 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
 
   const reset = useCallback(() => {
     if (!mounted) return;
+
+    // 진행 중인 요청 취소
+    apiClient.current?.cancelCurrentRequest();
 
     setIsProcessing(false);
     setProgress(0);
@@ -969,20 +1081,23 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
       setIsProcessing(true);
       setProgressMessage('연결 테스트 중...');
 
-      const wsConnected = await connect();
       const healthOk = await checkHealth();
-
-      if (!wsConnected) {
-        throw new Error('WebSocket 연결 실패');
-      }
 
       if (!healthOk) {
         throw new Error('API 헬스체크 실패');
       }
 
+      // WebSocket 연결 테스트 (선택적)
+      let wsConnected = false;
+      try {
+        wsConnected = await connect();
+      } catch (wsError) {
+        console.warn('⚠️ WebSocket 연결 실패 (무시됨):', wsError);
+      }
+
       if (mounted) {
         setError(null);
-        setProgressMessage('연결 테스트 완료');
+        setProgressMessage(`연결 테스트 완료 (HTTP: ✅, WS: ${wsConnected ? '✅' : '❌'})`);
       }
       console.log('✅ 연결 테스트 완료');
 
@@ -1086,9 +1201,9 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
         // 지연을 두고 연결 (React 18 Strict Mode 대응)
         setTimeout(() => {
           if (isMounted && mounted) {
-            connect();
+            connect().catch(console.warn); // WebSocket 연결 실패는 무시
           }
-        }, 500);
+        }, 1000); // 1초 지연
       }
     };
 
@@ -1156,7 +1271,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     };
 
     // 약간의 지연 후 시작
-    const timer = setTimeout(startHealthCheck, 1000);
+    const timer = setTimeout(startHealthCheck, 2000); // 2초 지연
 
     return () => {
       isMounted = false;
@@ -1210,6 +1325,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     sendHeartbeat: () => wsManager.current?.send({ type: 'ping', timestamp: Date.now() }),
     getConnectionStatus: () => wsManager.current?.getStatus() || null,
     clearCache: () => apiClient.current?.clearCache(),
+    cancelCurrentRequest: () => apiClient.current?.cancelCurrentRequest(),
     exportLogs: () => {
       const logs = {
         isProcessing,
