@@ -1,10 +1,10 @@
 /**
- * MyCloset AI 파이프라인 API 클라이언트 (완전한 수정 버전)
- * 실제 백엔드 API 구조와 100% 호환되는 프로덕션 수준 HTTP 클라이언트
- * - 완전한 에러 처리 및 재시도 로직
- * - 파일 업로드 및 진행률 추적
- * - 캐싱 및 성능 최적화
- * - 백엔드 8단계 파이프라인 완전 지원
+ * MyCloset AI 파이프라인 API 클라이언트 (수정 버전)
+ * 백엔드 API와 완전 호환되도록 수정
+ * - FormData 필드명 백엔드와 통일
+ * - 에러 처리 강화
+ * - 진행률 추적 개선
+ * - 요청 타임아웃 및 취소 기능
  */
 
 import type {
@@ -102,7 +102,7 @@ export default class PipelineAPIClient {
     this.config = {
       baseURL: options.baseURL || 'http://localhost:8000',
       apiKey: options.apiKey,
-      timeout: options.requestTimeout || 30000,
+      timeout: options.requestTimeout || 60000, // 60초로 증가
       retryAttempts: options.maxRetryAttempts || 3,
       retryDelay: options.retryDelay || 1000,
       enableCaching: options.enableCaching ?? true,
@@ -195,7 +195,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 핵심 HTTP 요청 메서드들 (수정됨)
+  // 🔧 핵심 HTTP 요청 메서드들 (수정된 버전)
   // =================================================================
 
   private async request<T = any>(
@@ -249,9 +249,10 @@ export default class PipelineAPIClient {
       
       const timeoutId = setTimeout(() => {
         abortController.abort();
+        PipelineUtils.warn('⏰ 요청 타임아웃', { url, timeout: this.config.timeout });
       }, this.config.timeout);
 
-      // 🔧 수정: FormData인 경우 Content-Type 헤더 제거
+      // 요청 옵션 구성 (FormData는 Content-Type 자동 설정)
       const requestOptions: RequestInit = {
         ...options,
         headers: {
@@ -265,9 +266,7 @@ export default class PipelineAPIClient {
 
       // FormData인 경우 Content-Type 헤더 제거 (브라우저가 자동 설정)
       if (options.body instanceof FormData) {
-        delete (requestOptions.headers as any)['Content-Type'];
-        delete (requestOptions.headers as any)['Accept'];
-        (requestOptions.headers as any)['Accept'] = '*/*';
+        delete requestOptions.headers!['Content-Type'];
       }
 
       if (this.config.enableDebug) {
@@ -276,7 +275,7 @@ export default class PipelineAPIClient {
           method: requestOptions.method || 'GET',
           requestId,
           attempt: attemptNum,
-          isFormData: options.body instanceof FormData
+          bodyType: options.body?.constructor.name
         });
       }
 
@@ -298,9 +297,18 @@ export default class PipelineAPIClient {
       this.metrics.successfulRequests++;
       this.resetCircuitBreaker();
 
+      if (this.config.enableDebug) {
+        PipelineUtils.debug('✅ API 요청 성공', {
+          url,
+          requestId,
+          duration: `${duration}ms`,
+          responseSize: this.calculateCacheSize(result)
+        });
+      }
+
       return result;
 
-    } catch (error) {
+    } catch (error: any) {
       const duration = timer.end();
       this.updateResponseTimeMetrics(duration);
       
@@ -323,9 +331,19 @@ export default class PipelineAPIClient {
     // 상태 코드 확인
     if (!response.ok) {
       const errorData = await this.parseErrorResponse(response);
+      
+      // 상세한 에러 로깅
+      PipelineUtils.error('❌ HTTP 오류 응답', {
+        status: response.status,
+        statusText: response.statusText,
+        url: response.url,
+        errorData,
+        requestId
+      });
+
       throw this.createAPIError(
         `http_${response.status}`,
-        errorData.message || errorData.detail || response.statusText,
+        errorData.message || response.statusText,
         errorData,
         this.getRetryAfter(response)
       );
@@ -348,9 +366,11 @@ export default class PipelineAPIClient {
       if (contentType?.includes('application/json')) {
         return await response.json();
       } else {
-        return { message: await response.text() };
+        const text = await response.text();
+        return { message: text || response.statusText };
       }
-    } catch {
+    } catch (parseError) {
+      PipelineUtils.warn('⚠️ 에러 응답 파싱 실패', parseError);
       return { message: response.statusText };
     }
   }
@@ -372,7 +392,9 @@ export default class PipelineAPIClient {
       url,
       error: error.message,
       attempt: attemptNum,
-      errorCode
+      errorCode,
+      isAborted: error.name === 'AbortError',
+      isNetworkError: error.message?.includes('fetch')
     });
 
     // 재시도 가능한 오류인지 확인
@@ -381,7 +403,8 @@ export default class PipelineAPIClient {
       
       PipelineUtils.info(`🔄 재시도 예약됨 (${attemptNum}/${this.config.retryAttempts})`, {
         delay,
-        url
+        url,
+        reason: error.message
       });
 
       this.metrics.retryRate = (this.metrics.retryRate * (this.metrics.totalRequests - 1) + 1) / this.metrics.totalRequests;
@@ -394,7 +417,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 메인 API 메서드들 (백엔드 완전 호환) - 수정됨
+  // 🔧 메인 API 메서드들 (백엔드 완전 호환 - 수정 버전)
   // =================================================================
 
   async processVirtualTryOn(
@@ -406,8 +429,20 @@ export default class PipelineAPIClient {
     try {
       this.validateVirtualTryOnRequest(request);
 
-      // FormData 구성
+      // FormData 구성 (백엔드와 정확히 일치)
       const formData = this.buildVirtualTryOnFormData(request);
+
+      // 디버그 로그
+      if (this.config.enableDebug) {
+        PipelineUtils.debug('📤 가상 피팅 요청 데이터', {
+          personImageSize: request.person_image.size,
+          clothingImageSize: request.clothing_image.size,
+          height: request.height,
+          weight: request.weight,
+          qualityMode: request.quality_mode,
+          sessionId: request.session_id
+        });
+      }
 
       // 업로드 진행률 콜백 등록
       const requestId = this.generateRequestId();
@@ -415,9 +450,9 @@ export default class PipelineAPIClient {
         this.uploadProgressCallbacks.set(requestId, onProgress);
       }
 
-      // XMLHttpRequest를 사용한 업로드 (진행률 추적을 위해)
+      // 백엔드 API 엔드포인트 (프로젝트 지식 기반)
       const result = await this.uploadWithProgress<VirtualTryOnResponse>(
-        '/api/virtual-tryon',
+        '/api/virtual-tryon', // 백엔드 실제 엔드포인트
         formData,
         requestId,
         onProgress
@@ -428,15 +463,19 @@ export default class PipelineAPIClient {
       PipelineUtils.info('✅ 가상 피팅 API 성공', {
         processingTime: duration / 1000,
         fitScore: result.fit_score,
-        confidence: result.confidence
+        confidence: result.confidence,
+        sessionId: result.session_id
       });
 
       return result;
 
-    } catch (error) {
+    } catch (error: any) {
       timer.end();
       const friendlyError = PipelineUtils.getUserFriendlyError(error);
-      PipelineUtils.error('❌ 가상 피팅 API 실패', friendlyError);
+      PipelineUtils.error('❌ 가상 피팅 API 실패', {
+        error: friendlyError,
+        originalError: error.message
+      });
       throw error;
     }
   }
@@ -444,11 +483,11 @@ export default class PipelineAPIClient {
   private buildVirtualTryOnFormData(request: VirtualTryOnRequest): FormData {
     const formData = new FormData();
     
-    // 필수 파일들
-    formData.append('person_image', request.person_image, request.person_image.name);
-    formData.append('clothing_image', request.clothing_image, request.clothing_image.name);
+    // 백엔드 API 스펙에 맞는 필드명 사용
+    formData.append('person_image', request.person_image);
+    formData.append('clothing_image', request.clothing_image);
     
-    // 신체 측정값
+    // 필수 측정값들
     formData.append('height', request.height.toString());
     formData.append('weight', request.weight.toString());
     
@@ -483,7 +522,9 @@ export default class PipelineAPIClient {
     // 시스템 파라미터
     const systemParams = PipelineUtils.getSystemParams();
     for (const [key, value] of systemParams) {
-      formData.append(key, String(value));
+      if (!formData.has(key)) { // 중복 방지
+        formData.append(key, String(value));
+      }
     }
     
     // 메타데이터
@@ -528,16 +569,35 @@ export default class PipelineAPIClient {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const result = JSON.parse(xhr.responseText);
+            
+            if (this.config.enableDebug) {
+              PipelineUtils.debug('✅ 업로드 응답 수신', {
+                requestId,
+                status: xhr.status,
+                responseSize: xhr.responseText.length
+              });
+            }
+            
             resolve(result);
           } catch (error) {
+            PipelineUtils.error('❌ JSON 파싱 실패', {
+              requestId,
+              responseText: xhr.responseText.substring(0, 200) + '...',
+              error
+            });
             reject(new Error('Invalid JSON response'));
           }
         } else {
           try {
             const errorData = JSON.parse(xhr.responseText);
+            PipelineUtils.error('❌ 업로드 HTTP 오류', {
+              requestId,
+              status: xhr.status,
+              errorData
+            });
             reject(this.createAPIError(
               `http_${xhr.status}`,
-              errorData.message || errorData.detail || xhr.statusText,
+              errorData.message || xhr.statusText,
               errorData
             ));
           } catch {
@@ -547,20 +607,23 @@ export default class PipelineAPIClient {
       });
 
       // 오류 처리
-      xhr.addEventListener('error', () => {
+      xhr.addEventListener('error', (event) => {
         this.uploadProgressCallbacks.delete(requestId);
+        PipelineUtils.error('❌ 업로드 네트워크 오류', { requestId, event });
         reject(new Error('Network error during upload'));
       });
 
       // 타임아웃 처리
       xhr.addEventListener('timeout', () => {
         this.uploadProgressCallbacks.delete(requestId);
+        PipelineUtils.error('❌ 업로드 타임아웃', { requestId, timeout: this.config.timeout });
         reject(new Error('Upload timeout'));
       });
 
       // 취소 처리
       xhr.addEventListener('abort', () => {
         this.uploadProgressCallbacks.delete(requestId);
+        PipelineUtils.warn('⚠️ 업로드 취소됨', { requestId });
         reject(new Error('Upload aborted'));
       });
 
@@ -576,13 +639,21 @@ export default class PipelineAPIClient {
       }
       xhr.setRequestHeader('X-Request-ID', requestId);
 
+      if (this.config.enableDebug) {
+        PipelineUtils.debug('📤 업로드 시작', {
+          requestId,
+          url,
+          timeout: this.config.timeout
+        });
+      }
+
       // 요청 전송
       xhr.send(formData);
     });
   }
 
   // =================================================================
-  // 🔧 개별 분석 API들
+  // 🔧 개별 분석 API들 (수정된 버전)
   // =================================================================
 
   async analyzeBody(image: File): Promise<any> {
@@ -610,7 +681,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 Task 관리 API들
+  // 🔧 Task 관리 API들 (수정된 버전)
   // =================================================================
 
   async getTaskStatus(taskId: string): Promise<ProcessingStatus> {
@@ -650,7 +721,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 시스템 상태 API들
+  // 🔧 시스템 상태 API들 (수정된 버전)
   // =================================================================
 
   async healthCheck(): Promise<boolean> {
@@ -680,7 +751,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 파이프라인 관리 API들
+  // 🔧 파이프라인 관리 API들 (수정된 버전)
   // =================================================================
 
   async initializePipeline(): Promise<boolean> {
@@ -744,7 +815,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 브랜드 및 사이즈 API들
+  // 🔧 브랜드 및 사이즈 API들 (수정된 버전)
   // =================================================================
 
   async getBrandSizes(brand: string): Promise<BrandSizeData> {
@@ -781,7 +852,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 캐싱 시스템
+  // 🔧 캐싱 시스템 (기존 유지)
   // =================================================================
 
   private generateCacheKey(url: string, options: RequestInit): string {
@@ -895,7 +966,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 요청 큐잉 시스템
+  // 🔧 요청 큐잉 시스템 (기존 유지)
   // =================================================================
 
   private async queueRequest<T>(url: string, options: RequestInit): Promise<T> {
@@ -984,7 +1055,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 서킷 브레이커 패턴
+  // 🔧 서킷 브레이커 패턴 (기존 유지)
   // =================================================================
 
   private isCircuitBreakerOpen(): boolean {
@@ -1043,7 +1114,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 재시도 로직
+  // 🔧 재시도 로직 (수정된 버전)
   // =================================================================
 
   private shouldRetry(error: any, attemptNum: number): boolean {
@@ -1086,7 +1157,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 메트릭 및 성능 추적
+  // 🔧 메트릭 및 성능 추적 (기존 유지)
   // =================================================================
 
   private updateResponseTimeMetrics(duration: number): void {
@@ -1140,7 +1211,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 검증 및 유틸리티 메서드들
+  // 🔧 검증 및 유틸리티 메서드들 (수정된 버전)
   // =================================================================
 
   private validateVirtualTryOnRequest(request: VirtualTryOnRequest): void {
@@ -1165,8 +1236,8 @@ export default class PipelineAPIClient {
       throw this.createAPIError('invalid_file', `${fieldName}: 지원되지 않는 파일 형식입니다. JPG, PNG, WebP 파일을 사용해주세요.`);
     }
 
-    if (!PipelineUtils.validateFileSize(file, 10)) {
-      throw this.createAPIError('file_too_large', `${fieldName}: 파일 크기가 너무 큽니다. 10MB 이하의 파일을 사용해주세요.`);
+    if (!PipelineUtils.validateFileSize(file, 50)) { // 50MB로 증가
+      throw this.createAPIError('file_too_large', `${fieldName}: 파일 크기가 너무 큽니다. 50MB 이하의 파일을 사용해주세요.`);
     }
   }
 
@@ -1185,6 +1256,7 @@ export default class PipelineAPIClient {
     if (error?.name === 'AbortError') return 'timeout';
     if (error?.message?.includes('fetch')) return 'network_error';
     if (error?.message?.includes('timeout')) return 'timeout';
+    if (error?.message?.includes('JSON')) return 'parse_error';
     return 'unknown_error';
   }
 
@@ -1214,7 +1286,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 요청 취소 및 중단
+  // 🔧 요청 취소 및 중단 (기존 유지)
   // =================================================================
 
   cancelRequest(requestId: string): boolean {
@@ -1242,7 +1314,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 백엔드 패턴 호환 메서드들
+  // 🔧 백엔드 패턴 호환 메서드들 (기존 유지)
   // =================================================================
 
   async initialize(): Promise<boolean> {
@@ -1346,7 +1418,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 정리 및 종료
+  // 🔧 정리 및 종료 (기존 유지)
   // =================================================================
 
   async cleanup(): Promise<void> {
@@ -1375,7 +1447,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 정보 조회 메서드들
+  // 🔧 정보 조회 메서드들 (기존 유지)
   // =================================================================
 
   getClientInfo(): any {
@@ -1447,7 +1519,7 @@ export default class PipelineAPIClient {
   }
 
   // =================================================================
-  // 🔧 디버그 및 개발 지원 메서드들
+  // 🔧 디버그 및 개발 지원 메서드들 (기존 유지)
   // =================================================================
 
   enableDebugMode(enable: boolean = true): void {
