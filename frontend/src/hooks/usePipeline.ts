@@ -1114,34 +1114,59 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     }
   }, [connect, checkHealth, mounted]);
 
-  const warmupPipeline = useCallback(async (qualityMode: string = 'balanced') => {
-    if (!mounted) return;
+// ✅ 수정된 warmupPipeline 함수
+const warmupPipeline = useCallback(async (qualityMode: string = 'balanced') => {
+  if (!mounted) return;
 
-    try {
-      setIsProcessing(true);
-      setProgressMessage('파이프라인 워밍업 중...');
+  try {
+    setIsProcessing(true);
+    setProgressMessage('파이프라인 워밍업 중...');
 
-      initializeServices();
-      await apiClient.current!.warmupPipeline(qualityMode);
+    initializeServices();
+    
+    // 🔧 직접 fetch로 올바른 엔드포인트 호출
+    const response = await fetch(`${config.baseURL}/api/dev/warmup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        quality_mode: qualityMode,
+        device: config.device || 'auto'
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`워밍업 실패: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ 파이프라인 워밍업 완료:', result);
+    
+    if (mounted) {
+      setError(null);
+      setProgressMessage(result.success ? '워밍업 완료' : '워밍업 부분 완료');
       
-      if (mounted) {
-        setError(null);
-        setProgressMessage('워밍업 완료');
-      }
-      console.log('✅ 파이프라인 워밍업 완료');
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '워밍업 실패';
-      if (mounted) {
-        setError(errorMessage);
-      }
-      console.error('❌ 파이프라인 워밍업 실패:', error);
-    } finally {
-      if (mounted) {
-        setIsProcessing(false);
+      // M3 Max 최적화 정보 표시
+      if (result.success && result.results?.mps === 'success') {
+        console.log('🍎 M3 Max MPS 워밍업 성공');
+        setProgressMessage('🍎 M3 Max 워밍업 완료');
       }
     }
-  }, [initializeServices, mounted]);
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : '워밍업 실패';
+    if (mounted) {
+      setError(errorMessage);
+    }
+    console.error('❌ 파이프라인 워밍업 실패:', error);
+  } finally {
+    if (mounted) {
+      setIsProcessing(false);
+      setProgressMessage('');
+    }
+  }
+}, [initializeServices, mounted, config.baseURL, config.device]);
 
   const getPipelineStatus = useCallback(async () => {
     if (!mounted) return;
