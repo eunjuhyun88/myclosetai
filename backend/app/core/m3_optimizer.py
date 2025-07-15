@@ -1,7 +1,5 @@
 # backend/app/core/m3_optimizer.py
-"""
-M3 Max 전용 최적화 모듈
-"""
+
 import os
 import logging
 import torch
@@ -22,7 +20,7 @@ class M3Optimizer:
             device_name: 디바이스 이름 (예: "Apple M3 Max")
             memory_gb: 메모리 용량 (GB)
             is_m3_max: M3 Max 여부
-            optimization_level: 최적화 레벨 ("maximum", "balanced", "conservative")
+            optimization_level: 최적화 레벨 ("maximum", "high", "medium", "basic")
         """
         self.device_name = device_name
         self.memory_gb = memory_gb
@@ -36,6 +34,7 @@ class M3Optimizer:
             self._apply_m3_max_optimizations()
         
         self.config = self._create_optimization_config()
+        self.pipeline_settings = self._create_pipeline_settings()
     
     def _apply_m3_max_optimizations(self):
         """M3 Max 전용 최적화 적용"""
@@ -49,14 +48,9 @@ class M3Optimizer:
                 logger.info("🧠 Neural Engine 최적화 활성화")
                 logger.info("⚙️ Metal Performance Shaders 활성화")
                 
-                # 8단계 파이프라인 최적화 설정
-                self.pipeline_settings = {
-                    "stages": 8,
-                    "parallel_processing": True,
-                    "batch_optimization": True,
-                    "memory_pooling": True,
-                    "neural_engine": True
-                }
+                # CPU 스레드 최적화 (M3 Max 16코어)
+                if hasattr(torch, 'set_num_threads'):
+                    torch.set_num_threads(16)
                 
                 logger.info("⚙️ 8단계 파이프라인 최적화 설정 완료")
                 
@@ -82,7 +76,7 @@ class M3Optimizer:
                     "enable_neural_engine": True,
                     "pipeline_parallel": True
                 }
-            elif self.optimization_level == "balanced":
+            elif self.optimization_level == "high":
                 config = {
                     **base_config,
                     "batch_size": 2,
@@ -92,7 +86,17 @@ class M3Optimizer:
                     "enable_neural_engine": True,
                     "pipeline_parallel": False
                 }
-            else:  # conservative
+            elif self.optimization_level == "medium":
+                config = {
+                    **base_config,
+                    "batch_size": 1,
+                    "precision": "float16",
+                    "max_workers": 4,
+                    "memory_fraction": 0.4,
+                    "enable_neural_engine": True,
+                    "pipeline_parallel": False
+                }
+            else:  # basic
                 config = {
                     **base_config,
                     "batch_size": 1,
@@ -106,6 +110,29 @@ class M3Optimizer:
             config = base_config
         
         return config
+    
+    def _create_pipeline_settings(self) -> Dict[str, Any]:
+        """파이프라인 설정 생성"""
+        if self.is_m3_max:
+            return {
+                "stages": 8,
+                "parallel_processing": True,
+                "batch_optimization": True,
+                "memory_pooling": True,
+                "neural_engine": True,
+                "unified_memory": True,
+                "mps_backend": True
+            }
+        else:
+            return {
+                "stages": 8,
+                "parallel_processing": False,
+                "batch_optimization": False,
+                "memory_pooling": False,
+                "neural_engine": False,
+                "unified_memory": False,
+                "mps_backend": False
+            }
     
     def optimize_model(self, model):
         """모델 최적화 적용"""
@@ -138,12 +165,20 @@ class M3Optimizer:
             "is_m3_max": self.is_m3_max,
             "optimization_level": self.optimization_level,
             "config": self.config,
+            "pipeline_settings": self.pipeline_settings,
             "mps_available": torch.backends.mps.is_available() if self.is_m3_max else False
         }
+    
+    def cleanup(self):
+        """최적화 정리"""
+        try:
+            if self.is_m3_max and torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+                logger.info("🧹 M3 Max 메모리 정리 완료")
+        except Exception as e:
+            logger.warning(f"M3 Max 정리 실패: {e}")
 
-# ================================================================
-# backend/app/ai_pipeline/utils/memory_manager.py에 추가할 함수
-
+# 전역 메모리 매니저 초기화 함수
 def initialize_global_memory_manager(device: str = "mps", memory_gb: float = 128.0):
     """
     전역 메모리 매니저 초기화
@@ -154,7 +189,6 @@ def initialize_global_memory_manager(device: str = "mps", memory_gb: float = 128
     """
     try:
         import gc
-        import torch
         
         logger.info(f"🔧 전역 메모리 매니저 초기화: {device}, {memory_gb}GB")
         
@@ -180,63 +214,7 @@ def initialize_global_memory_manager(device: str = "mps", memory_gb: float = 128
         logger.error(f"❌ 메모리 매니저 초기화 실패: {e}")
         return False
 
-# ================================================================
-# backend/app/ai_pipeline/utils/model_loader.py에 추가할 클래스와 함수
-
-class ModelFormat:
-    """AI 모델 형식 정의"""
-    
-    PYTORCH = "pytorch"
-    ONNX = "onnx" 
-    TENSORRT = "tensorrt"
-    COREML = "coreml"  # Apple Core ML for M3 Max
-    SAFETENSORS = "safetensors"
-    
-    @classmethod
-    def get_optimized_format(cls, device: str = "mps") -> str:
-        """디바이스에 최적화된 모델 형식 반환"""
-        if device == "mps":
-            return cls.COREML  # M3 Max에서는 Core ML 추천
-        elif device == "cuda":
-            return cls.TENSORRT
-        return cls.PYTORCH
-    
-    @classmethod
-    def is_supported(cls, format_name: str) -> bool:
-        """지원되는 형식인지 확인"""
-        supported_formats = [cls.PYTORCH, cls.ONNX, cls.COREML, cls.SAFETENSORS]
-        return format_name.lower() in [f.lower() for f in supported_formats]
-
-def initialize_global_model_loader(device: str = "mps"):
-    """전역 모델 로더 초기화"""
-    try:
-        logger.info(f"🤖 전역 ModelLoader 초기화: {device}")
-        
-        # 글로벌 모델 로더 설정
-        loader_config = {
-            "device": device,
-            "cache_enabled": True,
-            "lazy_loading": True,
-            "memory_efficient": True
-        }
-        
-        if device == "mps":
-            loader_config.update({
-                "use_neural_engine": True,
-                "use_unified_memory": True,
-                "optimization_level": "maximum"
-            })
-        
-        logger.info("✅ 전역 ModelLoader 초기화 완료")
-        return loader_config
-        
-    except Exception as e:
-        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
-        return None
-
-# ================================================================
-# backend/app/core/gpu_config.py에 추가할 함수
-
+# M3 Max 메모리 체크 함수
 def check_memory_available(required_gb: float = 4.0) -> bool:
     """
     M3 Max 메모리 사용 가능 여부 확인
@@ -249,7 +227,6 @@ def check_memory_available(required_gb: float = 4.0) -> bool:
     """
     try:
         import psutil
-        import torch
         
         # 시스템 메모리 확인
         memory = psutil.virtual_memory()

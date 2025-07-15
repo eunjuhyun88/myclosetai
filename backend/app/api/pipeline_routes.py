@@ -277,6 +277,37 @@ else:
     logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
+# ============================================
+# 🌐 API 라우터 (기존 구조 완전 유지)
+# ============================================
+
+router = APIRouter(
+    prefix="/api/pipeline",
+    tags=["Pipeline"],
+    responses={
+        500: {"description": "Internal Server Error"},
+        503: {"description": "Service Unavailable"}
+    }
+)
+
+# 전역 변수들 (기존 패턴 유지)
+pipeline_manager: Optional[M3MaxOptimizedPipelineManager] = None
+active_connections: Dict[str, Any] = {}
+
+def get_pipeline_instance(quality_mode: str = "high"):
+    """파이프라인 인스턴스 관리 (기존 함수명 유지)"""
+    global pipeline_manager
+    
+    if pipeline_manager is None:
+        pipeline_manager = M3MaxOptimizedPipelineManager(
+            device="mps",  # M3 Max 최적화
+            memory_gb=128.0,
+            quality_level=quality_mode,
+            optimization_enabled=True
+        )
+        set_pipeline_manager(pipeline_manager)
+    
+    return pipeline_manager
 
 # ============================================
 # 🎯 M3 Max 최적화 파이프라인 매니저
@@ -1374,37 +1405,6 @@ def set_pipeline_manager(manager: M3MaxOptimizedPipelineManager):
     """전역 파이프라인 매니저 설정 (기존 함수명 유지)"""
     get_pipeline_manager._instance = manager
 
-# ============================================
-# 🌐 API 라우터 (기존 구조 완전 유지)
-# ============================================
-
-router = APIRouter(
-    prefix="/api/pipeline",
-    tags=["Pipeline"],
-    responses={
-        500: {"description": "Internal Server Error"},
-        503: {"description": "Service Unavailable"}
-    }
-)
-
-# 전역 변수들 (기존 패턴 유지)
-pipeline_manager: Optional[M3MaxOptimizedPipelineManager] = None
-active_connections: Dict[str, Any] = {}
-
-def get_pipeline_instance(quality_mode: str = "high"):
-    """파이프라인 인스턴스 관리 (기존 함수명 유지)"""
-    global pipeline_manager
-    
-    if pipeline_manager is None:
-        pipeline_manager = M3MaxOptimizedPipelineManager(
-            device="mps",  # M3 Max 최적화
-            memory_gb=128.0,
-            quality_level=quality_mode,
-            optimization_enabled=True
-        )
-        set_pipeline_manager(pipeline_manager)
-    
-    return pipeline_manager
 
 # ============================================
 # 🚀 라우터 시작/종료 이벤트
