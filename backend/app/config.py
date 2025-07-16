@@ -704,4 +704,4 @@ if __name__ == "__main__":
     for key, value in memory_config.items():
         print(f"  - {key}: {value}")
     
-    print(f"\n✅ 설정 검증 완료 - 총 {len(test_settings.PIPELINE_STEPS)}개 파이프라인 단계")
+    print(f"\n✅ 설정 검증 완료 - 총 {len(test_settings.PIPELINE_STEPS)}개 파이프라인 단계")    
