@@ -18,6 +18,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 from pathlib import Path
+from fastapi import File, UploadFile, Form
 
 # ===============================================================
 # 🔧 경로 설정 (가장 중요!)
@@ -521,34 +522,207 @@ async def optimize_memory_endpoint():
 
 # 기존 @app.get("/") 다음에 추가:
 
-@app.post("/api/step/1/upload-validation")
-async def test_upload_validation():
-    """임시 테스트용 1단계 엔드포인트"""
-    return {
-        "success": True,
-        "message": "이미지 업로드 검증 테스트 완료",
-        "processing_time": 0.1,
-        "confidence": 0.95,
-        "details": {
-            "person_image": "검증됨",
-            "clothing_image": "검증됨"
-        }
-    }
 
-@app.post("/api/step/2/measurements-validation")
-async def test_measurements_validation():
-    """임시 테스트용 2단계 엔드포인트"""
-    return {
-        "success": True,
-        "message": "신체 측정값 검증 테스트 완료",
-        "processing_time": 0.05,
-        "confidence": 0.98,
-        "details": {
-            "height": "유효함",
-            "weight": "유효함",
-            "bmi": "정상 범위"
+@app.post("/api/step/1/upload-validation")
+async def step1_upload_validation(
+    person_image: UploadFile = File(..., description="사용자 이미지"),
+    clothing_image: UploadFile = File(..., description="의류 이미지")
+):
+    """1단계: 실제 이미지 업로드 및 검증 (수정된 버전)"""
+    start_time = time.time()
+    
+    try:
+        logger.info("🔍 Step 1: 이미지 업로드 검증 시작")
+        
+        # 1. 파일 존재 확인
+        if not person_image or not clothing_image:
+            raise HTTPException(400, "사용자 이미지와 의류 이미지가 모두 필요합니다")
+        
+        # 2. 파일 형식 검증
+        allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+        
+        if person_image.content_type not in allowed_types:
+            raise HTTPException(400, f"사용자 이미지 형식이 지원되지 않습니다. 현재: {person_image.content_type}")
+        
+        if clothing_image.content_type not in allowed_types:
+            raise HTTPException(400, f"의류 이미지 형식이 지원되지 않습니다. 현재: {clothing_image.content_type}")
+        
+        # 3. 파일 내용 읽기
+        person_content = await person_image.read()
+        clothing_content = await clothing_image.read()
+        
+        # 4. 파일 크기 확인 (50MB 제한)
+        max_size = 50 * 1024 * 1024  # 50MB
+        
+        if len(person_content) > max_size:
+            raise HTTPException(400, f"사용자 이미지가 너무 큽니다. 현재: {len(person_content)} bytes")
+        
+        if len(clothing_content) > max_size:
+            raise HTTPException(400, f"의류 이미지가 너무 큽니다. 현재: {len(clothing_content)} bytes")
+        
+        # 5. 이미지 내용 검증
+        try:
+            # 사용자 이미지 검증
+            person_img = Image.open(io.BytesIO(person_content))
+            person_width, person_height = person_img.size
+            
+            # 의류 이미지 검증
+            clothing_img = Image.open(io.BytesIO(clothing_content))
+            clothing_width, clothing_height = clothing_img.size
+            
+            logger.info(f"✅ 사용자 이미지: {person_width}x{person_height}, {person_img.format}")
+            logger.info(f"✅ 의류 이미지: {clothing_width}x{clothing_height}, {clothing_img.format}")
+            
+        except Exception as img_error:
+            raise HTTPException(400, f"이미지 파일이 손상되었습니다: {str(img_error)}")
+        
+        # 6. 성공 응답
+        processing_time = time.time() - start_time
+        
+        def format_size(bytes_size):
+            for unit in ['B', 'KB', 'MB']:
+                if bytes_size < 1024.0:
+                    return f"{bytes_size:.1f}{unit}"
+                bytes_size /= 1024.0
+            return f"{bytes_size:.1f}GB"
+        
+        response = {
+            "success": True,
+            "message": "이미지 업로드 및 검증 완료",
+            "processing_time": round(processing_time, 3),
+            "confidence": 0.98,
+            "details": {
+                "person_image": {
+                    "filename": person_image.filename,
+                    "content_type": person_image.content_type,
+                    "size": format_size(len(person_content)),
+                    "resolution": f"{person_width}x{person_height}",
+                    "format": getattr(person_img, 'format', 'Unknown'),
+                    "valid": True
+                },
+                "clothing_image": {
+                    "filename": clothing_image.filename,
+                    "content_type": clothing_image.content_type, 
+                    "size": format_size(len(clothing_content)),
+                    "resolution": f"{clothing_width}x{clothing_height}",
+                    "format": getattr(clothing_img, 'format', 'Unknown'),
+                    "valid": True
+                },
+                "validation_results": {
+                    "format_check": "통과",
+                    "size_check": "통과",
+                    "content_check": "통과", 
+                    "ready_for_processing": True
+                }
+            }
         }
-    }
+        
+        logger.info(f"✅ Step 1 완료: {processing_time:.3f}초")
+        return response
+        
+    except HTTPException:
+        # FastAPI HTTPException은 그대로 전달
+        raise
+    except Exception as e:
+        # 예상치 못한 에러
+        error_msg = f"Step 1 처리 실패: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        
+        processing_time = time.time() - start_time
+        return {
+            "success": False,
+            "message": error_msg,
+            "processing_time": round(processing_time, 3),
+            "confidence": 0.0,
+            "error": str(e)
+        }
+
+# 기존의 Step 2 함수도 개선 (FormData 처리 개선)
+@app.post("/api/step/2/measurements-validation")
+async def step2_measurements_validation(
+    height: float = Form(..., description="키 (cm)", ge=100, le=250),
+    weight: float = Form(..., description="몸무게 (kg)", ge=30, le=300)
+):
+    """2단계: 신체 측정값 검증 (개선된 버전)"""
+    start_time = time.time()
+    
+    try:
+        # BMI 계산
+        height_m = height / 100  # cm -> m 변환
+        bmi = weight / (height_m ** 2)
+        
+        # BMI 분류
+        if bmi < 18.5:
+            bmi_category = "저체중"
+            bmi_status = "주의"
+        elif 18.5 <= bmi < 25:
+            bmi_category = "정상"
+            bmi_status = "양호"
+        elif 25 <= bmi < 30:
+            bmi_category = "과체중"
+            bmi_status = "주의"
+        else:
+            bmi_category = "비만"
+            bmi_status = "주의"
+        
+        # 체형 추정 (간단한 로직)
+        if height < 160:
+            body_type = "소형"
+        elif height > 180:
+            body_type = "대형"
+        else:
+            body_type = "중형"
+        
+        # 의류 사이즈 추정
+        if bmi < 20:
+            estimated_size = "S"
+        elif bmi < 23:
+            estimated_size = "M"
+        elif bmi < 26:
+            estimated_size = "L"
+        else:
+            estimated_size = "XL"
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "message": "신체 측정값 검증 테스트 완료",
+            "processing_time": round(processing_time, 3),
+            "confidence": 0.98,
+            "details": {
+                "measurements": {
+                    "height": f"{height}cm",
+                    "weight": f"{weight}kg",
+                    "height_status": "유효함",
+                    "weight_status": "유효함"
+                },
+                "calculated_metrics": {
+                    "bmi": round(bmi, 1),
+                    "bmi_category": bmi_category,
+                    "bmi_status": bmi_status,
+                    "body_type": body_type,
+                    "estimated_size": estimated_size
+                },
+                "validation_results": {
+                    "height_range": "정상 범위 (100-250cm)",
+                    "weight_range": "정상 범위 (30-300kg)",
+                    "ready_for_processing": True
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Step 2 에러: {str(e)}")
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": False,
+            "message": f"신체 측정값 검증 실패: {str(e)}",
+            "processing_time": round(processing_time, 3),
+            "confidence": 0.0,
+            "error": str(e)
+        }
 
 @app.post("/api/step/3/human-parsing")
 async def test_human_parsing():

@@ -1,9 +1,9 @@
 """
-app/services/__init__.py - 서비스 레이어 패키지 초기화
+app/services/__init__.py - 서비스 레이어 패키지 초기화 (수정됨)
 
-✅ 서비스 레이어 컴포넌트들 export
-✅ 의존성 관리
-✅ 편리한 import 제공
+✅ PipelineService 클래스 대신 실제 구현체들 import
+✅ 기존 구조 최대한 유지
+✅ Import 오류 해결
 """
 
 import logging
@@ -11,16 +11,28 @@ import logging
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
-# 핵심 서비스들 import
+# 핵심 서비스들 import (수정됨)
 try:
-    # 파이프라인 관련 서비스
-    from .pipeline_service import PipelineService, get_pipeline_service
+    # 파이프라인 관련 서비스 - 실제 구현체들
+    from .pipeline_service import (
+        # PipelineService,  # 이 클래스는 존재하지 않음 - 제거
+        CompletePipelineService,
+        SingleStepPipelineService,
+        PipelineStatusService,
+        PipelineServiceManager,
+        get_pipeline_service_manager,
+        get_complete_pipeline_service,
+        get_single_step_pipeline_service,
+        get_pipeline_status_service
+    )
+    
     from .step_service import (
         BaseStepService,
         UploadValidationService,
         MeasurementsValidationService, 
         HumanParsingService,
         VirtualFittingService,
+        CompletePipelineService as StepCompletePipelineService,  # 별칭 사용
         StepServiceManager,
         get_step_service_manager
     )
@@ -31,7 +43,10 @@ try:
     
     # 성공적으로 import된 서비스들
     AVAILABLE_SERVICES = [
-        "PipelineService",
+        "CompletePipelineService",
+        "SingleStepPipelineService", 
+        "PipelineStatusService",
+        "PipelineServiceManager",
         "StepServiceManager", 
         "UploadValidationService",
         "MeasurementsValidationService",
@@ -50,13 +65,22 @@ except ImportError as e:
     AVAILABLE_SERVICES = []
 
 # ============================================================================
-# 🎯 Export할 항목들
+# 🎯 Export할 항목들 (수정됨)
 # ============================================================================
 
 __all__ = [
-    # 파이프라인 서비스
-    "PipelineService",
-    "get_pipeline_service",
+    # 파이프라인 서비스 - 실제 구현체들
+    "CompletePipelineService",
+    "SingleStepPipelineService",
+    "PipelineStatusService", 
+    "PipelineServiceManager",
+    "get_pipeline_service_manager",
+    "get_complete_pipeline_service",
+    "get_single_step_pipeline_service", 
+    "get_pipeline_status_service",
+    
+    # 기존 호환성을 위한 별칭들
+    "get_pipeline_service",  # = get_complete_pipeline_service
     
     # 단계별 서비스
     "BaseStepService",
@@ -75,6 +99,11 @@ __all__ = [
     # 메타 정보
     "AVAILABLE_SERVICES"
 ]
+
+# 기존 호환성을 위한 별칭 함수
+async def get_pipeline_service():
+    """기존 호환성을 위한 별칭"""
+    return await get_complete_pipeline_service()
 
 # ============================================================================
 # 🎉 패키지 정보

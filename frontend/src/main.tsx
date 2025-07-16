@@ -217,16 +217,6 @@ const checkBrowserCompatibility = () => {
     .filter(([, supported]) => !supported)
     .map(([feature]) => feature);
 
-  if (unsupported.length > 0) {
-    console.warn('⚠️ 지원되지 않는 브라우저 기능:', unsupported);
-    
-    if (isDevelopment) {
-      alert(`다음 기능이 지원되지 않습니다:\n${unsupported.join('\n')}\n\n최신 브라우저를 사용해주세요.`);
-    }
-  } else {
-    console.log('✅ 브라우저 호환성: 모든 기능 지원됨');
-  }
-
   return unsupported.length === 0;
 };
 

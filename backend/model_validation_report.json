@@ -1,0 +1,116 @@
+{
+  "timestamp": "2025-07-17T05:48:06.892298",
+  "validation_results": {
+    "total_models": 8,
+    "existing_models": 1,
+    "loadable_models": 1,
+    "missing_models": 7,
+    "broken_models": 0,
+    "total_size_gb": 0.16,
+    "issues": []
+  },
+  "models": {
+    "human_parsing_graphonomy": {
+      "step": "step_01_human_parsing",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 85.0,
+      "priority": "high",
+      "description": "Graphonomy 인체 파싱 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
+    },
+    "pose_estimation_openpose": {
+      "step": "step_02_pose_estimation",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 200.0,
+      "priority": "high",
+      "description": "OpenPose 포즈 추정 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/openpose_body.pth"
+    },
+    "cloth_segmentation_u2net": {
+      "step": "step_03_cloth_segmentation",
+      "exists": true,
+      "loadable": true,
+      "actual_size_mb": 168.1,
+      "expected_size_mb": 176.0,
+      "priority": "high",
+      "description": "U²-Net 의류 세그멘테이션 모델",
+      "issues": [],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth"
+    },
+    "geometric_matching_gmm": {
+      "step": "step_04_geometric_matching",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 95.0,
+      "priority": "medium",
+      "description": "기하학적 매칭 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04_geometric_matching/gmm_final.pth"
+    },
+    "cloth_warping_tom": {
+      "step": "step_05_cloth_warping",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 95.0,
+      "priority": "medium",
+      "description": "Try-On Module 의류 워핑 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_05_cloth_warping/tom_final.pth"
+    },
+    "virtual_fitting_hrviton": {
+      "step": "step_06_virtual_fitting",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 150.0,
+      "priority": "critical",
+      "description": "HR-VITON 고해상도 가상 피팅 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth"
+    },
+    "post_processing_enhancer": {
+      "step": "step_07_post_processing",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 45.0,
+      "priority": "low",
+      "description": "이미지 품질 향상 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_07_post_processing/enhancer.pth"
+    },
+    "quality_assessment_model": {
+      "step": "step_08_quality_assessment",
+      "exists": false,
+      "loadable": false,
+      "actual_size_mb": 0.0,
+      "expected_size_mb": 25.0,
+      "priority": "low",
+      "description": "품질 평가 모델",
+      "issues": [
+        "파일 존재하지 않음"
+      ],
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_08_quality_assessment/quality.pth"
+    }
+  }
+}
