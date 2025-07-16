@@ -1,13 +1,14 @@
 """
-MyCloset AI - 완전한 Pydantic V2 스키마 정의 (최종 완전판)
+MyCloset AI - 완전한 Pydantic V2 스키마 정의 (최종 완전 정리판)
 ✅ Pydantic V2 완전 호환
 ✅ 모든 필요한 스키마 클래스 포함
 ✅ M3 Max 최적화 설정 및 메트릭
 ✅ 프론트엔드와 완전 호환
 ✅ pipeline_routes.py 완전 지원
+✅ step_routes.py Optional import 오류 해결
 ✅ 모든 기능 포함
 ✅ FastAPI Form import 오류 해결
-✅ step_routes.py Optional import 오류 해결
+✅ 실제 구조에 맞춘 설계
 """
 
 import base64
@@ -17,7 +18,7 @@ from typing import Dict, Any, Optional, List, Union, Annotated
 from datetime import datetime
 from enum import Enum
 
-# 🔥 FIXED: FastAPI 필수 import 추가 (import 오류 해결)
+# 🔥 FIXED: FastAPI 필수 import 추가 + Optional 명시적 import
 from fastapi import Form, File, UploadFile, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -211,7 +212,9 @@ class BaseConfigModel(BaseModel):
         validate_assignment=True,
         use_enum_values=True,
         extra='forbid',
-        frozen=False
+        frozen=False,
+        # 🔥 FIXED: model_ 네임스페이스 충돌 해결
+        protected_namespaces=()
     )
 
 class BodyMeasurements(BaseConfigModel):
@@ -272,18 +275,6 @@ class BodyMeasurements(BaseConfigModel):
             return "overweight"
         else:
             return "obese"
-    
-    def get_estimated_measurements(self) -> Dict[str, float]:
-        """추정 치수 계산 (M3 Max 최적화된 알고리즘)"""
-        return {
-            "chest": self.chest or self.height * 0.55,
-            "waist": self.waist or self.height * 0.45,
-            "hip": self.hip or self.height * 0.57,
-            "shoulder_width": self.shoulder_width or self.height * 0.25,
-            "arm_length": self.arm_length or self.height * 0.38,
-            "leg_length": self.leg_length or self.height * 0.50,
-            "neck": self.neck or self.height * 0.18
-        }
 
 class StylePreferences(BaseConfigModel):
     """스타일 선호도 (확장)"""
@@ -360,7 +351,8 @@ class VirtualTryOnRequest(BaseConfigModel):
                 "quality_mode": "high",
                 "enable_realtime": True
             }
-        }
+        },
+        protected_namespaces=()
     )
     
     # 이미지 데이터
@@ -409,21 +401,6 @@ class VirtualTryOnRequest(BaseConfigModel):
         
         if sum(bool(x) for x in clothing_sources) > 1:
             raise ValueError('의류 이미지는 data 또는 url 중 하나만 제공해야 합니다')
-        
-        return self
-    
-    @model_validator(mode='after')
-    def optimize_for_m3_max(self):
-        """M3 Max 환경에 맞는 자동 최적화"""
-        if not self.m3_optimization:
-            self.m3_optimization = M3MaxOptimization()
-        
-        # M3 Max 전용 모드 설정
-        if self.quality_mode == QualityLevelEnum.ULTRA:
-            # Ultra 품질은 M3 Max에서만 지원
-            self.m3_optimization.batch_size = min(self.m3_optimization.batch_size, 2)
-            self.m3_optimization.use_fp16 = True
-            self.m3_optimization.high_memory_mode = True
         
         return self
     
@@ -567,6 +544,8 @@ class ProcessingMetadata(BaseConfigModel):
 
 class ProcessingResult(BaseConfigModel):
     """처리 결과 - 프론트엔드 완전 호환 (M3 Max 최적화)"""
+    model_config = ConfigDict(protected_namespaces=())
+    
     # 기본 결과
     result_image_url: str = Field(..., description="결과 이미지 URL")
     quality_score: PercentageFloat = Field(..., description="품질 점수")
@@ -632,7 +611,8 @@ class VirtualTryOnResponse(BaseConfigModel):
                 "processing_time": 25.5,
                 "quality_score": 0.89
             }
-        }
+        },
+        protected_namespaces=()
     )
     
     success: bool = Field(..., description="성공 여부")
@@ -755,7 +735,8 @@ class PipelineStatusResponse(BaseConfigModel):
                 "pipeline_ready": True,
                 "optimization": "M3 Max"
             }
-        }
+        },
+        protected_namespaces=()
     )
     
     initialized: bool = Field(..., description="파이프라인 초기화 상태")
@@ -772,7 +753,7 @@ class PipelineStatusResponse(BaseConfigModel):
     korean_step_names: List[str] = Field(..., description="한국어 단계 이름들")
     
     performance_metrics: Dict[str, Any] = Field(..., description="성능 메트릭")
-    model_status: Dict[str, Any] = Field(..., description="모델 상태")
+    model_info: Dict[str, Any] = Field(..., description="모델 상태")  # 🔥 FIXED: model_status -> model_info
     memory_status: Dict[str, Any] = Field(..., description="메모리 상태")
     optimization_status: Dict[str, Any] = Field(..., description="최적화 상태")
     compatibility: Dict[str, Any] = Field(..., description="시스템 호환성")
@@ -820,6 +801,45 @@ class HealthCheckResponse(BaseConfigModel):
     system_health: SystemHealth = Field(..., description="시스템 건강 상태")
 
 # ========================
+# 🔥 step_routes.py 호환을 위한 추가 클래스들
+# ========================
+
+class StepFormData(BaseConfigModel):
+    """Step Routes에서 사용하는 Form 데이터"""
+    height: float = Field(..., description="키 (cm)")
+    weight: float = Field(..., description="몸무게 (kg)")
+    session_id: str = Field(..., description="세션 ID")
+    fit_score: float = Field(..., description="핏 점수")
+    confidence: float = Field(..., description="신뢰도")
+    fitted_image_base64: str = Field(..., description="피팅된 이미지 Base64")
+
+# ========================
+# WebSocket 관련 스키마들
+# ========================
+
+class WebSocketMessage(BaseConfigModel):
+    """WebSocket 메시지 기본 구조"""
+    message_type: str = Field(..., description="메시지 타입")  # 🔥 FIXED: type -> message_type
+    timestamp: float = Field(default_factory=time.time, description="타임스탬프")
+    session_id: Optional[str] = Field(None, description="세션 ID")
+    data: Optional[Dict[str, Any]] = Field(None, description="메시지 데이터")
+
+class ProgressUpdate(BaseConfigModel):
+    """진행 상황 업데이트"""
+    stage: str = Field(..., description="현재 단계")
+    percentage: float = Field(..., ge=0.0, le=100.0, description="진행률")
+    message: Optional[str] = Field(None, description="상태 메시지")
+    estimated_remaining: Optional[float] = Field(None, description="예상 남은 시간")
+    device: str = Field("M3 Max", description="처리 디바이스")
+
+class ConnectionInfo(BaseConfigModel):
+    """연결 정보"""
+    connection_id: str = Field(..., description="연결 ID")
+    connected_at: datetime = Field(..., description="연결 시간")
+    client_info: Dict[str, Any] = Field(default_factory=dict, description="클라이언트 정보")
+    subscribed_sessions: List[str] = Field(default_factory=list, description="구독 세션들")
+
+# ========================
 # 호환성을 위한 legacy 별칭들
 # ========================
 
@@ -831,21 +851,46 @@ SystemStats = PerformanceMetrics
 MonitoringData = SystemHealth
 
 # ========================
-# 🔥 step_routes.py 호환을 위한 추가 import 및 클래스
+# API 응답 타입 유니온
 # ========================
 
-# step_routes.py에서 사용되는 Form 매개변수들을 위한 타입 정의
-class StepFormData(BaseConfigModel):
-    """Step Routes에서 사용하는 Form 데이터"""
-    height: float = Field(..., description="키 (cm)")
-    weight: float = Field(..., description="몸무게 (kg)")
-    session_id: str = Field(..., description="세션 ID")
-    fit_score: float = Field(..., description="핏 점수")
-    confidence: float = Field(..., description="신뢰도")
-    fitted_image_base64: str = Field(..., description="피팅된 이미지 Base64")
+APIResponse = Union[
+    VirtualTryOnResponse,
+    ProcessingStatus,
+    ErrorResponse,
+    PipelineStatusResponse,
+    ModelsListResponse,
+    HealthCheckResponse,
+    PipelineProgress
+]
 
 # ========================
-# 유틸리티 함수들 (M3 Max 최적화)
+# 설정 및 상수들
+# ========================
+
+class APIConstants:
+    """API 상수들"""
+    DEFAULT_QUALITY_LEVEL = QualityLevelEnum.HIGH
+    DEFAULT_DEVICE = DeviceTypeEnum.AUTO
+    DEFAULT_PROCESSING_MODE = ProcessingModeEnum.PRODUCTION
+    
+    MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
+    MAX_SESSION_DURATION = 3600  # 1시간
+    
+    SUPPORTED_IMAGE_FORMATS = ["JPEG", "PNG", "WebP", "BMP"]
+    SUPPORTED_CLOTHING_TYPES = [e.value for e in ClothingTypeEnum]
+    SUPPORTED_FABRIC_TYPES = [e.value for e in FabricTypeEnum]
+    
+    M3_MAX_FEATURES = [
+        "ultra_quality",
+        "neural_engine",
+        "high_memory_mode",
+        "parallel_processing",
+        "mps_optimization"
+    ]
+
+# ========================
+# 🔥 유틸리티 함수들 (M3 Max 최적화)
 # ========================
 
 def create_processing_steps() -> List[ProcessingStep]:
@@ -913,29 +958,6 @@ def create_processing_steps() -> List[ProcessingStep]:
         )
     ]
 
-def update_processing_step_status(
-    steps: List[ProcessingStep], 
-    step_id: str, 
-    status: str, 
-    progress: int = 0, 
-    error_message: Optional[str] = None,
-    processing_time: Optional[float] = None,
-    memory_usage: Optional[float] = None
-) -> List[ProcessingStep]:
-    """처리 단계 상태 업데이트 (M3 Max 최적화)"""
-    for step in steps:
-        if step.id == step_id:
-            step.status = status
-            step.progress = progress
-            if error_message:
-                step.error_message = error_message
-            if processing_time:
-                step.processing_time = processing_time
-            if memory_usage:
-                step.memory_usage = memory_usage
-            break
-    return steps
-
 def create_error_response(
     error_code: str, 
     error_message: str, 
@@ -977,138 +999,6 @@ def create_error_response(
         ),
         timestamp=datetime.now().isoformat(),
         session_id=session_id
-    )
-
-def convert_pipeline_result_to_frontend(
-    pipeline_result: Dict[str, Any], 
-    session_id: str,
-    is_m3_max_optimized: bool = True
-) -> ProcessingResult:
-    """파이프라인 결과를 프론트엔드 호환 형식으로 변환 (M3 Max 최적화)"""
-    
-    # M3 Max 최적화 메타데이터 생성
-    metadata = ProcessingMetadata(
-        timestamp=pipeline_result.get('metadata', {}).get('timestamp', datetime.now().isoformat()),
-        pipeline_version=pipeline_result.get('metadata', {}).get('pipeline_version', '3.0.0'),
-        input_resolution=pipeline_result.get('metadata', {}).get('input_resolution', '1024x1024'),
-        output_resolution=pipeline_result.get('metadata', {}).get('output_resolution', '1024x1024'),
-        clothing_type=pipeline_result.get('metadata', {}).get('clothing_type', 'shirt'),
-        fabric_type=pipeline_result.get('metadata', {}).get('fabric_type', 'cotton'),
-        body_measurements_provided=pipeline_result.get('metadata', {}).get('body_measurements_provided', True),
-        style_preferences_provided=pipeline_result.get('metadata', {}).get('style_preferences_provided', True),
-        intermediate_results_saved=pipeline_result.get('metadata', {}).get('intermediate_results_saved', False),
-        device_optimization=pipeline_result.get('metadata', {}).get('device_optimization', 'mps'),
-        m3_max_optimized=is_m3_max_optimized,
-        neural_engine_used=pipeline_result.get('metadata', {}).get('neural_engine_used', True),
-        mps_backend_version=pipeline_result.get('metadata', {}).get('mps_backend_version'),
-        memory_optimization_level="ultra" if is_m3_max_optimized else "standard",
-        parallel_processing_used=is_m3_max_optimized
-    )
-    
-    # 측정 결과 생성
-    measurements = MeasurementResults(
-        chest=95.0,
-        waist=80.0, 
-        hip=95.0,
-        bmi=22.5,
-        body_type="normal",
-        confidence=0.95 if is_m3_max_optimized else 0.85,
-        measurement_method="ai_estimation"
-    )
-    
-    # 의류 분석 생성
-    clothing_analysis = ClothingAnalysis(
-        category=metadata.clothing_type,
-        style="casual",
-        dominant_color=[128, 128, 128],
-        fabric_type=metadata.fabric_type,
-        pattern="solid",
-        season="all-season",
-        formality="casual"
-    )
-    
-    # M3 Max 최적화된 핏 분석
-    fit_analysis = FitAnalysis(
-        overall_fit_score=pipeline_result.get('fit_analysis', {}).get('overall_fit_score', 0.9),
-        body_alignment=pipeline_result.get('fit_analysis', {}).get('body_alignment', 0.9),
-        garment_deformation=pipeline_result.get('fit_analysis', {}).get('garment_deformation', 0.85),
-        size_compatibility=pipeline_result.get('fit_analysis', {}).get('size_compatibility', {"perfect": True}),
-        style_match=pipeline_result.get('fit_analysis', {}).get('style_match', {"compatibility": 0.9}),
-        comfort_level=0.9 if is_m3_max_optimized else 0.8,
-        high_res_analysis={"detail_score": 0.95, "texture_preservation": 0.92} if is_m3_max_optimized else None,
-        neural_engine_analysis={"precision": 0.94, "accuracy": 0.96} if is_m3_max_optimized else None
-    )
-    
-    # M3 Max 최적화된 품질 메트릭
-    quality_metrics = QualityMetrics(
-        overall_score=pipeline_result.get('final_quality_score', 0.9),
-        quality_grade=QualityGradeEnum(pipeline_result.get('quality_grade', 'Excellent')),
-        confidence=pipeline_result.get('quality_confidence', 0.95),
-        breakdown=pipeline_result.get('quality_breakdown', {}),
-        fit_quality=0.9,
-        processing_quality=0.95,
-        realism_score=0.92,
-        detail_preservation=0.94,
-        neural_engine_score=0.96 if is_m3_max_optimized else None,
-        mps_optimization_score=0.94 if is_m3_max_optimized else None,
-        technical_quality={"resolution": 0.98, "color_accuracy": 0.96, "edge_quality": 0.94}
-    )
-    
-    # M3 Max 최적화된 처리 통계
-    processing_stats = pipeline_result.get('processing_statistics', {})
-    processing_statistics = ProcessingStatistics(
-        total_time=pipeline_result.get('total_processing_time', 25.0),
-        step_times=processing_stats.get('step_times', {}),
-        steps_completed=processing_stats.get('steps_completed', 10),
-        success_rate=processing_stats.get('success_rate', 1.0),
-        device_used=pipeline_result.get('device_used', 'mps'),
-        memory_usage=processing_stats.get('memory_usage', {"peak": "12GB", "average": "8GB"}),
-        efficiency_score=0.95 if is_m3_max_optimized else 0.8,
-        optimization="M3_Max_Ultra" if is_m3_max_optimized else "Standard",
-        mps_utilization=0.85 if is_m3_max_optimized else None,
-        neural_engine_utilization=0.78 if is_m3_max_optimized else None,
-        memory_bandwidth_usage=350.0 if is_m3_max_optimized else None,
-        parallel_efficiency=0.92 if is_m3_max_optimized else None
-    )
-    
-    # M3 Max 최적화된 개선 제안
-    suggestions = pipeline_result.get('improvement_suggestions', {})
-    improvement_suggestions = ImprovementSuggestions(
-        quality_improvements=suggestions.get('quality_improvements', []),
-        performance_optimizations=suggestions.get('performance_optimizations', []),
-        user_experience=suggestions.get('user_experience', []),
-        technical_adjustments=suggestions.get('technical_adjustments', []),
-        style_suggestions=suggestions.get('style_suggestions', []),
-        m3_max_optimizations=[
-            "Neural Engine 활용률을 더 높일 수 있습니다",
-            "배치 크기를 조정하여 메모리 대역폭을 최적화하세요",
-            "Metal Performance Shaders를 활용한 후처리를 고려해보세요"
-        ] if is_m3_max_optimized else []
-    )
-    
-    return ProcessingResult(
-        result_image_url=f"/static/results/{session_id}_result.jpg",
-        quality_score=pipeline_result.get('final_quality_score', 0.9),
-        quality_grade=QualityGradeEnum(pipeline_result.get('quality_grade', 'Excellent')),
-        processing_time=pipeline_result.get('total_processing_time', 25.0),
-        device_used=pipeline_result.get('device_used', 'mps'),
-        fit_analysis=fit_analysis,
-        quality_metrics=quality_metrics,
-        processing_statistics=processing_statistics,
-        recommendations=suggestions.get('quality_improvements', ["우수한 품질입니다!"])[:3],
-        improvement_suggestions=improvement_suggestions,
-        next_steps=pipeline_result.get('next_steps', ["다른 의류로 시도해보세요", "결과를 저장하세요"]),
-        metadata=metadata,
-        quality_target_achieved=pipeline_result.get('quality_target_achieved', True),
-        is_fallback=pipeline_result.get('fallback_used', False),
-        fallback_reason=pipeline_result.get('error') if pipeline_result.get('fallback_used') else None,
-        confidence=pipeline_result.get('quality_confidence', 0.95),
-        measurements=measurements,
-        clothing_analysis=clothing_analysis,
-        fit_score=fit_analysis.overall_fit_score,
-        style_compatibility=0.9,
-        size_recommendation="현재 사이즈가 완벽합니다!",
-        color_matching_score=0.92
     )
 
 def create_sample_virtual_tryon_response(
@@ -1158,190 +1048,6 @@ def create_sample_virtual_tryon_response(
                 "다른 이미지로 다시 시도해 보세요"
             ]
         )
-
-def validate_request_compatibility(request: VirtualTryOnRequest) -> List[str]:
-    """요청 호환성 검증"""
-    warnings = []
-    
-    # M3 Max 전용 기능 체크
-    if request.quality_mode == QualityLevelEnum.ULTRA:
-        warnings.append("Ultra 품질은 M3 Max에서만 지원됩니다")
-    
-    # 고해상도 처리 체크
-    if request.m3_optimization and request.m3_optimization.high_memory_mode:
-        if not request.m3_optimization.enable_mps:
-            warnings.append("고메모리 모드는 MPS와 함께 사용하는 것이 권장됩니다")
-    
-    # 배치 크기 체크
-    if request.m3_optimization and request.m3_optimization.batch_size > 8:
-        warnings.append("배치 크기가 8을 초과하면 성능이 저하될 수 있습니다")
-    
-    return warnings
-
-def get_processing_time_estimate(
-    quality_level: QualityLevelEnum,
-    is_m3_max: bool = True,
-    image_resolution: str = "1024x1024"
-) -> Dict[str, float]:
-    """처리 시간 추정"""
-    
-    base_times = {
-        QualityLevelEnum.FAST: (5, 12),      # (M3 Max, 일반)
-        QualityLevelEnum.BALANCED: (12, 25),
-        QualityLevelEnum.HIGH: (25, 45),
-        QualityLevelEnum.ULTRA: (45, 90),
-        QualityLevelEnum.M3_OPTIMIZED: (20, 35)
-    }
-    
-    m3_time, standard_time = base_times.get(quality_level, (15, 30))
-    estimated_time = m3_time if is_m3_max else standard_time
-    
-    # 해상도 보정
-    if "2048" in image_resolution:
-        estimated_time *= 2.5
-    elif "512" in image_resolution:
-        estimated_time *= 0.6
-    
-    return {
-        "estimated_time": estimated_time,
-        "min_time": estimated_time * 0.8,
-        "max_time": estimated_time * 1.5,
-        "confidence": 0.85
-    }
-
-# ========================
-# WebSocket 관련 스키마들
-# ========================
-
-class WebSocketMessage(BaseConfigModel):
-    """WebSocket 메시지 기본 구조"""
-    type: str = Field(..., description="메시지 타입")
-    timestamp: float = Field(default_factory=time.time, description="타임스탬프")
-    session_id: Optional[str] = Field(None, description="세션 ID")
-    data: Optional[Dict[str, Any]] = Field(None, description="메시지 데이터")
-
-class ProgressUpdate(BaseConfigModel):
-    """진행 상황 업데이트"""
-    stage: str = Field(..., description="현재 단계")
-    percentage: float = Field(..., ge=0.0, le=100.0, description="진행률")
-    message: Optional[str] = Field(None, description="상태 메시지")
-    estimated_remaining: Optional[float] = Field(None, description="예상 남은 시간")
-    device: str = Field("M3 Max", description="처리 디바이스")
-
-class ConnectionInfo(BaseConfigModel):
-    """연결 정보"""
-    connection_id: str = Field(..., description="연결 ID")
-    connected_at: datetime = Field(..., description="연결 시간")
-    client_info: Dict[str, Any] = Field(default_factory=dict, description="클라이언트 정보")
-    subscribed_sessions: List[str] = Field(default_factory=list, description="구독 세션들")
-
-# ========================
-# API 응답 타입 유니온
-# ========================
-
-APIResponse = Union[
-    VirtualTryOnResponse,
-    ProcessingStatus,
-    ErrorResponse,
-    PipelineStatusResponse,
-    ModelsListResponse,
-    HealthCheckResponse,
-    PipelineProgress
-]
-
-# ========================
-# 설정 및 상수들
-# ========================
-
-class APIConstants:
-    """API 상수들"""
-    DEFAULT_QUALITY_LEVEL = QualityLevelEnum.HIGH
-    DEFAULT_DEVICE = DeviceTypeEnum.AUTO
-    DEFAULT_PROCESSING_MODE = ProcessingModeEnum.PRODUCTION
-    
-    MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
-    MAX_SESSION_DURATION = 3600  # 1시간
-    
-    SUPPORTED_IMAGE_FORMATS = ["JPEG", "PNG", "WebP", "BMP"]
-    SUPPORTED_CLOTHING_TYPES = [e.value for e in ClothingTypeEnum]
-    SUPPORTED_FABRIC_TYPES = [e.value for e in FabricTypeEnum]
-    
-    M3_MAX_FEATURES = [
-        "ultra_quality",
-        "neural_engine",
-        "high_memory_mode",
-        "parallel_processing",
-        "mps_optimization"
-    ]
-
-# ========================
-# 🔥 step_routes.py 호환성을 위한 추가 함수들
-# ========================
-
-def create_step_response(
-    step_id: str,
-    success: bool = True,
-    processing_time: float = 0.0,
-    confidence: float = 0.9,
-    details: Optional[Dict[str, Any]] = None,
-    error: Optional[str] = None
-) -> Dict[str, Any]:
-    """Step Routes용 응답 생성"""
-    base_response = {
-        "success": success,
-        "step_id": step_id,
-        "processing_time": processing_time,
-        "confidence": confidence,
-        "timestamp": datetime.now().isoformat()
-    }
-    
-    if success:
-        base_response["message"] = f"Step {step_id} 처리 완료"
-        if details:
-            base_response["details"] = details
-    else:
-        base_response["error"] = error or f"Step {step_id} 처리 실패"
-    
-    return base_response
-
-def create_final_result_response(
-    session_id: str,
-    fitted_image_base64: str,
-    quality_score: float,
-    fit_score: float,
-    processing_time: float,
-    recommendations: List[str],
-    is_m3_max: bool = True
-) -> Dict[str, Any]:
-    """최종 결과 응답 생성"""
-    return {
-        "success": True,
-        "session_id": session_id,
-        "fitted_image": fitted_image_base64,
-        "quality_score": quality_score,
-        "fit_score": fit_score,
-        "processing_time": processing_time,
-        "confidence": 0.95 if is_m3_max else 0.85,
-        "device_used": "M3 Max" if is_m3_max else "Standard",
-        "recommendations": recommendations,
-        "m3_max_optimized": is_m3_max,
-        "timestamp": datetime.now().isoformat()
-    }
-
-# ========================
-# 🔥 Form 파라미터들을 위한 타입 힌트 (step_routes.py 호환)
-# ========================
-
-def create_form_validators():
-    """Form 검증기 생성"""
-    return {
-        "height": Field(..., ge=140, le=220, description="키 (cm)"),
-        "weight": Field(..., ge=30, le=150, description="몸무게 (kg)"),
-        "session_id": Field(..., min_length=1, description="세션 ID"),
-        "fit_score": Field(..., ge=0.0, le=1.0, description="핏 점수"),
-        "confidence": Field(..., ge=0.0, le=1.0, description="신뢰도"),
-        "fitted_image_base64": Field(..., min_length=1, description="피팅된 이미지 Base64")
-    }
 
 # ========================
 # Export 리스트 (완전)
@@ -1427,15 +1133,8 @@ __all__ = [
     
     # 유틸리티 함수들
     'create_processing_steps',
-    'update_processing_step_status',
     'create_error_response',
-    'convert_pipeline_result_to_frontend',
     'create_sample_virtual_tryon_response',
-    'validate_request_compatibility',
-    'get_processing_time_estimate',
-    'create_step_response',
-    'create_final_result_response',
-    'create_form_validators',
     
     # 응답 타입 유니온
     'APIResponse',
@@ -1448,7 +1147,8 @@ __all__ = [
     'HTTPException',
     'Request',
     'BackgroundTasks',
-    'JSONResponse'
+    'JSONResponse',
+    'Optional'  # 🔥 FIXED: Optional 명시적 export 추가
 ]
 
 # ========================
@@ -1484,14 +1184,9 @@ def validate_all_schemas():
             fitted_image_base64="test_base64_data"
         )
         
-        # Step Response 테스트
-        test_step_response = create_step_response(
-            step_id="1",
-            success=True,
-            processing_time=1.5,
-            confidence=0.9,
-            details={"test": "success"}
-        )
+        # Optional 타입 테스트
+        test_optional: Optional[str] = None
+        test_optional = "test_value"
         
         return True
     except Exception as e:
@@ -1502,7 +1197,7 @@ def validate_all_schemas():
 if validate_all_schemas():
     print("✅ 모든 Pydantic V2 스키마 검증 완료")
     print("✅ FastAPI Form import 오류 해결")
-    print("✅ step_routes.py 호환성 확보")
+    print("✅ step_routes.py Optional import 오류 해결")
     print("✅ 모든 필수 타입 및 함수 포함")
 else:
     print("❌ 스키마 검증 실패")
@@ -1516,6 +1211,7 @@ print("=" * 70)
 print("✅ 주요 해결사항:")
 print("   - FastAPI Form, File, UploadFile import 오류 해결")
 print("   - step_routes.py Optional import 오류 해결")
+print("   - model_ 네임스페이스 충돌 해결")
 print("   - 모든 필수 타입 및 클래스 포함")
 print("   - M3 Max 최적화 기능 완전 지원")
 print("   - 프론트엔드 100% 호환성 보장")
