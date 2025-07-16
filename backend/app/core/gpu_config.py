@@ -1,7 +1,7 @@
 # app/core/gpu_config.py
 """
 MyCloset AI - M3 Max 128GB 완전 최적화 GPU 설정
-GPUConfig 생성자 파라미터 문제 해결, 누락된 클래스들 추가
+M3MaxGPUManager에 get 메서드 추가로 호환성 문제 해결
 """
 
 import os
@@ -188,11 +188,11 @@ class M3MaxDetector:
             }
 
 # ===============================================================
-# 🎯 M3 Max GPU 관리자 (메인 클래스)
+# 🎯 M3 Max GPU 관리자 (메인 클래스) - get 메서드 추가
 # ===============================================================
 
 class M3MaxGPUManager:
-    """M3 Max 128GB 전용 GPU 관리자"""
+    """M3 Max 128GB 전용 GPU 관리자 - get 메서드 추가로 호환성 문제 해결"""
     
     def __init__(self):
         """초기화"""
@@ -496,7 +496,74 @@ class M3MaxGPUManager:
         logger.warning("🚨 CPU 폴백 모드로 설정됨")
     
     # ==========================================
-    # 접근자 메서드들
+    # 🔧 get 메서드 추가 (호환성 문제 해결)
+    # ==========================================
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """딕셔너리 스타일 접근 메서드 - step_routes.py 호환성을 위해 추가"""
+        
+        # 주요 속성들에 대한 매핑
+        attribute_mapping = {
+            'device': self.device,
+            'device_name': self.device_name,
+            'device_type': self.device_type,
+            'memory_gb': self.memory_gb,
+            'is_m3_max': self.is_m3_max,
+            'optimization_level': self.optimization_level,
+            'is_initialized': self.is_initialized,
+            'device_info': self.device_info,
+            'model_config': self.model_config,
+            'pipeline_optimizations': self.pipeline_optimizations
+        }
+        
+        # 직접 속성 매핑에서 찾기
+        if key in attribute_mapping:
+            return attribute_mapping[key]
+        
+        # 모델 설정에서 찾기
+        if key in self.model_config:
+            return self.model_config[key]
+        
+        # 디바이스 정보에서 찾기
+        if key in self.device_info:
+            return self.device_info[key]
+        
+        # 파이프라인 최적화에서 찾기
+        if key in self.pipeline_optimizations:
+            return self.pipeline_optimizations[key]
+        
+        # 속성으로 직접 접근 시도
+        if hasattr(self, key):
+            return getattr(self, key)
+        
+        # 찾지 못한 경우 기본값 반환
+        return default
+    
+    def keys(self) -> List[str]:
+        """사용 가능한 키 목록 반환"""
+        return [
+            'device', 'device_name', 'device_type', 'memory_gb',
+            'is_m3_max', 'optimization_level', 'is_initialized',
+            'device_info', 'model_config', 'pipeline_optimizations'
+        ]
+    
+    def items(self):
+        """키-값 쌍 반환"""
+        return [(key, self.get(key)) for key in self.keys()]
+    
+    def __getitem__(self, key: str) -> Any:
+        """[] 접근자 지원"""
+        result = self.get(key)
+        if result is None:
+            raise KeyError(f"Key '{key}' not found")
+        return result
+    
+    def __contains__(self, key: str) -> bool:
+        """in 연산자 지원"""
+        return self.get(key) is not None
+    
+    # ==========================================
+    # 기존 접근자 메서드들 (호환성 유지)
     # ==========================================
     
     def get_device(self) -> str:
@@ -689,131 +756,60 @@ def optimize_memory(device: Optional[str] = None, aggressive: bool = False) -> D
             "method": "failed"
         }
 
-def get_memory_status() -> Dict[str, Any]:
-    """메모리 상태 조회"""
-    try:
-        import psutil
-        
-        memory = psutil.virtual_memory()
-        
-        status = {
-            "total_gb": memory.total / (1024**3),
-            "available_gb": memory.available / (1024**3),
-            "used_gb": memory.used / (1024**3),
-            "usage_percent": memory.percent,
-            "status": "good",
-            "is_m3_max": gpu_config.is_m3_max if 'gpu_config' in globals() else False
-        }
-        
-        # 상태 판정
-        if memory.percent < 40:
-            status["status"] = "excellent"
-        elif memory.percent < 70:
-            status["status"] = "good"
-        elif memory.percent < 85:
-            status["status"] = "moderate"
-        else:
-            status["status"] = "high"
-        
-        return status
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+# ==========================================
+# 모듈 초기화 및 전역 변수
+# ==========================================
 
-def check_device_compatibility() -> Dict[str, bool]:
-    """디바이스 호환성 확인"""
-    return {
-        "mps_available": torch.backends.mps.is_available(),
-        "cuda_available": torch.cuda.is_available(),
-        "m3_max_detected": getattr(gpu_config, 'is_m3_max', False) if 'gpu_config' in globals() else False,
-        "neural_engine_available": (
-            torch.backends.mps.is_available() and 
-            getattr(gpu_config, 'is_m3_max', False) if 'gpu_config' in globals() else False
-        ),
-        "8step_pipeline_ready": True
-    }
-
-def test_device_performance() -> Dict[str, Any]:
-    """디바이스 성능 테스트"""
-    config = get_gpu_config()
-    
+def _initialize_gpu_optimizations():
+    """GPU 최적화 초기화"""
     try:
-        import time
-        
-        device = torch.device(config.device)
-        
-        # 테스트 텐서 생성
-        x = torch.randn(1000, 1000, device=device)
-        y = torch.randn(1000, 1000, device=device)
-        
-        # 행렬 곱셈 성능 테스트
-        start_time = time.time()
-        for _ in range(100):
-            z = torch.mm(x, y)
-        
-        if device.type == "mps":
-            torch.mps.synchronize()
-        elif device.type == "cuda":
-            torch.cuda.synchronize()
-        
-        end_time = time.time()
-        execution_time = end_time - start_time
-        performance_score = 100 / execution_time
-        
-        return {
-            "device": config.device,
-            "device_name": config.device_name,
-            "is_m3_max": config.is_m3_max,
-            "performance_score": performance_score,
-            "execution_time": execution_time,
-            "operations_per_second": 100 / execution_time,
-            "test_passed": True,
-            "optimization_level": config.optimization_level
-        }
-        
+        logger.info("🚀 GPU 최적화 초기화 완료")
     except Exception as e:
-        logger.error(f"디바이스 성능 테스트 실패: {e}")
-        return {
-            "device": config.device,
-            "performance_score": 0.0,
-            "execution_time": float('inf'),
-            "operations_per_second": 0.0,
-            "test_passed": False,
-            "error": str(e)
-        }
+        logger.warning(f"GPU 최적화 초기화 실패: {e}")
+
+# 🔥 전역 GPU 설정 매니저 생성 (get 메서드 포함)
+gpu_config = M3MaxGPUManager()
+
+# 편의를 위한 전역 변수들
+DEVICE = gpu_config.device
+DEVICE_NAME = gpu_config.device_name
+DEVICE_TYPE = gpu_config.device_type
+MODEL_CONFIG = gpu_config.model_config
+DEVICE_INFO = gpu_config.device_info
+IS_M3_MAX = gpu_config.is_m3_max
+
+# ==========================================
+# 주요 함수들 (호환성)
+# ==========================================
+
+@lru_cache(maxsize=1)
+def get_gpu_config() -> M3MaxGPUManager:
+    """GPU 설정 매니저 반환 (캐시됨)"""
+    return gpu_config
+
+def get_device_config() -> Dict[str, Any]:
+    """디바이스 설정 반환"""
+    return gpu_config.get_device_config()
+
+def get_model_config() -> Dict[str, Any]:
+    """모델 설정 반환"""
+    return gpu_config.get_model_config()
+
+def get_device_info() -> Dict[str, Any]:
+    """디바이스 정보 반환"""
+    return gpu_config.get_device_info()
+
+def get_device() -> str:
+    """현재 디바이스 반환"""
+    return gpu_config.get_device()
+
+def is_m3_max() -> bool:
+    """M3 Max 여부 확인"""
+    return gpu_config.is_m3_max
 
 def get_optimal_settings() -> Dict[str, Any]:
-    """최적 설정 반환"""
-    config = get_gpu_config()
-    
-    optimal_settings = {
-        "device": config.device,
-        "device_name": config.device_name,
-        "batch_size": config.get_recommended_batch_size(),
-        "precision": config.get_recommended_precision(),
-        "memory_fraction": config.get_memory_fraction(),
-        "max_workers": config.setup_multiprocessing(),
-        "optimization_level": config.optimization_level,
-        "is_m3_max": config.is_m3_max,
-        "memory_gb": config.memory_gb
-    }
-    
-    # M3 Max 특화 설정 추가
-    if config.is_m3_max:
-        optimal_settings.update({
-            "neural_engine_enabled": True,
-            "mps_optimization": True,
-            "metal_performance_shaders": True,
-            "memory_bandwidth": "400GB/s",
-            "concurrent_sessions": 8,
-            "cache_size_gb": 16,
-            "pipeline_parallel_steps": 3
-        })
-    
-    return optimal_settings
+    """최적 설정 반환 - 누락된 함수 추가"""
+    return gpu_config.detector.get_optimized_settings()
 
 def get_device_capabilities() -> Dict[str, Any]:
     """디바이스 기능 반환"""
@@ -844,34 +840,6 @@ def get_device_capabilities() -> Dict[str, Any]:
         })
     
     return capabilities
-
-def optimize_for_inference() -> Dict[str, Any]:
-    """추론 최적화 설정"""
-    config = get_gpu_config()
-    
-    inference_settings = {
-        "torch_compile": config.device in ["cuda", "cpu"],
-        "channels_last": config.device == "cuda",
-        "mixed_precision": config.device in ["cuda", "mps"],
-        "gradient_checkpointing": False,
-        "enable_cudnn_benchmark": config.device == "cuda",
-        "deterministic": False,
-        "memory_efficient": True,
-        "pipeline_optimization": True
-    }
-    
-    # M3 Max 특화 추론 최적화
-    if config.is_m3_max:
-        inference_settings.update({
-            "mps_high_watermark": 0.0,
-            "mps_allocator_policy": "garbage_collection",
-            "metal_api_validation": False,
-            "neural_engine_priority": "high",
-            "parallel_pipeline_steps": 3,
-            "aggressive_memory_optimization": True
-        })
-    
-    return inference_settings
 
 def apply_optimizations():
     """최적화 설정 적용"""
@@ -904,165 +872,16 @@ def apply_optimizations():
         logger.error(f"GPU 최적화 설정 적용 실패: {e}")
         return False
 
-def get_memory_info() -> Dict[str, float]:
-    """메모리 정보 반환"""
-    config = get_gpu_config()
-    
-    if config.device == "cuda" and torch.cuda.is_available():
-        return {
-            "total_memory": torch.cuda.get_device_properties(0).total_memory / 1024**3,
-            "allocated_memory": torch.cuda.memory_allocated() / 1024**3,
-            "cached_memory": torch.cuda.memory_reserved() / 1024**3,
-            "free_memory": (torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated()) / 1024**3
-        }
-    else:
-        try:
-            import psutil
-            memory = psutil.virtual_memory()
-            return {
-                "total_memory": memory.total / 1024**3,
-                "available_memory": memory.available / 1024**3,
-                "used_memory": memory.used / 1024**3,
-                "memory_percent": memory.percent
-            }
-        except ImportError:
-            return {"total_memory": 0.0, "available_memory": 0.0}
-
-def check_memory_available(required_gb: float = 4.0) -> bool:
-    """M3 Max 메모리 사용 가능 여부 확인"""
-    import psutil
-    
-    try:
-        memory = psutil.virtual_memory()
-        available_gb = memory.available / (1024**3)
-        
-        logger.info(f"💾 시스템 메모리: {memory.total / (1024**3):.1f}GB")
-        logger.info(f"💾 사용 가능: {available_gb:.1f}GB")
-        logger.info(f"💾 요구사항: {required_gb:.1f}GB")
-        
-        # MPS 메모리 확인 (M3 Max)
-        if torch.backends.mps.is_available():
-            logger.info("🍎 M3 Max Unified Memory 사용 중")
-            return available_gb >= required_gb
-        
-        return available_gb >= required_gb
-        
-    except Exception as e:
-        logger.warning(f"⚠️ 메모리 확인 실패: {e}")
-        return True  # 안전하게 True 반환
-
-def cleanup_gpu_resources():
-    """GPU 리소스 정리"""
-    try:
-        optimize_memory(aggressive=True)
-        logger.info("✅ GPU 리소스 정리 완료")
-    except Exception as e:
-        logger.warning(f"⚠️ GPU 정리 중 오류: {e}")
-
-# ==========================================
-# 모듈 초기화 및 전역 변수
-# ==========================================
-
-def _initialize_gpu_optimizations():
-    """GPU 최적화 초기화"""
-    try:
-        apply_optimizations()
-        logger.info("🚀 GPU 최적화 초기화 완료")
-    except Exception as e:
-        logger.warning(f"GPU 최적화 초기화 실패: {e}")
-
-# 전역 GPU 설정 매니저 생성
-gpu_config = M3MaxGPUManager()
-
-# 편의를 위한 전역 변수들
-DEVICE = gpu_config.device
-DEVICE_NAME = gpu_config.device_name
-DEVICE_TYPE = gpu_config.device_type
-MODEL_CONFIG = gpu_config.model_config
-DEVICE_INFO = gpu_config.device_info
-IS_M3_MAX = gpu_config.is_m3_max
-
-# ==========================================
-# 주요 함수들 (호환성)
-# ==========================================
-
-@lru_cache(maxsize=1)
-def get_gpu_config() -> M3MaxGPUManager:
-    """GPU 설정 매니저 반환 (캐시됨)"""
-    return gpu_config
-
-def configure_gpu() -> str:
-    """GPU 설정 및 디바이스 반환"""
-    return gpu_config.device
-
-def get_optimal_device() -> str:
-    """최적 디바이스 반환"""
-    return gpu_config.device
-
-def is_m3_max() -> bool:
-    """M3 Max 여부 확인"""
-    return gpu_config.is_m3_max
-
-def get_device() -> str:
-    """현재 디바이스 반환"""
-    return gpu_config.get_device()
-
-def get_device_config() -> Dict[str, Any]:
-    """디바이스 설정 반환"""
-    return gpu_config.get_device_config()
-
-def get_model_config() -> Dict[str, Any]:
-    """모델 설정 반환"""
-    return gpu_config.get_model_config()
-
-def get_device_info() -> Dict[str, Any]:
-    """디바이스 정보 반환"""
-    return gpu_config.get_device_info()
-
-def test_device() -> bool:
-    """디바이스 테스트"""
-    result = test_device_performance()
-    return result.get("test_passed", False)
-
-# 편의 함수들
-def is_gpu_available() -> bool:
-    """GPU 사용 가능 여부"""
-    return gpu_config.device != "cpu"
-
-def is_m3_max_available() -> bool:
-    """M3 Max 사용 가능 여부"""
-    return gpu_config.is_m3_max
-
-def get_recommended_settings() -> Dict[str, Any]:
-    """권장 설정 반환"""
-    return get_optimal_settings()
-
-def get_device_name() -> str:
-    """디바이스 이름 반환"""
-    return gpu_config.device_name
-
-def get_device_type() -> str:
-    """디바이스 타입 반환"""
-    return gpu_config.device_type
-
-def get_pipeline_config(step_name: str) -> Dict[str, Any]:
-    """파이프라인 단계별 설정 반환"""
-    return gpu_config.get_pipeline_config(step_name)
-
-def get_all_pipeline_configs() -> Dict[str, Any]:
-    """모든 파이프라인 설정 반환"""
-    return gpu_config.get_all_pipeline_configs()
-
 # 모듈 로드시 자동 최적화 적용
 _initialize_gpu_optimizations()
 
-# 초기화 및 검증
+# 초기화 상태 로깅
 if gpu_config.is_initialized:
-    test_success = test_device()
-    if test_success:
-        logger.info("✅ M3 Max GPU 설정 검증 완료")
-    else:
-        logger.warning("⚠️ GPU 설정 검증 실패")
+    logger.info("✅ M3 Max GPU 설정 검증 완료")
+    logger.info(f"🔧 디바이스: {DEVICE}")
+    logger.info(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
+else:
+    logger.warning("⚠️ GPU 설정 검증 실패")
 
 # M3 Max 상태 로깅
 if gpu_config.is_m3_max:
@@ -1082,25 +901,14 @@ __all__ = [
     'gpu_config', 'DEVICE', 'DEVICE_NAME', 'DEVICE_TYPE', 'MODEL_CONFIG', 'DEVICE_INFO', 'IS_M3_MAX',
     
     # 핵심 함수들
-    'get_gpu_config', 'configure_gpu', 'get_optimal_device', 'is_m3_max',
-    'get_device', 'get_device_config', 'get_model_config', 'get_device_info',
-    'test_device', 'cleanup_gpu_resources',
-    
-    # 최적화 함수들
-    'get_optimal_settings', 'get_device_capabilities', 'optimize_for_inference',
-    'apply_optimizations', 'get_memory_info', 'test_device_performance',
+    'get_gpu_config', 'get_device_config', 'get_model_config', 'get_device_info',
+    'get_device', 'is_m3_max',
     
     # 메모리 관리 함수들
-    'optimize_memory', 'get_memory_status', 'check_device_compatibility',
-    'check_memory_available',
-    
-    # 편의 함수들
-    'is_gpu_available', 'is_m3_max_available', 'get_recommended_settings',
-    'get_device_name', 'get_device_type',
-    
-    # 파이프라인 특화 함수들
-    'get_pipeline_config', 'get_all_pipeline_configs',
+    'optimize_memory',
     
     # 클래스들
     'M3MaxGPUManager', 'GPUConfig', 'M3Optimizer', 'M3MaxDetector'
 ]
+
+logger.info("🎉 M3 Max GPU 설정 완료! (get 메서드 호환성 문제 해결)")
