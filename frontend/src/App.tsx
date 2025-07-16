@@ -80,7 +80,7 @@ const fileUtils = {
 const devTools = {
   testAPI: async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/step/health');
+      const response = await fetch('http://localhost:8000/health');
       const result = await response.json();
       return { message: 'API 연결 성공', data: result };
     } catch (error) {
@@ -161,7 +161,7 @@ const App: React.FC = () => {
     const checkHealth = async () => {
       setIsChecking(true);
       try {
-        const response = await fetch('http://localhost:8000/api/step/health');
+        const response = await fetch('http://localhost:8000/health');
         setIsHealthy(response.ok);
       } catch {
         setIsHealthy(false);
