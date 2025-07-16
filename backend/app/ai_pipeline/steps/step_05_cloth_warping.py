@@ -17,6 +17,8 @@ import asyncio
 import base64
 from typing import Dict, Any, Optional, Tuple, List, Union
 import numpy as np
+import threading  # 🔥 누락된 import 추가
+
 import json
 import math
 from concurrent.futures import ThreadPoolExecutor
