@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # 핵심 서비스들 import
 try:
+    # 파이프라인 관련 서비스
     from .pipeline_service import PipelineService, get_pipeline_service
     from .step_service import (
         BaseStepService,
@@ -24,14 +25,20 @@ try:
         get_step_service_manager
     )
     
+    # 기존 서비스들
+    from .human_analysis import HumanBodyAnalyzer, get_human_analyzer
+    from .image_processor import ImageProcessor
+    
     # 성공적으로 import된 서비스들
     AVAILABLE_SERVICES = [
         "PipelineService",
-        "StepServiceManager",
+        "StepServiceManager", 
         "UploadValidationService",
         "MeasurementsValidationService",
-        "HumanParsingService", 
-        "VirtualFittingService"
+        "HumanParsingService",
+        "VirtualFittingService",
+        "HumanBodyAnalyzer",  # 기존 서비스
+        "ImageProcessor"      # 기존 서비스
     ]
     
     logger.info(f"✅ 서비스 레이어 초기화 완료: {len(AVAILABLE_SERVICES)}개 서비스 로드됨")
@@ -47,7 +54,7 @@ except ImportError as e:
 # ============================================================================
 
 __all__ = [
-    # 핵심 서비스
+    # 파이프라인 서비스
     "PipelineService",
     "get_pipeline_service",
     
@@ -59,6 +66,11 @@ __all__ = [
     "VirtualFittingService",
     "StepServiceManager",
     "get_step_service_manager",
+    
+    # 기존 서비스들
+    "HumanBodyAnalyzer",
+    "get_human_analyzer",
+    "ImageProcessor",
     
     # 메타 정보
     "AVAILABLE_SERVICES"
