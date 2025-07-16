@@ -439,219 +439,12 @@ const App: React.FC = () => {
   // 반응형 상태
   const [isMobile, setIsMobile] = useState(false);
 
-  // 자동화 상태
-  const [autoProcessingEnabled, setAutoProcessingEnabled] = useState(true);
-
   // 파일 참조
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
   // ===============================================================
-  // 🚀 **새로운 자동화 기능 (paste-2.txt 내용 통합)**
-  // ===============================================================
-
-  // Step 2 완료 후 자동으로 Step 3-8 실행하는 useEffect
-  useEffect(() => {
-    // Step 2가 완료되고, 아직 처리 중이 아니고, 자동 처리가 활성화된 경우
-    if (completedSteps.includes(2) && currentStep === 2 && !isProcessing && autoProcessingEnabled) {
-      console.log('🚀 Step 2 완료됨 - Step 3-8 자동 시작!');
-      autoProcessRemainingSteps();
-    }
-  }, [completedSteps, currentStep, isProcessing, autoProcessingEnabled]);
-
-  // Step 3-8 자동 처리 함수
-  const autoProcessRemainingSteps = async () => {
-    if (!stepResults[1]?.details?.session_id) {
-      setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
-      return;
-    }
-
-    if (!personImage || !clothingImage) {
-      setError('이미지 파일이 없습니다. Step 1부터 다시 시작해주세요.');
-      return;
-    }
-
-    setIsProcessing(true);
-    const sessionId = stepResults[1].details.session_id;
-
-    try {
-      console.log('🔥 자동 처리 시작: Step 3-8');
-
-      // Step 3: 인체 파싱
-      setCurrentStep(3);
-      setProgress(20);
-      setProgressMessage('Step 3: 인체 파싱 중...');
-      
-      const formData3 = new FormData();
-      formData3.append('session_id', sessionId);
-      formData3.append('person_image', personImage);
-      
-      const step3Result = await fetch(`${apiClient['baseURL']}/api/step/3/human-parsing`, {
-        method: 'POST',
-        body: formData3,
-      }).then(res => res.json());
-      
-      if (!step3Result.success) {
-        throw new Error(step3Result.error || 'Step 3 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 3: step3Result }));
-      setCompletedSteps(prev => [...prev, 3]);
-      
-      // Step 4: 포즈 추정
-      setCurrentStep(4);
-      setProgress(35);
-      setProgressMessage('Step 4: 포즈 추정 중...');
-      
-      const formData4 = new FormData();
-      formData4.append('session_id', sessionId);
-      formData4.append('person_image', personImage);
-      
-      const step4Result = await fetch(`${apiClient['baseURL']}/api/step/4/pose-estimation`, {
-        method: 'POST',
-        body: formData4,
-      }).then(res => res.json());
-      
-      if (!step4Result.success) {
-        throw new Error(step4Result.error || 'Step 4 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 4: step4Result }));
-      setCompletedSteps(prev => [...prev, 4]);
-      
-      // Step 5: 의류 분석
-      setCurrentStep(5);
-      setProgress(50);
-      setProgressMessage('Step 5: 의류 분석 중...');
-      
-      const formData5 = new FormData();
-      formData5.append('session_id', sessionId);
-      formData5.append('clothing_image', clothingImage);
-      
-      const step5Result = await fetch(`${apiClient['baseURL']}/api/step/5/clothing-analysis`, {
-        method: 'POST',
-        body: formData5,
-      }).then(res => res.json());
-      
-      if (!step5Result.success) {
-        throw new Error(step5Result.error || 'Step 5 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 5: step5Result }));
-      setCompletedSteps(prev => [...prev, 5]);
-      
-      // Step 6: 기하학적 매칭
-      setCurrentStep(6);
-      setProgress(65);
-      setProgressMessage('Step 6: 기하학적 매칭 중...');
-      
-      const formData6 = new FormData();
-      formData6.append('session_id', sessionId);
-      formData6.append('person_image', personImage);
-      formData6.append('clothing_image', clothingImage);
-      
-      const step6Result = await fetch(`${apiClient['baseURL']}/api/step/6/geometric-matching`, {
-        method: 'POST',
-        body: formData6,
-      }).then(res => res.json());
-      
-      if (!step6Result.success) {
-        throw new Error(step6Result.error || 'Step 6 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 6: step6Result }));
-      setCompletedSteps(prev => [...prev, 6]);
-      
-      // Step 7: 가상 피팅 (핵심!)
-      setCurrentStep(7);
-      setProgress(80);
-      setProgressMessage('Step 7: 가상 피팅 생성 중...');
-      
-      const formData7 = new FormData();
-      formData7.append('session_id', sessionId);
-      formData7.append('person_image', personImage);
-      formData7.append('clothing_image', clothingImage);
-      
-      const step7Result = await fetch(`${apiClient['baseURL']}/api/step/7/virtual-fitting`, {
-        method: 'POST',
-        body: formData7,
-      }).then(res => res.json());
-      
-      if (!step7Result.success) {
-        throw new Error(step7Result.error || 'Step 7 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 7: step7Result }));
-      setCompletedSteps(prev => [...prev, 7]);
-      
-      // 가상 피팅 결과를 result에 설정
-      if (step7Result.success && step7Result.fitted_image) {
-        const tryOnResult: TryOnResult = {
-          success: true,
-          message: step7Result.message,
-          processing_time: step7Result.processing_time,
-          confidence: step7Result.confidence,
-          session_id: sessionId,
-          fitted_image: step7Result.fitted_image,
-          fit_score: step7Result.fit_score || 0.88,
-          measurements: {
-            chest: 88 + (measurements.weight - 65) * 0.9,
-            waist: 74 + (measurements.weight - 65) * 0.7,
-            hip: 94 + (measurements.weight - 65) * 0.8,
-            bmi: measurements.weight / ((measurements.height / 100) ** 2)
-          },
-          clothing_analysis: step7Result.details?.clothing_analysis || {
-            category: '상의',
-            style: '캐주얼',
-            dominant_color: [95, 145, 195],
-            color_name: '블루'
-          },
-          recommendations: step7Result.recommendations || []
-        };
-        setResult(tryOnResult);
-      }
-      
-      // Step 8: 결과 분석
-      setCurrentStep(8);
-      setProgress(95);
-      setProgressMessage('Step 8: 결과 분석 중...');
-      
-      const formData8 = new FormData();
-      formData8.append('session_id', sessionId);
-      formData8.append('fitted_image_base64', step7Result.fitted_image || '');
-      formData8.append('fit_score', (step7Result.fit_score || 0.88).toString());
-      
-      const step8Result = await fetch(`${apiClient['baseURL']}/api/step/8/result-analysis`, {
-        method: 'POST',
-        body: formData8,
-      }).then(res => res.json());
-      
-      if (!step8Result.success) {
-        throw new Error(step8Result.error || 'Step 8 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 8: step8Result }));
-      setCompletedSteps(prev => [...prev, 8]);
-      
-      // 최종 완료
-      setProgress(100);
-      setProgressMessage('🎉 모든 단계 완료!');
-      
-      setTimeout(() => {
-        setIsProcessing(false);
-        console.log('🎉 자동 처리 완료! 전체 8단계 성공');
-      }, 1500);
-      
-    } catch (error: any) {
-      console.error('❌ 자동 처리 중 오류:', error);
-      setError(`자동 처리 실패: ${error.message}`);
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  };
-
-  // ===============================================================
-  // 🔧 기존 이벤트 핸들러들
+  // 🔧 이펙트들
   // ===============================================================
 
   // 반응형 처리
@@ -687,7 +480,181 @@ const App: React.FC = () => {
     const interval = setInterval(checkHealth, 30000); // 30초마다
     return () => clearInterval(interval);
   }, [apiClient]);
+// 📝 frontend/src/App.tsx에 추가할 코드
 
+// Step 2 완료 후 자동으로 Step 3-8 실행하는 useEffect 추가
+useEffect(() => {
+  // Step 2가 완료되고, 아직 처리 중이 아닐 때 자동 실행
+  if (completedSteps.includes(2) && currentStep === 2 && !isProcessing) {
+    console.log('🚀 Step 2 완료됨 - Step 3-8 자동 시작!');
+    autoProcessRemainingSteps();
+  }
+}, [completedSteps, currentStep, isProcessing]);
+
+// Step 3-8 자동 처리 함수
+const autoProcessRemainingSteps = async () => {
+  if (!stepResults[1]?.details?.session_id) {
+    alert('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
+    return;
+  }
+
+  setIsProcessing(true);
+  const sessionId = stepResults[1].details.session_id;
+
+  try {
+    // Step 3: 인체 파싱
+    setCurrentStep(3);
+    setProgress(20);
+    setProgressMessage('Step 3: 인체 파싱 중...');
+    
+    const formData3 = new FormData();
+    formData3.append('session_id', sessionId);
+    if (personImage) formData3.append('person_image', personImage);
+    
+    const step3Result = await fetch('/api/step/3/human-parsing', {
+      method: 'POST',
+      body: formData3,
+    }).then(res => res.json());
+    
+    setStepResults(prev => ({ ...prev, 3: step3Result }));
+    setCompletedSteps(prev => [...prev, 3]);
+    
+    // Step 4: 포즈 추정
+    setCurrentStep(4);
+    setProgress(35);
+    setProgressMessage('Step 4: 포즈 추정 중...');
+    
+    const formData4 = new FormData();
+    formData4.append('session_id', sessionId);
+    if (personImage) formData4.append('person_image', personImage);
+    
+    const step4Result = await fetch('/api/step/4/pose-estimation', {
+      method: 'POST',
+      body: formData4,
+    }).then(res => res.json());
+    
+    setStepResults(prev => ({ ...prev, 4: step4Result }));
+    setCompletedSteps(prev => [...prev, 4]);
+    
+    // Step 5: 의류 분석
+    setCurrentStep(5);
+    setProgress(50);
+    setProgressMessage('Step 5: 의류 분석 중...');
+    
+    const formData5 = new FormData();
+    formData5.append('session_id', sessionId);
+    if (clothingImage) formData5.append('clothing_image', clothingImage);
+    
+    const step5Result = await fetch('/api/step/5/clothing-analysis', {
+      method: 'POST',
+      body: formData5,
+    }).then(res => res.json());
+    
+    setStepResults(prev => ({ ...prev, 5: step5Result }));
+    setCompletedSteps(prev => [...prev, 5]);
+    
+    // Step 6: 기하학적 매칭
+    setCurrentStep(6);
+    setProgress(65);
+    setProgressMessage('Step 6: 기하학적 매칭 중...');
+    
+    const formData6 = new FormData();
+    formData6.append('session_id', sessionId);
+    if (personImage) formData6.append('person_image', personImage);
+    if (clothingImage) formData6.append('clothing_image', clothingImage);
+    
+    const step6Result = await fetch('/api/step/6/geometric-matching', {
+      method: 'POST',
+      body: formData6,
+    }).then(res => res.json());
+    
+    setStepResults(prev => ({ ...prev, 6: step6Result }));
+    setCompletedSteps(prev => [...prev, 6]);
+    
+    // Step 7: 가상 피팅 (핵심!)
+    setCurrentStep(7);
+    setProgress(80);
+    setProgressMessage('Step 7: 가상 피팅 생성 중...');
+    
+    const formData7 = new FormData();
+    formData7.append('session_id', sessionId);
+    if (personImage) formData7.append('person_image', personImage);
+    if (clothingImage) formData7.append('clothing_image', clothingImage);
+    
+    const step7Result = await fetch('/api/step/7/virtual-fitting', {
+      method: 'POST',
+      body: formData7,
+    }).then(res => res.json());
+    
+    setStepResults(prev => ({ ...prev, 7: step7Result }));
+    setCompletedSteps(prev => [...prev, 7]);
+    
+    // 가상 피팅 결과를 result에 설정
+   if (step7Result.success && step7Result.fitted_image) {
+  const newResult: TryOnResult = {
+    success: true,
+    fitted_image: step7Result.fitted_image,
+    fit_score: step7Result.fit_score || 0.88,
+    confidence: step7Result.confidence || 0.92,
+    session_id: sessionId,
+    processing_time: step7Result.processing_time || 0,
+    recommendations: step7Result.recommendations || [],
+    // 기존 데이터 보존
+    measurements: {
+      height: measurements.height,
+      weight: measurements.weight,
+      chest: measurements.height * 0.5,
+      waist: measurements.height * 0.45,
+      hip: measurements.height * 0.55,
+      bmi: measurements.weight / ((measurements.height / 100) ** 2)
+    },
+    clothing_analysis: {
+      category: step5Result?.details?.category || "상의",
+      style: step5Result?.details?.style || "캐주얼",
+      dominant_color: step5Result?.details?.dominant_color || [100, 150, 200],
+      color_name: step5Result?.details?.color_name || "블루",
+      material: step5Result?.details?.material || "코튼",
+      pattern: step5Result?.details?.pattern || "솔리드"
+    }
+  };
+  
+  setResult(newResult);
+}
+
+    
+    // Step 8: 결과 분석
+    setCurrentStep(8);
+    setProgress(95);
+    setProgressMessage('Step 8: 결과 분석 중...');
+    
+    const formData8 = new FormData();
+    formData8.append('session_id', sessionId);
+    formData8.append('fitted_image_base64', step7Result.fitted_image || '');
+    formData8.append('fit_score', (step7Result.fit_score || 0.88).toString());
+    
+    const step8Result = await fetch('/api/step/8/result-analysis', {
+      method: 'POST',
+      body: formData8,
+    }).then(res => res.json());
+    
+    setStepResults(prev => ({ ...prev, 8: step8Result }));
+    setCompletedSteps(prev => [...prev, 8]);
+    
+    // 최종 완료
+    setProgress(100);
+    setProgressMessage('🎉 모든 단계 완료!');
+    
+    setTimeout(() => {
+      setIsProcessing(false);
+      alert('🎉 가상 피팅이 완료되었습니다!');
+    }, 1500);
+    
+  } catch (error) {
+    console.error('❌ 자동 처리 중 오류:', error);
+    setError(`자동 처리 실패: ${error.message}`);
+    setIsProcessing(false);
+  }
+};
   // 시스템 정보 조회
   useEffect(() => {
     const fetchSystemInfo = async () => {
@@ -720,6 +687,10 @@ const App: React.FC = () => {
       apiClient.disconnectWebSocket();
     };
   }, [apiClient]);
+
+  // ===============================================================
+  // 🔧 이벤트 핸들러들
+  // ===============================================================
 
   // 파일 업로드 핸들러
   const handleImageUpload = useCallback(async (file: File, type: 'person' | 'clothing') => {
@@ -820,7 +791,7 @@ const App: React.FC = () => {
   const clearError = useCallback(() => setError(null), []);
 
   // ===============================================================
-  // 🔧 단계별 처리 함수들 (기존 유지)
+  // 🔧 단계별 처리 함수들
   // ===============================================================
 
   // 1단계: 이미지 업로드 검증
@@ -893,7 +864,6 @@ const App: React.FC = () => {
       setTimeout(() => {
         setIsProcessing(false);
         goToNextStep();
-        // 여기서 자동 처리가 시작됨 (useEffect에 의해)
       }, 1500);
       
     } catch (error: any) {
@@ -904,7 +874,7 @@ const App: React.FC = () => {
     }
   }, [measurements, apiClient, goToNextStep]);
 
-  // 3-8단계: AI 처리 함수 (수동 모드용)
+  // 3-8단계: AI 처리 함수
   const processAIStep = useCallback(async (stepId: number) => {
     if (!personImage || !clothingImage) return;
 
@@ -919,12 +889,17 @@ const App: React.FC = () => {
       
       // 단계에 따라 필요한 데이터 추가
       if (stepId <= 6) {
+        // 3-6단계는 이미지만 필요
         if (stepId === 3 || stepId === 4) {
           formData.append('person_image', personImage);
         } else if (stepId === 5) {
           formData.append('clothing_image', clothingImage);
         }
+        // 6단계는 세션 ID만 필요 (이전 단계 결과 사용)
       }
+      
+      // 7-8단계는 세션 ID만 필요
+      // session_id는 APIClient에서 자동으로 추가됨
       
       setProgress(30);
       
@@ -1132,7 +1107,7 @@ const App: React.FC = () => {
   }, [isCheckingHealth, isServerHealthy]);
 
   // ===============================================================
-  // 🔧 렌더링 함수들 (기존과 동일)
+  // 🔧 렌더링 함수들
   // ===============================================================
 
   const renderImageUploadStep = () => (
@@ -1480,50 +1455,10 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* 🆕 자동화 토글 추가 */}
-      <div style={{ 
-        marginTop: '1rem', 
-        padding: '0.75rem', 
-        backgroundColor: autoProcessingEnabled ? '#f0f9ff' : '#f9fafb', 
-        borderRadius: '0.5rem',
-        border: autoProcessingEnabled ? '1px solid #bfdbfe' : '1px solid #e5e7eb'
-      }}>
-        <label style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          fontSize: isMobile ? '0.75rem' : '0.875rem', 
-          color: '#4b5563',
-          cursor: 'pointer'
-        }}>
-          <input
-            type="checkbox"
-            checked={autoProcessingEnabled}
-            onChange={(e) => setAutoProcessingEnabled(e.target.checked)}
-            style={{ 
-              marginRight: '0.5rem',
-              width: '1rem',
-              height: '1rem'
-            }}
-          />
-          🚀 자동 처리 모드 (Step 2 완료 후 자동으로 Step 3-8 실행)
-        </label>
-        <div style={{ 
-          fontSize: isMobile ? '0.625rem' : '0.75rem', 
-          color: '#6b7280', 
-          marginTop: '0.25rem',
-          marginLeft: '1.5rem'
-        }}>
-          {autoProcessingEnabled ? 
-            '✅ 활성화됨 - 측정값 입력 후 자동으로 가상 피팅까지 진행' : 
-            '⏸️ 비활성화됨 - 각 단계를 수동으로 진행'
-          }
-        </div>
-      </div>
     </div>
   );
 
-  const renderProcessingStep = () => {
+ const renderProcessingStep = () => {
     const stepData = PIPELINE_STEPS[currentStep - 1];
     const stepResult = stepResults[currentStep];
 
@@ -1581,6 +1516,256 @@ const App: React.FC = () => {
               fontSize: isMobile ? '0.875rem' : '1rem'
             }}>{stepData.description}</p>
           </div>
+
+          {/* 🆕 단계별 결과 이미지 표시 (이 부분이 추가됨!) */}
+          {stepResult?.success && stepResult.details?.result_image && (
+            <div style={{ 
+              marginTop: '1.5rem',
+              marginBottom: '1.5rem'
+            }}>
+              <h4 style={{ 
+                fontSize: isMobile ? '1rem' : '1.125rem', 
+                fontWeight: '500', 
+                color: '#111827', 
+                marginBottom: '1rem' 
+              }}>🎯 처리 결과</h4>
+              
+              <div style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                gap: '1rem',
+                alignItems: 'flex-start'
+              }}>
+                {/* 결과 이미지 */}
+                <div style={{ flex: 1 }}>
+                  <img
+                    src={`data:image/jpeg;base64,${stepResult.details.result_image}`}
+                    alt={`Step ${currentStep} result`}
+                    style={{ 
+                      width: '100%', 
+                      maxWidth: '300px',
+                      borderRadius: '0.5rem', 
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      border: '2px solid #e5e7eb'
+                    }}
+                  />
+                  <p style={{ 
+                    fontSize: isMobile ? '0.75rem' : '0.875rem',
+                    color: '#6b7280',
+                    marginTop: '0.5rem',
+                    margin: '0.5rem 0 0 0'
+                  }}>
+                    Step {currentStep} - {stepData.name} 결과
+                  </p>
+                </div>
+
+                {/* 오버레이/비교 이미지 (있는 경우) */}
+                {stepResult.details.overlay_image && (
+                  <div style={{ flex: 1 }}>
+                    <img
+                      src={`data:image/jpeg;base64,${stepResult.details.overlay_image}`}
+                      alt={`Step ${currentStep} overlay`}
+                      style={{ 
+                        width: '100%', 
+                        maxWidth: '300px',
+                        borderRadius: '0.5rem', 
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                        border: '2px solid #f59e0b'
+                      }}
+                    />
+                    <p style={{ 
+                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      color: '#6b7280',
+                      marginTop: '0.5rem',
+                      margin: '0.5rem 0 0 0'
+                    }}>
+                      분석 오버레이
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              {/* 단계별 특별 정보 표시 */}
+              <div style={{ marginTop: '1rem' }}>
+                {currentStep === 3 && stepResult.details.detected_parts && (
+                  <div style={{ 
+                    backgroundColor: '#f0f9ff', 
+                    border: '1px solid #0ea5e9', 
+                    borderRadius: '0.5rem', 
+                    padding: '1rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <span style={{ fontSize: '1.5rem' }}>🧍</span>
+                      <p style={{ 
+                        fontSize: isMobile ? '0.875rem' : '1rem', 
+                        color: '#0c4a6e', 
+                        margin: 0,
+                        fontWeight: '600'
+                      }}>
+                        인체 파싱 완료
+                      </p>
+                    </div>
+                    <p style={{ 
+                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      color: '#075985',
+                      margin: '0 0 0.5rem 0'
+                    }}>
+                      감지된 영역: {stepResult.details.detected_parts}/20개
+                    </p>
+                    {stepResult.details.body_parts && (
+                      <div style={{ 
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
+                        color: '#0369a1',
+                        backgroundColor: '#e0f2fe',
+                        padding: '0.5rem',
+                        borderRadius: '0.25rem'
+                      }}>
+                        <strong>감지된 부위:</strong> {stepResult.details.body_parts.slice(0, 10).join(', ')}
+                        {stepResult.details.body_parts.length > 10 && '...'}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {currentStep === 4 && stepResult.details.detected_keypoints && (
+                  <div style={{ 
+                    backgroundColor: '#f0fdf4', 
+                    border: '1px solid #22c55e', 
+                    borderRadius: '0.5rem', 
+                    padding: '1rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <span style={{ fontSize: '1.5rem' }}>🎯</span>
+                      <p style={{ 
+                        fontSize: isMobile ? '0.875rem' : '1rem', 
+                        color: '#15803d', 
+                        margin: 0,
+                        fontWeight: '600'
+                      }}>
+                        포즈 추정 완료
+                      </p>
+                    </div>
+                    <p style={{ 
+                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      color: '#166534',
+                      margin: '0 0 0.5rem 0'
+                    }}>
+                      감지된 키포인트: {stepResult.details.detected_keypoints}/18개
+                    </p>
+                    {stepResult.details.pose_confidence && (
+                      <div style={{ 
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
+                        color: '#14532d',
+                        backgroundColor: '#dcfce7',
+                        padding: '0.5rem',
+                        borderRadius: '0.25rem'
+                      }}>
+                        <strong>포즈 정확도:</strong> {(stepResult.details.pose_confidence * 100).toFixed(1)}%
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {currentStep === 5 && stepResult.details.clothing_info && (
+                  <div style={{ 
+                    backgroundColor: '#fef3c7', 
+                    border: '1px solid #f59e0b', 
+                    borderRadius: '0.5rem', 
+                    padding: '1rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <span style={{ fontSize: '1.5rem' }}>👕</span>
+                      <p style={{ 
+                        fontSize: isMobile ? '0.875rem' : '1rem', 
+                        color: '#92400e', 
+                        margin: 0,
+                        fontWeight: '600'
+                      }}>
+                        의류 분석 완료
+                      </p>
+                    </div>
+                    <p style={{ 
+                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      color: '#78350f',
+                      margin: '0 0 0.5rem 0'
+                    }}>
+                      카테고리: {stepResult.details.clothing_info.category} ({stepResult.details.clothing_info.style})
+                    </p>
+                    {stepResult.details.clothing_info.colors && (
+                      <div style={{ 
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
+                        color: '#451a03',
+                        backgroundColor: '#fef7cd',
+                        padding: '0.5rem',
+                        borderRadius: '0.25rem'
+                      }}>
+                        <strong>주요 색상:</strong> {stepResult.details.clothing_info.colors.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {currentStep === 6 && stepResult.details.matching_score && (
+                  <div style={{ 
+                    backgroundColor: '#f3e8ff', 
+                    border: '1px solid #a855f7', 
+                    borderRadius: '0.5rem', 
+                    padding: '1rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <span style={{ fontSize: '1.5rem' }}>📐</span>
+                      <p style={{ 
+                        fontSize: isMobile ? '0.875rem' : '1rem', 
+                        color: '#7c2d92', 
+                        margin: 0,
+                        fontWeight: '600'
+                      }}>
+                        기하학적 매칭 완료
+                      </p>
+                    </div>
+                    <p style={{ 
+                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      color: '#6b21a8',
+                      margin: '0 0 0.5rem 0'
+                    }}>
+                      매칭 점수: {(stepResult.details.matching_score * 100).toFixed(1)}%
+                    </p>
+                    {stepResult.details.alignment_points && (
+                      <div style={{ 
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
+                        color: '#581c87',
+                        backgroundColor: '#faf5ff',
+                        padding: '0.5rem',
+                        borderRadius: '0.25rem'
+                      }}>
+                        <strong>정렬 포인트:</strong> {stepResult.details.alignment_points}개 생성됨
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* 실제 API 처리 중 표시 */}
           {isProcessing && !stepResult && (
@@ -1647,8 +1832,8 @@ const App: React.FC = () => {
                     처리시간: {stepResult.processing_time.toFixed(2)}초
                   </p>
                   
-                  {/* 단계별 상세 정보 표시 */}
-                  {stepResult.details && (
+                  {/* 단계별 상세 정보 표시 (기존 코드 유지) */}
+                  {stepResult.details && !stepResult.details.result_image && (
                     <div style={{ 
                       marginTop: '0.75rem', 
                       padding: '0.75rem', 
@@ -2119,11 +2304,10 @@ const App: React.FC = () => {
 
   // 컴포넌트 마운트 시 개발 도구 정보 출력
   useEffect(() => {
-    console.log('🛠️ MyCloset AI App 시작됨 (백엔드 완전 호환 + 자동화 버전)');
+    console.log('🛠️ MyCloset AI App 시작됨 (백엔드 완전 호환 버전)');
     console.log('📋 개발 도구 사용법:');
     console.log('  - apiClient: API 클라이언트 인스턴스');
     console.log('  - PIPELINE_STEPS: 8단계 파이프라인 정의');
-    console.log('  - 🚀 자동화: Step 2 완료 후 자동으로 Step 3-8 실행');
     console.log('  - 헤더 버튼들로 테스트 가능');
 
     // 전역에 개발 도구 등록
@@ -2189,7 +2373,7 @@ const App: React.FC = () => {
                   margin: 0 
                 }}>
                   {systemInfo ? 
-                    `${systemInfo.device_name} ${systemInfo.is_m3_max ? '🍎' : ''} ${autoProcessingEnabled ? '🚀 Auto' : '⏸️ Manual'}` : 
+                    `${systemInfo.device_name} ${systemInfo.is_m3_max ? '🍎' : ''}` : 
                     'M3 Max 128GB 최적화'
                   }
                 </p>
@@ -2252,20 +2436,6 @@ const App: React.FC = () => {
                     }}
                   >
                     Complete
-                  </button>
-                  <button
-                    onClick={() => setAutoProcessingEnabled(!autoProcessingEnabled)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.75rem',
-                      backgroundColor: autoProcessingEnabled ? '#22c55e' : '#6b7280',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '0.25rem',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {autoProcessingEnabled ? '🚀 Auto' : '⏸️ Manual'}
                   </button>
                 </div>
               )}
@@ -2342,7 +2512,7 @@ const App: React.FC = () => {
               fontWeight: '700', 
               color: '#111827', 
               margin: 0 
-            }}>AI Virtual Try-On {autoProcessingEnabled ? '🚀' : '⏸️'}</h2>
+            }}>AI Virtual Try-On</h2>
             <span style={{ 
               fontSize: isMobile ? '0.75rem' : '0.875rem', 
               color: '#4b5563' 
@@ -2412,8 +2582,8 @@ const App: React.FC = () => {
 
           {/* Current Step Info */}
           <div style={{ 
-            backgroundColor: autoProcessingEnabled ? '#f0f9ff' : '#eff6ff', 
-            border: autoProcessingEnabled ? '1px solid #bfdbfe' : '1px solid #bfdbfe', 
+            backgroundColor: '#eff6ff', 
+            border: '1px solid #bfdbfe', 
             borderRadius: '0.5rem', 
             padding: isMobile ? '0.75rem' : '1rem' 
           }}>
@@ -2429,17 +2599,6 @@ const App: React.FC = () => {
               marginTop: '0.25rem', 
               margin: 0 
             }}>{PIPELINE_STEPS[currentStep - 1]?.description}</p>
-            {autoProcessingEnabled && currentStep === 2 && (
-              <p style={{ 
-                color: '#7c3aed', 
-                fontSize: isMobile ? '0.625rem' : '0.75rem', 
-                marginTop: '0.5rem', 
-                margin: 0,
-                fontWeight: '500'
-              }}>
-                🚀 자동 모드: 측정값 입력 후 자동으로 Step 3-8이 실행됩니다
-              </p>
-            )}
           </div>
         </div>
 
@@ -2504,15 +2663,15 @@ const App: React.FC = () => {
             {currentStep < 8 && (
               <button
                 onClick={processCurrentStep}
-                disabled={!canProceedToNext() || isProcessing || (autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success)}
+                disabled={!canProceedToNext() || isProcessing}
                 style={{
                   padding: isMobile ? '0.875rem 1.5rem' : '0.75rem 1.5rem',
-                  backgroundColor: (!canProceedToNext() || isProcessing || (autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success)) ? '#d1d5db' : '#3b82f6',
+                  backgroundColor: (!canProceedToNext() || isProcessing) ? '#d1d5db' : '#3b82f6',
                   color: '#ffffff',
                   borderRadius: '0.5rem',
                   fontWeight: '500',
                   border: 'none',
-                  cursor: (!canProceedToNext() || isProcessing || (autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success)) ? 'not-allowed' : 'pointer',
+                  cursor: (!canProceedToNext() || isProcessing) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                   width: isMobile ? '100%' : 'auto'
                 }}
@@ -2529,8 +2688,7 @@ const App: React.FC = () => {
                   }
                 }}
               >
-                {autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success ? '🚀 자동 처리 중...' :
-                 currentStep <= 2 ? '다음 단계' : 
+                {currentStep <= 2 ? '다음 단계' : 
                  currentStep === 7 ? '가상 피팅 시작' : 
                  isProcessing ? '처리 중...' : '처리 시작'}
               </button>
@@ -2705,14 +2863,13 @@ const App: React.FC = () => {
             <div style={{ 
               marginTop: '1.5rem', 
               padding: isMobile ? '0.75rem' : '1rem', 
-              backgroundColor: autoProcessingEnabled ? '#f0f9ff' : '#f9fafb', 
+              backgroundColor: '#f9fafb', 
               borderRadius: '0.5rem',
               fontSize: isMobile ? '0.75rem' : '0.875rem',
-              color: '#4b5563',
-              border: autoProcessingEnabled ? '1px solid #bfdbfe' : '1px solid #e5e7eb'
+              color: '#4b5563'
             }}>
               <p style={{ margin: 0, fontWeight: '500' }}>
-                🛠️ 시스템 정보 (백엔드 완전 호환 + 자동화):
+                🛠️ 시스템 정보 (백엔드 완전 호환):
               </p>
               {systemInfo && (
                 <p style={{ margin: '0.25rem 0 0 0' }}>
@@ -2724,12 +2881,9 @@ const App: React.FC = () => {
               <p style={{ margin: '0.25rem 0 0 0' }}>
                 📡 실시간 WebSocket 통신 지원 | 8단계 AI 파이프라인 | M3 Max 최적화
               </p>
-              <p style={{ margin: '0.25rem 0 0 0' }}>
-                {autoProcessingEnabled ? '🚀 자동 모드: Step 2 완료 후 자동으로 Step 3-8 실행' : '⏸️ 수동 모드: 각 단계를 수동으로 진행'}
-              </p>
               {!isMobile && (
                 <p style={{ margin: '0.25rem 0 0 0' }}>
-                  🔧 헤더의 "Test", "System", "Complete", "Auto/Manual" 버튼으로 기능 테스트 가능
+                  🔧 헤더의 "Test", "System", "Complete" 버튼으로 기능 테스트 가능
                 </p>
               )}
             </div>
@@ -2778,7 +2932,7 @@ const App: React.FC = () => {
                 border: '1px solid #e5e7eb',
                 borderRadius: '0.5rem',
                 padding: '0.5rem',
-                minWidth: '12rem',
+                minWidth: '10rem',
                 boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
               }}
             >
@@ -2830,23 +2984,6 @@ const App: React.FC = () => {
                 }}
               >
                 Complete Pipeline
-              </button>
-              <button
-                onClick={() => setAutoProcessingEnabled(!autoProcessingEnabled)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  fontSize: '0.75rem',
-                  backgroundColor: autoProcessingEnabled ? '#22c55e' : '#6b7280',
-                  color: '#ffffff',
-                  border: 'none',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  borderRadius: '0.25rem',
-                  marginTop: '0.25rem'
-                }}
-              >
-                {autoProcessingEnabled ? '🚀 Auto Mode' : '⏸️ Manual Mode'}
               </button>
             </div>
           </div>
