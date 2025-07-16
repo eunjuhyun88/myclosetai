@@ -1,0 +1,140 @@
+.
+├── backend
+│   ├── advanced_model_test.py
+│   ├── app
+│   │   ├── __init__.py
+│   │   ├── ai_pipeline
+│   │   ├── api
+│   │   ├── config.py
+│   │   ├── core
+│   │   ├── main_safe.py
+│   │   ├── main.py
+│   │   ├── models
+│   │   ├── services
+│   │   └── utils
+│   ├── cache
+│   ├── complete_model_check.py
+│   ├── conda_package_checker.py
+│   ├── configs
+│   │   └── requirements
+│   ├── install_ai_models.sh
+│   ├── Makefile
+│   ├── project_structure_analyzer.py
+│   ├── pytorch_mps_compatibility_fix.py
+│   ├── README.md
+│   ├── run_fixed.sh
+│   ├── run_server.py
+│   ├── scripts
+│   │   ├── analyze_checkpoints.py
+│   │   ├── analyze_model_gaps.py
+│   │   ├── detect_existing_models.py
+│   │   ├── download
+│   │   ├── download_ai_models.py
+│   │   ├── download_missing_models.py
+│   │   ├── download_models_conda.py
+│   │   ├── download_real_models.py
+│   │   ├── download_u2net_fix.py
+│   │   ├── fix_model_paths.py
+│   │   ├── fix_remaining_issues.py
+│   │   ├── scan_existing_models.py
+│   │   ├── setup
+│   │   ├── setup_ai_models_conda.sh
+│   │   ├── setup_ai_models.sh
+│   │   ├── start_server.sh
+│   │   ├── test
+│   │   ├── test_models.py
+│   │   └── utils
+│   ├── static
+│   │   ├── results
+│   │   └── uploads
+│   └── tests
+│       └── __init__.py
+├── cache
+├── configs
+│   ├── docker
+│   ├── environments
+│   ├── nginx
+│   └── requirements
+├── docs
+│   ├── api
+│   ├── examples
+│   ├── guides
+│   └── models
+├── frontend
+│   ├── docs
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   └── vite.svg
+│   ├── README.md
+│   ├── src
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── assets
+│   │   ├── components
+│   │   ├── hooks
+│   │   ├── index.css
+│   │   ├── main.tsx
+│   │   ├── pages
+│   │   ├── services
+│   │   ├── styles
+│   │   ├── types
+│   │   ├── utils
+│   │   └── vite-env.d.ts
+│   ├── tailwind.config.js
+│   ├── tsconfig.app.json
+│   ├── tsconfig.json
+│   ├── tsconfig.node.json
+│   └── vite.config.ts
+├── Makefile
+├── project_analysis.json
+├── project_structure_analyzer.py
+├── reports
+│   ├── benchmarks
+│   └── status_checks
+├── scripts
+│   ├── benchmark
+│   │   └── benchmark_pipeline.py
+│   ├── complete_setup.sh
+│   ├── data
+│   ├── deploy
+│   ├── dev
+│   │   ├── activate_m3max.sh
+│   │   ├── check_structure.sh
+│   │   ├── fix_backend_immediate.sh
+│   │   ├── fix_dependencies_m3.sh
+│   │   ├── fix_pipeline_imports_final.sh
+│   │   └── fix_pytorch_import_issue.sh
+│   ├── download_models.py
+│   ├── fix_common_issues.sh
+│   ├── install_m3_max.sh
+│   ├── maintenance
+│   │   ├── current_status_check.sh
+│   │   ├── mycloset_quick_fix.sh
+│   │   └── phase1_cleanup.sh
+│   ├── optimize_for_m3.py
+│   ├── run
+│   │   ├── run_m3max_server.sh
+│   │   ├── run_pytorch_test.sh
+│   │   ├── start_backend.sh
+│   │   ├── test_pytorch_installation.py
+│   │   └── test_pytorch_server.py
+│   ├── setup
+│   │   ├── clean_conda_reinstall.sh
+│   │   ├── install_pytorch_safely.sh
+│   │   └── setup.sh
+│   ├── setup_conda_m3.sh
+│   ├── setup.sh
+│   ├── start_mycloset_ai.sh
+│   └── utils
+│       ├── compare_structure.py
+│       ├── fix.sh
+│       └── immediate_backend_tasks.sh
+└── static
+    ├── results
+    └── uploads
+
+59 directories, 79 files
