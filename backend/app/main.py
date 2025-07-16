@@ -7,6 +7,7 @@ backend/app/main.py
 ✅ PipelineManager 중심 구조
 ✅ M3 Max 최적화 완전 구현
 ✅ 모든 라우터 안전한 로딩
+✅ FastAPI lifespan 이벤트 핸들러 적용 (deprecated @app.on_event 제거)
 """
 
 import sys
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import time
 import asyncio
+from contextlib import asynccontextmanager
 
 # 프로젝트 루트를 Python 경로에 추가
 current_file = Path(__file__).resolve()
@@ -176,7 +178,77 @@ except ImportError as e:
     logger.warning(f"⚠️ Pipeline 라우터 로드 실패: {e}")
 
 # ===============================================================
-# 🚀 FastAPI 앱 생성
+# 🔄 Lifespan 이벤트 핸들러 (FastAPI 0.93.0+)
+# ===============================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """애플리케이션 Lifespan 이벤트 핸들러"""
+    
+    # ========== STARTUP ==========
+    logger.info("🚀 MyCloset AI Backend 시작됨")
+    logger.info(f"🏗️ 아키텍처: PipelineManager 중심")
+    logger.info(f"🔧 설정: {APP_NAME} v{APP_VERSION}")
+    logger.info(f"🤖 AI 파이프라인: 8단계 통합")
+    logger.info(f"📊 로드된 라우터: {len(api_routers)}개")
+    
+    # GPU 설정 정보
+    logger.info(f"🎯 GPU 설정:")
+    logger.info(f"  - 디바이스: {DEVICE} ({DEVICE_NAME})")
+    logger.info(f"  - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
+    logger.info(f"  - 메모리: {gpu_config.memory_gb:.1f}GB")
+    logger.info(f"  - 최적화 레벨: {gpu_config.optimization_settings['optimization_level']}")
+    logger.info(f"  - 배치 크기: {gpu_config.model_config['batch_size']}")
+    logger.info(f"  - 정밀도: {gpu_config.model_config['dtype']}")
+    logger.info(f"  - 동시 세션: {gpu_config.optimization_settings['concurrent_sessions']}")
+    
+    # 메모리 상태 확인
+    memory_check = check_memory_available(min_gb=2.0)
+    if memory_check.get('is_available', False):
+        logger.info(f"💾 메모리 상태: {memory_check['system_memory']['available_gb']:.1f}GB 사용 가능")
+    else:
+        logger.warning("⚠️ 메모리 부족 - 성능이 저하될 수 있습니다.")
+    
+    # M3 Max 특화 정보
+    if IS_M3_MAX:
+        logger.info("🍎 M3 Max 특화 기능 활성화:")
+        logger.info("  - Neural Engine 가속")
+        logger.info("  - Metal Performance Shaders")
+        logger.info("  - 통합 메모리 최적화")
+        logger.info("  - 8단계 파이프라인 최적화")
+        logger.info("  - 고해상도 처리 지원")
+    
+    # 8단계 파이프라인 최적화 상태
+    pipeline_count = len(gpu_config.pipeline_optimizations)
+    if pipeline_count > 0:
+        logger.info(f"⚙️ 8단계 파이프라인 최적화: {pipeline_count}개 단계 설정됨")
+    
+    # 초기 메모리 최적화 실행
+    try:
+        optimization_result = optimize_memory()
+        if optimization_result.get('success', False):
+            logger.info(f"💾 초기 메모리 최적화 완료: {optimization_result['method']}")
+    except Exception as e:
+        logger.warning(f"초기 메모리 최적화 실패: {e}")
+    
+    # 애플리케이션 실행 중 상태 유지
+    yield
+    
+    # ========== SHUTDOWN ==========
+    logger.info("🛑 MyCloset AI Backend 종료 중...")
+    
+    # 메모리 정리
+    try:
+        cleanup_result = gpu_config.cleanup_memory(aggressive=True)
+        if cleanup_result.get('success', False):
+            logger.info(f"💾 종료 시 메모리 정리 완료: {cleanup_result['method']}")
+    except Exception as e:
+        logger.warning(f"종료 시 메모리 정리 실패: {e}")
+    
+    logger.info("🛑 MyCloset AI Backend 종료됨")
+
+# ===============================================================
+# 🚀 FastAPI 앱 생성 (lifespan 적용)
 # ===============================================================
 
 app = FastAPI(
@@ -185,7 +257,8 @@ app = FastAPI(
     version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
-    debug=DEBUG
+    debug=DEBUG,
+    lifespan=lifespan  # 새로운 lifespan 이벤트 핸들러 적용
 )
 
 # ===============================================================
@@ -311,6 +384,7 @@ async def root():
         "architecture": "PipelineManager-centered",
         "ai_pipeline": "8-step AI pipeline",
         "optimization": f"{DEVICE_NAME} optimized",
+        "fastapi_version": "lifespan-enabled",
         "gpu_config": {
             "device": DEVICE,
             "device_name": DEVICE_NAME,
@@ -337,6 +411,7 @@ async def health_check():
         "status": "healthy",
         "version": APP_VERSION,
         "architecture": "PipelineManager-centered",
+        "fastapi_version": "lifespan-enabled",
         "debug": DEBUG,
         "gpu_config": {
             "device": DEVICE,
@@ -366,6 +441,7 @@ async def api_status():
         "total_routes": len(api_routers),
         "ai_pipeline_ready": "step_routes" in api_routers,
         "websocket_ready": "websocket" in api_routers,
+        "fastapi_version": "lifespan-enabled",
         "gpu_status": {
             "device": DEVICE,
             "device_name": DEVICE_NAME,
@@ -394,6 +470,7 @@ async def gpu_info():
         "optimization_settings": gpu_config.optimization_settings,
         "pipeline_optimizations": gpu_config.pipeline_optimizations,
         "is_m3_max": IS_M3_MAX,
+        "fastapi_version": "lifespan-enabled",
         "capabilities": {
             "supports_fp16": model_config.get("dtype") == "float16",
             "supports_neural_engine": IS_M3_MAX,
@@ -420,73 +497,6 @@ async def optimize_memory_endpoint():
         raise HTTPException(status_code=500, detail=f"메모리 최적화 실패: {str(e)}")
 
 # ===============================================================
-# 🔧 애플리케이션 이벤트
-# ===============================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """애플리케이션 시작 시 실행"""
-    logger.info("🚀 MyCloset AI Backend 시작됨")
-    logger.info(f"🏗️ 아키텍처: PipelineManager 중심")
-    logger.info(f"🔧 설정: {APP_NAME} v{APP_VERSION}")
-    logger.info(f"🤖 AI 파이프라인: 8단계 통합")
-    logger.info(f"📊 로드된 라우터: {len(api_routers)}개")
-    
-    # GPU 설정 정보
-    logger.info(f"🎯 GPU 설정:")
-    logger.info(f"  - 디바이스: {DEVICE} ({DEVICE_NAME})")
-    logger.info(f"  - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-    logger.info(f"  - 메모리: {gpu_config.memory_gb:.1f}GB")
-    logger.info(f"  - 최적화 레벨: {gpu_config.optimization_settings['optimization_level']}")
-    logger.info(f"  - 배치 크기: {gpu_config.model_config['batch_size']}")
-    logger.info(f"  - 정밀도: {gpu_config.model_config['dtype']}")
-    logger.info(f"  - 동시 세션: {gpu_config.optimization_settings['concurrent_sessions']}")
-    
-    # 메모리 상태 확인
-    memory_check = check_memory_available(min_gb=2.0)
-    if memory_check.get('is_available', False):
-        logger.info(f"💾 메모리 상태: {memory_check['system_memory']['available_gb']:.1f}GB 사용 가능")
-    else:
-        logger.warning("⚠️ 메모리 부족 - 성능이 저하될 수 있습니다.")
-    
-    # M3 Max 특화 정보
-    if IS_M3_MAX:
-        logger.info("🍎 M3 Max 특화 기능 활성화:")
-        logger.info("  - Neural Engine 가속")
-        logger.info("  - Metal Performance Shaders")
-        logger.info("  - 통합 메모리 최적화")
-        logger.info("  - 8단계 파이프라인 최적화")
-        logger.info("  - 고해상도 처리 지원")
-    
-    # 8단계 파이프라인 최적화 상태
-    pipeline_count = len(gpu_config.pipeline_optimizations)
-    if pipeline_count > 0:
-        logger.info(f"⚙️ 8단계 파이프라인 최적화: {pipeline_count}개 단계 설정됨")
-    
-    # 초기 메모리 최적화 실행
-    try:
-        optimization_result = optimize_memory()
-        if optimization_result.get('success', False):
-            logger.info(f"💾 초기 메모리 최적화 완료: {optimization_result['method']}")
-    except Exception as e:
-        logger.warning(f"초기 메모리 최적화 실패: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """애플리케이션 종료 시 실행"""
-    logger.info("🛑 MyCloset AI Backend 종료 중...")
-    
-    # 메모리 정리
-    try:
-        cleanup_result = gpu_config.cleanup_memory(aggressive=True)
-        if cleanup_result.get('success', False):
-            logger.info(f"💾 종료 시 메모리 정리 완료: {cleanup_result['method']}")
-    except Exception as e:
-        logger.warning(f"종료 시 메모리 정리 실패: {e}")
-    
-    logger.info("🛑 MyCloset AI Backend 종료됨")
-
-# ===============================================================
 # 🎯 메인 실행
 # ===============================================================
 
@@ -497,6 +507,7 @@ if __name__ == "__main__":
     logger.info(f"🏗️ 아키텍처: PipelineManager 중심 (VirtualFitter 제거)")
     logger.info(f"🎯 GPU 최적화: {DEVICE_NAME} ({DEVICE})")
     logger.info(f"🍎 M3 Max 최적화: {'✅' if IS_M3_MAX else '❌'}")
+    logger.info(f"⚡ FastAPI: lifespan 이벤트 핸들러 적용")
     
     # 시스템 정보 출력
     logger.info("📊 시스템 정보:")
