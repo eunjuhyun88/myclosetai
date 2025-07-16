@@ -1,30 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
-import './index.css';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+
+// ===============================================================
+// 🔧 타입 정의들 (백엔드 완전 호환)
+// ===============================================================
 
 interface UserMeasurements {
   height: number;
   weight: number;
-}
-
-interface TryOnResult {
-  success: boolean;
-  fitted_image?: string;
-  result_image?: string;
-  processing_time: number;
-  confidence: number;
-  measurements: {
-    chest: number;
-    waist: number;
-    hip: number;
-    bmi: number;
-  };
-  clothing_analysis: {
-    category: string;
-    style: string;
-    dominant_color: number[];
-  };
-  fit_score: number;
-  recommendations: string[];
 }
 
 interface StepResult {
@@ -39,19 +21,340 @@ interface StepResult {
   recommendations?: string[];
 }
 
-// 8단계 정의 (실제 백엔드 API와 완전히 일치)
-const PIPELINE_STEPS = [
-  { id: 1, name: '이미지 업로드', description: '사용자 사진과 의류 이미지를 업로드합니다', endpoint: '/api/step/1/upload-validation' },
-  { id: 2, name: '신체 측정', description: '키와 몸무게 등 신체 정보를 입력합니다', endpoint: '/api/step/2/measurements-validation' },
-  { id: 3, name: '인체 파싱', description: 'AI가 신체 부위를 20개 영역으로 분석합니다', endpoint: '/api/step/3/human-parsing' },
-  { id: 4, name: '포즈 추정', description: '18개 키포인트로 자세를 분석합니다', endpoint: '/api/step/4/pose-estimation' },
-  { id: 5, name: '의류 분석', description: '의류 스타일과 색상을 분석합니다', endpoint: '/api/step/5/clothing-analysis' },
-  { id: 6, name: '기하학적 매칭', description: '신체와 의류를 정확히 매칭합니다', endpoint: '/api/step/6/geometric-matching' },
-  { id: 7, name: '가상 피팅', description: 'AI로 가상 착용 결과를 생성합니다', endpoint: '/api/step/7/virtual-fitting' },
-  { id: 8, name: '결과 확인', description: '최종 결과를 확인하고 저장합니다', endpoint: '/api/step/8/result-analysis' }
+interface TryOnResult {
+  success: boolean;
+  message: string;
+  processing_time: number;
+  confidence: number;
+  session_id: string;
+  fitted_image?: string;
+  fit_score: number;
+  measurements: {
+    chest: number;
+    waist: number;
+    hip: number;
+    bmi: number;
+  };
+  clothing_analysis: {
+    category: string;
+    style: string;
+    dominant_color: number[];
+    color_name?: string;
+    material?: string;
+    pattern?: string;
+  };
+  recommendations: string[];
+}
+
+interface SystemInfo {
+  app_name: string;
+  app_version: string;
+  device: string;
+  device_name: string;
+  is_m3_max: boolean;
+  total_memory_gb: number;
+  available_memory_gb: number;
+  timestamp: number;
+}
+
+interface PipelineStep {
+  id: number;
+  name: string;
+  description: string;
+  endpoint: string;
+  processing_time: number;
+}
+
+// 8단계 정의 (백엔드와 완전 동일)
+const PIPELINE_STEPS: PipelineStep[] = [
+  {
+    id: 1,
+    name: "이미지 업로드 검증",
+    description: "사용자 사진과 의류 이미지를 검증합니다",
+    endpoint: "/api/step/1/upload-validation",
+    processing_time: 0.5
+  },
+  {
+    id: 2,
+    name: "신체 측정값 검증",
+    description: "키와 몸무게 등 신체 정보를 검증합니다",
+    endpoint: "/api/step/2/measurements-validation",
+    processing_time: 0.3
+  },
+  {
+    id: 3,
+    name: "인체 파싱",
+    description: "AI가 신체 부위를 20개 영역으로 분석합니다",
+    endpoint: "/api/step/3/human-parsing",
+    processing_time: 1.2
+  },
+  {
+    id: 4,
+    name: "포즈 추정",
+    description: "18개 키포인트로 자세를 분석합니다",
+    endpoint: "/api/step/4/pose-estimation",
+    processing_time: 0.8
+  },
+  {
+    id: 5,
+    name: "의류 분석",
+    description: "의류 스타일과 색상을 분석합니다",
+    endpoint: "/api/step/5/clothing-analysis",
+    processing_time: 0.6
+  },
+  {
+    id: 6,
+    name: "기하학적 매칭",
+    description: "신체와 의류를 정확히 매칭합니다",
+    endpoint: "/api/step/6/geometric-matching",
+    processing_time: 1.5
+  },
+  {
+    id: 7,
+    name: "가상 피팅",
+    description: "AI로 가상 착용 결과를 생성합니다",
+    endpoint: "/api/step/7/virtual-fitting",
+    processing_time: 2.5
+  },
+  {
+    id: 8,
+    name: "결과 분석",
+    description: "최종 결과를 확인하고 저장합니다",
+    endpoint: "/api/step/8/result-analysis",
+    processing_time: 0.3
+  }
 ];
 
-// 파일 유틸리티
+// ===============================================================
+// 🔧 API 클라이언트 (백엔드 완전 호환)
+// ===============================================================
+
+class APIClient {
+  private baseURL: string;
+  private currentSessionId: string | null = null;
+  private websocket: WebSocket | null = null;
+  private progressCallback: ((step: number, progress: number, message: string) => void) | null = null;
+
+  constructor(baseURL: string = 'http://localhost:8000') {
+    this.baseURL = baseURL;
+  }
+
+  // 세션 ID 관리
+  setSessionId(sessionId: string) {
+    this.currentSessionId = sessionId;
+  }
+
+  getSessionId(): string | null {
+    return this.currentSessionId;
+  }
+
+  // 진행률 콜백 설정
+  setProgressCallback(callback: (step: number, progress: number, message: string) => void) {
+    this.progressCallback = callback;
+  }
+
+  // WebSocket 연결
+  connectWebSocket(sessionId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const wsURL = `ws://localhost:8000/api/ws/pipeline/${sessionId}`;
+        this.websocket = new WebSocket(wsURL);
+
+        this.websocket.onopen = () => {
+          console.log('🔗 WebSocket 연결됨');
+          resolve();
+        };
+
+        this.websocket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'progress' && this.progressCallback) {
+              this.progressCallback(data.step, data.progress, data.message);
+            }
+            
+            if (data.type === 'connected') {
+              console.log('✅ WebSocket 연결 확인됨');
+            }
+          } catch (error) {
+            console.error('WebSocket 메시지 파싱 오류:', error);
+          }
+        };
+
+        this.websocket.onerror = (error) => {
+          console.error('WebSocket 오류:', error);
+          reject(error);
+        };
+
+        this.websocket.onclose = () => {
+          console.log('🔌 WebSocket 연결 해제됨');
+          this.websocket = null;
+        };
+
+        // 연결 타임아웃 (5초)
+        setTimeout(() => {
+          if (this.websocket?.readyState !== WebSocket.OPEN) {
+            reject(new Error('WebSocket 연결 타임아웃'));
+          }
+        }, 5000);
+
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  // WebSocket 연결 해제
+  disconnectWebSocket() {
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
+    }
+  }
+
+  // 헬스체크
+  async healthCheck(): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/health`);
+      const data = await response.json();
+      return { success: response.ok, data };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network error' 
+      };
+    }
+  }
+
+  // 시스템 정보 조회
+  async getSystemInfo(): Promise<SystemInfo> {
+    const response = await fetch(`${this.baseURL}/api/system/info`);
+    if (!response.ok) {
+      throw new Error(`시스템 정보 조회 실패: ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  // 개별 단계 API 호출
+  async callStepAPI(stepId: number, formData: FormData): Promise<StepResult> {
+    const step = PIPELINE_STEPS.find(s => s.id === stepId);
+    if (!step) {
+      throw new Error(`Invalid step ID: ${stepId}`);
+    }
+
+    // 세션 ID가 있으면 FormData에 추가
+    if (this.currentSessionId) {
+      formData.append('session_id', this.currentSessionId);
+    }
+
+    try {
+      console.log(`🚀 Step ${stepId} API 호출: ${step.endpoint}`);
+      
+      const response = await fetch(`${this.baseURL}${step.endpoint}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage;
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.detail || errorJson.error || errorJson.message || `HTTP ${response.status}`;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const result: StepResult = await response.json();
+      
+      // 세션 ID 업데이트 (1단계에서 반환됨)
+      if (stepId === 1 && result.details?.session_id) {
+        this.setSessionId(result.details.session_id);
+      }
+
+      console.log(`✅ Step ${stepId} 완료:`, result);
+      return result;
+      
+    } catch (error) {
+      console.error(`❌ Step ${stepId} 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 전체 파이프라인 실행
+  async runCompletePipeline(
+    personImage: File, 
+    clothingImage: File, 
+    measurements: UserMeasurements
+  ): Promise<TryOnResult> {
+    const formData = new FormData();
+    formData.append('person_image', personImage);
+    formData.append('clothing_image', clothingImage);
+    formData.append('height', measurements.height.toString());
+    formData.append('weight', measurements.weight.toString());
+    
+    if (this.currentSessionId) {
+      formData.append('session_id', this.currentSessionId);
+    }
+
+    try {
+      console.log('🚀 전체 파이프라인 실행 시작');
+      
+      const response = await fetch(`${this.baseURL}/api/pipeline/complete`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Pipeline failed: ${response.status} - ${errorText}`);
+      }
+
+      const result: TryOnResult = await response.json();
+      
+      // 세션 ID 업데이트
+      if (result.session_id) {
+        this.setSessionId(result.session_id);
+      }
+
+      console.log('✅ 전체 파이프라인 완료:', result);
+      return result;
+      
+    } catch (error) {
+      console.error('❌ 전체 파이프라인 실패:', error);
+      throw error;
+    }
+  }
+
+  // 파이프라인 상태 조회
+  async getPipelineStatus(sessionId: string): Promise<any> {
+    const response = await fetch(`${this.baseURL}/api/pipeline/status/${sessionId}`);
+    if (!response.ok) {
+      throw new Error(`상태 조회 실패: ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  // 메모리 최적화
+  async optimizeMemory(): Promise<any> {
+    const response = await fetch(`${this.baseURL}/api/optimize-memory`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`메모리 최적화 실패: ${response.status}`);
+    }
+    return await response.json();
+  }
+}
+
+// ===============================================================
+// 🔧 유틸리티 함수들
+// ===============================================================
+
 const fileUtils = {
   validateImageFile: (file: File) => {
     const maxSize = 50 * 1024 * 1024; // 50MB
@@ -74,129 +377,26 @@ const fileUtils = {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  },
+
+  createImagePreview: (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 };
 
-// API 헬퍼 - 백엔드와 완전 호환
-const apiHelper = {
-  baseURL: 'http://localhost:8000',
-  
-  async healthCheck() {
-    try {
-      const response = await fetch(`${this.baseURL}/api/health`);
-      return { success: response.ok, data: await response.json() };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
-    }
-  },
-  
-  async callStepAPI(stepId: number, formData: FormData): Promise<StepResult> {
-    const endpoint = PIPELINE_STEPS[stepId - 1]?.endpoint;
-    if (!endpoint) {
-      throw new Error(`Invalid step ID: ${stepId}`);
-    }
-
-    try {
-      console.log(`🚀 Step ${stepId} API 호출: ${endpoint}`);
-      
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage;
-        
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.detail || errorJson.error || errorJson.message || `HTTP ${response.status}`;
-        } catch {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const result: StepResult = await response.json();
-      console.log(`✅ Step ${stepId} 완료:`, result);
-      
-      return result;
-      
-    } catch (error) {
-      console.error(`❌ Step ${stepId} 실패:`, error);
-      throw error;
-    }
-  },
-
-  // 전체 파이프라인 실행 (대안)
-  async runCompletePipeline(personImage: File, clothingImage: File, measurements: UserMeasurements): Promise<TryOnResult> {
-    const formData = new FormData();
-    formData.append('person_image', personImage);
-    formData.append('clothing_image', clothingImage);
-    formData.append('height', measurements.height.toString());
-    formData.append('weight', measurements.weight.toString());
-    formData.append('session_id', `complete_${Date.now()}`);
-
-    try {
-      const response = await fetch(`${this.baseURL}/api/pipeline/complete`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Pipeline failed: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Complete pipeline failed:', error);
-      throw error;
-    }
-  }
-};
-
-// 개발 도구
-const devTools = {
-  testAPI: async () => {
-    try {
-      const result = await apiHelper.healthCheck();
-      return { 
-        message: result.success ? 'API 연결 성공' : 'API 연결 실패', 
-        data: result.data,
-        success: result.success
-      };
-    } catch (error) {
-      return { message: 'API 연결 실패', error: error, success: false };
-    }
-  },
-  
-  testSystemInfo: async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/system/info');
-      const data = await response.json();
-      return { message: '시스템 정보 조회 성공', data, success: true };
-    } catch (error) {
-      return { message: '시스템 정보 조회 실패', error, success: false };
-    }
-  },
-  
-  exportDebugInfo: () => {
-    const debugInfo = {
-      timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      screenSize: { width: window.screen.width, height: window.screen.height },
-      windowSize: { width: window.innerWidth, height: window.innerHeight }
-    };
-    console.log('Debug Info:', debugInfo);
-    return { message: '디버그 정보 내보내기 완료', data: debugInfo };
-  }
-};
-
-// 전역에 devTools 등록
-(window as any).devTools = devTools;
+// ===============================================================
+// 🔧 메인 App 컴포넌트
+// ===============================================================
 
 const App: React.FC = () => {
+  // API 클라이언트
+  const [apiClient] = useState(() => new APIClient());
+
   // 현재 단계 관리
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -204,6 +404,10 @@ const App: React.FC = () => {
   // 파일 상태
   const [personImage, setPersonImage] = useState<File | null>(null);
   const [clothingImage, setClothingImage] = useState<File | null>(null);
+  const [personImagePreview, setPersonImagePreview] = useState<string | null>(null);
+  const [clothingImagePreview, setClothingImagePreview] = useState<string | null>(null);
+  
+  // 측정값
   const [measurements, setMeasurements] = useState<UserMeasurements>({
     height: 170,
     weight: 65
@@ -227,24 +431,233 @@ const App: React.FC = () => {
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // 서버 상태
+  const [isServerHealthy, setIsServerHealthy] = useState(true);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+
+  // 반응형 상태
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 자동화 상태
+  const [autoProcessingEnabled, setAutoProcessingEnabled] = useState(true);
+
   // 파일 참조
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
-  // 반응형 상태
-  const [isMobile, setIsMobile] = useState(false);
-  const [screenWidth, setScreenWidth] = useState(window.innerWidth);
-  
-  // 서버 상태
-  const [isHealthy, setIsHealthy] = useState(true);
-  const [isChecking, setIsChecking] = useState(false);
+  // ===============================================================
+  // 🚀 **새로운 자동화 기능 (paste-2.txt 내용 통합)**
+  // ===============================================================
+
+  // Step 2 완료 후 자동으로 Step 3-8 실행하는 useEffect
+  useEffect(() => {
+    // Step 2가 완료되고, 아직 처리 중이 아니고, 자동 처리가 활성화된 경우
+    if (completedSteps.includes(2) && currentStep === 2 && !isProcessing && autoProcessingEnabled) {
+      console.log('🚀 Step 2 완료됨 - Step 3-8 자동 시작!');
+      autoProcessRemainingSteps();
+    }
+  }, [completedSteps, currentStep, isProcessing, autoProcessingEnabled]);
+
+  // Step 3-8 자동 처리 함수
+  const autoProcessRemainingSteps = async () => {
+    if (!stepResults[1]?.details?.session_id) {
+      setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
+      return;
+    }
+
+    if (!personImage || !clothingImage) {
+      setError('이미지 파일이 없습니다. Step 1부터 다시 시작해주세요.');
+      return;
+    }
+
+    setIsProcessing(true);
+    const sessionId = stepResults[1].details.session_id;
+
+    try {
+      console.log('🔥 자동 처리 시작: Step 3-8');
+
+      // Step 3: 인체 파싱
+      setCurrentStep(3);
+      setProgress(20);
+      setProgressMessage('Step 3: 인체 파싱 중...');
+      
+      const formData3 = new FormData();
+      formData3.append('session_id', sessionId);
+      formData3.append('person_image', personImage);
+      
+      const step3Result = await fetch(`${apiClient['baseURL']}/api/step/3/human-parsing`, {
+        method: 'POST',
+        body: formData3,
+      }).then(res => res.json());
+      
+      if (!step3Result.success) {
+        throw new Error(step3Result.error || 'Step 3 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 3: step3Result }));
+      setCompletedSteps(prev => [...prev, 3]);
+      
+      // Step 4: 포즈 추정
+      setCurrentStep(4);
+      setProgress(35);
+      setProgressMessage('Step 4: 포즈 추정 중...');
+      
+      const formData4 = new FormData();
+      formData4.append('session_id', sessionId);
+      formData4.append('person_image', personImage);
+      
+      const step4Result = await fetch(`${apiClient['baseURL']}/api/step/4/pose-estimation`, {
+        method: 'POST',
+        body: formData4,
+      }).then(res => res.json());
+      
+      if (!step4Result.success) {
+        throw new Error(step4Result.error || 'Step 4 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 4: step4Result }));
+      setCompletedSteps(prev => [...prev, 4]);
+      
+      // Step 5: 의류 분석
+      setCurrentStep(5);
+      setProgress(50);
+      setProgressMessage('Step 5: 의류 분석 중...');
+      
+      const formData5 = new FormData();
+      formData5.append('session_id', sessionId);
+      formData5.append('clothing_image', clothingImage);
+      
+      const step5Result = await fetch(`${apiClient['baseURL']}/api/step/5/clothing-analysis`, {
+        method: 'POST',
+        body: formData5,
+      }).then(res => res.json());
+      
+      if (!step5Result.success) {
+        throw new Error(step5Result.error || 'Step 5 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 5: step5Result }));
+      setCompletedSteps(prev => [...prev, 5]);
+      
+      // Step 6: 기하학적 매칭
+      setCurrentStep(6);
+      setProgress(65);
+      setProgressMessage('Step 6: 기하학적 매칭 중...');
+      
+      const formData6 = new FormData();
+      formData6.append('session_id', sessionId);
+      formData6.append('person_image', personImage);
+      formData6.append('clothing_image', clothingImage);
+      
+      const step6Result = await fetch(`${apiClient['baseURL']}/api/step/6/geometric-matching`, {
+        method: 'POST',
+        body: formData6,
+      }).then(res => res.json());
+      
+      if (!step6Result.success) {
+        throw new Error(step6Result.error || 'Step 6 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 6: step6Result }));
+      setCompletedSteps(prev => [...prev, 6]);
+      
+      // Step 7: 가상 피팅 (핵심!)
+      setCurrentStep(7);
+      setProgress(80);
+      setProgressMessage('Step 7: 가상 피팅 생성 중...');
+      
+      const formData7 = new FormData();
+      formData7.append('session_id', sessionId);
+      formData7.append('person_image', personImage);
+      formData7.append('clothing_image', clothingImage);
+      
+      const step7Result = await fetch(`${apiClient['baseURL']}/api/step/7/virtual-fitting`, {
+        method: 'POST',
+        body: formData7,
+      }).then(res => res.json());
+      
+      if (!step7Result.success) {
+        throw new Error(step7Result.error || 'Step 7 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 7: step7Result }));
+      setCompletedSteps(prev => [...prev, 7]);
+      
+      // 가상 피팅 결과를 result에 설정
+      if (step7Result.success && step7Result.fitted_image) {
+        const tryOnResult: TryOnResult = {
+          success: true,
+          message: step7Result.message,
+          processing_time: step7Result.processing_time,
+          confidence: step7Result.confidence,
+          session_id: sessionId,
+          fitted_image: step7Result.fitted_image,
+          fit_score: step7Result.fit_score || 0.88,
+          measurements: {
+            chest: 88 + (measurements.weight - 65) * 0.9,
+            waist: 74 + (measurements.weight - 65) * 0.7,
+            hip: 94 + (measurements.weight - 65) * 0.8,
+            bmi: measurements.weight / ((measurements.height / 100) ** 2)
+          },
+          clothing_analysis: step7Result.details?.clothing_analysis || {
+            category: '상의',
+            style: '캐주얼',
+            dominant_color: [95, 145, 195],
+            color_name: '블루'
+          },
+          recommendations: step7Result.recommendations || []
+        };
+        setResult(tryOnResult);
+      }
+      
+      // Step 8: 결과 분석
+      setCurrentStep(8);
+      setProgress(95);
+      setProgressMessage('Step 8: 결과 분석 중...');
+      
+      const formData8 = new FormData();
+      formData8.append('session_id', sessionId);
+      formData8.append('fitted_image_base64', step7Result.fitted_image || '');
+      formData8.append('fit_score', (step7Result.fit_score || 0.88).toString());
+      
+      const step8Result = await fetch(`${apiClient['baseURL']}/api/step/8/result-analysis`, {
+        method: 'POST',
+        body: formData8,
+      }).then(res => res.json());
+      
+      if (!step8Result.success) {
+        throw new Error(step8Result.error || 'Step 8 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 8: step8Result }));
+      setCompletedSteps(prev => [...prev, 8]);
+      
+      // 최종 완료
+      setProgress(100);
+      setProgressMessage('🎉 모든 단계 완료!');
+      
+      setTimeout(() => {
+        setIsProcessing(false);
+        console.log('🎉 자동 처리 완료! 전체 8단계 성공');
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error('❌ 자동 처리 중 오류:', error);
+      setError(`자동 처리 실패: ${error.message}`);
+      setIsProcessing(false);
+      setProgress(0);
+    }
+  };
+
+  // ===============================================================
+  // 🔧 기존 이벤트 핸들러들
+  // ===============================================================
 
   // 반응형 처리
   useEffect(() => {
     const handleResize = () => {
-      const width = window.innerWidth;
-      setScreenWidth(width);
-      setIsMobile(width < 768);
+      setIsMobile(window.innerWidth < 768);
     };
 
     handleResize();
@@ -255,24 +668,61 @@ const App: React.FC = () => {
   // 서버 헬스체크
   useEffect(() => {
     const checkHealth = async () => {
-      setIsChecking(true);
+      setIsCheckingHealth(true);
       try {
-        const result = await devTools.testAPI();
-        setIsHealthy(result.success);
+        const result = await apiClient.healthCheck();
+        setIsServerHealthy(result.success);
+        
+        if (result.success && result.data) {
+          console.log('✅ 서버 상태:', result.data);
+        }
       } catch {
-        setIsHealthy(false);
+        setIsServerHealthy(false);
       } finally {
-        setIsChecking(false);
+        setIsCheckingHealth(false);
       }
     };
 
     checkHealth();
-    const interval = setInterval(checkHealth, 30000);
+    const interval = setInterval(checkHealth, 30000); // 30초마다
     return () => clearInterval(interval);
-  }, []);
+  }, [apiClient]);
+
+  // 시스템 정보 조회
+  useEffect(() => {
+    const fetchSystemInfo = async () => {
+      try {
+        const info = await apiClient.getSystemInfo();
+        setSystemInfo(info);
+        console.log('📊 시스템 정보:', info);
+      } catch (error) {
+        console.error('시스템 정보 조회 실패:', error);
+      }
+    };
+
+    if (isServerHealthy) {
+      fetchSystemInfo();
+    }
+  }, [isServerHealthy, apiClient]);
+
+  // 진행률 콜백 설정
+  useEffect(() => {
+    apiClient.setProgressCallback((step, progressValue, message) => {
+      setProgress(progressValue);
+      setProgressMessage(message);
+      console.log(`📊 Step ${step}: ${progressValue}% - ${message}`);
+    });
+  }, [apiClient]);
+
+  // 컴포넌트 언마운트 시 WebSocket 정리
+  useEffect(() => {
+    return () => {
+      apiClient.disconnectWebSocket();
+    };
+  }, [apiClient]);
 
   // 파일 업로드 핸들러
-  const handleImageUpload = (file: File, type: 'person' | 'clothing') => {
+  const handleImageUpload = useCallback(async (file: File, type: 'person' | 'clothing') => {
     const validation = fileUtils.validateImageFile(file);
     
     if (!validation.valid) {
@@ -288,50 +738,73 @@ const App: React.FC = () => {
       [type]: undefined
     }));
 
-    if (type === 'person') {
-      setPersonImage(file);
-      console.log('✅ 사용자 이미지 업로드:', {
-        name: file.name,
-        size: fileUtils.formatFileSize(file.size),
-        type: file.type
-      });
-    } else {
-      setClothingImage(file);
-      console.log('✅ 의류 이미지 업로드:', {
-        name: file.name,
-        size: fileUtils.formatFileSize(file.size),
-        type: file.type
-      });
+    try {
+      const preview = await fileUtils.createImagePreview(file);
+      
+      if (type === 'person') {
+        setPersonImage(file);
+        setPersonImagePreview(preview);
+        console.log('✅ 사용자 이미지 업로드:', {
+          name: file.name,
+          size: fileUtils.formatFileSize(file.size),
+          type: file.type
+        });
+      } else {
+        setClothingImage(file);
+        setClothingImagePreview(preview);
+        console.log('✅ 의류 이미지 업로드:', {
+          name: file.name,
+          size: fileUtils.formatFileSize(file.size),
+          type: file.type
+        });
+      }
+      
+      setError(null);
+    } catch (error) {
+      console.error('이미지 미리보기 생성 실패:', error);
+      setFileErrors(prev => ({
+        ...prev,
+        [type]: '이미지 미리보기를 생성할 수 없습니다.'
+      }));
     }
-    
-    clearError();
-  };
+  }, []);
 
-  // 다음 단계로 이동
-  const goToNextStep = () => {
+  // 드래그 앤 드롭
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, type: 'person' | 'clothing') => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0 && files[0].type.startsWith('image/')) {
+      handleImageUpload(files[0], type);
+    }
+  }, [handleImageUpload]);
+
+  // 다음/이전 단계 이동
+  const goToNextStep = useCallback(() => {
     if (currentStep < 8) {
       setCompletedSteps(prev => [...prev, currentStep]);
       setCurrentStep(prev => prev + 1);
     }
-  };
+  }, [currentStep]);
 
-  // 이전 단계로 이동
-  const goToPreviousStep = () => {
+  const goToPreviousStep = useCallback(() => {
     if (currentStep > 1) {
       setCurrentStep(prev => prev - 1);
       setCompletedSteps(prev => prev.filter(step => step < currentStep - 1));
     }
-  };
-
-  // 에러 클리어
-  const clearError = () => setError(null);
+  }, [currentStep]);
 
   // 리셋
-  const reset = () => {
+  const reset = useCallback(() => {
     setCurrentStep(1);
     setCompletedSteps([]);
     setPersonImage(null);
     setClothingImage(null);
+    setPersonImagePreview(null);
+    setClothingImagePreview(null);
     setStepResults({});
     setResult(null);
     setFileErrors({});
@@ -339,14 +812,19 @@ const App: React.FC = () => {
     setIsProcessing(false);
     setProgress(0);
     setProgressMessage('');
-  };
+    apiClient.disconnectWebSocket();
+    apiClient.setSessionId('');
+  }, [apiClient]);
 
-  // ===========================================
-  // 🔥 8단계 API 처리 함수들 (백엔드 완전 호환)
-  // ===========================================
+  // 에러 클리어
+  const clearError = useCallback(() => setError(null), []);
+
+  // ===============================================================
+  // 🔧 단계별 처리 함수들 (기존 유지)
+  // ===============================================================
 
   // 1단계: 이미지 업로드 검증
-  const processStep1 = async () => {
+  const processStep1 = useCallback(async () => {
     if (!personImage || !clothingImage) {
       alert('사용자 이미지와 의류 이미지를 모두 업로드해주세요.');
       return;
@@ -362,7 +840,7 @@ const App: React.FC = () => {
       formData.append('clothing_image', clothingImage);
       
       setProgress(50);
-      const stepResult = await apiHelper.callStepAPI(1, formData);
+      const stepResult = await apiClient.callStepAPI(1, formData);
       
       if (!stepResult.success) {
         throw new Error(stepResult.error || '1단계 검증 실패');
@@ -383,10 +861,10 @@ const App: React.FC = () => {
       setIsProcessing(false);
       setProgress(0);
     }
-  };
+  }, [personImage, clothingImage, apiClient, goToNextStep]);
 
   // 2단계: 신체 측정값 검증
-  const processStep2 = async () => {
+  const processStep2 = useCallback(async () => {
     if (measurements.height <= 0 || measurements.weight <= 0) {
       alert('올바른 키와 몸무게를 입력해주세요.');
       return;
@@ -402,7 +880,7 @@ const App: React.FC = () => {
       formData.append('weight', measurements.weight.toString());
       
       setProgress(50);
-      const stepResult = await apiHelper.callStepAPI(2, formData);
+      const stepResult = await apiClient.callStepAPI(2, formData);
       
       if (!stepResult.success) {
         throw new Error(stepResult.error || '2단계 검증 실패');
@@ -415,6 +893,7 @@ const App: React.FC = () => {
       setTimeout(() => {
         setIsProcessing(false);
         goToNextStep();
+        // 여기서 자동 처리가 시작됨 (useEffect에 의해)
       }, 1500);
       
     } catch (error: any) {
@@ -423,10 +902,10 @@ const App: React.FC = () => {
       setIsProcessing(false);
       setProgress(0);
     }
-  };
+  }, [measurements, apiClient, goToNextStep]);
 
-  // 3-8단계: 통합 AI 처리 함수
-  const processAIStep = async (stepId: number) => {
+  // 3-8단계: AI 처리 함수 (수동 모드용)
+  const processAIStep = useCallback(async (stepId: number) => {
     if (!personImage || !clothingImage) return;
 
     setIsProcessing(true);
@@ -437,27 +916,40 @@ const App: React.FC = () => {
 
     try {
       const formData = new FormData();
-      formData.append('person_image', personImage);
-      formData.append('clothing_image', clothingImage);
-      formData.append('height', measurements.height.toString());
-      formData.append('weight', measurements.weight.toString());
+      
+      // 단계에 따라 필요한 데이터 추가
+      if (stepId <= 6) {
+        if (stepId === 3 || stepId === 4) {
+          formData.append('person_image', personImage);
+        } else if (stepId === 5) {
+          formData.append('clothing_image', clothingImage);
+        }
+      }
+      
+      setProgress(30);
       
       // 7단계는 특별 처리 (가상 피팅)
       if (stepId === 7) {
-        formData.append('session_id', `step7_${Date.now()}`);
-        setProgress(30);
         setProgressMessage('HR-VITON + OOTDiffusion 실행 중...');
+        
+        // WebSocket 연결 시도
+        try {
+          if (apiClient.getSessionId()) {
+            await apiClient.connectWebSocket(apiClient.getSessionId()!);
+          }
+        } catch (error) {
+          console.warn('WebSocket 연결 실패, 폴링으로 진행:', error);
+        }
         
         setTimeout(() => {
           setProgress(60);
           setProgressMessage('Stable Diffusion 모델 처리 중...');
         }, 2000);
       } else {
-        setProgress(30);
         setProgressMessage(`AI 모델 ${stepData.name} 실행 중...`);
       }
       
-      const stepResult = await apiHelper.callStepAPI(stepId, formData);
+      const stepResult = await apiClient.callStepAPI(stepId, formData);
       
       if (!stepResult.success) {
         throw new Error(stepResult.error || `${stepId}단계 처리 실패`);
@@ -466,14 +958,16 @@ const App: React.FC = () => {
       setStepResults(prev => ({ ...prev, [stepId]: stepResult }));
       
       // 7단계에서 TryOnResult 변환
-      if (stepId === 7) {
+      if (stepId === 7 && stepResult.fitted_image) {
         const tryOnResult: TryOnResult = {
           success: stepResult.success,
-          fitted_image: stepResult.fitted_image,
+          message: stepResult.message,
           processing_time: stepResult.processing_time,
           confidence: stepResult.confidence,
+          session_id: apiClient.getSessionId() || '',
+          fitted_image: stepResult.fitted_image,
           fit_score: stepResult.fit_score || 0.85,
-          measurements: stepResult.details?.measurements || {
+          measurements: {
             chest: 88 + (measurements.weight - 65) * 0.9,
             waist: 74 + (measurements.weight - 65) * 0.7,
             hip: 94 + (measurements.weight - 65) * 0.8,
@@ -482,7 +976,8 @@ const App: React.FC = () => {
           clothing_analysis: stepResult.details?.clothing_analysis || {
             category: '상의',
             style: '캐주얼',
-            dominant_color: [95, 145, 195]
+            dominant_color: [95, 145, 195],
+            color_name: '블루'
           },
           recommendations: stepResult.recommendations || []
         };
@@ -502,65 +997,16 @@ const App: React.FC = () => {
       setError(error.message);
       setIsProcessing(false);
       setProgress(0);
-    }
-  };
-
-  // 8단계: 결과 분석
-  const processStep8 = async () => {
-    const step7Result = stepResults[7];
-    
-    if (!step7Result || !step7Result.fitted_image) {
-      alert('가상 피팅 결과가 없습니다.');
-      return;
-    }
-
-    setIsProcessing(true);
-    setProgress(10);
-    setProgressMessage('AI 결과 분석 중...');
-
-    try {
-      const formData = new FormData();
-      formData.append('fitted_image_base64', step7Result.fitted_image);
-      formData.append('fit_score', (step7Result.fit_score || 0.85).toString());
-      formData.append('confidence', step7Result.confidence.toString());
-
-      setProgress(50);
-      setProgressMessage('품질 평가 및 추천 생성 중...');
-
-      const stepResult = await apiHelper.callStepAPI(8, formData);
-
-      if (!stepResult.success) {
-        throw new Error(stepResult.error || '8단계 처리 실패');
+    } finally {
+      // WebSocket 연결 해제
+      if (stepId === 7) {
+        apiClient.disconnectWebSocket();
       }
-
-      setStepResults(prev => ({ ...prev, 8: stepResult }));
-      
-      // 최종 result에 추천사항 추가
-      if (result) {
-        setResult(prev => prev ? {
-          ...prev,
-          recommendations: stepResult.recommendations || stepResult.details?.recommendations || prev.recommendations
-        } : prev);
-      }
-
-      setProgress(100);
-      setProgressMessage('결과 분석 완료!');
-      
-      setTimeout(() => {
-        setIsProcessing(false);
-        alert('🎉 모든 단계가 완료되었습니다!');
-      }, 1500);
-
-    } catch (error: any) {
-      console.error('❌ 8단계 실패:', error);
-      setError(error.message);
-      setIsProcessing(false);
-      setProgress(0);
     }
-  };
+  }, [personImage, clothingImage, measurements, apiClient, goToNextStep]);
 
   // 단계별 처리 함수 매핑
-  const processCurrentStep = async () => {
+  const processCurrentStep = useCallback(async () => {
     const processors = {
       1: processStep1,
       2: processStep2,
@@ -569,17 +1015,89 @@ const App: React.FC = () => {
       5: () => processAIStep(5),
       6: () => processAIStep(6),
       7: () => processAIStep(7),
-      8: processStep8
+      8: () => processAIStep(8)
     };
 
     const processor = processors[currentStep as keyof typeof processors];
     if (processor) {
       await processor();
     }
-  };
+  }, [currentStep, processStep1, processStep2, processAIStep]);
 
-  // 현재 단계가 완료 가능한지 확인
-  const canProceedToNext = () => {
+  // ===============================================================
+  // 🔧 개발 도구 함수들
+  // ===============================================================
+
+  const handleTestConnection = useCallback(async () => {
+    try {
+      const result = await apiClient.healthCheck();
+      console.log('연결 테스트 결과:', result);
+      alert(result.success ? '✅ 연결 성공!' : '❌ 연결 실패');
+    } catch (error) {
+      console.error('연결 테스트 실패:', error);
+      alert('❌ 연결 테스트 실패');
+    }
+  }, [apiClient]);
+
+  const handleSystemInfo = useCallback(async () => {
+    try {
+      const info = await apiClient.getSystemInfo();
+      console.log('시스템 정보:', info);
+      alert(`✅ ${info.app_name} v${info.app_version}\n🎯 ${info.device_name}\n💾 ${info.available_memory_gb}GB 사용가능`);
+    } catch (error) {
+      console.error('시스템 정보 실패:', error);
+      alert('❌ 시스템 정보 조회 실패');
+    }
+  }, [apiClient]);
+
+  const handleCompletePipeline = useCallback(async () => {
+    if (!personImage || !clothingImage) {
+      alert('이미지를 먼저 업로드해주세요.');
+      return;
+    }
+    
+    setIsProcessing(true);
+    setProgress(10);
+    setProgressMessage('전체 파이프라인 실행 중...');
+    
+    try {
+      const result = await apiClient.runCompletePipeline(personImage, clothingImage, measurements);
+      console.log('전체 파이프라인 결과:', result);
+      setResult(result);
+      setProgress(100);
+      setProgressMessage('전체 파이프라인 완료!');
+      
+      setTimeout(() => {
+        setIsProcessing(false);
+        setCurrentStep(8);
+        setCompletedSteps([1, 2, 3, 4, 5, 6, 7]);
+        alert('🎉 전체 파이프라인 완료!');
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error('전체 파이프라인 실패:', error);
+      setError(error.message);
+      setIsProcessing(false);
+      setProgress(0);
+    }
+  }, [personImage, clothingImage, measurements, apiClient]);
+
+  // 요청 취소 핸들러
+  const handleCancelRequest = useCallback(() => {
+    if (isProcessing) {
+      setIsProcessing(false);
+      setProgress(0);
+      setProgressMessage('');
+      apiClient.disconnectWebSocket();
+      alert('요청이 취소되었습니다.');
+    }
+  }, [isProcessing, apiClient]);
+
+  // ===============================================================
+  // 🔧 유효성 검사 함수들
+  // ===============================================================
+
+  const canProceedToNext = useCallback(() => {
     switch (currentStep) {
       case 1:
         return personImage && clothingImage && 
@@ -600,116 +1118,22 @@ const App: React.FC = () => {
       default:
         return false;
     }
-  };
+  }, [currentStep, personImage, clothingImage, fileErrors, measurements, stepResults, result]);
 
-  // 서버 상태 색상
-  const getServerStatusColor = () => {
-    if (isChecking) return '#f59e0b';
-    return isHealthy ? '#4ade80' : '#ef4444';
-  };
+  // 서버 상태 색상/텍스트
+  const getServerStatusColor = useCallback(() => {
+    if (isCheckingHealth) return '#f59e0b';
+    return isServerHealthy ? '#4ade80' : '#ef4444';
+  }, [isCheckingHealth, isServerHealthy]);
 
-  const getServerStatusText = () => {
-    if (isChecking) return 'Checking...';
-    return isHealthy ? 'Server Online' : 'Server Offline';
-  };
+  const getServerStatusText = useCallback(() => {
+    if (isCheckingHealth) return 'Checking...';
+    return isServerHealthy ? 'Server Online' : 'Server Offline';
+  }, [isCheckingHealth, isServerHealthy]);
 
-  // 개발 도구 함수들
-  const handleTestConnection = async () => {
-    try {
-      const result = await devTools.testAPI();
-      console.log('연결 테스트 결과:', result);
-      alert(result.message);
-    } catch (error) {
-      console.error('연결 테스트 실패:', error);
-      alert('연결 테스트 실패');
-    }
-  };
-
-  const handleSystemInfo = async () => {
-    try {
-      const result = await devTools.testSystemInfo();
-      console.log('시스템 정보:', result);
-      alert(`시스템 정보 조회 ${result.success ? '성공' : '실패'}`);
-    } catch (error) {
-      console.error('시스템 정보 실패:', error);
-      alert('시스템 정보 조회 실패');
-    }
-  };
-
-  const handleCompletePipeline = async () => {
-    if (!personImage || !clothingImage) {
-      alert('이미지를 먼저 업로드해주세요.');
-      return;
-    }
-    
-    setIsProcessing(true);
-    setProgress(10);
-    setProgressMessage('전체 파이프라인 실행 중...');
-    
-    try {
-      const result = await apiHelper.runCompletePipeline(personImage, clothingImage, measurements);
-      console.log('전체 파이프라인 결과:', result);
-      setResult(result);
-      setProgress(100);
-      setProgressMessage('전체 파이프라인 완료!');
-      
-      setTimeout(() => {
-        setIsProcessing(false);
-        setCurrentStep(8);
-        alert('전체 파이프라인 완료!');
-      }, 1500);
-      
-    } catch (error: any) {
-      console.error('전체 파이프라인 실패:', error);
-      setError(error.message);
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  };
-
-  // 요청 취소 핸들러
-  const handleCancelRequest = () => {
-    if (isProcessing) {
-      setIsProcessing(false);
-      setProgress(0);
-      setProgressMessage('');
-      alert('요청이 취소되었습니다.');
-    }
-  };
-
-  // 파일 드래그 앤 드롭 지원
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent, type: 'person' | 'clothing') => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0 && files[0].type.startsWith('image/')) {
-      handleImageUpload(files[0], type);
-    }
-  };
-
-  // 단계별 컨텐츠 렌더링
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 1:
-        return renderImageUploadStep();
-      case 2:
-        return renderMeasurementsStep();
-      case 3:
-      case 4:
-      case 5:
-      case 6:
-        return renderProcessingStep();
-      case 7:
-        return renderVirtualFittingStep();
-      case 8:
-        return renderResultStep();
-      default:
-        return null;
-    }
-  };
+  // ===============================================================
+  // 🔧 렌더링 함수들 (기존과 동일)
+  // ===============================================================
 
   const renderImageUploadStep = () => (
     <div style={{ 
@@ -731,10 +1155,10 @@ const App: React.FC = () => {
           color: '#111827', 
           marginBottom: '1rem' 
         }}>Your Photo</h3>
-        {personImage ? (
+        {personImagePreview ? (
           <div style={{ position: 'relative' }}>
             <img
-              src={URL.createObjectURL(personImage)}
+              src={personImagePreview}
               alt="Person"
               style={{ 
                 width: '100%', 
@@ -780,7 +1204,7 @@ const App: React.FC = () => {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }}>
-              {personImage.name} ({fileUtils.formatFileSize(personImage.size)})
+              {personImage?.name} ({personImage && fileUtils.formatFileSize(personImage.size)})
             </div>
           </div>
         ) : (
@@ -848,10 +1272,10 @@ const App: React.FC = () => {
           color: '#111827', 
           marginBottom: '1rem' 
         }}>Clothing Item</h3>
-        {clothingImage ? (
+        {clothingImagePreview ? (
           <div style={{ position: 'relative' }}>
             <img
-              src={URL.createObjectURL(clothingImage)}
+              src={clothingImagePreview}
               alt="Clothing"
               style={{ 
                 width: '100%', 
@@ -897,7 +1321,7 @@ const App: React.FC = () => {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }}>
-              {clothingImage.name} ({fileUtils.formatFileSize(clothingImage.size)})
+              {clothingImage?.name} ({clothingImage && fileUtils.formatFileSize(clothingImage.size)})
             </div>
           </div>
         ) : (
@@ -1056,6 +1480,46 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 🆕 자동화 토글 추가 */}
+      <div style={{ 
+        marginTop: '1rem', 
+        padding: '0.75rem', 
+        backgroundColor: autoProcessingEnabled ? '#f0f9ff' : '#f9fafb', 
+        borderRadius: '0.5rem',
+        border: autoProcessingEnabled ? '1px solid #bfdbfe' : '1px solid #e5e7eb'
+      }}>
+        <label style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          fontSize: isMobile ? '0.75rem' : '0.875rem', 
+          color: '#4b5563',
+          cursor: 'pointer'
+        }}>
+          <input
+            type="checkbox"
+            checked={autoProcessingEnabled}
+            onChange={(e) => setAutoProcessingEnabled(e.target.checked)}
+            style={{ 
+              marginRight: '0.5rem',
+              width: '1rem',
+              height: '1rem'
+            }}
+          />
+          🚀 자동 처리 모드 (Step 2 완료 후 자동으로 Step 3-8 실행)
+        </label>
+        <div style={{ 
+          fontSize: isMobile ? '0.625rem' : '0.75rem', 
+          color: '#6b7280', 
+          marginTop: '0.25rem',
+          marginLeft: '1.5rem'
+        }}>
+          {autoProcessingEnabled ? 
+            '✅ 활성화됨 - 측정값 입력 후 자동으로 가상 피팅까지 진행' : 
+            '⏸️ 비활성화됨 - 각 단계를 수동으로 진행'
+          }
+        </div>
+      </div>
     </div>
   );
 
@@ -1392,9 +1856,9 @@ const App: React.FC = () => {
               flexDirection: 'column', 
               gap: '1rem' 
             }}>
-              {result.fitted_image || result.result_image ? (
+              {result.fitted_image ? (
                 <img
-                  src={`data:image/jpeg;base64,${result.fitted_image || result.result_image}`}
+                  src={`data:image/jpeg;base64,${result.fitted_image}`}
                   alt="Virtual try-on result"
                   style={{ 
                     width: '100%', 
@@ -1426,23 +1890,23 @@ const App: React.FC = () => {
               }}>
                 <button 
                   onClick={() => {
-                    if (result.fitted_image || result.result_image) {
+                    if (result.fitted_image) {
                       const link = document.createElement('a');
-                      link.href = `data:image/jpeg;base64,${result.fitted_image || result.result_image}`;
+                      link.href = `data:image/jpeg;base64,${result.fitted_image}`;
                       link.download = 'virtual-tryon-result.jpg';
                       link.click();
                     }
                   }}
-                  disabled={!result.fitted_image && !result.result_image}
+                  disabled={!result.fitted_image}
                   style={{ 
                     flex: 1, 
-                    backgroundColor: result.fitted_image || result.result_image ? '#f3f4f6' : '#e5e7eb', 
+                    backgroundColor: result.fitted_image ? '#f3f4f6' : '#e5e7eb', 
                     color: '#374151', 
                     padding: isMobile ? '0.75rem 1rem' : '0.5rem 1rem', 
                     borderRadius: '0.5rem', 
                     fontWeight: '500', 
                     border: 'none',
-                    cursor: result.fitted_image || result.result_image ? 'pointer' : 'not-allowed',
+                    cursor: result.fitted_image ? 'pointer' : 'not-allowed',
                     transition: 'background-color 0.2s',
                     fontSize: isMobile ? '0.875rem' : '0.875rem'
                   }}
@@ -1628,14 +2092,44 @@ const App: React.FC = () => {
     );
   };
 
+  // 단계별 컨텐츠 렌더링
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return renderImageUploadStep();
+      case 2:
+        return renderMeasurementsStep();
+      case 3:
+      case 4:
+      case 5:
+      case 6:
+        return renderProcessingStep();
+      case 7:
+        return renderVirtualFittingStep();
+      case 8:
+        return renderResultStep();
+      default:
+        return null;
+    }
+  };
+
+  // ===============================================================
+  // 🔧 메인 렌더링
+  // ===============================================================
+
   // 컴포넌트 마운트 시 개발 도구 정보 출력
   useEffect(() => {
-    console.log('🛠️ MyCloset AI App 시작됨 (백엔드 호환 버전)');
+    console.log('🛠️ MyCloset AI App 시작됨 (백엔드 완전 호환 + 자동화 버전)');
     console.log('📋 개발 도구 사용법:');
-    console.log('  - devTools.testAPI(): 백엔드 API 연결 테스트');
-    console.log('  - devTools.testSystemInfo(): 시스템 정보 조회');
-    console.log('  - devTools.exportDebugInfo(): 디버그 정보 내보내기');
-  }, []);
+    console.log('  - apiClient: API 클라이언트 인스턴스');
+    console.log('  - PIPELINE_STEPS: 8단계 파이프라인 정의');
+    console.log('  - 🚀 자동화: Step 2 완료 후 자동으로 Step 3-8 실행');
+    console.log('  - 헤더 버튼들로 테스트 가능');
+
+    // 전역에 개발 도구 등록
+    (window as any).apiClient = apiClient;
+    (window as any).PIPELINE_STEPS = PIPELINE_STEPS;
+  }, [apiClient]);
 
   return (
     <div style={{ 
@@ -1693,7 +2187,12 @@ const App: React.FC = () => {
                   fontSize: isMobile ? '0.625rem' : '0.75rem', 
                   color: '#6b7280', 
                   margin: 0 
-                }}>M3 Max 128GB 최적화</p>
+                }}>
+                  {systemInfo ? 
+                    `${systemInfo.device_name} ${systemInfo.is_m3_max ? '🍎' : ''} ${autoProcessingEnabled ? '🚀 Auto' : '⏸️ Manual'}` : 
+                    'M3 Max 128GB 최적화'
+                  }
+                </p>
               </div>
             </div>
             
@@ -1753,6 +2252,20 @@ const App: React.FC = () => {
                     }}
                   >
                     Complete
+                  </button>
+                  <button
+                    onClick={() => setAutoProcessingEnabled(!autoProcessingEnabled)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.75rem',
+                      backgroundColor: autoProcessingEnabled ? '#22c55e' : '#6b7280',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {autoProcessingEnabled ? '🚀 Auto' : '⏸️ Manual'}
                   </button>
                 </div>
               )}
@@ -1829,7 +2342,7 @@ const App: React.FC = () => {
               fontWeight: '700', 
               color: '#111827', 
               margin: 0 
-            }}>AI Virtual Try-On</h2>
+            }}>AI Virtual Try-On {autoProcessingEnabled ? '🚀' : '⏸️'}</h2>
             <span style={{ 
               fontSize: isMobile ? '0.75rem' : '0.875rem', 
               color: '#4b5563' 
@@ -1899,8 +2412,8 @@ const App: React.FC = () => {
 
           {/* Current Step Info */}
           <div style={{ 
-            backgroundColor: '#eff6ff', 
-            border: '1px solid #bfdbfe', 
+            backgroundColor: autoProcessingEnabled ? '#f0f9ff' : '#eff6ff', 
+            border: autoProcessingEnabled ? '1px solid #bfdbfe' : '1px solid #bfdbfe', 
             borderRadius: '0.5rem', 
             padding: isMobile ? '0.75rem' : '1rem' 
           }}>
@@ -1916,6 +2429,17 @@ const App: React.FC = () => {
               marginTop: '0.25rem', 
               margin: 0 
             }}>{PIPELINE_STEPS[currentStep - 1]?.description}</p>
+            {autoProcessingEnabled && currentStep === 2 && (
+              <p style={{ 
+                color: '#7c3aed', 
+                fontSize: isMobile ? '0.625rem' : '0.75rem', 
+                marginTop: '0.5rem', 
+                margin: 0,
+                fontWeight: '500'
+              }}>
+                🚀 자동 모드: 측정값 입력 후 자동으로 Step 3-8이 실행됩니다
+              </p>
+            )}
           </div>
         </div>
 
@@ -1980,15 +2504,15 @@ const App: React.FC = () => {
             {currentStep < 8 && (
               <button
                 onClick={processCurrentStep}
-                disabled={!canProceedToNext() || isProcessing}
+                disabled={!canProceedToNext() || isProcessing || (autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success)}
                 style={{
                   padding: isMobile ? '0.875rem 1.5rem' : '0.75rem 1.5rem',
-                  backgroundColor: (!canProceedToNext() || isProcessing) ? '#d1d5db' : '#3b82f6',
+                  backgroundColor: (!canProceedToNext() || isProcessing || (autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success)) ? '#d1d5db' : '#3b82f6',
                   color: '#ffffff',
                   borderRadius: '0.5rem',
                   fontWeight: '500',
                   border: 'none',
-                  cursor: (!canProceedToNext() || isProcessing) ? 'not-allowed' : 'pointer',
+                  cursor: (!canProceedToNext() || isProcessing || (autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success)) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                   width: isMobile ? '100%' : 'auto'
                 }}
@@ -2005,7 +2529,8 @@ const App: React.FC = () => {
                   }
                 }}
               >
-                {currentStep <= 2 ? '다음 단계' : 
+                {autoProcessingEnabled && currentStep === 2 && stepResults[2]?.success ? '🚀 자동 처리 중...' :
+                 currentStep <= 2 ? '다음 단계' : 
                  currentStep === 7 ? '가상 피팅 시작' : 
                  isProcessing ? '처리 중...' : '처리 시작'}
               </button>
@@ -2176,22 +2701,37 @@ const App: React.FC = () => {
               </div>
             </div>
             
-            {/* 개발 도구 정보 */}
+            {/* 시스템 정보 및 개발 도구 정보 */}
             <div style={{ 
               marginTop: '1.5rem', 
               padding: isMobile ? '0.75rem' : '1rem', 
-              backgroundColor: '#f9fafb', 
+              backgroundColor: autoProcessingEnabled ? '#f0f9ff' : '#f9fafb', 
               borderRadius: '0.5rem',
               fontSize: isMobile ? '0.75rem' : '0.875rem',
-              color: '#4b5563'
+              color: '#4b5563',
+              border: autoProcessingEnabled ? '1px solid #bfdbfe' : '1px solid #e5e7eb'
             }}>
-              <p style={{ margin: 0, fontWeight: '500' }}>🛠️ 개발자 도구 (백엔드 호환):</p>
+              <p style={{ margin: 0, fontWeight: '500' }}>
+                🛠️ 시스템 정보 (백엔드 완전 호환 + 자동화):
+              </p>
+              {systemInfo && (
+                <p style={{ margin: '0.25rem 0 0 0' }}>
+                  🎯 {systemInfo.app_name} v{systemInfo.app_version} | 
+                  {systemInfo.device_name} {systemInfo.is_m3_max ? '🍎' : ''} | 
+                  💾 {systemInfo.available_memory_gb}GB 사용가능
+                </p>
+              )}
               <p style={{ margin: '0.25rem 0 0 0' }}>
-                콘솔에서 <code>devTools.testAPI()</code>, <code>devTools.testSystemInfo()</code> 등을 사용할 수 있습니다.
+                📡 실시간 WebSocket 통신 지원 | 8단계 AI 파이프라인 | M3 Max 최적화
               </p>
               <p style={{ margin: '0.25rem 0 0 0' }}>
-                헤더의 "Complete" 버튼으로 전체 파이프라인을 한 번에 실행할 수 있습니다.
+                {autoProcessingEnabled ? '🚀 자동 모드: Step 2 완료 후 자동으로 Step 3-8 실행' : '⏸️ 수동 모드: 각 단계를 수동으로 진행'}
               </p>
+              {!isMobile && (
+                <p style={{ margin: '0.25rem 0 0 0' }}>
+                  🔧 헤더의 "Test", "System", "Complete", "Auto/Manual" 버튼으로 기능 테스트 가능
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -2238,7 +2778,7 @@ const App: React.FC = () => {
                 border: '1px solid #e5e7eb',
                 borderRadius: '0.5rem',
                 padding: '0.5rem',
-                minWidth: '10rem',
+                minWidth: '12rem',
                 boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
               }}
             >
@@ -2290,6 +2830,23 @@ const App: React.FC = () => {
                 }}
               >
                 Complete Pipeline
+              </button>
+              <button
+                onClick={() => setAutoProcessingEnabled(!autoProcessingEnabled)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  fontSize: '0.75rem',
+                  backgroundColor: autoProcessingEnabled ? '#22c55e' : '#6b7280',
+                  color: '#ffffff',
+                  border: 'none',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  borderRadius: '0.25rem',
+                  marginTop: '0.25rem'
+                }}
+              >
+                {autoProcessingEnabled ? '🚀 Auto Mode' : '⏸️ Manual Mode'}
               </button>
             </div>
           </div>

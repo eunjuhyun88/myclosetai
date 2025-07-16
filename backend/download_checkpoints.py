@@ -1,684 +1,728 @@
 #!/usr/bin/env python3
 """
-Conda 환경용 실제 AI 모델 체크포인트 다운로더 (최종 버전)
-폴백 모델 없음 - 검증된 실제 모델들만 다운로드
-
-사용법:
-    cd backend
-    conda activate mycloset-ai
-    python download_real_models_conda.py
+Step 5 의류 워핑 AI 모델 다운로더
+✅ Conda 환경 최적화
+✅ M3 Max 128GB 메모리 관리
+✅ 자동 체크포인트 검증
+✅ 병렬 다운로드 지원
+✅ 진행률 표시
 """
 
 import os
 import sys
-import logging
+import asyncio
+import aiohttp
+import aiofiles
+import json
 import time
-import subprocess
+import hashlib
+import zipfile
+import tarfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import requests
-from tqdm import tqdm
-import json
+from dataclasses import dataclass, asdict
+import logging
+from concurrent.futures import ThreadPoolExecutor
+import subprocess
+import platform
+
+# 진행률 표시
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    print("💡 더 나은 진행률 표시를 위해 tqdm을 설치하세요: pip install tqdm")
+
+# AI 라이브러리들
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    print("⚠️ PyTorch가 설치되지 않았습니다")
+
+try:
+    from huggingface_hub import snapshot_download, hf_hub_download, login
+    from huggingface_hub.utils import HfHubHTTPError
+    HF_AVAILABLE = True
+except ImportError:
+    HF_AVAILABLE = False
+    print("⚠️ Hugging Face Hub가 설치되지 않았습니다: pip install huggingface-hub")
 
 # 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%H:%M:%S'
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('step_05_download.log')
+    ]
 )
 logger = logging.getLogger(__name__)
 
-class CondaRealModelDownloader:
-    """Conda 환경용 실제 AI 모델 다운로더 (폴백 없음)"""
+@dataclass
+class ModelConfig:
+    """모델 설정"""
+    name: str
+    repo_id: str
+    local_path: str
+    size_mb: int
+    required_files: List[str]
+    optional_files: List[str] = None
+    download_method: str = "huggingface"  # huggingface, direct, git
+    url: str = None
+    checksum: str = None
     
-    def __init__(self):
-        # 프로젝트 루트 경로 자동 감지
-        current_path = Path(__file__).parent
-        if current_path.name == "scripts":
-            self.project_root = current_path.parent
+    def __post_init__(self):
+        if self.optional_files is None:
+            self.optional_files = []
+
+class Step05AIDownloader:
+    """Step 5 AI 모델 다운로더"""
+    
+    def __init__(self, base_dir: Optional[str] = None):
+        """초기화"""
+        # 기본 경로 설정
+        if base_dir:
+            self.base_dir = Path(base_dir)
         else:
-            self.project_root = current_path
+            # 프로젝트 루트 찾기
+            current = Path(__file__).resolve()
+            for parent in current.parents:
+                if (parent / "backend").exists():
+                    self.base_dir = parent / "backend" / "ai_models" / "step_05_cloth_warping"
+                    break
+            else:
+                self.base_dir = Path.cwd() / "ai_models" / "step_05_cloth_warping"
+        
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 시스템 정보
+        self.is_m3_max = self._detect_m3_max()
+        self.max_workers = 8 if self.is_m3_max else 4
+        self.chunk_size = 1024 * 1024  # 1MB chunks
+        
+        # 모델 정의
+        self.models = self._define_models()
+        
+        logger.info(f"🚀 Step 5 AI 다운로더 초기화 완료")
+        logger.info(f"📁 다운로드 경로: {self.base_dir}")
+        logger.info(f"🍎 M3 Max 최적화: {self.is_m3_max}")
+        logger.info(f"⚡ 최대 병렬 다운로드: {self.max_workers}")
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 감지"""
+        try:
+            if platform.system() == "Darwin":  # macOS
+                if TORCH_AVAILABLE and torch.backends.mps.is_available():
+                    return True
+        except Exception:
+            pass
+        return False
+    
+    def _define_models(self) -> Dict[str, ModelConfig]:
+        """필요한 AI 모델들 정의"""
+        return {
+            # 1. IDM-VTON (핵심 의류 워핑 모델)
+            "idm_vton": ModelConfig(
+                name="IDM-VTON",
+                repo_id="yisol/IDM-VTON",
+                local_path=str(self.base_dir / "idm_vton"),
+                size_mb=8500,
+                required_files=["model.safetensors", "config.json"],
+                optional_files=["tokenizer.json", "scheduler.json"]
+            ),
             
-        # AI 모델 저장 경로를 기존 MyCloset AI 구조에 맞춤
-        self.models_dir = self.project_root / "ai_models"
-        self.checkpoints_dir = self.models_dir / "checkpoints"
-        
-        # 디렉토리 생성
-        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 실제 검증된 모델들만 (100% 동작 보장)
-        self.real_models = {
-            "ootdiffusion": {
-                "name": "OOTDiffusion",
-                "description": "최신 실제 가상 피팅 모델",
-                "method": "huggingface_git",
-                "repo_id": "levihsu/OOTDiffusion",
-                "local_dir": "ootdiffusion_hf",
-                "size_gb": 8.5,
-                "priority": 1,
-                "verified": True,
-                "essential_files": ["checkpoints", "configs"]
-            },
-            "human_parsing_atr": {
-                "name": "ATR Human Parsing",
-                "description": "실제 인체 분할 모델 (ATR 데이터셋)",
-                "method": "direct_download",
-                "urls": [
-                    "https://github.com/PeikeLi/Self-Correction-Human-Parsing/releases/download/checkpoints/exp-schp-201908301523-atr.pth"
-                ],
-                "backup_urls": [
-                    "https://huggingface.co/mattmdjaga/human_parsing/resolve/main/exp-schp-201908301523-atr.pth",
-                    "https://drive.google.com/uc?id=1k4dllHpu0bdx38J7H28rVVLpU-kOHmnH&confirm=t"
-                ],
-                "local_dir": "human_parsing",
-                "filename": "exp-schp-201908301523-atr.pth",
-                "size_gb": 0.178,
-                "priority": 2,
-                "verified": True
-            },
-            "u2net_portrait": {
-                "name": "U2Net Portrait Segmentation",
-                "description": "실제 배경 제거 모델",
-                "method": "direct_download",
-                "urls": [
-                    "https://github.com/xuebinqin/U-2-Net/releases/download/v1.0/u2net_portrait.pth"
-                ],
-                "backup_urls": [
-                    "https://drive.google.com/uc?id=1ao1ovG1Qtx4b7EoskHXmi2E9rp5CHLcZ&confirm=t"
-                ],
-                "local_dir": "u2net",
-                "filename": "u2net_portrait.pth",
-                "size_gb": 0.176,
-                "priority": 3,
-                "verified": True
-            },
-            "mediapipe_pose": {
-                "name": "MediaPipe Pose Landmarker",
-                "description": "Google 공식 포즈 추정 모델",
-                "method": "direct_download",
-                "urls": [
-                    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task"
-                ],
-                "local_dir": "mediapipe",
-                "filename": "pose_landmarker_heavy.task",
-                "size_gb": 0.029,
-                "priority": 4,
-                "verified": True
-            },
-            "segment_anything": {
-                "name": "Segment Anything Model (SAM)",
-                "description": "Meta 공식 세그멘테이션 모델",
-                "method": "direct_download",
-                "urls": [
-                    "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
-                ],
-                "local_dir": "sam",
-                "filename": "sam_vit_h_4b8939.pth",
-                "size_gb": 2.56,
-                "priority": 5,
-                "verified": True
-            },
-            "stable_diffusion_inpaint": {
-                "name": "Stable Diffusion Inpainting",
-                "description": "실제 이미지 인페인팅 모델",
-                "method": "huggingface_download",
-                "repo_id": "runwayml/stable-diffusion-inpainting",
-                "local_dir": "stable_diffusion_inpaint",
-                "size_gb": 5.21,
-                "priority": 6,
-                "verified": True,
-                "essential_files": ["unet", "vae", "text_encoder", "safety_checker"]
-            }
+            # 2. SAM for Segmentation
+            "sam_vit_large": ModelConfig(
+                name="SAM-ViT-Large",
+                repo_id="facebook/sam-vit-large",
+                local_path=str(self.base_dir / "sam"),
+                size_mb=2400,
+                required_files=["pytorch_model.bin"],
+                download_method="direct",
+                url="https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth"
+            ),
+            
+            # 3. Stable Diffusion Inpainting
+            "sd_inpainting": ModelConfig(
+                name="Stable Diffusion Inpainting",
+                repo_id="runwayml/stable-diffusion-inpainting",
+                local_path=str(self.base_dir / "sd_inpainting"),
+                size_mb=5100,
+                required_files=["unet/diffusion_pytorch_model.safetensors", "vae/diffusion_pytorch_model.safetensors"]
+            ),
+            
+            # 4. OpenPose for Pose Estimation
+            "openpose": ModelConfig(
+                name="OpenPose",
+                repo_id="lllyasviel/Annotators", 
+                local_path=str(self.base_dir / "openpose"),
+                size_mb=1200,
+                required_files=["body_pose_model.pth"],
+                optional_files=["hand_pose_model.pth", "face_pose_model.pth"]
+            ),
+            
+            # 5. CLIP for Feature Extraction
+            "clip_vit": ModelConfig(
+                name="CLIP-ViT-Large",
+                repo_id="openai/clip-vit-large-patch14",
+                local_path=str(self.base_dir / "clip"),
+                size_mb=1700,
+                required_files=["pytorch_model.bin", "config.json"]
+            ),
+            
+            # 6. DensePose (의류 매핑용)
+            "densepose": ModelConfig(
+                name="DensePose",
+                repo_id="facebook/densepose",
+                local_path=str(self.base_dir / "densepose"),
+                size_mb=800,
+                required_files=["model.pkl"],
+                download_method="direct",
+                url="https://dl.fbaipublicfiles.com/densepose/densepose_rcnn_R_50_FPN_s1x.pkl"
+            ),
+            
+            # 7. Thin-Plate Spline (기하학적 변형용)
+            "tps_model": ModelConfig(
+                name="TPS Transformation",
+                repo_id="microsoft/DiT-XL-2-256",
+                local_path=str(self.base_dir / "tps"),
+                size_mb=3200,
+                required_files=["diffusion_pytorch_model.safetensors"]
+            ),
+            
+            # 8. Texture Synthesis Model
+            "texture_synthesis": ModelConfig(
+                name="Texture Synthesis",
+                repo_id="stabilityai/stable-diffusion-2-inpainting",
+                local_path=str(self.base_dir / "texture"),
+                size_mb=4600,
+                required_files=["unet/diffusion_pytorch_model.safetensors"]
+            )
         }
     
-    def check_conda_environment(self) -> bool:
-        """Conda 환경 확인"""
-        logger.info("🐍 Conda 환경 확인 중...")
-        
-        conda_env = os.environ.get('CONDA_DEFAULT_ENV')
-        if not conda_env:
-            logger.error("❌ Conda 환경이 활성화되지 않았습니다.")
-            logger.info("💡 실행: conda activate mycloset-ai")
-            return False
-        
-        logger.info(f"✅ 현재 Conda 환경: {conda_env}")
-        
-        # Python 경로 확인
-        python_path = sys.executable
-        if "conda" in python_path.lower() or "miniforge" in python_path.lower():
-            logger.info(f"✅ Python 경로: {python_path}")
-        else:
-            logger.warning(f"⚠️ Python 경로가 Conda 환경이 아닐 수 있습니다: {python_path}")
-        
-        return True
-    
-    def install_conda_dependencies(self) -> bool:
-        """Conda 환경에서 필요한 패키지 설치"""
-        logger.info("📦 Conda 환경에서 필요한 패키지 설치 중...")
-        
-        # Conda로 설치할 패키지들
-        conda_packages = [
-            ("git", "conda-forge"),
-            ("git-lfs", "conda-forge"),
-            ("curl", "conda-forge"),
-            ("wget", "conda-forge")
-        ]
-        
-        # Pip로 설치할 패키지들
-        pip_packages = [
-            "huggingface_hub",
-            "gdown>=4.7.1",
-            "requests>=2.28.0",
-            "tqdm>=4.64.0"
-        ]
-        
-        # Conda 패키지 설치
-        for package, channel in conda_packages:
-            try:
-                subprocess.run([
-                    "conda", "install", "-c", channel, package, "-y", "--quiet"
-                ], check=True, capture_output=True, text=True)
-                logger.info(f"✅ {package}: Conda로 설치 완료")
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"⚠️ {package}: Conda 설치 실패, 시스템 버전 사용")
-        
-        # Pip 패키지 설치
-        for package in pip_packages:
-            try:
-                # 이미 설치된지 확인
-                pkg_name = package.split(">=")[0].split("==")[0].replace("-", "_")
-                __import__(pkg_name)
-                logger.info(f"✅ {package}: 이미 설치됨")
-            except ImportError:
-                try:
-                    subprocess.run([
-                        sys.executable, "-m", "pip", "install", package, "--quiet"
-                    ], check=True, capture_output=True)
-                    logger.info(f"✅ {package}: pip로 설치 완료")
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"❌ {package}: 설치 실패 - {e}")
-                    return False
-        
-        # Git LFS 초기화
-        try:
-            subprocess.run(["git", "lfs", "install"], check=True, capture_output=True)
-            logger.info("✅ Git LFS 초기화 완료")
-        except subprocess.CalledProcessError:
-            logger.warning("⚠️ Git LFS 초기화 실패 (선택사항)")
-        
-        return True
-    
-    def download_with_progress(self, url: str, filepath: Path, retries: int = 3) -> bool:
-        """진행률과 재시도 기능이 있는 다운로드"""
-        for attempt in range(retries):
-            try:
-                # 헤더 설정 (일부 서버에서 User-Agent 필요)
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-                }
-                
-                response = requests.get(url, stream=True, headers=headers, timeout=30)
-                response.raise_for_status()
-                
-                total_size = int(response.headers.get('content-length', 0))
-                
-                # 임시 파일에 다운로드
-                temp_filepath = filepath.with_suffix(filepath.suffix + '.tmp')
-                
-                with open(temp_filepath, 'wb') as f, tqdm(
-                    desc=f"📥 {filepath.name}",
-                    total=total_size,
-                    unit='B',
-                    unit_scale=True,
-                    unit_divisor=1024,
-                ) as pbar:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            pbar.update(len(chunk))
-                
-                # 다운로드 완료 시 임시 파일을 최종 파일로 이동
-                temp_filepath.rename(filepath)
-                return True
-                
-            except Exception as e:
-                logger.warning(f"⚠️ 다운로드 시도 {attempt + 1}/{retries} 실패: {e}")
-                if attempt < retries - 1:
-                    time.sleep(2 ** attempt)  # 지수 백오프
-                    continue
-                else:
-                    logger.error(f"❌ 모든 다운로드 시도 실패: {url}")
-                    return False
-        
-        return False
-    
-    def download_huggingface_model(self, model_info: Dict) -> bool:
-        """Hugging Face에서 모델 다운로드"""
-        try:
-            from huggingface_hub import snapshot_download
-            
-            local_path = self.checkpoints_dir / model_info["local_dir"]
-            repo_id = model_info["repo_id"]
-            
-            # 이미 존재하고 파일이 있으면 스킵
-            if local_path.exists() and any(local_path.iterdir()):
-                logger.info(f"✅ {model_info['name']} 이미 존재함")
-                return True
-            
-            logger.info(f"📥 {model_info['name']} 다운로드 시작...")
-            logger.info(f"   저장소: {repo_id}")
-            logger.info(f"   크기: ~{model_info['size_gb']:.1f}GB")
-            
-            # 다운로드 시작 시간 기록
-            start_time = time.time()
-            
-            # Hugging Face에서 다운로드
-            snapshot_download(
-                repo_id=repo_id,
-                local_dir=str(local_path),
-                resume_download=True,
-                local_dir_use_symlinks=False,
-                # Git LFS 파일도 포함
-                force_download=False,
-                # 진행률 표시
-                tqdm_class=tqdm
-            )
-            
-            end_time = time.time()
-            duration = end_time - start_time
-            
-            logger.info(f"✅ {model_info['name']} 다운로드 완료! ({duration/60:.1f}분)")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ {model_info['name']} Hugging Face 다운로드 실패: {e}")
-            return False
-    
-    def download_huggingface_git(self, model_info: Dict) -> bool:
-        """Git LFS로 Hugging Face 저장소 클론"""
-        try:
-            local_path = self.checkpoints_dir / model_info["local_dir"]
-            repo_id = model_info["repo_id"]
-            repo_url = f"https://huggingface.co/{repo_id}"
-            
-            # 이미 존재하고 파일이 있으면 스킵
-            if local_path.exists() and any(local_path.iterdir()):
-                logger.info(f"✅ {model_info['name']} 이미 존재함")
-                return True
-            
-            logger.info(f"📥 {model_info['name']} Git 클론 시작...")
-            logger.info(f"   저장소: {repo_url}")
-            logger.info(f"   크기: ~{model_info['size_gb']:.1f}GB")
-            
-            start_time = time.time()
-            
-            # Git 클론 (shallow clone으로 속도 향상)
-            subprocess.run([
-                "git", "clone", "--depth=1", "--single-branch", repo_url, str(local_path)
-            ], check=True, capture_output=True, text=True)
-            
-            # LFS 파일 다운로드
-            subprocess.run([
-                "git", "lfs", "pull"
-            ], cwd=str(local_path), check=True, capture_output=True, text=True)
-            
-            end_time = time.time()
-            duration = end_time - start_time
-            
-            logger.info(f"✅ {model_info['name']} Git 클론 완료! ({duration/60:.1f}분)")
-            return True
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"❌ {model_info['name']} Git 클론 실패: {e}")
-            return False
-    
-    def download_direct_model(self, model_info: Dict) -> bool:
-        """직접 URL에서 모델 다운로드 (여러 백업 URL 지원)"""
-        local_path = self.checkpoints_dir / model_info["local_dir"]
-        local_path.mkdir(parents=True, exist_ok=True)
-        
-        filepath = local_path / model_info["filename"]
-        
-        # 이미 존재하고 크기가 1MB 이상이면 스킵
-        if filepath.exists() and filepath.stat().st_size > 1024 * 1024:
-            logger.info(f"✅ {model_info['name']} 이미 존재함")
-            return True
-        
-        logger.info(f"📥 {model_info['name']} 다운로드 시작...")
-        logger.info(f"   크기: ~{model_info['size_gb']:.3f}GB")
-        
-        # 모든 URL 시도 (기본 URL + 백업 URL)
-        all_urls = model_info["urls"]
-        if "backup_urls" in model_info:
-            all_urls.extend(model_info["backup_urls"])
-        
-        for i, url in enumerate(all_urls, 1):
-            logger.info(f"🔗 시도 {i}/{len(all_urls)}: {url[:50]}...")
-            
-            # Google Drive 특별 처리
-            if "google.com" in url or "drive.google.com" in url:
-                try:
-                    import gdown
-                    success = gdown.download(url, str(filepath), quiet=False)
-                    if success and filepath.exists() and filepath.stat().st_size > 1024:
-                        logger.info(f"✅ {model_info['name']} Google Drive 다운로드 완료!")
-                        return True
-                except Exception as e:
-                    logger.warning(f"⚠️ Google Drive 다운로드 실패: {e}")
-                    continue
-            else:
-                # 일반 HTTP 다운로드
-                if self.download_with_progress(url, filepath):
-                    if filepath.exists() and filepath.stat().st_size > 1024:
-                        logger.info(f"✅ {model_info['name']} 다운로드 완료!")
-                        return True
-                
-                # 실패 시 임시 파일 삭제
-                if filepath.exists():
-                    filepath.unlink()
-        
-        logger.error(f"❌ {model_info['name']} 모든 URL 다운로드 실패")
-        return False
-    
-    def verify_model(self, model_key: str, model_info: Dict) -> Tuple[bool, float]:
-        """모델 다운로드 검증"""
-        local_path = self.checkpoints_dir / model_info["local_dir"]
-        
-        if not local_path.exists():
-            return False, 0.0
-        
-        # 총 파일 크기 계산
-        total_size = 0
-        file_count = 0
-        
-        for file_path in local_path.rglob("*"):
-            if file_path.is_file():
-                total_size += file_path.stat().st_size
-                file_count += 1
-        
-        size_gb = total_size / (1024**3)
-        
-        # 검증 기준 (더 엄격하게)
-        expected_size = model_info["size_gb"]
-        min_size = max(expected_size * 0.8, 0.001)  # 최소 80% 또는 1MB
-        
-        # 필수 파일 확인 (있는 경우)
-        essential_files_found = True
-        if "essential_files" in model_info:
-            for pattern in model_info["essential_files"]:
-                if not list(local_path.glob(f"**/{pattern}*")):
-                    essential_files_found = False
-                    break
-        
-        if size_gb >= min_size and file_count > 0 and essential_files_found:
-            return True, size_gb
-        else:
-            return False, size_gb
-    
-    def show_model_selection(self) -> List[str]:
-        """모델 선택 메뉴 표시"""
-        print("\n🤖 Conda 환경 실제 AI 모델 다운로드")
-        print("=" * 60)
-        print("✅ 폴백 없음 - 검증된 실제 모델만 다운로드")
+    async def download_all_models(self, force_redownload: bool = False) -> Dict[str, bool]:
+        """모든 모델 다운로드"""
+        print("🚀 Step 5 AI 모델 다운로드 시작")
         print("=" * 60)
         
-        print("\n📋 검증된 실제 모델들:")
-        for i, (key, info) in enumerate(self.real_models.items(), 1):
-            local_path = self.checkpoints_dir / info["local_dir"]
-            verified, actual_size = self.verify_model(key, info)
-            
-            if verified:
-                status = f"✅ 다운로드됨 ({actual_size:.1f}GB)"
-            else:
-                status = "❌ 필요"
-            
-            print(f"{i}. {info['name']} ({info['size_gb']:.1f}GB) - {status}")
-            print(f"   {info['description']}")
-        
-        total_size = sum(info["size_gb"] for info in self.real_models.values())
-        print(f"\n📊 전체 크기: {total_size:.1f}GB")
-        print(f"📁 저장 위치: {self.checkpoints_dir}")
-        
-        print("\n🎯 추천 선택:")
-        print("  필수 (8.9GB): 1,2,3,4 (OOTDiffusion + Human Parsing + U2Net + MediaPipe)")
-        print("  표준 (11.5GB): 1,2,3,4,5 (+ Segment Anything)")
-        print("  완전 (16.7GB): all (모든 모델)")
-        
-        selection = input("\n다운로드할 모델 번호 (쉼표로 구분, 예: 1,2,3,4): ").strip()
-        
-        if not selection:
-            return []
-        
-        if selection.lower() == 'all':
-            return list(self.real_models.keys())
-        
-        try:
-            indices = [int(x.strip()) for x in selection.split(',') if x.strip()]
-            model_keys = []
-            for i in indices:
-                if 1 <= i <= len(self.real_models):
-                    model_keys.append(list(self.real_models.keys())[i-1])
-            return model_keys
-        except (ValueError, IndexError):
-            logger.error("❌ 잘못된 선택입니다.")
-            return []
-    
-    def download_selected_models(self, model_keys: List[str]) -> Dict[str, bool]:
-        """선택된 모델들 다운로드"""
-        if not model_keys:
-            logger.error("❌ 선택된 모델이 없습니다.")
+        # 디스크 공간 확인
+        total_size_mb = sum(model.size_mb for model in self.models.values())
+        if not self._check_disk_space(total_size_mb):
+            logger.error(f"❌ 디스크 공간 부족! 필요: {total_size_mb/1024:.1f}GB")
             return {}
         
+        print(f"📊 총 다운로드 크기: {total_size_mb/1024:.1f}GB")
+        print(f"📂 다운로드 위치: {self.base_dir}")
+        print(f"⚡ 병렬 다운로드 수: {self.max_workers}")
+        print()
+        
+        # Hugging Face 로그인 확인 (선택적)
+        await self._check_hf_login()
+        
+        # 병렬 다운로드 실행
         results = {}
-        total_size = sum(self.real_models[k]["size_gb"] for k in model_keys)
         
-        print(f"\n📊 다운로드 계획:")
-        print(f"   모델 수: {len(model_keys)}개")
-        print(f"   총 크기: {total_size:.1f}GB")
-        print(f"   예상 시간: {total_size * 1.5:.0f}분 (100Mbps 기준)")
+        if TQDM_AVAILABLE:
+            progress_bar = tqdm(
+                total=len(self.models),
+                desc="📥 모델 다운로드",
+                unit="model",
+                ncols=80
+            )
         
-        confirm = input("\n실제 모델들을 다운로드하시겠습니까? [y/N]: ").strip().lower()
-        if confirm not in ['y', 'yes']:
-            logger.info("❌ 다운로드 취소됨")
-            return {}
+        # 세마포어로 동시 다운로드 수 제한
+        semaphore = asyncio.Semaphore(self.max_workers)
         
-        print("\n🚀 실제 AI 모델 다운로드 시작!")
-        print("=" * 60)
+        async def download_with_semaphore(model_name: str, model_config: ModelConfig):
+            async with semaphore:
+                success = await self._download_single_model(model_name, model_config, force_redownload)
+                if TQDM_AVAILABLE:
+                    progress_bar.update(1)
+                return model_name, success
         
-        # 우선순위 순으로 정렬
-        sorted_models = sorted(
-            [(k, self.real_models[k]) for k in model_keys],
-            key=lambda x: x[1]["priority"]
-        )
+        # 모든 다운로드 태스크 생성
+        tasks = [
+            download_with_semaphore(name, config)
+            for name, config in self.models.items()
+        ]
         
-        total_start_time = time.time()
+        # 병렬 실행
+        completed_tasks = await asyncio.gather(*tasks, return_exceptions=True)
         
-        for i, (model_key, model_info) in enumerate(sorted_models, 1):
-            print(f"\n[{i}/{len(sorted_models)}] {model_info['name']}")
-            print(f"📋 {model_info['description']}")
-            
-            try:
-                start_time = time.time()
-                
-                # 다운로드 방법에 따라 분기
-                if model_info["method"] == "huggingface_download":
-                    success = self.download_huggingface_model(model_info)
-                elif model_info["method"] == "huggingface_git":
-                    success = self.download_huggingface_git(model_info)
-                elif model_info["method"] == "direct_download":
-                    success = self.download_direct_model(model_info)
-                else:
-                    logger.error(f"❌ 지원하지 않는 다운로드 방법: {model_info['method']}")
-                    success = False
-                
-                end_time = time.time()
-                duration = end_time - start_time
-                
-                if success:
-                    # 검증
-                    verified, actual_size = self.verify_model(model_key, model_info)
-                    if verified:
-                        logger.info(f"🎉 {model_info['name']} 검증 완료! ({duration/60:.1f}분, {actual_size:.1f}GB)")
-                        results[model_key] = True
-                    else:
-                        logger.error(f"❌ {model_info['name']} 검증 실패 ({actual_size:.1f}GB)")
-                        results[model_key] = False
-                else:
-                    results[model_key] = False
-                    
-            except KeyboardInterrupt:
-                logger.info("\n⏹ 사용자가 다운로드를 중단했습니다")
-                break
-            except Exception as e:
-                logger.error(f"❌ {model_info['name']} 예상치 못한 오류: {e}")
-                results[model_key] = False
+        if TQDM_AVAILABLE:
+            progress_bar.close()
         
-        total_end_time = time.time()
-        total_duration = total_end_time - total_start_time
+        # 결과 수집
+        for result in completed_tasks:
+            if isinstance(result, Exception):
+                logger.error(f"❌ 다운로드 중 오류: {result}")
+            else:
+                model_name, success = result
+                results[model_name] = success
         
-        print(f"\n⏱️ 총 다운로드 시간: {total_duration/60:.1f}분")
+        # 결과 요약
+        success_count = sum(results.values())
+        total_count = len(results)
+        
+        print("\n" + "=" * 60)
+        print(f"🎉 다운로드 완료: {success_count}/{total_count} 성공")
+        
+        if success_count == total_count:
+            print("✅ 모든 모델이 성공적으로 다운로드되었습니다!")
+        else:
+            failed_models = [name for name, success in results.items() if not success]
+            print(f"⚠️ 실패한 모델들: {', '.join(failed_models)}")
+        
+        # 검증 실행
+        print("\n🔍 모델 검증 시작...")
+        verification_results = await self._verify_all_models()
+        
+        verified_count = sum(verification_results.values())
+        print(f"✅ 검증 완료: {verified_count}/{total_count} 통과")
+        
+        # 요약 보고서 생성
+        await self._generate_summary_report(results, verification_results)
         
         return results
     
-    def create_model_registry(self, results: Dict[str, bool]):
-        """다운로드된 모델들의 레지스트리 생성"""
-        registry = {
-            "conda_environment": os.environ.get('CONDA_DEFAULT_ENV', 'unknown'),
-            "download_time": time.strftime('%Y-%m-%d %H:%M:%S'),
+    async def _download_single_model(
+        self,
+        model_name: str,
+        model_config: ModelConfig,
+        force_redownload: bool
+    ) -> bool:
+        """단일 모델 다운로드"""
+        try:
+            model_path = Path(model_config.local_path)
+            
+            # 기존 파일 확인
+            if not force_redownload and self._model_exists(model_config):
+                logger.info(f"✅ {model_config.name} - 이미 존재함")
+                return True
+            
+            # 디렉토리 생성
+            model_path.mkdir(parents=True, exist_ok=True)
+            
+            logger.info(f"📥 {model_config.name} 다운로드 시작...")
+            
+            # 다운로드 방법에 따라 분기
+            if model_config.download_method == "huggingface":
+                success = await self._download_from_huggingface(model_config)
+            elif model_config.download_method == "direct":
+                success = await self._download_direct(model_config)
+            elif model_config.download_method == "git":
+                success = await self._download_from_git(model_config)
+            else:
+                logger.error(f"❌ 알 수 없는 다운로드 방법: {model_config.download_method}")
+                return False
+            
+            if success:
+                # 체크포인트 검증
+                if self._verify_model(model_config):
+                    logger.info(f"✅ {model_config.name} 다운로드 및 검증 완료")
+                    return True
+                else:
+                    logger.warning(f"⚠️ {model_config.name} 다운로드 완료되었지만 검증 실패")
+                    return False
+            else:
+                logger.error(f"❌ {model_config.name} 다운로드 실패")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ {model_config.name} 다운로드 중 오류: {e}")
+            return False
+    
+    async def _download_from_huggingface(self, model_config: ModelConfig) -> bool:
+        """Hugging Face Hub에서 다운로드"""
+        try:
+            if not HF_AVAILABLE:
+                logger.error("❌ Hugging Face Hub가 설치되지 않음")
+                return False
+            
+            # 특정 파일들만 다운로드 (용량 절약)
+            if model_config.required_files:
+                for file_pattern in model_config.required_files:
+                    try:
+                        file_path = hf_hub_download(
+                            repo_id=model_config.repo_id,
+                            filename=file_pattern,
+                            cache_dir=model_config.local_path,
+                            local_dir=model_config.local_path,
+                            resume_download=True
+                        )
+                        logger.info(f"  ✅ {file_pattern} 다운로드 완료")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ {file_pattern} 다운로드 실패: {e}")
+            else:
+                # 전체 리포지토리 다운로드
+                snapshot_download(
+                    repo_id=model_config.repo_id,
+                    cache_dir=model_config.local_path,
+                    local_dir=model_config.local_path,
+                    local_dir_use_symlinks=False,
+                    resume_download=True
+                )
+            
+            return True
+            
+        except HfHubHTTPError as e:
+            if "401" in str(e):
+                logger.error(f"❌ {model_config.name}: 인증 필요 (Hugging Face 로그인)")
+            elif "404" in str(e):
+                logger.error(f"❌ {model_config.name}: 모델을 찾을 수 없음")
+            else:
+                logger.error(f"❌ {model_config.name}: HTTP 오류 {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ {model_config.name} HF 다운로드 실패: {e}")
+            return False
+    
+    async def _download_direct(self, model_config: ModelConfig) -> bool:
+        """직접 URL에서 다운로드"""
+        try:
+            if not model_config.url:
+                logger.error(f"❌ {model_config.name}: 다운로드 URL이 없음")
+                return False
+            
+            filename = Path(model_config.url).name
+            file_path = Path(model_config.local_path) / filename
+            
+            # 이미 존재하면 스킵
+            if file_path.exists() and file_path.stat().st_size > 1024:  # 1KB 이상
+                logger.info(f"  ✅ {filename} 이미 존재함")
+                return True
+            
+            async with aiohttp.ClientSession() as session:
+                logger.info(f"  📥 {filename} 다운로드 중...")
+                
+                async with session.get(model_config.url) as response:
+                    if response.status != 200:
+                        logger.error(f"❌ HTTP {response.status}: {model_config.url}")
+                        return False
+                    
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded = 0
+                    
+                    async with aiofiles.open(file_path, 'wb') as f:
+                        async for chunk in response.content.iter_chunked(self.chunk_size):
+                            await f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            # 진행률 로깅 (10MB마다)
+                            if downloaded % (10 * 1024 * 1024) == 0:
+                                if total_size > 0:
+                                    progress = (downloaded / total_size) * 100
+                                    logger.info(f"    📊 {filename}: {progress:.1f}% ({downloaded//1024//1024}MB)")
+            
+            logger.info(f"  ✅ {filename} 다운로드 완료 ({file_path.stat().st_size//1024//1024}MB)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ {model_config.name} 직접 다운로드 실패: {e}")
+            return False
+    
+    async def _download_from_git(self, model_config: ModelConfig) -> bool:
+        """Git LFS로 다운로드"""
+        try:
+            model_path = Path(model_config.local_path)
+            
+            if model_path.exists() and any(model_path.iterdir()):
+                logger.info(f"  ✅ {model_config.name} Git 리포지토리 이미 존재")
+                return True
+            
+            # Git clone with LFS
+            cmd = [
+                "git", "clone",
+                f"https://huggingface.co/{model_config.repo_id}",
+                str(model_path)
+            ]
+            
+            logger.info(f"  📥 Git clone: {model_config.repo_id}")
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                logger.info(f"  ✅ {model_config.name} Git clone 완료")
+                return True
+            else:
+                logger.error(f"❌ Git clone 실패: {stderr.decode()}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ {model_config.name} Git 다운로드 실패: {e}")
+            return False
+    
+    def _model_exists(self, model_config: ModelConfig) -> bool:
+        """모델 존재 확인"""
+        model_path = Path(model_config.local_path)
+        
+        if not model_path.exists():
+            return False
+        
+        # 필수 파일들 확인
+        for required_file in model_config.required_files:
+            file_patterns = list(model_path.rglob(required_file))
+            if not file_patterns:
+                return False
+        
+        return True
+    
+    def _verify_model(self, model_config: ModelConfig) -> bool:
+        """모델 검증"""
+        try:
+            model_path = Path(model_config.local_path)
+            
+            # 1. 디렉토리 존재 확인
+            if not model_path.exists():
+                return False
+            
+            # 2. 필수 파일 존재 확인
+            for required_file in model_config.required_files:
+                file_patterns = list(model_path.rglob(required_file))
+                if not file_patterns:
+                    logger.warning(f"⚠️ 필수 파일 누락: {required_file}")
+                    return False
+            
+            # 3. 파일 크기 확인
+            total_size = sum(
+                f.stat().st_size for f in model_path.rglob("*") 
+                if f.is_file()
+            )
+            
+            expected_size = model_config.size_mb * 1024 * 1024
+            size_ratio = total_size / expected_size
+            
+            if size_ratio < 0.5:  # 50% 미만이면 문제
+                logger.warning(f"⚠️ 크기 부족: {total_size//1024//1024}MB < 예상 {model_config.size_mb}MB")
+                return False
+            
+            # 4. PyTorch 모델 파일 검증 (선택적)
+            if TORCH_AVAILABLE:
+                model_files = list(model_path.rglob("*.bin")) + list(model_path.rglob("*.pth"))
+                for model_file in model_files[:2]:  # 처음 2개만 검사
+                    try:
+                        torch.load(model_file, map_location='cpu')
+                    except Exception as e:
+                        logger.warning(f"⚠️ 모델 파일 손상 가능성: {model_file.name} - {e}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 모델 검증 오류: {e}")
+            return False
+    
+    async def _verify_all_models(self) -> Dict[str, bool]:
+        """모든 모델 검증"""
+        results = {}
+        
+        for model_name, model_config in self.models.items():
+            verified = self._verify_model(model_config)
+            results[model_name] = verified
+            
+            status = "✅ 검증됨" if verified else "❌ 검증 실패"
+            logger.info(f"{status} {model_config.name}")
+        
+        return results
+    
+    def _check_disk_space(self, required_mb: int) -> bool:
+        """디스크 공간 확인"""
+        try:
+            import shutil
+            free_space = shutil.disk_usage(self.base_dir).free
+            free_space_mb = free_space // (1024 * 1024)
+            
+            # 여유 공간 50% 추가 요구
+            required_with_buffer = required_mb * 1.5
+            
+            logger.info(f"💾 디스크 공간: {free_space_mb}MB 여유, {required_with_buffer:.0f}MB 필요")
+            
+            return free_space_mb >= required_with_buffer
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 디스크 공간 확인 실패: {e}")
+            return True
+    
+    async def _check_hf_login(self):
+        """Hugging Face 로그인 확인"""
+        try:
+            if HF_AVAILABLE:
+                from huggingface_hub import whoami
+                try:
+                    user_info = whoami()
+                    logger.info(f"🔐 Hugging Face 로그인: {user_info.get('name', 'Unknown')}")
+                except Exception:
+                    logger.warning("⚠️ Hugging Face 로그인 안됨 (일부 모델 접근 제한 가능)")
+        except Exception:
+            pass
+    
+    async def _generate_summary_report(
+        self,
+        download_results: Dict[str, bool],
+        verification_results: Dict[str, bool]
+    ):
+        """요약 보고서 생성"""
+        report = {
+            "step": "05_cloth_warping",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "system_info": {
-                "python_version": sys.version,
-                "platform": sys.platform,
-                "project_root": str(self.project_root)
+                "platform": platform.system(),
+                "is_m3_max": self.is_m3_max,
+                "torch_available": TORCH_AVAILABLE,
+                "hf_available": HF_AVAILABLE
+            },
+            "download_summary": {
+                "total_models": len(self.models),
+                "downloaded": sum(download_results.values()),
+                "verified": sum(verification_results.values()),
+                "failed": len(self.models) - sum(download_results.values())
             },
             "models": {}
         }
         
-        for model_key, success in results.items():
-            model_info = self.real_models[model_key]
-            verified, actual_size = self.verify_model(model_key, model_info)
+        # 각 모델 상세 정보
+        for model_name, model_config in self.models.items():
+            model_path = Path(model_config.local_path)
+            actual_size = 0
             
-            registry["models"][model_key] = {
-                "name": model_info["name"],
-                "description": model_info["description"],
-                "local_path": str(self.checkpoints_dir / model_info["local_dir"]),
-                "relative_path": f"ai_models/checkpoints/{model_info['local_dir']}",
-                "download_success": success,
-                "verified": verified,
-                "actual_size_gb": actual_size,
-                "expected_size_gb": model_info["size_gb"],
-                "method": model_info["method"],
-                "priority": model_info["priority"]
+            if model_path.exists():
+                actual_size = sum(
+                    f.stat().st_size for f in model_path.rglob("*") 
+                    if f.is_file()
+                ) // (1024 * 1024)  # MB
+            
+            report["models"][model_name] = {
+                "name": model_config.name,
+                "repo_id": model_config.repo_id,
+                "downloaded": download_results.get(model_name, False),
+                "verified": verification_results.get(model_name, False),
+                "expected_size_mb": model_config.size_mb,
+                "actual_size_mb": actual_size,
+                "download_method": model_config.download_method
             }
         
-        registry_path = self.models_dir / "conda_model_registry.json"
-        with open(registry_path, 'w', encoding='utf-8') as f:
-            json.dump(registry, f, indent=2, ensure_ascii=False)
+        # 보고서 저장
+        report_path = self.base_dir / "download_report.json"
         
-        logger.info(f"✅ 모델 레지스트리 생성: {registry_path}")
-        
-        # MyCloset AI 구조에 맞는 설정 파일도 생성
-        config_content = f"""# MyCloset AI 실제 모델 설정 (Conda 환경)
-# 자동 생성: {time.strftime('%Y-%m-%d %H:%M:%S')}
+        try:
+            with open(report_path, 'w', encoding='utf-8') as f:
+                json.dump(report, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"📄 보고서 저장: {report_path}")
+            
+            # 간단한 요약 출력
+            print(f"\n📊 다운로드 요약:")
+            print(f"  ✅ 성공: {report['download_summary']['downloaded']}")
+            print(f"  🔍 검증됨: {report['download_summary']['verified']}")
+            print(f"  ❌ 실패: {report['download_summary']['failed']}")
+            print(f"  📁 저장 위치: {self.base_dir}")
+            print(f"  📄 상세 보고서: {report_path}")
+            
+        except Exception as e:
+            logger.error(f"❌ 보고서 저장 실패: {e}")
 
-models:
-"""
+    async def download_specific_models(self, model_names: List[str]) -> Dict[str, bool]:
+        """특정 모델들만 다운로드"""
+        selected_models = {
+            name: config for name, config in self.models.items()
+            if name in model_names
+        }
         
-        for model_key, success in results.items():
-            if success:
-                model_info = self.real_models[model_key]
-                config_content += f"""  {model_key}:
-    name: "{model_info['name']}"
-    path: "ai_models/checkpoints/{model_info['local_dir']}"
-    enabled: true
-    method: "{model_info['method']}"
-    verified: true
-    
-"""
+        if not selected_models:
+            logger.error("❌ 선택된 모델이 없습니다")
+            return {}
         
-        config_path = self.models_dir / "conda_models_config.yaml"
-        with open(config_path, 'w', encoding='utf-8') as f:
-            f.write(config_content)
+        print(f"📥 선택된 모델 다운로드: {', '.join(model_names)}")
         
-        logger.info(f"✅ 모델 설정 파일 생성: {config_path}")
+        # 임시로 모델 목록 교체
+        original_models = self.models
+        self.models = selected_models
+        
+        try:
+            results = await self.download_all_models()
+            return results
+        finally:
+            self.models = original_models
 
-def main():
+    def list_available_models(self):
+        """사용 가능한 모델 목록 출력"""
+        print("📋 사용 가능한 Step 5 AI 모델들:")
+        print("=" * 60)
+        
+        for model_name, config in self.models.items():
+            status = "✅ 다운로드됨" if self._model_exists(config) else "📥 다운로드 필요"
+            print(f"  {model_name:15} | {config.name:25} | {config.size_mb:>5}MB | {status}")
+        
+        print("=" * 60)
+        total_size = sum(config.size_mb for config in self.models.values())
+        print(f"총 크기: {total_size/1024:.1f}GB")
+
+async def main():
     """메인 함수"""
-    print("🚀 Conda 환경 실제 AI 모델 다운로더 시작!")
-    print("   ✅ 폴백 모델 없음")
-    print("   ✅ 검증된 실제 모델만")
-    print("   ✅ MyCloset AI 구조 준수")
+    import argparse
     
-    downloader = CondaRealModelDownloader()
+    parser = argparse.ArgumentParser(description="Step 5 AI 모델 다운로더")
+    parser.add_argument("--models", nargs="+", help="다운로드할 특정 모델들")
+    parser.add_argument("--list", action="store_true", help="사용 가능한 모델 목록 출력")
+    parser.add_argument("--force", action="store_true", help="강제 재다운로드")
+    parser.add_argument("--base-dir", help="다운로드 기본 디렉토리")
     
-    # 1. Conda 환경 확인
-    if not downloader.check_conda_environment():
-        return False
+    args = parser.parse_args()
     
-    # 2. 의존성 설치
-    if not downloader.install_conda_dependencies():
-        print("\n❌ 의존성 설치에 실패했습니다!")
-        return False
+    # 다운로더 생성
+    downloader = Step05AIDownloader(args.base_dir)
     
-    # 3. 모델 선택
-    model_keys = downloader.show_model_selection()
-    if not model_keys:
-        print("❌ 선택된 모델이 없습니다.")
-        return False
+    if args.list:
+        downloader.list_available_models()
+        return
     
-    # 4. 모델 다운로드
-    results = downloader.download_selected_models(model_keys)
-    
-    # 5. 결과 요약
-    print("\n" + "=" * 60)
-    print("📊 실제 AI 모델 다운로드 결과:")
-    
-    success_count = sum(1 for success in results.values() if success)
-    total_count = len(results)
-    
-    for model_key, success in results.items():
-        model_name = downloader.real_models[model_key]["name"]
-        status = "✅ 성공" if success else "❌ 실패"
+    try:
+        if args.models:
+            # 특정 모델들만 다운로드
+            results = await downloader.download_specific_models(args.models)
+        else:
+            # 모든 모델 다운로드
+            results = await downloader.download_all_models(args.force)
         
-        if success:
-            verified, actual_size = downloader.verify_model(model_key, downloader.real_models[model_key])
-            status += f" ({actual_size:.1f}GB)"
+        # 결과 확인
+        if results:
+            success_count = sum(results.values())
+            total_count = len(results)
+            
+            if success_count == total_count:
+                print("\n🎉 모든 모델 다운로드 완료!")
+                print("이제 Step 5 의류 워핑을 사용할 수 있습니다.")
+            else:
+                print(f"\n⚠️ 일부 모델 다운로드 실패: {success_count}/{total_count}")
+                failed = [name for name, success in results.items() if not success]
+                print(f"실패한 모델들: {', '.join(failed)}")
+                
+                print("\n💡 해결 방법:")
+                print("1. 인터넷 연결 확인")
+                print("2. 디스크 공간 확인")
+                print("3. Hugging Face 계정 로그인 (일부 모델)")
+                print("4. --force 옵션으로 재시도")
         
-        print(f"  {model_name}: {status}")
-    
-    print(f"\n성공: {success_count}/{total_count}")
-    
-    if success_count > 0:
-        # 6. 레지스트리 생성
-        downloader.create_model_registry(results)
-        
-        print("\n🎉 실제 AI 모델 다운로드 완료!")
-        print("\n📋 다음 단계:")
-        print("1. 모델 확인: ls -la ai_models/checkpoints/")
-        print("2. 설정 확인: cat ai_models/conda_model_registry.json")
-        print("3. Step 테스트: python test_step_01_human_parsing.py")
-        print("4. 서버 실행: python app/main.py")  
-        print("5. API 테스트: http://localhost:8000/docs")
-        
-        print(f"\n📁 모델 저장 위치: {downloader.checkpoints_dir}")
-        
-        return True
-    else:
-        print("\n❌ 모든 모델 다운로드에 실패했습니다.")
-        print("💡 해결 방법:")
-        print("   1. 네트워크 연결 확인")
-        print("   2. Conda 환경 재확인: conda activate mycloset-ai")
-        print("   3. 의존성 재설치: pip install huggingface_hub gdown requests tqdm")
-        return False
+    except KeyboardInterrupt:
+        print("\n⚠️ 사용자에 의해 중단됨")
+    except Exception as e:
+        logger.error(f"❌ 실행 중 오류: {e}")
+        raise
 
 if __name__ == "__main__":
+    # 이벤트 루프 실행
     try:
-        success = main()
-        sys.exit(0 if success else 1)
+        asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n⏹ 사용자가 프로그램을 중단했습니다.")
-        sys.exit(1)
+        print("\n👋 다운로드가 중단되었습니다")
     except Exception as e:
-        print(f"\n💥 예상치 못한 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ 치명적 오류: {e}")
         sys.exit(1)

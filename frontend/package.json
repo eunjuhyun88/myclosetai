@@ -1,35 +1,61 @@
 {
   "name": "mycloset-ai-frontend",
-  "private": true,
-  "version": "1.0.0",
+  "version": "3.0.0",
   "type": "module",
+  "description": "🍎 MyCloset AI Frontend - M3 Max 최적화 AI 가상 피팅 시스템",
+  "keywords": ["ai", "virtual-tryon", "m3-max", "react", "typescript"],
+  "author": "MyCloset AI Team",
+  "license": "MIT",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
+    "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "type-check": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "type-check": "tsc --noEmit"
+    "lint:fix": "eslint . --ext ts,tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "clean": "rm -rf dist node_modules/.vite",
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
-    "axios": "^1.10.0",
-    "lucide-react": "^0.525.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-dropzone": "^14.3.8"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.37",
-    "@types/react-dom": "^18.2.15",
-    "@typescript-eslint/eslint-plugin": "^6.10.0",
-    "@typescript-eslint/parser": "^6.10.0",
-    "@vitejs/plugin-react": "^4.1.1",
-    "autoprefixer": "^10.4.16",
-    "eslint": "^8.53.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.4",
-    "postcss": "^8.4.31",
-    "tailwindcss": "^3.3.5",
+    "eslint-plugin-react-refresh": "^0.4.6",
+    "prettier": "^3.2.5",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eunjuhyun88/mycloset-ai.git"
+  },
+  "homepage": "https://mycloset-ai.vercel.app",
+  "bugs": {
+    "url": "https://github.com/eunjuhyun88/mycloset-ai/issues"
   }
 }
