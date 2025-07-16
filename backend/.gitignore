@@ -356,3 +356,15 @@ static/temp/*
 *.bak
 *_backup_*
 
+ai_models/
+cache/
+logs/
+temp*/
+venv_backup_*/
+mycloset_env/
+*.log
+
+# 실행 파일
+*.sh
+*.pyc
+__pycache__/
