@@ -517,7 +517,174 @@ async def optimize_memory_endpoint():
     except Exception as e:
         logger.error(f"메모리 최적화 실패: {e}")
         raise HTTPException(status_code=500, detail=f"메모리 최적화 실패: {str(e)}")
+# backend/app/main.py에 추가할 임시 테스트 엔드포인트
 
+# 기존 @app.get("/") 다음에 추가:
+
+@app.post("/api/step/1/upload-validation")
+async def test_upload_validation():
+    """임시 테스트용 1단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "이미지 업로드 검증 테스트 완료",
+        "processing_time": 0.1,
+        "confidence": 0.95,
+        "details": {
+            "person_image": "검증됨",
+            "clothing_image": "검증됨"
+        }
+    }
+
+@app.post("/api/step/2/measurements-validation")
+async def test_measurements_validation():
+    """임시 테스트용 2단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "신체 측정값 검증 테스트 완료",
+        "processing_time": 0.05,
+        "confidence": 0.98,
+        "details": {
+            "height": "유효함",
+            "weight": "유효함",
+            "bmi": "정상 범위"
+        }
+    }
+
+@app.post("/api/step/3/human-parsing")
+async def test_human_parsing():
+    """임시 테스트용 3단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "인체 파싱 테스트 완료",
+        "processing_time": 1.2,
+        "confidence": 0.93,
+        "details": {
+            "detected_parts": 18,
+            "total_parts": 20,
+            "parsing_quality": "우수"
+        }
+    }
+
+@app.post("/api/step/4/pose-estimation")
+async def test_pose_estimation():
+    """임시 테스트용 4단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "포즈 추정 테스트 완료",
+        "processing_time": 0.8,
+        "confidence": 0.96,
+        "details": {
+            "detected_keypoints": 17,
+            "total_keypoints": 18,
+            "pose_quality": "매우 좋음"
+        }
+    }
+
+@app.post("/api/step/5/clothing-analysis")
+async def test_clothing_analysis():
+    """임시 테스트용 5단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "의류 분석 테스트 완료",
+        "processing_time": 0.6,
+        "confidence": 0.89,
+        "details": {
+            "category": "상의",
+            "style": "캐주얼",
+            "color": "파란색"
+        }
+    }
+
+@app.post("/api/step/6/geometric-matching")
+async def test_geometric_matching():
+    """임시 테스트용 6단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "기하학적 매칭 테스트 완료",
+        "processing_time": 1.5,
+        "confidence": 0.91,
+        "details": {
+            "matching_quality": "우수",
+            "alignment_score": 0.94
+        }
+    }
+
+@app.post("/api/step/7/virtual-fitting")
+async def test_virtual_fitting():
+    """임시 테스트용 7단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "가상 피팅 테스트 완료",
+        "processing_time": 2.5,
+        "confidence": 0.92,
+        "fitted_image": "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "fit_score": 0.88,
+        "recommendations": [
+            "이 옷이 잘 어울립니다!",
+            "색상이 피부톤과 잘 맞습니다.",
+            "사이즈가 적당합니다."
+        ]
+    }
+
+@app.post("/api/step/8/result-analysis")
+async def test_result_analysis():
+    """임시 테스트용 8단계 엔드포인트"""
+    return {
+        "success": True,
+        "message": "결과 분석 테스트 완료",
+        "processing_time": 0.3,
+        "confidence": 0.94,
+        "recommendations": [
+            "전체적인 피팅이 우수합니다.",
+            "이 스타일을 추천합니다.",
+            "다음에도 비슷한 스타일을 시도해보세요."
+        ],
+        "details": {
+            "overall_quality": "우수",
+            "fit_analysis": "매우 좋음"
+        }
+    }
+
+@app.post("/api/step/complete")
+async def test_complete_pipeline():
+    """임시 테스트용 완전한 파이프라인 엔드포인트"""
+    return {
+        "success": True,
+        "message": "전체 파이프라인 테스트 완료",
+        "processing_time": 8.2,
+        "confidence": 0.90,
+        "fitted_image": "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "fit_score": 0.86,
+        "measurements": {
+            "chest": 88,
+            "waist": 74,
+            "hip": 94,
+            "bmi": 22.5
+        },
+        "clothing_analysis": {
+            "category": "상의",
+            "style": "캐주얼",
+            "dominant_color": [95, 145, 195]
+        },
+        "recommendations": [
+            "전체 파이프라인이 성공적으로 완료되었습니다!",
+            "8단계 모든 처리가 정상적으로 작동했습니다.",
+            "이제 실제 AI 모델을 연결할 준비가 되었습니다."
+        ]
+    }
+
+@app.post("/api/virtual-tryon")
+async def test_legacy_virtual_tryon():
+    """레거시 가상 피팅 테스트 엔드포인트"""
+    return {
+        "success": True,
+        "message": "레거시 가상 피팅 테스트 완료",
+        "fitted_image": "",
+        "processing_time": 1.8,
+        "confidence": 0.85,
+        "fit_score": 0.82,
+        "recommendations": ["레거시 API가 정상 작동 중입니다."]
+    }
 # ===============================================================
 # 🔧 에러 핸들러 (기존과 동일)
 # ===============================================================

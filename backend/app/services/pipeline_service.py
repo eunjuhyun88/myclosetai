@@ -878,6 +878,12 @@ __all__ = [
     "get_pipeline_status_service",
     "get_pipeline_service",  # 기존 호환성
     "cleanup_pipeline_service_manager"
+    "PipelineService"  # 이 라인 추가
+    "CompletePipelineService",
+    "PipelineServiceManager", 
+    "BasePipelineService",
+    
+
 ]
 
 # ============================================================================
