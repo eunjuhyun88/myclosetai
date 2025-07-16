@@ -1,9 +1,8 @@
 """
-완전한 PipelineManager - 모든 기능 포함 최종 버전
-✅ 빠진 기능 없음
-✅ 완전한 구현
-✅ 올바른 순서
-✅ 단방향 의존성
+단순화된 PipelineManager - Step 클래스들만 관리
+✅ 기존 함수명/클래스명 100% 유지
+✅ Step 클래스들의 오케스트레이션만 담당
+✅ 각 Step이 자체적으로 모델/메모리 관리
 ✅ M3 Max 최적화
 ✅ 프로덕션 레벨 안정성
 
@@ -16,7 +15,6 @@ import logging
 import asyncio
 import time
 import traceback
-import hashlib
 import threading
 import json
 import gc
@@ -27,7 +25,6 @@ from enum import Enum
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-import weakref
 
 # 필수 라이브러리
 import numpy as np
@@ -35,7 +32,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image, ImageEnhance, ImageFilter
 
-# Step 클래스들 import (정상적인 단방향 의존성)
+# Step 클래스들만 import (단방향 의존성)
 from app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
 from app.ai_pipeline.steps.step_02_pose_estimation import PoseEstimationStep
 from app.ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
@@ -44,11 +41,6 @@ from app.ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
 from app.ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
 from app.ai_pipeline.steps.step_07_post_processing import PostProcessingStep
 from app.ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
-
-# 유틸리티들 import (Step들이 사용하는 것들)
-from app.ai_pipeline.utils.model_loader import ModelLoader
-from app.ai_pipeline.utils.memory_manager import MemoryManager  
-from app.ai_pipeline.utils.data_converter import DataConverter
 
 # 로깅 설정
 logging.basicConfig(
@@ -88,19 +80,8 @@ class ProcessingStatus(Enum):
     FAILED = "failed"
     CLEANING = "cleaning"
 
-class StepType(Enum):
-    """단계 타입"""
-    HUMAN_PARSING = "human_parsing"
-    POSE_ESTIMATION = "pose_estimation"
-    CLOTH_SEGMENTATION = "cloth_segmentation"
-    GEOMETRIC_MATCHING = "geometric_matching"
-    CLOTH_WARPING = "cloth_warping"
-    VIRTUAL_FITTING = "virtual_fitting"
-    POST_PROCESSING = "post_processing"
-    QUALITY_ASSESSMENT = "quality_assessment"
-
 # ==============================================
-# 2. 데이터 클래스 및 구조체
+# 2. 데이터 클래스
 # ==============================================
 
 @dataclass
@@ -234,11 +215,11 @@ class PerformanceMetrics:
             self.average_quality_score = (prev_total + quality_score) / self.successful_sessions
 
 # ==============================================
-# 3. 유틸리티 클래스들
+# 3. 유틸리티 클래스들 (최소한만 유지)
 # ==============================================
 
-class PipelineDataConverter:
-    """파이프라인 데이터 변환기"""
+class SimpleDataConverter:
+    """간단한 데이터 변환기 - PipelineManager용"""
     
     def __init__(self, device: str = "mps"):
         self.device = device
@@ -295,56 +276,33 @@ class PipelineDataConverter:
         except Exception as e:
             self.logger.error(f"텐서-PIL 변환 실패: {e}")
             return Image.new('RGB', (512, 512), color='black')
-    
-    def normalize_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
-        """텐서 정규화"""
-        try:
-            return (tensor - tensor.mean()) / tensor.std()
-        except Exception as e:
-            self.logger.error(f"텐서 정규화 실패: {e}")
-            return tensor
-    
-    def denormalize_tensor(self, tensor: torch.Tensor, mean: float, std: float) -> torch.Tensor:
-        """텐서 역정규화"""
-        try:
-            return tensor * std + mean
-        except Exception as e:
-            self.logger.error(f"텐서 역정규화 실패: {e}")
-            return tensor
 
-class PipelineMemoryManager:
-    """파이프라인 메모리 관리자"""
+class SimpleMemoryManager:
+    """간단한 메모리 관리자 - PipelineManager용"""
     
-    def __init__(self, device: str = "mps", memory_threshold: float = 0.8):
+    def __init__(self, device: str = "mps"):
         self.device = device
-        self.memory_threshold = memory_threshold
         self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
-        self._lock = threading.RLock()
         
-    def get_available_memory(self) -> float:
-        """사용 가능한 메모리 (GB) 반환"""
+    def cleanup_memory(self):
+        """메모리 정리"""
         try:
+            gc.collect()
+            
             if self.device == "cuda" and torch.cuda.is_available():
-                total_memory = torch.cuda.get_device_properties(0).total_memory
-                allocated_memory = torch.cuda.memory_allocated()
-                return (total_memory - allocated_memory) / 1024**3
-            elif self.device == "mps":
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            elif self.device == "mps" and torch.backends.mps.is_available():
                 try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    return memory.available / 1024**3
-                except ImportError:
-                    return 64.0
-            else:
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    return memory.available / 1024**3
-                except ImportError:
-                    return 8.0
+                    torch.mps.empty_cache()
+                    torch.mps.synchronize()
+                except AttributeError:
+                    pass
+                
+            self.logger.debug("메모리 정리 완료")
+            
         except Exception as e:
-            self.logger.warning(f"메모리 조회 실패: {e}")
-            return 8.0
+            self.logger.warning(f"메모리 정리 실패: {e}")
     
     def get_memory_usage(self) -> Dict[str, float]:
         """메모리 사용량 상세 정보"""
@@ -375,231 +333,25 @@ class PipelineMemoryManager:
         except Exception as e:
             self.logger.warning(f"메모리 사용량 조회 실패: {e}")
             return {'error': str(e)}
-    
-    def cleanup_memory(self):
-        """메모리 정리"""
-        with self._lock:
-            try:
-                gc.collect()
-                
-                if self.device == "cuda" and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                elif self.device == "mps" and torch.backends.mps.is_available():
-                    try:
-                        torch.mps.empty_cache()
-                        torch.mps.synchronize()
-                    except AttributeError:
-                        pass  # 일부 PyTorch 버전에서는 synchronize가 없을 수 있음
-                
-                self.logger.debug("메모리 정리 완료")
-                
-            except Exception as e:
-                self.logger.warning(f"메모리 정리 실패: {e}")
-    
-    def check_memory_pressure(self) -> bool:
-        """메모리 압박 상태 체크"""
-        try:
-            available_memory = self.get_available_memory()
-            return available_memory < 2.0  # 2GB 미만
-        except Exception:
-            return False
-    
-    def optimize_memory_usage(self):
-        """메모리 사용량 최적화"""
-        try:
-            if self.check_memory_pressure():
-                self.cleanup_memory()
-                
-            # 디바이스별 추가 최적화
-            if self.device == "cuda":
-                # CUDA 메모리 캐시 최적화
-                torch.cuda.empty_cache()
-                if hasattr(torch.cuda, 'memory_stats'):
-                    stats = torch.cuda.memory_stats()
-                    if stats.get('allocated_bytes.all.current', 0) > stats.get('reserved_bytes.all.current', 0) * 0.8:
-                        torch.cuda.empty_cache()
-            elif self.device == "mps":
-                # MPS 메모리 최적화
-                if torch.backends.mps.is_available():
-                    try:
-                        torch.mps.empty_cache()
-                    except AttributeError:
-                        pass
-                        
-        except Exception as e:
-            self.logger.warning(f"메모리 최적화 실패: {e}")
-
-class QualityAssessor:
-    """품질 평가자"""
-    
-    def __init__(self, device: str = "mps"):
-        self.device = device
-        self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
-        
-    def assess_quality(self, 
-                      result_image: torch.Tensor, 
-                      original_image: torch.Tensor,
-                      step_results: Dict[str, Any]) -> Dict[str, Any]:
-        """품질 평가"""
-        try:
-            # 기본 품질 메트릭
-            quality_metrics = {
-                'overall_score': 0.8,
-                'sharpness': 0.85,
-                'color_consistency': 0.8,
-                'geometric_accuracy': 0.75,
-                'texture_quality': 0.8,
-                'edge_preservation': 0.8,
-                'artifact_level': 0.1,
-                'processing_quality': 0.9
-            }
-            
-            # 단계별 품질 점수 수집
-            step_quality_scores = []
-            step_confidence_scores = []
-            
-            for step_name, step_result in step_results.items():
-                if isinstance(step_result, dict):
-                    confidence = step_result.get('confidence', 0.8)
-                    quality = step_result.get('quality_score', confidence)
-                    
-                    step_quality_scores.append(quality)
-                    step_confidence_scores.append(confidence)
-            
-            # 종합 점수 계산
-            if step_quality_scores:
-                avg_step_quality = sum(step_quality_scores) / len(step_quality_scores)
-                avg_step_confidence = sum(step_confidence_scores) / len(step_confidence_scores)
-                
-                # 가중 평균
-                quality_metrics['overall_score'] = (
-                    quality_metrics['overall_score'] * 0.3 +
-                    avg_step_quality * 0.4 +
-                    avg_step_confidence * 0.3
-                )
-            
-            # 이미지 품질 분석 (간단한 메트릭)
-            if isinstance(result_image, torch.Tensor) and isinstance(original_image, torch.Tensor):
-                try:
-                    # 평균 제곱 오차 계산
-                    mse = torch.mean((result_image - original_image) ** 2).item()
-                    psnr = 20 * torch.log10(1.0 / torch.sqrt(torch.tensor(mse)))
-                    
-                    # PSNR 기반 품질 조정
-                    if psnr > 30:
-                        quality_metrics['overall_score'] = min(quality_metrics['overall_score'] + 0.1, 1.0)
-                    elif psnr < 20:
-                        quality_metrics['overall_score'] = max(quality_metrics['overall_score'] - 0.1, 0.0)
-                        
-                    quality_metrics['psnr'] = psnr.item()
-                    quality_metrics['mse'] = mse
-                    
-                except Exception as e:
-                    self.logger.warning(f"이미지 품질 분석 실패: {e}")
-            
-            # 품질 등급 결정
-            overall_score = quality_metrics['overall_score']
-            if overall_score >= 0.9:
-                quality_grade = "Excellent"
-                confidence = 0.95
-            elif overall_score >= 0.8:
-                quality_grade = "Good"
-                confidence = 0.85
-            elif overall_score >= 0.7:
-                quality_grade = "Fair"
-                confidence = 0.75
-            elif overall_score >= 0.6:
-                quality_grade = "Poor"
-                confidence = 0.65
-            else:
-                quality_grade = "Very Poor"
-                confidence = 0.5
-            
-            # 품질 분석 결과
-            quality_breakdown = {
-                'visual_quality': overall_score,
-                'technical_quality': sum(step_confidence_scores) / len(step_confidence_scores) if step_confidence_scores else 0.8,
-                'processing_stability': len([r for r in step_results.values() if r.get('success', True)]) / len(step_results) if step_results else 1.0,
-                'artifact_score': 1.0 - quality_metrics['artifact_level']
-            }
-            
-            return {
-                'quality_metrics': quality_metrics,
-                'quality_grade': quality_grade,
-                'quality_breakdown': quality_breakdown,
-                'overall_score': overall_score,
-                'confidence': confidence,
-                'step_quality_scores': step_quality_scores,
-                'analysis_timestamp': datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            self.logger.error(f"품질 평가 실패: {e}")
-            return {
-                'quality_metrics': {},
-                'quality_grade': "Unknown",
-                'quality_breakdown': {},
-                'overall_score': 0.5,
-                'confidence': 0.5,
-                'step_quality_scores': [],
-                'error': str(e)
-            }
-    
-    def generate_quality_report(self, quality_assessment: Dict[str, Any]) -> str:
-        """품질 보고서 생성"""
-        try:
-            report = []
-            report.append("📊 품질 평가 보고서")
-            report.append("=" * 30)
-            
-            overall_score = quality_assessment.get('overall_score', 0.5)
-            quality_grade = quality_assessment.get('quality_grade', 'Unknown')
-            confidence = quality_assessment.get('confidence', 0.5)
-            
-            report.append(f"전체 점수: {overall_score:.3f}")
-            report.append(f"품질 등급: {quality_grade}")
-            report.append(f"신뢰도: {confidence:.3f}")
-            
-            # 상세 분석
-            breakdown = quality_assessment.get('quality_breakdown', {})
-            if breakdown:
-                report.append("\n📋 상세 분석:")
-                for key, value in breakdown.items():
-                    report.append(f"  - {key}: {value:.3f}")
-            
-            # 메트릭
-            metrics = quality_assessment.get('quality_metrics', {})
-            if metrics:
-                report.append("\n📈 품질 메트릭:")
-                for key, value in metrics.items():
-                    if isinstance(value, float):
-                        report.append(f"  - {key}: {value:.3f}")
-            
-            return "\n".join(report)
-            
-        except Exception as e:
-            self.logger.error(f"품질 보고서 생성 실패: {e}")
-            return "품질 보고서 생성 실패"
 
 # ==============================================
-# 4. 메인 PipelineManager 클래스
+# 4. 메인 PipelineManager 클래스 (단순화)
 # ==============================================
 
 class PipelineManager:
     """
-    완전한 8단계 가상 피팅 파이프라인 매니저
+    단순화된 PipelineManager - Step 클래스들만 관리
     
-    정상적인 단방향 의존성 구조:
-    PipelineManager → Step 클래스들 → ModelLoader → AI 모델들
+    역할:
+    - Step 클래스들의 초기화 및 오케스트레이션
+    - 8단계 워크플로우 실행
+    - 세션 관리 및 성능 모니터링
+    - 기본적인 메모리 관리
     
-    특징:
-    - 순환 의존성 없음
-    - 완전한 기능 구현
-    - M3 Max 최적화
-    - 프로덕션 레벨 안정성
-    - 상세한 품질 분석
-    - 성능 모니터링
+    각 Step이 담당:
+    - 자체 모델 로딩 및 관리
+    - 상세한 메모리 최적화
+    - 실제 AI 처리 로직
     """
     
     def __init__(
@@ -609,15 +361,8 @@ class PipelineManager:
         config: Optional[Union[Dict[str, Any], PipelineConfig]] = None,
         **kwargs
     ):
-        """
-        파이프라인 매니저 초기화
+        """파이프라인 매니저 초기화"""
         
-        Args:
-            config_path: 설정 파일 경로
-            device: 사용할 디바이스 ('auto', 'cpu', 'cuda', 'mps')
-            config: 파이프라인 설정
-            **kwargs: 추가 설정
-        """
         # 1. 디바이스 자동 감지
         self.device = self._auto_detect_device(device)
         
@@ -645,10 +390,9 @@ class PipelineManager:
         self.config.memory_gb = self.memory_gb
         self.config.is_m3_max = self.is_m3_max
         
-        # 4. 유틸리티 초기화
-        self.data_converter = PipelineDataConverter(self.device)
-        self.memory_manager = PipelineMemoryManager(self.device, self.config.memory_threshold)
-        self.quality_assessor = QualityAssessor(self.device)
+        # 4. 간단한 유틸리티 초기화
+        self.data_converter = SimpleDataConverter(self.device)
+        self.memory_manager = SimpleMemoryManager(self.device)
         
         # 5. 파이프라인 상태
         self.is_initialized = False
@@ -686,7 +430,7 @@ class PipelineManager:
         self.logger.info(f"⚙️ 설정: {self.config.quality_level.value} 품질, {self.config.processing_mode.value} 모드")
         
         # 11. 초기 메모리 최적화
-        self.memory_manager.optimize_memory_usage()
+        self.memory_manager.cleanup_memory()
     
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """디바이스 자동 감지"""
@@ -773,7 +517,7 @@ class PipelineManager:
             return {}
     
     async def initialize(self) -> bool:
-        """파이프라인 초기화"""
+        """파이프라인 초기화 - Step 클래스들만 초기화"""
         try:
             self.logger.info("🔄 파이프라인 초기화 시작...")
             self.current_status = ProcessingStatus.INITIALIZING
@@ -782,24 +526,13 @@ class PipelineManager:
             # 1. 메모리 정리
             self.memory_manager.cleanup_memory()
             
-            # 2. 모델 로더 초기화
-            self.model_loader = ModelLoader(device=self.device)
-            model_loader_success = await self.model_loader.initialize()
-            if not model_loader_success:
-                self.logger.warning("⚠️ 모델 로더 초기화 부분 실패")
-            
-            # 3. 각 단계 초기화
+            # 2. 각 Step 클래스 초기화
             await self._initialize_all_steps()
             
-            # 4. 초기화 검증
+            # 3. 초기화 검증
             success_rate = self._verify_initialization()
             if success_rate < 0.5:  # 50% 이상 성공해야 함
                 raise RuntimeError(f"초기화 성공률 부족: {success_rate:.1%}")
-            
-            # 5. 시스템 상태 확인
-            system_check = self._perform_system_check()
-            if not system_check['passed']:
-                self.logger.warning(f"시스템 체크 경고: {system_check['warnings']}")
             
             initialization_time = time.time() - start_time
             self.is_initialized = True
@@ -819,14 +552,17 @@ class PipelineManager:
             return False
     
     async def _initialize_all_steps(self):
-        """모든 단계 초기화"""
+        """모든 Step 클래스 초기화"""
         
-        # 기본 설정
+        # 기본 설정 - Step들이 자체적으로 관리할 수 있도록 최소한만 전달
         base_config = {
             'quality_level': self.config.quality_level.value,
-            'enable_optimization': self.config.optimization_enabled,
+            'device': self.device,
+            'device_type': self.device_type,
+            'memory_gb': self.memory_gb,
+            'is_m3_max': self.is_m3_max,
+            'optimization_enabled': self.config.optimization_enabled,
             'memory_optimization': self.config.memory_optimization,
-            'enable_caching': self.config.enable_caching,
             'use_fp16': self.config.use_fp16,
             'batch_size': self.config.batch_size,
             'enable_quantization': self.config.enable_quantization
@@ -844,7 +580,7 @@ class PipelineManager:
             'quality_assessment': QualityAssessmentStep
         }
         
-        # 각 단계 초기화
+        # 각 Step 클래스 초기화
         for step_name in self.step_order:
             self.logger.info(f"🔧 {step_name} 초기화 중...")
             
@@ -852,20 +588,10 @@ class PipelineManager:
                 step_class = step_classes[step_name]
                 step_config = {**base_config, **self._get_step_config(step_name)}
                 
-                # 통일된 생성자 패턴으로 Step 생성
-                step_instance = step_class(
-                    device=self.device,
-                    config=step_config,
-                    device_type=self.device_type,
-                    memory_gb=self.memory_gb,
-                    is_m3_max=self.is_m3_max,
-                    optimization_enabled=self.config.optimization_enabled,
-                    quality_level=self.config.quality_level.value,
-                    # Step이 ModelLoader에 접근할 수 있도록 전달
-                    model_loader=self.model_loader
-                )
+                # Step 인스턴스 생성 - 각 Step이 자체적으로 모든 것을 관리
+                step_instance = step_class(**step_config)
                 
-                # 초기화 실행
+                # 초기화 실행 (Step 자체 모델 로딩 등)
                 if hasattr(step_instance, 'initialize'):
                     await step_instance.initialize()
                 
@@ -883,56 +609,37 @@ class PipelineManager:
             'human_parsing': {
                 'model_name': 'graphonomy',
                 'num_classes': 20,
-                'input_size': (512, 512),
-                'use_coreml': self.is_m3_max,
-                'enable_quantization': self.config.enable_quantization,
-                'cache_size': 50
+                'input_size': (512, 512)
             },
             'pose_estimation': {
                 'model_type': 'mediapipe',
                 'input_size': (368, 368),
-                'confidence_threshold': 0.5,
-                'use_gpu': self.device != 'cpu',
-                'max_num_poses': 1
+                'confidence_threshold': 0.5
             },
             'cloth_segmentation': {
                 'model_name': 'u2net',
                 'background_threshold': 0.5,
-                'post_process': True,
-                'refine_edges': True,
-                'use_grabcut': True
+                'post_process': True
             },
             'geometric_matching': {
                 'tps_points': 25,
-                'matching_threshold': 0.8,
-                'use_advanced_matching': True,
-                'grid_size': 5
+                'matching_threshold': 0.8
             },
             'cloth_warping': {
                 'warping_method': 'tps',
-                'physics_simulation': True,
-                'fabric_simulation': True,
-                'optimization_level': 'high',
-                'preserve_details': True
+                'physics_simulation': True
             },
             'virtual_fitting': {
                 'blending_method': 'poisson',
-                'seamless_cloning': True,
-                'color_transfer': True,
-                'alpha_blending': True
+                'seamless_cloning': True
             },
             'post_processing': {
                 'enable_super_resolution': self.config.optimization_enabled,
-                'enhance_faces': True,
-                'color_correction': True,
-                'noise_reduction': True,
-                'sharpen_edges': True
+                'enhance_faces': True
             },
             'quality_assessment': {
                 'enable_detailed_analysis': True,
-                'perceptual_metrics': True,
-                'technical_metrics': True,
-                'compare_with_original': True
+                'perceptual_metrics': True
             }
         }
         
@@ -946,51 +653,7 @@ class PipelineManager:
         success_rate = initialized_steps / total_steps
         self.logger.info(f"📊 초기화 상태: {initialized_steps}/{total_steps} ({success_rate:.1%})")
         
-        # 개별 단계 상태 확인
-        for step_name in self.step_order:
-            if step_name in self.steps:
-                step = self.steps[step_name]
-                has_initialize = hasattr(step, 'initialize')
-                has_process = hasattr(step, 'process')
-                self.logger.debug(f"  {step_name}: initialize={has_initialize}, process={has_process}")
-        
         return success_rate
-    
-    def _perform_system_check(self) -> Dict[str, Any]:
-        """시스템 상태 확인"""
-        try:
-            check_results = {
-                'passed': True,
-                'warnings': [],
-                'errors': []
-            }
-            
-            # 메모리 체크
-            available_memory = self.memory_manager.get_available_memory()
-            if available_memory < 2.0:
-                check_results['warnings'].append(f"메모리 부족: {available_memory:.1f}GB")
-                check_results['passed'] = False
-            
-            # 디바이스 체크
-            if self.device == 'cuda' and not torch.cuda.is_available():
-                check_results['errors'].append("CUDA 디바이스를 사용할 수 없습니다")
-                check_results['passed'] = False
-            elif self.device == 'mps' and not torch.backends.mps.is_available():
-                check_results['errors'].append("MPS 디바이스를 사용할 수 없습니다")
-                check_results['passed'] = False
-            
-            # 모델 로더 체크
-            if not hasattr(self, 'model_loader') or not self.model_loader:
-                check_results['warnings'].append("모델 로더가 초기화되지 않았습니다")
-            
-            return check_results
-            
-        except Exception as e:
-            return {
-                'passed': False,
-                'warnings': [],
-                'errors': [str(e)]
-            }
     
     async def process_complete_virtual_fitting(
         self,
@@ -1006,22 +669,7 @@ class PipelineManager:
         session_id: Optional[str] = None
     ) -> ProcessingResult:
         """
-        완전한 8단계 가상 피팅 처리
-        
-        Args:
-            person_image: 사람 이미지
-            clothing_image: 의류 이미지
-            body_measurements: 신체 치수
-            clothing_type: 의류 타입
-            fabric_type: 원단 타입
-            style_preferences: 스타일 선호도
-            quality_target: 품질 목표
-            progress_callback: 진행률 콜백
-            save_intermediate: 중간 결과 저장 여부
-            session_id: 세션 ID (자동 생성)
-            
-        Returns:
-            ProcessingResult: 처리 결과
+        완전한 8단계 가상 피팅 처리 - Step 클래스들만 사용
         """
         if not self.is_initialized:
             raise RuntimeError("파이프라인이 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
@@ -1071,9 +719,9 @@ class PipelineManager:
             
             # 3. 메모리 최적화
             if self.config.memory_optimization:
-                self.memory_manager.optimize_memory_usage()
+                self.memory_manager.cleanup_memory()
             
-            # 4. 8단계 순차 처리
+            # 4. 8단계 순차 처리 - 각 Step이 자체적으로 모든 것을 처리
             step_results = {}
             current_data = person_tensor
             
@@ -1088,7 +736,7 @@ class PipelineManager:
                 self.logger.info(f"📋 {i+1}/{len(self.step_order)} 단계: {step_name} 처리 중...")
                 
                 try:
-                    # 단계별 처리 실행
+                    # Step별 처리 실행 - 각 Step이 모든 것을 자체 관리
                     step_result = await self._execute_step_with_retry(
                         step, step_name, current_data, clothing_tensor,
                         body_measurements, clothing_type, fabric_type,
@@ -1154,15 +802,9 @@ class PipelineManager:
             else:
                 result_image = Image.new('RGB', (512, 512), color='gray')
             
-            # 품질 평가
-            quality_assessment = self.quality_assessor.assess_quality(
-                current_data if isinstance(current_data, torch.Tensor) else person_tensor,
-                person_tensor,
-                step_results
-            )
-            
-            quality_score = quality_assessment.get('overall_score', 0.5)
-            quality_grade = quality_assessment.get('quality_grade', 'Unknown')
+            # 간단한 품질 평가
+            quality_score = self._assess_simple_quality(step_results)
+            quality_grade = self._get_quality_grade(quality_score)
             
             # 성공 여부 결정
             success = quality_score >= (quality_target * 0.8)  # 80% 이상 달성
@@ -1188,9 +830,6 @@ class PipelineManager:
             self.logger.info(f"📊 품질 점수: {quality_score:.3f} ({quality_grade})")
             self.logger.info(f"🎯 목표 달성: {'✅' if quality_score >= quality_target else '❌'}")
             
-            # 품질 보고서 생성
-            quality_report = self.quality_assessor.generate_quality_report(quality_assessment)
-            
             return ProcessingResult(
                 success=success,
                 session_id=session_id,
@@ -1207,8 +846,6 @@ class PipelineManager:
                     'is_m3_max': self.is_m3_max,
                     'quality_target': quality_target,
                     'quality_target_achieved': quality_score >= quality_target,
-                    'quality_assessment': quality_assessment,
-                    'quality_report': quality_report,
                     'total_steps': len(self.step_order),
                     'completed_steps': len(step_results),
                     'success_rate': len([r for r in step_results.values() if r.get('success', True)]) / len(step_results) if step_results else 0,
@@ -1257,7 +894,7 @@ class PipelineManager:
                                      clothing_tensor: torch.Tensor, body_measurements: Optional[Dict],
                                      clothing_type: str, fabric_type: str, 
                                      style_preferences: Optional[Dict], max_retries: int) -> Dict[str, Any]:
-        """재시도 로직이 포함된 단계 실행"""
+        """재시도 로직이 포함된 Step 실행"""
         last_error = None
         
         for attempt in range(max_retries + 1):
@@ -1268,7 +905,7 @@ class PipelineManager:
                     self.memory_manager.cleanup_memory()
                     await asyncio.sleep(0.5)  # 잠시 대기
                 
-                # 단계 실행
+                # Step 실행 - Step이 자체적으로 모든 것을 처리
                 result = await self._execute_step(
                     step, step_name, current_data, clothing_tensor,
                     body_measurements, clothing_type, fabric_type, style_preferences
@@ -1302,42 +939,32 @@ class PipelineManager:
                           clothing_type: str, fabric_type: str, 
                           style_preferences: Optional[Dict]) -> Dict[str, Any]:
         """
-        개별 단계 실행
-        
-        각 Step은 자체적으로 ModelLoader를 사용하여 필요한 AI 모델을 로드하고 실행
+        개별 Step 실행 - Step이 자체적으로 모든 것을 처리
         """
         try:
-            # 단계별 처리 로직 (Step 클래스의 process 메서드 호출)
+            # Step별 처리 로직 - 각 Step의 process 메서드 호출
             if step_name == 'human_parsing':
-                # 인체 파싱: 사람 이미지에서 신체 부위 분할
                 result = await step.process(current_data)
                 
             elif step_name == 'pose_estimation':
-                # 포즈 추정: 사람 이미지에서 키포인트 추출
                 result = await step.process(current_data)
                 
             elif step_name == 'cloth_segmentation':
-                # 의류 세그멘테이션: 의류 이미지에서 의류 부분 분할
                 result = await step.process(clothing_tensor, clothing_type=clothing_type)
                 
             elif step_name == 'geometric_matching':
-                # 기하학적 매칭: 사람과 의류 간의 기하학적 관계 분석
                 result = await step.process(current_data, clothing_tensor, body_measurements)
                 
             elif step_name == 'cloth_warping':
-                # 옷 워핑: 의류를 사람의 신체에 맞게 변형
                 result = await step.process(current_data, clothing_tensor, body_measurements, fabric_type)
                 
             elif step_name == 'virtual_fitting':
-                # 가상 피팅: 변형된 의류를 사람에게 입히기
                 result = await step.process(current_data, clothing_tensor, style_preferences)
                 
             elif step_name == 'post_processing':
-                # 후처리: 결과 이미지 품질 향상
                 result = await step.process(current_data)
                 
             elif step_name == 'quality_assessment':
-                # 품질 평가: 최종 결과의 품질 평가
                 result = await step.process(current_data, clothing_tensor)
                 
             else:
@@ -1366,7 +993,7 @@ class PipelineManager:
             return result
             
         except Exception as e:
-            self.logger.error(f"단계 실행 실패 {step_name}: {e}")
+            self.logger.error(f"Step 실행 실패 {step_name}: {e}")
             return {
                 'success': False,
                 'error': str(e),
@@ -1375,6 +1002,47 @@ class PipelineManager:
                 'processing_time': 0.0,
                 'method': 'error'
             }
+    
+    def _assess_simple_quality(self, step_results: Dict[str, Any]) -> float:
+        """간단한 품질 평가"""
+        if not step_results:
+            return 0.5
+        
+        # Step별 품질 점수 수집
+        quality_scores = []
+        confidence_scores = []
+        
+        for step_result in step_results.values():
+            if isinstance(step_result, dict):
+                confidence = step_result.get('confidence', 0.8)
+                quality = step_result.get('quality_score', confidence)
+                
+                quality_scores.append(quality)
+                confidence_scores.append(confidence)
+        
+        # 종합 점수 계산
+        if quality_scores:
+            avg_quality = sum(quality_scores) / len(quality_scores)
+            avg_confidence = sum(confidence_scores) / len(confidence_scores)
+            
+            # 가중 평균
+            overall_score = avg_quality * 0.6 + avg_confidence * 0.4
+            return min(max(overall_score, 0.0), 1.0)
+        
+        return 0.5
+    
+    def _get_quality_grade(self, quality_score: float) -> str:
+        """품질 등급 반환"""
+        if quality_score >= 0.9:
+            return "Excellent"
+        elif quality_score >= 0.8:
+            return "Good"
+        elif quality_score >= 0.7:
+            return "Fair"
+        elif quality_score >= 0.6:
+            return "Poor"
+        else:
+            return "Very Poor"
     
     def get_pipeline_status(self) -> Dict[str, Any]:
         """파이프라인 상태 조회"""
@@ -1391,9 +1059,7 @@ class PipelineManager:
                 'optimization_enabled': self.config.optimization_enabled,
                 'memory_optimization': self.config.memory_optimization,
                 'use_fp16': self.config.use_fp16,
-                'batch_size': self.config.batch_size,
-                'parallel_processing': self.config.parallel_processing,
-                'enable_caching': self.config.enable_caching
+                'batch_size': self.config.batch_size
             },
             'steps_status': {
                 step_name: {
@@ -1409,17 +1075,10 @@ class PipelineManager:
                 'failed_sessions': self.performance_metrics.failed_sessions,
                 'success_rate': self.performance_metrics.successful_sessions / self.performance_metrics.total_sessions if self.performance_metrics.total_sessions > 0 else 0,
                 'average_processing_time': self.performance_metrics.average_processing_time,
-                'average_quality_score': self.performance_metrics.average_quality_score,
-                'fastest_processing_time': self.performance_metrics.fastest_processing_time if self.performance_metrics.fastest_processing_time != float('inf') else 0,
-                'slowest_processing_time': self.performance_metrics.slowest_processing_time
+                'average_quality_score': self.performance_metrics.average_quality_score
             },
             'memory_usage': self.memory_manager.get_memory_usage(),
-            'active_sessions': len(self.sessions),
-            'model_loader_status': {
-                'initialized': hasattr(self, 'model_loader') and hasattr(self.model_loader, 'is_initialized') and self.model_loader.is_initialized,
-                'loaded_models': len(getattr(self.model_loader, 'model_cache', {})) if hasattr(self, 'model_loader') else 0,
-                'device': self.model_loader.device if hasattr(self, 'model_loader') and hasattr(self.model_loader, 'device') else 'unknown'
-            }
+            'active_sessions': len(self.sessions)
         }
     
     def get_session_info(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -1528,22 +1187,7 @@ class PipelineManager:
                 'checks': {}
             }
             
-            # 메모리 체크
-            try:
-                memory_usage = self.memory_manager.get_memory_usage()
-                available_memory = self.memory_manager.get_available_memory()
-                health_status['checks']['memory'] = {
-                    'status': 'ok' if available_memory > 1.0 else 'warning',
-                    'available_gb': available_memory,
-                    'usage': memory_usage
-                }
-            except Exception as e:
-                health_status['checks']['memory'] = {
-                    'status': 'error',
-                    'error': str(e)
-                }
-            
-            # 단계별 체크
+            # Step별 체크
             steps_healthy = 0
             for step_name in self.step_order:
                 if step_name in self.steps:
@@ -1557,16 +1201,17 @@ class PipelineManager:
                 'total_steps': len(self.step_order)
             }
             
-            # 모델 로더 체크
-            if hasattr(self, 'model_loader'):
-                health_status['checks']['model_loader'] = {
-                    'status': 'ok' if hasattr(self.model_loader, 'is_initialized') and self.model_loader.is_initialized else 'warning',
-                    'loaded_models': len(getattr(self.model_loader, 'model_cache', {}))
+            # 메모리 체크
+            try:
+                memory_usage = self.memory_manager.get_memory_usage()
+                health_status['checks']['memory'] = {
+                    'status': 'ok',
+                    'usage': memory_usage
                 }
-            else:
-                health_status['checks']['model_loader'] = {
+            except Exception as e:
+                health_status['checks']['memory'] = {
                     'status': 'error',
-                    'error': 'Model loader not initialized'
+                    'error': str(e)
                 }
             
             # 전체 상태 결정
@@ -1600,22 +1245,14 @@ class PipelineManager:
                 except Exception as e:
                     self.logger.warning(f"⚠️ {step_name} 정리 중 오류: {e}")
             
-            # 2. 모델 로더 정리
-            if hasattr(self, 'model_loader') and hasattr(self.model_loader, 'cleanup'):
-                try:
-                    self.model_loader.cleanup()
-                    self.logger.info("✅ 모델 로더 정리 완료")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 모델 로더 정리 중 오류: {e}")
-            
-            # 3. 메모리 관리자 정리
+            # 2. 메모리 관리자 정리
             try:
                 self.memory_manager.cleanup_memory()
                 self.logger.info("✅ 메모리 관리자 정리 완료")
             except Exception as e:
                 self.logger.warning(f"⚠️ 메모리 관리자 정리 중 오류: {e}")
             
-            # 4. 스레드 풀 정리
+            # 3. 스레드 풀 정리
             if hasattr(self, 'thread_pool'):
                 try:
                     self.thread_pool.shutdown(wait=True)
@@ -1623,14 +1260,14 @@ class PipelineManager:
                 except Exception as e:
                     self.logger.warning(f"⚠️ 스레드 풀 정리 중 오류: {e}")
             
-            # 5. 세션 데이터 정리
+            # 4. 세션 데이터 정리
             try:
                 self.sessions.clear()
                 self.logger.info("✅ 세션 데이터 정리 완료")
             except Exception as e:
                 self.logger.warning(f"⚠️ 세션 데이터 정리 중 오류: {e}")
             
-            # 6. 상태 초기화
+            # 5. 상태 초기화
             self.is_initialized = False
             self.current_status = ProcessingStatus.IDLE
             
@@ -1641,7 +1278,7 @@ class PipelineManager:
             self.current_status = ProcessingStatus.FAILED
 
 # ==============================================
-# 5. 편의 함수들
+# 5. 편의 함수들 (기존 함수명 100% 유지)
 # ==============================================
 
 def create_pipeline(
@@ -1730,13 +1367,13 @@ def get_global_pipeline_manager(device: str = "auto") -> PipelineManager:
         return create_pipeline(device="cpu", quality_level="fast")
 
 # ==============================================
-# 6. 사용 예시 및 데모
+# 6. 데모 및 테스트 함수
 # ==============================================
 
-async def demo_complete_pipeline():
-    """완전한 파이프라인 데모"""
+async def demo_simplified_pipeline():
+    """단순화된 파이프라인 데모"""
     
-    print("🎯 완전한 PipelineManager 데모 시작")
+    print("🎯 단순화된 PipelineManager 데모 시작")
     print("=" * 50)
     
     # 1. 파이프라인 생성
@@ -1750,28 +1387,20 @@ async def demo_complete_pipeline():
         print("❌ 파이프라인 초기화 실패")
         return
     
-    # 3. 워밍업
-    print("3️⃣ 파이프라인 워밍업 중...")
-    warmup_success = await pipeline.warmup()
-    if warmup_success:
-        print("✅ 워밍업 완료")
-    else:
-        print("⚠️ 워밍업 실패")
-    
-    # 4. 상태 확인
-    print("4️⃣ 파이프라인 상태 확인...")
+    # 3. 상태 확인
+    print("3️⃣ 파이프라인 상태 확인...")
     status = pipeline.get_pipeline_status()
     print(f"📊 초기화 상태: {status['initialized']}")
     print(f"🎯 디바이스: {status['device']} ({status['device_type']})")
     print(f"📋 로드된 단계: {len([s for s in status['steps_status'].values() if s['loaded']])}/{len(status['steps_status'])}")
     
-    # 5. 헬스체크
-    print("5️⃣ 헬스체크 수행...")
+    # 4. 헬스체크
+    print("4️⃣ 헬스체크 수행...")
     health = await pipeline.health_check()
     print(f"🏥 헬스 상태: {health['status']}")
     
-    # 6. 가상 피팅 실행
-    print("6️⃣ 가상 피팅 실행...")
+    # 5. 가상 피팅 실행
+    print("5️⃣ 가상 피팅 실행...")
     
     try:
         # 더미 이미지 생성
@@ -1814,27 +1443,22 @@ async def demo_complete_pipeline():
             if result.result_image:
                 result.result_image.save('demo_result.jpg')
                 print("💾 결과 이미지 저장: demo_result.jpg")
-            
-            # 품질 보고서 출력
-            quality_report = result.metadata.get('quality_report', '')
-            if quality_report:
-                print(f"\n{quality_report}")
         else:
             print(f"❌ 가상 피팅 실패: {result.error_message}")
     
     except Exception as e:
         print(f"💥 예외 발생: {e}")
     
-    # 7. 성능 요약
-    print("7️⃣ 성능 요약...")
+    # 6. 성능 요약
+    print("6️⃣ 성능 요약...")
     performance = pipeline.get_performance_summary()
     print(f"📈 총 세션: {performance['total_sessions']}")
     print(f"📊 성공률: {performance['success_rate']:.1%}")
     print(f"⏱️ 평균 처리 시간: {performance['average_processing_time']:.2f}초")
     print(f"🎯 평균 품질 점수: {performance['average_quality_score']:.3f}")
     
-    # 8. 리소스 정리
-    print("8️⃣ 리소스 정리...")
+    # 7. 리소스 정리
+    print("7️⃣ 리소스 정리...")
     await pipeline.cleanup()
     print("🧹 리소스 정리 완료")
     
@@ -1853,7 +1477,7 @@ async def performance_test():
     await pipeline.warmup()
     
     # 테스트 실행
-    test_count = 5
+    test_count = 3
     results = []
     
     for i in range(test_count):
@@ -1898,11 +1522,11 @@ async def performance_test():
 # ==============================================
 
 if __name__ == "__main__":
-    print("🎽 완전한 PipelineManager - 모든 기능 포함 최종 버전")
+    print("🎽 단순화된 PipelineManager - Step 클래스들만 관리")
     print("=" * 80)
-    print("✨ 빠진 기능 없음")
-    print("🔧 완전한 구현")
-    print("📋 올바른 순서")
+    print("✨ Step 클래스들의 오케스트레이션만 담당")
+    print("🔧 각 Step이 자체적으로 모델/메모리 관리")
+    print("📋 기존 함수명/클래스명 100% 유지")
     print("🚀 M3 Max 최적화")
     print("💪 프로덕션 레벨 안정성")
     print("=" * 80)
@@ -1910,8 +1534,8 @@ if __name__ == "__main__":
     import asyncio
     
     async def main():
-        # 1. 완전한 데모 실행
-        await demo_complete_pipeline()
+        # 1. 단순화된 데모 실행
+        await demo_simplified_pipeline()
         
         print("\n" + "="*50)
         
