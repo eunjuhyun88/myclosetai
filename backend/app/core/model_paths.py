@@ -1,138 +1,89 @@
-# backend/app/core/model_paths.py
+# app/core/model_paths.py
 """
 AI 모델 경로 설정 - 자동 생성됨
-기존 다운로드된 모델들의 실제 경로 매핑
 """
 
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
 # 기본 경로
 AI_MODELS_ROOT = Path(__file__).parent.parent.parent / "ai_models"
+CHECKPOINTS_ROOT = AI_MODELS_ROOT / "checkpoints"
 
-# 발견된 모델 경로 매핑
-DETECTED_MODELS = {
-    "ootdiffusion_additional": {
-        "name": "OOTDiffusion (Checkpoints)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion"),
-        "type": "virtual_tryon_additional",
-        "ready": True,
-        "priority": 99
+# 다운로드된 모델들
+DOWNLOADED_MODELS = {
+    "ootdiffusion": {
+        "name": "OOTDiffusion",
+        "path": CHECKPOINTS_ROOT / "ootdiffusion_hf",
+        "step": "step_06_virtual_fitting",
+        "priority": 1,
+        "size_gb": 8.0,
+        "enabled": True
+    },
+    "human_parsing": {
+        "name": "Human Parsing (Graphonomy)",
+        "path": CHECKPOINTS_ROOT / "human_parsing",
+        "step": "step_01_human_parsing",
+        "priority": 2,
+        "size_gb": 0.5,
+        "enabled": True
+    },
+    "u2net": {
+        "name": "U²-Net Background Removal",
+        "path": CHECKPOINTS_ROOT / "u2net",
+        "step": "step_03_cloth_segmentation",
+        "priority": 3,
+        "size_gb": 0.2,
+        "enabled": True
     },
     "stable_diffusion": {
         "name": "Stable Diffusion v1.5",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/stable-diffusion-v1-5"),
-        "type": "base_diffusion",
-        "ready": True,
-        "priority": 2
+        "path": CHECKPOINTS_ROOT / "stable-diffusion-v1-5",
+        "step": "step_06_virtual_fitting",
+        "priority": 4,
+        "size_gb": 4.0,
+        "enabled": True
     },
-    "graphonomy": {
-        "name": "Graphonomy (Human Parsing)",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/Graphonomy"),
-        "type": "human_parsing",
-        "ready": True,
-        "priority": 4
+    "clip_vit_base": {
+        "name": "CLIP ViT-B/32",
+        "path": CHECKPOINTS_ROOT / "clip-vit-base-patch32",
+        "step": "auxiliary",
+        "priority": 5,
+        "size_gb": 0.6,
+        "enabled": True
     },
-    "schp": {
-        "name": "Self-Correction Human Parsing",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/Self-Correction-Human-Parsing"),
-        "type": "human_parsing",
-        "ready": True,
-        "priority": 4
+    "clip_vit_large": {
+        "name": "CLIP ViT-L/14",
+        "path": CHECKPOINTS_ROOT / "clip-vit-large-patch14",
+        "step": "auxiliary",
+        "priority": 6,
+        "size_gb": 1.6,
+        "enabled": True
     },
-    "openpose": {
-        "name": "OpenPose",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/openpose"),
-        "type": "pose_estimation",
-        "ready": True,
-        "priority": 4
-    },
-    "clip": {
-        "name": "CLIP ViT-Large",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip-vit-large-patch14"),
-        "type": "vision_language",
-        "ready": True,
-        "priority": 5
-    },
-    "hr_viton": {
-        "name": "HR-VITON",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/HR-VITON"),
-        "type": "virtual_tryon",
-        "ready": True,
-        "priority": 8
-    },
-}}
+}
 
-# 타입별 모델 그룹핑
-def get_models_by_type(model_type: str) -> List[str]:
-    """타입별 모델 목록 반환"""
-    return [key for key, info in DETECTED_MODELS.items() 
-            if info["type"] == model_type and info["ready"]]
-
-def get_virtual_tryon_models() -> List[str]:
-    """가상 피팅 모델 목록"""
-    return get_models_by_type("virtual_tryon")
-
-def get_primary_ootd_path() -> Path:
-    """메인 OOTDiffusion 경로 반환"""
-    if "ootdiffusion" in DETECTED_MODELS:
-        return DETECTED_MODELS["ootdiffusion"]["path"]
-    raise FileNotFoundError("OOTDiffusion 모델을 찾을 수 없습니다")
-
-def get_stable_diffusion_path() -> Path:
-    """Stable Diffusion 경로 반환"""
-    if "stable_diffusion" in DETECTED_MODELS:
-        return DETECTED_MODELS["stable_diffusion"]["path"]
-    raise FileNotFoundError("Stable Diffusion 모델을 찾을 수 없습니다")
-
-def get_sam_path(model_size: str = "vit_h") -> Path:
-    """SAM 모델 경로 반환"""
-    if "sam" in DETECTED_MODELS:
-        base_path = DETECTED_MODELS["sam"]["path"]
-        if model_size == "vit_h":
-            return Path(base_path) / "sam_vit_h_4b8939.pth"
-        elif model_size == "vit_b":
-            return Path(base_path) / "sam_vit_b_01ec64.pth"
-    raise FileNotFoundError(f"SAM {model_size} 모델을 찾을 수 없습니다")
+def get_model_path(model_key: str) -> Optional[Path]:
+    """모델 경로 반환"""
+    model_info = DOWNLOADED_MODELS.get(model_key)
+    if model_info:
+        return model_info["path"]
+    return None
 
 def is_model_available(model_key: str) -> bool:
     """모델 사용 가능 여부 확인"""
-    if model_key in DETECTED_MODELS:
-        model_path = DETECTED_MODELS[model_key]["path"]
-        return Path(model_path).exists()
-    return False
+    model_path = get_model_path(model_key)
+    return model_path and model_path.exists()
 
-def get_all_available_models() -> List[str]:
-    """사용 가능한 모든 모델 목록"""
-    available = []
-    for key, info in DETECTED_MODELS.items():
-        if info["ready"] and Path(info["path"]).exists():
-            available.append(key)
-    return sorted(available, key=lambda x: DETECTED_MODELS[x]["priority"])
+def get_step_model(step_name: str) -> Optional[str]:
+    """특정 단계의 모델 반환"""
+    for model_key, model_info in DOWNLOADED_MODELS.items():
+        if model_info["step"] == step_name:
+            return model_key
+    return None
 
-def get_model_info(model_key: str) -> Optional[Dict]:
-    """모델 정보 반환"""
-    return DETECTED_MODELS.get(model_key)
-
-# 빠른 경로 접근
-class ModelPaths:
-    """모델 경로 빠른 접근 클래스"""
-    
-    @property
-    def ootd_hf(self) -> Path:
-        return get_primary_ootd_path()
-    
-    @property
-    def stable_diffusion(self) -> Path:
-        return get_stable_diffusion_path()
-    
-    @property
-    def sam_large(self) -> Path:
-        return get_sam_path("vit_h")
-    
-    @property
-    def sam_base(self) -> Path:
-        return get_sam_path("vit_b")
-
-# 전역 인스턴스
-model_paths = ModelPaths()
+def get_all_available_models() -> Dict[str, Dict]:
+    """사용 가능한 모든 모델 반환"""
+    return {
+        key: info for key, info in DOWNLOADED_MODELS.items()
+        if is_model_available(key)
+    }
