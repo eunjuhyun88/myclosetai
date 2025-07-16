@@ -195,7 +195,7 @@ class GeometricMatchingStep:
             if TORCH_AVAILABLE and self.device == 'mps':
                 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
             
             # M3 Max용 고성능 파라미터
             self.matching_config['quality_threshold'] = 0.8

@@ -75,7 +75,7 @@ class OOTDiffusionModel(BaseAIModel):
                 
                 # Apple Silicon (MPS) 최적화
                 if self.device == "mps":
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                     dtype = torch.float32  # MPS는 float32 권장
                 else:
                     dtype = torch.float16

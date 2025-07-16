@@ -3,7 +3,7 @@ MyCloset AI - 완전한 GPU 설정 매니저 (M3 Max 최적화) - MPS 호환성 
 backend/app/core/gpu_config.py
 
 ✅ PyTorch 2.6+ MPS 호환성 수정
-✅ torch.mps.empty_cache() 오류 해결
+✅ torch.backends.mps.empty_cache() 오류 해결
 ✅ torch.mps.empty_cache() 및 torch.mps.synchronize() 사용
 ✅ 완전한 GPU 설정 매니저 구현
 ✅ M3 Max 128GB 최적화
@@ -632,11 +632,11 @@ class GPUManager:
                         torch.mps.synchronize()
                         result["method"] = "mps_synchronize"
                         logger.info("✅ torch.mps.synchronize() 실행 완료")
-                    elif hasattr(torch.mps, "empty_cache"):
+                    elif hasattr(torch.backends.mps, 'empty_cache'):
                         # 이전 버전 호환성 (거의 사용되지 않음)
-                        torch.mps.empty_cache()
+                        torch.backends.mps.empty_cache()
                         result["method"] = "mps_backends_empty_cache"
-                        logger.info("✅ torch.mps.empty_cache() 실행 완료")
+                        logger.info("✅ torch.backends.mps.empty_cache() 실행 완료")
                     else:
                         result["method"] = "mps_gc_only"
                         result["warning"] = "MPS 메모리 정리 함수를 찾을 수 없음"

@@ -252,7 +252,7 @@ class ModelMemoryManager:
             elif self.device == "mps" and torch.backends.mps.is_available():
                 try:
                     if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
+                        if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 except:
                     pass
             

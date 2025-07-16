@@ -298,7 +298,7 @@ class VirtualFittingStep:
             if TORCH_AVAILABLE and self.device == 'mps':
                 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
             
             # CPU 최적화 (M3 Max는 더 많은 코어 활용)
             if TORCH_AVAILABLE:
@@ -726,7 +726,7 @@ class VirtualFittingStep:
             if TORCH_AVAILABLE:
                 if self.device == 'mps':
                     if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
+                        if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 elif self.device == 'cuda':
                     torch.cuda.empty_cache()
             

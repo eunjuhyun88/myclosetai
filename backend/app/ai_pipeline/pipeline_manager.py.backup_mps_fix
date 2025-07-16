@@ -144,7 +144,7 @@ class PipelineManager:
         """디바이스별 최적화 설정"""
         if self.device == 'mps':
             os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-            if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
+            torch.backends.mps.empty_cache()
             logger.info("🔧 M3 Max MPS 최적화 설정 완료")
         elif self.device == 'cuda':
             torch.backends.cudnn.benchmark = True
@@ -836,10 +836,7 @@ class PipelineManager:
         if self.device == 'cuda':
             torch.cuda.empty_cache()
         elif self.device == 'mps':
-            if hasattr(torch.mps, 'empty_cache'):
-                torch.mps.empty_cache()
-            elif hasattr(torch.mps, 'synchronize'):
-                torch.mps.synchronize()
+            torch.mps.empty_cache()
     
     def _cleanup_memory(self):
         """메모리 정리"""
@@ -847,10 +844,7 @@ class PipelineManager:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            if hasattr(torch.mps, 'empty_cache'):
-                torch.mps.empty_cache()
-            elif hasattr(torch.mps, 'synchronize'):
-                torch.mps.synchronize()
+            torch.mps.empty_cache()
     
     def _extract_final_image(
         self, 

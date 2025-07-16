@@ -250,7 +250,7 @@ class ClothWarpingStep:
                 
                 # M3 Max 메모리 최적화
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 
                 logger.info("✅ M3 Max MPS 최적화 완료")
             
@@ -370,7 +370,7 @@ class ClothWarpingStep:
             if TORCH_AVAILABLE:
                 if self.device == 'mps':
                     if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
+                        if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                     elif hasattr(torch.mps, 'synchronize'):
                         torch.mps.synchronize()
                 elif self.device == 'cuda':
@@ -507,7 +507,7 @@ class ClothWarpingStep:
             
             if TORCH_AVAILABLE and self.device == 'mps':
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 elif hasattr(torch.mps, 'synchronize'):
                     torch.mps.synchronize()
                 
@@ -887,7 +887,7 @@ class ClothWarpingStep:
             if TORCH_AVAILABLE:
                 if self.device == 'mps':
                     if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
+                        if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                     elif hasattr(torch.mps, 'synchronize'):
                         torch.mps.synchronize()
                 elif self.device == 'cuda':

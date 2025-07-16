@@ -205,7 +205,7 @@ class PostProcessingStep:
                 
                 # M3 Max 메모리 최적화
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 
                 self.logger.info("✅ M3 Max MPS 후처리 최적화 완료")
             
@@ -599,7 +599,7 @@ class PostProcessingStep:
             
             if self.device == 'mps' and TORCH_AVAILABLE:
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 elif hasattr(torch.mps, 'synchronize'):
                     torch.mps.synchronize()
                 
@@ -1372,7 +1372,7 @@ class PostProcessingStep:
             # GPU 메모리 정리
             if self.use_mps and TORCH_AVAILABLE:
                 if hasattr(torch.backends.mps, 'empty_cache'):
-                    torch.backends.mps.empty_cache()
+                    if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
                 elif hasattr(torch.mps, 'synchronize'):
                     torch.mps.synchronize()
             elif TORCH_AVAILABLE and torch.cuda.is_available():
