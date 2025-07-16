@@ -1,13 +1,10 @@
 # app/ai_pipeline/utils/model_loader.py
 """
-🍎 M3 Max 최적화 실제 AI 모델 로더 - 완전한 기능 복원 + Step 연동
-✅ 최적 생성자 패턴 적용 + 모든 기능 복원 + Step 클래스 통합 + 실제 AI 모델들
-- 8단계 파이프라인에 필요한 모든 실제 AI 모델들
-- M3 Max MPS 최적화
-- 메모리 효율적 모델 로딩
-- ModelRegistry, ModelMemoryManager 포함
-- 실제 PyTorch 모델 클래스들 포함
-- Step 클래스와 완벽 연동
+🍎 M3 Max 최적화 프로덕션 레벨 AI 모델 로더
+✅ Step 클래스와 완벽 연동
+✅ 폴백 제거, 실제 모델만 사용
+✅ 프로덕션 안정성 보장
+✅ 메모리 효율적 관리
 """
 
 import os
@@ -15,20 +12,15 @@ import gc
 import time
 import threading
 import asyncio
-import hashlib
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Type, Callable
-from abc import ABC, abstractmethod
-import json
-import pickle
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
-import weakref
 
-# PyTorch import (안전)
+# PyTorch 및 필수 라이브러리들
 try:
     import torch
     import torch.nn as nn
@@ -38,23 +30,18 @@ except ImportError:
     TORCH_AVAILABLE = False
     torch = None
     nn = None
+    raise ImportError("PyTorch is required for production ModelLoader")
 
-# 컴퓨터 비전 라이브러리들
 try:
     import cv2
     import numpy as np
-    from PIL import Image, ImageEnhance
+    from PIL import Image
     CV_AVAILABLE = True
 except ImportError:
     CV_AVAILABLE = False
+    raise ImportError("OpenCV and PIL are required for production ModelLoader")
 
-# 외부 AI 라이브러리들 (선택적)
-try:
-    import mediapipe as mp
-    MEDIAPIPE_AVAILABLE = True
-except ImportError:
-    MEDIAPIPE_AVAILABLE = False
-
+# 선택적 라이브러리들
 try:
     from transformers import AutoModel, AutoTokenizer
     TRANSFORMERS_AVAILABLE = True
@@ -68,12 +55,6 @@ except ImportError:
     DIFFUSERS_AVAILABLE = False
 
 try:
-    import onnxruntime as ort
-    ONNX_AVAILABLE = True
-except ImportError:
-    ONNX_AVAILABLE = False
-
-try:
     import coremltools as ct
     COREML_AVAILABLE = True
 except ImportError:
@@ -82,27 +63,18 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 핵심: ModelFormat 클래스 - main.py에서 요구
+# 🔥 핵심 모델 정의 클래스들
 # ==============================================
 
 class ModelFormat(Enum):
-    """🔥 모델 포맷 정의 - main.py에서 필수"""
+    """모델 포맷 정의"""
     PYTORCH = "pytorch"
     SAFETENSORS = "safetensors"
     ONNX = "onnx"
     DIFFUSERS = "diffusers"
     TRANSFORMERS = "transformers"
     CHECKPOINT = "checkpoint"
-    PICKLE = "pickle"
     COREML = "coreml"
-    TENSORRT = "tensorrt"
-
-class ModelPrecision(Enum):
-    """모델 정밀도 정의"""
-    FP32 = "fp32"
-    FP16 = "fp16"
-    BF16 = "bf16"
-    INT8 = "int8"
 
 class ModelType(Enum):
     """AI 모델 타입"""
@@ -112,8 +84,8 @@ class ModelType(Enum):
     GEOMETRIC_MATCHING = "geometric_matching"
     CLOTH_WARPING = "cloth_warping"
     VIRTUAL_FITTING = "virtual_fitting"
-    DIFFUSION = "diffusion"
-    SEGMENTATION = "segmentation"
+    POST_PROCESSING = "post_processing"
+    QUALITY_ASSESSMENT = "quality_assessment"
 
 @dataclass
 class ModelConfig:
@@ -136,225 +108,19 @@ class ModelConfig:
             self.model_type = ModelType(self.model_type)
 
 # ==============================================
-# 모델 레지스트리 - 원본 기능 유지
-# ==============================================
-
-class ModelRegistry:
-    """모델 레지스트리 - 안전한 버전"""
-    
-    _instance = None
-    _initialized = False
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-    
-    def __init__(self):
-        if not getattr(self, '_initialized', False):
-            self.registered_models: Dict[str, Dict[str, Any]] = {}
-            self._lock = threading.RLock()
-            self._initialized = True
-            logger.info("ModelRegistry 초기화 완료")
-    
-    def register_model(self, 
-                      name: str, 
-                      model_class: Type, 
-                      default_config: Dict[str, Any] = None,
-                      loader_func: Optional[Callable] = None):
-        """모델 등록"""
-        with self._lock:
-            try:
-                self.registered_models[name] = {
-                    'class': model_class,
-                    'config': default_config or {},
-                    'loader': loader_func,
-                    'registered_at': time.time()
-                }
-                logger.info(f"모델 등록: {name}")
-            except Exception as e:
-                logger.error(f"모델 등록 실패 {name}: {e}")
-    
-    def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
-        """모델 정보 조회"""
-        with self._lock:
-            try:
-                return self.registered_models.get(name)
-            except Exception as e:
-                logger.error(f"모델 정보 조회 실패 {name}: {e}")
-                return None
-    
-    def list_models(self) -> List[str]:
-        """등록된 모델 목록"""
-        with self._lock:
-            try:
-                return list(self.registered_models.keys())
-            except Exception as e:
-                logger.error(f"모델 목록 조회 실패: {e}")
-                return []
-    
-    def unregister_model(self, name: str) -> bool:
-        """모델 등록 해제"""
-        with self._lock:
-            try:
-                if name in self.registered_models:
-                    del self.registered_models[name]
-                    logger.info(f"모델 등록 해제: {name}")
-                    return True
-                return False
-            except Exception as e:
-                logger.error(f"모델 등록 해제 실패 {name}: {e}")
-                return False
-
-# ==============================================
-# 모델 메모리 관리자 - 원본 기능 유지
-# ==============================================
-
-class ModelMemoryManager:
-    """모델 메모리 관리자"""
-    
-    def __init__(self, device: str = "mps"):
-        self.device = device
-        self.memory_threshold = 0.8
-        
-    def get_available_memory(self) -> float:
-        """사용 가능한 메모리 (GB) 반환"""
-        try:
-            if self.device == "cuda" and torch.cuda.is_available():
-                total_memory = torch.cuda.get_device_properties(0).total_memory
-                allocated_memory = torch.cuda.memory_allocated()
-                return (total_memory - allocated_memory) / 1024**3
-            elif self.device == "mps":
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    return memory.available / 1024**3
-                except ImportError:
-                    return 64.0
-            else:
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    return memory.available / 1024**3
-                except ImportError:
-                    return 8.0
-        except Exception as e:
-            logger.warning(f"메모리 조회 실패: {e}")
-            return 8.0
-    
-    def cleanup_memory(self):
-        """메모리 정리"""
-        try:
-            gc.collect()
-            
-            if self.device == "cuda" and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            elif self.device == "mps" and torch.backends.mps.is_available():
-                try:
-                    if hasattr(torch.backends.mps, 'empty_cache'):
-                        if hasattr(torch.mps, "empty_cache"): torch.mps.empty_cache()
-                except:
-                    pass
-            
-            logger.debug("메모리 정리 완료")
-        except Exception as e:
-            logger.warning(f"메모리 정리 실패: {e}")
-    
-    def check_memory_pressure(self) -> bool:
-        """메모리 압박 상태 체크"""
-        try:
-            available_memory = self.get_available_memory()
-            if available_memory < 2.0:  # 2GB 미만
-                return True
-            return False
-        except Exception:
-            return False
-
-# ==============================================
-# 🔥 Step 클래스와 ModelLoader 연동 인터페이스
-# ==============================================
-
-class StepModelInterface:
-    """Step 클래스와 ModelLoader 간 인터페이스"""
-    
-    def __init__(self, model_loader: 'ModelLoader', step_name: str):
-        self.model_loader = model_loader
-        self.step_name = step_name
-        self.loaded_models: Dict[str, Any] = {}
-        self._lock = threading.RLock()
-    
-    async def get_model(self, model_name: str, **kwargs) -> Optional[Any]:
-        """Step에서 필요한 모델 요청"""
-        try:
-            with self._lock:
-                cache_key = f"{self.step_name}_{model_name}"
-                
-                # 캐시 확인
-                if cache_key in self.loaded_models:
-                    return self.loaded_models[cache_key]
-                
-                # 모델 로드
-                model = await self.model_loader.load_model(model_name, **kwargs)
-                
-                if model:
-                    self.loaded_models[cache_key] = model
-                    logger.info(f"📦 {self.step_name}에 {model_name} 모델 전달 완료")
-                
-                return model
-                
-        except Exception as e:
-            logger.error(f"❌ {self.step_name}에서 {model_name} 모델 로드 실패: {e}")
-            return None
-    
-    async def get_recommended_model(self) -> Optional[Any]:
-        """Step별 권장 모델 자동 선택"""
-        model_recommendations = {
-            'HumanParsingStep': 'human_parsing_graphonomy',
-            'PoseEstimationStep': 'pose_estimation_openpose', 
-            'ClothSegmentationStep': 'cloth_segmentation_u2net',
-            'GeometricMatchingStep': 'geometric_matching_gmm',
-            'ClothWarpingStep': 'cloth_warping_tom',
-            'VirtualFittingStep': 'virtual_fitting_hrviton',
-            'PostProcessingStep': 'post_processing_enhancer',
-            'QualityAssessmentStep': 'quality_assessment_combined'
-        }
-        
-        recommended_model = model_recommendations.get(self.step_name)
-        if recommended_model:
-            return await self.get_model(recommended_model)
-        
-        logger.warning(f"⚠️ {self.step_name}에 대한 권장 모델이 없습니다")
-        return None
-    
-    def unload_models(self):
-        """Step의 모든 모델 언로드"""
-        try:
-            with self._lock:
-                for model_name, model in self.loaded_models.items():
-                    if hasattr(model, 'cpu'):
-                        model.cpu()
-                    del model
-                
-                self.loaded_models.clear()
-                logger.info(f"🗑️ {self.step_name} 모델들 언로드 완료")
-                
-        except Exception as e:
-            logger.error(f"❌ {self.step_name} 모델 언로드 실패: {e}")
-
-# ==============================================
-# 실제 AI 모델 클래스들 - 원본 전체 복원
+# 🔥 실제 AI 모델 클래스들 - 프로덕션 버전
 # ==============================================
 
 class GraphonomyModel(nn.Module):
     """Graphonomy 인체 파싱 모델 - Step 01"""
     
-    def __init__(self, num_classes=20, backbone='resnet101'):
+    def __init__(self, num_classes=20, backbone='resnet101', pretrained=True):
         super().__init__()
         self.num_classes = num_classes
         self.backbone_name = backbone
         
         # ResNet 백본 구성
-        self.backbone = self._build_backbone()
+        self.backbone = self._build_backbone(pretrained)
         
         # ASPP (Atrous Spatial Pyramid Pooling)
         self.aspp = self._build_aspp()
@@ -365,16 +131,16 @@ class GraphonomyModel(nn.Module):
         # 보조 분류기
         self.aux_classifier = nn.Conv2d(1024, num_classes, kernel_size=1)
         
-    def _build_backbone(self):
+    def _build_backbone(self, pretrained=True):
         """ResNet 백본 구성"""
         try:
             import torchvision.models as models
             if self.backbone_name == 'resnet101':
-                backbone = models.resnet101(pretrained=True)
+                backbone = models.resnet101(pretrained=pretrained)
             else:
-                backbone = models.resnet50(pretrained=True)
+                backbone = models.resnet50(pretrained=pretrained)
                 
-            # Atrous convolution을 위한 stride 수정
+            # Atrous convolution을 위한 설정
             backbone.layer3[0].conv2.stride = (1, 1)
             backbone.layer3[0].downsample[0].stride = (1, 1)
             backbone.layer4[0].conv2.stride = (1, 1)
@@ -390,52 +156,59 @@ class GraphonomyModel(nn.Module):
                 
             return nn.Sequential(*list(backbone.children())[:-2])
         except ImportError:
-            # torchvision 없는 경우 간단한 백본
+            # 기본 CNN 백본
             return nn.Sequential(
-                nn.Conv2d(3, 64, 7, 2, 3),
+                nn.Conv2d(3, 64, 7, 2, 3, bias=False),
                 nn.BatchNorm2d(64),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(3, 2, 1),
-                nn.Conv2d(64, 256, 3, 1, 1),
-                nn.BatchNorm2d(256),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(256, 512, 3, 1, 1),
-                nn.BatchNorm2d(512),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(512, 1024, 3, 1, 1),
-                nn.BatchNorm2d(1024),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(1024, 2048, 3, 1, 1),
-                nn.BatchNorm2d(2048),
-                nn.ReLU(inplace=True)
+                *[self._make_layer(64, 128, 2, stride=2) for _ in range(3)],
+                *[self._make_layer(128, 256, 2, stride=2) for _ in range(4)],
+                *[self._make_layer(256, 512, 2, stride=2) for _ in range(6)],
+                *[self._make_layer(512, 1024, 2, stride=2) for _ in range(3)],
+                nn.AdaptiveAvgPool2d((1, 1))
             )
+    
+    def _make_layer(self, in_channels, out_channels, blocks, stride=1):
+        """ResNet 레이어 구성"""
+        layers = []
+        layers.append(nn.Conv2d(in_channels, out_channels, 3, stride, 1, bias=False))
+        layers.append(nn.BatchNorm2d(out_channels))
+        layers.append(nn.ReLU(inplace=True))
+        
+        for _ in range(1, blocks):
+            layers.append(nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False))
+            layers.append(nn.BatchNorm2d(out_channels))
+            layers.append(nn.ReLU(inplace=True))
+        
+        return nn.Sequential(*layers)
     
     def _build_aspp(self):
         """ASPP 모듈 구성"""
         return nn.ModuleList([
             nn.Sequential(
-                nn.Conv2d(2048, 256, 1, bias=False),
+                nn.Conv2d(1024, 256, 1, bias=False),
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True)
             ),
             nn.Sequential(
-                nn.Conv2d(2048, 256, 3, padding=6, dilation=6, bias=False),
+                nn.Conv2d(1024, 256, 3, padding=6, dilation=6, bias=False),
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True)
             ),
             nn.Sequential(
-                nn.Conv2d(2048, 256, 3, padding=12, dilation=12, bias=False),
+                nn.Conv2d(1024, 256, 3, padding=12, dilation=12, bias=False),
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True)
             ),
             nn.Sequential(
-                nn.Conv2d(2048, 256, 3, padding=18, dilation=18, bias=False),
+                nn.Conv2d(1024, 256, 3, padding=18, dilation=18, bias=False),
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True)
             ),
             nn.Sequential(
                 nn.AdaptiveAvgPool2d((1, 1)),
-                nn.Conv2d(2048, 256, 1, bias=False),
+                nn.Conv2d(1024, 256, 1, bias=False),
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True)
             )
@@ -449,7 +222,7 @@ class GraphonomyModel(nn.Module):
         
         # ASPP 적용
         aspp_outputs = []
-        for aspp_layer in self.aspp[:-1]:
+        for i, aspp_layer in enumerate(self.aspp[:-1]):
             aspp_outputs.append(aspp_layer(features))
         
         # Global average pooling
@@ -470,54 +243,50 @@ class GraphonomyModel(nn.Module):
 class OpenPoseModel(nn.Module):
     """OpenPose 포즈 추정 모델 - Step 02"""
     
-    def __init__(self, num_keypoints=18):
+    def __init__(self, num_keypoints=18, num_pafs=38):
         super().__init__()
         self.num_keypoints = num_keypoints
+        self.num_pafs = num_pafs
         
-        # VGG-19 백본
+        # VGG 백본
         self.backbone = self._build_vgg_backbone()
         
-        # 6단계 반복 처리
-        self.stages = nn.ModuleList()
-        for i in range(6):
-            if i == 0:
-                # 첫 번째 스테이지
-                stage = nn.ModuleDict({
-                    'paf': self._build_initial_stage(38),  # 19 limbs * 2 (x,y)
-                    'heatmap': self._build_initial_stage(19)  # 18 keypoints + 1 background
-                })
-            else:
-                # 후속 스테이지
-                stage = nn.ModuleDict({
-                    'paf': self._build_refinement_stage(38),
-                    'heatmap': self._build_refinement_stage(19)
-                })
-            self.stages.append(stage)
+        # 초기 스테이지
+        self.stage1_paf = self._build_initial_stage(num_pafs)
+        self.stage1_heatmap = self._build_initial_stage(num_keypoints + 1)
+        
+        # 개선 스테이지들
+        self.refinement_stages = nn.ModuleList()
+        for i in range(5):
+            self.refinement_stages.append(nn.ModuleDict({
+                'paf': self._build_refinement_stage(num_pafs),
+                'heatmap': self._build_refinement_stage(num_keypoints + 1)
+            }))
     
     def _build_vgg_backbone(self):
-        """VGG-19 백본 구성"""
-        try:
-            import torchvision.models as models
-            vgg = models.vgg19(pretrained=True).features
-            # Conv4_4까지만 사용
-            return nn.Sequential(*list(vgg.children())[:23])
-        except ImportError:
-            # VGG 대체 백본
-            return nn.Sequential(
-                nn.Conv2d(3, 64, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.Conv2d(64, 64, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.MaxPool2d(2, 2),
-                nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.Conv2d(128, 128, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.MaxPool2d(2, 2),
-                nn.Conv2d(128, 256, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.MaxPool2d(2, 2),
-                nn.Conv2d(256, 512, 3, 1, 1), nn.ReLU(inplace=True),
-                nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(inplace=True)
-            )
+        """VGG 백본 구성"""
+        return nn.Sequential(
+            # Block 1
+            nn.Conv2d(3, 64, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            
+            # Block 2
+            nn.Conv2d(64, 128, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            
+            # Block 3
+            nn.Conv2d(128, 256, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            
+            # Block 4
+            nn.Conv2d(256, 512, 3, 1, 1), nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(inplace=True)
+        )
     
     def _build_initial_stage(self, output_channels):
         """초기 스테이지 구성"""
@@ -531,8 +300,9 @@ class OpenPoseModel(nn.Module):
     
     def _build_refinement_stage(self, output_channels):
         """개선 스테이지 구성"""
+        input_channels = 512 + self.num_pafs + self.num_keypoints + 1
         return nn.Sequential(
-            nn.Conv2d(512 + 38 + 19, 128, 7, 1, 3), nn.ReLU(inplace=True),
+            nn.Conv2d(input_channels, 128, 7, 1, 3), nn.ReLU(inplace=True),
             nn.Conv2d(128, 128, 7, 1, 3), nn.ReLU(inplace=True),
             nn.Conv2d(128, 128, 7, 1, 3), nn.ReLU(inplace=True),
             nn.Conv2d(128, 128, 7, 1, 3), nn.ReLU(inplace=True),
@@ -545,21 +315,18 @@ class OpenPoseModel(nn.Module):
         # 백본 특징 추출
         features = self.backbone(x)
         
-        stage_outputs = []
+        # 초기 스테이지
+        paf = self.stage1_paf(features)
+        heatmap = self.stage1_heatmap(features)
         
-        for i, stage in enumerate(self.stages):
-            if i == 0:
-                # 첫 번째 스테이지
-                paf = stage['paf'](features)
-                heatmap = stage['heatmap'](features)
-            else:
-                # 이전 결과와 특징 결합
-                combined = torch.cat([features, prev_paf, prev_heatmap], dim=1)
-                paf = stage['paf'](combined)
-                heatmap = stage['heatmap'](combined)
-            
+        stage_outputs = [(paf, heatmap)]
+        
+        # 개선 스테이지들
+        for stage in self.refinement_stages:
+            combined = torch.cat([features, paf, heatmap], dim=1)
+            paf = stage['paf'](combined)
+            heatmap = stage['heatmap'](combined)
             stage_outputs.append((paf, heatmap))
-            prev_paf, prev_heatmap = paf, heatmap
         
         return stage_outputs
 
@@ -569,7 +336,7 @@ class U2NetModel(nn.Module):
     def __init__(self, in_ch=3, out_ch=1):
         super().__init__()
         
-        # 인코더 (6단계 RSU 블록)
+        # 인코더
         self.stage1 = RSU7(in_ch, 32, 64)
         self.pool12 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
         
@@ -594,7 +361,7 @@ class U2NetModel(nn.Module):
         self.stage2d = RSU6(256, 32, 64)
         self.stage1d = RSU7(128, 16, 64)
         
-        # 사이드 출력들
+        # 출력 레이어들
         self.side1 = nn.Conv2d(64, out_ch, 3, padding=1)
         self.side2 = nn.Conv2d(64, out_ch, 3, padding=1)
         self.side3 = nn.Conv2d(128, out_ch, 3, padding=1)
@@ -602,7 +369,6 @@ class U2NetModel(nn.Module):
         self.side5 = nn.Conv2d(512, out_ch, 3, padding=1)
         self.side6 = nn.Conv2d(512, out_ch, 3, padding=1)
         
-        # 최종 융합
         self.outconv = nn.Conv2d(6 * out_ch, out_ch, 1)
     
     def forward(self, x):
@@ -642,41 +408,41 @@ class U2NetModel(nn.Module):
         hx2dup = F.interpolate(hx2d, size=hx1.shape[2:], mode='bilinear', align_corners=False)
         hx1d = self.stage1d(torch.cat((hx2dup, hx1), 1))
         
-        # 사이드 출력들
+        # 출력
         d1 = self.side1(hx1d)
-        d2 = self.side2(hx2d)
-        d2 = F.interpolate(d2, size=x.shape[2:], mode='bilinear', align_corners=False)
-        d3 = self.side3(hx3d)
-        d3 = F.interpolate(d3, size=x.shape[2:], mode='bilinear', align_corners=False)
-        d4 = self.side4(hx4d)
-        d4 = F.interpolate(d4, size=x.shape[2:], mode='bilinear', align_corners=False)
-        d5 = self.side5(hx5d)
-        d5 = F.interpolate(d5, size=x.shape[2:], mode='bilinear', align_corners=False)
-        d6 = self.side6(hx6)
-        d6 = F.interpolate(d6, size=x.shape[2:], mode='bilinear', align_corners=False)
+        d2 = F.interpolate(self.side2(hx2d), size=x.shape[2:], mode='bilinear', align_corners=False)
+        d3 = F.interpolate(self.side3(hx3d), size=x.shape[2:], mode='bilinear', align_corners=False)
+        d4 = F.interpolate(self.side4(hx4d), size=x.shape[2:], mode='bilinear', align_corners=False)
+        d5 = F.interpolate(self.side5(hx5d), size=x.shape[2:], mode='bilinear', align_corners=False)
+        d6 = F.interpolate(self.side6(hx6), size=x.shape[2:], mode='bilinear', align_corners=False)
         
-        # 최종 융합
         d0 = self.outconv(torch.cat((d1, d2, d3, d4, d5, d6), 1))
         
-        return torch.sigmoid(d0), torch.sigmoid(d1), torch.sigmoid(d2), torch.sigmoid(d3), torch.sigmoid(d4), torch.sigmoid(d5), torch.sigmoid(d6)
+        return torch.sigmoid(d0)
 
-# RSU 블록들 (U²-Net 구성 요소) - 전체 구현
+# RSU 블록들 구현
 class RSU7(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
-        super(RSU7, self).__init__()
+        super().__init__()
         self.rebnconvin = REBNCONV(in_ch, out_ch, dirate=1)
         self.rebnconv1 = REBNCONV(out_ch, mid_ch, dirate=1)
         self.pool1 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv2 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool2 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv3 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool3 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv4 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool4 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv5 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool5 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv6 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.rebnconv7 = REBNCONV(mid_ch, mid_ch, dirate=2)
+        
         self.rebnconv6d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv5d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv4d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
@@ -687,45 +453,63 @@ class RSU7(nn.Module):
     def forward(self, x):
         hx = x
         hxin = self.rebnconvin(hx)
+        
         hx1 = self.rebnconv1(hxin)
         hx = self.pool1(hx1)
+        
         hx2 = self.rebnconv2(hx)
         hx = self.pool2(hx2)
+        
         hx3 = self.rebnconv3(hx)
         hx = self.pool3(hx3)
+        
         hx4 = self.rebnconv4(hx)
         hx = self.pool4(hx4)
+        
         hx5 = self.rebnconv5(hx)
         hx = self.pool5(hx5)
+        
         hx6 = self.rebnconv6(hx)
         hx7 = self.rebnconv7(hx6)
+        
         hx6d = self.rebnconv6d(torch.cat((hx7, hx6), 1))
         hx6dup = F.interpolate(hx6d, size=hx5.shape[2:], mode='bilinear', align_corners=False)
+        
         hx5d = self.rebnconv5d(torch.cat((hx6dup, hx5), 1))
         hx5dup = F.interpolate(hx5d, size=hx4.shape[2:], mode='bilinear', align_corners=False)
+        
         hx4d = self.rebnconv4d(torch.cat((hx5dup, hx4), 1))
         hx4dup = F.interpolate(hx4d, size=hx3.shape[2:], mode='bilinear', align_corners=False)
+        
         hx3d = self.rebnconv3d(torch.cat((hx4dup, hx3), 1))
         hx3dup = F.interpolate(hx3d, size=hx2.shape[2:], mode='bilinear', align_corners=False)
+        
         hx2d = self.rebnconv2d(torch.cat((hx3dup, hx2), 1))
         hx2dup = F.interpolate(hx2d, size=hx1.shape[2:], mode='bilinear', align_corners=False)
+        
         hx1d = self.rebnconv1d(torch.cat((hx2dup, hx1), 1))
+        
         return hx1d + hxin
 
 class RSU6(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
-        super(RSU6, self).__init__()
+        super().__init__()
         self.rebnconvin = REBNCONV(in_ch, out_ch, dirate=1)
         self.rebnconv1 = REBNCONV(out_ch, mid_ch, dirate=1)
         self.pool1 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv2 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool2 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv3 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool3 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv4 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool4 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv5 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.rebnconv6 = REBNCONV(mid_ch, mid_ch, dirate=2)
+        
         self.rebnconv5d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv4d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv3d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
@@ -735,39 +519,54 @@ class RSU6(nn.Module):
     def forward(self, x):
         hx = x
         hxin = self.rebnconvin(hx)
+        
         hx1 = self.rebnconv1(hxin)
         hx = self.pool1(hx1)
+        
         hx2 = self.rebnconv2(hx)
         hx = self.pool2(hx2)
+        
         hx3 = self.rebnconv3(hx)
         hx = self.pool3(hx3)
+        
         hx4 = self.rebnconv4(hx)
         hx = self.pool4(hx4)
+        
         hx5 = self.rebnconv5(hx)
         hx6 = self.rebnconv6(hx5)
+        
         hx5d = self.rebnconv5d(torch.cat((hx6, hx5), 1))
         hx5dup = F.interpolate(hx5d, size=hx4.shape[2:], mode='bilinear', align_corners=False)
+        
         hx4d = self.rebnconv4d(torch.cat((hx5dup, hx4), 1))
         hx4dup = F.interpolate(hx4d, size=hx3.shape[2:], mode='bilinear', align_corners=False)
+        
         hx3d = self.rebnconv3d(torch.cat((hx4dup, hx3), 1))
         hx3dup = F.interpolate(hx3d, size=hx2.shape[2:], mode='bilinear', align_corners=False)
+        
         hx2d = self.rebnconv2d(torch.cat((hx3dup, hx2), 1))
         hx2dup = F.interpolate(hx2d, size=hx1.shape[2:], mode='bilinear', align_corners=False)
+        
         hx1d = self.rebnconv1d(torch.cat((hx2dup, hx1), 1))
+        
         return hx1d + hxin
 
 class RSU5(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
-        super(RSU5, self).__init__()
+        super().__init__()
         self.rebnconvin = REBNCONV(in_ch, out_ch, dirate=1)
         self.rebnconv1 = REBNCONV(out_ch, mid_ch, dirate=1)
         self.pool1 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv2 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool2 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv3 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool3 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv4 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.rebnconv5 = REBNCONV(mid_ch, mid_ch, dirate=2)
+        
         self.rebnconv4d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv3d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv2d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
@@ -776,33 +575,45 @@ class RSU5(nn.Module):
     def forward(self, x):
         hx = x
         hxin = self.rebnconvin(hx)
+        
         hx1 = self.rebnconv1(hxin)
         hx = self.pool1(hx1)
+        
         hx2 = self.rebnconv2(hx)
         hx = self.pool2(hx2)
+        
         hx3 = self.rebnconv3(hx)
         hx = self.pool3(hx3)
+        
         hx4 = self.rebnconv4(hx)
         hx5 = self.rebnconv5(hx4)
+        
         hx4d = self.rebnconv4d(torch.cat((hx5, hx4), 1))
         hx4dup = F.interpolate(hx4d, size=hx3.shape[2:], mode='bilinear', align_corners=False)
+        
         hx3d = self.rebnconv3d(torch.cat((hx4dup, hx3), 1))
         hx3dup = F.interpolate(hx3d, size=hx2.shape[2:], mode='bilinear', align_corners=False)
+        
         hx2d = self.rebnconv2d(torch.cat((hx3dup, hx2), 1))
         hx2dup = F.interpolate(hx2d, size=hx1.shape[2:], mode='bilinear', align_corners=False)
+        
         hx1d = self.rebnconv1d(torch.cat((hx2dup, hx1), 1))
+        
         return hx1d + hxin
 
 class RSU4(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
-        super(RSU4, self).__init__()
+        super().__init__()
         self.rebnconvin = REBNCONV(in_ch, out_ch, dirate=1)
         self.rebnconv1 = REBNCONV(out_ch, mid_ch, dirate=1)
         self.pool1 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv2 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.pool2 = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+        
         self.rebnconv3 = REBNCONV(mid_ch, mid_ch, dirate=1)
         self.rebnconv4 = REBNCONV(mid_ch, mid_ch, dirate=2)
+        
         self.rebnconv3d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv2d = REBNCONV(mid_ch*2, mid_ch, dirate=1)
         self.rebnconv1d = REBNCONV(mid_ch*2, out_ch, dirate=1)
@@ -810,27 +621,35 @@ class RSU4(nn.Module):
     def forward(self, x):
         hx = x
         hxin = self.rebnconvin(hx)
+        
         hx1 = self.rebnconv1(hxin)
         hx = self.pool1(hx1)
+        
         hx2 = self.rebnconv2(hx)
         hx = self.pool2(hx2)
+        
         hx3 = self.rebnconv3(hx)
         hx4 = self.rebnconv4(hx3)
+        
         hx3d = self.rebnconv3d(torch.cat((hx4, hx3), 1))
         hx3dup = F.interpolate(hx3d, size=hx2.shape[2:], mode='bilinear', align_corners=False)
+        
         hx2d = self.rebnconv2d(torch.cat((hx3dup, hx2), 1))
         hx2dup = F.interpolate(hx2d, size=hx1.shape[2:], mode='bilinear', align_corners=False)
+        
         hx1d = self.rebnconv1d(torch.cat((hx2dup, hx1), 1))
+        
         return hx1d + hxin
 
 class RSU4F(nn.Module):
     def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
-        super(RSU4F, self).__init__()
+        super().__init__()
         self.rebnconvin = REBNCONV(in_ch, out_ch, dirate=1)
         self.rebnconv1 = REBNCONV(out_ch, mid_ch, dirate=1)
         self.rebnconv2 = REBNCONV(mid_ch, mid_ch, dirate=2)
         self.rebnconv3 = REBNCONV(mid_ch, mid_ch, dirate=4)
         self.rebnconv4 = REBNCONV(mid_ch, mid_ch, dirate=8)
+        
         self.rebnconv3d = REBNCONV(mid_ch*2, mid_ch, dirate=4)
         self.rebnconv2d = REBNCONV(mid_ch*2, mid_ch, dirate=2)
         self.rebnconv1d = REBNCONV(mid_ch*2, out_ch, dirate=1)
@@ -838,32 +657,35 @@ class RSU4F(nn.Module):
     def forward(self, x):
         hx = x
         hxin = self.rebnconvin(hx)
+        
         hx1 = self.rebnconv1(hxin)
         hx2 = self.rebnconv2(hx1)
         hx3 = self.rebnconv3(hx2)
         hx4 = self.rebnconv4(hx3)
+        
         hx3d = self.rebnconv3d(torch.cat((hx4, hx3), 1))
         hx2d = self.rebnconv2d(torch.cat((hx3d, hx2), 1))
         hx1d = self.rebnconv1d(torch.cat((hx2d, hx1), 1))
+        
         return hx1d + hxin
 
 class REBNCONV(nn.Module):
     def __init__(self, in_ch=3, out_ch=3, dirate=1):
-        super(REBNCONV, self).__init__()
+        super().__init__()
         self.conv_s1 = nn.Conv2d(in_ch, out_ch, 3, padding=1*dirate, dilation=1*dirate)
         self.bn_s1 = nn.BatchNorm2d(out_ch)
         self.relu_s1 = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        hx = self.relu_s1(self.bn_s1(self.conv_s1(x)))
-        return hx
+        return self.relu_s1(self.bn_s1(self.conv_s1(x)))
 
 class GeometricMatchingModel(nn.Module):
     """기하학적 매칭 모델 - Step 04"""
     
-    def __init__(self, feature_size=256):
+    def __init__(self, feature_size=256, num_control_points=18):
         super().__init__()
         self.feature_size = feature_size
+        self.num_control_points = num_control_points
         
         # 특징 추출 네트워크
         self.feature_extractor = self._build_feature_extractor()
@@ -871,8 +693,8 @@ class GeometricMatchingModel(nn.Module):
         # 상관관계 계산
         self.correlation = self._build_correlation_layer()
         
-        # 회귀 네트워크
-        self.regression = self._build_regression_network()
+        # TPS 파라미터 회귀
+        self.tps_regression = self._build_tps_regression()
         
     def _build_feature_extractor(self):
         """특징 추출 네트워크"""
@@ -880,34 +702,37 @@ class GeometricMatchingModel(nn.Module):
             nn.Conv2d(3, 64, 3, 1, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, 3, 1, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
+            
             nn.Conv2d(64, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
             nn.Conv2d(128, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
+            
             nn.Conv2d(128, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
+            
             nn.Conv2d(256, 512, 3, 1, 1), nn.BatchNorm2d(512), nn.ReLU(inplace=True),
             nn.Conv2d(512, 512, 3, 1, 1), nn.BatchNorm2d(512), nn.ReLU(inplace=True),
-            nn.Conv2d(512, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU(inplace=True)
+            nn.Conv2d(512, self.feature_size, 3, 1, 1), nn.BatchNorm2d(self.feature_size), nn.ReLU(inplace=True)
         )
     
     def _build_correlation_layer(self):
         """상관관계 계산 레이어"""
         return nn.Sequential(
-            nn.Conv2d(512, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+            nn.Conv2d(self.feature_size * 2, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
             nn.Conv2d(128, 64, 3, 1, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
             nn.Conv2d(64, 1, 1, 1, 0), nn.Sigmoid()
         )
     
-    def _build_regression_network(self):
-        """회귀 네트워크"""
+    def _build_tps_regression(self):
+        """TPS 파라미터 회귀 네트워크"""
         return nn.Sequential(
             nn.AdaptiveAvgPool2d((8, 8)),
             nn.Flatten(),
             nn.Linear(64, 256), nn.ReLU(inplace=True), nn.Dropout(0.5),
             nn.Linear(256, 128), nn.ReLU(inplace=True), nn.Dropout(0.5),
-            nn.Linear(128, 18)  # 6개 TPS 제어점 * 3 (x, y, confidence)
+            nn.Linear(128, self.num_control_points * 2)  # x, y 좌표
         )
     
     def forward(self, source_img, target_img):
@@ -922,11 +747,12 @@ class GeometricMatchingModel(nn.Module):
         correlation_map = self.correlation(combined_feat)
         
         # TPS 파라미터 회귀
-        tps_params = self.regression(correlation_map)
+        tps_params = self.tps_regression(correlation_map)
+        tps_params = tps_params.view(-1, self.num_control_points, 2)
         
         return {
             'correlation_map': correlation_map,
-            'tps_params': tps_params.view(-1, 6, 3),  # [batch, 6_points, (x,y,conf)]
+            'tps_params': tps_params,
             'source_features': source_feat,
             'target_features': target_feat
         }
@@ -934,11 +760,11 @@ class GeometricMatchingModel(nn.Module):
 class HRVITONModel(nn.Module):
     """HR-VITON 가상 피팅 모델 - Step 06"""
     
-    def __init__(self, input_nc=3, output_nc=3, ngf=64):
+    def __init__(self, input_nc=3, output_nc=3, ngf=64, n_downsampling=2, n_blocks=9):
         super().__init__()
         
         # 생성기 네트워크
-        self.generator = self._build_generator(input_nc, output_nc, ngf)
+        self.generator = self._build_generator(input_nc, output_nc, ngf, n_downsampling, n_blocks)
         
         # 어텐션 모듈
         self.attention = self._build_attention_module()
@@ -946,22 +772,43 @@ class HRVITONModel(nn.Module):
         # 융합 모듈
         self.fusion = self._build_fusion_module()
     
-    def _build_generator(self, input_nc, output_nc, ngf):
+    def _build_generator(self, input_nc, output_nc, ngf, n_downsampling, n_blocks):
         """생성기 네트워크 구성"""
-        return nn.Sequential(
-            # 인코더
-            nn.Conv2d(input_nc, ngf, 7, 1, 3), nn.InstanceNorm2d(ngf), nn.ReLU(True),
-            nn.Conv2d(ngf, ngf*2, 3, 2, 1), nn.InstanceNorm2d(ngf*2), nn.ReLU(True),
-            nn.Conv2d(ngf*2, ngf*4, 3, 2, 1), nn.InstanceNorm2d(ngf*4), nn.ReLU(True),
-            
-            # ResNet 블록들
-            *[ResnetBlock(ngf*4) for _ in range(9)],
-            
-            # 디코더
-            nn.ConvTranspose2d(ngf*4, ngf*2, 3, 2, 1, 1), nn.InstanceNorm2d(ngf*2), nn.ReLU(True),
-            nn.ConvTranspose2d(ngf*2, ngf, 3, 2, 1, 1), nn.InstanceNorm2d(ngf), nn.ReLU(True),
-            nn.Conv2d(ngf, output_nc, 7, 1, 3), nn.Tanh()
-        )
+        model = [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=False),
+            nn.InstanceNorm2d(ngf),
+            nn.ReLU(True)
+        ]
+        
+        # 다운샘플링
+        for i in range(n_downsampling):
+            mult = 2 ** i
+            model += [
+                nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=False),
+                nn.InstanceNorm2d(ngf * mult * 2),
+                nn.ReLU(True)
+            ]
+        
+        # ResNet 블록들
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, use_dropout=False)]
+        
+        # 업샘플링
+        for i in range(n_downsampling):
+            mult = 2 ** (n_downsampling - i)
+            model += [
+                nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+                nn.InstanceNorm2d(int(ngf * mult / 2)),
+                nn.ReLU(True)
+            ]
+        
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        model += [nn.Tanh()]
+        
+        return nn.Sequential(*model)
     
     def _build_attention_module(self):
         """어텐션 모듈"""
@@ -996,7 +843,8 @@ class HRVITONModel(nn.Module):
         return {
             'generated_image': final_result,
             'attention_map': attention_map,
-            'intermediate': generated
+            'intermediate': generated,
+            'warped_cloth': cloth_img
         }
 
 class ResnetBlock(nn.Module):
@@ -1007,23 +855,228 @@ class ResnetBlock(nn.Module):
 
     def _build_conv_block(self, dim, use_dropout):
         layers = []
-        layers += [nn.Conv2d(dim, dim, 3, 1, 1), nn.InstanceNorm2d(dim), nn.ReLU(True)]
+        layers += [nn.ReflectionPad2d(1)]
+        layers += [nn.Conv2d(dim, dim, kernel_size=3, padding=0, bias=False), nn.InstanceNorm2d(dim), nn.ReLU(True)]
         if use_dropout:
             layers += [nn.Dropout(0.5)]
-        layers += [nn.Conv2d(dim, dim, 3, 1, 1), nn.InstanceNorm2d(dim)]
+        layers += [nn.ReflectionPad2d(1)]
+        layers += [nn.Conv2d(dim, dim, kernel_size=3, padding=0, bias=False), nn.InstanceNorm2d(dim)]
         return nn.Sequential(*layers)
 
     def forward(self, x):
         return x + self.conv_block(x)
 
 # ==============================================
-# 메인 ModelLoader 클래스 - 완전한 기능 + Step 연동
+# 🔥 메모리 관리자 - 프로덕션 버전
+# ==============================================
+
+class ModelMemoryManager:
+    """프로덕션 모델 메모리 관리자"""
+    
+    def __init__(self, device: str = "mps", memory_limit_gb: float = 128.0):
+        self.device = device
+        self.memory_limit_gb = memory_limit_gb
+        self.memory_threshold = 0.8
+        
+    def get_available_memory(self) -> float:
+        """사용 가능한 메모리 (GB) 반환"""
+        try:
+            if self.device == "cuda" and torch.cuda.is_available():
+                total_memory = torch.cuda.get_device_properties(0).total_memory
+                allocated_memory = torch.cuda.memory_allocated()
+                return (total_memory - allocated_memory) / 1024**3
+            elif self.device == "mps":
+                try:
+                    import psutil
+                    memory = psutil.virtual_memory()
+                    return memory.available / 1024**3
+                except ImportError:
+                    return self.memory_limit_gb * 0.8
+            else:
+                try:
+                    import psutil
+                    memory = psutil.virtual_memory()
+                    return memory.available / 1024**3
+                except ImportError:
+                    return 8.0
+        except Exception as e:
+            logger.warning(f"메모리 조회 실패: {e}")
+            return self.memory_limit_gb * 0.5
+    
+    def cleanup_memory(self):
+        """메모리 정리"""
+        try:
+            gc.collect()
+            
+            if self.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif self.device == "mps" and torch.backends.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except:
+                    pass
+            
+            logger.debug("메모리 정리 완료")
+        except Exception as e:
+            logger.warning(f"메모리 정리 실패: {e}")
+    
+    def check_memory_pressure(self) -> bool:
+        """메모리 압박 상태 체크"""
+        try:
+            available_memory = self.get_available_memory()
+            if available_memory < self.memory_limit_gb * 0.2:  # 20% 미만
+                return True
+            return False
+        except Exception:
+            return False
+
+# ==============================================
+# 🔥 모델 레지스트리 - 프로덕션 버전
+# ==============================================
+
+class ModelRegistry:
+    """프로덕션 모델 레지스트리"""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if not getattr(self, '_initialized', False):
+            self.registered_models: Dict[str, Dict[str, Any]] = {}
+            self._lock = threading.RLock()
+            self._initialized = True
+            logger.info("ModelRegistry 초기화 완료")
+    
+    def register_model(self, 
+                      name: str, 
+                      model_class: Type, 
+                      default_config: Dict[str, Any] = None,
+                      loader_func: Optional[Callable] = None):
+        """모델 등록"""
+        with self._lock:
+            try:
+                self.registered_models[name] = {
+                    'class': model_class,
+                    'config': default_config or {},
+                    'loader': loader_func,
+                    'registered_at': time.time()
+                }
+                logger.info(f"모델 등록: {name}")
+            except Exception as e:
+                logger.error(f"모델 등록 실패 {name}: {e}")
+    
+    def get_model_info(self, name: str) -> Optional[Dict[str, Any]]:
+        """모델 정보 조회"""
+        with self._lock:
+            return self.registered_models.get(name)
+    
+    def list_models(self) -> List[str]:
+        """등록된 모델 목록"""
+        with self._lock:
+            return list(self.registered_models.keys())
+    
+    def unregister_model(self, name: str) -> bool:
+        """모델 등록 해제"""
+        with self._lock:
+            try:
+                if name in self.registered_models:
+                    del self.registered_models[name]
+                    logger.info(f"모델 등록 해제: {name}")
+                    return True
+                return False
+            except Exception as e:
+                logger.error(f"모델 등록 해제 실패 {name}: {e}")
+                return False
+
+# ==============================================
+# 🔥 Step 인터페이스 - 프로덕션 버전
+# ==============================================
+
+class StepModelInterface:
+    """Step 클래스와 ModelLoader 간 인터페이스"""
+    
+    def __init__(self, model_loader: 'ModelLoader', step_name: str):
+        self.model_loader = model_loader
+        self.step_name = step_name
+        self.loaded_models: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+    
+    async def get_model(self, model_name: str, **kwargs) -> Optional[Any]:
+        """Step에서 필요한 모델 요청"""
+        try:
+            with self._lock:
+                cache_key = f"{self.step_name}_{model_name}"
+                
+                # 캐시 확인
+                if cache_key in self.loaded_models:
+                    return self.loaded_models[cache_key]
+                
+                # 모델 로드
+                model = await self.model_loader.load_model(model_name, **kwargs)
+                
+                if model:
+                    self.loaded_models[cache_key] = model
+                    logger.info(f"📦 {self.step_name}에 {model_name} 모델 전달 완료")
+                else:
+                    logger.error(f"❌ {self.step_name}에서 {model_name} 모델 로드 실패 - 실제 모델 파일 확인 필요")
+                
+                return model
+                
+        except Exception as e:
+            logger.error(f"❌ {self.step_name}에서 {model_name} 모델 로드 실패: {e}")
+            return None
+    
+    async def get_recommended_model(self) -> Optional[Any]:
+        """Step별 권장 모델 자동 선택"""
+        model_recommendations = {
+            'HumanParsingStep': 'human_parsing_graphonomy',
+            'PoseEstimationStep': 'pose_estimation_openpose', 
+            'ClothSegmentationStep': 'cloth_segmentation_u2net',
+            'GeometricMatchingStep': 'geometric_matching_gmm',
+            'ClothWarpingStep': 'cloth_warping_tom',
+            'VirtualFittingStep': 'virtual_fitting_hrviton',
+            'PostProcessingStep': 'post_processing_enhancer',
+            'QualityAssessmentStep': 'quality_assessment_combined'
+        }
+        
+        recommended_model = model_recommendations.get(self.step_name)
+        if recommended_model:
+            return await self.get_model(recommended_model)
+        
+        logger.error(f"❌ {self.step_name}에 대한 권장 모델이 없습니다")
+        return None
+    
+    def unload_models(self):
+        """Step의 모든 모델 언로드"""
+        try:
+            with self._lock:
+                for model_name, model in self.loaded_models.items():
+                    if hasattr(model, 'cpu'):
+                        model.cpu()
+                    del model
+                
+                self.loaded_models.clear()
+                logger.info(f"🗑️ {self.step_name} 모델들 언로드 완료")
+                
+        except Exception as e:
+            logger.error(f"❌ {self.step_name} 모델 언로드 실패: {e}")
+
+# ==============================================
+# 🔥 메인 ModelLoader 클래스 - 프로덕션 버전
 # ==============================================
 
 class ModelLoader:
     """
-    🍎 M3 Max 최적화 실제 AI 모델 로더 - 완전한 기능 + Step 연동
-    ✅ 최적 생성자 패턴 적용 + 완전한 기능 복원 + Step 클래스 통합
+    🍎 M3 Max 최적화 프로덕션 레벨 AI 모델 로더
+    ✅ Step 클래스와 완벽 연동
+    ✅ 폴백 제거, 실제 모델만 사용
+    ✅ 프로덕션 안정성 보장
     """
     
     def __init__(
@@ -1032,71 +1085,34 @@ class ModelLoader:
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """✅ 최적화된 생성자 - Step 클래스 연동 개선"""
+        """Step 클래스와 완벽 호환되는 생성자"""
         
-        # 기본 설정
+        # 🔥 Step 클래스 생성자 패턴 완전 호환
         self.device = self._auto_detect_device(device)
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"utils.{self.step_name}")
         
-        # 시스템 파라미터 설정
+        # 시스템 파라미터
         self.device_type = kwargs.get('device_type', 'auto')
-        self.memory_gb = kwargs.get('memory_gb', 16.0)
+        self.memory_gb = kwargs.get('memory_gb', 128.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        # 모델 로더 특화 파라미터
-        self.model_cache_dir = Path(kwargs.get('model_cache_dir', './ai_models'))
+        # ModelLoader 특화 파라미터
+        self.model_cache_dir = Path(kwargs.get('model_cache_dir', 'backend/app/ai_pipeline/models/ai_models'))
         self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
         self.max_cached_models = kwargs.get('max_cached_models', 10)
         self.lazy_loading = kwargs.get('lazy_loading', True)
-        self.enable_fallback = kwargs.get('enable_fallback', True)
         
-        # 🔥 새로운 기능: Step 인터페이스 관리
-        self.step_interfaces: Dict[str, StepModelInterface] = {}
-        self._interface_lock = threading.RLock()
-        
-        # 기존 초기화
+        # Step 특화 설정 병합
         self._merge_step_specific_config(kwargs)
-        self.is_initialized = False
+        
+        # 초기화 실행
         self._initialize_step_specific()
         
-        self.logger.info(f"🎯 ModelLoader 초기화 완료 - 디바이스: {self.device}")
-    
-    def create_step_interface(self, step_name: str) -> StepModelInterface:
-        """Step 클래스를 위한 모델 인터페이스 생성"""
-        try:
-            with self._interface_lock:
-                if step_name not in self.step_interfaces:
-                    interface = StepModelInterface(self, step_name)
-                    self.step_interfaces[step_name] = interface
-                    self.logger.info(f"🔗 {step_name} 인터페이스 생성 완료")
-                
-                return self.step_interfaces[step_name]
-                
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
-            return StepModelInterface(self, step_name)
-    
-    def get_step_interface(self, step_name: str) -> Optional[StepModelInterface]:
-        """기존 Step 인터페이스 조회"""
-        with self._interface_lock:
-            return self.step_interfaces.get(step_name)
-    
-    def cleanup_step_interface(self, step_name: str):
-        """Step 인터페이스 정리"""
-        try:
-            with self._interface_lock:
-                if step_name in self.step_interfaces:
-                    interface = self.step_interfaces[step_name]
-                    interface.unload_models()
-                    del self.step_interfaces[step_name]
-                    self.logger.info(f"🗑️ {step_name} 인터페이스 정리 완료")
-                    
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 인터페이스 정리 실패: {e}")
+        self.logger.info(f"🎯 프로덕션 ModelLoader 초기화 완료 - 디바이스: {self.device}")
     
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """디바이스 자동 감지"""
@@ -1104,7 +1120,7 @@ class ModelLoader:
             return preferred_device
 
         if not TORCH_AVAILABLE:
-            return 'cpu'
+            raise RuntimeError("PyTorch가 필요합니다")
 
         try:
             if torch.backends.mps.is_available():
@@ -1131,12 +1147,12 @@ class ModelLoader:
         return False
     
     def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
-        """설정 병합"""
+        """Step 특화 설정 병합"""
         system_params = {
             'device_type', 'memory_gb', 'is_m3_max', 
             'optimization_enabled', 'quality_level',
             'model_cache_dir', 'use_fp16', 'max_cached_models',
-            'lazy_loading', 'enable_fallback'
+            'lazy_loading'
         }
 
         for key, value in kwargs.items():
@@ -1144,10 +1160,10 @@ class ModelLoader:
                 self.config[key] = value
     
     def _initialize_step_specific(self):
-        """기본 초기화"""
+        """ModelLoader 특화 초기화"""
         # 핵심 구성 요소들
         self.registry = ModelRegistry()
-        self.memory_manager = ModelMemoryManager(device=self.device)
+        self.memory_manager = ModelMemoryManager(device=self.device, memory_limit_gb=self.memory_gb)
         
         # 모델 캐시 및 상태 관리
         self.model_cache: Dict[str, Any] = {}
@@ -1155,6 +1171,10 @@ class ModelLoader:
         self.load_times: Dict[str, float] = {}
         self.last_access: Dict[str, float] = {}
         self.access_counts: Dict[str, int] = {}
+        
+        # Step 인터페이스 관리
+        self.step_interfaces: Dict[str, StepModelInterface] = {}
+        self._interface_lock = threading.RLock()
         
         # 동기화 및 스레드 관리
         self._lock = threading.RLock()
@@ -1169,16 +1189,13 @@ class ModelLoader:
             if COREML_AVAILABLE:
                 self.logger.info("🍎 CoreML 최적화 활성화됨")
         
-        # 실제 모델 레지스트리 초기화
+        # 실제 AI 모델 레지스트리 초기화
         self._initialize_model_registry()
         
-        self.logger.info(f"📦 실제 AI 모델 로더 초기화 - {self.device} (FP16: {self.use_fp16})")
-        
-        # 초기화 완료
-        self.is_initialized = True
+        self.logger.info(f"📦 프로덕션 AI 모델 로더 초기화 - {self.device} (FP16: {self.use_fp16})")
 
     def _initialize_model_registry(self):
-        """실제 AI 모델들 등록 - 정확한 경로 포함"""
+        """실제 AI 모델들 등록 - 프로덕션 경로"""
         base_models_dir = self.model_cache_dir
         
         model_configs = {
@@ -1187,9 +1204,10 @@ class ModelLoader:
                 name="human_parsing_graphonomy",
                 model_type=ModelType.HUMAN_PARSING,
                 model_class="GraphonomyModel",
-                checkpoint_path=str(base_models_dir / "Graphonomy" / "inference.pth"),
+                checkpoint_path=str(base_models_dir / "checkpoints" / "step_01_human_parsing" / "graphonomy.pth"),
                 input_size=(512, 512),
-                num_classes=20
+                num_classes=20,
+                metadata={"backbone": "resnet101", "pretrained": True}
             ),
             
             # Step 02: Pose Estimation - OpenPose
@@ -1197,9 +1215,10 @@ class ModelLoader:
                 name="pose_estimation_openpose", 
                 model_type=ModelType.POSE_ESTIMATION,
                 model_class="OpenPoseModel",
-                checkpoint_path=str(base_models_dir / "openpose" / "pose_model.pth"),
+                checkpoint_path=str(base_models_dir / "checkpoints" / "step_02_pose_estimation" / "openpose.pth"),
                 input_size=(368, 368),
-                num_classes=18
+                num_classes=18,
+                metadata={"num_pafs": 38, "stages": 6}
             ),
             
             # Step 03: Cloth Segmentation - U2Net
@@ -1207,8 +1226,9 @@ class ModelLoader:
                 name="cloth_segmentation_u2net",
                 model_type=ModelType.CLOTH_SEGMENTATION, 
                 model_class="U2NetModel",
-                checkpoint_path=str(base_models_dir / "checkpoints" / "u2net.pth"),
-                input_size=(320, 320)
+                checkpoint_path=str(base_models_dir / "checkpoints" / "step_03_cloth_segmentation" / "u2net.pth"),
+                input_size=(320, 320),
+                metadata={"architecture": "u2net", "output_channels": 1}
             ),
             
             # Step 04: Geometric Matching - GMM
@@ -1216,8 +1236,9 @@ class ModelLoader:
                 name="geometric_matching_gmm",
                 model_type=ModelType.GEOMETRIC_MATCHING,
                 model_class="GeometricMatchingModel", 
-                checkpoint_path=str(base_models_dir / "HR-VITON" / "gmm_final.pth"),
-                input_size=(512, 384)
+                checkpoint_path=str(base_models_dir / "checkpoints" / "gmm_final.pth"),
+                input_size=(512, 384),
+                metadata={"control_points": 18, "feature_size": 256}
             ),
             
             # Step 05: Cloth Warping - TOM
@@ -1225,8 +1246,9 @@ class ModelLoader:
                 name="cloth_warping_tom",
                 model_type=ModelType.CLOTH_WARPING,
                 model_class="HRVITONModel",
-                checkpoint_path=str(base_models_dir / "HR-VITON" / "tom_final.pth"),
-                input_size=(512, 384)
+                checkpoint_path=str(base_models_dir / "checkpoints" / "tom_final.pth"),
+                input_size=(512, 384),
+                metadata={"generator_type": "unet", "blocks": 9}
             ),
             
             # Step 06: Virtual Fitting - HR-VITON
@@ -1234,17 +1256,9 @@ class ModelLoader:
                 name="virtual_fitting_hrviton",
                 model_type=ModelType.VIRTUAL_FITTING,
                 model_class="HRVITONModel",
-                checkpoint_path=str(base_models_dir / "HR-VITON" / "final.pth"),
-                input_size=(512, 384)
-            ),
-            
-            # OOTD 대체 모델
-            "virtual_fitting_ootd": ModelConfig(
-                name="virtual_fitting_ootd",
-                model_type=ModelType.DIFFUSION,
-                model_class="StableDiffusionPipeline",
-                checkpoint_path=str(base_models_dir / "OOTDiffusion"),
-                input_size=(512, 512)
+                checkpoint_path=str(base_models_dir / "checkpoints" / "hrviton_final.pth"),
+                input_size=(512, 384),
+                metadata={"has_attention": True, "has_fusion": True}
             )
         }
         
@@ -1282,7 +1296,7 @@ class ModelLoader:
                 # 내부 설정 저장
                 self.model_configs[name] = model_config
                 
-                self.logger.info(f"📝 실제 AI 모델 등록: {name} ({model_config.model_type.value})")
+                self.logger.info(f"📝 프로덕션 AI 모델 등록: {name} ({model_config.model_type.value})")
                 return True
                 
         except Exception as e:
@@ -1301,13 +1315,28 @@ class ModelLoader:
         }
         return model_classes.get(model_class_name, None)
 
+    def create_step_interface(self, step_name: str) -> StepModelInterface:
+        """Step 클래스를 위한 모델 인터페이스 생성"""
+        try:
+            with self._interface_lock:
+                if step_name not in self.step_interfaces:
+                    interface = StepModelInterface(self, step_name)
+                    self.step_interfaces[step_name] = interface
+                    self.logger.info(f"🔗 {step_name} 인터페이스 생성 완료")
+                
+                return self.step_interfaces[step_name]
+                
+        except Exception as e:
+            self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
+            return StepModelInterface(self, step_name)
+
     async def load_model(
         self,
         name: str,
         force_reload: bool = False,
         **kwargs
     ) -> Optional[Any]:
-        """실제 AI 모델 로드"""
+        """프로덕션 AI 모델 로드 - 폴백 없음"""
         try:
             cache_key = f"{name}_{kwargs.get('config_hash', 'default')}"
             
@@ -1321,15 +1350,13 @@ class ModelLoader:
                 
                 # 모델 설정 확인
                 if name not in self.model_configs:
-                    self.logger.warning(f"⚠️ 등록되지 않은 모델: {name}")
-                    if self.enable_fallback:
-                        return await self._load_fallback_model(name)
-                    return None
+                    self.logger.error(f"❌ 등록되지 않은 모델: {name}")
+                    raise ValueError(f"Model {name} not registered")
                 
                 start_time = time.time()
                 model_config = self.model_configs[name]
                 
-                self.logger.info(f"📦 실제 AI 모델 로딩 시작: {name} ({model_config.model_type.value})")
+                self.logger.info(f"📦 프로덕션 AI 모델 로딩 시작: {name} ({model_config.model_type.value})")
                 
                 # 메모리 압박 확인 및 정리
                 await self._check_memory_and_cleanup()
@@ -1338,10 +1365,8 @@ class ModelLoader:
                 model = await self._create_model_instance(model_config, **kwargs)
                 
                 if model is None:
-                    self.logger.warning(f"⚠️ 모델 생성 실패: {name}")
-                    if self.enable_fallback:
-                        return await self._load_fallback_model(name)
-                    return None
+                    self.logger.error(f"❌ 모델 생성 실패: {name}")
+                    raise RuntimeError(f"Failed to create model {name}")
                 
                 # 체크포인트 로드
                 await self._load_checkpoint(model, model_config)
@@ -1372,55 +1397,66 @@ class ModelLoader:
                 self.last_access[cache_key] = time.time()
                 
                 load_time = self.load_times[cache_key]
-                self.logger.info(f"✅ 실제 AI 모델 로딩 완료: {name} ({load_time:.2f}s)")
+                self.logger.info(f"✅ 프로덕션 AI 모델 로딩 완료: {name} ({load_time:.2f}s)")
                 
                 return model
                 
         except Exception as e:
-            self.logger.error(f"❌ 모델 로딩 실패 {name}: {e}")
-            if self.enable_fallback:
-                return await self._load_fallback_model(name)
-            return None
+            self.logger.error(f"❌ 프로덕션 모델 로딩 실패 {name}: {e}")
+            raise
 
     async def _create_model_instance(
         self,
         model_config: ModelConfig,
         **kwargs
     ) -> Optional[Any]:
-        """실제 AI 모델 인스턴스 생성"""
+        """프로덕션 AI 모델 인스턴스 생성"""
         try:
             model_class = model_config.model_class
             
             if model_class == "GraphonomyModel":
                 return GraphonomyModel(
                     num_classes=model_config.num_classes or 20,
-                    backbone='resnet101'
+                    backbone=model_config.metadata.get('backbone', 'resnet101'),
+                    pretrained=model_config.metadata.get('pretrained', True)
                 )
             
             elif model_class == "OpenPoseModel":
                 return OpenPoseModel(
-                    num_keypoints=model_config.num_classes or 18
+                    num_keypoints=model_config.num_classes or 18,
+                    num_pafs=model_config.metadata.get('num_pafs', 38)
                 )
             
             elif model_class == "U2NetModel":
-                return U2NetModel(in_ch=3, out_ch=1)
+                return U2NetModel(
+                    in_ch=3, 
+                    out_ch=model_config.metadata.get('output_channels', 1)
+                )
             
             elif model_class == "GeometricMatchingModel":
-                return GeometricMatchingModel(feature_size=256)
+                return GeometricMatchingModel(
+                    feature_size=model_config.metadata.get('feature_size', 256),
+                    num_control_points=model_config.metadata.get('control_points', 18)
+                )
             
             elif model_class == "HRVITONModel":
-                return HRVITONModel(input_nc=3, output_nc=3, ngf=64)
+                return HRVITONModel(
+                    input_nc=3, 
+                    output_nc=3, 
+                    ngf=64,
+                    n_blocks=model_config.metadata.get('blocks', 9)
+                )
             
             elif model_class == "StableDiffusionPipeline":
                 return await self._create_diffusion_model(model_config)
             
             else:
-                self.logger.warning(f"⚠️ 지원하지 않는 모델 클래스: {model_class}")
-                return None
+                self.logger.error(f"❌ 지원하지 않는 모델 클래스: {model_class}")
+                raise ValueError(f"Unsupported model class: {model_class}")
                 
         except Exception as e:
             self.logger.error(f"❌ 모델 인스턴스 생성 실패: {e}")
-            return None
+            raise
 
     async def _create_diffusion_model(self, model_config: ModelConfig):
         """Diffusion 모델 생성"""
@@ -1436,33 +1472,29 @@ class ModelLoader:
                         requires_safety_checker=False
                     )
                 else:
-                    pipeline = StableDiffusionPipeline.from_pretrained(
-                        "runwayml/stable-diffusion-v1-5",
-                        torch_dtype=torch.float16 if self.use_fp16 else torch.float32,
-                        safety_checker=None,
-                        requires_safety_checker=False
-                    )
+                    self.logger.error(f"❌ Diffusion 모델 체크포인트를 찾을 수 없음: {model_config.checkpoint_path}")
+                    raise FileNotFoundError(f"Diffusion checkpoint not found: {model_config.checkpoint_path}")
                 
                 return pipeline
             else:
-                self.logger.warning("⚠️ Diffusers 라이브러리가 없음")
-                return None
+                self.logger.error("❌ Diffusers 라이브러리가 설치되지 않음")
+                raise ImportError("diffusers library is required")
                 
         except Exception as e:
             self.logger.error(f"❌ Diffusion 모델 생성 실패: {e}")
-            return None
+            raise
 
     async def _load_checkpoint(self, model: Any, model_config: ModelConfig):
-        """체크포인트 로드"""
+        """체크포인트 로드 - 프로덕션 버전"""
         if not model_config.checkpoint_path:
-            self.logger.info(f"📝 체크포인트 경로 없음: {model_config.name}")
+            self.logger.warning(f"⚠️ 체크포인트 경로 없음: {model_config.name}")
             return
             
         checkpoint_path = Path(model_config.checkpoint_path)
         
         if not checkpoint_path.exists():
-            self.logger.warning(f"⚠️ 체크포인트를 찾을 수 없음: {checkpoint_path}")
-            return
+            self.logger.error(f"❌ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
+            raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
         
         try:
             # PyTorch 모델인 경우
@@ -1488,7 +1520,8 @@ class ModelLoader:
                 self.logger.info(f"📝 체크포인트 로드 건너뜀 (파이프라인): {model_config.name}")
                 
         except Exception as e:
-            self.logger.warning(f"⚠️ 체크포인트 로드 실패: {e}")
+            self.logger.error(f"❌ 체크포인트 로드 실패: {e}")
+            raise
 
     async def _apply_m3_max_optimization(self, model: Any, model_config: ModelConfig) -> Any:
         """M3 Max 특화 모델 최적화"""
@@ -1527,200 +1560,6 @@ class ModelLoader:
         except Exception as e:
             self.logger.warning(f"⚠️ M3 Max 모델 최적화 실패: {e}")
             return model
-
-    async def _load_fallback_model(self, model_name: str) -> Optional[Any]:
-        """대체 모델 로드 (MediaPipe, RemBG 등)"""
-        try:
-            fallback_model = None
-            
-            # 모델 타입별 대체 모델 (실제 라이브러리 사용)
-            if "pose" in model_name.lower() or "pose_estimation" in model_name:
-                fallback_model = self._load_mediapipe_pose()
-                
-            elif "parsing" in model_name.lower() or "human_parsing" in model_name:
-                fallback_model = self._load_mediapipe_selfie()
-                
-            elif "segmentation" in model_name.lower() or "cloth_segmentation" in model_name:
-                fallback_model = self._load_rembg_model()
-                
-            elif "matching" in model_name.lower() or "geometric" in model_name:
-                fallback_model = self._create_simple_matching_model()
-                
-            elif "warping" in model_name.lower() or "fitting" in model_name or "viton" in model_name:
-                fallback_model = self._create_simple_generation_model(model_name)
-            
-            if fallback_model:
-                self.logger.info(f"✅ 대체 모델 로드 완료: {model_name}")
-            
-            return fallback_model
-            
-        except Exception as e:
-            self.logger.error(f"❌ 대체 모델 로드 실패: {e}")
-            return None
-
-    def _load_mediapipe_pose(self):
-        """MediaPipe Pose 모델"""
-        try:
-            if MEDIAPIPE_AVAILABLE:
-                return mp.solutions.pose.Pose(
-                    static_image_mode=True,
-                    model_complexity=2,
-                    enable_segmentation=True,
-                    min_detection_confidence=0.5
-                )
-            else:
-                return None
-        except Exception as e:
-            self.logger.warning(f"⚠️ MediaPipe Pose 로드 실패: {e}")
-            return None
-
-    def _load_mediapipe_selfie(self):
-        """MediaPipe Selfie Segmentation"""
-        try:
-            if MEDIAPIPE_AVAILABLE:
-                return mp.solutions.selfie_segmentation.SelfieSegmentation(
-                    model_selection=1
-                )
-            else:
-                return None
-        except Exception as e:
-            self.logger.warning(f"⚠️ MediaPipe Selfie 로드 실패: {e}")
-            return None
-
-    def _load_rembg_model(self):
-        """RemBG 배경 제거 모델"""
-        try:
-            # rembg 라이브러리가 있으면 사용
-            try:
-                from rembg import new_session
-                return new_session("u2net")
-            except ImportError:
-                # 없으면 간단한 세그멘테이션 모델
-                return self._create_simple_segmentation_model()
-        except Exception as e:
-            self.logger.warning(f"⚠️ RemBG 로드 실패: {e}")
-            return self._create_simple_segmentation_model()
-
-    def _create_simple_segmentation_model(self):
-        """간단한 세그멘테이션 모델"""
-        if not TORCH_AVAILABLE:
-            return None
-            
-        class SimpleSegmentationModel(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.encoder = nn.Sequential(
-                    nn.Conv2d(3, 64, 3, 1, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(64, 128, 3, 2, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(128, 256, 3, 2, 1), nn.ReLU(inplace=True),
-                )
-                self.decoder = nn.Sequential(
-                    nn.ConvTranspose2d(256, 128, 4, 2, 1), nn.ReLU(inplace=True),
-                    nn.ConvTranspose2d(128, 64, 4, 2, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(64, 1, 3, 1, 1), nn.Sigmoid()
-                )
-            
-            def forward(self, x):
-                features = self.encoder(x)
-                output = self.decoder(features)
-                return output
-        
-        model = SimpleSegmentationModel()
-        model = model.to(self.device)
-        return model
-
-    def _create_simple_matching_model(self):
-        """간단한 기하학적 매칭 모델"""
-        if not TORCH_AVAILABLE:
-            return None
-            
-        class SimpleMatchingModel(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.feature_net = nn.Sequential(
-                    nn.Conv2d(3, 64, 3, 1, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(64, 128, 3, 2, 1), nn.ReLU(inplace=True),
-                    nn.AdaptiveAvgPool2d((8, 8)),
-                    nn.Flatten(),
-                    nn.Linear(128 * 64, 256), nn.ReLU(inplace=True),
-                    nn.Linear(256, 18)  # 6개 제어점 * 3
-                )
-            
-            def forward(self, source_img, target_img=None):
-                if target_img is not None:
-                    # 두 이미지를 결합
-                    combined = torch.cat([source_img, target_img], dim=1)
-                    combined = nn.functional.interpolate(combined, size=(256, 256), mode='bilinear')
-                    # 첫 3채널만 사용
-                    combined = combined[:, :3]
-                else:
-                    combined = source_img
-                
-                tps_params = self.feature_net(combined)
-                return {
-                    'tps_params': tps_params.view(-1, 6, 3),
-                    'correlation_map': torch.ones(combined.shape[0], 1, 64, 64).to(combined.device)
-                }
-        
-        model = SimpleMatchingModel()
-        model = model.to(self.device)
-        return model
-
-    def _create_simple_generation_model(self, model_name: str):
-        """간단한 생성 모델"""
-        if not TORCH_AVAILABLE:
-            return None
-            
-        class SimpleGenerationModel(nn.Module):
-            def __init__(self, model_name: str):
-                super().__init__()
-                self.model_name = model_name
-                
-                # U-Net 스타일 생성기
-                self.encoder = nn.Sequential(
-                    nn.Conv2d(6, 64, 3, 1, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(64, 128, 3, 2, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(128, 256, 3, 2, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(256, 512, 3, 2, 1), nn.ReLU(inplace=True)
-                )
-                
-                self.decoder = nn.Sequential(
-                    nn.ConvTranspose2d(512, 256, 4, 2, 1), nn.ReLU(inplace=True),
-                    nn.ConvTranspose2d(256, 128, 4, 2, 1), nn.ReLU(inplace=True),
-                    nn.ConvTranspose2d(128, 64, 4, 2, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(64, 3, 3, 1, 1), nn.Tanh()
-                )
-                
-                # 어텐션 모듈
-                self.attention = nn.Sequential(
-                    nn.Conv2d(6, 32, 3, 1, 1), nn.ReLU(inplace=True),
-                    nn.Conv2d(32, 1, 1, 1, 0), nn.Sigmoid()
-                )
-            
-            def forward(self, person_img, cloth_img, **kwargs):
-                # 입력 결합
-                combined_input = torch.cat([person_img, cloth_img], dim=1)
-                
-                # 생성
-                features = self.encoder(combined_input)
-                generated = self.decoder(features)
-                
-                # 어텐션 적용
-                attention_map = self.attention(combined_input)
-                
-                # 최종 결과
-                result = generated * attention_map + person_img * (1 - attention_map)
-                
-                return {
-                    'generated_image': result,
-                    'attention_map': attention_map,
-                    'warped_cloth': cloth_img,  # 간단한 경우
-                    'intermediate': generated
-                }
-        
-        model = SimpleGenerationModel(model_name)
-        model = model.to(self.device)
-        return model
 
     async def _check_memory_and_cleanup(self):
         """메모리 확인 및 정리"""
@@ -1836,7 +1675,8 @@ class ModelLoader:
                 "average_load_time": sum(self.load_times.get(k, 0) for k in cache_keys) / max(1, len(cache_keys)),
                 "checkpoint_path": config.checkpoint_path,
                 "input_size": config.input_size,
-                "last_access": max((self.last_access.get(k, 0) for k in cache_keys), default=0)
+                "last_access": max((self.last_access.get(k, 0) for k in cache_keys), default=0),
+                "metadata": config.metadata
             }
 
     def list_models(self) -> Dict[str, Dict[str, Any]]:
@@ -1856,7 +1696,8 @@ class ModelLoader:
                 "loaded_models": len(self.model_cache),
                 "device": self.device,
                 "available_memory_gb": self.memory_manager.get_available_memory(),
-                "memory_pressure": self.memory_manager.check_memory_pressure()
+                "memory_pressure": self.memory_manager.check_memory_pressure(),
+                "memory_limit_gb": self.memory_gb
             }
             
             if self.device == "cuda" and torch.cuda.is_available():
@@ -1874,9 +1715,7 @@ class ModelLoader:
                     })
                 except ImportError:
                     usage["memory_info"] = "psutil not available"
-            else:
-                usage["memory_info"] = "cpu mode"
-                
+            
             return usage
             
         except Exception as e:
@@ -1889,7 +1728,9 @@ class ModelLoader:
             # Step 인터페이스들 정리
             with self._interface_lock:
                 for step_name in list(self.step_interfaces.keys()):
-                    self.cleanup_step_interface(step_name)
+                    interface = self.step_interfaces[step_name]
+                    interface.unload_models()
+                    del self.step_interfaces[step_name]
             
             # 모델 캐시 정리
             with self._lock:
@@ -1933,55 +1774,20 @@ class ModelLoader:
                         missing_checkpoints.append(name)
             
             if missing_checkpoints:
-                self.logger.warning(f"⚠️ 체크포인트 파일이 없는 모델들: {missing_checkpoints}")
-                self.logger.info("📝 해당 모델들은 대체 모델로 로드됩니다")
+                self.logger.error(f"❌ 체크포인트 파일이 없는 모델들: {missing_checkpoints}")
+                self.logger.error("프로덕션 모드에서는 모든 모델 파일이 필요합니다")
+                return False
             
             # M3 Max 최적화 설정
             if COREML_AVAILABLE and self.is_m3_max:
                 self.logger.info("🍎 CoreML 최적화 설정 완료")
             
-            self.logger.info(f"✅ 실제 AI 모델 로더 초기화 완료 - {len(self.model_configs)}개 모델 등록됨")
+            self.logger.info(f"✅ 프로덕션 AI 모델 로더 초기화 완료 - {len(self.model_configs)}개 모델 등록됨")
             return True
             
         except Exception as e:
             self.logger.error(f"❌ 모델 로더 초기화 실패: {e}")
             return False
-
-    async def get_step_info(self) -> Dict[str, Any]:
-        """모델 로더 정보 반환"""
-        return {
-            "step_name": self.step_name,
-            "device": self.device,
-            "device_type": self.device_type,
-            "memory_gb": self.memory_gb,
-            "is_m3_max": self.is_m3_max,
-            "optimization_enabled": self.optimization_enabled,
-            "quality_level": self.quality_level,
-            "initialized": self.is_initialized,
-            "config_keys": list(self.config.keys()),
-            "specialized_features": {
-                "use_fp16": self.use_fp16,
-                "lazy_loading": self.lazy_loading,
-                "max_cached_models": self.max_cached_models,
-                "enable_fallback": self.enable_fallback
-            },
-            "model_stats": {
-                "registered_models": len(self.model_configs),
-                "loaded_models": len(self.model_cache),
-                "total_access_count": sum(self.access_counts.values()),
-                "average_load_time": sum(self.load_times.values()) / len(self.load_times) if self.load_times else 0
-            },
-            "library_availability": {
-                "torch": TORCH_AVAILABLE,
-                "opencv": CV_AVAILABLE,
-                "mediapipe": MEDIAPIPE_AVAILABLE,
-                "transformers": TRANSFORMERS_AVAILABLE,
-                "diffusers": DIFFUSERS_AVAILABLE,
-                "onnx": ONNX_AVAILABLE,
-                "coreml": COREML_AVAILABLE
-            },
-            "memory_usage": self.get_memory_usage()
-        }
 
     def __del__(self):
         """소멸자"""
@@ -1991,7 +1797,7 @@ class ModelLoader:
             pass
 
 # ==============================================
-# Step 클래스 연동 믹스인
+# 🔥 Step 클래스 연동 믹스인
 # ==============================================
 
 class BaseStepMixin:
@@ -2018,7 +1824,7 @@ class BaseStepMixin:
         """모델 로드 (Step에서 사용)"""
         try:
             if not hasattr(self, 'model_interface') or self.model_interface is None:
-                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
+                logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스가 없습니다")
                 return None
             
             if model_name:
@@ -2040,14 +1846,46 @@ class BaseStepMixin:
             logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
 
 # ==============================================
-# 유틸리티 함수들 (원본 기능 유지)
+# 🔥 전역 모델 로더 관리
+# ==============================================
+
+_global_model_loader: Optional[ModelLoader] = None
+
+@lru_cache(maxsize=1)
+def get_global_model_loader() -> ModelLoader:
+    """전역 ModelLoader 인스턴스 반환"""
+    global _global_model_loader
+    
+    try:
+        if _global_model_loader is None:
+            _global_model_loader = ModelLoader()
+        return _global_model_loader
+    except Exception as e:
+        logger.error(f"전역 ModelLoader 생성 실패: {e}")
+        raise RuntimeError(f"Failed to create global ModelLoader: {e}")
+
+def cleanup_global_loader():
+    """전역 로더 정리"""
+    global _global_model_loader
+    
+    try:
+        if _global_model_loader:
+            _global_model_loader.cleanup()
+            _global_model_loader = None
+        get_global_model_loader.cache_clear()
+        logger.info("✅ 전역 ModelLoader 정리 완료")
+    except Exception as e:
+        logger.warning(f"전역 로더 정리 실패: {e}")
+
+# ==============================================
+# 🔥 유틸리티 함수들
 # ==============================================
 
 def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple, normalize: bool = True) -> torch.Tensor:
     """이미지 전처리"""
     try:
         if not CV_AVAILABLE:
-            raise ImportError("OpenCV not available")
+            raise ImportError("OpenCV and PIL are required")
             
         if isinstance(image, np.ndarray):
             if image.shape[2] == 4:  # RGBA
@@ -2074,15 +1912,14 @@ def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple, 
         return image_tensor.unsqueeze(0)
         
     except Exception as e:
-        logging.error(f"이미지 전처리 실패: {e}")
-        # 더미 텐서 반환
-        return torch.randn(1, 3, target_size[1], target_size[0])
+        logger.error(f"이미지 전처리 실패: {e}")
+        raise
 
 def postprocess_segmentation(output: torch.Tensor, original_size: tuple, threshold: float = 0.5) -> np.ndarray:
     """세그멘테이션 후처리"""
     try:
         if not CV_AVAILABLE:
-            raise ImportError("OpenCV not available")
+            raise ImportError("OpenCV is required")
             
         if output.dim() == 4:
             output = output.squeeze(0)
@@ -2103,8 +1940,8 @@ def postprocess_segmentation(output: torch.Tensor, original_size: tuple, thresho
         return output
         
     except Exception as e:
-        logging.error(f"세그멘테이션 후처리 실패: {e}")
-        return np.zeros(original_size[::-1], dtype=np.uint8)
+        logger.error(f"세그멘테이션 후처리 실패: {e}")
+        raise
 
 def postprocess_pose(output: torch.Tensor, original_size: tuple, confidence_threshold: float = 0.3) -> Dict[str, Any]:
     """포즈 추정 후처리"""
@@ -2143,46 +1980,12 @@ def postprocess_pose(output: torch.Tensor, original_size: tuple, confidence_thre
         }
         
     except Exception as e:
-        logging.error(f"포즈 추정 후처리 실패: {e}")
-        return {'keypoints': [], 'pafs': None, 'heatmaps': None}
-
-# ==============================================
-# 전역 모델 로더 관리
-# ==============================================
-
-_global_model_loader: Optional[ModelLoader] = None
-
-@lru_cache(maxsize=1)
-def get_global_model_loader() -> ModelLoader:
-    """전역 ModelLoader 인스턴스 반환"""
-    global _global_model_loader
-    
-    try:
-        if _global_model_loader is None:
-            _global_model_loader = ModelLoader()
-        return _global_model_loader
-    except Exception as e:
-        logger.error(f"전역 ModelLoader 생성 실패: {e}")
-        # 최소한의 ModelLoader 생성 시도
-        return ModelLoader(device="cpu", enable_fallback=True)
-
-def cleanup_global_loader():
-    """전역 로더 정리"""
-    global _global_model_loader
-    
-    try:
-        if _global_model_loader:
-            _global_model_loader.cleanup()
-            _global_model_loader = None
-        # 캐시 클리어
-        get_global_model_loader.cache_clear()
-        logger.info("✅ 전역 ModelLoader 정리 완료")
-    except Exception as e:
-        logger.warning(f"전역 로더 정리 실패: {e}")
+        logger.error(f"포즈 추정 후처리 실패: {e}")
+        raise
 
 # 편의 함수들
 def create_model_loader(device: str = "mps", use_fp16: bool = True, **kwargs) -> ModelLoader:
-    """모델 로더 생성 (하위 호환)"""
+    """모델 로더 생성"""
     return ModelLoader(device=device, use_fp16=use_fp16, **kwargs)
 
 async def load_model_async(model_name: str, config: Optional[ModelConfig] = None) -> Optional[Any]:
@@ -2192,7 +1995,7 @@ async def load_model_async(model_name: str, config: Optional[ModelConfig] = None
         return await loader.load_model(model_name, config)
     except Exception as e:
         logger.error(f"비동기 모델 로드 실패: {e}")
-        return None
+        raise
 
 def load_model_sync(model_name: str, config: Optional[ModelConfig] = None) -> Optional[Any]:
     """전역 로더를 사용한 동기 모델 로드"""
@@ -2208,94 +2011,9 @@ def load_model_sync(model_name: str, config: Optional[ModelConfig] = None) -> Op
         return loop.run_until_complete(loader.load_model(model_name, config))
     except Exception as e:
         logger.error(f"동기 모델 로드 실패: {e}")
-        return None
+        raise
 
-# 🔥 핵심: 모델 포맷 감지 및 변환 함수들
-def detect_model_format(model_path: Union[str, Path]) -> ModelFormat:
-    """파일 확장자로 모델 포맷 감지"""
-    path = Path(model_path)
-    
-    if path.suffix == '.pth' or path.suffix == '.pt':
-        return ModelFormat.PYTORCH
-    elif path.suffix == '.safetensors':
-        return ModelFormat.SAFETENSORS
-    elif path.suffix == '.onnx':
-        return ModelFormat.ONNX
-    elif path.suffix == '.mlmodel':
-        return ModelFormat.COREML
-    elif path.is_dir():
-        # 디렉토리 내용으로 판단
-        if (path / "config.json").exists():
-            if (path / "model.safetensors").exists():
-                return ModelFormat.TRANSFORMERS
-            elif any(path.glob("*.bin")):
-                return ModelFormat.DIFFUSERS
-        return ModelFormat.DIFFUSERS  # 기본값
-    else:
-        return ModelFormat.PYTORCH  # 기본값
-
-def load_model_with_format(
-    model_path: Union[str, Path],
-    model_format: ModelFormat,
-    device: str = "mps"
-) -> Any:
-    """간편한 모델 로딩 함수"""
-    try:
-        loader = get_global_model_loader()
-        
-        # 모델 설정 생성
-        config = ModelConfig(
-            name=Path(model_path).stem,
-            model_type=ModelType.VIRTUAL_FITTING,  # 기본값
-            model_class="HRVITONModel",
-            checkpoint_path=str(model_path),
-            device=device
-        )
-        
-        # 동기 로딩
-        return load_model_sync(config.name, config)
-        
-    except Exception as e:
-        logger.error(f"모델 로딩 실패: {e}")
-        return None
-
-# backend/app/ai_pipeline/utils/model_loader.py 끝부분에 추가할 함수들
-
-import logging
-import os
-from typing import Dict, Any, Optional
-from pathlib import Path
-
-logger = logging.getLogger(__name__)
-
-class ModelFormat:
-    """AI 모델 형식 정의"""
-    
-    PYTORCH = "pytorch"
-    ONNX = "onnx" 
-    TENSORRT = "tensorrt"
-    COREML = "coreml"  # Apple Core ML for M3 Max
-    SAFETENSORS = "safetensors"
-    
-    @classmethod
-    def get_optimized_format(cls, device: str = "mps") -> str:
-        """디바이스에 최적화된 모델 형식 반환"""
-        if device == "mps":
-            return cls.COREML  # M3 Max에서는 Core ML 추천
-        elif device == "cuda":
-            return cls.TENSORRT
-        return cls.PYTORCH
-    
-    @classmethod
-    def is_supported(cls, format_name: str) -> bool:
-        """지원되는 형식인지 확인"""
-        supported_formats = [cls.PYTORCH, cls.ONNX, cls.COREML, cls.SAFETENSORS]
-        return format_name.lower() in [f.lower() for f in supported_formats]
-
-# ===============================================================
-# 🔧 핵심 해결: initialize_global_model_loader 함수 추가
-# ===============================================================
-
+# 🔥 초기화 함수 - 프로덕션 버전
 def initialize_global_model_loader(
     device: str = "mps",
     memory_gb: float = 128.0,
@@ -2303,8 +2021,7 @@ def initialize_global_model_loader(
     **kwargs
 ) -> Dict[str, Any]:
     """
-    전역 모델 로더 초기화
-    ✅ import 오류 해결을 위한 핵심 함수
+    전역 모델 로더 초기화 - 프로덕션 버전
     
     Args:
         device: 사용할 디바이스 (mps, cuda, cpu)
@@ -2316,7 +2033,7 @@ def initialize_global_model_loader(
         Dict[str, Any]: 초기화된 로더 설정
     """
     try:
-        logger.info(f"🤖 전역 ModelLoader 초기화: {device}, {memory_gb}GB")
+        logger.info(f"🚀 프로덕션 ModelLoader 초기화: {device}, {memory_gb}GB")
         
         # 글로벌 모델 로더 설정
         loader_config = {
@@ -2326,7 +2043,7 @@ def initialize_global_model_loader(
             "cache_enabled": True,
             "lazy_loading": True,
             "memory_efficient": True,
-            "model_format": ModelFormat.get_optimized_format(device)
+            "production_mode": True
         }
         
         # M3 Max 특화 설정
@@ -2336,7 +2053,7 @@ def initialize_global_model_loader(
                 "use_neural_engine": True,
                 "use_unified_memory": True,
                 "optimization_level": "maximum" if is_m3_max else "balanced",
-                "coreml_enabled": True,
+                "coreml_enabled": COREML_AVAILABLE,
                 "batch_size": 4 if is_m3_max else 2,
                 "precision": "float16",
                 "memory_pooling": True
@@ -2356,7 +2073,7 @@ def initialize_global_model_loader(
         elif device == "cuda":
             loader_config.update({
                 "mixed_precision": optimization_enabled,
-                "tensorrt_enabled": optimization_enabled,
+                "tensorrt_enabled": False,  # 프로덕션에서는 안정성 우선
                 "batch_size": 8,
                 "memory_growth": True
             })
@@ -2370,9 +2087,9 @@ def initialize_global_model_loader(
         
         # 경로 설정
         model_paths = {
-            "base_dir": Path("app/ai_pipeline/models/ai_models"),
-            "cache_dir": Path("app/ai_pipeline/cache"),
-            "checkpoints_dir": Path("app/ai_pipeline/models/ai_models/checkpoints")
+            "base_dir": Path("backend/app/ai_pipeline/models/ai_models"),
+            "cache_dir": Path("backend/app/ai_pipeline/cache"),
+            "checkpoints_dir": Path("backend/app/ai_pipeline/models/ai_models/checkpoints")
         }
         
         # 디렉토리 생성
@@ -2381,159 +2098,22 @@ def initialize_global_model_loader(
         
         loader_config["paths"] = {str(k): str(v) for k, v in model_paths.items()}
         
-        # 글로벌 인스턴스 설정 (필요시 추후 사용)
-        _set_global_loader_config(loader_config)
-        
-        logger.info("✅ 전역 ModelLoader 초기화 완료")
+        logger.info("✅ 프로덕션 ModelLoader 초기화 완료")
         return loader_config
         
     except Exception as e:
-        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
-        # 기본 설정 반환
-        return {
-            "device": device,
-            "memory_gb": memory_gb,
-            "optimization_enabled": False,
-            "cache_enabled": False,
-            "error": str(e)
-        }
-
-# ===============================================================
-# 글로벌 설정 관리
-# ===============================================================
-
-_global_loader_config: Optional[Dict[str, Any]] = None
-
-def _set_global_loader_config(config: Dict[str, Any]):
-    """글로벌 로더 설정 저장"""
-    global _global_loader_config
-    _global_loader_config = config
-
-def get_global_loader_config() -> Optional[Dict[str, Any]]:
-    """글로벌 로더 설정 반환"""
-    return _global_loader_config
-
-def is_global_loader_initialized() -> bool:
-    """글로벌 로더 초기화 상태 확인"""
-    return _global_loader_config is not None
-
-# ===============================================================
-# 추가 유틸리티 함수들
-# ===============================================================
-
-def get_model_memory_requirements(model_name: str, device: str = "mps") -> Dict[str, Any]:
-    """모델별 메모리 요구사항 반환"""
-    
-    # 기본 모델별 메모리 요구사항 (추정치)
-    memory_estimates = {
-        "graphonomy": {"cpu": 2.0, "cuda": 1.5, "mps": 1.2},  # GB
-        "hr_viton": {"cpu": 4.0, "cuda": 3.0, "mps": 2.5},
-        "u2net": {"cpu": 1.0, "cuda": 0.8, "mps": 0.6},
-        "real_esrgan": {"cpu": 1.5, "cuda": 1.2, "mps": 1.0},
-        "gfpgan": {"cpu": 2.5, "cuda": 2.0, "mps": 1.8},
-        "openpose": {"cpu": 3.0, "cuda": 2.2, "mps": 2.0}
-    }
-    
-    base_memory = memory_estimates.get(model_name, {"cpu": 2.0, "cuda": 1.5, "mps": 1.0})
-    
-    return {
-        "model_name": model_name,
-        "estimated_memory_gb": base_memory.get(device, 1.0),
-        "device": device,
-        "optimization_available": device in ["mps", "cuda"],
-        "recommended_batch_size": 4 if device == "mps" else 8 if device == "cuda" else 1
-    }
-
-def check_model_compatibility(model_name: str, device: str = "mps", memory_gb: float = 128.0) -> Dict[str, Any]:
-    """모델 호환성 검사"""
-    
-    requirements = get_model_memory_requirements(model_name, device)
-    estimated_memory = requirements["estimated_memory_gb"]
-    
-    # 여유 메모리 확인 (30% 여유분 고려)
-    available_memory = memory_gb * 0.7
-    compatible = estimated_memory <= available_memory
-    
-    compatibility_info = {
-        "model_name": model_name,
-        "device": device,
-        "compatible": compatible,
-        "estimated_memory_gb": estimated_memory,
-        "available_memory_gb": available_memory,
-        "memory_usage_percent": (estimated_memory / memory_gb) * 100,
-        "recommendations": []
-    }
-    
-    # 추천사항 생성
-    if not compatible:
-        compatibility_info["recommendations"].extend([
-            f"메모리 부족: {estimated_memory:.1f}GB 필요, {available_memory:.1f}GB 사용 가능",
-            "낮은 품질 모드 사용 권장",
-            "배치 크기 감소 권장"
-        ])
-    elif compatibility_info["memory_usage_percent"] > 50:
-        compatibility_info["recommendations"].append("메모리 사용량이 높음 - 성능 모니터링 권장")
-    else:
-        compatibility_info["recommendations"].append("최적 호환성 - 고품질 모드 사용 가능")
-    
-    # M3 Max 특화 추천
-    if device == "mps" and memory_gb >= 64:
-        compatibility_info["recommendations"].append("🍎 M3 Max 최적화 모드 활용 가능")
-    
-    return compatibility_info
-
-def cleanup_model_loader():
-    """모델 로더 정리"""
-    global _global_loader_config
-    
-    try:
-        if _global_loader_config:
-            logger.info("🧹 전역 ModelLoader 정리 중...")
-            
-            # 캐시 정리
-            cache_dir = _global_loader_config.get("paths", {}).get("cache_dir")
-            if cache_dir and Path(cache_dir).exists():
-                # 캐시 파일 정리 (필요시)
-                pass
-            
-            # 메모리 정리
-            try:
-                import torch
-                device = _global_loader_config.get("device", "cpu")
-                
-                if device == "mps" and torch.backends.mps.is_available():
-                    torch.mps.empty_cache()
-                elif device == "cuda" and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                
-                import gc
-                gc.collect()
-                
-            except ImportError:
-                pass
-            
-            _global_loader_config = None
-            logger.info("✅ 전역 ModelLoader 정리 완료")
-        
-    except Exception as e:
-        logger.error(f"❌ ModelLoader 정리 실패: {e}")
-
-
-logger.info("✅ ModelLoader 초기화 함수 추가 완료 - import 오류 해결")
-# 모듈 레벨에서 안전한 정리 함수 등록
-import atexit
-atexit.register(cleanup_global_loader)
+        logger.error(f"❌ 프로덕션 ModelLoader 초기화 실패: {e}")
+        raise
 
 # 모듈 익스포트
 __all__ = [
     # 핵심 클래스들
     'ModelLoader',
-    'ModelFormat',  # 🔥 main.py 필수
+    'ModelFormat',
     'ModelConfig', 
     'ModelType',
-    'ModelPrecision',
-    'ModelRegistry',
     'ModelMemoryManager',
+    'ModelRegistry',
     'StepModelInterface',
     'BaseStepMixin',
     
@@ -2553,20 +2133,15 @@ __all__ = [
     'load_model_sync',
     
     # 유틸리티 함수들
-    'detect_model_format',
-    'load_model_with_format',
     'preprocess_image',
     'postprocess_segmentation',
     'postprocess_pose',
-    'cleanup_global_loader'
-     "ModelFormat",
-    "initialize_global_model_loader",  # 핵심 해결 함수
-    "get_global_loader_config",
-    "is_global_loader_initialized", 
-    "get_model_memory_requirements",
-    "check_model_compatibility",
-    "cleanup_model_loader"
+    'cleanup_global_loader',
+    'initialize_global_model_loader'
 ]
 
-# 모듈 로드 확인
-logger.info("✅ ModelLoader 모듈 로드 완료 - 모든 AI 모델 클래스 및 팩토리 함수 포함")
+# 모듈 정리 함수 등록
+import atexit
+atexit.register(cleanup_global_loader)
+
+logger.info("✅ 프로덕션 ModelLoader 모듈 로드 완료 - Step 클래스 완벽 연동")
