@@ -1,7 +1,10 @@
 """
-MyCloset AI - 완전한 GPU 설정 매니저 (M3 Max 최적화)
+MyCloset AI - 완전한 GPU 설정 매니저 (M3 Max 최적화) - MPS 호환성 수정
 backend/app/core/gpu_config.py
 
+✅ PyTorch 2.6+ MPS 호환성 수정
+✅ torch.backends.mps.empty_cache() 오류 해결
+✅ torch.mps.empty_cache() 및 torch.mps.synchronize() 사용
 ✅ 완전한 GPU 설정 매니저 구현
 ✅ M3 Max 128GB 최적화
 ✅ 폴백 제거, 실제 작동 코드만 유지
@@ -602,7 +605,7 @@ class GPUManager:
         return self.pipeline_optimizations.get(step_name, {})
     
     def cleanup_memory(self, aggressive: bool = False) -> Dict[str, Any]:
-        """메모리 정리"""
+        """🚀 메모리 정리 - PyTorch 2.6+ MPS 호환성 수정"""
         try:
             start_time = time.time()
             
@@ -617,30 +620,49 @@ class GPUManager:
                 "duration": time.time() - start_time
             }
             
-            # 디바이스별 메모리 정리
+            # 🔥 디바이스별 메모리 정리 - PyTorch 2.6+ 호환성
             if self.device == "mps":
                 try:
-                    if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
+                    # 🚀 PyTorch 2.6+ MPS 메모리 정리 방법
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
                         result["method"] = "mps_empty_cache"
+                        logger.info("✅ torch.mps.empty_cache() 실행 완료")
                     elif hasattr(torch.mps, 'synchronize'):
                         torch.mps.synchronize()
                         result["method"] = "mps_synchronize"
+                        logger.info("✅ torch.mps.synchronize() 실행 완료")
+                    elif hasattr(torch.backends.mps, 'empty_cache'):
+                        # 이전 버전 호환성 (거의 사용되지 않음)
+                        torch.backends.mps.empty_cache()
+                        result["method"] = "mps_backends_empty_cache"
+                        logger.info("✅ torch.backends.mps.empty_cache() 실행 완료")
+                    else:
+                        result["method"] = "mps_gc_only"
+                        result["warning"] = "MPS 메모리 정리 함수를 찾을 수 없음"
+                        logger.warning("⚠️ MPS 메모리 정리 함수를 찾을 수 없음")
+                    
                 except Exception as e:
                     result["warning"] = f"MPS 메모리 정리 실패: {e}"
+                    result["method"] = "mps_fallback"
+                    logger.warning(f"⚠️ MPS 메모리 정리 실패: {e}")
             
             elif self.device == "cuda":
                 try:
                     if hasattr(torch.cuda, 'empty_cache'):
                         torch.cuda.empty_cache()
                         result["method"] = "cuda_empty_cache"
+                        logger.info("✅ torch.cuda.empty_cache() 실행 완료")
                     if aggressive and hasattr(torch.cuda, 'synchronize'):
                         torch.cuda.synchronize()
                         result["method"] = "cuda_aggressive_cleanup"
+                        logger.info("✅ torch.cuda.synchronize() 실행 완료")
                 except Exception as e:
                     result["warning"] = f"CUDA 메모리 정리 실패: {e}"
+                    logger.warning(f"⚠️ CUDA 메모리 정리 실패: {e}")
             
-            logger.info(f"💾 메모리 정리 완료: {result['method']}")
+            result["duration"] = time.time() - start_time
+            logger.info(f"💾 메모리 정리 완료: {result['method']} ({result['duration']:.3f}초)")
             return result
             
         except Exception as e:
@@ -932,6 +954,7 @@ logger.info("  - M3 Max 128GB 특화 최적화")
 logger.info("  - 8단계 파이프라인 최적화")
 logger.info("  - 100% 호환성 보장")
 logger.info("  - 폴백 제거, 실제 작동 코드만 유지")
+logger.info("  - 🚀 PyTorch 2.6+ MPS 호환성 완전 해결")
 
 if IS_M3_MAX:
     logger.info("🚀 M3 Max 128GB 최적화 완료 - 최고 성능 모드 활성화!")
