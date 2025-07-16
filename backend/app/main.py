@@ -11,7 +11,6 @@ MyCloset AI Backend - M3 Max 128GB 최적화 메인 애플리케이션
 ✅ M3 Max 전용 API 추가
 ✅ 개발자 도구 추가
 ✅ 시스템 모니터링 추가
-✅ 405 Method Not Allowed 해결
 """
 
 import sys
@@ -46,7 +45,7 @@ try:
     from fastapi import FastAPI, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File, Form
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse
+    from fastapi.responses import JSONResponse, HTMLResponse
     from fastapi.exceptions import RequestValidationError
     from starlette.exceptions import HTTPException as StarletteHTTPException
     print("✅ FastAPI import 성공")
@@ -334,6 +333,501 @@ class M3MaxComponentImporter:
         routers = {}
         
         # Health router
+        try:
+            from app.api.health import router as health_router
+            routers['health'] = health_router
+            logger.info("✅ Health 라우터 import 성공")
+        except Exception as e:
+            logger.warning(f"⚠️ Health 라우터 import 실패: {e}")
+            routers['health'] = None
+        
+        # Virtual try-on router
+        try:
+            from app.api.virtual_tryon import router as virtual_tryon_router
+            routers['virtual_tryon'] = virtual_tryon_router
+            logger.info("✅ Virtual Try-on 라우터 import 성공")
+        except Exception as e:
+            logger.warning(f"⚠️ Virtual Try-on 라우터 import 실패: {e}")
+            routers['virtual_tryon'] = None
+        
+        # Models router
+        try:
+            from app.api.models import router as models_router
+            routers['models'] = models_router
+            logger.info("✅ Models 라우터 import 성공")
+        except Exception as e:
+            logger.warning(f"⚠️ Models 라우터 import 실패: {e}")
+            routers['models'] = None
+        
+        # 🔴 Step Routes - 새로 추가된 단계별 API 라우터 (pipeline_routes 대신)
+        try:
+            from app.api.step_routes import router as step_router
+            routers['step_routes'] = step_router
+            logger.info("✅ Step 라우터 등록됨 - 경로: /api/step/*")
+        except Exception as e:
+            logger.warning(f"⚠️ Step 라우터 import 실패: {e}")
+            routers['step_routes'] = None
+        
+        # 🔴 Pipeline routes - 주석처리됨 (step_routes로 대체)
+        # try:
+        #     from app.api.pipeline_routes import router as pipeline_router
+        #     routers['pipeline'] = pipeline_router
+        #     logger.info("✅ Pipeline 라우터 등록됨 - 경로: /api/pipeline/*")
+        # except Exception as e:
+        #     logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
+        #     routers['pipeline'] = None
+        
+        # WebSocket routes
+        try:
+            from app.api.websocket_routes import router as websocket_router
+            # start_background_tasks 함수 확인
+            try:
+                from app.api.websocket_routes import start_background_tasks
+                routers['websocket_background_tasks'] = start_background_tasks
+            except ImportError:
+                routers['websocket_background_tasks'] = None
+            
+            routers['websocket'] = websocket_router
+            logger.info("✅ WebSocket 라우터 import 성공")
+        except Exception as e:
+            logger.warning(f"⚠️ WebSocket 라우터 import 실패: {e}")
+            routers['websocket'] = None
+            routers['websocket_background_tasks'] = None
+        
+        self.components['routers'] = routers
+        return routers
+    
+    def initialize_all_components(self):
+        """모든 컴포넌트 초기화"""
+        logger.info("🍎 M3 Max 최적화 MyCloset AI 파이프라인 로딩...")
+        
+        # 디렉토리 생성
+        directories = [
+            project_root / "logs",
+            project_root / "static" / "uploads",
+            project_root / "static" / "results",
+            project_root / "temp"
+        ]
+        
+        for directory in directories:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.warning(f"디렉토리 생성 실패 {directory}: {e}")
+        
+        # 컴포넌트 import
+        success_count = 0
+        
+        if self.safe_import_schemas():
+            success_count += 1
+        
+        if self.safe_import_gpu_config():
+            success_count += 1
+        
+        self.safe_import_api_routers()
+        
+        logger.info(f"📊 컴포넌트 import 완료: {success_count}/2 성공")
+        
+        if self.m3_max_optimized:
+            logger.info("🍎 M3 Max 128GB 최적화 모드 활성화")
+        
+        return success_count >= 1
+
+# 컴포넌트 importer 초기화
+importer = M3MaxComponentImporter()
+import_success = importer.initialize_all_components()
+
+# 컴포넌트 참조 설정
+schemas = importer.components.get('schemas', {})
+gpu_config = importer.components.get('gpu_config', {})
+api_routers = importer.components.get('routers', {})
+
+# 전역 상태
+app_state = {
+    "initialized": False,
+    "startup_time": None,
+    "import_success": import_success,
+    "fallback_mode": importer.fallback_mode,
+    "m3_max_optimized": importer.m3_max_optimized,
+    "device": gpu_config.get('device', 'cpu'),
+    "pipeline_mode": "m3_max_optimized" if importer.m3_max_optimized else "simulation",
+    "total_sessions": 0,
+    "successful_sessions": 0,
+    "errors": importer.import_errors.copy(),
+    "performance_metrics": {
+        "average_response_time": 0.0,
+        "total_requests": 0,
+        "error_rate": 0.0,
+        "m3_max_optimized_sessions": 0,
+        "memory_efficiency": 0.95 if importer.m3_max_optimized else 0.8
+    }
+}
+
+# ============================================
+# 미들웨어
+# ============================================
+
+async def m3_max_performance_middleware(request: Request, call_next):
+    """M3 Max 최적화된 성능 측정 미들웨어"""
+    start_timestamp = time_module.time()
+    
+    if importer.m3_max_optimized:
+        start_performance = time_module.perf_counter()
+    
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.error(f"미들웨어 오류: {e}")
+        # 기본 오류 응답 생성
+        response = JSONResponse(
+            status_code=500,
+            content={"error": "Internal server error", "detail": str(e)}
+        )
+    
+    process_time = time_module.time() - start_timestamp
+    
+    if importer.m3_max_optimized:
+        try:
+            precise_time = time_module.perf_counter() - start_performance
+            response.headers["X-M3-Max-Precise-Time"] = str(round(precise_time, 6))
+            response.headers["X-M3-Max-Optimized"] = "true"
+        except Exception:
+            pass
+    
+    response.headers["X-Process-Time"] = str(round(process_time, 4))
+    
+    # 성능 메트릭 업데이트
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+        current_avg = app_state["performance_metrics"]["average_response_time"]
+        total_requests = app_state["performance_metrics"]["total_requests"]
+        
+        app_state["performance_metrics"]["average_response_time"] = (
+            (current_avg * (total_requests - 1) + process_time) / total_requests
+        )
+        
+        if importer.m3_max_optimized and "/api/virtual-tryon" in str(request.url):
+            app_state["performance_metrics"]["m3_max_optimized_sessions"] += 1
+    except Exception as e:
+        logger.warning(f"성능 메트릭 업데이트 실패: {e}")
+    
+    return response
+
+# ============================================
+# 라이프사이클 관리 - 안전 버전
+# ============================================
+
+@asynccontextmanager
+async def m3_max_lifespan(app: FastAPI):
+    """M3 Max 최적화된 애플리케이션 라이프사이클 관리"""
+    logger.info("🍎 M3 Max MyCloset AI Backend 시작...")
+    startup_start_time = time_module.time()
+    
+    try:
+        # M3 Max 환경 최적화
+        if importer.m3_max_optimized:
+            logger.info("🧠 M3 Max Neural Engine 활성화 준비...")
+            await asyncio.sleep(0.5)
+            
+            logger.info("⚡ MPS 백엔드 최적화 설정...")
+            await asyncio.sleep(0.5)
+            
+            logger.info("💾 128GB 메모리 풀 초기화...")
+            await asyncio.sleep(0.3)
+        
+        # WebSocket 백그라운드 태스크 시작 (안전하게)
+        websocket_background_tasks = api_routers.get('websocket_background_tasks')
+        if websocket_background_tasks and callable(websocket_background_tasks):
+            try:
+                await websocket_background_tasks()
+                logger.info("🔗 WebSocket 백그라운드 태스크 시작됨")
+            except Exception as e:
+                logger.warning(f"WebSocket 백그라운드 태스크 시작 실패: {e}")
+        
+        app_state["startup_time"] = time_module.time() - startup_start_time
+        app_state["initialized"] = True
+        
+        # 시스템 상태 로깅
+        logger.info("=" * 70)
+        logger.info("🍎 M3 Max MyCloset AI Backend 시스템 상태")
+        logger.info("=" * 70)
+        logger.info(f"🔧 디바이스: {app_state['device']}")
+        logger.info(f"🍎 M3 Max 최적화: {'✅ 활성화' if importer.m3_max_optimized else '❌ 비활성화'}")
+        logger.info(f"🎭 파이프라인 모드: {app_state['pipeline_mode']}")
+        logger.info(f"✅ 초기화 성공: {app_state['initialized']}")
+        logger.info(f"🔗 WebSocket: {'✅ 활성화' if api_routers.get('websocket') else '❌ 비활성화'}")
+        logger.info(f"📋 Step Routes: {'✅ 활성화' if api_routers.get('step_routes') else '❌ 비활성화'}")
+        logger.info(f"⏱️ 시작 시간: {app_state['startup_time']:.2f}초")
+        
+        if app_state['errors']:
+            logger.warning(f"⚠️ 오류 목록 ({len(app_state['errors'])}개):")
+            for error in app_state['errors']:
+                logger.warning(f"  - {error}")
+        
+        logger.info("✅ M3 Max 백엔드 초기화 완료")
+        logger.info("=" * 70)
+        
+    except Exception as e:
+        error_msg = f"Startup error: {str(e)}"
+        logger.error(f"❌ 시작 중 치명적 오류: {error_msg}")
+        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
+        app_state["errors"].append(error_msg)
+        app_state["initialized"] = False
+    
+    yield  # 애플리케이션 실행
+    
+    # 종료 로직
+    logger.info("🛑 M3 Max MyCloset AI Backend 종료 중...")
+    
+    try:
+        # M3 Max 최적화된 메모리 정리
+        optimize_func = gpu_config.get('optimize_memory')
+        if optimize_func and callable(optimize_func):
+            try:
+                result = optimize_func(
+                    device=gpu_config.get('device'), 
+                    aggressive=importer.m3_max_optimized
+                )
+                if result.get('success'):
+                    logger.info(f"🍎 M3 Max 메모리 정리 완료: {result.get('method', 'unknown')}")
+            except Exception as e:
+                logger.warning(f"메모리 정리 실패: {e}")
+        
+        if importer.m3_max_optimized:
+            logger.info("🧠 Neural Engine 정리됨")
+            logger.info("⚡ MPS 백엔드 정리됨")
+        
+        logger.info("✅ M3 Max 정리 완료")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ 정리 중 오류: {e}")
+
+# ============================================
+# FastAPI 애플리케이션 생성
+# ============================================
+
+# API 문서 태그 정의
+tags_metadata = [
+    {
+        "name": "health",
+        "description": "시스템 헬스체크 및 상태 모니터링",
+    },
+    {
+        "name": "virtual-tryon",
+        "description": "가상 피팅 기능 API",
+    },
+    {
+        "name": "step-routes",
+        "description": "8단계 AI 파이프라인 API - 단계별 처리 (step_routes)",
+    },
+    {
+        "name": "websocket",
+        "description": "실시간 통신 및 진행률 모니터링",
+    },
+    {
+        "name": "models",
+        "description": "AI 모델 관리 및 설정",
+    },
+    {
+        "name": "m3-max",
+        "description": "M3 Max 최적화 및 성능 관리",
+    },
+    {
+        "name": "development",
+        "description": "개발자 도구 및 디버깅",
+    }
+]
+
+app = FastAPI(
+    title="MyCloset AI Backend (M3 Max Optimized)",
+    description="""
+    ## M3 Max 128GB 최적화 가상 피팅 AI 백엔드 서비스
+    
+    ### 주요 기능
+    - 🍎 **M3 Max Neural Engine 최적화**: 40코어 GPU + Neural Engine 활용
+    - 📋 **8단계 AI 파이프라인**: 업로드부터 결과 분석까지 완전 자동화
+    - 🔗 **실시간 WebSocket**: 진행률 모니터링 및 상태 업데이트
+    - ⚡ **통합 메모리 관리**: 400GB/s 메모리 대역폭 최적화
+    - 🎭 **가상 피팅**: OOTDiffusion + VITON-HD 기반 고품질 피팅
+    
+    ### API 카테고리
+    - **Step Routes**: 8단계 처리 프로세스 (/api/step/1-8/)
+    - **M3 Max**: 하드웨어 최적화 기능 (/m3-max-status, /api/optimize-memory)
+    - **Development**: 개발자 도구 (/api/dev/)
+    - **Health**: 시스템 모니터링 (/health, /api/health/)
+    
+    ### 성능 특징
+    - M3 Max 환경에서 최대 95% 메모리 효율성
+    - Neural Engine 활용으로 15.8 TOPS 연산 성능
+    - 통합 메모리 아키텍처로 데이터 복사 최소화
+    """,
+    version="3.0.0-m3max",
+    openapi_tags=tags_metadata,
+    lifespan=m3_max_lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
+
+# ============================================
+# 미들웨어 설정 - 🔴 CORS 수정
+# ============================================
+
+# 🔴 CORS 설정 완전 교체
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "*"  # Safari 때문에 필요
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language", 
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "X-CSRFToken",
+        "X-Request-ID",
+        "Cache-Control",
+        "Pragma",
+        "*"
+    ],
+    expose_headers=["*"],
+    max_age=3600
+)
+
+# Safari용 추가 CORS 미들웨어
+@app.middleware("http")
+async def add_safari_cors_headers(request, call_next):
+    # OPTIONS 요청 처리
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Max-Age"] = "3600"
+        return response
+    
+    response = await call_next(request)
+    
+    # 모든 응답에 CORS 헤더 추가
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    
+    return response
+
+# 🔴 Performance 미들웨어 등록
+app.middleware("http")(m3_max_performance_middleware)
+
+# ============================================
+# 예외 처리
+# ============================================
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """HTTP 예외 처리"""
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+    except Exception:
+        pass
+    
+    error_response = {
+        "success": False,
+        "error": {
+            "type": "http_error",
+            "status_code": exc.status_code,
+            "message": exc.detail,
+            "timestamp": datetime.now().isoformat(),
+            "m3_max_optimized": importer.m3_max_optimized
+        },
+        "request_info": {
+            "method": request.method,
+            "url": str(request.url),
+            "client": request.client.host if request.client else "unknown"
+        }
+    }
+    
+    logger.warning(f"HTTP 예외: {exc.status_code} - {exc.detail} - {request.url}")
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Pydantic V2 호환 요청 검증 예외 처리"""
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+    except Exception:
+        pass
+    
+    error_response = {
+        "success": False,
+        "error": {
+            "type": "validation_error",
+            "message": "Request validation failed (Pydantic V2)",
+            "details": exc.errors(),
+            "timestamp": datetime.now().isoformat(),
+            "pydantic_version": "v2",
+            "m3_max_optimized": importer.m3_max_optimized
+        }
+    }
+    
+    logger.warning(f"Pydantic V2 검증 오류: {exc.errors()} - {request.url}")
+    
+    return JSONResponse(
+        status_code=422,
+        content=error_response
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """일반 예외 처리"""
+    try:
+        app_state["performance_metrics"]["total_requests"] += 1
+    except Exception:
+        pass
+    
+    error_msg = str(exc)
+    error_type = type(exc).__name__
+    
+    error_response = {
+        "success": False,
+        "error": {
+            "type": error_type,
+            "message": error_msg,
+            "timestamp": datetime.now().isoformat(),
+            "m3_max_optimized": importer.m3_max_optimized,
+            "device": app_state.get("device", "unknown")
+        }
+    }
+    
+    logger.error(f"일반 예외: {error_type} - {error_msg} - {request.url}")
+    logger.error(f"스택 트레이스: {traceback.format_exc()}")
+    
+    return JSONResponse(
+        status_code=500,
+        content=error_response
+    )
+
+# ============================================
+# 🔴 API 라우터 등록 - Step Routes 포함, Pipeline Routes 주석처리
+# ============================================
+
+# Health router
 if api_routers.get('health'):
     try:
         app.include_router(api_routers['health'], tags=["health"])
@@ -1191,7 +1685,7 @@ logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
 🔴 완전히 구현된 기능들:
 
 ✅ 1. 기본 FastAPI 설정
-   - CORS 설정 (Safari 호환) + 405 에러 해결
+   - CORS 설정 (Safari 호환)
    - Performance 미들웨어
    - 예외 처리 (Pydantic V2 호환)
    - 라이프사이클 관리
@@ -1252,545 +1746,12 @@ logger.info("🚀 M3 Max MyCloset AI Backend 메인 모듈 로드 완료")
    - 폴백 모드 지원
    - 에러 복구 메커니즘
 
-✅ 11. 405 Method Not Allowed 해결
-   - 강화된 CORS 미들웨어 추가
-   - OPTIONS 요청 완전 처리
-   - 모든 응답에 CORS 헤더 추가
-
 🔴 주요 변경사항:
 ✅ pipeline_routes 완전히 주석처리됨
 ✅ step_routes로 완전 대체됨
-✅ 405 에러 해결을 위한 CORS 강화
 ✅ 새로운 테스트 API 추가됨
 ✅ 상태 확인 API 업데이트됨
 
 이제 완전한 MyCloset AI Backend가 준비되었습니다!
 Pipeline Routes는 주석처리되고 Step Routes가 완전히 대체했습니다!
-405 Method Not Allowed 에러도 해결되었습니다!
 """
-                
-        try:
-            from app.api.health import router as health_router
-            routers['health'] = health_router
-            logger.info("✅ Health 라우터 import 성공")
-        except Exception as e:
-            logger.warning(f"⚠️ Health 라우터 import 실패: {e}")
-            routers['health'] = None
-        
-        # Virtual try-on router
-        try:
-            from app.api.virtual_tryon import router as virtual_tryon_router
-            routers['virtual_tryon'] = virtual_tryon_router
-            logger.info("✅ Virtual Try-on 라우터 import 성공")
-        except Exception as e:
-            logger.warning(f"⚠️ Virtual Try-on 라우터 import 실패: {e}")
-            routers['virtual_tryon'] = None
-        
-        # Models router
-        try:
-            from app.api.models import router as models_router
-            routers['models'] = models_router
-            logger.info("✅ Models 라우터 import 성공")
-        except Exception as e:
-            logger.warning(f"⚠️ Models 라우터 import 실패: {e}")
-            routers['models'] = None
-        
-        # 🔴 Step Routes - 새로 추가된 단계별 API 라우터 (pipeline_routes 대신)
-        try:
-            from app.api.step_routes import router as step_router
-            routers['step_routes'] = step_router
-            logger.info("✅ Step 라우터 등록됨 - 경로: /api/step/*")
-        except Exception as e:
-            logger.warning(f"⚠️ Step 라우터 import 실패: {e}")
-            routers['step_routes'] = None
-        
-        # 🔴 Pipeline routes - 주석처리됨 (step_routes로 대체)
-        # try:
-        #     from app.api.pipeline_routes import router as pipeline_router
-        #     routers['pipeline'] = pipeline_router
-        #     logger.info("✅ Pipeline 라우터 등록됨 - 경로: /api/pipeline/*")
-        # except Exception as e:
-        #     logger.warning(f"⚠️ Pipeline 라우터 import 실패: {e}")
-        #     routers['pipeline'] = None
-        
-        # WebSocket routes
-        try:
-            from app.api.websocket_routes import router as websocket_router
-            # start_background_tasks 함수 확인
-            try:
-                from app.api.websocket_routes import start_background_tasks
-                routers['websocket_background_tasks'] = start_background_tasks
-            except ImportError:
-                routers['websocket_background_tasks'] = None
-            
-            routers['websocket'] = websocket_router
-            logger.info("✅ WebSocket 라우터 import 성공")
-        except Exception as e:
-            logger.warning(f"⚠️ WebSocket 라우터 import 실패: {e}")
-            routers['websocket'] = None
-            routers['websocket_background_tasks'] = None
-        
-        self.components['routers'] = routers
-        return routers
-    
-    def initialize_all_components(self):
-        """모든 컴포넌트 초기화"""
-        logger.info("🍎 M3 Max 최적화 MyCloset AI 파이프라인 로딩...")
-        
-        # 디렉토리 생성
-        directories = [
-            project_root / "logs",
-            project_root / "static" / "uploads",
-            project_root / "static" / "results",
-            project_root / "temp"
-        ]
-        
-        for directory in directories:
-            try:
-                directory.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                logger.warning(f"디렉토리 생성 실패 {directory}: {e}")
-        
-        # 컴포넌트 import
-        success_count = 0
-        
-        if self.safe_import_schemas():
-            success_count += 1
-        
-        if self.safe_import_gpu_config():
-            success_count += 1
-        
-        self.safe_import_api_routers()
-        
-        logger.info(f"📊 컴포넌트 import 완료: {success_count}/2 성공")
-        
-        if self.m3_max_optimized:
-            logger.info("🍎 M3 Max 128GB 최적화 모드 활성화")
-        
-        return success_count >= 1
-
-# 컴포넌트 importer 초기화
-importer = M3MaxComponentImporter()
-import_success = importer.initialize_all_components()
-
-# 컴포넌트 참조 설정
-schemas = importer.components.get('schemas', {})
-gpu_config = importer.components.get('gpu_config', {})
-api_routers = importer.components.get('routers', {})
-
-# 전역 상태
-app_state = {
-    "initialized": False,
-    "startup_time": None,
-    "import_success": import_success,
-    "fallback_mode": importer.fallback_mode,
-    "m3_max_optimized": importer.m3_max_optimized,
-    "device": gpu_config.get('device', 'cpu'),
-    "pipeline_mode": "m3_max_optimized" if importer.m3_max_optimized else "simulation",
-    "total_sessions": 0,
-    "successful_sessions": 0,
-    "errors": importer.import_errors.copy(),
-    "performance_metrics": {
-        "average_response_time": 0.0,
-        "total_requests": 0,
-        "error_rate": 0.0,
-        "m3_max_optimized_sessions": 0,
-        "memory_efficiency": 0.95 if importer.m3_max_optimized else 0.8
-    }
-}
-
-# ============================================
-# 미들웨어
-# ============================================
-
-async def m3_max_performance_middleware(request: Request, call_next):
-    """M3 Max 최적화된 성능 측정 미들웨어"""
-    start_timestamp = time_module.time()
-    
-    if importer.m3_max_optimized:
-        start_performance = time_module.perf_counter()
-    
-    try:
-        response = await call_next(request)
-    except Exception as e:
-        logger.error(f"미들웨어 오류: {e}")
-        # 기본 오류 응답 생성
-        response = JSONResponse(
-            status_code=500,
-            content={"error": "Internal server error", "detail": str(e)}
-        )
-    
-    process_time = time_module.time() - start_timestamp
-    
-    if importer.m3_max_optimized:
-        try:
-            precise_time = time_module.perf_counter() - start_performance
-            response.headers["X-M3-Max-Precise-Time"] = str(round(precise_time, 6))
-            response.headers["X-M3-Max-Optimized"] = "true"
-        except Exception:
-            pass
-    
-    response.headers["X-Process-Time"] = str(round(process_time, 4))
-    
-    # 성능 메트릭 업데이트
-    try:
-        app_state["performance_metrics"]["total_requests"] += 1
-        current_avg = app_state["performance_metrics"]["average_response_time"]
-        total_requests = app_state["performance_metrics"]["total_requests"]
-        
-        app_state["performance_metrics"]["average_response_time"] = (
-            (current_avg * (total_requests - 1) + process_time) / total_requests
-        )
-        
-        if importer.m3_max_optimized and "/api/virtual-tryon" in str(request.url):
-            app_state["performance_metrics"]["m3_max_optimized_sessions"] += 1
-    except Exception as e:
-        logger.warning(f"성능 메트릭 업데이트 실패: {e}")
-    
-    return response
-
-# ============================================
-# 라이프사이클 관리 - 안전 버전
-# ============================================
-
-@asynccontextmanager
-async def m3_max_lifespan(app: FastAPI):
-    """M3 Max 최적화된 애플리케이션 라이프사이클 관리"""
-    logger.info("🍎 M3 Max MyCloset AI Backend 시작...")
-    startup_start_time = time_module.time()
-    
-    try:
-        # M3 Max 환경 최적화
-        if importer.m3_max_optimized:
-            logger.info("🧠 M3 Max Neural Engine 활성화 준비...")
-            await asyncio.sleep(0.5)
-            
-            logger.info("⚡ MPS 백엔드 최적화 설정...")
-            await asyncio.sleep(0.5)
-            
-            logger.info("💾 128GB 메모리 풀 초기화...")
-            await asyncio.sleep(0.3)
-        
-        # WebSocket 백그라운드 태스크 시작 (안전하게)
-        websocket_background_tasks = api_routers.get('websocket_background_tasks')
-        if websocket_background_tasks and callable(websocket_background_tasks):
-            try:
-                await websocket_background_tasks()
-                logger.info("🔗 WebSocket 백그라운드 태스크 시작됨")
-            except Exception as e:
-                logger.warning(f"WebSocket 백그라운드 태스크 시작 실패: {e}")
-        
-        app_state["startup_time"] = time_module.time() - startup_start_time
-        app_state["initialized"] = True
-        
-        # 시스템 상태 로깅
-        logger.info("=" * 70)
-        logger.info("🍎 M3 Max MyCloset AI Backend 시스템 상태")
-        logger.info("=" * 70)
-        logger.info(f"🔧 디바이스: {app_state['device']}")
-        logger.info(f"🍎 M3 Max 최적화: {'✅ 활성화' if importer.m3_max_optimized else '❌ 비활성화'}")
-        logger.info(f"🎭 파이프라인 모드: {app_state['pipeline_mode']}")
-        logger.info(f"✅ 초기화 성공: {app_state['initialized']}")
-        logger.info(f"🔗 WebSocket: {'✅ 활성화' if api_routers.get('websocket') else '❌ 비활성화'}")
-        logger.info(f"📋 Step Routes: {'✅ 활성화' if api_routers.get('step_routes') else '❌ 비활성화'}")
-        logger.info(f"⏱️ 시작 시간: {app_state['startup_time']:.2f}초")
-        
-        if app_state['errors']:
-            logger.warning(f"⚠️ 오류 목록 ({len(app_state['errors'])}개):")
-            for error in app_state['errors']:
-                logger.warning(f"  - {error}")
-        
-        logger.info("✅ M3 Max 백엔드 초기화 완료")
-        logger.info("=" * 70)
-        
-    except Exception as e:
-        error_msg = f"Startup error: {str(e)}"
-        logger.error(f"❌ 시작 중 치명적 오류: {error_msg}")
-        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
-        app_state["errors"].append(error_msg)
-        app_state["initialized"] = False
-    
-    yield  # 애플리케이션 실행
-    
-    # 종료 로직
-    logger.info("🛑 M3 Max MyCloset AI Backend 종료 중...")
-    
-    try:
-        # M3 Max 최적화된 메모리 정리
-        optimize_func = gpu_config.get('optimize_memory')
-        if optimize_func and callable(optimize_func):
-            try:
-                result = optimize_func(
-                    device=gpu_config.get('device'), 
-                    aggressive=importer.m3_max_optimized
-                )
-                if result.get('success'):
-                    logger.info(f"🍎 M3 Max 메모리 정리 완료: {result.get('method', 'unknown')}")
-            except Exception as e:
-                logger.warning(f"메모리 정리 실패: {e}")
-        
-        if importer.m3_max_optimized:
-            logger.info("🧠 Neural Engine 정리됨")
-            logger.info("⚡ MPS 백엔드 정리됨")
-        
-        logger.info("✅ M3 Max 정리 완료")
-        
-    except Exception as e:
-        logger.warning(f"⚠️ 정리 중 오류: {e}")
-
-# ============================================
-# FastAPI 애플리케이션 생성
-# ============================================
-
-# API 문서 태그 정의
-tags_metadata = [
-    {
-        "name": "health",
-        "description": "시스템 헬스체크 및 상태 모니터링",
-    },
-    {
-        "name": "virtual-tryon",
-        "description": "가상 피팅 기능 API",
-    },
-    {
-        "name": "step-routes",
-        "description": "8단계 AI 파이프라인 API - 단계별 처리 (step_routes)",
-    },
-    {
-        "name": "websocket",
-        "description": "실시간 통신 및 진행률 모니터링",
-    },
-    {
-        "name": "models",
-        "description": "AI 모델 관리 및 설정",
-    },
-    {
-        "name": "m3-max",
-        "description": "M3 Max 최적화 및 성능 관리",
-    },
-    {
-        "name": "development",
-        "description": "개발자 도구 및 디버깅",
-    }
-]
-
-app = FastAPI(
-    title="MyCloset AI Backend (M3 Max Optimized)",
-    description="""
-    ## M3 Max 128GB 최적화 가상 피팅 AI 백엔드 서비스
-    
-    ### 주요 기능
-    - 🍎 **M3 Max Neural Engine 최적화**: 40코어 GPU + Neural Engine 활용
-    - 📋 **8단계 AI 파이프라인**: 업로드부터 결과 분석까지 완전 자동화
-    - 🔗 **실시간 WebSocket**: 진행률 모니터링 및 상태 업데이트
-    - ⚡ **통합 메모리 관리**: 400GB/s 메모리 대역폭 최적화
-    - 🎭 **가상 피팅**: OOTDiffusion + VITON-HD 기반 고품질 피팅
-    
-    ### API 카테고리
-    - **Step Routes**: 8단계 처리 프로세스 (/api/step/1-8/)
-    - **M3 Max**: 하드웨어 최적화 기능 (/m3-max-status, /api/optimize-memory)
-    - **Development**: 개발자 도구 (/api/dev/)
-    - **Health**: 시스템 모니터링 (/health, /api/health/)
-    
-    ### 성능 특징
-    - M3 Max 환경에서 최대 95% 메모리 효율성
-    - Neural Engine 활용으로 15.8 TOPS 연산 성능
-    - 통합 메모리 아키텍처로 데이터 복사 최소화
-    """,
-    version="3.0.0-m3max",
-    openapi_tags=tags_metadata,
-    lifespan=m3_max_lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json"
-)
-
-# ============================================
-# 미들웨어 설정 - 🔴 CORS 완전 수정 (405 에러 해결)
-# ============================================
-
-# 🔴 CORS 설정 완전 교체 - 405 Method Not Allowed 해결
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "*"  # Safari 때문에 필요
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-    allow_headers=[
-        "Accept",
-        "Accept-Language", 
-        "Content-Language",
-        "Content-Type",
-        "Authorization",
-        "X-Requested-With",
-        "X-CSRFToken",
-        "X-Request-ID",
-        "Cache-Control",
-        "Pragma",
-        "*"
-    ],
-    expose_headers=["*"],
-    max_age=3600
-)
-
-# 🔴 405 에러 해결을 위한 추가 CORS 미들웨어
-@app.middleware("http")
-async def enhanced_cors_middleware(request: Request, call_next):
-    """강화된 CORS 처리 - 405 Method Not Allowed 해결"""
-    
-    # 모든 요청에 대해 CORS 헤더 설정
-    origin = request.headers.get("origin", "*")
-    
-    # OPTIONS 요청 완전 처리
-    if request.method == "OPTIONS":
-        response = Response()
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Max-Age"] = "3600"
-        response.headers["Content-Length"] = "0"
-        response.status_code = 200
-        return response
-    
-    # 일반 요청 처리
-    try:
-        response = await call_next(request)
-    except Exception as e:
-        logger.error(f"요청 처리 중 오류: {e}")
-        response = JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
-    
-    # 모든 응답에 CORS 헤더 추가
-    response.headers["Access-Control-Allow-Origin"] = origin
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Expose-Headers"] = "*"
-    
-    return response
-
-# 🔴 Performance 미들웨어 등록
-app.middleware("http")(m3_max_performance_middleware)
-
-# ============================================
-# 예외 처리
-# ============================================
-
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """HTTP 예외 처리"""
-    try:
-        app_state["performance_metrics"]["total_requests"] += 1
-    except Exception:
-        pass
-    
-    error_response = {
-        "success": False,
-        "error": {
-            "type": "http_error",
-            "status_code": exc.status_code,
-            "message": exc.detail,
-            "timestamp": datetime.now().isoformat(),
-            "m3_max_optimized": importer.m3_max_optimized
-        },
-        "request_info": {
-            "method": request.method,
-            "url": str(request.url),
-            "client": request.client.host if request.client else "unknown"
-        }
-    }
-    
-    logger.warning(f"HTTP 예외: {exc.status_code} - {exc.detail} - {request.url}")
-    
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=error_response,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*"
-        }
-    )
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Pydantic V2 호환 요청 검증 예외 처리"""
-    try:
-        app_state["performance_metrics"]["total_requests"] += 1
-    except Exception:
-        pass
-    
-    error_response = {
-        "success": False,
-        "error": {
-            "type": "validation_error",
-            "message": "Request validation failed (Pydantic V2)",
-            "details": exc.errors(),
-            "timestamp": datetime.now().isoformat(),
-            "pydantic_version": "v2",
-            "m3_max_optimized": importer.m3_max_optimized
-        }
-    }
-    
-    logger.warning(f"Pydantic V2 검증 오류: {exc.errors()} - {request.url}")
-    
-    return JSONResponse(
-        status_code=422,
-        content=error_response,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*"
-        }
-    )
-
-@app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    """일반 예외 처리"""
-    try:
-        app_state["performance_metrics"]["total_requests"] += 1
-    except Exception:
-        pass
-    
-    error_msg = str(exc)
-    error_type = type(exc).__name__
-    
-    error_response = {
-        "success": False,
-        "error": {
-            "type": error_type,
-            "message": error_msg,
-            "timestamp": datetime.now().isoformat(),
-            "m3_max_optimized": importer.m3_max_optimized,
-            "device": app_state.get("device", "unknown")
-        }
-    }
-    
-    logger.error(f"일반 예외: {error_type} - {error_msg} - {request.url}")
-    logger.error(f"스택 트레이스: {traceback.format_exc()}")
-    
-    return JSONResponse(
-        status_code=500,
-        content=error_response,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*"
-        }
-    )
-
-# ============================================
-# 🔴 API 라우터 등록 - Step Routes 포함, Pipeline Routes 주석처리
-# ============================================
-
-# Health router
