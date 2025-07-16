@@ -2617,6 +2617,16 @@ async def get_services_status():
             },
             status_code=500
         )
+@router.get("/health")
+async def step_api_health_get():
+    """Step API GET 헬스체크 (405 에러 해결용)"""
+    return {
+        "status": "healthy",
+        "message": "Step API is running",
+        "timestamp": datetime.now().isoformat(),
+        "device": DEVICE
+    }
+    
 
 # ============================================================================
 # 🎯 EXPORT

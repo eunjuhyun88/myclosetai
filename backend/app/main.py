@@ -903,8 +903,8 @@ if api_routers.get('models'):
 # 🔥 Step Routes - 실제 AI 모델 연동 8단계 API
 if api_routers.get('step_routes'):
     try:
-        app.include_router(api_routers['step_routes'], tags=["step-routes"])
-        logger.info("🔥 Step Routes 라우터 등록 완료")
+# main.py에서 Step Routes 등록 부분을 다음과 같이 수정
+        app.include_router(api_routers['step_routes'], prefix="/api/step", tags=["step-routes"])        logger.info("🔥 Step Routes 라우터 등록 완료")
         logger.info("   🤖 실제 AI 모델 연동 엔드포인트:")
         logger.info("     - POST /api/step/1/upload-validation (실제 AI 품질 분석)")
         logger.info("     - POST /api/step/2/measurements-validation (AI 신체 분석)")
