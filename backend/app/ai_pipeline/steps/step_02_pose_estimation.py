@@ -1,12 +1,13 @@
 # app/ai_pipeline/steps/step_02_pose_estimation.py
 """
-2단계: 포즈 추정 (Pose Estimation) - 완전 구현 (옵션 A)
+2단계: 포즈 추정 (Pose Estimation) - 완전 구현 + 시각화 기능 (옵션 A)
 ✅ Model Loader 완전 연동 (BaseStepMixin 상속)
 ✅ MediaPipe + YOLOv8 듀얼 모델 지원
 ✅ M3 Max 최적화 및 Neural Engine 활용
 ✅ 완전한 에러 처리 및 폴백 메커니즘
 ✅ 18-keypoint OpenPose 호환 포맷
 ✅ 프로덕션 레벨 안정성
+✅ 🆕 18개 키포인트 시각화 이미지 생성 기능 추가
 """
 
 import os
@@ -15,13 +16,15 @@ import time
 import asyncio
 import json
 import logging
+import base64
 from typing import Dict, Any, Optional, List, Tuple, Union, Callable
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from io import BytesIO
 import numpy as np
 import cv2
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 # PyTorch 및 관련 라이브러리
 try:
@@ -54,13 +57,145 @@ from ..utils.model_loader import BaseStepMixin, get_global_model_loader
 
 logger = logging.getLogger(__name__)
 
+# ==============================================
+# 🎨 시각화 관련 상수 및 설정
+# ==============================================
+
+# OpenPose 18 키포인트 정의
+OPENPOSE_18_KEYPOINTS = {
+    0: "nose",
+    1: "neck", 
+    2: "right_shoulder",
+    3: "right_elbow",
+    4: "right_wrist",
+    5: "left_shoulder",
+    6: "left_elbow", 
+    7: "left_wrist",
+    8: "mid_hip",
+    9: "right_hip",
+    10: "right_knee",
+    11: "right_ankle",
+    12: "left_hip",
+    13: "left_knee",
+    14: "left_ankle",
+    15: "right_eye",
+    16: "left_eye",
+    17: "right_ear"
+}
+
+# 🎨 키포인트별 색상 정의
+KEYPOINT_COLORS = {
+    # 머리 부위 - 빨강 계열
+    0: (255, 0, 0),      # nose - 빨강
+    15: (255, 100, 100), # right_eye - 연빨강
+    16: (255, 150, 150), # left_eye - 더 연빨강
+    17: (200, 0, 0),     # right_ear - 어두운 빨강
+    
+    # 목과 몸통 - 노랑 계열
+    1: (255, 255, 0),    # neck - 노랑
+    8: (255, 200, 0),    # mid_hip - 주황노랑
+    
+    # 오른쪽 팔 - 파랑 계열
+    2: (0, 0, 255),      # right_shoulder - 파랑
+    3: (0, 100, 255),    # right_elbow - 연파랑
+    4: (0, 150, 255),    # right_wrist - 더 연파랑
+    
+    # 왼쪽 팔 - 초록 계열
+    5: (0, 255, 0),      # left_shoulder - 초록
+    6: (100, 255, 100),  # left_elbow - 연초록
+    7: (150, 255, 150),  # left_wrist - 더 연초록
+    
+    # 오른쪽 다리 - 자주 계열
+    9: (255, 0, 255),    # right_hip - 자주
+    10: (200, 0, 200),   # right_knee - 어두운 자주
+    11: (150, 0, 150),   # right_ankle - 더 어두운 자주
+    
+    # 왼쪽 다리 - 청록 계열
+    12: (0, 255, 255),   # left_hip - 청록
+    13: (0, 200, 200),   # left_knee - 어두운 청록
+    14: (0, 150, 150),   # left_ankle - 더 어두운 청록
+}
+
+# 🔗 스켈레톤 연결선 정의
+SKELETON_CONNECTIONS = [
+    # 머리 연결
+    (0, 1),   # nose -> neck
+    (0, 15),  # nose -> right_eye
+    (0, 16),  # nose -> left_eye
+    (15, 17), # right_eye -> right_ear
+    
+    # 몸통 연결
+    (1, 2),   # neck -> right_shoulder
+    (1, 5),   # neck -> left_shoulder
+    (1, 8),   # neck -> mid_hip
+    (2, 8),   # right_shoulder -> mid_hip (몸통 라인)
+    (5, 8),   # left_shoulder -> mid_hip (몸통 라인)
+    
+    # 오른쪽 팔
+    (2, 3),   # right_shoulder -> right_elbow
+    (3, 4),   # right_elbow -> right_wrist
+    
+    # 왼쪽 팔
+    (5, 6),   # left_shoulder -> left_elbow
+    (6, 7),   # left_elbow -> left_wrist
+    
+    # 엉덩이 연결
+    (8, 9),   # mid_hip -> right_hip
+    (8, 12),  # mid_hip -> left_hip
+    
+    # 오른쪽 다리
+    (9, 10),  # right_hip -> right_knee
+    (10, 11), # right_knee -> right_ankle
+    
+    # 왼쪽 다리
+    (12, 13), # left_hip -> left_knee
+    (13, 14), # left_knee -> left_ankle
+]
+
+# 🎨 스켈레톤 연결선 색상
+SKELETON_COLORS = {
+    # 머리 - 빨강
+    (0, 1): (255, 0, 0),
+    (0, 15): (255, 100, 100),
+    (0, 16): (255, 100, 100),
+    (15, 17): (200, 0, 0),
+    
+    # 몸통 - 노랑
+    (1, 2): (255, 255, 0),
+    (1, 5): (255, 255, 0),
+    (1, 8): (255, 200, 0),
+    (2, 8): (255, 180, 0),
+    (5, 8): (255, 180, 0),
+    
+    # 오른쪽 팔 - 파랑
+    (2, 3): (0, 0, 255),
+    (3, 4): (0, 100, 255),
+    
+    # 왼쪽 팔 - 초록
+    (5, 6): (0, 255, 0),
+    (6, 7): (100, 255, 100),
+    
+    # 엉덩이 - 주황
+    (8, 9): (255, 165, 0),
+    (8, 12): (255, 165, 0),
+    
+    # 오른쪽 다리 - 자주
+    (9, 10): (255, 0, 255),
+    (10, 11): (200, 0, 200),
+    
+    # 왼쪽 다리 - 청록
+    (12, 13): (0, 255, 255),
+    (13, 14): (0, 200, 200),
+}
+
 class PoseEstimationStep(BaseStepMixin):
     """
-    🏃 2단계: 포즈 추정 - 완전 구현
+    🏃 2단계: 포즈 추정 - 완전 구현 + 시각화
     ✅ Model Loader 완전 연동
     ✅ MediaPipe + YOLOv8 듀얼 엔진
     ✅ M3 Max 128GB 최적화
     ✅ 18-keypoint OpenPose 표준
+    ✅ 🆕 18개 키포인트 시각화 이미지 생성
     """
     
     def __init__(
@@ -206,6 +341,20 @@ class PoseEstimationStep(BaseStepMixin):
                 "batch_size": 8,
                 "memory_fraction": 0.8,
                 "precision": "fp16"
+            },
+            
+            # === 🆕 시각화 설정 ===
+            "visualization": {
+                "enable_visualization": True,
+                "keypoint_radius": 5,
+                "skeleton_thickness": 3,
+                "confidence_threshold": 0.5,
+                "show_keypoint_labels": True,
+                "show_confidence_values": True,
+                "image_quality": "high",  # low, medium, high
+                "overlay_opacity": 0.8,
+                "background_color": (0, 0, 0),  # 검정 배경
+                "font_size": 12
             }
         }
         
@@ -491,7 +640,7 @@ class PoseEstimationStep(BaseStepMixin):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        ✅ 메인 포즈 추정 처리
+        ✅ 메인 포즈 추정 처리 + 시각화
         
         Args:
             person_image: 입력 이미지
@@ -502,7 +651,7 @@ class PoseEstimationStep(BaseStepMixin):
                 - cache_result: bool = True
         
         Returns:
-            Dict[str, Any]: 포즈 추정 결과
+            Dict[str, Any]: 포즈 추정 결과 + 시각화 이미지
         """
         if not self.is_initialized:
             await self.initialize()
@@ -533,10 +682,11 @@ class PoseEstimationStep(BaseStepMixin):
                 force_model
             )
             
-            # === 4. 결과 후처리 ===
+            # === 4. 결과 후처리 + 시각화 ===
             final_result = await self._postprocess_results(
                 pose_result, 
                 processed_image.shape,
+                processed_image,  # 🆕 원본 이미지 전달 (시각화용)
                 **kwargs
             )
             
@@ -558,6 +708,7 @@ class PoseEstimationStep(BaseStepMixin):
             
             final_result.update({
                 'success': True,
+                'message': "포즈 추정 완료",
                 'processing_time': processing_time,
                 'model_used': self.current_model_type,
                 'device': self.device,
@@ -767,7 +918,6 @@ class PoseEstimationStep(BaseStepMixin):
             2: 15,   # right_eye
             5: 16,   # left_eye
             4: 17,   # right_ear
-            7: 18    # left_ear
         }
         
         keypoints_18 = [[0, 0, 0] for _ in range(18)]
@@ -825,7 +975,6 @@ class PoseEstimationStep(BaseStepMixin):
             1: 15,   # right_eye
             2: 16,   # left_eye
             3: 17,   # right_ear
-            4: 18    # left_ear (OpenPose는 17까지만 있으므로 조정 필요)
         }
         
         keypoints_18 = [[0, 0, 0] for _ in range(18)]
@@ -903,9 +1052,10 @@ class PoseEstimationStep(BaseStepMixin):
         self, 
         pose_result: Dict[str, Any], 
         image_shape: Tuple[int, int, int],
+        original_image: np.ndarray,  # 🆕 원본 이미지 추가 (시각화용)
         **kwargs
     ) -> Dict[str, Any]:
-        """결과 후처리"""
+        """결과 후처리 + 시각화"""
         try:
             keypoints_18 = pose_result['keypoints_18']
             
@@ -931,6 +1081,12 @@ class PoseEstimationStep(BaseStepMixin):
             # 신체 비율 계산
             body_proportions = self._calculate_body_proportions(keypoints_18)
             
+            # 🆕 시각화 이미지 생성
+            visualization_results = await self._create_pose_visualization(
+                keypoints_18, 
+                original_image
+            )
+            
             return {
                 'keypoints_18': keypoints_18,
                 'pose_confidence': pose_result['confidence'],
@@ -940,12 +1096,308 @@ class PoseEstimationStep(BaseStepMixin):
                 'pose_angles': pose_angles,
                 'body_proportions': body_proportions,
                 'raw_model_result': pose_result.get('raw_results'),
-                'model_type': pose_result['model_type']
+                'model_type': pose_result['model_type'],
+                
+                # 🆕 프론트엔드용 시각화 이미지들
+                'details': {
+                    'result_image': visualization_results["keypoints_image"],  # 메인 시각화
+                    'overlay_image': visualization_results["overlay_image"],   # 오버레이
+                    'skeleton_image': visualization_results["skeleton_image"], # 스켈레톤만
+                    
+                    # 기존 데이터들
+                    'detected_keypoints': detected_count,
+                    'total_keypoints': 18,
+                    'keypoint_names': [OPENPOSE_18_KEYPOINTS[i] for i in range(18)],
+                    'confidence_values': [kp[2] for kp in keypoints_18],
+                    
+                    # 상세 분석 정보
+                    'pose_type': self._classify_pose_type(keypoints_18, pose_angles),
+                    'symmetry_score': self._calculate_symmetry_score(keypoints_18),
+                    'pose_quality': 'excellent' if detected_count >= 16 else 'good' if detected_count >= 12 else 'poor',
+                    
+                    # 시스템 정보
+                    'step_info': {
+                        'step_name': 'pose_estimation',
+                        'step_number': 2,
+                        'model_used': pose_result['model_type'],
+                        'device': self.device,
+                        'optimization': 'M3 Max' if self.is_m3_max else self.device
+                    },
+                    
+                    # 품질 메트릭
+                    'quality_metrics': {
+                        'detection_rate': float(detected_count / 18),
+                        'avg_confidence': float(np.mean([kp[2] for kp in keypoints_18 if kp[2] > 0])) if detected_count > 0 else 0.0,
+                        'pose_confidence': pose_result['confidence'],
+                        'quality_passed': quality_passed
+                    }
+                }
             }
             
         except Exception as e:
             self.logger.error(f"결과 후처리 실패: {e}")
             return pose_result
+
+    # ==============================================
+    # 🆕 시각화 함수들
+    # ==============================================
+    
+    async def _create_pose_visualization(
+        self, 
+        keypoints_18: List[List[float]], 
+        original_image: np.ndarray
+    ) -> Dict[str, str]:
+        """
+        🆕 18개 키포인트를 시각화한 이미지들 생성
+        
+        Args:
+            keypoints_18: OpenPose 18 키포인트 [x, y, confidence]
+            original_image: 원본 이미지 np.ndarray
+            
+        Returns:
+            Dict[str, str]: base64 인코딩된 시각화 이미지들
+        """
+        try:
+            if not self.config['visualization']['enable_visualization']:
+                # 시각화 비활성화 시 빈 결과 반환
+                return {
+                    "keypoints_image": "",
+                    "overlay_image": "",
+                    "skeleton_image": ""
+                }
+            
+            def _create_visualizations():
+                height, width = original_image.shape[:2]
+                
+                # 1. 🎯 키포인트만 표시된 이미지 생성
+                keypoints_image = self._create_keypoints_only_image(keypoints_18, (width, height))
+                
+                # 2. 🌈 오버레이 이미지 생성 (원본 + 포즈)
+                overlay_image = self._create_overlay_pose_image(original_image, keypoints_18)
+                
+                # 3. 🦴 스켈레톤만 표시된 이미지 생성
+                skeleton_image = self._create_skeleton_only_image(keypoints_18, (width, height))
+                
+                # base64 인코딩
+                result = {
+                    "keypoints_image": self._pil_to_base64(keypoints_image),
+                    "overlay_image": self._pil_to_base64(overlay_image),
+                    "skeleton_image": self._pil_to_base64(skeleton_image)
+                }
+                
+                return result
+            
+            # 비동기 실행
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(self.executor, _create_visualizations)
+            
+        except Exception as e:
+            self.logger.error(f"❌ 포즈 시각화 생성 실패: {e}")
+            # 폴백: 빈 결과 반환
+            return {
+                "keypoints_image": "",
+                "overlay_image": "",
+                "skeleton_image": ""
+            }
+    
+    def _create_keypoints_only_image(
+        self, 
+        keypoints_18: List[List[float]], 
+        image_size: Tuple[int, int]
+    ) -> Image.Image:
+        """키포인트만 표시된 이미지 생성"""
+        try:
+            width, height = image_size
+            config = self.config['visualization']
+            
+            # 검정 배경 이미지 생성
+            bg_color = config['background_color']
+            image = Image.new('RGB', (width, height), bg_color)
+            draw = ImageDraw.Draw(image)
+            
+            # 키포인트 그리기
+            radius = config['keypoint_radius']
+            threshold = config['confidence_threshold']
+            
+            for i, (x, y, conf) in enumerate(keypoints_18):
+                if conf > threshold:
+                    # 키포인트별 색상
+                    color = KEYPOINT_COLORS.get(i, (255, 255, 255))
+                    
+                    # 신뢰도에 따른 투명도 조정
+                    alpha = int(255 * conf)
+                    if alpha > 255: alpha = 255
+                    
+                    # 키포인트 원 그리기
+                    draw.ellipse([x-radius, y-radius, x+radius, y+radius], 
+                                fill=color, outline=(255, 255, 255), width=2)
+                    
+                    # 라벨 표시 (옵션)
+                    if config['show_keypoint_labels']:
+                        keypoint_name = OPENPOSE_18_KEYPOINTS.get(i, f"kp_{i}")
+                        try:
+                            font = ImageFont.truetype("arial.ttf", config['font_size'])
+                        except:
+                            font = ImageFont.load_default()
+                        
+                        # 텍스트 위치 계산
+                        text_x = x + radius + 2
+                        text_y = y - radius
+                        draw.text((text_x, text_y), keypoint_name, fill=(255, 255, 255), font=font)
+                    
+                    # 신뢰도 값 표시 (옵션)
+                    if config['show_confidence_values']:
+                        conf_text = f"{conf:.2f}"
+                        try:
+                            small_font = ImageFont.truetype("arial.ttf", config['font_size'] - 2)
+                        except:
+                            small_font = ImageFont.load_default()
+                        
+                        draw.text((x, y + radius + 2), conf_text, fill=color, font=small_font)
+            
+            return image
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 키포인트 이미지 생성 실패: {e}")
+            # 폴백: 기본 이미지 생성
+            return Image.new('RGB', image_size, (50, 50, 50))
+    
+    def _create_overlay_pose_image(
+        self, 
+        original_image: np.ndarray, 
+        keypoints_18: List[List[float]]
+    ) -> Image.Image:
+        """원본 이미지 위에 포즈를 오버레이한 이미지 생성"""
+        try:
+            # numpy 배열을 PIL 이미지로 변환
+            if original_image.max() <= 1.0:
+                original_pil = Image.fromarray((original_image * 255).astype(np.uint8))
+            else:
+                original_pil = Image.fromarray(original_image.astype(np.uint8))
+            
+            # 투명한 오버레이 레이어 생성
+            overlay = Image.new('RGBA', original_pil.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+            
+            config = self.config['visualization']
+            threshold = config['confidence_threshold']
+            keypoint_radius = config['keypoint_radius']
+            skeleton_thickness = config['skeleton_thickness']
+            
+            # 1. 스켈레톤 연결선 그리기
+            for start_idx, end_idx in SKELETON_CONNECTIONS:
+                if (start_idx < len(keypoints_18) and end_idx < len(keypoints_18) and
+                    keypoints_18[start_idx][2] > threshold and keypoints_18[end_idx][2] > threshold):
+                    
+                    start_point = (int(keypoints_18[start_idx][0]), int(keypoints_18[start_idx][1]))
+                    end_point = (int(keypoints_18[end_idx][0]), int(keypoints_18[end_idx][1]))
+                    
+                    # 연결선별 색상
+                    line_color = SKELETON_COLORS.get((start_idx, end_idx), (255, 255, 255))
+                    
+                    # 신뢰도 기반 투명도
+                    avg_conf = (keypoints_18[start_idx][2] + keypoints_18[end_idx][2]) / 2
+                    alpha = int(255 * avg_conf * config['overlay_opacity'])
+                    line_color_alpha = line_color + (alpha,)
+                    
+                    draw.line([start_point, end_point], fill=line_color_alpha, width=skeleton_thickness)
+            
+            # 2. 키포인트 그리기
+            for i, (x, y, conf) in enumerate(keypoints_18):
+                if conf > threshold:
+                    color = KEYPOINT_COLORS.get(i, (255, 255, 255))
+                    alpha = int(255 * conf * config['overlay_opacity'])
+                    color_alpha = color + (alpha,)
+                    
+                    # 키포인트 원
+                    draw.ellipse([x-keypoint_radius, y-keypoint_radius, 
+                                x+keypoint_radius, y+keypoint_radius], 
+                               fill=color_alpha, outline=(255, 255, 255, alpha), width=2)
+            
+            # 원본 이미지와 오버레이 합성
+            original_rgba = original_pil.convert('RGBA')
+            combined = Image.alpha_composite(original_rgba, overlay)
+            
+            return combined.convert('RGB')
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 오버레이 이미지 생성 실패: {e}")
+            # 폴백: 원본 이미지 반환
+            if original_image.max() <= 1.0:
+                return Image.fromarray((original_image * 255).astype(np.uint8))
+            else:
+                return Image.fromarray(original_image.astype(np.uint8))
+    
+    def _create_skeleton_only_image(
+        self, 
+        keypoints_18: List[List[float]], 
+        image_size: Tuple[int, int]
+    ) -> Image.Image:
+        """스켈레톤만 표시된 이미지 생성"""
+        try:
+            width, height = image_size
+            config = self.config['visualization']
+            
+            # 검정 배경 이미지 생성
+            bg_color = config['background_color']
+            image = Image.new('RGB', (width, height), bg_color)
+            draw = ImageDraw.Draw(image)
+            
+            threshold = config['confidence_threshold']
+            thickness = config['skeleton_thickness']
+            
+            # 스켈레톤 연결선만 그리기
+            for start_idx, end_idx in SKELETON_CONNECTIONS:
+                if (start_idx < len(keypoints_18) and end_idx < len(keypoints_18) and
+                    keypoints_18[start_idx][2] > threshold and keypoints_18[end_idx][2] > threshold):
+                    
+                    start_point = (int(keypoints_18[start_idx][0]), int(keypoints_18[start_idx][1]))
+                    end_point = (int(keypoints_18[end_idx][0]), int(keypoints_18[end_idx][1]))
+                    
+                    # 연결선별 색상
+                    line_color = SKELETON_COLORS.get((start_idx, end_idx), (255, 255, 255))
+                    
+                    draw.line([start_point, end_point], fill=line_color, width=thickness)
+            
+            # 관절점을 작은 원으로 표시
+            for i, (x, y, conf) in enumerate(keypoints_18):
+                if conf > threshold:
+                    color = KEYPOINT_COLORS.get(i, (255, 255, 255))
+                    small_radius = max(2, config['keypoint_radius'] // 2)
+                    
+                    draw.ellipse([x-small_radius, y-small_radius, 
+                                x+small_radius, y+small_radius], 
+                               fill=color, outline=(255, 255, 255), width=1)
+            
+            return image
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 스켈레톤 이미지 생성 실패: {e}")
+            # 폴백: 기본 이미지 생성
+            return Image.new('RGB', image_size, (50, 50, 50))
+    
+    def _pil_to_base64(self, pil_image: Image.Image) -> str:
+        """PIL 이미지를 base64 문자열로 변환"""
+        try:
+            buffer = BytesIO()
+            
+            # 품질 설정
+            quality = 85
+            if self.config['visualization']['image_quality'] == "high":
+                quality = 95
+            elif self.config['visualization']['image_quality'] == "low":
+                quality = 70
+            
+            pil_image.save(buffer, format='JPEG', quality=quality)
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ base64 변환 실패: {e}")
+            return ""
+    
+    # ==============================================
+    # 🔧 기존 함수들 (변경 없음)
+    # ==============================================
     
     def _calculate_pose_bbox(
         self, 
@@ -1288,6 +1740,26 @@ class PoseEstimationStep(BaseStepMixin):
                 'quality_grade': 'F',
                 'pose_type': 'unknown'
             },
+            'details': {
+                'result_image': "",  # 빈 시각화 이미지
+                'overlay_image': "",
+                'skeleton_image': "",
+                'detected_keypoints': 0,
+                'error': error_message,
+                'step_info': {
+                    'step_name': 'pose_estimation',
+                    'step_number': 2,
+                    'model_used': 'error',
+                    'device': self.device,
+                    'error': error_message
+                },
+                'quality_metrics': {
+                    'detection_rate': 0.0,
+                    'avg_confidence': 0.0,
+                    'pose_confidence': 0.0,
+                    'quality_passed': False
+                }
+            },
             'model_type': 'error',
             'processing_time': 0.0,
             'device': self.device,
@@ -1448,6 +1920,12 @@ async def create_pose_estimation_step(
             "quality": {
                 "min_keypoints_detected": 10,
                 "min_pose_confidence": 0.5
+            },
+            "visualization": {
+                "enable_visualization": True,
+                "keypoint_radius": 5,
+                "skeleton_thickness": 3,
+                "image_quality": "high"
             }
         }
         
@@ -1518,7 +1996,6 @@ def convert_keypoints_to_coco(keypoints_18: List[List[float]]) -> List[List[floa
             15: 1,  # right_eye -> left_eye (COCO 관점)
             16: 2,  # left_eye -> right_eye
             17: 3,  # right_ear -> left_ear
-            # 18: 4,  # left_ear (OpenPose에는 18번이 없음)
             2: 5,   # right_shoulder -> left_shoulder
             5: 6,   # left_shoulder -> right_shoulder
             3: 7,   # right_elbow -> left_elbow
@@ -1553,58 +2030,39 @@ def draw_pose_on_image(
     line_thickness: int = 2,
     keypoint_radius: int = 3
 ) -> np.ndarray:
-    """이미지에 포즈 그리기"""
+    """이미지에 포즈 그리기 (OpenCV 기반)"""
     try:
         result_image = image.copy()
         
-        # OpenPose 연결선 정의
-        skeleton_connections = [
-            # 머리
-            (0, 1), (1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6, 7),
-            # 몸통
-            (1, 8), (8, 9), (8, 12), (9, 10), (10, 11), (12, 13), (13, 14),
-            # 얼굴
-            (0, 15), (0, 16), (15, 17)
-        ]
-        
-        # 색상 정의
-        colors = {
-            'keypoint': (0, 255, 0),      # 초록
-            'skeleton': (255, 0, 255),    # 자주
-            'head': (0, 0, 255),          # 빨강
-            'torso': (255, 255, 0),       # 노랑
-            'arms': (255, 165, 0),        # 주황
-            'legs': (0, 255, 255)         # 청록
-        }
+        # 신뢰도 임계값
+        threshold = 0.5
         
         # 스켈레톤 그리기
         if draw_skeleton:
-            for start_idx, end_idx in skeleton_connections:
+            for start_idx, end_idx in SKELETON_CONNECTIONS:
                 if (start_idx < len(keypoints_18) and end_idx < len(keypoints_18) and
-                    keypoints_18[start_idx][2] > 0.5 and keypoints_18[end_idx][2] > 0.5):
+                    keypoints_18[start_idx][2] > threshold and keypoints_18[end_idx][2] > threshold):
                     
                     start_point = (int(keypoints_18[start_idx][0]), int(keypoints_18[start_idx][1]))
                     end_point = (int(keypoints_18[end_idx][0]), int(keypoints_18[end_idx][1]))
                     
-                    cv2.line(result_image, start_point, end_point, colors['skeleton'], line_thickness)
+                    # 연결선별 색상 (BGR 형식으로 변환)
+                    line_color = SKELETON_COLORS.get((start_idx, end_idx), (255, 255, 255))
+                    line_color_bgr = (line_color[2], line_color[1], line_color[0])  # RGB to BGR
+                    
+                    cv2.line(result_image, start_point, end_point, line_color_bgr, line_thickness)
         
         # 키포인트 그리기
         if draw_keypoints:
             for i, (x, y, conf) in enumerate(keypoints_18):
-                if conf > 0.5:
+                if conf > threshold:
                     center = (int(x), int(y))
                     
-                    # 부위별 색상
-                    if i == 0:  # 코
-                        color = colors['head']
-                    elif i in [1, 2, 3, 4, 5, 6, 7]:  # 팔
-                        color = colors['arms']
-                    elif i in [8, 9, 10, 11, 12, 13, 14]:  # 다리
-                        color = colors['legs']
-                    else:  # 얼굴
-                        color = colors['head']
+                    # 키포인트별 색상 (BGR 형식으로 변환)
+                    color = KEYPOINT_COLORS.get(i, (255, 255, 255))
+                    color_bgr = (color[2], color[1], color[0])  # RGB to BGR
                     
-                    cv2.circle(result_image, center, keypoint_radius, color, -1)
+                    cv2.circle(result_image, center, keypoint_radius, color_bgr, -1)
                     cv2.circle(result_image, center, keypoint_radius + 1, (255, 255, 255), 1)
         
         return result_image
@@ -1689,13 +2147,17 @@ def analyze_pose_for_clothing(keypoints_18: List[List[float]]) -> Dict[str, Any]
 
 __all__ = [
     'PoseEstimationStep',
-    'create_pose_estimation_step',
+    'create_pose_estimation_step', 
     'PoseEstimationStepLegacy',
     'validate_openpose_keypoints',
     'convert_keypoints_to_coco',
     'draw_pose_on_image',
-    'analyze_pose_for_clothing'
+    'analyze_pose_for_clothing',
+    'OPENPOSE_18_KEYPOINTS',
+    'KEYPOINT_COLORS',
+    'SKELETON_CONNECTIONS',
+    'SKELETON_COLORS'
 ]
 
 # 모듈 초기화 시 로깅
-logger.info("✅ PoseEstimationStep 모듈 로드 완료 - 옵션 A 완전 구현")
+logger.info("✅ PoseEstimationStep 모듈 로드 완료 - 시각화 기능 포함")

@@ -3,6 +3,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
+//import App from './App_Working'  // 테스트용
 
 // =================================================================
 // 🔧 React 18 StrictMode 문제 해결

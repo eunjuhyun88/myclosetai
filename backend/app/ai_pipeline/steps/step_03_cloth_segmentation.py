@@ -1,6 +1,6 @@
 # app/ai_pipeline/steps/step_03_cloth_segmentation.py
 """
-MyCloset AI - 3단계: 의류 세그멘테이션 (Clothing Segmentation)
+MyCloset AI - 3단계: 의류 세그멘테이션 (Clothing Segmentation) + 시각화
 🔥 완전 통합 프로덕션 버전 - M3 Max 128GB 최적화
 
 ✅ 통일된 생성자 패턴 100% 적용
@@ -10,6 +10,7 @@ MyCloset AI - 3단계: 의류 세그멘테이션 (Clothing Segmentation)
 ✅ M3 Max Neural Engine + Metal Performance Shaders 활용
 ✅ 다중 AI 모델 지원 (U2-Net, RemBG, SAM 등)
 ✅ Graceful Degradation + 완벽한 에러 처리
+✅ 🆕 의류 세그멘테이션 결과 시각화 기능 추가
 """
 
 import os
@@ -21,17 +22,19 @@ import threading
 import gc
 import hashlib
 import json
+import base64
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
+from io import BytesIO
 import weakref
 
 # 핵심 라이브러리
 import numpy as np
 import cv2
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw, ImageFont
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -145,6 +148,13 @@ class SegmentationConfig:
     use_fp16: bool = True
     enable_caching: bool = True
     cache_size: int = 100
+    
+    # 🆕 시각화 설정
+    enable_visualization: bool = True
+    visualization_quality: str = "high"  # low, medium, high
+    show_masks: bool = True
+    show_boundaries: bool = True
+    overlay_opacity: float = 0.6
 
 @dataclass
 class SegmentationResult:
@@ -158,6 +168,20 @@ class SegmentationResult:
     processing_time: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
     error_message: Optional[str] = None
+
+# 🆕 시각화용 색상 팔레트
+CLOTHING_COLORS = {
+    'shirt': (0, 255, 128),      # 밝은 초록
+    'dress': (255, 105, 180),    # 핫핑크
+    'pants': (30, 144, 255),     # 도지블루
+    'skirt': (255, 20, 147),     # 딥핑크
+    'jacket': (255, 165, 0),     # 오렌지
+    'sweater': (138, 43, 226),   # 블루바이올렛
+    'coat': (165, 42, 42),       # 브라운
+    'top': (0, 255, 255),        # 사이안
+    'bottom': (255, 255, 0),     # 옐로우
+    'unknown': (128, 128, 128)   # 그레이
+}
 
 # ==============================================
 # 2. U2-Net 모델 정의 (프로덕션 최적화)
@@ -363,7 +387,7 @@ class U2NET(nn.Module):
 
 class ClothSegmentationStep(BaseStepMixin):
     """
-    3단계: 의류 세그멘테이션 - 완전 통합 프로덕션 버전
+    3단계: 의류 세그멘테이션 - 완전 통합 프로덕션 버전 + 시각화
     
     ✅ 통일된 생성자 패턴 적용
     ✅ Model Loader + Memory Manager 완전 연동
@@ -371,6 +395,7 @@ class ClothSegmentationStep(BaseStepMixin):
     ✅ M3 Max 128GB 최적화
     ✅ 다중 AI 모델 지원
     ✅ Graceful Degradation
+    ✅ 🆕 의류 세그멘테이션 시각화 기능
     """
     
     def __init__(
@@ -466,11 +491,19 @@ class ClothSegmentationStep(BaseStepMixin):
         if 'quality_level' in self.config:
             self.segmentation_config.quality_level = QualityLevel(self.config['quality_level'])
         
+        # 🆕 시각화 설정
+        if 'enable_visualization' in kwargs:
+            self.segmentation_config.enable_visualization = kwargs['enable_visualization']
+        
+        if 'visualization_quality' in kwargs:
+            self.segmentation_config.visualization_quality = kwargs['visualization_quality']
+        
         # M3 Max 특화 설정
         if self.is_m3_max:
             self.segmentation_config.use_fp16 = True
             self.segmentation_config.batch_size = min(8, max(1, int(self.memory_gb / 16)))
             self.segmentation_config.cache_size = min(200, max(50, int(self.memory_gb * 2)))
+            self.segmentation_config.enable_visualization = True  # M3 Max에서는 기본 활성화
         
         # 추가 설정들
         self.enable_post_processing = kwargs.get('enable_post_processing', True)
@@ -819,7 +852,7 @@ class ClothSegmentationStep(BaseStepMixin):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        ✅ 통일된 처리 인터페이스 - Pipeline Manager 호환
+        ✅ 통일된 처리 인터페이스 - Pipeline Manager 호환 + 시각화
         
         Args:
             clothing_image: 입력 의류 이미지
@@ -832,8 +865,10 @@ class ClothSegmentationStep(BaseStepMixin):
                 - confidence_threshold: 신뢰도 임계값
                 
         Returns:
-            Dict[str, Any]: 세그멘테이션 결과
+            Dict[str, Any]: 세그멘테이션 결과 + 시각화 이미지
                 - success: bool
+                - details.result_image: base64 인코딩된 시각화 이미지
+                - details.overlay_image: base64 인코딩된 오버레이 이미지
                 - mask: np.ndarray 
                 - segmented_image: np.ndarray
                 - confidence_score: float
@@ -880,19 +915,27 @@ class ClothSegmentationStep(BaseStepMixin):
                 result.quality_score = self._evaluate_quality(processed_image, result.mask)
                 result.confidence_score = self._calculate_confidence(result)
             
-            # 7. 결과 캐싱
+            # 🆕 7. 시각화 이미지 생성
+            if result.success and self.segmentation_config.enable_visualization:
+                visualization_results = await self._create_segmentation_visualization(
+                    result, processed_image, clothing_type
+                )
+                # 시각화 결과를 메타데이터에 추가
+                result.metadata.update(visualization_results)
+            
+            # 8. 결과 캐싱
             if kwargs.get('cache_result', True) and result.success:
                 self.segmentation_cache[cache_key] = result
                 if len(self.segmentation_cache) > self.segmentation_config.cache_size:
                     self._cleanup_cache()
             
-            # 8. 통계 업데이트
+            # 9. 통계 업데이트
             self._update_statistics(result, time.time() - start_time)
             
             self.logger.info(f"✅ 세그멘테이션 완료 - 방법: {result.method_used}, "
                            f"품질: {result.quality_score:.3f}, 시간: {result.processing_time:.3f}초")
             
-            return self._format_result(result)
+            return self._format_result_with_visualization(result)
             
         except Exception as e:
             error_msg = f"세그멘테이션 처리 실패: {e}"
@@ -906,7 +949,180 @@ class ClothSegmentationStep(BaseStepMixin):
                 method_used="error"
             )
             
-            return self._format_result(error_result)
+            return self._format_result_with_visualization(error_result)
+
+    # ==============================================
+    # 🆕 시각화 함수들
+    # ==============================================
+    
+    async def _create_segmentation_visualization(
+        self, 
+        result: SegmentationResult, 
+        original_image: Image.Image, 
+        clothing_type: str
+    ) -> Dict[str, str]:
+        """
+        🆕 의류 세그멘테이션 결과 시각화 이미지들 생성
+        
+        Args:
+            result: 세그멘테이션 결과
+            original_image: 원본 이미지
+            clothing_type: 의류 타입
+            
+        Returns:
+            Dict[str, str]: base64 인코딩된 시각화 이미지들
+        """
+        try:
+            if not self.segmentation_config.enable_visualization or not result.success:
+                return {
+                    "result_image": "",
+                    "overlay_image": "",
+                    "mask_image": "",
+                    "boundary_image": ""
+                }
+            
+            def _create_visualizations():
+                # 1. 🎨 색상화된 세그멘테이션 결과
+                colored_segmentation = self._create_colored_segmentation(
+                    result.mask, clothing_type
+                )
+                
+                # 2. 🌈 오버레이 이미지 (원본 + 세그멘테이션)
+                overlay_image = self._create_overlay_visualization(
+                    original_image, colored_segmentation
+                )
+                
+                # 3. 📄 마스크 시각화
+                mask_visualization = self._create_mask_visualization(result.mask)
+                
+                # 4. 📐 경계선 시각화
+                boundary_visualization = self._create_boundary_visualization(
+                    original_image, result.mask
+                )
+                
+                # base64 인코딩
+                return {
+                    "result_image": self._pil_to_base64(colored_segmentation),
+                    "overlay_image": self._pil_to_base64(overlay_image),
+                    "mask_image": self._pil_to_base64(mask_visualization),
+                    "boundary_image": self._pil_to_base64(boundary_visualization)
+                }
+            
+            # 비동기 실행
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(self.executor, _create_visualizations)
+            
+        except Exception as e:
+            self.logger.error(f"❌ 시각화 생성 실패: {e}")
+            return {
+                "result_image": "",
+                "overlay_image": "",
+                "mask_image": "",
+                "boundary_image": ""
+            }
+    
+    def _create_colored_segmentation(self, mask: np.ndarray, clothing_type: str) -> Image.Image:
+        """색상화된 세그멘테이션 결과 생성"""
+        try:
+            height, width = mask.shape
+            colored_image = np.zeros((height, width, 3), dtype=np.uint8)
+            
+            # 의류 타입에 따른 색상 선택
+            clothing_color = CLOTHING_COLORS.get(clothing_type, CLOTHING_COLORS['unknown'])
+            
+            # 마스크 영역에 색상 적용
+            mask_binary = (mask > 128).astype(np.uint8)
+            colored_image[mask_binary == 1] = clothing_color
+            
+            # 배경은 연한 회색으로
+            colored_image[mask_binary == 0] = (240, 240, 240)
+            
+            return Image.fromarray(colored_image)
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 색상 세그멘테이션 생성 실패: {e}")
+            # 폴백: 기본 그레이스케일 이미지
+            gray_image = np.stack([mask, mask, mask], axis=2)
+            return Image.fromarray(gray_image)
+    
+    def _create_overlay_visualization(self, original_image: Image.Image, segmentation_image: Image.Image) -> Image.Image:
+        """원본과 세그멘테이션 오버레이 이미지 생성"""
+        try:
+            # 크기 맞추기
+            width, height = original_image.size
+            segmentation_resized = segmentation_image.resize((width, height), Image.Resampling.NEAREST)
+            
+            # 알파 블렌딩
+            opacity = self.segmentation_config.overlay_opacity
+            overlay = Image.blend(original_image, segmentation_resized, opacity)
+            
+            return overlay
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 오버레이 생성 실패: {e}")
+            return original_image
+    
+    def _create_mask_visualization(self, mask: np.ndarray) -> Image.Image:
+        """마스크 시각화 이미지 생성"""
+        try:
+            # 마스크를 3채널로 변환
+            mask_colored = np.stack([mask, mask, mask], axis=2)
+            
+            # 대비 향상
+            mask_colored = np.clip(mask_colored * 1.2, 0, 255).astype(np.uint8)
+            
+            return Image.fromarray(mask_colored)
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 마스크 시각화 생성 실패: {e}")
+            # 폴백: 기본 마스크
+            return Image.fromarray(mask)
+    
+    def _create_boundary_visualization(self, original_image: Image.Image, mask: np.ndarray) -> Image.Image:
+        """경계선 시각화 이미지 생성"""
+        try:
+            # 경계선 검출
+            edges = cv2.Canny(mask.astype(np.uint8), 50, 150)
+            
+            # 경계선 두껍게 만들기
+            kernel = np.ones((3, 3), np.uint8)
+            edges_thick = cv2.dilate(edges, kernel, iterations=1)
+            
+            # 원본 이미지에 경계선 오버레이
+            original_np = np.array(original_image)
+            result_image = original_np.copy()
+            
+            # 경계선을 빨간색으로 표시
+            result_image[edges_thick > 0] = [255, 0, 0]
+            
+            return Image.fromarray(result_image)
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 경계선 시각화 생성 실패: {e}")
+            return original_image
+    
+    def _pil_to_base64(self, pil_image: Image.Image) -> str:
+        """PIL 이미지를 base64 문자열로 변환"""
+        try:
+            buffer = BytesIO()
+            
+            # 품질 설정
+            quality = 85
+            if self.segmentation_config.visualization_quality == "high":
+                quality = 95
+            elif self.segmentation_config.visualization_quality == "low":
+                quality = 70
+            
+            pil_image.save(buffer, format='JPEG', quality=quality)
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ base64 변환 실패: {e}")
+            return ""
+
+    # ==============================================
+    # 🔧 기존 함수들 (일부 수정)
+    # ==============================================
 
     def _preprocess_image(self, image: Union[str, np.ndarray, Image.Image, torch.Tensor]) -> Image.Image:
         """이미지 전처리"""
@@ -1557,9 +1773,10 @@ class ClothSegmentationStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"통계 업데이트 실패: {e}")
 
-    def _format_result(self, result: SegmentationResult) -> Dict[str, Any]:
-        """결과를 표준 딕셔너리 형태로 포맷"""
+    def _format_result_with_visualization(self, result: SegmentationResult) -> Dict[str, Any]:
+        """🆕 시각화가 포함된 결과를 표준 딕셔너리 형태로 포맷"""
         try:
+            # 기본 결과 구조
             formatted_result = {
                 'success': result.success,
                 'processing_time': result.processing_time,
@@ -1568,6 +1785,38 @@ class ClothSegmentationStep(BaseStepMixin):
             }
             
             if result.success:
+                # 🆕 프론트엔드 호환성을 위한 details 구조
+                formatted_result['details'] = {
+                    # 🆕 시각화 이미지들 (프론트엔드에서 바로 표시 가능)
+                    'result_image': result.metadata.get('result_image', ''),
+                    'overlay_image': result.metadata.get('overlay_image', ''),
+                    
+                    # 기존 정보들
+                    'confidence_score': result.confidence_score,
+                    'quality_score': result.quality_score,
+                    'segmentation_area': int(np.sum(result.mask > 0)) if result.mask is not None else 0,
+                    'total_pixels': int(result.mask.size) if result.mask is not None else 0,
+                    'coverage_ratio': float(np.sum(result.mask > 0) / result.mask.size) if result.mask is not None else 0.0,
+                    
+                    # 시각화 추가 정보
+                    'mask_image': result.metadata.get('mask_image', ''),
+                    'boundary_image': result.metadata.get('boundary_image', ''),
+                    'visualization_enabled': self.segmentation_config.enable_visualization,
+                    'visualization_quality': self.segmentation_config.visualization_quality,
+                    
+                    # 시스템 정보
+                    'step_info': {
+                        'step_name': 'cloth_segmentation',
+                        'step_number': 3,
+                        'device': self.device,
+                        'is_m3_max': self.is_m3_max,
+                        'method_used': result.method_used,
+                        'fallback_used': result.metadata.get('fallback_used', False),
+                        'post_processed': result.metadata.get('post_processed', False)
+                    }
+                }
+                
+                # 레거시 호환성 필드들
                 formatted_result.update({
                     'mask': result.mask.tolist() if result.mask is not None else None,
                     'segmented_image': result.segmented_image.tolist() if result.segmented_image is not None else None,
@@ -1575,6 +1824,17 @@ class ClothSegmentationStep(BaseStepMixin):
                     'quality_score': result.quality_score,
                 })
             else:
+                formatted_result['details'] = {
+                    'result_image': '',
+                    'overlay_image': '',
+                    'error_message': result.error_message,
+                    'step_info': {
+                        'step_name': 'cloth_segmentation',
+                        'step_number': 3,
+                        'device': self.device,
+                        'error': result.error_message
+                    }
+                }
                 formatted_result['error_message'] = result.error_message
             
             return formatted_result
@@ -1585,8 +1845,22 @@ class ClothSegmentationStep(BaseStepMixin):
                 'success': False,
                 'error_message': f"결과 포맷팅 실패: {e}",
                 'processing_time': 0.0,
-                'method_used': 'error'
+                'method_used': 'error',
+                'details': {
+                    'result_image': '',
+                    'overlay_image': '',
+                    'error_message': f"결과 포맷팅 실패: {e}",
+                    'step_info': {
+                        'step_name': 'cloth_segmentation',
+                        'step_number': 3,
+                        'error': f"결과 포맷팅 실패: {e}"
+                    }
+                }
             }
+
+    def _format_result(self, result: SegmentationResult) -> Dict[str, Any]:
+        """기존 호환성을 위한 결과 포맷 (시각화 포함)"""
+        return self._format_result_with_visualization(result)
 
     def _pil_to_bytes(self, image: Image.Image) -> bytes:
         """PIL 이미지를 바이트로 변환"""
@@ -1622,7 +1896,8 @@ class ClothSegmentationStep(BaseStepMixin):
                 'is_m3_max': self.is_m3_max,
                 'memory_gb': self.memory_gb,
                 'available_methods': [m.value for m in self.available_methods],
-                'optimization_enabled': self.optimization_enabled
+                'optimization_enabled': self.optimization_enabled,
+                'visualization_enabled': self.segmentation_config.enable_visualization
             }
             
             return stats
@@ -1630,6 +1905,242 @@ class ClothSegmentationStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"통계 조회 실패: {e}")
             return {'error': str(e)}
+
+    # ==============================================
+    # 🔧 원본에서 빠진 추가 기능들
+    # ==============================================
+
+    def get_clothing_mask(self, mask: np.ndarray, category: str) -> np.ndarray:
+        """특정 의류 카테고리의 통합 마스크 반환"""
+        try:
+            # 의류 카테고리별 마스크 생성
+            if category in ['shirt', 'top', 'sweater']:
+                # 상의 카테고리
+                return (mask > 128).astype(np.uint8)
+            elif category in ['pants', 'skirt', 'bottom']:
+                # 하의 카테고리
+                return (mask > 128).astype(np.uint8)
+            elif category in ['dress']:
+                # 원피스 카테고리
+                return (mask > 128).astype(np.uint8)
+            else:
+                # 기본값
+                return (mask > 128).astype(np.uint8)
+        except Exception as e:
+            self.logger.warning(f"의류 마스크 생성 실패: {e}")
+            return np.zeros_like(mask, dtype=np.uint8)
+
+    def visualize_segmentation(self, mask: np.ndarray, clothing_type: str = "shirt") -> np.ndarray:
+        """세그멘테이션 결과 시각화 (디버깅용)"""
+        try:
+            # 의류 타입에 따른 색상 선택
+            color = CLOTHING_COLORS.get(clothing_type, CLOTHING_COLORS['unknown'])
+            
+            # 3채널 색상 이미지 생성
+            height, width = mask.shape
+            colored_image = np.zeros((height, width, 3), dtype=np.uint8)
+            
+            # 마스크 영역에 색상 적용
+            mask_binary = (mask > 128).astype(np.uint8)
+            colored_image[mask_binary == 1] = color
+            
+            return colored_image
+            
+        except Exception as e:
+            self.logger.warning(f"세그멘테이션 시각화 실패: {e}")
+            # 폴백: 그레이스케일
+            return np.stack([mask, mask, mask], axis=2)
+
+    async def get_step_info(self) -> Dict[str, Any]:
+        """🔍 3단계 상세 정보 반환"""
+        try:
+            memory_stats = {}
+            if self.memory_manager:
+                try:
+                    memory_stats = await self.memory_manager.get_usage_stats()
+                except:
+                    memory_stats = {"memory_used": "N/A"}
+            else:
+                memory_stats = {"memory_used": "N/A"}
+            
+            return {
+                "step_name": "cloth_segmentation",
+                "step_number": 3,
+                "device": self.device,
+                "initialized": self.is_initialized,
+                "available_methods": [m.value for m in self.available_methods],
+                "config": {
+                    "segmentation_method": self.segmentation_config.method.value,
+                    "quality_level": self.segmentation_config.quality_level.value,
+                    "input_size": self.segmentation_config.input_size,
+                    "use_fp16": self.segmentation_config.use_fp16,
+                    "confidence_threshold": self.confidence_threshold,
+                    "enable_post_processing": self.enable_post_processing,
+                    "enable_edge_refinement": self.enable_edge_refinement,
+                    "enable_visualization": self.segmentation_config.enable_visualization,
+                    "visualization_quality": self.segmentation_config.visualization_quality
+                },
+                "performance": self.processing_stats,
+                "cache": {
+                    "size": len(self.segmentation_cache),
+                    "max_size": self.segmentation_config.cache_size,
+                    "hit_rate": (self.processing_stats['cache_hits'] / 
+                               max(1, self.processing_stats['total_processed'])) * 100
+                },
+                "memory_usage": memory_stats,
+                "optimization": {
+                    "m3_max_enabled": self.is_m3_max,
+                    "memory_gb": self.memory_gb,
+                    "optimization_enabled": self.optimization_enabled,
+                    "fp16_enabled": self.segmentation_config.use_fp16,
+                    "neural_engine": self.is_m3_max
+                },
+                "models_status": {
+                    "u2net_loaded": hasattr(self, 'u2net_model') and self.u2net_model is not None,
+                    "rembg_available": REMBG_AVAILABLE,
+                    "sam_available": SAM_AVAILABLE,
+                    "deeplab_loaded": hasattr(self, 'deeplab_pipeline') and self.deeplab_pipeline is not None,
+                    "rembg_sessions": len(getattr(self, 'rembg_sessions', {}))
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Step 정보 조회 실패: {e}")
+            return {
+                "step_name": "cloth_segmentation",
+                "step_number": 3,
+                "error": str(e),
+                "initialized": self.is_initialized
+            }
+
+    def get_supported_clothing_types(self) -> List[str]:
+        """지원되는 의류 타입 목록 반환"""
+        return [ct.value for ct in ClothingType]
+
+    def get_available_methods(self) -> List[str]:
+        """사용 가능한 세그멘테이션 방법 목록 반환"""
+        return [method.value for method in self.available_methods]
+
+    def get_method_info(self, method_name: str) -> Dict[str, Any]:
+        """특정 방법의 상세 정보 반환"""
+        method_info = {
+            'u2net': {
+                'name': 'U²-Net',
+                'description': 'Deep learning based U²-Net for precise cloth segmentation',
+                'quality': 'high',
+                'speed': 'medium',
+                'accuracy': 'high',
+                'requirements': ['torch', 'torchvision']
+            },
+            'rembg': {
+                'name': 'RemBG',
+                'description': 'Background removal specialized for clothing',
+                'quality': 'high',
+                'speed': 'fast',
+                'accuracy': 'medium-high',
+                'requirements': ['rembg']
+            },
+            'sam': {
+                'name': 'Segment Anything Model',
+                'description': 'Meta\'s universal segmentation model',
+                'quality': 'ultra',
+                'speed': 'slow',
+                'accuracy': 'ultra-high',
+                'requirements': ['segment_anything']
+            },
+            'deeplab': {
+                'name': 'DeepLab v3',
+                'description': 'Semantic segmentation with transformers',
+                'quality': 'high',
+                'speed': 'medium',
+                'accuracy': 'high',
+                'requirements': ['transformers']
+            },
+            'traditional': {
+                'name': 'Traditional CV',
+                'description': 'Classical computer vision methods (GrabCut, K-means)',
+                'quality': 'medium',
+                'speed': 'fast',
+                'accuracy': 'medium',
+                'requirements': ['opencv', 'scikit-learn']
+            }
+        }
+        
+        return method_info.get(method_name, {
+            'name': 'Unknown',
+            'description': 'Unknown segmentation method',
+            'quality': 'unknown',
+            'speed': 'unknown',
+            'accuracy': 'unknown'
+        })
+
+    async def warmup(self):
+        """시스템 워밍업 (첫 처리 최적화)"""
+        try:
+            self.logger.info("🔥 3단계 세그멘테이션 시스템 워밍업 시작...")
+            
+            if not self.is_initialized:
+                await self.initialize()
+            
+            # 더미 이미지로 워밍업
+            dummy_image = Image.new('RGB', (512, 512), (128, 128, 128))
+            
+            # 각 사용 가능한 방법으로 워밍업
+            for method in self.available_methods[:2]:  # 최대 2개 방법만
+                try:
+                    self.logger.info(f"🔥 {method.value} 워밍업 중...")
+                    result = await self._perform_single_segmentation(dummy_image, method, "shirt")
+                    if result.success:
+                        self.logger.info(f"✅ {method.value} 워밍업 완료")
+                    else:
+                        self.logger.warning(f"⚠️ {method.value} 워밍업 실패")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {method.value} 워밍업 오류: {e}")
+            
+            self.logger.info("✅ 3단계 세그멘테이션 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 워밍업 실패: {e}")
+
+    def estimate_processing_time(self, image_size: Tuple[int, int], method: str = "auto") -> float:
+        """처리 시간 추정"""
+        try:
+            width, height = image_size
+            total_pixels = width * height
+            
+            # 방법별 기본 처리 시간 (초/메가픽셀)
+            time_per_mpx = {
+                'u2net': 0.5 if self.is_m3_max else 1.0,
+                'rembg': 0.3 if self.is_m3_max else 0.6,
+                'sam': 2.0 if self.is_m3_max else 4.0,
+                'deeplab': 0.8 if self.is_m3_max else 1.5,
+                'traditional': 0.1
+            }
+            
+            if method == "auto":
+                # 사용 가능한 방법 중 가장 빠른 것
+                method = min(self.available_methods, 
+                           key=lambda m: time_per_mpx.get(m.value, 1.0)).value
+            
+            mpx = total_pixels / 1_000_000  # 메가픽셀 변환
+            base_time = time_per_mpx.get(method, 1.0) * mpx
+            
+            # 품질 설정에 따른 조정
+            quality_multiplier = {
+                'fast': 0.7,
+                'balanced': 1.0,
+                'high': 1.3,
+                'ultra': 1.8
+            }
+            
+            quality = self.segmentation_config.quality_level.value
+            estimated_time = base_time * quality_multiplier.get(quality, 1.0)
+            
+            return max(0.1, estimated_time)  # 최소 0.1초
+            
+        except Exception as e:
+            self.logger.warning(f"처리 시간 추정 실패: {e}")
+            return 2.0  # 기본값
 
     async def cleanup(self):
         """리소스 정리"""
@@ -1728,7 +2239,9 @@ def create_m3_max_segmentation_step(**kwargs) -> ClothSegmentationStep:
         'segmentation_method': 'auto',
         'use_fp16': True,
         'enable_post_processing': True,
-        'cache_size': 200
+        'cache_size': 200,
+        'enable_visualization': True,  # 🆕 M3 Max에서는 시각화 기본 활성화
+        'visualization_quality': 'high'
     }
     
     m3_max_config.update(kwargs)
@@ -1748,7 +2261,9 @@ def create_production_segmentation_step(
         'enable_post_processing': True,
         'enable_edge_refinement': True,
         'confidence_threshold': 0.8,
-        'cache_size': 100
+        'cache_size': 100,
+        'enable_visualization': True,  # 🆕 프로덕션에서도 시각화 활성화
+        'visualization_quality': 'medium'
     }
     
     production_config.update(kwargs)
@@ -1778,27 +2293,152 @@ __all__ = [
     # 팩토리 함수들
     'create_cloth_segmentation_step',
     'create_m3_max_segmentation_step',
-    'create_production_segmentation_step'
+    'create_production_segmentation_step',
+    
+    # 🆕 시각화 관련
+    'CLOTHING_COLORS'
 ]
 
 # 모듈 초기화 로깅
-logger.info("✅ Step 03 의류 세그멘테이션 모듈 로드 완료")
+logger.info("✅ Step 03 의류 세그멘테이션 + 시각화 모듈 로드 완료")
 logger.info(f"   - Model Loader 연동: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
 logger.info(f"   - Memory Manager 연동: {'✅' if MEMORY_MANAGER_AVAILABLE else '❌'}")
 logger.info(f"   - RemBG 사용 가능: {'✅' if REMBG_AVAILABLE else '❌'}")
 logger.info(f"   - SAM 사용 가능: {'✅' if SAM_AVAILABLE else '❌'}")
 logger.info(f"   - Transformers 사용 가능: {'✅' if TRANSFORMERS_AVAILABLE else '❌'}")
 logger.info(f"   - scikit-learn 사용 가능: {'✅' if SKLEARN_AVAILABLE else '❌'}")
+logger.info("🆕 시각화 기능: 의류 색상 구분, 오버레이, 마스크, 경계선 표시")
 
-# 자동 정리 등록
-import atexit
+# ==============================================
+# 6. 🆕 테스트 및 예시 함수들
+# ==============================================
 
-def _cleanup_on_exit():
-    """프로그램 종료 시 정리"""
+async def test_cloth_segmentation_with_visualization():
+    """🧪 시각화 기능 포함 의류 세그멘테이션 테스트"""
+    print("🧪 의류 세그멘테이션 + 시각화 테스트 시작")
+    
     try:
-        # 전역 인스턴스들 정리
-        gc.collect()
-    except:
-        pass
+        # Step 생성
+        step = await create_cloth_segmentation_step(
+            device="auto",
+            config={
+                "enable_visualization": True,
+                "visualization_quality": "high",
+                "quality_level": "balanced"
+            }
+        )
+        
+        # 더미 이미지 생성 (셔츠 시뮬레이션)
+        dummy_image = Image.new('RGB', (512, 512), (200, 150, 100))
+        
+        # 처리 실행
+        result = await step.process(dummy_image, clothing_type="shirt", quality_level="high")
+        
+        # 결과 확인
+        if result["success"]:
+            print("✅ 처리 성공!")
+            print(f"📊 방법: {result['method_used']}")
+            print(f"📊 신뢰도: {result.get('confidence_score', 0):.3f}")
+            print(f"📊 품질: {result.get('quality_score', 0):.3f}")
+            print(f"🎨 메인 시각화: {'있음' if result.get('details', {}).get('result_image') else '없음'}")
+            print(f"🌈 오버레이: {'있음' if result.get('details', {}).get('overlay_image') else '없음'}")
+            print(f"📄 마스크: {'있음' if result.get('details', {}).get('mask_image') else '없음'}")
+            print(f"📐 경계선: {'있음' if result.get('details', {}).get('boundary_image') else '없음'}")
+        else:
+            print(f"❌ 처리 실패: {result.get('error_message', 'Unknown error')}")
+        
+        # 정리
+        await step.cleanup()
+        print("🧹 리소스 정리 완료")
+        
+    except Exception as e:
+        print(f"❌ 테스트 실패: {e}")
 
-atexit.register(_cleanup_on_exit)
+async def benchmark_segmentation_methods():
+    """🏃‍♂️ 세그멘테이션 방법별 성능 벤치마크"""
+    print("🏃‍♂️ 세그멘테이션 방법별 성능 벤치마크 시작")
+    
+    try:
+        step = await create_cloth_segmentation_step(device="auto")
+        
+        # 테스트 이미지
+        test_image = Image.new('RGB', (512, 512), (180, 140, 90))
+        
+        methods = step.get_available_methods()
+        results = {}
+        
+        for method in methods:
+            print(f"🔄 {method} 테스트 중...")
+            start_time = time.time()
+            
+            try:
+                result = await step.process(
+                    test_image, 
+                    clothing_type="shirt",
+                    method_override=method
+                )
+                
+                processing_time = time.time() - start_time
+                results[method] = {
+                    'success': result['success'],
+                    'processing_time': processing_time,
+                    'confidence': result.get('confidence_score', 0),
+                    'quality': result.get('quality_score', 0)
+                }
+                
+                print(f"✅ {method}: {processing_time:.3f}초")
+                
+            except Exception as e:
+                results[method] = {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time
+                }
+                print(f"❌ {method}: 실패 - {e}")
+        
+        # 결과 요약
+        print("\n📊 벤치마크 결과:")
+        print("=" * 50)
+        
+        for method, result in results.items():
+            if result['success']:
+                print(f"{method:12}: {result['processing_time']:6.3f}초 "
+                      f"(신뢰도: {result['confidence']:5.3f}, 품질: {result['quality']:5.3f})")
+            else:
+                print(f"{method:12}: 실패")
+        
+        await step.cleanup()
+        
+    except Exception as e:
+        print(f"❌ 벤치마크 실패: {e}")
+
+# 사용 예시 코드
+"""
+# 🔧 기본 사용법
+step = await create_cloth_segmentation_step(device="auto")
+result = await step.process(image, clothing_type="shirt")
+
+# 🍎 M3 Max 최적화
+step = create_m3_max_segmentation_step(
+    enable_visualization=True,
+    visualization_quality="high"
+)
+
+# 🏭 프로덕션 환경
+step = create_production_segmentation_step(
+    quality_level="balanced",
+    enable_fallback=True
+)
+
+# 📊 시스템 정보 조회
+info = await step.get_step_info()
+print(f"사용 가능한 방법: {step.get_available_methods()}")
+print(f"지원 의류 타입: {step.get_supported_clothing_types()}")
+
+# 🔥 시스템 워밍업
+await step.warmup()
+
+# ⏱ 처리 시간 추정
+estimated_time = step.estimate_processing_time((1024, 768), "rembg")
+print(f"예상 처리 시간: {estimated_time:.2f}초")
+"""

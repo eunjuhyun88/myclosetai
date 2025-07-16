@@ -4,7 +4,7 @@
     "cpu": "arm",
     "gpu": "Unknown",
     "optimization": "CPU/CUDA",
-    "python_version": "3.10.11",
+    "python_version": "3.11.13",
     "memory_gb": 128,
     "architecture": "arm64"
   },
@@ -15,9 +15,11 @@
         "app": {
           "exists": true,
           "contents": [
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/app/main_backup.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/app/.DS_Store",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/app/config.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/app/core",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/app/main_generated.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/app/__init__.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/app/utils",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/app/models",
@@ -36,25 +38,40 @@
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/cache",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/openpose",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/Self-Correction-Human-Parsing",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_03_cloth_segmentation",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/oot_diffusion",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/.gitkeep",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/simple_config.json",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/OOTDiffusion",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/clip-vit-base-patch32",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_04_geometric_matching",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/simple_config.yaml",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/model_verification_results.json",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_07_post_processing",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/model_scan_summary.json",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/MODELS_USAGE_GUIDE.md",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/conda_model_registry.json",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/scanned_models_config.yaml",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_08_quality_assessment",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/logs",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/support",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/model_info.json",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/configs",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/DOWNLOAD_GUIDE.md",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/detectron2",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_01_human_parsing",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/model_config.yaml",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/VITON-HD",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/HR-VITON",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/conda_models_config.yaml",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/Graphonomy",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/.cache",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/fixed_model_config.json",
-            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/pipeline_gap_analysis.json"
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/pipeline_gap_analysis.json",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_02_pose_estimation",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_05_cloth_warping"
           ]
         },
         "static": {
@@ -85,12 +102,17 @@
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/fix_remaining_issues.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/download_missing_models.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/setup_ai_models_conda.sh",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/model_analysis_report.json",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/analyze_checkpoints.py",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/complete_model_downloader.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/setup_ai_models.sh",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/download",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/download_all_models.py",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/download_u2net_fix.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/test_models.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/download_real_models.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/detect_existing_models.py",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/analyze_models.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/download_models_conda.py",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/scripts/scan_existing_models.py"
           ]
@@ -102,6 +124,7 @@
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250713.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/model_test_results.json",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250716.log",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250717.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250715.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-20250714.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/.gitkeep",
@@ -111,6 +134,7 @@
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/app.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-m3max-20250715.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250716.log",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250717.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-m3max-20250714.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/mycloset-ai-m3max-20250716.log",
             "/Users/gimdudeul/MVP/mycloset-ai/backend/logs/error-20250715.log"
@@ -124,7 +148,7 @@
         },
         "run_server.py": {
           "exists": true,
-          "size": 1675
+          "size": 9937
         },
         "Makefile": {
           "exists": true,
@@ -141,23 +165,23 @@
           "exists": true,
           "files": [
             "step_routes.py",
-            "unified_routes.py.backup_20250716_201343",
+            ".DS_Store",
             "models.py",
             "health.py",
             "__init__.py",
             "pipeline_routes.py",
-            "websocket_routes.py",
-            "routes.py.backup_20250716_201343"
+            "websocket_routes.py"
           ],
           "subdirs": [
             "__pycache__"
           ],
-          "total_files": 8,
+          "total_files": 7,
           "python_files": 6
         },
         "core": {
           "exists": true,
           "files": [
+            ".DS_Store",
             "config.py",
             "logging_config.py",
             "m3_optimizer.py",
@@ -165,13 +189,14 @@
             "__init__.py",
             "model_paths.py",
             "pipeline_config.py",
+            "downloaded_model_paths.py",
             "optimized_model_paths.py"
           ],
           "subdirs": [
             "__pycache__"
           ],
-          "total_files": 8,
-          "python_files": 8
+          "total_files": 10,
+          "python_files": 9
         },
         "models": {
           "exists": true,
@@ -193,12 +218,13 @@
         "services": {
           "exists": true,
           "files": [
+            "pipeline_service.py",
             "image_processor.py",
+            "step_service.py",
             ".DS_Store",
             "__init__.py",
             "model_manager.py",
             "clothing_3d_modeling.py",
-            "ai_pipeline.py",
             "ai_models.py",
             "human_analysis.py"
           ],
@@ -208,8 +234,8 @@
             "model_management",
             "image_processing"
           ],
-          "total_files": 8,
-          "python_files": 7
+          "total_files": 9,
+          "python_files": 8
         },
         "utils": {
           "exists": true,
@@ -218,13 +244,14 @@
             ".DS_Store",
             "validators.py",
             "__init__.py",
+            "mps_utils.py",
             "file_manager.py"
           ],
           "subdirs": [
             "__pycache__"
           ],
-          "total_files": 5,
-          "python_files": 4
+          "total_files": 6,
+          "python_files": 5
         },
         "ai_pipeline": {
           "exists": true,
@@ -281,21 +308,46 @@
         ],
         "subdirs": [
           "human_parsing",
+          "stable_diffusion_inpaint",
+          "step_04",
+          "step_03",
+          "sam",
+          "openpose",
           "viton_hd",
+          "step_02",
           "step_06_virtual_fitting",
+          "densepose",
           "step_03_cloth_segmentation",
           "clip-vit-large-patch14",
+          "u2net_cloth",
+          "grounding_dino",
           "ootdiffusion",
           "clip-vit-base-patch32",
           "ootdiffusion_hf",
           "step_04_geometric_matching",
           "stable-diffusion-v1-5",
+          "controlnet_openpose",
+          "gfpgan",
+          "esrgan",
+          "u2net",
+          "cloth_segmentation",
           "step_07_post_processing",
+          "step_08_quality_assessment",
+          "rembg",
+          "pose_estimation",
           "shared_encoder",
+          "mediapipe",
+          "step_01",
+          "stable_diffusion_v15",
           "background_removal",
           "step_01_human_parsing",
+          "graphonomy",
+          "clip_vit_base",
+          "sam_vit_h",
+          "humanparsing",
           "step_02_pose_estimation",
-          "step_05_cloth_warping"
+          "step_05_cloth_warping",
+          "auxiliary"
         ],
         "total_files": 5,
         "python_files": 0
@@ -308,10 +360,10 @@
         "exists": true,
         "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/stable-diffusion-v1-5"
       },
-      "total_size_gb": 83.01
+      "total_size_gb": 197.69
     }
   },
   "missing_items": [],
   "problematic_items": [],
-  "analysis_timestamp": "2025-07-16T23:43:01.209249"
+  "analysis_timestamp": "2025-07-17T07:48:25.585613"
 }
