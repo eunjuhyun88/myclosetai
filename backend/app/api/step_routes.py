@@ -46,7 +46,8 @@ import base64
 import json
 import traceback
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple, Union, Callable
+from typing import Dict, Any, List, Tuple, Union, Callable
+from typing import Optional  # 별도 라인으로 명시
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -58,9 +59,13 @@ import torch
 import torch.nn.functional as F
 from PIL import Image, ImageEnhance, ImageFilter
 
-# FastAPI
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+
+# 🔥 FIXED: FastAPI 필수 import 추가 + Optional 명시적 import
+# 🔥 FIXED: FastAPI 필수 import 추가 + Optional 명시적 import
+from fastapi import Form, File, UploadFile, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic.functional_validators import AfterValidator
 
 # ============================================================================
 # 🏗️ SAFE IMPORTS (기존 프로젝트 구조 호환)
