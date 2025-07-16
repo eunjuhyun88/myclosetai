@@ -1383,20 +1383,3 @@ if validate_all_schemas():
 else:
     print("❌ 스키마 검증 실패")
 
-import base64
-import json
-import time
-from typing import Dict, Any, Optional, List, Union, Annotated
-from datetime import datetime
-from enum import Enum
-
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
-from pydantic.functional_validators import AfterValidator
-
-# ========================
-# M3 Max 최적화 설정
-# ========================
-
-class M3MaxConfig:
-    """M3 Max 128GB 환경 최적화 설정"""
-    MEMORY_TOTAL = 128 *

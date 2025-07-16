@@ -74,7 +74,16 @@ SERVICES_AVAILABLE = False
 try:
     from app.services.virtual_fitter import VirtualFitter
     from app.services.model_manager import ModelManager
-    from app.services.ai_models import AIModelService
+    
+    # AIModelService 대신 실제 존재하는 클래스 확인
+    try:
+        from app.services.ai_models import AIModelService
+    except ImportError:
+        try:
+            from app.services.ai_models import AIModelManager as AIModelService
+        except ImportError:
+            AIModelService = None
+    
     from app.services.body_analyzer import BodyAnalyzer
     from app.services.clothing_analyzer import ClothingAnalyzer
     
@@ -96,8 +105,24 @@ except ImportError as e:
 EXTENDED_SERVICES_AVAILABLE = False
 try:
     from app.services.real_working_ai_fitter import RealWorkingAIFitter
-    from app.services.human_analysis import HumanAnalyzer
-    from app.services.clothing_3d_modeling import ClothingAnalyzer as ExtendedClothingAnalyzer
+    
+    # HumanAnalyzer 대신 실제 존재하는 클래스 확인
+    try:
+        from app.services.human_analysis import HumanAnalyzer
+    except ImportError:
+        try:
+            from app.services.human_analysis import HumanBodyAnalyzer as HumanAnalyzer
+        except ImportError:
+            HumanAnalyzer = None
+    
+    # ClothingAnalyzer 확장 버전 확인
+    try:
+        from app.services.clothing_3d_modeling import ClothingAnalyzer as ExtendedClothingAnalyzer
+    except ImportError:
+        try:
+            from app.services.clothing_3d_modeling import Clothing3DAnalyzer as ExtendedClothingAnalyzer
+        except ImportError:
+            ExtendedClothingAnalyzer = None
     
     EXTENDED_SERVICES_AVAILABLE = True
     logger.info("✅ 확장 서비스들 import 성공")
@@ -324,7 +349,7 @@ if not SERVICES_AVAILABLE:
     logger.info("✅ 기존 서비스 폴백 클래스 생성 완료")
 
 # 확장 서비스 폴백 클래스들
-if not EXTENDED_SERVICES_AVAILABLE:
+if not EXTENDED_SERVICES_AVAILABLE or RealWorkingAIFitter is None:
     logger.info("🔄 확장 서비스 폴백 클래스 생성 중...")
     
     class RealWorkingAIFitter:
@@ -352,7 +377,8 @@ if not EXTENDED_SERVICES_AVAILABLE:
                 "detected_landmarks": 16,
                 "confidence": 0.89
             }
-    
+
+if not EXTENDED_SERVICES_AVAILABLE or HumanAnalyzer is None:
     class HumanAnalyzer:
         def __init__(self, **kwargs):
             self.device = kwargs.get('device', 'mps')
@@ -388,9 +414,11 @@ if not EXTENDED_SERVICES_AVAILABLE:
                 "metrics": {"sharpness": 0.82, "brightness": 0.78},
                 "recommendations": ["Good quality"]
             }
-    
+
+if not EXTENDED_SERVICES_AVAILABLE or ExtendedClothingAnalyzer is None:
     ExtendedClothingAnalyzer = ClothingAnalyzer
-    logger.info("✅ 확장 서비스 폴백 클래스 생성 완료")
+
+logger.info("✅ 확장 서비스 폴백 클래스 생성 완료")
 
 # AI Pipeline Steps 폴백 클래스들
 if not PIPELINE_STEPS_AVAILABLE:
@@ -647,12 +675,15 @@ class EnhancedAIStepProcessor:
             except Exception as e:
                 logger.warning(f"⚠️ ModelManager 초기화 실패: {e}")
             
-            # AIModelService 초기화
+            # AIModelService 초기화 (None 체크 추가)
             try:
-                self.ai_model_service = AIModelService(device=self.device)
-                if hasattr(self.ai_model_service, 'initialize'):
-                    await self.ai_model_service.initialize()
-                logger.info("✅ AIModelService 초기화 완료")
+                if AIModelService is not None:
+                    self.ai_model_service = AIModelService(device=self.device)
+                    if hasattr(self.ai_model_service, 'initialize'):
+                        await self.ai_model_service.initialize()
+                    logger.info("✅ AIModelService 초기화 완료")
+                else:
+                    logger.info("⚠️ AIModelService 클래스가 없음 - 폴백 모드")
             except Exception as e:
                 logger.warning(f"⚠️ AIModelService 초기화 실패: {e}")
             
@@ -682,27 +713,33 @@ class EnhancedAIStepProcessor:
         try:
             logger.info("🔄 확장 서비스들 초기화 시작...")
             
-            # RealWorkingAIFitter 초기화
+            # RealWorkingAIFitter 초기화 (안전한 처리)
             try:
-                self.real_ai_fitter = RealWorkingAIFitter(device=self.device)
-                if hasattr(self.real_ai_fitter, 'initialize'):
-                    await self.real_ai_fitter.initialize()
-                logger.info("✅ RealWorkingAIFitter 초기화 완료")
+                if RealWorkingAIFitter is not None:
+                    self.real_ai_fitter = RealWorkingAIFitter(device=self.device)
+                    if hasattr(self.real_ai_fitter, 'initialize'):
+                        await self.real_ai_fitter.initialize()
+                    logger.info("✅ RealWorkingAIFitter 초기화 완료")
+                else:
+                    logger.info("⚠️ RealWorkingAIFitter 클래스가 없음 - 폴백 모드")
             except Exception as e:
                 logger.warning(f"⚠️ RealWorkingAIFitter 초기화 실패: {e}")
             
-            # HumanAnalyzer 초기화
+            # HumanAnalyzer 초기화 (안전한 처리)
             try:
-                self.human_analyzer = HumanAnalyzer(device=self.device)
-                if hasattr(self.human_analyzer, 'initialize'):
-                    await self.human_analyzer.initialize()
-                logger.info("✅ HumanAnalyzer 초기화 완료")
+                if HumanAnalyzer is not None:
+                    self.human_analyzer = HumanAnalyzer(device=self.device)
+                    if hasattr(self.human_analyzer, 'initialize'):
+                        await self.human_analyzer.initialize()
+                    logger.info("✅ HumanAnalyzer 초기화 완료")
+                else:
+                    logger.info("⚠️ HumanAnalyzer 클래스가 없음 - 폴백 모드")
             except Exception as e:
                 logger.warning(f"⚠️ HumanAnalyzer 초기화 실패: {e}")
             
-            # ExtendedClothingAnalyzer 초기화
+            # ExtendedClothingAnalyzer 초기화 (안전한 처리)
             try:
-                if ExtendedClothingAnalyzer != ClothingAnalyzer:
+                if ExtendedClothingAnalyzer is not None and ExtendedClothingAnalyzer != ClothingAnalyzer:
                     self.extended_clothing_analyzer = ExtendedClothingAnalyzer(device=self.device)
                     if hasattr(self.extended_clothing_analyzer, 'initialize'):
                         await self.extended_clothing_analyzer.initialize()
