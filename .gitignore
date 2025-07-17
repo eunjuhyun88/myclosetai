@@ -65,6 +65,16 @@ node_modules/
 *.pyc
 __pycache__/
 bfg-report/
+# 백업 자동 생성 디렉토리
+backend/backup_essential_*/
+
+# 중간 산출물
+backend/model_optimization_report_*.txt
+backend/optimization_result_dryrun_*.json
+
+# 테스트 실행 파일
+backend/quick_execute_optimizer.py
+backend/test_imports.py
 
 # AI 모델 디렉토리 전체 제외
 ai_models/
