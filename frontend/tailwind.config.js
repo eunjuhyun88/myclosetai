@@ -6,13 +6,17 @@ export default {
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Roboto"', '"Oxygen"', '"Ubuntu"', '"Cantarell"', '"Fira Sans"', '"Droid Sans"', '"Helvetica Neue"', 'sans-serif'],
-      },
-      animation: {
-        'spin-slow': 'spin 2s linear infinite',
+      colors: {
+        primary: {
+          50: '#f0f9ff',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+        }
       }
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'),
+  ],
 }

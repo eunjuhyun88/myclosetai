@@ -8,6 +8,8 @@
 ✅ 통일된 생성자 패턴
 ✅ 🆕 워핑 과정 시각화 기능
 ✅ 🆕 변형 맵, 스트레인 맵, 물리 시뮬레이션 결과 시각화
+✅ 🔧 threading import 오류 수정
+✅ 🔧 생성자 파라미터 오류 수정
 """
 
 import os
@@ -15,15 +17,15 @@ import logging
 import time
 import asyncio
 import base64
+import threading  # 🔧 추가: threading import 누락 수정
 from typing import Dict, Any, Optional, Tuple, List, Union
 import numpy as np
-import threading  # 🔥 누락된 import 추가
-
 import json
 import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from io import BytesIO
+from pathlib import Path  # 🔧 추가: Path import
 
 # 필수 패키지들
 try:
@@ -298,9 +300,15 @@ class ClothWarpingStep(BaseStepMixin):
         self,
         device: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        # 🔧 파라미터 추가: 기존 코드 호환성 확보
+        device_type: Optional[str] = None,
+        memory_gb: Optional[float] = None,
+        is_m3_max: Optional[bool] = None,
+        optimization_enabled: Optional[bool] = None,
+        quality_level: Optional[str] = None,
         **kwargs
     ):
-        """✅ 통일된 생성자 패턴 - PipelineManager 호환"""
+        """✅ 통일된 생성자 패턴 - PipelineManager 호환 + 오류 수정"""
         
         # === 1. 통일된 기본 초기화 ===
         self.device = self._auto_detect_device(device)
@@ -308,19 +316,19 @@ class ClothWarpingStep(BaseStepMixin):
         self.step_name = self.__class__.__name__
         self.logger = logging.getLogger(f"pipeline.{self.step_name}")
         
-        # === 2. 표준 시스템 파라미터 ===
-        self.device_type = kwargs.get('device_type', 'auto')
-        self.memory_gb = kwargs.get('memory_gb', 16.0)
-        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
-        self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.quality_level = kwargs.get('quality_level', 'balanced')
+        # === 2. 표준 시스템 파라미터 (🔧 None 체크 추가) ===
+        self.device_type = device_type or kwargs.get('device_type', 'auto')
+        self.memory_gb = memory_gb or kwargs.get('memory_gb', 16.0)
+        self.is_m3_max = is_m3_max if is_m3_max is not None else kwargs.get('is_m3_max', self._detect_m3_max())
+        self.optimization_enabled = optimization_enabled if optimization_enabled is not None else kwargs.get('optimization_enabled', True)
+        self.quality_level = quality_level or kwargs.get('quality_level', 'balanced')
         
         # === 3. Step별 설정 병합 ===
         self._merge_step_specific_config(kwargs)
         
         # === 4. 초기화 상태 ===
         self.is_initialized = False
-        self._initialization_lock = threading.RLock()
+        self._initialization_lock = threading.RLock()  # 🔧 threading 사용
         
         # === 5. Model Loader 연동 (BaseStepMixin) ===
         if MODEL_LOADER_AVAILABLE:
@@ -461,6 +469,20 @@ class ClothWarpingStep(BaseStepMixin):
         self._initialize_physics_engine()
         
         self.logger.info(f"📦 5단계 특화 초기화 완료")
+
+    def _setup_model_interface(self):
+        """🔥 Model Loader 인터페이스 설정 (BaseStepMixin 호환)"""
+        try:
+            if MODEL_LOADER_AVAILABLE:
+                self.model_interface = get_global_model_loader()
+                if not self.model_interface:
+                    self.model_interface = create_model_loader(device=self.device)
+                self.logger.info("✅ Model Loader 인터페이스 설정 완료")
+            else:
+                self.model_interface = None
+        except Exception as e:
+            self.logger.warning(f"Model Loader 인터페이스 설정 실패: {e}")
+            self.model_interface = None
 
     def _get_quality_level(self) -> str:
         """품질 레벨 결정"""
