@@ -56,6 +56,15 @@ frontend/package-lock.json
 !vite.config.json
 !*.schema.json
 !*.config.json
+# .gitignore에 다음이 반드시 포함되어야 합니다:
+frontend/package-lock.json
+node_modules/
+*.log
+*.bak
+*.swp
+*.pyc
+__pycache__/
+bfg-report/
 
 # AI 모델 디렉토리 전체 제외
 ai_models/

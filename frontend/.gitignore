@@ -13,6 +13,15 @@ frontend/node_modules/
 !vite.config.json
 !*.schema.json
 !*.config.json
+# .gitignore에 다음이 반드시 포함되어야 합니다:
+frontend/package-lock.json
+node_modules/
+*.log
+*.bak
+*.swp
+*.pyc
+__pycache__/
+bfg-report/
 
 # 하지만 설정 파일들은 포함
 !ai_models/model_config.yaml
