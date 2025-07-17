@@ -130,150 +130,61 @@ class ModelFileInfo:
     keywords: List[str] = field(default_factory=list)
     expected_layers: List[str] = field(default_factory=list)
 
-# 2번 파일의 REQUIRED_MODELS를 완전히 반영하되 더 확장
+# 실제 발견된 파일들 기반으로 패턴 수정
 ACTUAL_MODEL_PATTERNS = {
-    # Step 01: Human Parsing
     "human_parsing": ModelFileInfo(
         name="human_parsing_graphonomy",
         patterns=[
-            r".*graphonomy.*\.pth$",
+            r".*checkpoints/human_parsing/.*\.pth$",
             r".*schp.*atr.*\.pth$", 
-            r".*human.*parsing.*\.pth$",
-            r".*atr.*model.*\.pth$",
-            r".*lip.*parsing.*\.pth$",
-            r".*segmentation.*human.*\.pth$",
-            r".*exp-schp.*\.pth$",
-            r".*cihp.*\.pth$",
-            r".*pascal.*person.*\.pth$"
+            r".*atr_model.*\.pth$",
+            r".*lip_model.*\.pth$"
         ],
         step="step_01_human_parsing",
         required=True,
-        min_size_mb=50,
+        min_size_mb=1,
         max_size_mb=500,
-        target_path="ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
-        priority=1,
-        alternative_names=["schp_atr.pth", "atr_model.pth", "human_parsing.pth", "exp-schp-201908261155-lip.pth", "exp-schp-201908301523-atr.pth"],
-        keywords=["human", "parsing", "atr", "schp", "graphonomy", "segmentation", "exp"],
+        target_path="ai_models/checkpoints/human_parsing/atr_model.pth",
+        alternative_names=["schp_atr.pth", "atr_model.pth", "lip_model.pth"],
+        keywords=["human", "parsing", "atr", "schp", "lip"],
         expected_layers=["backbone", "classifier", "conv"]
     ),
     
-    # Step 02: Pose Estimation  
-    "pose_estimation": ModelFileInfo(
-        name="pose_estimation_openpose",
-        patterns=[
-            r".*openpose.*\.pth$",
-            r".*pose.*model.*\.pth$",
-            r".*body.*pose.*\.pth$",
-            r".*coco.*pose.*\.pth$",
-            r".*pose.*estimation.*\.pth$",
-            r".*keypoint.*\.pth$",
-            r".*hrnet.*pose.*\.pth$",
-            r".*yolo.*pose.*\.pt$"
-        ],
-        step="step_02_pose_estimation", 
-        required=True,
-        min_size_mb=10,
-        max_size_mb=1000,
-        target_path="ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
-        priority=1,
-        alternative_names=["body_pose_model.pth", "pose_model.pth", "openpose_model.pth"],
-        keywords=["pose", "openpose", "body", "keypoint", "coco"],
-        expected_layers=["stage", "paf", "heatmap"]
-    ),
-    
-    # Step 03: Cloth Segmentation
     "cloth_segmentation": ModelFileInfo(
         name="cloth_segmentation_u2net", 
         patterns=[
-            r".*u2net.*\.pth$",
-            r".*cloth.*segmentation.*\.pth$",
-            r".*segmentation.*cloth.*\.pth$",
-            r".*u2netp.*\.pth$",
-            r".*cloth.*mask.*\.pth$",
-            r".*mobile.*sam.*\.pt$",
+            r".*checkpoints/step_03.*u2net.*\.pth$",
+            r".*u2net_segmentation.*\.pth$",
             r".*sam.*vit.*\.pth$"
         ],
         step="step_03_cloth_segmentation",
         required=True, 
         min_size_mb=10,
-        max_size_mb=3000,  # SAM 모델 고려
-        target_path="ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
-        priority=1,
-        alternative_names=["u2net.pth", "cloth_seg.pth", "segmentation.pth", "mobile_sam.pt"],
-        keywords=["u2net", "cloth", "segmentation", "mask", "sam"],
+        max_size_mb=3000,
+        target_path="ai_models/checkpoints/step_03/u2net_segmentation/u2net.pth",
+        alternative_names=["u2net.pth", "sam_vit_h_4b8939.pth", "sam_vit_b_01ec64.pth"],
+        keywords=["u2net", "segmentation", "sam"],
         expected_layers=["encoder", "decoder", "outconv"]
     ),
     
-    # Step 04: Geometric Matching
-    "geometric_matching": ModelFileInfo(
-        name="geometric_matching_gmm",
-        patterns=[
-            r".*gmm.*\.pth$",
-            r".*geometric.*matching.*\.pth$", 
-            r".*tps.*\.pth$",
-            r".*matching.*\.pth$",
-            r".*alignment.*\.pth$",
-            r".*transformation.*\.pth$",
-            r".*lightweight.*gmm.*\.pth$"
-        ],
-        step="geometric_matching",
-        required=True,
-        min_size_mb=1,
-        max_size_mb=100, 
-        target_path="ai_models/checkpoints/gmm_final.pth",
-        priority=2,
-        alternative_names=["gmm_final.pth", "geometric.pth", "matching.pth", "tps_network.pth"],
-        keywords=["gmm", "geometric", "tps", "matching", "alignment"],
-        expected_layers=["correlation", "regression", "flow"]
-    ),
-    
-    # Step 05: Cloth Warping  
-    "cloth_warping": ModelFileInfo(
-        name="cloth_warping_tom",
-        patterns=[
-            r".*tom.*\.pth$",
-            r".*cloth.*warping.*\.pth$",
-            r".*warping.*\.pth$", 
-            r".*try.*on.*\.pth$",
-            r".*viton.*\.pth$",
-            r".*hrviton.*\.pth$"
-        ],
-        step="cloth_warping",
-        required=True,
-        min_size_mb=10,
-        max_size_mb=4000,  # 큰 모델 고려
-        target_path="ai_models/checkpoints/tom_final.pth", 
-        priority=2,
-        alternative_names=["tom_final.pth", "warping.pth", "cloth_warp.pth", "hrviton_final.pth"],
-        keywords=["tom", "warping", "cloth", "viton", "try"],
-        expected_layers=["generator", "discriminator", "warp"]
-    ),
-    
-    # Step 06: Virtual Fitting 
     "virtual_fitting": ModelFileInfo(
-        name="virtual_fitting_diffusion", 
+        name="virtual_fitting_ootd", 
         patterns=[
-            r".*diffusion.*pytorch.*model\.bin$",
-            r".*stable.*diffusion.*\.safetensors$",
-            r".*ootdiffusion.*\.(pth|bin)$",
-            r".*unet.*diffusion.*\.bin$",
-            r".*hrviton.*\.pth$",
-            r".*viton.*hd.*\.pth$",
-            r".*virtual.*fitting.*\.pth$"
+            r".*step_06_virtual_fitting.*\.bin$",
+            r".*ootd.*unet.*\.bin$",
+            r".*OOTDiffusion.*"
         ],
         step="virtual_fitting",
         required=True,
         min_size_mb=100, 
         max_size_mb=8000,
-        target_path="ai_models/checkpoints/hrviton_final.pth",
-        priority=1,
-        alternative_names=["hrviton_final.pth", "stable_diffusion.bin", "viton_hd.pth"],
-        keywords=["diffusion", "viton", "unet", "stable", "fitting"],
-        expected_layers=["unet", "vae", "text_encoder"],
-        file_types=['.pth', '.pt', '.bin', '.safetensors']
+        target_path="ai_models/step_06_virtual_fitting/ootd_hd_unet.bin",
+        alternative_names=["ootd_hd_unet.bin", "ootd_dc_unet.bin"],
+        keywords=["ootd", "unet", "diffusion", "virtual"],
+        expected_layers=["unet", "vae"],
+        file_types=['.bin', '.pth', '.pt', '.safetensors']
     )
 }
-
 # 3번 파일의 체크포인트 패턴도 반영
 CHECKPOINT_VERIFICATION_PATTERNS = {
     "human_parsing": {

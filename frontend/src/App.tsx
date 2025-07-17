@@ -304,7 +304,7 @@ class APIClient {
     try {
       console.log('🚀 전체 파이프라인 실행 시작');
       
-      const response = await fetch(`${this.baseURL}/api/pipeline/complete`, {
+      const response = await fetch(`${this.baseURL}/api/step/complete`, {
         method: 'POST',
         body: formData,
       });
