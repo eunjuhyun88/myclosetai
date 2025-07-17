@@ -1164,8 +1164,12 @@ __all__ = [
     "StepServiceFactory",
     "StepServiceManager",
     "get_step_service_manager",
-    "cleanup_step_service_manager"
+    "cleanup_step_service_manager",
+    "BodyMeasurements"  # 🔥 이 라인 추가!
 ]
+
+# 🔥 step_routes.py 호환성을 위한 별칭 추가
+ServiceBodyMeasurements = BodyMeasurements
 
 # ============================================================================
 # 🎉 COMPLETION MESSAGE

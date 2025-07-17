@@ -1,5 +1,5 @@
 """
-backend/app/api/step_routes.py - 완전히 분리된 API 레이어
+backend/app/api/step_routes.py - 완전히 분리된 API 레이어 (완전 수정 버전)
 
 ✅ API 처리만 담당 (비즈니스 로직 없음)
 ✅ StepServiceManager를 통한 서비스 레이어 호출
@@ -7,6 +7,7 @@ backend/app/api/step_routes.py - 완전히 분리된 API 레이어
 ✅ 입력 검증 및 변환
 ✅ 에러 처리 및 응답 포맷팅
 ✅ 프론트엔드 100% 호환
+✅ GET/POST 메서드 모두 지원
 """
 
 import logging
@@ -19,65 +20,85 @@ from fastapi import APIRouter, Form, File, UploadFile, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-# 서비스 레이어 import (의존성 주입)
+# 서비스 레이어 import (의존성 주입) - 수정됨
 try:
     from app.services.step_service import (
         get_step_service_manager,
         StepServiceManager,
-        BodyMeasurements as ServiceBodyMeasurements
+        BodyMeasurements  # 🔥 as 별칭 제거
     )
+    # ✅ import 성공 후에 별칭 생성
+    ServiceBodyMeasurements = BodyMeasurements
     STEP_SERVICE_AVAILABLE = True
 except ImportError as e:
     logging.error(f"StepService import 실패: {e}")
     STEP_SERVICE_AVAILABLE = False
-    raise RuntimeError("StepService가 필요합니다")
+    
+    # 폴백 클래스 생성
+    class BodyMeasurements:
+        def __init__(self, height: float, weight: float, **kwargs):
+            self.height = height
+            self.weight = weight
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+    
+    ServiceBodyMeasurements = BodyMeasurements
 
 # 스키마 import (폴백 포함)
 try:
-    from app.models.schemas import BodyMeasurements, VirtualTryOnRequest
+    from app.models.schemas import BodyMeasurements as SchemasBodyMeasurements, VirtualTryOnRequest
     SCHEMAS_AVAILABLE = True
+    
+    # 스키마에서 가져온 것이 있다면 그것을 우선 사용
+    if not STEP_SERVICE_AVAILABLE:
+        BodyMeasurements = SchemasBodyMeasurements
+        ServiceBodyMeasurements = SchemasBodyMeasurements
+        
 except ImportError:
     SCHEMAS_AVAILABLE = False
+    
+    # 스키마도 없고 서비스도 없다면 API용 클래스 생성
+    if not STEP_SERVICE_AVAILABLE:
+        class BodyMeasurements(BaseModel):
+            height: float = Field(..., description="키 (cm)", ge=140, le=220)
+            weight: float = Field(..., description="몸무게 (kg)", ge=40, le=150)
+            chest: Optional[float] = Field(None, description="가슴둘레 (cm)", ge=70, le=130)
+            waist: Optional[float] = Field(None, description="허리둘레 (cm)", ge=60, le=120)
+            hips: Optional[float] = Field(None, description="엉덩이둘레 (cm)", ge=80, le=140)
+            
+            class Config:
+                schema_extra = {
+                    "example": {
+                        "height": 175.0,
+                        "weight": 70.0,
+                        "chest": 95.0,
+                        "waist": 80.0,
+                        "hips": 98.0
+                    }
+                }
+        
+        class VirtualTryOnRequest(BaseModel):
+            clothing_type: str = Field("auto_detect", description="의류 타입")
+            quality_target: float = Field(0.8, description="품질 목표 (0.0-1.0)", ge=0.0, le=1.0)
+            save_intermediate: bool = Field(False, description="중간 결과 저장 여부")
+            
+            class Config:
+                schema_extra = {
+                    "example": {
+                        "clothing_type": "shirt",
+                        "quality_target": 0.8,
+                        "save_intermediate": False
+                    }
+                }
+        
+        ServiceBodyMeasurements = BodyMeasurements
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# 🏗️ API 스키마 정의 (폴백 포함)
+# 🏗️ API 스키마 정의
 # ============================================================================
-
-if not SCHEMAS_AVAILABLE:
-    class BodyMeasurements(BaseModel):
-        height: float = Field(..., description="키 (cm)", ge=140, le=220)
-        weight: float = Field(..., description="몸무게 (kg)", ge=40, le=150)
-        chest: Optional[float] = Field(None, description="가슴둘레 (cm)", ge=70, le=130)
-        waist: Optional[float] = Field(None, description="허리둘레 (cm)", ge=60, le=120)
-        hips: Optional[float] = Field(None, description="엉덩이둘레 (cm)", ge=80, le=140)
-        
-        class Config:
-            schema_extra = {
-                "example": {
-                    "height": 175.0,
-                    "weight": 70.0,
-                    "chest": 95.0,
-                    "waist": 80.0,
-                    "hips": 98.0
-                }
-            }
-    
-    class VirtualTryOnRequest(BaseModel):
-        clothing_type: str = Field("auto_detect", description="의류 타입")
-        quality_target: float = Field(0.8, description="품질 목표 (0.0-1.0)", ge=0.0, le=1.0)
-        save_intermediate: bool = Field(False, description="중간 결과 저장 여부")
-        
-        class Config:
-            schema_extra = {
-                "example": {
-                    "clothing_type": "shirt",
-                    "quality_target": 0.8,
-                    "save_intermediate": False
-                }
-            }
 
 class APIResponse(BaseModel):
     """표준 API 응답 스키마"""
@@ -99,13 +120,17 @@ class APIResponse(BaseModel):
 
 def convert_body_measurements(api_measurements: BodyMeasurements) -> ServiceBodyMeasurements:
     """API BodyMeasurements를 서비스 레이어용으로 변환"""
-    return ServiceBodyMeasurements(
-        height=api_measurements.height,
-        weight=api_measurements.weight,
-        chest=api_measurements.chest,
-        waist=api_measurements.waist,
-        hips=api_measurements.hips
-    )
+    if hasattr(api_measurements, 'height'):
+        return ServiceBodyMeasurements(
+            height=api_measurements.height,
+            weight=api_measurements.weight,
+            chest=getattr(api_measurements, 'chest', None),
+            waist=getattr(api_measurements, 'waist', None),
+            hips=getattr(api_measurements, 'hips', None)
+        )
+    else:
+        # 딕셔너리인 경우
+        return ServiceBodyMeasurements(**api_measurements)
 
 def format_api_response(service_result: Dict[str, Any]) -> Dict[str, Any]:
     """서비스 결과를 API 응답 형식으로 변환"""
@@ -140,6 +165,20 @@ def create_error_response(
         "error": error_message
     }
 
+def create_safe_error_response(error_message: str, status_code: int = 503) -> JSONResponse:
+    """안전한 에러 응답 생성 (서비스 매니저 없이도 작동)"""
+    return JSONResponse(
+        content={
+            "success": False,
+            "status": "error",
+            "error": error_message,
+            "timestamp": datetime.now().isoformat(),
+            "api_layer": True,
+            "service_layer_connected": False
+        },
+        status_code=status_code
+    )
+
 # ============================================================================
 # 🔥 FastAPI 라우터 및 의존성 주입
 # ============================================================================
@@ -147,16 +186,17 @@ def create_error_response(
 # FastAPI 라우터 초기화
 router = APIRouter(prefix="/api/step", tags=["8단계 가상 피팅 API"])
 
-# 의존성 주입: StepServiceManager
-async def get_service_manager() -> StepServiceManager:
-    """StepServiceManager 의존성 주입"""
+# 의존성 주입: StepServiceManager (안전한 버전)
+async def get_service_manager() -> Optional[StepServiceManager]:
+    """StepServiceManager 의존성 주입 (안전한 버전)"""
     if not STEP_SERVICE_AVAILABLE:
-        raise HTTPException(
-            status_code=503, 
-            detail="StepService를 사용할 수 없습니다"
-        )
+        return None
     
-    return await get_step_service_manager()
+    try:
+        return await get_step_service_manager()
+    except Exception as e:
+        logger.error(f"❌ 서비스 매니저 초기화 실패: {e}")
+        return None
 
 # ============================================================================
 # 🎯 8단계 개별 API 엔드포인트들
@@ -166,10 +206,13 @@ async def get_service_manager() -> StepServiceManager:
 async def step_1_upload_validation(
     person_image: UploadFile = File(..., description="사람 이미지"),
     clothing_image: UploadFile = File(..., description="의류 이미지"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """1단계: 이미지 업로드 검증 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -205,10 +248,13 @@ async def step_1_upload_validation(
 async def step_2_measurements_validation(
     measurements: BodyMeasurements,
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """2단계: 신체 측정 검증 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # API 스키마를 서비스 레이어용으로 변환
@@ -247,10 +293,13 @@ async def step_2_measurements_validation(
 async def step_3_human_parsing(
     person_image: UploadFile = File(..., description="사람 이미지"),
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """3단계: 인간 파싱 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -286,10 +335,13 @@ async def step_3_human_parsing(
 async def step_4_pose_estimation(
     person_image: UploadFile = File(..., description="사람 이미지"),
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """4단계: 포즈 추정 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -326,10 +378,13 @@ async def step_5_clothing_analysis(
     clothing_image: UploadFile = File(..., description="의류 이미지"),
     clothing_type: str = Form("auto_detect", description="의류 타입"),
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """5단계: 의류 분석 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -367,10 +422,13 @@ async def step_6_geometric_matching(
     person_image: UploadFile = File(..., description="사람 이미지"),
     clothing_image: UploadFile = File(..., description="의류 이미지"),
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """6단계: 기하학적 매칭 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -410,10 +468,13 @@ async def step_7_virtual_fitting(
     clothing_type: str = Form("auto_detect", description="의류 타입"),
     quality_target: float = Form(0.8, description="품질 목표", ge=0.0, le=1.0),
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """7단계: 가상 피팅 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -452,10 +513,13 @@ async def step_7_virtual_fitting(
 async def step_8_result_analysis(
     result_image: Optional[UploadFile] = File(None, description="결과 이미지 (선택적)"),
     session_id: Optional[str] = Form(None, description="세션 ID"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """8단계: 결과 분석 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # 서비스 레이어 호출
@@ -499,10 +563,13 @@ async def complete_pipeline_processing(
     clothing_type: str = Form("auto_detect", description="의류 타입"),
     quality_target: float = Form(0.8, description="품질 목표", ge=0.0, le=1.0),
     save_intermediate: bool = Form(False, description="중간 결과 저장 여부"),
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """완전한 8단계 파이프라인 처리 API"""
     start_time = time.time()
+    
+    if not service_manager:
+        return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
         # API 스키마를 서비스 레이어용으로 변환
@@ -549,15 +616,28 @@ async def complete_pipeline_processing(
         )
 
 # ============================================================================
-# 🔍 모니터링 & 관리 API 엔드포인트들
+# 🔍 모니터링 & 관리 API 엔드포인트들 (GET + POST 지원)
 # ============================================================================
 
 @router.get("/health")
+@router.post("/health")
 async def step_api_health(
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
-    """8단계 API 헬스체크"""
+    """8단계 API 헬스체크 (GET/POST)"""
     try:
+        if not service_manager:
+            return JSONResponse(content={
+                "status": "degraded",
+                "message": "8단계 가상 피팅 API - 서비스 레이어 연결 실패",
+                "timestamp": datetime.now().isoformat(),
+                "api_layer": True,
+                "service_layer_connected": False,
+                "available_steps": [],
+                "api_version": "3.0.0-separated-layers",
+                "error": "StepServiceManager를 사용할 수 없습니다"
+            }, status_code=503)
+        
         # 서비스 매니저 메트릭 조회
         metrics = service_manager.get_all_metrics()
         
@@ -598,11 +678,22 @@ async def step_api_health(
         )
 
 @router.get("/status")
+@router.post("/status")
 async def step_api_status(
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
-    """8단계 API 상태 조회"""
+    """8단계 API 상태 조회 (GET/POST)"""
     try:
+        if not service_manager:
+            return JSONResponse(content={
+                "api_layer_status": "operational",
+                "service_layer_connected": False,
+                "total_services": 0,
+                "device": "unknown",
+                "error": "StepServiceManager를 사용할 수 없습니다",
+                "timestamp": datetime.now().isoformat()
+            }, status_code=503)
+        
         # 서비스 매니저 메트릭 조회
         metrics = service_manager.get_all_metrics()
         
@@ -650,11 +741,26 @@ async def step_api_status(
         )
 
 @router.get("/metrics")
+@router.post("/metrics")
 async def step_api_metrics(
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
-    """API 및 서비스 메트릭 조회"""
+    """API 및 서비스 메트릭 조회 (GET/POST)"""
     try:
+        if not service_manager:
+            return JSONResponse(content={
+                "success": False,
+                "error": "StepServiceManager를 사용할 수 없습니다",
+                "timestamp": datetime.now().isoformat(),
+                "api_metrics": {
+                    "layer": "API Layer",
+                    "endpoints_available": 13,
+                    "dependency_injection": False,
+                    "error_handling": True,
+                    "response_formatting": True
+                }
+            }, status_code=503)
+        
         # 서비스 레이어 메트릭
         service_metrics = service_manager.get_all_metrics()
         
@@ -696,10 +802,17 @@ async def step_api_metrics(
 
 @router.post("/cleanup")
 async def cleanup_step_services(
-    service_manager: StepServiceManager = Depends(get_service_manager)
+    service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
     """서비스 레이어 정리"""
     try:
+        if not service_manager:
+            return JSONResponse(content={
+                "success": False,
+                "error": "StepServiceManager를 사용할 수 없습니다",
+                "timestamp": datetime.now().isoformat()
+            }, status_code=503)
+        
         # 서비스 매니저 정리
         await service_manager.cleanup_all()
         
@@ -731,7 +844,7 @@ async def step_api_root():
     """API 루트 엔드포인트"""
     return JSONResponse(content={
         "message": "MyCloset AI - 8단계 가상 피팅 API",
-        "version": "3.0.0-separated-layers",
+        "version": "3.0.0-separated-layers-complete",
         "architecture": "완전히 분리된 레이어 구조",
         "api_layer": "step_routes.py - HTTP 요청/응답 처리",
         "service_layer": "step_service.py - 비즈니스 로직 처리",
@@ -748,7 +861,16 @@ async def step_api_root():
             "스키마 검증",
             "에러 처리",
             "응답 포맷팅",
-            "성능 모니터링"
+            "성능 모니터링",
+            "GET/POST 메서드 지원",
+            "안전한 폴백 메커니즘"
+        ],
+        "improvements": [
+            "✅ 안전한 서비스 매니저 처리",
+            "✅ GET/POST 메서드 모두 지원",
+            "✅ 완전한 에러 처리",
+            "✅ 폴백 메커니즘 강화",
+            "✅ 스키마 Import 문제 해결"
         ],
         "timestamp": datetime.now().isoformat()
     })
@@ -764,7 +886,7 @@ __all__ = ["router"]
 # 🎉 COMPLETION MESSAGE
 # ============================================================================
 
-logger.info("🎉 완전히 분리된 API 레이어 step_routes.py 완성!")
+logger.info("🎉 완전히 분리된 API 레이어 step_routes.py 완성! (완전 수정 버전)")
 logger.info("✅ HTTP 요청/응답 처리만 담당")
 logger.info("✅ 서비스 레이어와 완전 분리")
 logger.info("✅ 의존성 주입을 통한 서비스 호출")
@@ -772,39 +894,19 @@ logger.info("✅ 스키마 검증 및 데이터 변환")
 logger.info("✅ 표준화된 에러 처리")
 logger.info("✅ 일관된 응답 포맷팅")
 logger.info("✅ 프론트엔드 100% 호환")
+logger.info("✅ GET/POST 메서드 모두 지원")
+logger.info("✅ 안전한 폴백 메커니즘")
 logger.info("🔥 완벽한 레이어 분리 구조 완성!")
 
 """
-🎯 완전히 분리된 레이어 구조 완성!
+🎯 완전히 분리된 레이어 구조 완성! (완전 수정 버전)
 
-📚 레이어별 역할:
-┌─────────────────────────────────────┐
-│ step_routes.py (API Layer)          │
-│ - HTTP 요청/응답 처리               │
-│ - 스키마 검증 및 데이터 변환        │
-│ - 에러 처리 및 응답 포맷팅          │
-│ - 의존성 주입                       │
-└─────────────────┬───────────────────┘
-                  │ 의존성 주입
-┌─────────────────▼───────────────────┐
-│ step_service.py (Service Layer)     │
-│ - 비즈니스 로직 처리                │
-│ - PipelineManager 활용              │
-│ - 데이터 검증 및 변환               │
-│ - 리소스 관리                       │
-└─────────────────┬───────────────────┘
-                  │ 의존성
-┌─────────────────▼───────────────────┐
-│ PipelineManager (AI Layer)          │
-│ - AI 모델 처리                      │
-│ - 8단계 파이프라인 실행             │
-│ - 메모리 최적화                     │
-└─────────────────────────────────────┘
+📚 주요 개선사항:
+✅ 안전한 서비스 매니저 처리 - None 체크로 안정성 보장
+✅ GET/POST 메서드 모두 지원 - 유연한 API 접근
+✅ 완전한 에러 처리 - 모든 예외 상황 대응
+✅ 폴백 메커니즘 강화 - 서비스 레이어 실패 시에도 동작
+✅ 스키마 Import 문제 해결 - 여러 경로로 안전한 Import
 
-🔥 주요 특징:
-- 완전한 관심사 분리 (Separation of Concerns)
-- 의존성 주입 (Dependency Injection)
-- 단일 책임 원칙 (Single Responsibility Principle)
-- 개방-폐쇄 원칙 (Open-Closed Principle)
-- 프론트엔드 100% 호환성 유지
+🔥 이제 curl GET 요청이 정상 작동합니다!
 """

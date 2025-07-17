@@ -1,0 +1,108 @@
+{
+  "scan_results": {
+    "total_models": 69,
+    "total_size_gb": 376.6,
+    "step_counts": {
+      "step_07_post_processing": 1,
+      "unknown": 46,
+      "step_04_geometric_matching": 3,
+      "step_03_cloth_segmentation": 2,
+      "step_02_pose_estimation": 3,
+      "step_08_quality_assessment": 3,
+      "step_01_human_parsing": 1,
+      "step_05_cloth_warping": 2,
+      "step_06_virtual_fitting": 8
+    }
+  },
+  "selected_models": {
+    "lightweight_parsing.pth": {
+      "path": "../backend/ai_models/checkpoints/step_01_human_parsing/lightweight_parsing.pth",
+      "size_mb": 0.5,
+      "step": "step_01_human_parsing",
+      "priority": "low"
+    },
+    "body_pose_model.pth": {
+      "path": "../backend/ai_models/step_02_pose_estimation/body_pose_model.pth",
+      "size_mb": 199.6,
+      "step": "step_02_pose_estimation",
+      "priority": "medium"
+    },
+    "hand_pose_model.pth": {
+      "path": "../backend/ai_models/checkpoints/pose_estimation/hand_pose_model.pth",
+      "size_mb": 140.5,
+      "step": "step_02_pose_estimation",
+      "priority": "medium"
+    },
+    "u2net_backup.pth": {
+      "path": "app/ai_pipeline/models/ai_models/checkpoints/step_03_cloth_segmentation/u2net_backup.pth",
+      "size_mb": 168.5,
+      "step": "step_03_cloth_segmentation",
+      "priority": "medium"
+    },
+    "u2net.pth": {
+      "path": "app/ai_pipeline/models/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+      "size_mb": 167.8,
+      "step": "step_03_cloth_segmentation",
+      "priority": "medium"
+    },
+    "geometric_matching_base.pth": {
+      "path": "../backend/ai_models/checkpoints/step_04_geometric_matching/geometric_matching_base/geometric_matching_base.pth",
+      "size_mb": 18.7,
+      "step": "step_04_geometric_matching",
+      "priority": "low"
+    },
+    "lightweight_gmm.pth": {
+      "path": "../backend/ai_models/checkpoints/step_04_geometric_matching/lightweight_gmm.pth",
+      "size_mb": 4.1,
+      "step": "step_04_geometric_matching",
+      "priority": "low"
+    },
+    "tom_final.pth": {
+      "path": "app/ai_pipeline/models/ai_models/checkpoints/step_05_cloth_warping/tom_final.pth",
+      "size_mb": 0.3,
+      "step": "step_05_cloth_warping",
+      "priority": "low"
+    },
+    "lightweight_warping.pth": {
+      "path": "../backend/ai_models/checkpoints/step_05_cloth_warping/lightweight_warping.pth",
+      "size_mb": 0.1,
+      "step": "step_05_cloth_warping",
+      "priority": "low"
+    },
+    "diffusion_pytorch_model.bin": {
+      "path": "app/ai_pipeline/models/ai_models/downloads/models--runwayml--stable-diffusion-v1-5/snapshots/451f4fe16113bff5a5d2269ed5ad43b0592e9a14/unet/diffusion_pytorch_model.bin",
+      "size_mb": 3279.1,
+      "step": "step_06_virtual_fitting",
+      "priority": "high"
+    },
+    "diffusion_pytorch_model.non_ema.bin": {
+      "path": "../backend/ai_models/checkpoints/stable_diffusion_v15/unet/diffusion_pytorch_model.non_ema.bin",
+      "size_mb": 3279.1,
+      "step": "step_06_virtual_fitting",
+      "priority": "high"
+    }
+  },
+  "optimization_target": {
+    "memory_limit_gb": 32,
+    "device": "mps",
+    "precision": "float32"
+  },
+  "path_mappings": {
+    "lightweight_parsing.pth": "ai_models/checkpoints/step_01_human_parsing/lightweight_parsing.pth",
+    "body_pose_model.pth": "ai_models/step_02_pose_estimation/body_pose_model.pth",
+    "hand_pose_model.pth": "ai_models/checkpoints/pose_estimation/hand_pose_model.pth",
+    "u2net_backup.pth": "app/ai_pipeline/models/ai_models/checkpoints/step_03_cloth_segmentation/u2net_backup.pth",
+    "u2net.pth": "app/ai_pipeline/models/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+    "geometric_matching_base.pth": "ai_models/checkpoints/step_04_geometric_matching/geometric_matching_base/geometric_matching_base.pth",
+    "lightweight_gmm.pth": "ai_models/checkpoints/step_04_geometric_matching/lightweight_gmm.pth",
+    "tom_final.pth": "app/ai_pipeline/models/ai_models/checkpoints/step_05_cloth_warping/tom_final.pth",
+    "lightweight_warping.pth": "ai_models/checkpoints/step_05_cloth_warping/lightweight_warping.pth",
+    "diffusion_pytorch_model.bin": "app/ai_pipeline/models/ai_models/downloads/models--runwayml--stable-diffusion-v1-5/blobs/c7da0e21ba7ea50637bee26e81c220844defdf01aafca02b2c42ecdadb813de4",
+    "diffusion_pytorch_model.non_ema.bin": "ai_models/checkpoints/stable_diffusion_v15/unet/diffusion_pytorch_model.non_ema.bin"
+  },
+  "optimization_stats": {
+    "original_models": 11,
+    "final_models": 11,
+    "duplicates_removed": 0
+  }
+}
