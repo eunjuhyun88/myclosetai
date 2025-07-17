@@ -1,0 +1,21 @@
+{
+  "timestamp": "2025-07-18 02:22:06",
+  "device": "mps",
+  "torch_available": true,
+  "test_results": {
+    "memory_optimization": {
+      "total_gb": 128.0,
+      "available_gb": 57.20805358886719,
+      "used_percent": 55.3,
+      "is_m3_max": true,
+      "mps_available": true,
+      "success": true
+    }
+  },
+  "summary": {
+    "total_tests": 1,
+    "passed_tests": 1,
+    "failed_tests": 0,
+    "overall_success": true
+  }
+}
