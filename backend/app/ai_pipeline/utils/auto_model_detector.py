@@ -2036,6 +2036,58 @@ def generate_real_model_loader_config(
     except Exception as e:
         logger.error(f"❌ 실제 ModelLoader 설정 생성 실패: {e}")
         return {"success": False, "error": str(e)}
+# backend/app/ai_pipeline/utils/auto_model_detector.py 끝 부분에 추가
+
+def detect_and_integrate_with_model_loader(
+    model_loader_instance = None,
+    auto_register: bool = True,
+    **detection_kwargs
+) -> Dict[str, Any]:
+    """모델 탐지 및 ModelLoader 통합 (순환참조 방지)"""
+    try:
+        logger.info("🔍 모델 탐지 및 ModelLoader 통합 시작...")
+        
+        # 탐지 실행
+        detector = create_advanced_detector(**detection_kwargs)
+        detected_models = detector.detect_all_models()
+        
+        if not detected_models:
+            logger.warning("⚠️ 탐지된 모델이 없습니다")
+            return {"success": False, "message": "No models detected"}
+        
+        # 어댑터 생성
+        adapter = AdvancedModelLoaderAdapter(detector)
+        
+        # ModelLoader 설정 생성
+        model_loader_config = adapter.generate_model_loader_config()
+        
+        # ModelLoader와 통합 (순환참조 방지)
+        integration_result = {}
+        if auto_register and model_loader_instance:
+            try:
+                # ModelLoader 인스턴스 설정
+                detector.set_model_loader(model_loader_instance)
+                
+                # 자동 등록
+                registered_count = adapter.register_models_to_loader(model_loader_instance)
+                integration_result["registered_models"] = registered_count
+                
+            except Exception as e:
+                logger.warning(f"⚠️ ModelLoader 통합 실패: {e}")
+                integration_result["integration_error"] = str(e)
+        
+        return {
+            "success": True,
+            "detected_count": len(detected_models),
+            "model_names": list(detected_models.keys()),
+            "integration": integration_result,
+            "config": model_loader_config
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 탐지 및 통합 실패: {e}")
+        return {"success": False, "error": str(e)}
+
 
 def validate_real_model_paths(detected_models: Dict[str, DetectedModel]) -> Dict[str, Any]:
     """실제 탐지된 모델 경로들의 유효성 검증"""
@@ -2123,7 +2175,7 @@ __all__ = [
     'ModelCategory',
     'ModelPriority',
     'ModelFileInfo',
-
+    'detect_and_integrate_with_model_loader' #새로추가
     # 새로운 호환성 클래스
     'AdvancedModelLoaderAdapter',  # 🔥 이것이 누락되었음
 
