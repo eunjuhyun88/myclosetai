@@ -26,12 +26,8 @@ backend/ai_models/
 *.safetensors
 *.bin
 *.pt
-
-# Hugging Face 캐시 제외
-cache/
-.cache/
-**/cache/
-**/.cache/
+*.pkl
+*.pickle
 
 # 체크포인트 디렉토리들
 checkpoints/
@@ -43,7 +39,27 @@ temp/
 **/temp/
 !**/temp/.gitkeep
 
-# Python
+# Hugging Face 캐시 제외
+cache/
+.cache/
+**/cache/
+**/.cache/
+
+# ============================================================================
+# Node.js 관련
+# ============================================================================
+frontend/node_modules/
+frontend/.next/
+frontend/build/
+frontend/dist/
+frontend/.vite/
+node_modules/
+package-lock.json
+*.lock
+
+# ============================================================================
+# Python 관련
+# ============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -66,151 +82,80 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-node_modules/
-frontend/node_modules/
+
+# 가상환경
+venv/
+backend/venv/
 backend/mycloset_env/
 mycloset_env/
-# Node.js
-frontend/node_modules/
-frontend/package-lock.json
-*.lock
-cat > .gitignore << 'EOF'
-# Node.js
-frontend/node_modules/
-frontend/.next/
-frontend/build/
-frontend/dist/
-frontend/.vite/
-
-# Python
-*.pyc
-__pycache__/
-backend/venv/
-backend/temp_archive/
-get-pip.py
-
-# AI 모델 체크포인트
-backend/ai_models/checkpoints/
-*.bin
-*.pth
-*.ckpt
-*.safetensors
-
-# 캐시 및 로그 파일
-.cache/
-*_cache.json
-*.log
-*.lock
-*.metadata
-
-# 백업 파일
-*.backup*
-*.bak
-
-# 시스템 파일
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# 환경
-mycloset_env/
-.env
-*.env
-backend/ai_models/
-# 모델 및 체크포인트
-ai_models/
-*.ckpt
-*.safetensors
-*.pth
-*.pt
-
-# 가상환경 및 캐시
-venv*/
-mycloset_env/
-__pycache__/
-*.log
-logs/
-cache/
-temp*/
-*.backup*
-
-# IDE/OS 관련
-.DS_Store
-.idea/
-*.swp
-
-# 업로드/결과물
-static/results/
-static/uploads/
-
-# 빌드 & 캐시
-dist/
-build/
-.cache/
-
-# 모델 및 결과물
-*.pt
-*.ckpt
-models/
-
-# 노드
-node_modules/
-
-# 시스템 파일
-.DS_Store
-
-.env
-.DS_Store
-*.log
-
-# Virtual environments
 env/
-venv/
 ENV/
 env.bak/
 venv.bak/
 .venv/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-
-# Environment variables
+# ============================================================================
+# 환경 설정 파일들
+# ============================================================================
 .env
 .env.local
 .env.development
 .env.test
 .env.production
+*.env
 
+# ============================================================================
+# 로그 및 캐시 파일
+# ============================================================================
+*.log
+logs/
+backend/logs/
+*_cache.json
+*.metadata
+
+# ============================================================================
+# 백업 파일
+# ============================================================================
+*.backup*
+*.bak
+*_backup_*
+
+# ============================================================================
 # 업로드/결과 파일들
+# ============================================================================
 static/uploads/*
 static/results/*
-logs/*
+backend/static/uploads/*
+backend/static/results/*
 
 # 예외: .gitkeep 파일들은 유지
 !static/uploads/.gitkeep
 !static/results/.gitkeep
-!logs/.gitkeep
+!backend/static/uploads/.gitkeep
+!backend/static/results/.gitkeep
 
+# ============================================================================
+# 시스템 파일
+# ============================================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============================================================================
 # 테스트 및 커버리지
+# ============================================================================
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
-
-# Jupyter Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
-
 # ============================================================================
-# 특정 AI 모델 디렉토리들 (현재 프로젝트 기준)
+# 특정 AI 모델 디렉토리들
 # ============================================================================
 
 # OOTDiffusion 관련
@@ -255,146 +200,7 @@ resnet50_features.pth
 *.weights
 
 # ============================================================================
-# 예외: 필요한 설정 파일들은 Git에 포함
+# 임시 아카이브 파일들
 # ============================================================================
-
-# 설정 파일들은 포함
-!**/*.yaml
-!**/*.yml
-!**/*.json
-!**/*.md
-!**/*.txt
-!**/.gitkeep
-
-# 하지만 모델 가중치 파일과 같은 이름의 설정은 제외
-*.config.json
-**/pytorch_model.bin
-**/diffusion_pytorch_model.bin
-**/diffusion_pytorch_model.safetensors
-
-# .gitignore에 추가할 내용
-
-# AI 모델 관련
-ai_models/checkpoints/*
-!ai_models/checkpoints/.gitkeep
-ai_models/cache/*
-!ai_models/cache/.gitkeep
-ai_models/ootd_models/*
-!ai_models/ootd_models/.gitkeep
-ai_models/temp/*
-!ai_models/temp/.gitkeep
-
-# 다운로드된 모델 파일들
-*.safetensors
-*.bin
-*.onnx
-*.pth
-*.pt
-
-# oot_diffusion이 많은 임시 파일을 생성할 수 있음
-ai_models/oot_diffusion/outputs/
-ai_models/oot_diffusion/logs/
-ai_models/oot_diffusion/__pycache__/
-ai_models/oot_diffusion/*.egg-info/
-
-# 업로드/결과 파일
-static/uploads/*
-!static/uploads/.gitkeep
-static/results/*
-!static/results/.gitkeep
-
-# .gitignore 업데이트 (루트에 추가)
-
-# AI 모델 파일들 (큰 파일들)
-*.safetensors
-*.bin
-*.onnx
-*.pth
-*.pt
-*.h5
-*.pb
-*.tflite
-*.ckpt
-*.pkl
-*.pickle
-
-# AI 모델 폴더들
-backend/ai_models/checkpoints/*
-!backend/ai_models/checkpoints/.gitkeep
-backend/ai_models/cache/*
-!backend/ai_models/cache/.gitkeep
-backend/ai_models/ootd_models/*
-!backend/ai_models/ootd_models/.gitkeep
-backend/ai_models/temp/*
-!backend/ai_models/temp/.gitkeep
-
-# oot_diffusion 생성 파일들
-backend/ai_models/oot_diffusion/outputs/
-backend/ai_models/oot_diffusion/logs/
-backend/ai_models/oot_diffusion/models/
-backend/ai_models/oot_diffusion/cache/
-backend/ai_models/oot_diffusion/__pycache__/
-backend/ai_models/oot_diffusion/*.egg-info/
-backend/ai_models/oot_diffusion/build/
-backend/ai_models/oot_diffusion/dist/
-
-# 대용량 Hugging Face 모델들
-backend/ai_models/oot_diffusion/models/*
-backend/ai_models/oot_diffusion/checkpoints/*
-
-# 업로드/결과 파일
-backend/static/uploads/*
-!backend/static/uploads/.gitkeep
-backend/static/results/*
-!backend/static/results/.gitkeep
-
-# 로그 파일
-backend/logs/*.log
-
-# Python 캐시
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-.pytest_cache/
-
-# 가상환경
-backend/venv/
-frontend/node_modules/
-
-# 환경 설정
-.env
-.env.local
-
-# macOS
-.DS_Store
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-
-# 가상 환경
-venv/
-backend/venv/
-backend/mycloset_env/
-
-# 로그
-*.log
-backend/logs/
-
-# 모델 파일
-backend/ai_models/
-backend/models/
-
-# 환경 설정
-*.env
-backend/.env
-frontend/.env
-
-# 프론트엔드 빌드 및 의존성
-frontend/node_modules/
-frontend/.next/
-frontend/dist/
+backend/temp_archive/
+temp_archive/
