@@ -1,0 +1,12 @@
+{
+  "relocated_models": {
+    "human_parsing_graphonomy": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
+    "pose_estimation_openpose": "ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
+    "cloth_segmentation_u2net": "ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+    "cloth_warping_tom": "ai_models/checkpoints/tom_final.pth",
+    "virtual_fitting_hrviton": "ai_models/checkpoints/hrviton_final.pth"
+  },
+  "generation_time": "2025-07-17 19:32:31",
+  "total_models": 5,
+  "total_size_mb": 3426.1714391708374
+}

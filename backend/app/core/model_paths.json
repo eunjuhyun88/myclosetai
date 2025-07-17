@@ -1,0 +1,96 @@
+{
+  "generated_at": "2025-07-17 19:20:00",
+  "project_root": "/Users/gimdudeul/MVP/mycloset-ai/backend",
+  "ai_models_dir": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models",
+  "model_paths": {
+    "human_parsing_graphonomy": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
+    "pose_estimation_openpose": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
+    "cloth_segmentation_u2net": "",
+    "geometric_matching_gmm": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/gmm_final.pth",
+    "virtual_fitting_hrviton": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/hrviton_final.pth",
+    "stable_diffusion": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/diffusion/stable-diffusion-v1-5",
+    "clip_vit_base": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/clip-vit-base-patch32/pytorch_model.bin"
+  },
+  "model_availability": {
+    "human_parsing_graphonomy": true,
+    "pose_estimation_openpose": true,
+    "cloth_segmentation_u2net": true,
+    "geometric_matching_gmm": true,
+    "cloth_warping_tom": false,
+    "virtual_fitting_hrviton": true,
+    "stable_diffusion": true,
+    "clip_vit_base": true
+  },
+  "relocate_summary": {
+    "success": true,
+    "total_models": 7,
+    "successful_count": 7,
+    "failed_count": 0,
+    "successful_models": [
+      "human_parsing_graphonomy",
+      "virtual_fitting_hrviton",
+      "cloth_segmentation_u2net",
+      "pose_estimation_openpose",
+      "stable_diffusion",
+      "clip_vit_base",
+      "geometric_matching_gmm"
+    ],
+    "failed_models": [],
+    "relocate_stats": {
+      "copied": 1,
+      "symlinked": 5,
+      "skipped": 1,
+      "errors": 0,
+      "total_size_gb": 7.496860820800066
+    },
+    "results": {
+      "human_parsing_graphonomy": {
+        "success": true,
+        "action": "symlink",
+        "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/atr_model.pth",
+        "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
+        "size_mb": 255.05565357208252
+      },
+      "virtual_fitting_hrviton": {
+        "success": true,
+        "action": "symlink",
+        "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth",
+        "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/hrviton_final.pth",
+        "size_mb": 3279.0705919265747
+      },
+      "cloth_segmentation_u2net": {
+        "success": true,
+        "action": "skipped",
+        "reason": "Target already exists with similar size"
+      },
+      "pose_estimation_openpose": {
+        "success": true,
+        "action": "symlink",
+        "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/body_pose_model.pth",
+        "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
+        "size_mb": 199.57313060760498
+      },
+      "stable_diffusion": {
+        "success": true,
+        "action": "symlink",
+        "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/stable_diffusion_inpaint/unet/diffusion_pytorch_model.bin",
+        "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/diffusion/stable-diffusion-v1-5",
+        "size_mb": 3279.1255235671997
+      },
+      "clip_vit_base": {
+        "success": true,
+        "action": "symlink",
+        "source": "/Users/gimdudeul/.cache/huggingface/hub/models--IDEA-Research--grounding-dino-tiny/snapshots/a2bb814dd30d776dcf7e30523b00659f4f141c71/pytorch_model.bin",
+        "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/clip-vit-base-patch32/pytorch_model.bin",
+        "size_mb": 659.8611850738525
+      },
+      "geometric_matching_gmm": {
+        "success": true,
+        "action": "copy",
+        "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04_geometric_matching/lightweight_gmm.pth",
+        "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/gmm_final.pth",
+        "size_mb": 4.099395751953125
+      }
+    }
+  }
+}

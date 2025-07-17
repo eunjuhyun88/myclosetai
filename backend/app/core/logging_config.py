@@ -1,12 +1,12 @@
 """
-MyCloset AI - 완전한 로깅 설정 시스템
+MyCloset AI - 개선된 로깅 시스템 (깔끔하고 핵심적)
 backend/app/core/logging_config.py
 
-✅ 완전한 로깅 설정 시스템
-✅ 파일 및 콘솔 로깅 지원
-✅ 레벨별 로그 분리
-✅ 로그 회전 및 압축
-✅ 성능 최적화
+✅ 깔끔한 콘솔 출력
+✅ 핵심 문제만 표시
+✅ 개발/프로덕션 모드 분리
+✅ 스마트 로그 레벨
+✅ 중요한 에러만 강조
 """
 
 import os
@@ -16,50 +16,79 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
-import json
+from enum import Enum
 
 # ===============================================================
-# 🔧 로깅 설정 클래스
+# 🔧 로깅 모드 정의
 # ===============================================================
+
+class LogMode(Enum):
+    """로깅 모드"""
+    MINIMAL = "minimal"      # 최소한의 로그만 (에러, 중요 정보)
+    CLEAN = "clean"          # 깔끔한 로그 (기본값)
+    DETAILED = "detailed"    # 상세한 로그 (개발용)
+    DEBUG = "debug"          # 모든 로그 (디버깅용)
 
 class LoggingConfig:
-    """로깅 설정 관리 클래스"""
+    """개선된 로깅 설정 관리 클래스"""
     
     def __init__(self):
         self.log_dir = Path("logs")
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
-        # 로그 파일 경로
-        self.log_file = self.log_dir / f"mycloset-ai-{datetime.now().strftime('%Y%m%d')}.log"
-        self.error_log_file = self.log_dir / f"error-{datetime.now().strftime('%Y%m%d')}.log"
-        
-        # 로그 레벨 설정
+        # 로깅 모드 결정
+        self.mode = self._get_log_mode()
         self.log_level = self._get_log_level()
         
-        # 로그 포맷 설정
-        self.log_format = self._get_log_format()
+        # 환경별 설정
+        self.is_production = os.getenv('ENVIRONMENT', 'development').lower() == 'production'
+        self.show_startup_info = not self.is_production
+        
+        # 로그 파일 경로
+        date_str = datetime.now().strftime('%Y%m%d')
+        self.log_file = self.log_dir / f"mycloset-{date_str}.log"
+        self.error_log_file = self.log_dir / f"error-{date_str}.log"
+        
+        # 포맷 설정
+        self.file_format = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
         self.console_format = self._get_console_format()
         
-        # 로깅 설정 완료 플래그
         self.is_configured = False
     
-    def _get_log_level(self) -> str:
-        """로그 레벨 결정"""
-        level = os.getenv('LOG_LEVEL', 'INFO').upper()
-        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-        return level if level in valid_levels else 'INFO'
+    def _get_log_mode(self) -> LogMode:
+        """로깅 모드 결정"""
+        mode_str = os.getenv('LOG_MODE', 'clean').lower()
+        try:
+            return LogMode(mode_str)
+        except ValueError:
+            return LogMode.CLEAN
     
-    def _get_log_format(self) -> str:
-        """파일 로그 포맷 설정"""
-        return (
-            "%(asctime)s | %(levelname)s | %(name)s | %(process)d | %(message)s"
-        )
+    def _get_log_level(self) -> str:
+        """로그 레벨 결정 (모드에 따라)"""
+        env_level = os.getenv('LOG_LEVEL', '').upper()
+        
+        # 환경변수가 설정된 경우 우선 적용
+        if env_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+            return env_level
+        
+        # 모드별 기본 레벨
+        mode_levels = {
+            LogMode.MINIMAL: 'ERROR',
+            LogMode.CLEAN: 'WARNING', 
+            LogMode.DETAILED: 'INFO',
+            LogMode.DEBUG: 'DEBUG'
+        }
+        
+        return mode_levels.get(self.mode, 'WARNING')
     
     def _get_console_format(self) -> str:
-        """콘솔 로그 포맷 설정"""
-        return (
-            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-        )
+        """콘솔 포맷 설정 (모드별)"""
+        if self.mode == LogMode.MINIMAL:
+            return "%(levelname)s: %(message)s"
+        elif self.mode == LogMode.CLEAN:
+            return "%(asctime)s | %(levelname)s | %(message)s"
+        else:
+            return "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     
     def setup_logging(self) -> bool:
         """로깅 시스템 설정"""
@@ -72,23 +101,23 @@ class LoggingConfig:
             # 루트 로거 설정
             root_logger.setLevel(getattr(logging, self.log_level))
             
-            # 파일 핸들러 설정
+            # 파일 핸들러 설정 (항상 유지)
             self._setup_file_handlers(root_logger)
             
             # 콘솔 핸들러 설정
             self._setup_console_handler(root_logger)
             
-            # 특정 로거 설정
-            self._setup_specific_loggers()
+            # 외부 라이브러리 로거 제어
+            self._setup_external_loggers()
+            
+            # MyCloset AI 로거 설정
+            self._setup_app_loggers()
             
             self.is_configured = True
             
-            # 로깅 설정 완료 메시지
-            logger = logging.getLogger("mycloset.logging")
-            logger.info("🔧 로깅 시스템 초기화 완료")
-            logger.info(f"📝 로그 레벨: {self.log_level}")
-            logger.info(f"📁 로그 파일: {self.log_file}")
-            logger.info(f"❌ 에러 로그: {self.error_log_file}")
+            # 시작 메시지 (깔끔하게)
+            if self.show_startup_info:
+                self._log_startup_info()
             
             return True
             
@@ -98,26 +127,26 @@ class LoggingConfig:
     
     def _setup_file_handlers(self, root_logger: logging.Logger):
         """파일 핸들러 설정"""
-        # 일반 로그 파일 핸들러
+        # 일반 로그 파일
         file_handler = logging.handlers.RotatingFileHandler(
             filename=self.log_file,
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5,
-            encoding='utf-8'
-        )
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(logging.Formatter(self.log_format))
-        root_logger.addHandler(file_handler)
-        
-        # 에러 로그 파일 핸들러
-        error_handler = logging.handlers.RotatingFileHandler(
-            filename=self.error_log_file,
             maxBytes=10*1024*1024,  # 10MB
             backupCount=3,
             encoding='utf-8'
         )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter(self.file_format))
+        root_logger.addHandler(file_handler)
+        
+        # 에러 로그 파일
+        error_handler = logging.handlers.RotatingFileHandler(
+            filename=self.error_log_file,
+            maxBytes=5*1024*1024,  # 5MB
+            backupCount=2,
+            encoding='utf-8'
+        )
         error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(logging.Formatter(self.log_format))
+        error_handler.setFormatter(logging.Formatter(self.file_format))
         root_logger.addHandler(error_handler)
     
     def _setup_console_handler(self, root_logger: logging.Logger):
@@ -125,271 +154,245 @@ class LoggingConfig:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(getattr(logging, self.log_level))
         
-        # 컬러 포맷터 설정
-        console_formatter = ColoredFormatter(self.console_format)
+        # 컬러 포맷터 적용
+        console_formatter = CleanColoredFormatter(self.console_format)
         console_handler.setFormatter(console_formatter)
         
         root_logger.addHandler(console_handler)
     
-    def _setup_specific_loggers(self):
-        """특정 로거들 설정"""
-        # FastAPI 관련 로거 설정
-        fastapi_logger = logging.getLogger("fastapi")
-        fastapi_logger.setLevel(logging.WARNING)
+    def _setup_external_loggers(self):
+        """외부 라이브러리 로거 제어"""
+        # 시끄러운 라이브러리들 조용하게 만들기
+        noisy_loggers = [
+            'urllib3',
+            'requests',
+            'PIL',
+            'matplotlib',
+            'tensorflow',
+            'torch',
+            'transformers',
+            'diffusers',
+            'timm',
+            'coremltools',
+            'watchfiles',
+            'multipart'
+        ]
         
-        # Uvicorn 관련 로거 설정
-        uvicorn_logger = logging.getLogger("uvicorn")
-        uvicorn_logger.setLevel(logging.INFO)
+        for logger_name in noisy_loggers:
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
         
-        # PyTorch 관련 로거 설정
-        torch_logger = logging.getLogger("torch")
-        torch_logger.setLevel(logging.WARNING)
-        
-        # MyCloset AI 관련 로거 설정
-        mycloset_logger = logging.getLogger("mycloset")
-        mycloset_logger.setLevel(logging.INFO)
+        # FastAPI/Uvicorn 로거 설정
+        if self.mode in [LogMode.MINIMAL, LogMode.CLEAN]:
+            logging.getLogger("fastapi").setLevel(logging.WARNING)
+            logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+            logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+        else:
+            logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     
-    def get_logger(self, name: str) -> logging.Logger:
-        """로거 반환"""
-        return logging.getLogger(name)
-    
-    def log_system_info(self):
-        """시스템 정보 로깅"""
-        logger = logging.getLogger("mycloset.system")
+    def _setup_app_loggers(self):
+        """MyCloset AI 앱 로거 설정"""
+        # 앱 로거는 모드에 따라 다르게 설정
+        app_logger = logging.getLogger("app")
         
-        logger.info("🖥️ 시스템 정보:")
-        logger.info(f"  - Python: {sys.version.split()[0]}")
-        logger.info(f"  - Platform: {sys.platform}")
-        logger.info(f"  - 프로세스 ID: {os.getpid()}")
-        logger.info(f"  - 작업 디렉토리: {os.getcwd()}")
-        logger.info(f"  - 로그 디렉토리: {self.log_dir.absolute()}")
+        if self.mode == LogMode.MINIMAL:
+            app_logger.setLevel(logging.ERROR)
+        elif self.mode == LogMode.CLEAN:
+            app_logger.setLevel(logging.WARNING)
+        else:
+            app_logger.setLevel(logging.INFO)
+    
+    def _log_startup_info(self):
+        """시작 정보 로깅 (깔끔하게)"""
+        logger = logging.getLogger("mycloset.startup")
+        
+        if self.mode == LogMode.MINIMAL:
+            logger.info("🚀 MyCloset AI 시작")
+        elif self.mode == LogMode.CLEAN:
+            logger.info("🚀 MyCloset AI 시작 중...")
+            logger.info(f"📋 로그 모드: {self.mode.value}")
+        else:
+            logger.info("🚀 MyCloset AI 시작 중...")
+            logger.info(f"📋 로그 모드: {self.mode.value}")
+            logger.info(f"📝 로그 레벨: {self.log_level}")
+            logger.info(f"📁 로그 파일: {self.log_file.name}")
 
 # ===============================================================
-# 🎨 컬러 포맷터
+# 🎨 개선된 컬러 포맷터
 # ===============================================================
 
-class ColoredFormatter(logging.Formatter):
-    """컬러 로그 포맷터"""
+class CleanColoredFormatter(logging.Formatter):
+    """깔끔한 컬러 로그 포맷터"""
     
-    # ANSI 컬러 코드
+    # 심플한 컬러 스키마
     COLORS = {
-        'DEBUG': '\033[36m',    # 청록색
-        'INFO': '\033[32m',     # 녹색
+        'DEBUG': '\033[90m',    # 회색
+        'INFO': '\033[36m',     # 청록색
         'WARNING': '\033[33m',  # 노란색
-        'ERROR': '\033[31m',    # 빨간색
-        'CRITICAL': '\033[35m', # 자주색
-        'RESET': '\033[0m'      # 리셋
+        'ERROR': '\033[91m',    # 밝은 빨간색
+        'CRITICAL': '\033[95m', # 밝은 자주색
+        'RESET': '\033[0m'
+    }
+    
+    # 레벨별 이모지
+    EMOJIS = {
+        'DEBUG': '🔍',
+        'INFO': '✅',
+        'WARNING': '⚠️',
+        'ERROR': '❌',
+        'CRITICAL': '🚨'
     }
     
     def format(self, record):
-        # 레벨별 컬러 적용
+        # 시간 포맷 간소화
+        if hasattr(record, 'asctime'):
+            # 이미 asctime이 있으면 시간만 추출
+            time_part = record.asctime.split()[1] if ' ' in record.asctime else record.asctime
+        else:
+            time_part = datetime.now().strftime('%H:%M:%S')
+        
+        # 컬러와 이모지 적용
         level_color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
         reset_color = self.COLORS['RESET']
+        emoji = self.EMOJIS.get(record.levelname, '')
         
-        # 원본 레벨명 저장
+        # 원본 데이터 백업
         original_levelname = record.levelname
+        original_asctime = getattr(record, 'asctime', None)
         
-        # 컬러 적용
-        record.levelname = f"{level_color}{record.levelname}{reset_color}"
+        # 수정된 데이터 적용
+        record.levelname = f"{level_color}{emoji} {record.levelname}{reset_color}"
+        record.asctime = time_part
         
         # 포맷 적용
         formatted = super().format(record)
         
-        # 원본 레벨명 복원
+        # 원본 데이터 복원
         record.levelname = original_levelname
+        if original_asctime:
+            record.asctime = original_asctime
         
         return formatted
 
 # ===============================================================
-# 🔧 전역 로깅 설정
+# 🔧 스마트 로거 클래스들
+# ===============================================================
+
+class SmartLogger:
+    """스마트 로거 - 중요한 것만 로깅"""
+    
+    def __init__(self, name: str):
+        self.logger = logging.getLogger(name)
+        self.mode = LogMode(os.getenv('LOG_MODE', 'clean'))
+    
+    def startup(self, message: str, details: Optional[Dict] = None):
+        """시작 관련 로그"""
+        if self.mode == LogMode.MINIMAL:
+            return
+        
+        if details and self.mode in [LogMode.DETAILED, LogMode.DEBUG]:
+            detail_str = ", ".join(f"{k}={v}" for k, v in details.items())
+            self.logger.info(f"{message} ({detail_str})")
+        else:
+            self.logger.info(message)
+    
+    def success(self, message: str):
+        """성공 메시지"""
+        if self.mode != LogMode.MINIMAL:
+            self.logger.info(message)
+    
+    def problem(self, message: str, suggestion: str = None):
+        """문제 상황 (해결책 포함)"""
+        self.logger.warning(message)
+        if suggestion and self.mode != LogMode.MINIMAL:
+            self.logger.info(f"💡 해결책: {suggestion}")
+    
+    def critical_error(self, message: str, action: str = None):
+        """심각한 에러"""
+        self.logger.error(message)
+        if action:
+            self.logger.error(f"🔧 필요한 조치: {action}")
+    
+    def progress(self, step: str, total: int = None, current: int = None):
+        """진행 상황"""
+        if self.mode in [LogMode.DETAILED, LogMode.DEBUG]:
+            if total and current:
+                self.logger.info(f"📊 {step} ({current}/{total})")
+            else:
+                self.logger.info(f"📊 {step}")
+
+# ===============================================================
+# 🔧 전역 설정 및 유틸리티
 # ===============================================================
 
 # 전역 로깅 설정 인스턴스
 _logging_config = LoggingConfig()
 
 def setup_logging() -> bool:
-    """로깅 시스템 설정 (전역 함수)"""
+    """로깅 시스템 설정"""
     global _logging_config
     
     if _logging_config.is_configured:
         return True
     
-    success = _logging_config.setup_logging()
-    
-    if success:
-        # 시스템 정보 로깅
-        _logging_config.log_system_info()
-    
-    return success
+    return _logging_config.setup_logging()
+
+def get_smart_logger(name: str) -> SmartLogger:
+    """스마트 로거 반환"""
+    return SmartLogger(name)
 
 def get_logger(name: str) -> logging.Logger:
-    """로거 반환 (전역 함수)"""
-    return _logging_config.get_logger(name)
+    """일반 로거 반환"""
+    return logging.getLogger(name)
 
-def get_logging_config() -> LoggingConfig:
-    """로깅 설정 인스턴스 반환"""
-    return _logging_config
-
-# ===============================================================
-# 🔧 성능 로깅 유틸리티
-# ===============================================================
-
-class PerformanceLogger:
-    """성능 로깅 유틸리티"""
-    
-    def __init__(self, logger_name: str = "mycloset.performance"):
-        self.logger = logging.getLogger(logger_name)
-        self.start_times = {}
-    
-    def start_timer(self, operation: str):
-        """타이머 시작"""
-        import time
-        self.start_times[operation] = time.time()
-        self.logger.info(f"⏱️ {operation} 시작")
-    
-    def end_timer(self, operation: str, details: Optional[Dict[str, Any]] = None):
-        """타이머 종료"""
-        import time
-        
-        if operation not in self.start_times:
-            self.logger.warning(f"⚠️ {operation} 시작 시간을 찾을 수 없음")
-            return
-        
-        elapsed = time.time() - self.start_times[operation]
-        del self.start_times[operation]
-        
-        detail_str = ""
-        if details:
-            detail_str = f" ({', '.join(f'{k}={v}' for k, v in details.items())})"
-        
-        self.logger.info(f"✅ {operation} 완료: {elapsed:.3f}초{detail_str}")
-    
-    def log_memory_usage(self, operation: str):
-        """메모리 사용량 로깅"""
-        try:
-            import psutil
-            process = psutil.Process()
-            memory_info = process.memory_info()
-            
-            self.logger.info(f"💾 {operation} 메모리 사용량: {memory_info.rss / 1024 / 1024:.1f}MB")
-        except ImportError:
-            self.logger.warning("psutil이 설치되지 않아 메모리 사용량을 측정할 수 없습니다.")
-        except Exception as e:
-            self.logger.warning(f"메모리 사용량 측정 실패: {e}")
+def set_log_mode(mode: str):
+    """런타임에 로그 모드 변경"""
+    os.environ['LOG_MODE'] = mode
+    # 재설정 필요시 여기에 추가
 
 # ===============================================================
-# 🔧 GPU 로깅 유틸리티
+# 🔧 컨텍스트 매니저 (임시 로그 레벨 변경용)
 # ===============================================================
 
-class GPULogger:
-    """GPU 로깅 유틸리티"""
-    
-    def __init__(self, logger_name: str = "mycloset.gpu"):
-        self.logger = logging.getLogger(logger_name)
-    
-    def log_gpu_memory(self, device: str, operation: str):
-        """GPU 메모리 로깅"""
-        try:
-            import torch
-            
-            if device == "mps":
-                # MPS 메모리 정보 (제한적)
-                try:
-                    if hasattr(torch.mps, 'current_allocated_memory'):
-                        allocated = torch.mps.current_allocated_memory()
-                        self.logger.info(f"🍎 {operation} MPS 메모리: {allocated / 1024 / 1024:.1f}MB")
-                    else:
-                        self.logger.info(f"🍎 {operation} MPS 메모리 정보 제한됨")
-                except:
-                    self.logger.info(f"🍎 {operation} MPS 메모리 정보 없음")
-            
-            elif device == "cuda" and torch.cuda.is_available():
-                # CUDA 메모리 정보
-                allocated = torch.cuda.memory_allocated() / 1024 / 1024
-                reserved = torch.cuda.memory_reserved() / 1024 / 1024
-                
-                self.logger.info(f"🚀 {operation} CUDA 메모리: {allocated:.1f}MB 할당됨, {reserved:.1f}MB 예약됨")
-            
-            else:
-                self.logger.info(f"💻 {operation} CPU 모드")
-        
-        except Exception as e:
-            self.logger.warning(f"GPU 메모리 로깅 실패: {e}")
-    
-    def log_gpu_utilization(self, device: str):
-        """GPU 사용률 로깅"""
-        try:
-            if device == "cuda":
-                import torch
-                if torch.cuda.is_available():
-                    gpu_util = torch.cuda.utilization()
-                    self.logger.info(f"🚀 GPU 사용률: {gpu_util}%")
-            else:
-                self.logger.info(f"🖥️ {device} 사용률 정보 없음")
-        
-        except Exception as e:
-            self.logger.warning(f"GPU 사용률 로깅 실패: {e}")
+from contextlib import contextmanager
 
-# ===============================================================
-# 🔧 API 로깅 유틸리티
-# ===============================================================
+@contextmanager
+def quiet_logging():
+    """임시로 조용한 로깅"""
+    original_level = logging.getLogger().level
+    try:
+        logging.getLogger().setLevel(logging.ERROR)
+        yield
+    finally:
+        logging.getLogger().setLevel(original_level)
 
-class APILogger:
-    """API 로깅 유틸리티"""
-    
-    def __init__(self, logger_name: str = "mycloset.api"):
-        self.logger = logging.getLogger(logger_name)
-    
-    def log_request(self, method: str, path: str, client_ip: str = None):
-        """API 요청 로깅"""
-        client_info = f" from {client_ip}" if client_ip else ""
-        self.logger.info(f"📥 {method} {path}{client_info}")
-    
-    def log_response(self, method: str, path: str, status_code: int, duration: float):
-        """API 응답 로깅"""
-        status_emoji = "✅" if status_code < 400 else "❌"
-        self.logger.info(f"📤 {method} {path} - {status_code} ({duration:.3f}s) {status_emoji}")
-    
-    def log_error(self, method: str, path: str, error: Exception):
-        """API 에러 로깅"""
-        self.logger.error(f"💥 {method} {path} - {type(error).__name__}: {str(error)}")
-
-# ===============================================================
-# 🔧 전역 유틸리티 인스턴스
-# ===============================================================
-
-# 전역 로깅 유틸리티 인스턴스들
-performance_logger = PerformanceLogger()
-gpu_logger = GPULogger()
-api_logger = APILogger()
+@contextmanager
+def verbose_logging():
+    """임시로 상세한 로깅"""
+    original_level = logging.getLogger().level
+    try:
+        logging.getLogger().setLevel(logging.DEBUG)
+        yield
+    finally:
+        logging.getLogger().setLevel(original_level)
 
 # ===============================================================
 # 🔧 Export 리스트
 # ===============================================================
 
 __all__ = [
-    # 주요 함수들
     'setup_logging',
+    'get_smart_logger', 
     'get_logger',
-    'get_logging_config',
-    
-    # 클래스들
-    'LoggingConfig',
-    'ColoredFormatter',
-    'PerformanceLogger',
-    'GPULogger',
-    'APILogger',
-    
-    # 전역 인스턴스들
-    'performance_logger',
-    'gpu_logger',
-    'api_logger'
+    'set_log_mode',
+    'LogMode',
+    'SmartLogger',
+    'quiet_logging',
+    'verbose_logging'
 ]
 
 # ===============================================================
-# 🔧 자동 초기화 (모듈 로드 시)
+# 🔧 자동 초기화
 # ===============================================================
 
-# 모듈 로드 시 자동으로 로깅 설정
 if not _logging_config.is_configured:
     setup_logging()
