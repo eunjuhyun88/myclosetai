@@ -74,11 +74,41 @@ node_modules/
 frontend/node_modules/
 backend/mycloset_env/
 mycloset_env/
+# Node.js
+frontend/node_modules/
+frontend/package-lock.json
+*.lock
+
 # 환경
 mycloset_env/
 .env
 *.env
 backend/ai_models/
+# 모델 및 체크포인트
+ai_models/
+*.ckpt
+*.safetensors
+*.pth
+*.pt
+
+# 가상환경 및 캐시
+venv*/
+mycloset_env/
+__pycache__/
+*.log
+logs/
+cache/
+temp*/
+*.backup*
+
+# IDE/OS 관련
+.DS_Store
+.idea/
+*.swp
+
+# 업로드/결과물
+static/results/
+static/uploads/
 
 # 빌드 & 캐시
 dist/
