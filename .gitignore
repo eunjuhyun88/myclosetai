@@ -1,6 +1,55 @@
 # ============================================================================
 # AI 모델 파일들 (용량이 큰 파일들 Git에서 제외)
 # ============================================================================
+# Node.js 관련
+node_modules/
+package-lock.json
+
+# Python 관련
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+
+# macOS 및 시스템
+.DS_Store
+
+# 모델, 캐시, 로그 등
+*.ckpt
+*.safetensors
+*.pth
+*.pt
+*.h5
+*.log
+*.jsonl
+*.pickle
+*.joblib
+
+# 백업 및 분석 결과
+*.bak
+*.old
+*.tmp
+*.swp
+*.ipynb_checkpoints/
+backend/*_backup.*
+backend/*_cache.*
+backend/*_analysis.*
+
+# Git BFG 로그
+.bfg-report/
+
+# IDE 설정
+.vscode/
+.idea/
+*.iml
+
+# 기타
+frontend/package-lock.json
 
 # AI 모델 디렉토리 전체 제외
 ai_models/
@@ -309,6 +358,18 @@ temp_archive/
 backend/model_detection_cache.json
 backend/checkpoint_analysis_results.json
 backend/project_analysis.json
+
+# .gitignore 예시
+node_modules/
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.pb
+*.h5
+.DS_Store
+*.log
 
 # 백업 파일들
 backend/environment_backup.yml
