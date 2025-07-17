@@ -305,4 +305,15 @@ temp_archive/
 !**/*.txt
 !**/.gitkeep
 
-# 하지만 특정 캐시/분석 JSON 파일들은 제외 (위에서 이미 정의됨)
+# 캐시 및 분석 파일들
+backend/model_detection_cache.json
+backend/checkpoint_analysis_results.json
+backend/project_analysis.json
+
+# 백업 파일들
+backend/environment_backup.yml
+backend/requirements_backup.txt
+backend/app/models/schemas_backup/
+
+# Package lock 파일
+frontend/package-lock.json

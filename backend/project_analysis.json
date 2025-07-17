@@ -1,0 +1,181 @@
+{
+  "system_info": {
+    "platform": "Darwin",
+    "cpu": "arm",
+    "gpu": "Unknown",
+    "optimization": "CPU/CUDA",
+    "python_version": "3.11.13",
+    "memory_gb": 128,
+    "architecture": "arm64"
+  },
+  "current_structure": {
+    "backend": {
+      "exists": true,
+      "directories": {
+        "app": {
+          "exists": true,
+          "contents": [
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/app/ai_pipeline"
+          ]
+        },
+        "ai_models": {
+          "exists": true,
+          "contents": [
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/ai_models/temp",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/ai_models/checkpoints"
+          ]
+        },
+        "static": {
+          "exists": false,
+          "contents": []
+        },
+        "tests": {
+          "exists": false,
+          "contents": []
+        },
+        "scripts": {
+          "exists": false,
+          "contents": []
+        },
+        "logs": {
+          "exists": false,
+          "contents": []
+        }
+      },
+      "files": {
+        "requirements.txt": {
+          "exists": false,
+          "size": 0
+        },
+        "run_server.py": {
+          "exists": false,
+          "size": 0
+        },
+        "Makefile": {
+          "exists": false,
+          "size": 0
+        },
+        "README.md": {
+          "exists": false,
+          "size": 0
+        }
+      },
+      "critical_issues": [],
+      "app_structure": {
+        "api": {
+          "exists": false,
+          "files": [],
+          "subdirs": []
+        },
+        "core": {
+          "exists": false,
+          "files": [],
+          "subdirs": []
+        },
+        "models": {
+          "exists": false,
+          "files": [],
+          "subdirs": []
+        },
+        "services": {
+          "exists": false,
+          "files": [],
+          "subdirs": []
+        },
+        "utils": {
+          "exists": false,
+          "files": [],
+          "subdirs": []
+        },
+        "ai_pipeline": {
+          "exists": true,
+          "files": [],
+          "subdirs": [
+            "cache",
+            "models"
+          ],
+          "total_files": 0,
+          "python_files": 0
+        }
+      }
+    },
+    "frontend": {
+      "exists": false,
+      "package_json": false,
+      "src_exists": false
+    },
+    "ai_models": {
+      "exists": true,
+      "clip_model": {
+        "exists": false,
+        "issue": "CLIP 모델 디렉토리 없음"
+      },
+      "checkpoints": {
+        "exists": true,
+        "files": [],
+        "subdirs": [],
+        "total_files": 0,
+        "python_files": 0
+      },
+      "ootdiffusion": {
+        "exists": false,
+        "checked_paths": [
+          "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/ai_models/OOTDiffusion",
+          "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/ai_models/oot_diffusion",
+          "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/ai_models/checkpoints/ootdiffusion"
+        ]
+      },
+      "stable_diffusion": {
+        "exists": false,
+        "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/backend/ai_models/checkpoints/stable-diffusion-v1-5"
+      },
+      "total_size_gb": 0.0
+    }
+  },
+  "missing_items": [
+    {
+      "type": "critical_file",
+      "path": "backend/app/__init__.py",
+      "description": "앱 패키지 초기화",
+      "priority": "HIGH"
+    },
+    {
+      "type": "critical_file",
+      "path": "backend/app/api/pipeline_routes.py",
+      "description": "핵심 API 라우트",
+      "priority": "HIGH"
+    },
+    {
+      "type": "critical_file",
+      "path": "backend/app/models/schemas.py",
+      "description": "데이터 스키마",
+      "priority": "HIGH"
+    },
+    {
+      "type": "critical_file",
+      "path": "backend/app/services/model_manager.py",
+      "description": "모델 관리자",
+      "priority": "HIGH"
+    },
+    {
+      "type": "critical_file",
+      "path": "backend/run_server.py",
+      "description": "서버 실행 파일",
+      "priority": "HIGH"
+    },
+    {
+      "type": "critical_file",
+      "path": "backend/requirements.txt",
+      "description": "의존성 목록",
+      "priority": "HIGH"
+    },
+    {
+      "type": "model_file",
+      "path": "backend/ai_models/clip-vit-base-patch32/model.safetensors",
+      "description": "CLIP 모델",
+      "priority": "MEDIUM"
+    }
+  ],
+  "problematic_items": [],
+  "analysis_timestamp": "2025-07-17T19:07:29.443766"
+}
