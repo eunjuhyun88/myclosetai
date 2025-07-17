@@ -822,10 +822,52 @@ class ModelLoader:
                 self._initialize_auto_detection()
             
             self.logger.info(f"📦 ModelLoader 구성 요소 초기화 완료")
-            
+    
         except Exception as e:
             self.logger.error(f"❌ 구성 요소 초기화 실패: {e}")
+            
+    def _initialize_auto_detection(self):
+        """자동 탐지기 초기화 및 연동"""
+        try:
+            from .auto_model_detector import create_real_world_detector, AdvancedModelLoaderAdapter
+            
+            # 실제 모델 탐지기 생성
+            self.auto_detector = create_real_world_detector()
+            
+            # 어댑터 생성
+            self.auto_adapter = AdvancedModelLoaderAdapter(self.auto_detector)
+            
+            # 모델 탐지 및 등록
+            detected_models = self.auto_detector.detect_all_models()
+            
+            if detected_models:
+                registered_count = self.auto_adapter.register_models_to_loader(self)
+                self.logger.info(f"🔍 자동 탐지 완료: {len(detected_models)}개 발견, {registered_count}개 등록")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 자동 탐지기 초기화 실패: {e}")
     
+    async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
+        """비동기 모델 로드"""
+        try:
+            return await asyncio.get_event_loop().run_in_executor(
+                None, self.load_model, model_name, **kwargs
+            )
+        except Exception as e:
+            self.logger.error(f"비동기 모델 로드 실패 {model_name}: {e}")
+            return None
+    
+    def register_model(self, name: str, config: Dict[str, Any]):
+        """모델 등록 (어댑터에서 사용)"""
+        try:
+            if not hasattr(self, 'detected_model_registry'):
+                self.detected_model_registry = {}
+            self.detected_model_registry[name] = config
+            self.logger.debug(f"✅ 모델 등록: {name}")
+        except Exception as e:
+            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
+
+
     def _load_step_requirements(self):
         """Step 요청사항 로드"""
         try:

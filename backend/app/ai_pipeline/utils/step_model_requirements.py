@@ -464,19 +464,86 @@ def get_steps_by_priority(priority: StepPriority) -> List[str]:
         step_name for step_name, request in STEP_MODEL_REQUESTS.items()
         if request.step_priority == priority
     ]
+# ===============================================
+# 🔥 누락된 클래스들 추가 (step_model_requests.py 맨 끝에 추가)
+# ===============================================
 
+class StepModelRequestAnalyzer:
+    """Step 모델 요청사항 분석기 - ModelLoader 연동용"""
+    
+    @staticmethod
+    def get_step_request_info(step_name: str) -> Optional[Dict[str, Any]]:
+        """Step별 요청 정보 반환 (ModelLoader 호환)"""
+        request = STEP_MODEL_REQUESTS.get(step_name)
+        if not request:
+            return None
+        
+        return {
+            "model_name": request.model_name,
+            "model_type": request.model_class,
+            "input_size": request.input_size,
+            "num_classes": request.num_classes,
+            "device": request.device,
+            "precision": request.precision,
+            "checkpoint_patterns": request.checkpoint_patterns,
+            "optimization_params": request.optimization_params,
+            "step_priority": request.step_priority.value,
+            "alternative_models": request.alternative_models,
+            "metadata": request.metadata
+        }
+    
+    @staticmethod
+    def get_all_step_requirements() -> Dict[str, Any]:
+        """모든 Step 요구사항 반환"""
+        return {
+            step_name: StepModelRequestAnalyzer.get_step_request_info(step_name)
+            for step_name in STEP_MODEL_REQUESTS.keys()
+        }
+    
+    @staticmethod
+    def get_critical_steps() -> List[str]:
+        """중요한 Step들 반환"""
+        return [
+            step_name for step_name, request in STEP_MODEL_REQUESTS.items()
+            if request.step_priority == StepPriority.CRITICAL
+        ]
+    
+    @staticmethod
+    def get_model_for_step(step_name: str) -> Optional[str]:
+        """Step에 대한 권장 모델명 반환"""
+        request = STEP_MODEL_REQUESTS.get(step_name)
+        return request.model_name if request else None
+
+# ModelLoader 호환 함수들 추가
+def get_all_step_requirements() -> Dict[str, Any]:
+    """전체 Step 요구사항 (ModelLoader 호환)"""
+    return StepModelRequestAnalyzer.get_all_step_requirements()
+
+def create_model_loader_config_from_detection(step_name: str, detected_models: List[Path]) -> Dict[str, Any]:
+    """탐지된 모델로부터 ModelLoader 설정 생성"""
+    request = get_step_request(step_name)
+    if not request or not detected_models:
+        return {}
+    
+    # 가장 큰 모델 선택 (일반적으로 메인 모델)
+    best_model = max(detected_models, key=lambda p: p.stat().st_size)
+    
+    return get_model_config_for_step(step_name, best_model)
+
+logger.info(f"✅ Step Model Requests v4.1 로드 완료 - {len(STEP_MODEL_REQUESTS)}개 Step 정의")
+logger.info("🔧 StepModelRequestAnalyzer 클래스 추가 - ModelLoader 호환성 완료")
 # ==============================================
 # 🔥 모듈 익스포트
 # ==============================================
-
 __all__ = [
     # 핵심 클래스
     'StepPriority',
     'ModelRequest',
-    
+    'StepModelRequestAnalyzer',  # 🔥 추가
+
     # 데이터
     'STEP_MODEL_REQUESTS',
-    
+
     # 함수들
     'get_step_request',
     'get_all_step_requests',
@@ -484,7 +551,9 @@ __all__ = [
     'get_model_config_for_step',
     'validate_model_for_step',
     'get_step_priorities',
-    'get_steps_by_priority'
+    'get_steps_by_priority',
+    'get_all_step_requirements',  # 🔥 추가
+    'create_model_loader_config_from_detection'  # 🔥 추가
 ]
 
 logger.info(f"✅ Step Model Requests 로드 완료 - {len(STEP_MODEL_REQUESTS)}개 Step 정의")

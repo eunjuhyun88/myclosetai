@@ -2,16 +2,15 @@
   "corrected_models": {
     "human_parsing_graphonomy": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
     "pose_estimation_openpose": "ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
-    "cloth_segmentation_u2net": "ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
     "geometric_matching_gmm": "ai_models/checkpoints/step_04_geometric_matching/gmm_final.pth",
     "cloth_warping_tom": "ai_models/checkpoints/step_05_cloth_warping/tom_final.pth",
     "virtual_fitting_hrviton": "ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth"
   },
   "relocate_summary": {
-    "total_models": 6,
-    "total_size_mb": 6351.673138618469,
-    "generation_time": "2025-07-17 19:38:55",
-    "success_count": 6,
+    "total_models": 5,
+    "total_size_mb": 6183.548999786377,
+    "generation_time": "2025-07-18 02:05:34",
+    "success_count": 5,
     "failed_count": 0
   },
   "success_details": [
@@ -27,13 +26,6 @@
       "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/body_pose_model.pth",
       "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
       "size_mb": 199.57313060760498,
-      "confidence": 1.0
-    },
-    {
-      "model": "cloth_segmentation_u2net",
-      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
-      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
-      "size_mb": 168.12413883209229,
       "confidence": 1.0
     },
     {

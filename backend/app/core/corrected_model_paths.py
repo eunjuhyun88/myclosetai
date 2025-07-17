@@ -1,7 +1,7 @@
 # app/core/corrected_model_paths.py
 """
 수정된 AI 모델 경로 설정 - 정확한 매칭 기반
-자동 생성됨: 2025-07-17 19:38:55
+자동 생성됨: 2025-07-18 02:05:34
 """
 
 from pathlib import Path
@@ -13,7 +13,6 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 CORRECTED_MODEL_PATHS = {
     "human_parsing_graphonomy": PROJECT_ROOT / "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
     "pose_estimation_openpose": PROJECT_ROOT / "ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
-    "cloth_segmentation_u2net": PROJECT_ROOT / "ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
     "geometric_matching_gmm": PROJECT_ROOT / "ai_models/checkpoints/step_04_geometric_matching/gmm_final.pth",
     "cloth_warping_tom": PROJECT_ROOT / "ai_models/checkpoints/step_05_cloth_warping/tom_final.pth",
     "virtual_fitting_hrviton": PROJECT_ROOT / "ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth",
@@ -78,9 +77,9 @@ def get_all_available_models() -> Dict[str, str]:
 
 # 총 재배치 정보
 RELOCATE_SUMMARY = {
-    "total_models": 6,
-    "total_size_mb": 6351.7,
-    "generation_time": "2025-07-17 19:38:55",
+    "total_models": 5,
+    "total_size_mb": 6183.5,
+    "generation_time": "2025-07-18 02:05:34",
     "corrected_issues": [
         "SAM 모델 분리",
         "정확한 경로 매칭",

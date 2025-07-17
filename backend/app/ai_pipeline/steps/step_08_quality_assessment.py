@@ -518,7 +518,7 @@ class QualityAssessmentStep:
             self.model_interface = model_loader.create_step_interface(self.step_name)
             
             # 추천 모델 자동 로드
-            self._load_recommended_models()
+            # self._load_recommended_models()  # 비동기 문제로 임시 비활성화
             
             self.logger.info(f"🔗 {self.step_name} 모델 로더 연동 완료")
             
