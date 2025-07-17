@@ -7,6 +7,12 @@ ai_models/
 backend/ai_models/
 node_modules/
 frontend/node_modules/
+*.json
+!package.json
+!tsconfig.json
+!vite.config.json
+!*.schema.json
+!*.config.json
 
 # 하지만 설정 파일들은 포함
 !ai_models/model_config.yaml

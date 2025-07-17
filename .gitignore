@@ -50,6 +50,12 @@ backend/*_analysis.*
 
 # 기타
 frontend/package-lock.json
+*.json
+!package.json
+!tsconfig.json
+!vite.config.json
+!*.schema.json
+!*.config.json
 
 # AI 모델 디렉토리 전체 제외
 ai_models/
@@ -377,4 +383,5 @@ backend/requirements_backup.txt
 backend/app/models/schemas_backup/
 
 # Package lock 파일
+frontend/package-lock.json
 frontend/package-lock.json
