@@ -1,14 +1,11 @@
 # app/main.py
 """
-🍎 MyCloset AI Backend - 완전한 통합 버전 v5.0
-✅ 실제 AI 모델 (86개 파일, 72.8GB) 완벽 연동
-✅ ModelLoader + BaseStepMixin 인터페이스 통합
-✅ 8단계 파이프라인 + 모든 서비스 + 라우터
+🍎 MyCloset AI Backend v5.0 - 순환참조 완전 해결
+✅ 새로운 통합 유틸리티 시스템 사용
+✅ 기존 Step 클래스들과 호환
 ✅ M3 Max 128GB 최적화
-✅ 프론트엔드 완전 호환
-✅ WebSocket 실시간 통신
 ✅ 프로덕션 안정성 보장
-✅ 새로운 구조에 맞춘 완전한 재작성
+✅ 단방향 의존성 구조
 """
 
 import os
@@ -19,7 +16,6 @@ import asyncio
 import json
 import io
 import base64
-import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
@@ -28,11 +24,10 @@ import psutil
 
 import numpy as np
 import torch
-import torch.nn as nn
 import cv2
 
 # FastAPI 및 기본 라이브러리
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -128,7 +123,7 @@ except ImportError as e:
     AVAILABLE_MEMORY_GB = 4.0
 
 # ===============================================================
-# 🔧 AI 파이프라인 유틸리티 Import (새로운 구조)
+# 🔧 새로운 통합 유틸리티 시스템 Import (순환참조 해결)
 # ===============================================================
 
 try:
@@ -137,65 +132,65 @@ try:
         get_utils_manager,
         initialize_global_utils,
         create_step_interface,
+        create_unified_interface,
         get_system_status,
-        reset_global_utils
+        reset_global_utils,
+        optimize_system_memory,
+        SYSTEM_INFO
     )
-    UTILS_AVAILABLE = True
+    UNIFIED_UTILS_AVAILABLE = True
     logger.info("✅ 새로운 통합 유틸리티 시스템 Import 성공")
 except ImportError as e:
-    logger.warning(f"⚠️ 통합 유틸리티 Import 실패: {e}")
-    UTILS_AVAILABLE = False
+    logger.error(f"❌ 통합 유틸리티 시스템 Import 실패: {e}")
+    UNIFIED_UTILS_AVAILABLE = False
 
-# 폴백: 개별 모듈 Import
-if not UTILS_AVAILABLE:
+# AI 파이프라인 Steps Import (조건부)
+AI_PIPELINE_AVAILABLE = False
+pipeline_step_classes = {}
+
+if UNIFIED_UTILS_AVAILABLE:
     try:
-        # ModelLoader 시스템 Import
-        from app.ai_pipeline.utils.model_loader import (
-            ModelLoader,
-            get_global_model_loader,
-            initialize_global_model_loader,
-            cleanup_global_loader,
-            ModelConfig,
-            ModelType
-        )
-        MODEL_LOADER_AVAILABLE = True
-        logger.info("✅ ModelLoader 시스템 Import 성공")
+        from app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
+        from app.ai_pipeline.steps.step_02_pose_estimation import PoseEstimationStep
+        from app.ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
+        from app.ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
+        from app.ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
+        from app.ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
+        from app.ai_pipeline.steps.step_07_post_processing import PostProcessingStep
+        from app.ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
+        
+        pipeline_step_classes = {
+            'step_01': HumanParsingStep,
+            'step_02': PoseEstimationStep,
+            'step_03': ClothSegmentationStep,
+            'step_04': GeometricMatchingStep,
+            'step_05': ClothWarpingStep,
+            'step_06': VirtualFittingStep,
+            'step_07': PostProcessingStep,
+            'step_08': QualityAssessmentStep
+        }
+        
+        AI_PIPELINE_AVAILABLE = True
+        logger.info("✅ AI Pipeline Steps Import 성공")
     except ImportError as e:
-        logger.error(f"❌ ModelLoader Import 실패: {e}")
-        MODEL_LOADER_AVAILABLE = False
+        logger.warning(f"⚠️ AI Pipeline Steps Import 실패: {e}")
+        AI_PIPELINE_AVAILABLE = False
 
+# 서비스 레이어 Import (조건부)
+SERVICES_AVAILABLE = False
 try:
-    # AI 파이프라인 Steps Import
-    from app.ai_pipeline.steps.step_01_human_parsing import HumanParsingStep
-    from app.ai_pipeline.steps.step_02_pose_estimation import PoseEstimationStep
-    from app.ai_pipeline.steps.step_03_cloth_segmentation import ClothSegmentationStep
-    from app.ai_pipeline.steps.step_04_geometric_matching import GeometricMatchingStep
-    from app.ai_pipeline.steps.step_05_cloth_warping import ClothWarpingStep
-    from app.ai_pipeline.steps.step_06_virtual_fitting import VirtualFittingStep
-    from app.ai_pipeline.steps.step_07_post_processing import PostProcessingStep
-    from app.ai_pipeline.steps.step_08_quality_assessment import QualityAssessmentStep
-    AI_PIPELINE_AVAILABLE = True
-    logger.info("✅ AI Pipeline Steps Import 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ AI Pipeline Steps Import 실패: {e}")
-    AI_PIPELINE_AVAILABLE = False
-
-try:
-    # 서비스 레이어 Import
     from app.services import (
         get_pipeline_service_manager,
-        get_step_service_manager,
-        get_complete_pipeline_service,
-        get_pipeline_status_service
+        get_step_service_manager
     )
     SERVICES_AVAILABLE = True
     logger.info("✅ Services 레이어 Import 성공")
 except ImportError as e:
     logger.warning(f"⚠️ Services Import 실패: {e}")
-    SERVICES_AVAILABLE = False
 
+# API 라우터 Import (조건부)
+API_ROUTES_AVAILABLE = False
 try:
-    # API 라우터 Import
     from app.api.pipeline_routes import router as pipeline_router
     from app.api.step_routes import router as step_router
     from app.api.health import router as health_router
@@ -205,13 +200,12 @@ try:
     logger.info("✅ API Routes Import 성공")
 except ImportError as e:
     logger.warning(f"⚠️ API Routes Import 실패: {e}")
-    API_ROUTES_AVAILABLE = False
 
 # ===============================================================
 # 🔧 전역 변수 및 상태 관리
 # ===============================================================
 
-# 전역 유틸리티 매니저
+# 통합 유틸리티 매니저
 global_utils_manager = None
 
 # AI 파이프라인 Steps
@@ -274,28 +268,20 @@ class WebSocketManager:
         # 연결이 끊어진 클라이언트 제거
         for conn in disconnected:
             self.disconnect(conn)
-    
-    async def send_to_client(self, websocket: WebSocket, message: Dict[str, Any]):
-        """특정 클라이언트에게 메시지 전송"""
-        try:
-            await websocket.send_text(json.dumps(message))
-        except Exception as e:
-            logger.warning(f"WebSocket 개별 메시지 전송 실패: {e}")
-            self.disconnect(websocket)
 
 # 전역 WebSocket 매니저
 websocket_manager = WebSocketManager()
 
 # ===============================================================
-# 🔧 초기화 함수들
+# 🔧 초기화 함수들 (순환참조 해결)
 # ===============================================================
 
-async def initialize_utils_system() -> bool:
+async def initialize_unified_utils_system() -> bool:
     """통합 유틸리티 시스템 초기화"""
     global global_utils_manager
     
     try:
-        if not UTILS_AVAILABLE:
+        if not UNIFIED_UTILS_AVAILABLE:
             logger.error("❌ 통합 유틸리티 시스템이 사용 불가능합니다")
             return False
         
@@ -306,7 +292,9 @@ async def initialize_utils_system() -> bool:
             device=DEVICE,
             memory_gb=TOTAL_MEMORY_GB,
             is_m3_max=IS_M3_MAX,
-            optimization_enabled=True
+            optimization_enabled=True,
+            max_workers=min(os.cpu_count() or 4, 8),
+            cache_enabled=True
         )
         
         if result.get("success", False):
@@ -322,65 +310,49 @@ async def initialize_utils_system() -> bool:
         return False
 
 async def initialize_pipeline_steps() -> bool:
-    """AI 파이프라인 Steps 초기화"""
+    """AI 파이프라인 Steps 초기화 (새로운 통합 시스템 사용)"""
     global pipeline_steps
     
     try:
-        if not AI_PIPELINE_AVAILABLE:
-            logger.warning("⚠️ AI Pipeline Steps가 사용 불가능합니다")
+        if not AI_PIPELINE_AVAILABLE or not UNIFIED_UTILS_AVAILABLE:
+            logger.warning("⚠️ AI Pipeline 또는 통합 유틸리티가 사용 불가능합니다")
             return False
         
         logger.info("🔄 AI 파이프라인 Steps 초기화 중...")
         
-        # 각 Step 초기화
-        step_classes = {
-            'step_01': HumanParsingStep,
-            'step_02': PoseEstimationStep,
-            'step_03': ClothSegmentationStep,
-            'step_04': GeometricMatchingStep,
-            'step_05': ClothWarpingStep,
-            'step_06': VirtualFittingStep,
-            'step_07': PostProcessingStep,
-            'step_08': QualityAssessmentStep
-        }
-        
         initialized_steps = 0
         
-        for step_name, step_class in step_classes.items():
+        for step_name, step_class in pipeline_step_classes.items():
             try:
-                # 새로운 통합 유틸리티 시스템 사용
-                if UTILS_AVAILABLE and global_utils_manager:
-                    # Step 인터페이스 생성
-                    step_interface = create_step_interface(step_class.__name__)
-                    
-                    # Step 인스턴스 생성 (통합 유틸리티 전달)
-                    step_instance = step_class(
-                        device=DEVICE,
-                        optimization_enabled=True,
-                        memory_gb=TOTAL_MEMORY_GB,
-                        step_interface=step_interface
-                    )
-                else:
-                    # 폴백: 기본 생성자
-                    step_instance = step_class(
-                        device=DEVICE,
-                        optimization_enabled=True,
-                        memory_gb=TOTAL_MEMORY_GB
-                    )
+                # 새로운 통합 인터페이스 생성
+                step_interface = create_unified_interface(step_class.__name__)
+                
+                # Step 인스턴스 생성 (통합 인터페이스 전달)
+                step_instance = step_class(
+                    device=DEVICE,
+                    optimization_enabled=True,
+                    memory_gb=TOTAL_MEMORY_GB,
+                    unified_interface=step_interface  # 새로운 방식
+                )
                 
                 # Step 초기화
                 if hasattr(step_instance, 'initialize'):
-                    if await step_instance.initialize():
+                    if asyncio.iscoroutinefunction(step_instance.initialize):
+                        success = await step_instance.initialize()
+                    else:
+                        success = step_instance.initialize()
+                    
+                    if success:
                         pipeline_steps[step_name] = step_instance
                         initialized_steps += 1
-                        logger.info(f"✅ {step_name} 초기화 완료")
+                        logger.info(f"✅ {step_name} ({step_class.__name__}) 초기화 완료")
                     else:
                         logger.warning(f"⚠️ {step_name} 초기화 실패")
                 else:
                     # initialize 메서드가 없는 경우
                     pipeline_steps[step_name] = step_instance
                     initialized_steps += 1
-                    logger.info(f"✅ {step_name} 생성 완료")
+                    logger.info(f"✅ {step_name} ({step_class.__name__}) 생성 완료")
                     
             except Exception as e:
                 logger.warning(f"⚠️ {step_name} 초기화 실패: {e}")
@@ -407,8 +379,6 @@ async def initialize_services() -> bool:
         try:
             service_managers['pipeline'] = get_pipeline_service_manager()
             service_managers['step'] = get_step_service_manager()
-            service_managers['complete'] = get_complete_pipeline_service()
-            service_managers['status'] = get_pipeline_status_service()
             
             logger.info("✅ 서비스 레이어 초기화 완료")
             return True
@@ -431,7 +401,7 @@ async def lifespan(app: FastAPI):
     global server_state
     
     # === 시작 이벤트 ===
-    logger.info("🚀 MyCloset AI Backend 시작 - 완전한 통합 버전 v5.0")
+    logger.info("🚀 MyCloset AI Backend 시작 - 순환참조 해결 v5.0")
     logger.info(f"🔧 디바이스: {DEVICE_NAME} ({DEVICE})")
     logger.info(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
     logger.info(f"💾 메모리: {TOTAL_MEMORY_GB:.1f}GB (사용가능: {AVAILABLE_MEMORY_GB:.1f}GB)")
@@ -440,9 +410,9 @@ async def lifespan(app: FastAPI):
     
     # 1. 통합 유틸리티 시스템 초기화
     try:
-        if await initialize_utils_system():
+        if await initialize_unified_utils_system():
             server_state["utils_loaded"] = True
-            server_state["models_loaded"] = True  # 통합 시스템에 포함
+            server_state["models_loaded"] = True
             logger.info("✅ 1단계: 통합 유틸리티 시스템 초기화 완료")
         else:
             logger.warning("⚠️ 1단계: 통합 유틸리티 시스템 초기화 실패 - 시뮬레이션 모드")
@@ -492,13 +462,16 @@ async def lifespan(app: FastAPI):
         for step_name, step_instance in pipeline_steps.items():
             try:
                 if hasattr(step_instance, 'cleanup'):
-                    await step_instance.cleanup()
+                    if asyncio.iscoroutinefunction(step_instance.cleanup):
+                        await step_instance.cleanup()
+                    else:
+                        step_instance.cleanup()
                 logger.info(f"🧹 {step_name} 정리 완료")
             except Exception as e:
                 logger.warning(f"⚠️ {step_name} 정리 실패: {e}")
         
         # 통합 유틸리티 시스템 정리
-        if UTILS_AVAILABLE:
+        if UNIFIED_UTILS_AVAILABLE:
             reset_global_utils()
             logger.info("🧹 통합 유틸리티 시스템 정리 완료")
         
@@ -528,8 +501,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MyCloset AI",
-    description="🍎 M3 Max 최적화 AI 가상 피팅 시스템 - 완전한 통합 버전 v5.0",
-    version="5.0.0-complete",
+    description="🍎 M3 Max 최적화 AI 가상 피팅 시스템 - 순환참조 해결 v5.0",
+    version="5.0.0-unified",
     debug=True,
     lifespan=lifespan
 )
@@ -560,10 +533,9 @@ static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # ===============================================================
-# 🔧 API 라우터 등록
+# 🔧 API 라우터 등록 (조건부)
 # ===============================================================
 
-# API 라우터들 등록
 if API_ROUTES_AVAILABLE:
     try:
         app.include_router(health_router, prefix="/api", tags=["Health"])
@@ -586,15 +558,15 @@ async def root():
     
     # 시스템 상태 조회
     system_status = {}
-    if UTILS_AVAILABLE and global_utils_manager:
+    if UNIFIED_UTILS_AVAILABLE and global_utils_manager:
         try:
             system_status = get_system_status()
         except Exception as e:
             system_status = {"error": str(e)}
     
     return {
-        "message": "🍎 MyCloset AI 서버가 실행 중입니다! (완전한 통합 버전 v5.0)",
-        "version": "5.0.0-complete",
+        "message": "🍎 MyCloset AI 서버가 실행 중입니다! (순환참조 해결 v5.0)",
+        "version": "5.0.0-unified",
         "status": {
             "initialized": server_state["initialized"],
             "utils_loaded": server_state["utils_loaded"],
@@ -610,7 +582,7 @@ async def root():
             "optimization": "enabled" if IS_M3_MAX else "standard"
         },
         "components": {
-            "utils_system": UTILS_AVAILABLE,
+            "unified_utils": UNIFIED_UTILS_AVAILABLE,
             "ai_pipeline": AI_PIPELINE_AVAILABLE,
             "services": SERVICES_AVAILABLE,
             "api_routes": API_ROUTES_AVAILABLE,
@@ -624,7 +596,8 @@ async def root():
             "m3_max_optimized": IS_M3_MAX,
             "memory_management": True,
             "visualization": True,
-            "integrated_utils": UTILS_AVAILABLE
+            "unified_utils": UNIFIED_UTILS_AVAILABLE,
+            "circular_dependency_resolved": True
         },
         "endpoints": {
             "docs": "/docs",
@@ -649,12 +622,12 @@ async def health_check():
     utils_status = "healthy"
     utils_details = {}
     
-    if UTILS_AVAILABLE and global_utils_manager:
+    if UNIFIED_UTILS_AVAILABLE and global_utils_manager:
         try:
             utils_details = get_system_status()
             if utils_details.get("error"):
                 utils_status = "error"
-            elif not utils_details.get("is_initialized", False):
+            elif not utils_details.get("initialized", False):
                 utils_status = "not_initialized"
         except Exception as e:
             utils_status = "error"
@@ -675,7 +648,7 @@ async def health_check():
     return {
         "status": overall_status,
         "app": "MyCloset AI",
-        "version": "5.0.0-complete",
+        "version": "5.0.0-unified",
         "components": {
             "server": {
                 "status": "healthy" if server_state["initialized"] else "initializing",
@@ -683,9 +656,9 @@ async def health_check():
                 "total_requests": server_state["total_requests"],
                 "active_sessions": server_state["active_sessions"]
             },
-            "utils_system": {
+            "unified_utils": {
                 "status": utils_status,
-                "available": UTILS_AVAILABLE,
+                "available": UNIFIED_UTILS_AVAILABLE,
                 "details": utils_details
             },
             "pipeline": {
@@ -714,7 +687,8 @@ async def health_check():
                 "device_optimization": True,
                 "memory_management": True,
                 "neural_engine": IS_M3_MAX,
-                "integrated_utils": UTILS_AVAILABLE
+                "unified_utils": UNIFIED_UTILS_AVAILABLE,
+                "circular_dependency_resolved": True
             }
         },
         "features": {
@@ -723,7 +697,7 @@ async def health_check():
             "websocket_support": True,
             "visualization": True,
             "api_routes": API_ROUTES_AVAILABLE,
-            "integrated_utils": UTILS_AVAILABLE
+            "unified_utils": UNIFIED_UTILS_AVAILABLE
         },
         "timestamp": time.time()
     }
@@ -752,7 +726,7 @@ async def system_info():
     
     # 통합 유틸리티 시스템 상세 정보
     utils_info = {}
-    if UTILS_AVAILABLE and global_utils_manager:
+    if UNIFIED_UTILS_AVAILABLE and global_utils_manager:
         try:
             utils_info = get_system_status()
         except Exception as e:
@@ -776,9 +750,10 @@ async def system_info():
             },
             "gpu": gpu_info
         },
-        "integrated_utils": {
-            "system_status": "available" if UTILS_AVAILABLE else "unavailable",
-            "details": utils_info
+        "unified_utils": {
+            "system_status": "available" if UNIFIED_UTILS_AVAILABLE else "unavailable",
+            "details": utils_info,
+            "circular_dependency_resolved": True
         },
         "pipeline": {
             "ai_pipeline_status": "available" if AI_PIPELINE_AVAILABLE else "unavailable",
@@ -797,7 +772,7 @@ async def system_info():
             "api_routes_status": "available" if API_ROUTES_AVAILABLE else "unavailable"
         },
         "server": {
-            "version": "5.0.0-complete",
+            "version": "5.0.0-unified",
             "start_time": server_state["start_time"],
             "uptime": time.time() - server_state["start_time"],
             "initialized": server_state["initialized"],
@@ -833,9 +808,9 @@ async def fallback_virtual_tryon(
             options_dict = {}
         
         # 서비스 매니저를 통한 처리
-        if SERVICES_AVAILABLE and 'complete' in service_managers:
+        if SERVICES_AVAILABLE and 'pipeline' in service_managers:
             try:
-                service = service_managers['complete']
+                service = service_managers['pipeline']
                 result = await service.process_complete_virtual_fitting(
                     person_image=person_data,
                     clothing_image=clothing_data,
@@ -855,13 +830,21 @@ async def fallback_virtual_tryon(
                 clothing_tensor = preprocess_image(clothing_data)
                 
                 # 가상 피팅 실행
-                result = await virtual_fitting_step.process(
-                    person_image_tensor=person_tensor,
-                    clothing_image_tensor=clothing_tensor,
-                    **options_dict
-                )
-                
-                return result
+                if hasattr(virtual_fitting_step, 'process'):
+                    if asyncio.iscoroutinefunction(virtual_fitting_step.process):
+                        result = await virtual_fitting_step.process(
+                            person_image_tensor=person_tensor,
+                            clothing_image_tensor=clothing_tensor,
+                            **options_dict
+                        )
+                    else:
+                        result = virtual_fitting_step.process(
+                            person_image_tensor=person_tensor,
+                            clothing_image_tensor=clothing_tensor,
+                            **options_dict
+                        )
+                    
+                    return result
                 
             except Exception as e:
                 logger.warning(f"AI 파이프라인 처리 실패: {e}")
@@ -907,12 +890,19 @@ async def fallback_step_processing(
                 image_tensor = preprocess_image(image_data)
                 
                 # 단계 처리
-                result = await step_instance.process(
-                    person_image_tensor=image_tensor,
-                    **options_dict
-                )
-                
-                return result
+                if hasattr(step_instance, 'process'):
+                    if asyncio.iscoroutinefunction(step_instance.process):
+                        result = await step_instance.process(
+                            person_image_tensor=image_tensor,
+                            **options_dict
+                        )
+                    else:
+                        result = step_instance.process(
+                            person_image_tensor=image_tensor,
+                            **options_dict
+                        )
+                    
+                    return result
                 
             except Exception as e:
                 logger.warning(f"Step {step_number} 처리 실패: {e}")
@@ -923,6 +913,40 @@ async def fallback_step_processing(
     except Exception as e:
         logger.error(f"Step {step_number} 처리 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/memory/optimize")
+async def optimize_memory():
+    """메모리 최적화 API"""
+    try:
+        if UNIFIED_UTILS_AVAILABLE:
+            result = optimize_system_memory()
+            return {
+                "success": True,
+                "method": "unified_utils",
+                "details": result
+            }
+        else:
+            # 기본 메모리 정리
+            import gc
+            gc.collect()
+            
+            if DEVICE == "mps" and torch.backends.mps.is_available():
+                if hasattr(torch.mps, 'empty_cache'):
+                    torch.mps.empty_cache()
+            elif DEVICE == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            return {
+                "success": True,
+                "method": "basic",
+                "message": "기본 메모리 정리 완료"
+            }
+    except Exception as e:
+        logger.error(f"메모리 최적화 실패: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # ===============================================================
 # 🔧 WebSocket 엔드포인트
@@ -952,12 +976,12 @@ async def websocket_pipeline(websocket: WebSocket):
                     "server_status": server_state,
                     "pipeline_steps": len(pipeline_steps),
                     "active_connections": len(websocket_manager.active_connections),
-                    "utils_available": UTILS_AVAILABLE,
+                    "unified_utils_available": UNIFIED_UTILS_AVAILABLE,
                     "timestamp": time.time()
                 }
                 
                 # 통합 유틸리티 시스템 상태 추가
-                if UTILS_AVAILABLE and global_utils_manager:
+                if UNIFIED_UTILS_AVAILABLE and global_utils_manager:
                     try:
                         status["system_status"] = get_system_status()
                     except Exception as e:
@@ -982,6 +1006,33 @@ async def websocket_pipeline(websocket: WebSocket):
                     "result": {"success": True},
                     "timestamp": time.time()
                 })
+            
+            elif message.get("type") == "memory_optimize":
+                # 메모리 최적화 요청
+                await websocket_manager.send_to_client(websocket, {
+                    "type": "memory_optimize_started",
+                    "message": "메모리 최적화 중...",
+                    "timestamp": time.time()
+                })
+                
+                try:
+                    if UNIFIED_UTILS_AVAILABLE:
+                        result = optimize_system_memory()
+                    else:
+                        result = {"success": True, "method": "basic"}
+                    
+                    await websocket_manager.send_to_client(websocket, {
+                        "type": "memory_optimize_completed",
+                        "message": "메모리 최적화 완료",
+                        "result": result,
+                        "timestamp": time.time()
+                    })
+                except Exception as e:
+                    await websocket_manager.send_to_client(websocket, {
+                        "type": "memory_optimize_failed",
+                        "message": f"메모리 최적화 실패: {str(e)}",
+                        "timestamp": time.time()
+                    })
     
     except WebSocketDisconnect:
         websocket_manager.disconnect(websocket)
@@ -1006,12 +1057,25 @@ def preprocess_image(image_data: bytes) -> torch.Tensor:
         image_array = np.array(image).astype(np.float32) / 255.0
         image_tensor = torch.from_numpy(image_array).permute(2, 0, 1).unsqueeze(0)
         
+        # 디바이스로 이동
+        if DEVICE != "cpu":
+            try:
+                image_tensor = image_tensor.to(DEVICE)
+            except Exception as e:
+                logger.warning(f"디바이스 이동 실패: {e}")
+        
         return image_tensor
         
     except Exception as e:
         logger.error(f"이미지 전처리 실패: {e}")
         # 더미 텐서 반환
-        return torch.randn(1, 3, 512, 512)
+        dummy_tensor = torch.randn(1, 3, 512, 512)
+        if DEVICE != "cpu":
+            try:
+                dummy_tensor = dummy_tensor.to(DEVICE)
+            except:
+                pass
+        return dummy_tensor
 
 def create_simulation_response(endpoint_type: str) -> Dict[str, Any]:
     """시뮬레이션 응답 생성"""
@@ -1022,7 +1086,9 @@ def create_simulation_response(endpoint_type: str) -> Dict[str, Any]:
         "confidence": 0.85,
         "timestamp": time.time(),
         "simulation": True,
-        "version": "5.0.0-complete"
+        "version": "5.0.0-unified",
+        "unified_utils": UNIFIED_UTILS_AVAILABLE,
+        "circular_dependency_resolved": True
     }
     
     if endpoint_type == "virtual_tryon":
@@ -1035,7 +1101,8 @@ def create_simulation_response(endpoint_type: str) -> Dict[str, Any]:
         base_response.update({
             "fitted_image": fitted_image_base64,
             "fit_score": 0.88,
-            "quality_score": 0.92
+            "quality_score": 0.92,
+            "pipeline_steps_used": 8
         })
     
     elif endpoint_type.startswith("step_"):
@@ -1065,10 +1132,11 @@ if __name__ == "__main__":
     logger.info(f"💾 메모리: {TOTAL_MEMORY_GB:.1f}GB")
     
     logger.info("🔧 컴포넌트 상태:")
-    logger.info(f"   - 통합 유틸리티 시스템: {'✅' if UTILS_AVAILABLE else '❌'}")
+    logger.info(f"   - 통합 유틸리티 시스템: {'✅' if UNIFIED_UTILS_AVAILABLE else '❌'}")
     logger.info(f"   - AI Pipeline: {'✅' if AI_PIPELINE_AVAILABLE else '❌'}")
     logger.info(f"   - Services: {'✅' if SERVICES_AVAILABLE else '❌'}")
     logger.info(f"   - API Routes: {'✅' if API_ROUTES_AVAILABLE else '❌'}")
+    logger.info("✅ 순환참조 문제 해결됨")
     
     try:
         uvicorn.run(

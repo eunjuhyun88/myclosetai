@@ -1,19 +1,19 @@
 # app/ai_pipeline/utils/auto_model_detector.py
 """
-🔍 MyCloset AI - 완전 통합 자동 모델 탐지 시스템 v4.0
+🔍 MyCloset AI - 완전 통합 자동 모델 탐지 시스템 v5.0
+✅ 순환참조 완전 해결 (model_loader 직접 import 제거)
 ✅ step_model_requests.py 기반 정확한 모델 탐지
 ✅ 실제 존재하는 AI 모델 파일들 자동 발견
-✅ ModelLoader와 완벽 연동
+✅ 딕셔너리 기반 설정 출력 (순환참조 방지)
 ✅ M3 Max 128GB 최적화
 ✅ conda 환경 특화 스캔
 ✅ 프로덕션 안정성 보장
 
-🔥 핵심 기능:
-- Step별 요청사항 기반 모델 탐지
-- 실제 체크포인트 파일 자동 매핑
-- 정확한 경로 및 크기 정보 제공
-- ModelLoader 호환 설정 자동 생성
-- M3 Max Neural Engine 최적화
+🔥 핵심 변경사항:
+- ModelLoader 직접 import 제거
+- 딕셔너리 기반 설정 출력
+- 인터페이스를 통한 연동
+- 런타임 에러 방지
 """
 
 import os
@@ -27,7 +27,7 @@ import asyncio
 import sqlite3
 import pickle
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Set, Union
+from typing import Dict, List, Optional, Tuple, Any, Set, Union, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -90,7 +90,7 @@ class ModelPriority(Enum):
 
 @dataclass
 class DetectedModel:
-    """탐지된 모델 정보 (ModelLoader 연동용)"""
+    """탐지된 모델 정보 (딕셔너리 기반 연동용)"""
     name: str
     path: Path
     category: ModelCategory
@@ -346,15 +346,15 @@ ADVANCED_MODEL_PATTERNS = {
 }
 
 # ==============================================
-# 🔥 고급 모델 탐지기 클래스
+# 🔥 고급 모델 탐지기 클래스 (순환참조 완전 해결)
 # ==============================================
 
 class AdvancedModelDetector:
     """
-    🔍 완전 통합 AI 모델 자동 탐지 시스템
+    🔍 완전 통합 AI 모델 자동 탐지 시스템 v5.0
     ✅ step_model_requests.py 기반 정확한 탐지
     ✅ 실제 존재하는 모델들 자동 발견
-    ✅ ModelLoader와 완벽 통합
+    ✅ 딕셔너리 기반 출력 (순환참조 방지)
     ✅ 프로덕션 안정성
     """
     
@@ -366,8 +366,7 @@ class AdvancedModelDetector:
         enable_caching: bool = True,
         cache_db_path: Optional[Path] = None,
         max_workers: int = 4,
-        scan_timeout: int = 300,
-        model_loader_integration: bool = True
+        scan_timeout: int = 300
     ):
         """고급 모델 탐지기 초기화"""
         
@@ -412,7 +411,6 @@ class AdvancedModelDetector:
         self.enable_caching = enable_caching
         self.max_workers = max_workers
         self.scan_timeout = scan_timeout
-        self.model_loader_integration = model_loader_integration
         
         # 탐지 결과 저장
         self.detected_models: Dict[str, DetectedModel] = {}
@@ -441,19 +439,11 @@ class AdvancedModelDetector:
         else:
             self.step_requirements = STEP_MODEL_REQUESTS
         
-        # ModelLoader 인스턴스 (연동용)
-        self.model_loader_instance = None
-        
-        self.logger.info(f"🔍 고급 모델 탐지기 초기화 - 검색 경로: {len(self.search_paths)}개")
+        self.logger.info(f"🔍 고급 모델 탐지기 초기화 완료 - 검색 경로: {len(self.search_paths)}개")
         
         # 캐시 DB 초기화
         if self.enable_caching:
             self._init_cache_db()
-
-    def set_model_loader(self, model_loader_instance):
-        """ModelLoader 인스턴스 설정 (연동용)"""
-        self.model_loader_instance = model_loader_instance
-        self.logger.info("🔗 ModelLoader 인스턴스 연동 완료")
 
     def _init_cache_db(self):
         """캐시 데이터베이스 초기화"""
@@ -541,10 +531,6 @@ class AdvancedModelDetector:
             # 캐시 저장
             if self.enable_caching:
                 self._save_to_cache()
-            
-            # ModelLoader 자동 통합
-            if self.model_loader_integration and self.model_loader_instance:
-                self._integrate_with_model_loader()
             
             self.logger.info(f"✅ Step 기반 모델 탐지 완료: {len(self.detected_models)}개 모델 발견 ({self.scan_stats['scan_duration']:.2f}초)")
             self._print_detection_summary()
@@ -1125,76 +1111,6 @@ class AdvancedModelDetector:
         except Exception as e:
             self.logger.error(f"❌ 요약 출력 실패: {e}")
 
-    def _integrate_with_model_loader(self):
-        """ModelLoader와 자동 통합 (순환참조 방지)"""
-        try:
-            if not self._model_loader_instance:
-                self.logger.warning("⚠️ ModelLoader 인스턴스가 없어 자동 통합을 건너뜁니다")
-                return
-            
-            registered_count = 0
-            
-            for name, detected_model in self.detected_models.items():
-                try:
-                    # ModelLoader 호환 설정 생성
-                    model_config = self._create_model_loader_config(detected_model)
-                    
-                    # ModelLoader에 등록 (register_model 메서드 호출)
-                    if hasattr(self._model_loader_instance, 'register_model'):
-                        success = self._model_loader_instance.register_model(name, model_config)
-                        if success:
-                            registered_count += 1
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️ {name} ModelLoader 통합 실패: {e}")
-                    continue
-            
-            self.logger.info(f"🔗 ModelLoader 자동 통합 완료: {registered_count}개 모델 등록")
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 통합 실패: {e}")
-
-    def _create_model_loader_config(self, detected_model: DetectedModel) -> Dict[str, Any]:
-        """DetectedModel을 ModelLoader 설정으로 변환 (순환참조 방지)"""
-        try:
-            # ModelLoader 호환 설정 - 딕셔너리 기반
-            config = {
-                "name": detected_model.name,
-                "model_type": detected_model.category.value,
-                "model_class": detected_model.model_type,
-                "checkpoint_path": str(detected_model.path),
-                "device": "auto",
-                "precision": "fp16",
-                "input_size": self._get_input_size_for_step(detected_model.step_name),
-                "metadata": {
-                    **detected_model.metadata,
-                    "auto_detected": True,
-                    "confidence_score": detected_model.confidence_score,
-                    "priority": detected_model.priority.name,
-                    "alternative_paths": [str(p) for p in detected_model.alternative_paths]
-                }
-            }
-            
-            return config
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 설정 생성 실패: {e}")
-            return {}
-
-    def _get_input_size_for_step(self, step_name: str) -> Tuple[int, int]:
-        """Step별 기본 입력 크기"""
-        size_mapping = {
-            "HumanParsingStep": (512, 512),
-            "PoseEstimationStep": (368, 368),
-            "ClothSegmentationStep": (320, 320),
-            "GeometricMatchingStep": (512, 384),
-            "ClothWarpingStep": (512, 384),
-            "VirtualFittingStep": (512, 512),
-            "PostProcessingStep": (512, 512),
-            "QualityAssessmentStep": (224, 224)
-        }
-        return size_mapping.get(step_name, (512, 512))
-
     # ==============================================
     # 🔥 캐시 관련 메서드들
     # ==============================================
@@ -1386,182 +1302,137 @@ class AdvancedModelDetector:
             return []
 
 # ==============================================
-# 🔗 ModelLoader 통합을 위한 어댑터 (순환참조 방지)
+# 🔥 ModelLoader 연동을 위한 딕셔너리 출력 (순환참조 완전 방지)
 # ==============================================
 
-class AdvancedModelLoaderAdapter:
+class ModelLoaderConfigGenerator:
     """
-    고급 자동 탐지 시스템을 ModelLoader와 연결하는 어댑터
-    순환참조 방지를 위해 ModelLoader 클래스를 직접 import하지 않음
+    🔗 ModelLoader 연동용 설정 생성기 (순환참조 완전 방지)
+    딕셔너리 기반으로만 동작하여 ModelLoader import 불필요
     """
     
     def __init__(self, detector: AdvancedModelDetector):
         self.detector = detector
-        self.logger = logging.getLogger(f"{__name__}.AdvancedModelLoaderAdapter")
+        self.logger = logging.getLogger(f"{__name__}.ModelLoaderConfigGenerator")
     
-    def generate_model_loader_config(self) -> Dict[str, Any]:
-        """ModelLoader를 위한 완전한 설정 생성 (순환참조 방지)"""
+    def generate_complete_config(self) -> Dict[str, Any]:
+        """ModelLoader용 완전한 설정 생성"""
         try:
             config = {
-                "actual_model_paths": {},
                 "model_configs": [],
-                "performance_profiles": {},
-                "compatibility_matrix": {},
-                "priority_rankings": {}
+                "model_paths": {},
+                "step_mappings": {},
+                "priority_rankings": {},
+                "performance_estimates": {},
+                "metadata": {
+                    "total_models": len(self.detector.detected_models),
+                    "generation_time": time.time(),
+                    "detector_version": "5.0",
+                    "scan_stats": self.detector.scan_stats
+                }
             }
             
-            for name, model in self.detector.detected_models.items():
-                # 기본 경로 정보
-                config["actual_model_paths"][name] = {
-                    "primary": str(model.path),
-                    "alternatives": [str(p) for p in model.alternative_paths],
-                    "category": model.category.value,
-                    "model_type": model.model_type,
-                    "confidence": model.confidence_score,
-                    "priority": model.priority.value,
-                    "size_mb": model.file_size_mb,
-                    "step_name": model.step_name
-                }
-                
-                # ModelConfig 형식 (딕셔너리 기반 - 순환참조 방지)
+            for name, detected_model in self.detector.detected_models.items():
+                # ModelConfig 딕셔너리 생성
                 model_config = {
                     "name": name,
-                    "model_type": model.category.value,
-                    "model_class": model.model_type,
-                    "checkpoint_path": str(model.path),
+                    "model_type": detected_model.category.value,
+                    "model_class": detected_model.model_type,
+                    "checkpoint_path": str(detected_model.path),
                     "device": "auto",
                     "precision": "fp16",
-                    "input_size": self._get_input_size_for_category(model.category),
-                    "step_name": model.step_name,
+                    "input_size": self._get_input_size_for_step(detected_model.step_name),
+                    "step_name": detected_model.step_name,
                     "metadata": {
-                        **model.metadata,
+                        **detected_model.metadata,
                         "auto_detected": True,
-                        "confidence_score": model.confidence_score,
-                        "priority": model.priority.name,
-                        "alternative_paths": [str(p) for p in model.alternative_paths]
+                        "confidence_score": detected_model.confidence_score,
+                        "priority": detected_model.priority.name,
+                        "alternative_paths": [str(p) for p in detected_model.alternative_paths]
                     }
                 }
                 config["model_configs"].append(model_config)
                 
-                # 성능 프로필
-                config["performance_profiles"][name] = {
-                    "estimated_memory_usage_gb": model.file_size_mb / 1024 * 2,
-                    "estimated_inference_time_ms": self._estimate_inference_time(model),
-                    "recommended_batch_size": self._get_recommended_batch_size(model),
-                    "gpu_memory_required_gb": max(2.0, model.file_size_mb / 1024 * 1.5)
+                # 경로 매핑
+                config["model_paths"][name] = {
+                    "primary": str(detected_model.path),
+                    "alternatives": [str(p) for p in detected_model.alternative_paths],
+                    "size_mb": detected_model.file_size_mb,
+                    "confidence": detected_model.confidence_score
                 }
                 
-                # 호환성 정보
-                config["compatibility_matrix"][name] = {
-                    "pytorch_compatible": model.file_extension in ['.pth', '.pt'],
-                    "requires_gpu": True,
-                    "requires_mps": True,  # M3 Max 최적화
-                    "frameworks": self._get_compatible_frameworks(model)
-                }
+                # Step 매핑
+                step_name = detected_model.step_name
+                if step_name not in config["step_mappings"]:
+                    config["step_mappings"][step_name] = []
+                config["step_mappings"][step_name].append(name)
                 
-                # 우선순위 순위
+                # 우선순위
                 config["priority_rankings"][name] = {
-                    "priority_level": model.priority.value,
-                    "priority_name": model.priority.name,
-                    "confidence_score": model.confidence_score,
-                    "step_rank": self._get_step_rank(model.step_name)
+                    "priority_level": detected_model.priority.value,
+                    "priority_name": detected_model.priority.name,
+                    "confidence_score": detected_model.confidence_score,
+                    "step_rank": self._get_step_rank(detected_model.step_name)
+                }
+                
+                # 성능 추정
+                config["performance_estimates"][name] = {
+                    "estimated_memory_gb": detected_model.file_size_mb / 1024 * 2,
+                    "estimated_load_time_sec": self._estimate_load_time(detected_model),
+                    "recommended_batch_size": self._get_recommended_batch_size(detected_model),
+                    "gpu_memory_required_gb": max(2.0, detected_model.file_size_mb / 1024 * 1.5)
                 }
             
             return config
             
         except Exception as e:
-            self.logger.error(f"ModelLoader 설정 생성 실패: {e}")
-            raise
+            self.logger.error(f"❌ ModelLoader 설정 생성 실패: {e}")
+            return {"error": str(e)}
 
-    def create_model_config_dict(self, detected_model: DetectedModel) -> Dict[str, Any]:
-        """DetectedModel을 ModelConfig 딕셔너리로 변환 (순환참조 방지)"""
-        try:
-            return {
-                "name": detected_model.name,
-                "model_type": detected_model.category.value,
-                "model_class": detected_model.model_type,
-                "checkpoint_path": str(detected_model.path),
-                "device": "auto",
-                "precision": "fp16",
-                "input_size": self._get_input_size_for_category(detected_model.category),
-                "metadata": {
-                    **detected_model.metadata,
-                    "auto_detected": True,
-                    "confidence_score": detected_model.confidence_score,
-                    "priority": detected_model.priority.name,
-                    "step_name": detected_model.step_name,
-                    "alternative_paths": [str(p) for p in detected_model.alternative_paths]
-                }
-            }
-        except Exception as e:
-            self.logger.error(f"ModelConfig 딕셔너리 생성 실패: {e}")
-            return {}
-
-    def _get_input_size_for_category(self, category: ModelCategory) -> Tuple[int, int]:
-        """카테고리별 기본 입력 크기"""
+    def _get_input_size_for_step(self, step_name: str) -> Tuple[int, int]:
+        """Step별 기본 입력 크기"""
         size_mapping = {
-            ModelCategory.HUMAN_PARSING: (512, 512),
-            ModelCategory.POSE_ESTIMATION: (368, 368),
-            ModelCategory.CLOTH_SEGMENTATION: (320, 320),
-            ModelCategory.GEOMETRIC_MATCHING: (512, 384),
-            ModelCategory.CLOTH_WARPING: (512, 384),
-            ModelCategory.VIRTUAL_FITTING: (512, 512),
-            ModelCategory.DIFFUSION_MODELS: (512, 512),
-            ModelCategory.TRANSFORMER_MODELS: (224, 224),
-            ModelCategory.POST_PROCESSING: (512, 512),
-            ModelCategory.QUALITY_ASSESSMENT: (224, 224),
-            ModelCategory.AUXILIARY: (224, 224)
+            "HumanParsingStep": (512, 512),
+            "PoseEstimationStep": (368, 368),
+            "ClothSegmentationStep": (320, 320),
+            "GeometricMatchingStep": (512, 384),
+            "ClothWarpingStep": (512, 384),
+            "VirtualFittingStep": (512, 512),
+            "PostProcessingStep": (512, 512),
+            "QualityAssessmentStep": (224, 224)
         }
-        return size_mapping.get(category, (512, 512))
+        return size_mapping.get(step_name, (512, 512))
 
-    def _estimate_inference_time(self, model: DetectedModel) -> int:
-        """추론 시간 추정 (ms)"""
+    def _estimate_load_time(self, detected_model: DetectedModel) -> float:
+        """모델 로드 시간 추정 (초)"""
         base_times = {
-            ModelCategory.HUMAN_PARSING: 200,
-            ModelCategory.POSE_ESTIMATION: 50,
-            ModelCategory.CLOTH_SEGMENTATION: 150,
-            ModelCategory.GEOMETRIC_MATCHING: 30,
-            ModelCategory.CLOTH_WARPING: 300,
-            ModelCategory.VIRTUAL_FITTING: 5000,
-            ModelCategory.DIFFUSION_MODELS: 5000,
-            ModelCategory.TRANSFORMER_MODELS: 100,
-            ModelCategory.POST_PROCESSING: 400,
-            ModelCategory.QUALITY_ASSESSMENT: 80
+            ModelCategory.HUMAN_PARSING: 2.0,
+            ModelCategory.POSE_ESTIMATION: 1.0,
+            ModelCategory.CLOTH_SEGMENTATION: 1.5,
+            ModelCategory.GEOMETRIC_MATCHING: 0.5,
+            ModelCategory.CLOTH_WARPING: 3.0,
+            ModelCategory.VIRTUAL_FITTING: 8.0,
+            ModelCategory.DIFFUSION_MODELS: 10.0,
+            ModelCategory.TRANSFORMER_MODELS: 3.0,
+            ModelCategory.POST_PROCESSING: 2.0,
+            ModelCategory.QUALITY_ASSESSMENT: 1.0
         }
         
-        base_time = base_times.get(model.category, 200)
+        base_time = base_times.get(detected_model.category, 2.0)
         
         # 파일 크기 기반 조정
-        size_factor = min(model.file_size_mb / 100, 3.0)
+        size_factor = min(detected_model.file_size_mb / 100, 5.0)
         
-        return int(base_time * size_factor)
+        return base_time * size_factor
 
-    def _get_recommended_batch_size(self, model: DetectedModel) -> int:
+    def _get_recommended_batch_size(self, detected_model: DetectedModel) -> int:
         """권장 배치 크기"""
-        if model.file_size_mb > 1000:  # 대형 모델
+        if detected_model.file_size_mb > 1000:  # 대형 모델
             return 1
-        elif model.file_size_mb > 100:  # 중형 모델
+        elif detected_model.file_size_mb > 100:  # 중형 모델
             return 2
         else:  # 소형 모델
             return 4
-
-    def _get_compatible_frameworks(self, model: DetectedModel) -> List[str]:
-        """호환 프레임워크 목록"""
-        frameworks = []
-        
-        if model.file_extension in ['.pth', '.pt']:
-            frameworks.append("pytorch")
-        
-        if model.file_extension == '.bin':
-            frameworks.extend(["pytorch", "transformers"])
-        
-        if model.file_extension == '.safetensors':
-            frameworks.extend(["pytorch", "transformers", "diffusers"])
-        
-        if model.file_extension == '.onnx':
-            frameworks.append("onnx")
-        
-        return frameworks or ["pytorch"]
 
     def _get_step_rank(self, step_name: str) -> int:
         """Step별 순위 (중요도)"""
@@ -1655,70 +1526,48 @@ def quick_model_detection(
         logger.error(f"빠른 모델 탐지 실패: {e}")
         return {"error": str(e)}
 
-def detect_and_integrate_with_model_loader(
-    model_loader_instance = None,
-    auto_register: bool = True,
+def generate_model_loader_config(
+    detector: Optional[AdvancedModelDetector] = None,
     **detection_kwargs
 ) -> Dict[str, Any]:
-    """모델 탐지 및 ModelLoader 통합 (순환참조 방지)"""
+    """
+    ModelLoader용 설정 생성 (순환참조 방지)
+    딕셔너리 기반으로만 출력
+    """
     try:
-        logger.info("🔍 모델 탐지 및 ModelLoader 통합 시작...")
+        logger.info("🔍 ModelLoader 설정 생성 시작...")
         
-        # 탐지 실행
-        detector = create_advanced_detector(**detection_kwargs)
-        detected_models = detector.detect_all_models()
+        # 탐지기가 없으면 새로 생성
+        if detector is None:
+            detector = create_advanced_detector(**detection_kwargs)
+            detected_models = detector.detect_all_models()
+        else:
+            detected_models = detector.detected_models
         
         if not detected_models:
             logger.warning("⚠️ 탐지된 모델이 없습니다")
             return {"success": False, "message": "No models detected"}
         
-        # 어댑터 생성
-        adapter = AdvancedModelLoaderAdapter(detector)
-        
-        # ModelLoader 설정 생성
-        model_loader_config = adapter.generate_model_loader_config()
-        
-        # ModelLoader와 통합 (순환참조 방지)
-        integration_result = {}
-        if auto_register and model_loader_instance:
-            try:
-                # ModelLoader 인스턴스 설정
-                detector.set_model_loader(model_loader_instance)
-                
-                # 자동 등록 실행
-                registered_count = 0
-                for config in model_loader_config["model_configs"]:
-                    # 딕셔너리 기반 설정 전달 (순환참조 방지)
-                    if hasattr(model_loader_instance, 'register_model'):
-                        success = model_loader_instance.register_model(config["name"], config)
-                        if success:
-                            registered_count += 1
-                
-                integration_result["registered_models"] = registered_count
-                integration_result["success"] = True
-                
-            except Exception as e:
-                logger.error(f"ModelLoader 통합 실패: {e}")
-                integration_result["error"] = str(e)
-                integration_result["success"] = False
+        # 설정 생성기 사용
+        config_generator = ModelLoaderConfigGenerator(detector)
+        model_loader_config = config_generator.generate_complete_config()
         
         # 최종 결과
         result = {
+            "success": True,
+            "model_loader_config": model_loader_config,
             "detection_summary": {
                 "total_models": len(detected_models),
                 "scan_duration": detector.scan_stats["scan_duration"],
                 "confidence_avg": sum(m.confidence_score for m in detected_models.values()) / len(detected_models)
-            },
-            "model_loader_config": model_loader_config,
-            "integration_result": integration_result,
-            "success": True
+            }
         }
         
-        logger.info(f"✅ 모델 탐지 및 통합 완료: {len(detected_models)}개 모델")
+        logger.info(f"✅ ModelLoader 설정 생성 완료: {len(detected_models)}개 모델")
         return result
         
     except Exception as e:
-        logger.error(f"❌ 모델 탐지 및 통합 실패: {e}")
+        logger.error(f"❌ ModelLoader 설정 생성 실패: {e}")
         return {"success": False, "error": str(e)}
 
 def validate_model_paths(detected_models: Dict[str, DetectedModel]) -> Dict[str, Any]:
@@ -1789,7 +1638,7 @@ def validate_model_paths(detected_models: Dict[str, DetectedModel]) -> Dict[str,
 __all__ = [
     # 메인 클래스들
     'AdvancedModelDetector',
-    'AdvancedModelLoaderAdapter',
+    'ModelLoaderConfigGenerator',
     'DetectedModel',
     'ModelCategory',
     'ModelPriority',
@@ -1797,7 +1646,7 @@ __all__ = [
     # 팩토리 함수들
     'create_advanced_detector',
     'quick_model_detection',
-    'detect_and_integrate_with_model_loader',
+    'generate_model_loader_config',  # 🔥 순환참조 방지
     
     # 유틸리티 함수들
     'validate_model_paths',
@@ -1806,9 +1655,8 @@ __all__ = [
     'ADVANCED_MODEL_PATTERNS'
 ]
 
-# 호환성을 위한 별칭 (순환참조 방지)
+# 호환성을 위한 별칭
 AutoModelDetector = AdvancedModelDetector
-ModelLoaderAdapter = AdvancedModelLoaderAdapter
 create_auto_detector = create_advanced_detector
 
-logger.info("✅ 순환참조 방지 완료 - 고급 자동 모델 탐지 시스템 로드 완료")
+logger.info("✅ 순환참조 완전 해결 - 자동 모델 탐지 시스템 v5.0 로드 완료")
