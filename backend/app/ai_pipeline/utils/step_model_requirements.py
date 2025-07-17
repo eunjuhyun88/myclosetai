@@ -1,434 +1,414 @@
-# app/ai_pipeline/utils/step_model_requests.py
+#!/usr/bin/env python3
 """
-🔥 Step별 ModelLoader 요청 정보 독립 모듈 v4.0
-✅ 순환참조 완전 제거
-✅ 다른 모듈 의존성 없음
-✅ 순수 데이터 정의만 포함
+🍎 MyCloset AI - Step 모델 요청 관리자
+=======================================
+Step 클래스들이 필요한 모델을 요청하고 관리하는 시스템
+
+📋 주요 기능:
+- Step별 모델 요청 정의
+- 모델 의존성 관리  
+- 권장 모델 자동 선택
+- 메모리 효율적 모델 로딩
+
+🔧 Step 클래스와 ModelLoader 간 브릿지 역할
 """
 
-import os
-import re
-import time
 import logging
-from typing import Dict, Any, Optional, List, Tuple, Union
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any, Type, Union
+from dataclasses import dataclass
 from enum import Enum
+import asyncio
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 # ==============================================
-# 🔥 순수 데이터 구조 정의 (의존성 없음)
+# 🎯 Step 모델 요청 정의
 # ==============================================
 
-class StepPriority(Enum):
-    """Step 우선순위 (파이프라인 중요도)"""
-    CRITICAL = 1      # 필수 Step
-    HIGH = 2          # 중요 Step  
-    MEDIUM = 3        # 일반 Step
-    LOW = 4           # 보조 Step
+class StepModelType(Enum):
+    """Step별 모델 타입 정의"""
+    # Step 01: Human Parsing
+    HUMAN_PARSING_GRAPHONOMY = "human_parsing_graphonomy"
+    HUMAN_PARSING_SCHP = "human_parsing_schp"
+    HUMAN_PARSING_LIGHTWEIGHT = "human_parsing_lightweight"
+    
+    # Step 02: Pose Estimation  
+    POSE_OPENPOSE = "pose_openpose"
+    POSE_MEDIAPIPE = "pose_mediapipe"
+    POSE_YOLO = "pose_yolo"
+    
+    # Step 03: Cloth Segmentation
+    CLOTH_U2NET = "cloth_u2net"
+    CLOTH_SAM = "cloth_sam"
+    CLOTH_REMBG = "cloth_rembg"
+    
+    # Step 04: Geometric Matching
+    GEOMETRIC_GMM = "geometric_gmm"
+    GEOMETRIC_TPS = "geometric_tps"
+    GEOMETRIC_LIGHTWEIGHT = "geometric_lightweight"
+    
+    # Step 05: Cloth Warping
+    WARPING_TOM = "warping_tom"
+    WARPING_HRVITON = "warping_hrviton"
+    WARPING_LIGHTWEIGHT = "warping_lightweight"
+    
+    # Step 06: Virtual Fitting
+    FITTING_OOTDIFFUSION = "fitting_ootdiffusion"
+    FITTING_HRVITON = "fitting_hrviton"
+    FITTING_STABLE_DIFFUSION = "fitting_stable_diffusion"
+    
+    # Step 07: Post Processing
+    POST_ESRGAN = "post_esrgan"
+    POST_GFPGAN = "post_gfpgan"
+    POST_ENHANCER = "post_enhancer"
+    
+    # Step 08: Quality Assessment
+    QUALITY_CLIP = "quality_clip"
+    QUALITY_LPIPS = "quality_lpips"
+    QUALITY_COMBINED = "quality_combined"
 
 @dataclass
-class ModelRequestInfo:
-    """Step에서 ModelLoader로 요청하는 완전한 정보 (순수 데이터)"""
-    # === 기본 모델 정보 ===
-    model_name: str
-    step_class: str  
-    step_priority: StepPriority
-    model_type: str
-    
-    # === 디바이스 및 성능 설정 ===
-    device: str = "auto"
-    precision: str = "fp16"
-    use_neural_engine: bool = True
-    enable_metal_shaders: bool = True
-    
-    # === 입력/출력 스펙 ===
-    input_size: Tuple[int, int] = (512, 512)
-    num_classes: Optional[int] = None
-    output_format: str = "tensor"
-    
-    # === 체크포인트 요구사항 ===
-    checkpoint_requirements: Dict[str, Any] = field(default_factory=dict)
-    
-    # === 최적화 파라미터 ===
-    optimization_params: Dict[str, Any] = field(default_factory=dict)
-    
-    # === Step별 특화 파라미터 ===
-    step_specific_params: Dict[str, Any] = field(default_factory=dict)
-    
-    # === 대체 모델 및 폴백 ===
-    alternative_models: List[str] = field(default_factory=list)
-    fallback_config: Dict[str, Any] = field(default_factory=dict)
+class ModelRequest:
+    """모델 요청 정보"""
+    model_type: StepModelType
+    required: bool = True
+    priority: int = 1  # 1=필수, 2=권장, 3=선택
+    memory_mb: Optional[int] = None
+    checkpoint_path: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    fallback_models: Optional[List[StepModelType]] = None
+
+@dataclass 
+class StepModelRequirements:
+    """Step별 모델 요구사항"""
+    step_name: str
+    primary_models: List[ModelRequest]
+    optional_models: List[ModelRequest] = None
+    memory_budget_mb: Optional[int] = None
+    concurrent_models: int = 1
 
 # ==============================================
-# 🔥 Step별 모델 요청 정보 데이터베이스 (순수 데이터)
+# 🎯 Step별 모델 요구사항 정의
 # ==============================================
 
-STEP_MODEL_REQUESTS = {
-    "HumanParsingStep": ModelRequestInfo(
-        model_name="human_parsing_graphonomy",
-        step_class="HumanParsingStep",
-        step_priority=StepPriority.CRITICAL,
-        model_type="GraphonomyModel",
-        input_size=(512, 512),
-        num_classes=20,
-        output_format="segmentation_mask",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*human*parsing*.pth",
-                "*schp*atr*.pth", 
-                "*graphonomy*.pth",
-                "*atr*model*.pth"
+def get_step_model_requirements() -> Dict[str, StepModelRequirements]:
+    """Step별 모델 요구사항 반환"""
+    
+    requirements = {
+        # Step 01: Human Parsing
+        "HumanParsingStep": StepModelRequirements(
+            step_name="HumanParsingStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.HUMAN_PARSING_GRAPHONOMY,
+                    required=True,
+                    priority=1,
+                    memory_mb=2048,
+                    checkpoint_path="ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
+                    fallback_models=[StepModelType.HUMAN_PARSING_SCHP]
+                )
             ],
-            "required_files": ["model.pth"],
-            "optional_files": ["config.json", "class_names.txt"],
-            "min_file_size_mb": 50,
-            "max_file_size_mb": 500,
-            "expected_extensions": [".pth", ".pt", ".pkl"],
-            "model_architecture": "ResNet + ASPP",
-            "expected_layers": ["backbone", "aspp", "classifier"]
-        },
-        optimization_params={
-            "batch_size": 1,
-            "max_batch_size": 4,
-            "memory_fraction": 0.3,
-            "enable_amp": True,
-            "cache_model": True,
-            "warmup_iterations": 3
-        },
-        step_specific_params={
-            "body_parts": ["head", "torso", "arms", "legs", "accessories"],
-            "segmentation_classes": 20,
-            "postprocess_enabled": True,
-            "confidence_threshold": 0.3
-        },
-        alternative_models=[
-            "human_parsing_atr",
-            "human_parsing_lip", 
-            "human_parsing_schp"
-        ]
-    ),
-    
-    "PoseEstimationStep": ModelRequestInfo(
-        model_name="pose_estimation_openpose",
-        step_class="PoseEstimationStep",
-        step_priority=StepPriority.HIGH,
-        model_type="OpenPoseModel",
-        input_size=(368, 368),
-        num_classes=18,
-        output_format="keypoints_heatmap",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*pose*model*.pth",
-                "*openpose*.pth",
-                "*body*pose*.pth"
+            optional_models=[
+                ModelRequest(
+                    model_type=StepModelType.HUMAN_PARSING_LIGHTWEIGHT,
+                    required=False,
+                    priority=3,
+                    memory_mb=512
+                )
             ],
-            "required_files": ["body_pose_model.pth"],
-            "min_file_size_mb": 10,
-            "max_file_size_mb": 200,
-            "expected_extensions": [".pth", ".pt", ".onnx"],
-            "model_architecture": "VGG + PAF"
-        },
-        optimization_params={
-            "batch_size": 1,
-            "max_batch_size": 2,
-            "memory_fraction": 0.25,
-            "enable_tensorrt": True
-        },
-        step_specific_params={
-            "keypoints_format": "coco",
-            "confidence_threshold": 0.1,
-            "num_stages": 6
-        }
-    ),
-    
-    "ClothSegmentationStep": ModelRequestInfo(
-        model_name="cloth_segmentation_u2net",
-        step_class="ClothSegmentationStep", 
-        step_priority=StepPriority.HIGH,
-        model_type="U2NetModel",
-        input_size=(320, 320),
-        num_classes=1,
-        output_format="binary_mask",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*u2net*.pth",
-                "*cloth*segmentation*.pth",
-                "*sam*vit*.pth"
+            memory_budget_mb=4096,
+            concurrent_models=1
+        ),
+        
+        # Step 02: Pose Estimation
+        "PoseEstimationStep": StepModelRequirements(
+            step_name="PoseEstimationStep", 
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.POSE_OPENPOSE,
+                    required=True,
+                    priority=1,
+                    memory_mb=1024,
+                    checkpoint_path="ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
+                    fallback_models=[StepModelType.POSE_MEDIAPIPE]
+                )
             ],
-            "required_files": ["u2net.pth"],
-            "min_file_size_mb": 20,
-            "max_file_size_mb": 1000,
-            "expected_extensions": [".pth", ".pt", ".onnx"]
-        },
-        optimization_params={
-            "batch_size": 4,
-            "max_batch_size": 8,
-            "memory_fraction": 0.4,
-            "enable_tensorrt": True
-        },
-        step_specific_params={
-            "segmentation_type": "binary",
-            "supports_multiple_items": True,
-            "background_removal": True
-        }
-    ),
-    
-    "GeometricMatchingStep": ModelRequestInfo(
-        model_name="geometric_matching_gmm",
-        step_class="GeometricMatchingStep",
-        step_priority=StepPriority.MEDIUM,
-        model_type="GeometricMatchingModel",
-        input_size=(512, 384),
-        output_format="transformation_matrix",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*geometric*matching*.pth",
-                "*gmm*.pth",
-                "*tps*.pth"
+            memory_budget_mb=2048,
+            concurrent_models=1
+        ),
+        
+        # Step 03: Cloth Segmentation
+        "ClothSegmentationStep": StepModelRequirements(
+            step_name="ClothSegmentationStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.CLOTH_U2NET,
+                    required=True,
+                    priority=1,
+                    memory_mb=1024,
+                    checkpoint_path="ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+                    fallback_models=[StepModelType.CLOTH_SAM]
+                )
             ],
-            "required_files": ["gmm.pth"],
-            "min_file_size_mb": 5,
-            "max_file_size_mb": 100,
-            "expected_extensions": [".pth", ".pt"]
-        },
-        optimization_params={
-            "batch_size": 2,
-            "max_batch_size": 4,
-            "memory_fraction": 0.2
-        },
-        step_specific_params={
-            "matching_method": "tps",
-            "num_control_points": 25,
-            "grid_size": 30
-        }
-    ),
-    
-    "ClothWarpingStep": ModelRequestInfo(
-        model_name="cloth_warping_tom",
-        step_class="ClothWarpingStep",
-        step_priority=StepPriority.MEDIUM,
-        model_type="HRVITONModel",
-        input_size=(512, 384),
-        output_format="warped_cloth",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*tom*final*.pth",
-                "*cloth*warping*.pth",
-                "*hrviton*.pth"
+            memory_budget_mb=2048,
+            concurrent_models=1
+        ),
+        
+        # Step 04: Geometric Matching
+        "GeometricMatchingStep": StepModelRequirements(
+            step_name="GeometricMatchingStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.GEOMETRIC_GMM,
+                    required=True,
+                    priority=1,
+                    memory_mb=512,
+                    checkpoint_path="ai_models/checkpoints/step_04_geometric_matching/gmm_final.pth",
+                    fallback_models=[StepModelType.GEOMETRIC_LIGHTWEIGHT]
+                )
             ],
-            "required_files": ["tom_final.pth"],
-            "min_file_size_mb": 100,
-            "max_file_size_mb": 1000,
-            "expected_extensions": [".pth", ".pt"]
-        },
-        optimization_params={
-            "batch_size": 1,
-            "max_batch_size": 2,
-            "memory_fraction": 0.5,
-            "enable_amp": True
-        },
-        step_specific_params={
-            "warping_method": "physics_based",
-            "enable_physics": True,
-            "deformation_strength": 0.7
-        }
-    ),
-    
-    "VirtualFittingStep": ModelRequestInfo(
-        model_name="virtual_fitting_stable_diffusion",
-        step_class="VirtualFittingStep",
-        step_priority=StepPriority.CRITICAL,
-        model_type="StableDiffusionPipeline",
-        input_size=(512, 512),
-        output_format="rgb_image",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*diffusion*pytorch*model*.bin",
-                "*stable*diffusion*.safetensors",
-                "*ootdiffusion*.pth"
+            memory_budget_mb=1024,
+            concurrent_models=1
+        ),
+        
+        # Step 05: Cloth Warping
+        "ClothWarpingStep": StepModelRequirements(
+            step_name="ClothWarpingStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.WARPING_TOM,
+                    required=True,
+                    priority=1,
+                    memory_mb=4096,
+                    checkpoint_path="ai_models/checkpoints/step_05_cloth_warping/tom_final.pth",
+                    fallback_models=[StepModelType.WARPING_LIGHTWEIGHT]
+                )
             ],
-            "required_files": ["diffusion_pytorch_model.bin"],
-            "min_file_size_mb": 500,
-            "max_file_size_mb": 5000,
-            "expected_extensions": [".bin", ".safetensors", ".pth"]
-        },
-        optimization_params={
-            "batch_size": 1,
-            "max_batch_size": 1,
-            "memory_fraction": 0.7,
-            "enable_attention_slicing": True
-        },
-        step_specific_params={
-            "num_inference_steps": 50,
-            "guidance_scale": 7.5,
-            "scheduler_type": "ddim"
-        }
-    ),
-    
-    "PostProcessingStep": ModelRequestInfo(
-        model_name="post_processing_realesrgan",
-        step_class="PostProcessingStep",
-        step_priority=StepPriority.LOW,
-        model_type="EnhancementModel",
-        input_size=(512, 512),
-        output_format="enhanced_image",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*realesrgan*.pth",
-                "*esrgan*.pth",
-                "*enhance*.pth"
+            memory_budget_mb=8192,
+            concurrent_models=1
+        ),
+        
+        # Step 06: Virtual Fitting
+        "VirtualFittingStep": StepModelRequirements(
+            step_name="VirtualFittingStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.FITTING_OOTDIFFUSION,
+                    required=True,
+                    priority=1,
+                    memory_mb=8192,
+                    checkpoint_path="ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion.pth",
+                    fallback_models=[StepModelType.FITTING_HRVITON]
+                )
             ],
-            "required_files": ["realesrgan.pth"],
-            "min_file_size_mb": 10,
-            "max_file_size_mb": 200,
-            "expected_extensions": [".pth", ".pt"]
-        },
-        optimization_params={
-            "batch_size": 2,
-            "max_batch_size": 4,
-            "memory_fraction": 0.3
-        },
-        step_specific_params={
-            "upscale_factor": 2,
-            "enhancement_strength": 0.8
-        }
-    ),
-    
-    "QualityAssessmentStep": ModelRequestInfo(
-        model_name="quality_assessment_clip",
-        step_class="QualityAssessmentStep",
-        step_priority=StepPriority.LOW,
-        model_type="CLIPModel",
-        input_size=(224, 224),
-        output_format="quality_scores",
-        checkpoint_requirements={
-            "primary_model_patterns": [
-                "*clip*vit*.bin",
-                "*clip*base*.bin",
-                "*quality*assessment*.pth"
+            memory_budget_mb=16384,
+            concurrent_models=1
+        ),
+        
+        # Step 07: Post Processing
+        "PostProcessingStep": StepModelRequirements(
+            step_name="PostProcessingStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.POST_ENHANCER,
+                    required=True,
+                    priority=1,
+                    memory_mb=1024,
+                    checkpoint_path="ai_models/checkpoints/step_07_post_processing/RealESRGAN_x4plus.pth"
+                )
             ],
-            "required_files": ["clip_vit.bin"],
-            "min_file_size_mb": 100,
-            "max_file_size_mb": 2000,
-            "expected_extensions": [".bin", ".pth", ".pt"]
-        },
-        optimization_params={
-            "batch_size": 4,
-            "max_batch_size": 8,
-            "memory_fraction": 0.25
-        },
-        step_specific_params={
-            "assessment_metrics": ["quality", "realism", "consistency"],
-            "quality_threshold": 0.7
-        }
-    )
-}
-
-# ==============================================
-# 🔥 순수 함수들 (외부 의존성 없음)
-# ==============================================
-
-def get_step_request_info(step_name: str) -> Optional[ModelRequestInfo]:
-    """특정 Step의 ModelLoader 요청 정보 반환"""
-    return STEP_MODEL_REQUESTS.get(step_name)
-
-def get_all_step_names() -> List[str]:
-    """모든 Step 이름 목록 반환"""
-    return list(STEP_MODEL_REQUESTS.keys())
-
-def get_checkpoint_requirements(step_name: str) -> Dict[str, Any]:
-    """Step별 체크포인트 요구사항 반환"""
-    request_info = STEP_MODEL_REQUESTS.get(step_name)
-    return request_info.checkpoint_requirements if request_info else {}
-
-def get_optimization_params(step_name: str) -> Dict[str, Any]:
-    """Step별 최적화 파라미터 반환"""
-    request_info = STEP_MODEL_REQUESTS.get(step_name)
-    return request_info.optimization_params if request_info else {}
-
-def validate_model_for_step(step_name: str, model_path: Path, model_size_mb: float) -> Dict[str, Any]:
-    """Step 요구사항에 따른 모델 유효성 검증"""
-    request_info = STEP_MODEL_REQUESTS.get(step_name)
-    if not request_info:
-        return {"valid": False, "reason": f"Unknown step: {step_name}"}
-    
-    requirements = request_info.checkpoint_requirements
-    
-    # 파일 크기 검증
-    min_size = requirements.get("min_file_size_mb", 0)
-    max_size = requirements.get("max_file_size_mb", float('inf'))
-    
-    if not (min_size <= model_size_mb <= max_size):
-        return {
-            "valid": False,
-            "reason": f"File size {model_size_mb}MB not in range [{min_size}, {max_size}]"
-        }
-    
-    # 파일 확장자 검증
-    expected_extensions = requirements.get("expected_extensions", [])
-    if expected_extensions and model_path.suffix.lower() not in expected_extensions:
-        return {
-            "valid": False,
-            "reason": f"File extension {model_path.suffix} not in {expected_extensions}"
-        }
-    
-    # 패턴 매칭 검증
-    patterns = requirements.get("primary_model_patterns", [])
-    model_name_lower = model_path.name.lower()
-    
-    pattern_matched = False
-    for pattern in patterns:
-        pattern_regex = pattern.replace("*", ".*").lower()
-        if re.search(pattern_regex, model_name_lower):
-            pattern_matched = True
-            break
-    
-    if patterns and not pattern_matched:
-        return {
-            "valid": False,
-            "reason": f"File name doesn't match any pattern: {patterns}"
-        }
-    
-    return {
-        "valid": True,
-        "confidence": 0.9,
-        "step_priority": request_info.step_priority.name
+            memory_budget_mb=2048,
+            concurrent_models=1
+        ),
+        
+        # Step 08: Quality Assessment
+        "QualityAssessmentStep": StepModelRequirements(
+            step_name="QualityAssessmentStep",
+            primary_models=[
+                ModelRequest(
+                    model_type=StepModelType.QUALITY_COMBINED,
+                    required=True,
+                    priority=1,
+                    memory_mb=512
+                )
+            ],
+            memory_budget_mb=1024,
+            concurrent_models=1
+        )
     }
-
-def get_all_step_requirements() -> Dict[str, Dict[str, Any]]:
-    """모든 Step의 요구사항 반환"""
-    requirements = {}
-    
-    for step_name, request_info in STEP_MODEL_REQUESTS.items():
-        requirements[step_name] = {
-            "search_patterns": request_info.checkpoint_requirements.get("primary_model_patterns", []),
-            "file_extensions": request_info.checkpoint_requirements.get("expected_extensions", []),
-            "size_range": {
-                "min_mb": request_info.checkpoint_requirements.get("min_file_size_mb", 1),
-                "max_mb": request_info.checkpoint_requirements.get("max_file_size_mb", 10000)
-            },
-            "model_config": {
-                "model_type": request_info.model_type,
-                "input_size": request_info.input_size,
-                "num_classes": request_info.num_classes
-            },
-            "priority": request_info.step_priority.value,
-            "priority_name": request_info.step_priority.name
-        }
     
     return requirements
 
-# 모듈 익스포트
+# ==============================================
+# 🔧 모델 요청 관리자
+# ==============================================
+
+class StepModelRequestManager:
+    """Step 모델 요청 관리자"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.requirements = get_step_model_requirements()
+        self.active_requests: Dict[str, List[ModelRequest]] = {}
+        
+    def get_step_requirements(self, step_name: str) -> Optional[StepModelRequirements]:
+        """Step 모델 요구사항 조회"""
+        return self.requirements.get(step_name)
+        
+    def get_required_models(self, step_name: str) -> List[ModelRequest]:
+        """Step 필수 모델 목록"""
+        requirements = self.get_step_requirements(step_name)
+        if not requirements:
+            return []
+            
+        return [model for model in requirements.primary_models if model.required]
+        
+    def get_recommended_model(self, step_name: str) -> Optional[ModelRequest]:
+        """Step 권장 모델 (우선순위 1)"""
+        required_models = self.get_required_models(step_name)
+        if required_models:
+            return min(required_models, key=lambda x: x.priority)
+        return None
+        
+    def get_fallback_models(self, step_name: str, model_type: StepModelType) -> List[StepModelType]:
+        """모델 폴백 목록"""
+        requirements = self.get_step_requirements(step_name)
+        if not requirements:
+            return []
+            
+        for model in requirements.primary_models:
+            if model.model_type == model_type and model.fallback_models:
+                return model.fallback_models
+                
+        return []
+        
+    def estimate_memory_usage(self, step_name: str) -> int:
+        """Step 예상 메모리 사용량 (MB)"""
+        requirements = self.get_step_requirements(step_name)
+        if not requirements:
+            return 1024  # 기본값
+            
+        total_memory = 0
+        for model in requirements.primary_models:
+            if model.required and model.memory_mb:
+                total_memory += model.memory_mb
+                
+        return max(total_memory, 512)  # 최소 512MB
+        
+    def validate_checkpoint_paths(self, step_name: str, base_path: Optional[Path] = None) -> Dict[str, bool]:
+        """체크포인트 파일 존재 여부 확인"""
+        requirements = self.get_step_requirements(step_name)
+        if not requirements:
+            return {}
+            
+        base_path = base_path or Path("backend")
+        validation_results = {}
+        
+        for model in requirements.primary_models:
+            if model.checkpoint_path:
+                full_path = base_path / model.checkpoint_path
+                validation_results[model.model_type.value] = full_path.exists()
+                
+        return validation_results
+        
+    def get_step_names(self) -> List[str]:
+        """등록된 Step 이름 목록"""
+        return list(self.requirements.keys())
+        
+    def get_all_model_types(self) -> List[StepModelType]:
+        """모든 모델 타입 목록"""
+        model_types = set()
+        for requirements in self.requirements.values():
+            for model in requirements.primary_models:
+                model_types.add(model.model_type)
+            if requirements.optional_models:
+                for model in requirements.optional_models:
+                    model_types.add(model.model_type)
+        return list(model_types)
+
+# ==============================================
+# 🔥 팩토리 함수 및 전역 인스턴스
+# ==============================================
+
+# 전역 모델 요청 관리자
+_global_request_manager: Optional[StepModelRequestManager] = None
+
+def get_step_model_request_manager() -> StepModelRequestManager:
+    """전역 Step 모델 요청 관리자 반환"""
+    global _global_request_manager
+    
+    if _global_request_manager is None:
+        _global_request_manager = StepModelRequestManager()
+        
+    return _global_request_manager
+
+def create_step_model_request_manager() -> StepModelRequestManager:
+    """새로운 Step 모델 요청 관리자 생성"""
+    return StepModelRequestManager()
+
+# ==============================================
+# 🔧 유틸리티 함수
+# ==============================================
+
+def list_step_model_requirements() -> Dict[str, Dict[str, Any]]:
+    """Step별 모델 요구사항 요약"""
+    manager = get_step_model_request_manager()
+    summary = {}
+    
+    for step_name in manager.get_step_names():
+        requirements = manager.get_step_requirements(step_name)
+        if requirements:
+            summary[step_name] = {
+                'primary_models': len(requirements.primary_models),
+                'optional_models': len(requirements.optional_models or []),
+                'memory_budget_mb': requirements.memory_budget_mb,
+                'concurrent_models': requirements.concurrent_models,
+                'required_models': [m.model_type.value for m in requirements.primary_models if m.required]
+            }
+            
+    return summary
+
+def validate_all_checkpoint_paths(base_path: Optional[Path] = None) -> Dict[str, Dict[str, bool]]:
+    """모든 Step의 체크포인트 경로 검증"""
+    manager = get_step_model_request_manager()
+    results = {}
+    
+    for step_name in manager.get_step_names():
+        results[step_name] = manager.validate_checkpoint_paths(step_name, base_path)
+        
+    return results
+
+def get_total_memory_estimate() -> int:
+    """전체 시스템 예상 메모리 사용량 (MB)"""
+    manager = get_step_model_request_manager()
+    total = 0
+    
+    for step_name in manager.get_step_names():
+        total += manager.estimate_memory_usage(step_name)
+        
+    return total
+
+# ==============================================
+# 📋 모듈 Export
+# ==============================================
+
 __all__ = [
-    'ModelRequestInfo',
-    'StepPriority', 
-    'STEP_MODEL_REQUESTS',
-    'get_step_request_info',
-    'get_all_step_names',
-    'get_checkpoint_requirements',
-    'get_optimization_params',
-    'validate_model_for_step',
-    'get_all_step_requirements'
+    # 핵심 클래스
+    'StepModelType',
+    'ModelRequest', 
+    'StepModelRequirements',
+    'StepModelRequestManager',
+    
+    # 팩토리 함수
+    'get_step_model_request_manager',
+    'create_step_model_request_manager',
+    'get_step_model_requirements',
+    
+    # 유틸리티 함수
+    'list_step_model_requirements',
+    'validate_all_checkpoint_paths',
+    'get_total_memory_estimate'
 ]
+
+# 로거 설정
+logger = logging.getLogger(__name__)
+logger.info("✅ Step 모델 요청 관리자 모듈 로드 완료")

@@ -1,0 +1,468 @@
+{
+  "plan": {
+    "timestamp": "2025-07-17T23:31:17.596664",
+    "current_state": {
+      "total_size_gb": 201.67382812500006,
+      "total_models": 42
+    },
+    "actions": [
+      {
+        "type": "remove",
+        "model": "stable_diffusion_v15",
+        "reason": "stable-diffusion-v1-5와 중복",
+        "size_mb": 45070.6,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "stable_diffusion_inpaint",
+        "reason": "ootdiffusion으로 대체 가능",
+        "size_mb": 14524.7,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "sam_vit_h",
+        "reason": "sam으로 충분",
+        "size_mb": 7337.6,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "clip-vit-large-patch14",
+        "reason": "clip-vit-base-patch32로 충분",
+        "size_mb": 6527.1,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "controlnet_openpose",
+        "reason": "openpose와 중복",
+        "size_mb": 2757.8,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "esrgan",
+        "reason": "step_07_post_processing에 포함됨",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "gfpgan",
+        "reason": "사용하지 않음",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "rembg",
+        "reason": "u2net으로 대체 가능",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "viton_hd",
+        "reason": "불완전한 모델",
+        "size_mb": 9.3,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "densepose",
+        "reason": "비어있는 디렉토리",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      {
+        "type": "remove",
+        "model": "u2net_cloth",
+        "reason": "비어있는 디렉토리",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      {
+        "type": "reorganize",
+        "model": "ootdiffusion",
+        "priority": 1,
+        "size_mb": 15129.3,
+        "target_path": "step_01_diffusion/ootdiffusion"
+      },
+      {
+        "type": "reorganize",
+        "model": "ootdiffusion_hf",
+        "priority": 1,
+        "size_mb": 15129.3,
+        "target_path": "step_01_diffusion/ootdiffusion_hf"
+      },
+      {
+        "type": "reorganize",
+        "model": "human_parsing",
+        "priority": 2,
+        "size_mb": 1288.3,
+        "target_path": "step_02_human_parsing/human_parsing"
+      },
+      {
+        "type": "reorganize",
+        "model": "step_01_human_parsing",
+        "priority": 2,
+        "size_mb": 1787.7,
+        "target_path": "step_02_human_parsing/step_01_human_parsing"
+      },
+      {
+        "type": "reorganize",
+        "model": "openpose",
+        "priority": 3,
+        "size_mb": 539.7,
+        "target_path": "step_03_pose_estimation/openpose"
+      },
+      {
+        "type": "reorganize",
+        "model": "step_02_pose_estimation",
+        "priority": 3,
+        "size_mb": 273.6,
+        "target_path": "step_03_pose_estimation/step_02_pose_estimation"
+      },
+      {
+        "type": "reorganize",
+        "model": "u2net",
+        "priority": 4,
+        "size_mb": 168.1,
+        "target_path": "step_04_cloth_segmentation/u2net"
+      },
+      {
+        "type": "reorganize",
+        "model": "step_03_cloth_segmentation",
+        "priority": 4,
+        "size_mb": 206.7,
+        "target_path": "step_04_human_parsing/step_03_cloth_segmentation"
+      },
+      {
+        "type": "reorganize",
+        "model": "step_04_geometric_matching",
+        "priority": 5,
+        "size_mb": 29.1,
+        "target_path": "step_05_geometric_matching/step_04_geometric_matching"
+      },
+      {
+        "type": "reorganize",
+        "model": "step_05_cloth_warping",
+        "priority": 6,
+        "size_mb": 3279.2,
+        "target_path": "step_06_cloth_warping/step_05_cloth_warping"
+      },
+      {
+        "type": "create_symlinks",
+        "description": "중복 모델들을 심볼릭 링크로 연결",
+        "targets": [
+          "stable-diffusion-v1-5 → ootdiffusion",
+          "clip-vit-base → clip-vit-base-patch32",
+          "sam → sam_vit_h"
+        ]
+      }
+    ],
+    "expected_result": {
+      "final_size_gb": 127.23330078125004,
+      "space_saved_gb": 74.44052734375002,
+      "optimization_percentage": 36.911347414703116
+    }
+  },
+  "executed_actions": [
+    {
+      "action": {
+        "type": "remove",
+        "model": "stable_diffusion_v15",
+        "reason": "stable-diffusion-v1-5와 중복",
+        "size_mb": 45070.6,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/stable_diffusion_v15"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "stable_diffusion_inpaint",
+        "reason": "ootdiffusion으로 대체 가능",
+        "size_mb": 14524.7,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/stable_diffusion_inpaint"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "sam_vit_h",
+        "reason": "sam으로 충분",
+        "size_mb": 7337.6,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/sam_vit_h"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "clip-vit-large-patch14",
+        "reason": "clip-vit-base-patch32로 충분",
+        "size_mb": 6527.1,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/clip-vit-large-patch14"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "controlnet_openpose",
+        "reason": "openpose와 중복",
+        "size_mb": 2757.8,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/controlnet_openpose"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "esrgan",
+        "reason": "step_07_post_processing에 포함됨",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/esrgan"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "gfpgan",
+        "reason": "사용하지 않음",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/gfpgan"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "rembg",
+        "reason": "u2net으로 대체 가능",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/rembg"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "viton_hd",
+        "reason": "불완전한 모델",
+        "size_mb": 9.3,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/viton_hd"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "densepose",
+        "reason": "비어있는 디렉토리",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/densepose"
+      }
+    },
+    {
+      "action": {
+        "type": "remove",
+        "model": "u2net_cloth",
+        "reason": "비어있는 디렉토리",
+        "size_mb": 0.0,
+        "priority": "high"
+      },
+      "result": {
+        "success": true,
+        "message": "Would remove ai_models/checkpoints/u2net_cloth"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "ootdiffusion",
+        "priority": 1,
+        "size_mb": 15129.3,
+        "target_path": "step_01_diffusion/ootdiffusion"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize ootdiffusion to step_01_diffusion/ootdiffusion"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "ootdiffusion_hf",
+        "priority": 1,
+        "size_mb": 15129.3,
+        "target_path": "step_01_diffusion/ootdiffusion_hf"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize ootdiffusion_hf to step_01_diffusion/ootdiffusion_hf"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "human_parsing",
+        "priority": 2,
+        "size_mb": 1288.3,
+        "target_path": "step_02_human_parsing/human_parsing"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize human_parsing to step_02_human_parsing/human_parsing"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "step_01_human_parsing",
+        "priority": 2,
+        "size_mb": 1787.7,
+        "target_path": "step_02_human_parsing/step_01_human_parsing"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize step_01_human_parsing to step_02_human_parsing/step_01_human_parsing"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "openpose",
+        "priority": 3,
+        "size_mb": 539.7,
+        "target_path": "step_03_pose_estimation/openpose"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize openpose to step_03_pose_estimation/openpose"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "step_02_pose_estimation",
+        "priority": 3,
+        "size_mb": 273.6,
+        "target_path": "step_03_pose_estimation/step_02_pose_estimation"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize step_02_pose_estimation to step_03_pose_estimation/step_02_pose_estimation"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "u2net",
+        "priority": 4,
+        "size_mb": 168.1,
+        "target_path": "step_04_cloth_segmentation/u2net"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize u2net to step_04_cloth_segmentation/u2net"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "step_03_cloth_segmentation",
+        "priority": 4,
+        "size_mb": 206.7,
+        "target_path": "step_04_human_parsing/step_03_cloth_segmentation"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize step_03_cloth_segmentation to step_04_human_parsing/step_03_cloth_segmentation"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "step_04_geometric_matching",
+        "priority": 5,
+        "size_mb": 29.1,
+        "target_path": "step_05_geometric_matching/step_04_geometric_matching"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize step_04_geometric_matching to step_05_geometric_matching/step_04_geometric_matching"
+      }
+    },
+    {
+      "action": {
+        "type": "reorganize",
+        "model": "step_05_cloth_warping",
+        "priority": 6,
+        "size_mb": 3279.2,
+        "target_path": "step_06_cloth_warping/step_05_cloth_warping"
+      },
+      "result": {
+        "success": true,
+        "message": "Would reorganize step_05_cloth_warping to step_06_cloth_warping/step_05_cloth_warping"
+      }
+    },
+    {
+      "action": {
+        "type": "create_symlinks",
+        "description": "중복 모델들을 심볼릭 링크로 연결",
+        "targets": [
+          "stable-diffusion-v1-5 → ootdiffusion",
+          "clip-vit-base → clip-vit-base-patch32",
+          "sam → sam_vit_h"
+        ]
+      },
+      "result": {
+        "success": true,
+        "message": "Would create symlinks"
+      }
+    }
+  ],
+  "summary": {
+    "total_actions": 22,
+    "successful_actions": 22,
+    "failed_actions": 0,
+    "success_rate": 100.0
+  }
+}
