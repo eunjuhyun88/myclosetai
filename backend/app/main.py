@@ -1,5 +1,6 @@
+# app/main.py
 """
-🍎 MyCloset AI Backend - 완전한 통합 버전
+🍎 MyCloset AI Backend - 완전한 통합 버전 v5.0
 ✅ 실제 AI 모델 (86개 파일, 72.8GB) 완벽 연동
 ✅ ModelLoader + BaseStepMixin 인터페이스 통합
 ✅ 8단계 파이프라인 + 모든 서비스 + 라우터
@@ -7,6 +8,7 @@
 ✅ 프론트엔드 완전 호환
 ✅ WebSocket 실시간 통신
 ✅ 프로덕션 안정성 보장
+✅ 새로운 구조에 맞춘 완전한 재작성
 """
 
 import os
@@ -126,24 +128,41 @@ except ImportError as e:
     AVAILABLE_MEMORY_GB = 4.0
 
 # ===============================================================
-# 🔧 ModelLoader 및 AI 파이프라인 Import (안전한 Import)
+# 🔧 AI 파이프라인 유틸리티 Import (새로운 구조)
 # ===============================================================
 
 try:
-    # ModelLoader 시스템 Import
-    from app.ai_pipeline.utils.model_loader import (
-        ModelLoader,
-        get_global_model_loader,
-        initialize_global_model_loader,
-        cleanup_global_loader,
-        ModelConfig,
-        ModelType
+    # 새로운 통합 유틸리티 시스템 Import
+    from app.ai_pipeline.utils import (
+        get_utils_manager,
+        initialize_global_utils,
+        create_step_interface,
+        get_system_status,
+        reset_global_utils
     )
-    MODEL_LOADER_AVAILABLE = True
-    logger.info("✅ ModelLoader 시스템 Import 성공")
+    UTILS_AVAILABLE = True
+    logger.info("✅ 새로운 통합 유틸리티 시스템 Import 성공")
 except ImportError as e:
-    logger.error(f"❌ ModelLoader Import 실패: {e}")
-    MODEL_LOADER_AVAILABLE = False
+    logger.warning(f"⚠️ 통합 유틸리티 Import 실패: {e}")
+    UTILS_AVAILABLE = False
+
+# 폴백: 개별 모듈 Import
+if not UTILS_AVAILABLE:
+    try:
+        # ModelLoader 시스템 Import
+        from app.ai_pipeline.utils.model_loader import (
+            ModelLoader,
+            get_global_model_loader,
+            initialize_global_model_loader,
+            cleanup_global_loader,
+            ModelConfig,
+            ModelType
+        )
+        MODEL_LOADER_AVAILABLE = True
+        logger.info("✅ ModelLoader 시스템 Import 성공")
+    except ImportError as e:
+        logger.error(f"❌ ModelLoader Import 실패: {e}")
+        MODEL_LOADER_AVAILABLE = False
 
 try:
     # AI 파이프라인 Steps Import
@@ -192,8 +211,8 @@ except ImportError as e:
 # 🔧 전역 변수 및 상태 관리
 # ===============================================================
 
-# 전역 모델 로더
-global_model_loader = None
+# 전역 유틸리티 매니저
+global_utils_manager = None
 
 # AI 파이프라인 Steps
 pipeline_steps = {}
@@ -207,6 +226,7 @@ active_connections: List[WebSocket] = []
 # 서버 상태
 server_state = {
     "initialized": False,
+    "utils_loaded": False,
     "models_loaded": False,
     "services_ready": False,
     "start_time": time.time(),
@@ -270,42 +290,35 @@ websocket_manager = WebSocketManager()
 # 🔧 초기화 함수들
 # ===============================================================
 
-async def initialize_model_loader() -> bool:
-    """ModelLoader 초기화"""
-    global global_model_loader
+async def initialize_utils_system() -> bool:
+    """통합 유틸리티 시스템 초기화"""
+    global global_utils_manager
     
     try:
-        if not MODEL_LOADER_AVAILABLE:
-            logger.error("❌ ModelLoader가 사용 불가능합니다")
+        if not UTILS_AVAILABLE:
+            logger.error("❌ 통합 유틸리티 시스템이 사용 불가능합니다")
             return False
         
-        logger.info("🔄 전역 ModelLoader 초기화 중...")
+        logger.info("🔄 통합 유틸리티 시스템 초기화 중...")
         
-        # M3 Max 최적화 설정으로 초기화
-        loader_config = initialize_global_model_loader(
+        # 전역 유틸리티 매니저 초기화
+        result = initialize_global_utils(
             device=DEVICE,
             memory_gb=TOTAL_MEMORY_GB,
-            optimization_enabled=True,
             is_m3_max=IS_M3_MAX,
-            use_fp16=True,
-            max_cached_models=10,
-            lazy_loading=True
+            optimization_enabled=True
         )
         
-        # 전역 로더 인스턴스 가져오기
-        global_model_loader = get_global_model_loader()
-        
-        # 초기화 실행
-        if await global_model_loader.initialize():
-            logger.info("✅ 전역 ModelLoader 초기화 완료")
-            logger.info(f"📦 등록된 모델: {len(global_model_loader.list_models())}개")
+        if result.get("success", False):
+            global_utils_manager = get_utils_manager()
+            logger.info("✅ 통합 유틸리티 시스템 초기화 완료")
             return True
         else:
-            logger.error("❌ ModelLoader 초기화 실패")
+            logger.error(f"❌ 통합 유틸리티 시스템 초기화 실패: {result.get('error', 'Unknown')}")
             return False
             
     except Exception as e:
-        logger.error(f"❌ ModelLoader 초기화 오류: {e}")
+        logger.error(f"❌ 통합 유틸리티 시스템 초기화 오류: {e}")
         return False
 
 async def initialize_pipeline_steps() -> bool:
@@ -335,12 +348,25 @@ async def initialize_pipeline_steps() -> bool:
         
         for step_name, step_class in step_classes.items():
             try:
-                # Step 인스턴스 생성
-                step_instance = step_class(
-                    device=DEVICE,
-                    optimization_enabled=True,
-                    memory_gb=TOTAL_MEMORY_GB
-                )
+                # 새로운 통합 유틸리티 시스템 사용
+                if UTILS_AVAILABLE and global_utils_manager:
+                    # Step 인터페이스 생성
+                    step_interface = create_step_interface(step_class.__name__)
+                    
+                    # Step 인스턴스 생성 (통합 유틸리티 전달)
+                    step_instance = step_class(
+                        device=DEVICE,
+                        optimization_enabled=True,
+                        memory_gb=TOTAL_MEMORY_GB,
+                        step_interface=step_interface
+                    )
+                else:
+                    # 폴백: 기본 생성자
+                    step_instance = step_class(
+                        device=DEVICE,
+                        optimization_enabled=True,
+                        memory_gb=TOTAL_MEMORY_GB
+                    )
                 
                 # Step 초기화
                 if hasattr(step_instance, 'initialize'):
@@ -405,23 +431,24 @@ async def lifespan(app: FastAPI):
     global server_state
     
     # === 시작 이벤트 ===
-    logger.info("🚀 MyCloset AI Backend 시작 - 완전한 통합 버전")
+    logger.info("🚀 MyCloset AI Backend 시작 - 완전한 통합 버전 v5.0")
     logger.info(f"🔧 디바이스: {DEVICE_NAME} ({DEVICE})")
     logger.info(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
     logger.info(f"💾 메모리: {TOTAL_MEMORY_GB:.1f}GB (사용가능: {AVAILABLE_MEMORY_GB:.1f}GB)")
     
     initialization_success = True
     
-    # 1. ModelLoader 초기화
+    # 1. 통합 유틸리티 시스템 초기화
     try:
-        if await initialize_model_loader():
-            server_state["models_loaded"] = True
-            logger.info("✅ 1단계: ModelLoader 초기화 완료")
+        if await initialize_utils_system():
+            server_state["utils_loaded"] = True
+            server_state["models_loaded"] = True  # 통합 시스템에 포함
+            logger.info("✅ 1단계: 통합 유틸리티 시스템 초기화 완료")
         else:
-            logger.warning("⚠️ 1단계: ModelLoader 초기화 실패 - 시뮬레이션 모드")
+            logger.warning("⚠️ 1단계: 통합 유틸리티 시스템 초기화 실패 - 시뮬레이션 모드")
             initialization_success = False
     except Exception as e:
-        logger.error(f"❌ ModelLoader 초기화 중 오류: {e}")
+        logger.error(f"❌ 통합 유틸리티 시스템 초기화 중 오류: {e}")
         initialization_success = False
     
     # 2. AI 파이프라인 초기화
@@ -470,10 +497,10 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"⚠️ {step_name} 정리 실패: {e}")
         
-        # ModelLoader 정리
-        if MODEL_LOADER_AVAILABLE:
-            cleanup_global_loader()
-            logger.info("🧹 ModelLoader 정리 완료")
+        # 통합 유틸리티 시스템 정리
+        if UTILS_AVAILABLE:
+            reset_global_utils()
+            logger.info("🧹 통합 유틸리티 시스템 정리 완료")
         
         # GPU 메모리 정리
         if DEVICE == "mps" and torch.backends.mps.is_available():
@@ -501,7 +528,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MyCloset AI",
-    description="🍎 M3 Max 최적화 AI 가상 피팅 시스템 - 완전한 통합 버전",
+    description="🍎 M3 Max 최적화 AI 가상 피팅 시스템 - 완전한 통합 버전 v5.0",
     version="5.0.0-complete",
     debug=True,
     lifespan=lifespan
@@ -511,9 +538,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000","http://localhost:4000","http://localhost:3001", "http://localhost:5173", 
-        "http://localhost:5174", "http://localhost:8080", "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:8080"
+        "http://localhost:3000", "http://localhost:4000", "http://localhost:3001", 
+        "http://localhost:5173", "http://localhost:5174", "http://localhost:8080", 
+        "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5174", 
+        "http://127.0.0.1:8080"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -556,11 +584,20 @@ async def root():
     """루트 엔드포인트"""
     global server_state, pipeline_steps, service_managers
     
+    # 시스템 상태 조회
+    system_status = {}
+    if UTILS_AVAILABLE and global_utils_manager:
+        try:
+            system_status = get_system_status()
+        except Exception as e:
+            system_status = {"error": str(e)}
+    
     return {
-        "message": "🍎 MyCloset AI 서버가 실행 중입니다! (완전한 통합 버전)",
+        "message": "🍎 MyCloset AI 서버가 실행 중입니다! (완전한 통합 버전 v5.0)",
         "version": "5.0.0-complete",
         "status": {
             "initialized": server_state["initialized"],
+            "utils_loaded": server_state["utils_loaded"],
             "models_loaded": server_state["models_loaded"],
             "services_ready": server_state["services_ready"],
             "uptime": time.time() - server_state["start_time"]
@@ -573,7 +610,7 @@ async def root():
             "optimization": "enabled" if IS_M3_MAX else "standard"
         },
         "components": {
-            "model_loader": MODEL_LOADER_AVAILABLE,
+            "utils_system": UTILS_AVAILABLE,
             "ai_pipeline": AI_PIPELINE_AVAILABLE,
             "services": SERVICES_AVAILABLE,
             "api_routes": API_ROUTES_AVAILABLE,
@@ -586,7 +623,8 @@ async def root():
             "websocket_support": True,
             "m3_max_optimized": IS_M3_MAX,
             "memory_management": True,
-            "visualization": True
+            "visualization": True,
+            "integrated_utils": UTILS_AVAILABLE
         },
         "endpoints": {
             "docs": "/docs",
@@ -596,31 +634,33 @@ async def root():
             "models": "/api/models",
             "websocket": "/api/ws"
         },
+        "system_status": system_status,
         "timestamp": time.time()
     }
 
 @app.get("/api/health")
 async def health_check():
     """헬스체크"""
-    global server_state, pipeline_steps, global_model_loader
+    global server_state, pipeline_steps, global_utils_manager
     
     memory_info = psutil.virtual_memory()
     
-    # 모델 상태 확인
-    models_status = "healthy"
-    loaded_models = []
+    # 통합 유틸리티 시스템 상태 확인
+    utils_status = "healthy"
+    utils_details = {}
     
-    if global_model_loader:
+    if UTILS_AVAILABLE and global_utils_manager:
         try:
-            model_info = global_model_loader.list_models()
-            loaded_models = list(model_info.keys())
-            if not loaded_models:
-                models_status = "no_models"
+            utils_details = get_system_status()
+            if utils_details.get("error"):
+                utils_status = "error"
+            elif not utils_details.get("is_initialized", False):
+                utils_status = "not_initialized"
         except Exception as e:
-            models_status = "error"
-            logger.warning(f"모델 상태 확인 실패: {e}")
+            utils_status = "error"
+            utils_details = {"error": str(e)}
     else:
-        models_status = "not_initialized"
+        utils_status = "not_available"
     
     # 파이프라인 상태
     pipeline_status = "healthy" if len(pipeline_steps) >= 4 else "degraded"
@@ -629,7 +669,7 @@ async def health_check():
     overall_status = "healthy"
     if not server_state["initialized"]:
         overall_status = "initializing"
-    elif models_status in ["error", "not_initialized"] or pipeline_status == "degraded":
+    elif utils_status in ["error", "not_initialized"] or pipeline_status == "degraded":
         overall_status = "degraded"
     
     return {
@@ -643,11 +683,10 @@ async def health_check():
                 "total_requests": server_state["total_requests"],
                 "active_sessions": server_state["active_sessions"]
             },
-            "models": {
-                "status": models_status,
-                "loaded_count": len(loaded_models),
-                "loaded_models": loaded_models[:5],  # 처음 5개만 표시
-                "model_loader_available": MODEL_LOADER_AVAILABLE
+            "utils_system": {
+                "status": utils_status,
+                "available": UTILS_AVAILABLE,
+                "details": utils_details
             },
             "pipeline": {
                 "status": pipeline_status,
@@ -674,7 +713,8 @@ async def health_check():
                 "m3_max_enabled": IS_M3_MAX,
                 "device_optimization": True,
                 "memory_management": True,
-                "neural_engine": IS_M3_MAX
+                "neural_engine": IS_M3_MAX,
+                "integrated_utils": UTILS_AVAILABLE
             }
         },
         "features": {
@@ -682,7 +722,8 @@ async def health_check():
             "8_step_pipeline": len(pipeline_steps) == 8,
             "websocket_support": True,
             "visualization": True,
-            "api_routes": API_ROUTES_AVAILABLE
+            "api_routes": API_ROUTES_AVAILABLE,
+            "integrated_utils": UTILS_AVAILABLE
         },
         "timestamp": time.time()
     }
@@ -690,7 +731,7 @@ async def health_check():
 @app.get("/api/system/info")
 async def system_info():
     """시스템 상세 정보"""
-    global server_state, pipeline_steps, global_model_loader
+    global server_state, pipeline_steps, global_utils_manager
     
     memory_info = psutil.virtual_memory()
     
@@ -709,15 +750,13 @@ async def system_info():
             "metal_shaders": True
         })
     
-    # 모델 상세 정보
-    model_details = {}
-    if global_model_loader:
+    # 통합 유틸리티 시스템 상세 정보
+    utils_info = {}
+    if UTILS_AVAILABLE and global_utils_manager:
         try:
-            model_details = global_model_loader.list_models()
-            memory_usage = global_model_loader.get_memory_usage()
-            model_details["memory_usage"] = memory_usage
+            utils_info = get_system_status()
         except Exception as e:
-            logger.warning(f"모델 정보 조회 실패: {e}")
+            utils_info = {"error": str(e)}
     
     return {
         "system": {
@@ -737,10 +776,9 @@ async def system_info():
             },
             "gpu": gpu_info
         },
-        "models": {
-            "model_loader_status": "available" if MODEL_LOADER_AVAILABLE else "unavailable",
-            "loaded_models_count": len(model_details) if model_details else 0,
-            "model_details": model_details
+        "integrated_utils": {
+            "system_status": "available" if UTILS_AVAILABLE else "unavailable",
+            "details": utils_info
         },
         "pipeline": {
             "ai_pipeline_status": "available" if AI_PIPELINE_AVAILABLE else "unavailable",
@@ -748,7 +786,7 @@ async def system_info():
             "step_details": {
                 step_name: {
                     "class": step_instance.__class__.__name__,
-                    "initialized": hasattr(step_instance, 'is_initialized') and step_instance.is_initialized
+                    "initialized": hasattr(step_instance, 'is_initialized') and getattr(step_instance, 'is_initialized', False)
                 }
                 for step_name, step_instance in pipeline_steps.items()
             }
@@ -768,61 +806,6 @@ async def system_info():
         },
         "timestamp": time.time()
     }
-
-@app.get("/api/models/status")
-async def models_status():
-    """모델 상태 상세 조회"""
-    global global_model_loader
-    
-    if not MODEL_LOADER_AVAILABLE:
-        return {
-            "status": "unavailable",
-            "error": "ModelLoader가 사용 불가능합니다",
-            "available_features": []
-        }
-    
-    if not global_model_loader:
-        return {
-            "status": "not_initialized",
-            "error": "전역 ModelLoader가 초기화되지 않았습니다",
-            "available_features": []
-        }
-    
-    try:
-        # 모델 목록 및 상태
-        model_list = global_model_loader.list_models()
-        memory_usage = global_model_loader.get_memory_usage()
-        
-        return {
-            "status": "healthy",
-            "model_loader": {
-                "available": True,
-                "device": DEVICE,
-                "total_models": len(model_list),
-                "memory_usage": memory_usage
-            },
-            "models": model_list,
-            "features": {
-                "real_ai_models": True,
-                "m3_max_optimization": IS_M3_MAX,
-                "memory_management": True,
-                "lazy_loading": True,
-                "model_caching": True
-            },
-            "timestamp": time.time()
-        }
-        
-    except Exception as e:
-        logger.error(f"모델 상태 조회 실패: {e}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "model_loader": {
-                "available": MODEL_LOADER_AVAILABLE,
-                "device": DEVICE
-            },
-            "timestamp": time.time()
-        }
 
 # ===============================================================
 # 🔧 폴백 API 엔드포인트들 (라우터 실패 시)
@@ -969,8 +952,17 @@ async def websocket_pipeline(websocket: WebSocket):
                     "server_status": server_state,
                     "pipeline_steps": len(pipeline_steps),
                     "active_connections": len(websocket_manager.active_connections),
+                    "utils_available": UTILS_AVAILABLE,
                     "timestamp": time.time()
                 }
+                
+                # 통합 유틸리티 시스템 상태 추가
+                if UTILS_AVAILABLE and global_utils_manager:
+                    try:
+                        status["system_status"] = get_system_status()
+                    except Exception as e:
+                        status["system_status"] = {"error": str(e)}
+                
                 await websocket_manager.send_to_client(websocket, status)
             
             elif message.get("type") == "process_request":
@@ -1029,7 +1021,8 @@ def create_simulation_response(endpoint_type: str) -> Dict[str, Any]:
         "processing_time": 2.5,
         "confidence": 0.85,
         "timestamp": time.time(),
-        "simulation": True
+        "simulation": True,
+        "version": "5.0.0-complete"
     }
     
     if endpoint_type == "virtual_tryon":
@@ -1072,7 +1065,7 @@ if __name__ == "__main__":
     logger.info(f"💾 메모리: {TOTAL_MEMORY_GB:.1f}GB")
     
     logger.info("🔧 컴포넌트 상태:")
-    logger.info(f"   - ModelLoader: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
+    logger.info(f"   - 통합 유틸리티 시스템: {'✅' if UTILS_AVAILABLE else '❌'}")
     logger.info(f"   - AI Pipeline: {'✅' if AI_PIPELINE_AVAILABLE else '❌'}")
     logger.info(f"   - Services: {'✅' if SERVICES_AVAILABLE else '❌'}")
     logger.info(f"   - API Routes: {'✅' if API_ROUTES_AVAILABLE else '❌'}")
