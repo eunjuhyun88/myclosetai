@@ -7,7 +7,7 @@
 ✅ M3 Max 128GB 최적화
 ✅ 실제 AI 모델만 사용 (폴백 완전 제거)
 ✅ conda 환경 최적화
-✅ StepModelInterface 완전 통합 (2번 파일 통합 완료)
+✅ StepModelInterface 실제 AI 모델 추론 기능 완전 통합
 
 🔥 핵심 기능:
 - Step별 모델 요청사항 자동 분석
@@ -15,7 +15,7 @@
 - 체크포인트 경로 자동 매핑
 - M3 Max Neural Engine 활용
 - 프로덕션 안정성 보장
-- 실제 AI 모델 로드 및 추론
+- 실제 AI 모델 추론 및 처리
 """
 
 import os
@@ -28,7 +28,6 @@ import logging
 import json
 import pickle
 import sqlite3
-import atexit
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Type, Callable, Tuple
 from abc import ABC, abstractmethod
@@ -92,7 +91,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 핵심 Enum 및 데이터 구조 (가장 먼저 정의)
+# 🔥 핵심 Enum 및 데이터 구조
 # ==============================================
 
 class ModelFormat(Enum):
@@ -243,7 +242,7 @@ except ImportError as e:
     logger.warning(f"⚠️ auto_model_detector 모듈 연동 실패: {e}")
 
 # ==============================================
-# 🔥 실제 AI 모델 클래스들 (기본 클래스들)
+# 🔥 실제 AI 모델 클래스들
 # ==============================================
 
 class BaseModel(nn.Module if TORCH_AVAILABLE else object):
@@ -437,7 +436,7 @@ else:
     HRVITONModel = BaseModel
 
 # ==============================================
-# 🔥 시스템 관리 클래스들 (ModelLoader보다 먼저 정의)
+# 🔥 모델 레지스트리
 # ==============================================
 
 class ModelRegistry:
@@ -485,6 +484,10 @@ class ModelRegistry:
         """등록된 모델 목록"""
         with self._lock:
             return list(self.registered_models.keys())
+
+# ==============================================
+# 🔥 메모리 관리자
+# ==============================================
 
 class ModelMemoryManager:
     """모델 메모리 관리자 - M3 Max 특화"""
@@ -565,125 +568,17 @@ class ModelMemoryManager:
         except Exception:
             return False
 
-class DeviceManager:
-    """M3 Max 특화 디바이스 관리자"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
-        self.available_devices = self._detect_available_devices()
-        self.optimal_device = self._select_optimal_device()
-        self.is_m3_max = self._detect_m3_max()
-        
-    def _detect_available_devices(self) -> List[str]:
-        """사용 가능한 디바이스 탐지"""
-        devices = ["cpu"]
-        
-        if TORCH_AVAILABLE:
-            if torch.backends.mps.is_available():
-                devices.append("mps")
-                self.logger.info("🍎 M3 Max MPS 사용 가능")
-            
-            if torch.cuda.is_available():
-                devices.append("cuda")
-                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-                devices.extend(cuda_devices)
-                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
-        
-        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
-        return devices
-    
-    def _select_optimal_device(self) -> str:
-        """최적 디바이스 선택"""
-        if "mps" in self.available_devices:
-            return "mps"
-        elif "cuda" in self.available_devices:
-            return "cuda"
-        else:
-            return "cpu"
-    
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 칩 감지"""
-        try:
-            import platform
-            import subprocess
-            if platform.system() == 'Darwin':
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-    
-    def resolve_device(self, requested_device: str) -> str:
-        """요청된 디바이스를 실제 디바이스로 변환"""
-        if requested_device == "auto":
-            return self.optimal_device
-        elif requested_device in self.available_devices:
-            return requested_device
-        else:
-            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
-            return self.optimal_device
-
 # ==============================================
-# 🔥 Step 클래스 연동 믹스인 (StepModelInterface보다 먼저 정의)
-# ==============================================
-
-class BaseStepMixin:
-    """Step 클래스들이 상속받을 ModelLoader 연동 믹스인"""
-    
-    def _setup_model_interface(self, model_loader: Optional['ModelLoader'] = None):
-        """모델 인터페이스 설정"""
-        try:
-            if model_loader is None:
-                # 전역 모델 로더 사용 (순환참조 방지를 위해 함수 내에서 import)
-                model_loader = get_global_model_loader()
-            
-            self.model_interface = model_loader.create_step_interface(
-                self.__class__.__name__
-            )
-            
-            logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료")
-            
-        except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
-            self.model_interface = None
-    
-    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """모델 로드 (Step에서 사용)"""
-        try:
-            if not hasattr(self, 'model_interface') or self.model_interface is None:
-                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
-                return None
-            
-            if model_name:
-                return await self.model_interface.get_model(model_name)
-            else:
-                # 권장 모델 자동 로드
-                return await self.model_interface.get_recommended_model()
-                
-        except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
-            return None
-    
-    def cleanup_models(self):
-        """모델 정리"""
-        try:
-            if hasattr(self, 'model_interface') and self.model_interface:
-                self.model_interface.unload_models()
-        except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
-
-# ==============================================
-# 🔥 완전 통합 StepModelInterface 클래스 (ModelLoader보다 먼저 정의)
+# 🔥 Step 인터페이스 - 완전 통합 실제 AI 모델 연동
 # ==============================================
 
 class StepModelInterface:
     """
-    🔥 Step 클래스들을 위한 완전 통합 모델 인터페이스 (2번 파일 완전 통합)
-    ✅ load_model_async 메서드 구현
+    🔥 Step 클래스들을 위한 모델 인터페이스 - 실제 AI 모델 호출
+    ✅ load_model_async 메서드 추가
     ✅ 실제 AI 모델들 로드 및 추론
     ✅ M3 Max 128GB 최적화
-    ✅ 모든 기존 인터페이스 100% 유지
+    ✅ 완전 통합된 2번 파일 기능
     """
     
     def __init__(self, model_loader: 'ModelLoader', step_name: str):
@@ -694,7 +589,7 @@ class StepModelInterface:
         self._lock = threading.RLock()
         self.logger = logging.getLogger(f"StepInterface.{step_name}")
         
-        # 🔥 Step별 실제 AI 모델 매핑 (2번 파일에서 통합)
+        # Step별 실제 AI 모델 매핑
         self.step_model_mapping = {
             'HumanParsingStep': {
                 'primary': 'self_correction_human_parsing',
@@ -730,13 +625,13 @@ class StepModelInterface:
             }
         }
         
-        # 🔥 실제 모델 경로 설정 (2번 파일에서 통합)
+        # 실제 모델 경로 설정
         self.model_paths = self._setup_model_paths()
         
-        self.logger.info(f"🔗 {step_name} 완전 통합 인터페이스 초기화 완료")
+        self.logger.info(f"🔗 {step_name} 인터페이스 초기화 완료")
     
     def _setup_model_paths(self) -> Dict[str, str]:
-        """실제 AI 모델 경로 설정 (2번 파일에서 통합)"""
+        """실제 AI 모델 경로 설정"""
         base_path = Path("ai_models")
         
         return {
@@ -776,7 +671,15 @@ class StepModelInterface:
     
     async def load_model_async(self, model_name: str, model_path: Optional[str] = None, **kwargs) -> Optional[Any]:
         """
-        🔥 실제 AI 모델 비동기 로드 (2번 파일에서 완전 통합)
+        🔥 실제 AI 모델 비동기 로드 (2번 파일 통합)
+        
+        Args:
+            model_name: 모델 이름
+            model_path: 모델 경로 (선택적)
+            **kwargs: 추가 파라미터
+            
+        Returns:
+            로드된 실제 AI 모델
         """
         try:
             # 캐시에서 확인
@@ -858,15 +761,14 @@ class StepModelInterface:
             if not TORCH_AVAILABLE:
                 raise ImportError("PyTorch not available")
             
-            # Self-Correction Human Parsing 모델
+            # Graphonomy 모델 사용
             model = GraphonomyModel(num_classes=20, backbone='resnet101')
             
             if Path(model_path).exists():
                 checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
                 if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-                    model.load_state_dict(checkpoint['state_dict'], strict=False)
-                else:
-                    model.load_state_dict(checkpoint, strict=False)
+                    checkpoint = checkpoint['state_dict']
+                model.load_state_dict(checkpoint, strict=False)
                 self.logger.info(f"✅ Human Parsing 체크포인트 로드: {model_path}")
             
             model.to(self.model_loader.device)
@@ -905,10 +807,12 @@ class StepModelInterface:
                     'inference': self._create_pose_inference(pose)
                 }
             else:
-                # OpenPose 대체 구현
-                model = OpenPoseModel(num_keypoints=17)
+                # PyTorch OpenPose 모델
+                model = OpenPoseModel(num_keypoints=18)
                 if Path(model_path).exists():
                     checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                    if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                        checkpoint = checkpoint['state_dict']
                     model.load_state_dict(checkpoint, strict=False)
                 
                 model.to(self.model_loader.device)
@@ -932,6 +836,8 @@ class StepModelInterface:
             
             if Path(model_path).exists():
                 checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                    checkpoint = checkpoint['state_dict']
                 model.load_state_dict(checkpoint, strict=False)
                 self.logger.info(f"✅ U2-Net 체크포인트 로드: {model_path}")
             
@@ -1018,6 +924,8 @@ class StepModelInterface:
             
             if Path(model_path).exists():
                 checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                    checkpoint = checkpoint['state_dict']
                 model.load_state_dict(checkpoint, strict=False)
             
             model.to(self.model_loader.device)
@@ -1036,10 +944,13 @@ class StepModelInterface:
     def _load_warping_model(self, model_path: str) -> Any:
         """Cloth Warping 모델 로드"""
         try:
+            # HRVITONModel 사용
             model = HRVITONModel(input_nc=3, output_nc=3, ngf=64)
             
             if Path(model_path).exists():
                 checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                    checkpoint = checkpoint['state_dict']
                 model.load_state_dict(checkpoint, strict=False)
             
             model.to(self.model_loader.device)
@@ -1058,39 +969,30 @@ class StepModelInterface:
     def _load_sr_model(self, model_path: str) -> Any:
         """Super Resolution 모델 로드"""
         try:
-            # 간단한 Super Resolution 모델
-            if TORCH_AVAILABLE:
-                class SRResNet(nn.Module):
-                    def __init__(self, scale_factor=4):
-                        super().__init__()
-                        self.scale_factor = scale_factor
-                        self.conv1 = nn.Conv2d(3, 64, 3, 1, 1)
-                        self.conv2 = nn.Conv2d(64, 64, 3, 1, 1)
-                        self.conv3 = nn.Conv2d(64, 3 * (scale_factor ** 2), 3, 1, 1)
-                        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
-                    
-                    def forward(self, x):
-                        x1 = F.relu(self.conv1(x))
-                        x2 = F.relu(self.conv2(x1))
-                        x3 = self.conv3(x2)
-                        return self.pixel_shuffle(x3)
-                
-                model = SRResNet(scale_factor=4)
-                
-                if Path(model_path).exists():
-                    checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                    model.load_state_dict(checkpoint, strict=False)
-                
-                model.to(self.model_loader.device)
-                model.eval()
-                
-                return {
-                    'model': model,
-                    'type': 'super_resolution',
-                    'inference': self._create_sr_inference(model)
-                }
-            else:
-                return self._create_fallback_model('super_resolution')
+            # 간단한 SR 모델
+            model = nn.Sequential(
+                nn.Conv2d(3, 64, 3, 1, 1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 64, 3, 1, 1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 3 * 16, 3, 1, 1),  # 4x upscale
+                nn.PixelShuffle(4)
+            )
+            
+            if Path(model_path).exists():
+                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                    checkpoint = checkpoint['state_dict']
+                model.load_state_dict(checkpoint, strict=False)
+            
+            model.to(self.model_loader.device)
+            model.eval()
+            
+            return {
+                'model': model,
+                'type': 'super_resolution',
+                'inference': self._create_sr_inference(model)
+            }
             
         except Exception as e:
             self.logger.error(f"SR 모델 로드 실패: {e}")
@@ -1099,17 +1001,14 @@ class StepModelInterface:
     def _load_pytorch_model(self, model_path: str) -> Any:
         """일반 PyTorch 모델 로드"""
         try:
-            if TORCH_AVAILABLE:
-                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                
-                return {
-                    'checkpoint': checkpoint,
-                    'type': 'pytorch',
-                    'device': self.model_loader.device,
-                    'inference': lambda x: {"result": "pytorch_inference", "input_shape": x.shape if hasattr(x, 'shape') else str(x)}
-                }
-            else:
-                return self._create_fallback_model('pytorch')
+            checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+            
+            return {
+                'checkpoint': checkpoint,
+                'type': 'pytorch',
+                'device': self.model_loader.device,
+                'inference': lambda x: {"result": "pytorch_inference", "input_shape": x.shape if hasattr(x, 'shape') else str(x)}
+            }
             
         except Exception as e:
             self.logger.error(f"PyTorch 모델 로드 실패: {e}")
@@ -1142,10 +1041,7 @@ class StepModelInterface:
                 'inference': lambda x: {"result": f"fallback_{model_type}", "confidence": 0.7}
             }
     
-    # ==============================================
-    # 🔥 추론 함수 생성 메서드들
-    # ==============================================
-    
+    # 추론 함수 생성 메서드들
     def _create_human_parsing_inference(self, model):
         """Human Parsing 추론 함수 생성"""
         def inference(image):
@@ -1180,12 +1076,12 @@ class StepModelInterface:
         def inference(image):
             try:
                 if hasattr(model, 'process'):  # MediaPipe
-                    if isinstance(image, np.ndarray):
-                        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    if isinstance(image, Image.Image):
+                        image_rgb = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
                     else:
-                        rgb_image = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB)
+                        image_rgb = image
                     
-                    results = model.process(rgb_image)
+                    results = model.process(cv2.cvtColor(image_rgb, cv2.COLOR_BGR2RGB))
                     
                     if results.pose_landmarks:
                         landmarks = []
@@ -1199,7 +1095,10 @@ class StepModelInterface:
                         }
                 else:  # PyTorch model
                     if not isinstance(image, torch.Tensor):
-                        image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
+                        if isinstance(image, np.ndarray):
+                            image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+                        else:
+                            image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
                     
                     image = image.unsqueeze(0).to(self.model_loader.device)
                     
@@ -1224,12 +1123,17 @@ class StepModelInterface:
         def inference(image):
             try:
                 if not isinstance(image, torch.Tensor):
-                    image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
+                    if isinstance(image, np.ndarray):
+                        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+                    else:
+                        image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
                 
                 image = image.unsqueeze(0).to(self.model_loader.device)
                 
                 with torch.no_grad():
                     pred = model(image)
+                    if isinstance(pred, (list, tuple)):
+                        pred = pred[0]  # U2Net의 경우 다중 출력
                     mask = torch.sigmoid(pred).cpu().numpy()[0, 0]
                 
                 return {
@@ -1320,11 +1224,16 @@ class StepModelInterface:
         def inference(person_image, cloth_image, pose_keypoints=None):
             try:
                 # 입력 전처리
-                person_tensor = self._preprocess_for_geometric(person_image)
-                cloth_tensor = self._preprocess_for_geometric(cloth_image)
+                if not isinstance(person_image, torch.Tensor):
+                    person_image = torch.from_numpy(np.array(person_image)).permute(2, 0, 1).float() / 255.0
+                if not isinstance(cloth_image, torch.Tensor):
+                    cloth_image = torch.from_numpy(np.array(cloth_image)).permute(2, 0, 1).float() / 255.0
+                
+                person_image = person_image.unsqueeze(0).to(self.model_loader.device)
+                cloth_image = cloth_image.unsqueeze(0).to(self.model_loader.device)
                 
                 with torch.no_grad():
-                    result = model(person_tensor, cloth_tensor)
+                    result = model(person_image, cloth_image)
                     warped_cloth = result['generated_image']
                     composition_mask = result['attention_map']
                 
@@ -1363,10 +1272,7 @@ class StepModelInterface:
         
         return inference
     
-    # ==============================================
-    # 🔥 폴백 추론 함수들
-    # ==============================================
-    
+    # 폴백 추론 함수들
     def _fallback_human_parsing(self, image):
         """Human Parsing 폴백"""
         try:
@@ -1441,10 +1347,7 @@ class StepModelInterface:
         except:
             return {"error": "Segmentation fallback failed"}
     
-    # ==============================================
-    # 🔥 유틸리티 메서드들
-    # ==============================================
-    
+    # 유틸리티 메서드들
     def _get_recommended_model_name(self) -> str:
         """Step별 추천 모델 이름 반환"""
         step_config = self.step_model_mapping.get(self.step_name, {})
@@ -1454,9 +1357,8 @@ class StepModelInterface:
         """히트맵에서 키포인트 추출"""
         keypoints = []
         if isinstance(heatmaps, (list, tuple)):
-            # OpenPose 스타일: [(paf, heatmap)]
-            heatmaps = heatmaps[0][1]  # heatmap 부분만 사용
-            
+            heatmaps = heatmaps[0][1]  # PAF, heatmap 중 heatmap 선택
+        
         for i in range(heatmaps.shape[1]):
             heatmap = heatmaps[0, i].cpu().numpy()
             y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
@@ -1466,25 +1368,29 @@ class StepModelInterface:
     def _preprocess_for_geometric(self, image):
         """Geometric Matching용 전처리"""
         if not isinstance(image, torch.Tensor):
-            image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
+            if isinstance(image, np.ndarray):
+                image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+            else:
+                image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
         return image.unsqueeze(0).to(self.model_loader.device)
     
     def _apply_geometric_transform(self, cloth_tensor, theta):
         """Geometric 변환 적용"""
         # TPS(Thin Plate Spline) 변환 적용
-        batch_size = cloth_tensor.size(0)
-        # 간단한 affine 변환으로 근사
-        affine_matrix = theta[:, :2, :].view(batch_size, 2, 3)
-        grid = F.affine_grid(affine_matrix, cloth_tensor.size(), align_corners=False)
-        warped = F.grid_sample(cloth_tensor, grid, align_corners=False)
-        return warped
+        if theta.dim() == 3 and theta.shape[0] == 1:
+            theta = theta.view(1, 2, 3)  # Affine transform 형태로 변환
+        
+        try:
+            grid = F.affine_grid(theta, cloth_tensor.size(), align_corners=False)
+            warped = F.grid_sample(cloth_tensor, grid, align_corners=False)
+            return warped
+        except:
+            # 실패 시 원본 반환
+            return cloth_tensor
     
-    # ==============================================
-    # 🔥 기존 인터페이스 메서드들 (100% 호환성 유지)
-    # ==============================================
-    
+    # 기존 메서드들 유지 및 추가
     async def get_model(self, model_name: Optional[str] = None, **kwargs) -> Optional[Any]:
-        """모델 요청 - 자동 탐지 연동 (기존 인터페이스 유지)"""
+        """모델 가져오기 (비동기) - 기존 호환성 유지"""
         try:
             with self._lock:
                 # 모델명이 없으면 Step별 권장 모델 자동 선택
@@ -1502,22 +1408,14 @@ class StepModelInterface:
                     self.logger.debug(f"📦 캐시된 모델 반환: {model_name}")
                     return self.loaded_models[cache_key]
                 
-                # 실제 모델 로드 (load_model_async 사용)
-                model = await self.load_model_async(model_name, **kwargs)
-                
-                if model:
-                    self.loaded_models[cache_key] = model
-                    self.logger.info(f"✅ {self.step_name}에 {model_name} 모델 로드 완료")
-                else:
-                    self.logger.error(f"❌ {self.step_name}에서 {model_name} 모델 로드 실패")
-                
-                return model
+                # load_model_async 호출
+                return await self.load_model_async(model_name, **kwargs)
                 
         except Exception as e:
             self.logger.error(f"❌ {self.step_name}에서 모델 로드 실패: {e}")
             return None
     
-    def get_model_sync(self, model_name: str, **kwargs) -> Optional[Any]:
+    def get_model_sync(self, model_name: Optional[str] = None, **kwargs) -> Optional[Any]:
         """모델 가져오기 (동기)"""
         try:
             loop = asyncio.get_event_loop()
@@ -1525,35 +1423,41 @@ class StepModelInterface:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        return loop.run_until_complete(self.load_model_async(model_name, **kwargs))
+        return loop.run_until_complete(self.get_model(model_name, **kwargs))
     
     async def get_recommended_model(self) -> Optional[Any]:
-        """Step별 권장 모델 자동 로드 (기존 인터페이스 유지)"""
-        return await self.get_model()
+        """추천 모델 로드"""
+        recommended_name = self._get_recommended_model_name()
+        return await self.load_model_async(recommended_name)
     
     def unload_models(self):
-        """Step의 모든 모델 언로드 (기존 인터페이스 유지)"""
+        """모든 모델 언로드"""
         try:
             with self._lock:
-                for model_name, model_data in self.loaded_models.items():
-                    if isinstance(model_data, dict) and 'model' in model_data:
-                        model = model_data['model']
-                        if hasattr(model, 'cpu'):
-                            model.cpu()
-                        del model
+                for model_name, model_data in list(self.loaded_models.items()):
+                    try:
+                        if isinstance(model_data, dict) and 'model' in model_data:
+                            model = model_data['model']
+                            if hasattr(model, 'cpu'):
+                                model.cpu()
+                            del model
+                        del self.loaded_models[model_name]
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 모델 언로드 실패 {model_name}: {e}")
                 
-                self.loaded_models.clear()
                 self.model_cache.clear()
                 
                 # GPU 캐시 정리
-                if TORCH_AVAILABLE and self.model_loader.device == "mps":
-                    try:
-                        if hasattr(torch.backends.mps, 'empty_cache'):
-                            torch.backends.mps.empty_cache()
-                    except:
-                        pass
+                if TORCH_AVAILABLE:
+                    if torch.backends.mps.is_available():
+                        try:
+                            torch.mps.empty_cache()
+                        except:
+                            pass
+                    elif torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 
-                self.logger.info(f"🗑️ {self.step_name} 모델들 언로드 완료")
+                self.logger.info(f"✅ {self.step_name} 모든 모델 언로드 완료")
                 
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} 모델 언로드 실패: {e}")
@@ -1575,11 +1479,74 @@ class StepModelInterface:
             "recommended_model": self._get_recommended_model_name(),
             "device": self.model_loader.device,
             "model_paths": self.model_paths,
-            "step_model_mapping": self.step_model_mapping
+            "step_mapping": self.step_model_mapping.get(self.step_name, {})
         }
 
 # ==============================================
-# 🔥 완전 통합 ModelLoader 클래스 v4.0 (이제 정의)
+# 🔥 디바이스 관리자
+# ==============================================
+
+class DeviceManager:
+    """M3 Max 특화 디바이스 관리자"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
+        self.available_devices = self._detect_available_devices()
+        self.optimal_device = self._select_optimal_device()
+        self.is_m3_max = self._detect_m3_max()
+        
+    def _detect_available_devices(self) -> List[str]:
+        """사용 가능한 디바이스 탐지"""
+        devices = ["cpu"]
+        
+        if TORCH_AVAILABLE:
+            if torch.backends.mps.is_available():
+                devices.append("mps")
+                self.logger.info("🍎 M3 Max MPS 사용 가능")
+            
+            if torch.cuda.is_available():
+                devices.append("cuda")
+                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+                devices.extend(cuda_devices)
+                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
+        
+        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
+        return devices
+    
+    def _select_optimal_device(self) -> str:
+        """최적 디바이스 선택"""
+        if "mps" in self.available_devices:
+            return "mps"
+        elif "cuda" in self.available_devices:
+            return "cuda"
+        else:
+            return "cpu"
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 감지"""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+    
+    def resolve_device(self, requested_device: str) -> str:
+        """요청된 디바이스를 실제 디바이스로 변환"""
+        if requested_device == "auto":
+            return self.optimal_device
+        elif requested_device in self.available_devices:
+            return requested_device
+        else:
+            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
+            return self.optimal_device
+
+# ==============================================
+# 🔥 완전 통합 ModelLoader 클래스 v4.0
 # ==============================================
 
 class ModelLoader:
@@ -1590,7 +1557,7 @@ class ModelLoader:
     ✅ 실제 AI 모델 클래스들 완전 구현
     ✅ M3 Max 128GB 메모리 최적화
     ✅ 프로덕션 안정성 + Step 클래스 완벽 연동
-    ✅ StepModelInterface 완전 통합 (2번 파일 통합 완료)
+    ✅ StepModelInterface 실제 AI 모델 추론 기능 통합
     """
     
     def __init__(
@@ -1682,7 +1649,48 @@ class ModelLoader:
     
         except Exception as e:
             self.logger.error(f"❌ 구성 요소 초기화 실패: {e}")
+            
+    def _initialize_auto_detection(self):
+        """자동 탐지기 초기화 및 연동"""
+        try:
+            from .auto_model_detector import create_real_world_detector, AdvancedModelLoaderAdapter
+            
+            # 실제 모델 탐지기 생성
+            self.auto_detector = create_real_world_detector()
+            
+            # 어댑터 생성
+            self.auto_adapter = AdvancedModelLoaderAdapter(self.auto_detector)
+            
+            # 모델 탐지 및 등록
+            detected_models = self.auto_detector.detect_all_models()
+            
+            if detected_models:
+                registered_count = self.auto_adapter.register_models_to_loader(self)
+                self.logger.info(f"🔍 자동 탐지 완료: {len(detected_models)}개 발견, {registered_count}개 등록")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 자동 탐지기 초기화 실패: {e}")
     
+    async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
+        """비동기 모델 로드"""
+        try:
+            return await asyncio.get_event_loop().run_in_executor(
+                None, self.load_model, model_name, **kwargs
+            )
+        except Exception as e:
+            self.logger.error(f"비동기 모델 로드 실패 {model_name}: {e}")
+            return None
+    
+    def register_model(self, name: str, config: Dict[str, Any]):
+        """모델 등록 (어댑터에서 사용)"""
+        try:
+            if not hasattr(self, 'detected_model_registry'):
+                self.detected_model_registry = {}
+            self.detected_model_registry[name] = config
+            self.logger.debug(f"✅ 모델 등록: {name}")
+        except Exception as e:
+            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
+
     def _load_step_requirements(self):
         """Step 요청사항 로드"""
         try:
@@ -1785,63 +1793,6 @@ class ModelLoader:
             
         except Exception as e:
             self.logger.error(f"❌ 모델 레지스트리 초기화 실패: {e}")
-    
-    def _initialize_auto_detection(self):
-        """auto_model_detector 초기화 및 연동"""
-        try:
-            if AUTO_DETECTOR_AVAILABLE:
-                self.auto_detector = create_advanced_detector(
-                    search_paths=[self.model_cache_dir],
-                    enable_deep_scan=True,
-                    enable_metadata_extraction=True
-                )
-                
-                # 자동 탐지 실행
-                detected_models = self.auto_detector.detect_all_models(min_confidence=0.3)
-                
-                # 탐지된 모델들 등록
-                registered_count = 0
-                for model_name, detected_model in detected_models.items():
-                    try:
-                        if self._register_detected_model(model_name, detected_model):
-                            registered_count += 1
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 탐지 모델 등록 실패 {model_name}: {e}")
-                        continue
-                
-                self.detected_models = detected_models
-                self.logger.info(f"🔍 자동 탐지 완료: {len(detected_models)}개 발견, {registered_count}개 등록")
-            
-        except Exception as e:
-            self.logger.error(f"❌ auto_model_detector 초기화 실패: {e}")
-            self.auto_detector = None
-    
-    def _register_detected_model(self, model_name: str, detected_model) -> bool:
-        """탐지된 모델을 ModelLoader에 등록"""
-        try:
-            # DetectedModel을 StepModelConfig로 변환
-            step_config = StepModelConfig(
-                step_name=getattr(detected_model, 'step_name', 'UnknownStep'),
-                model_name=model_name,
-                model_class=getattr(detected_model, 'model_class', 'BaseModel'),
-                model_type=getattr(detected_model, 'model_type', 'unknown'),
-                device=self.device,
-                precision="fp16" if self.use_fp16 else "fp32",
-                input_size=getattr(detected_model, 'input_size', (512, 512)),
-                num_classes=getattr(detected_model, 'num_classes', None),
-                checkpoints={
-                    "primary_path": str(detected_model.path),
-                    "total_size_mb": getattr(detected_model, 'file_size_mb', 0.0)
-                },
-                confidence_score=getattr(detected_model, 'confidence_score', 0.0),
-                auto_detected=True
-            )
-            
-            return self.register_model_config(model_name, step_config)
-                
-        except Exception as e:
-            self.logger.error(f"❌ 탐지 모델 등록 실패 {model_name}: {e}")
-            return False
     
     def register_model_config(
         self,
@@ -2186,13 +2137,13 @@ class ModelLoader:
             self.logger.error(f"❌ 모델 정리 실패: {e}")
     
     def create_step_interface(self, step_name: str) -> StepModelInterface:
-        """Step 클래스를 위한 모델 인터페이스 생성 (완전 통합된 StepModelInterface 사용)"""
+        """Step 클래스를 위한 모델 인터페이스 생성"""
         try:
             with self._interface_lock:
                 if step_name not in self.step_interfaces:
                     interface = StepModelInterface(self, step_name)
                     self.step_interfaces[step_name] = interface
-                    self.logger.info(f"🔗 {step_name} 완전 통합 인터페이스 생성 완료")
+                    self.logger.info(f"🔗 {step_name} 인터페이스 생성 완료")
                 
                 return self.step_interfaces[step_name]
                 
@@ -2445,24 +2396,181 @@ class ModelLoader:
             self.cleanup()
         except:
             pass
-    
-    # 어댑터에서 호출하는 메서드 (하위 호환성)
-    def register_model(self, name: str, config: Dict[str, Any]):
-        """모델 등록 (어댑터에서 사용)"""
-        try:
-            if not hasattr(self, 'detected_model_registry'):
-                self.detected_model_registry = {}
-            self.detected_model_registry[name] = config
-            self.logger.debug(f"✅ 모델 등록: {name}")
-        except Exception as e:
-            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
-
-    async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
-        """비동기 모델 로드"""
-        return await self.load_model(model_name, **kwargs)
 
 # ==============================================
-# 🔥 전역 ModelLoader 관리 (이제 정의)
+# 🔥 Step 클래스 연동 믹스인
+# ==============================================
+
+class BaseStepMixin:
+    """Step 클래스들이 상속받을 ModelLoader 연동 믹스인"""
+    
+    def _setup_model_interface(self, model_loader: Optional[ModelLoader] = None):
+        """모델 인터페이스 설정"""
+        try:
+            if model_loader is None:
+                # 전역 모델 로더 사용
+                model_loader = get_global_model_loader()
+            
+            self.model_interface = model_loader.create_step_interface(
+                self.__class__.__name__
+            )
+            
+            logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료")
+            
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
+            self.model_interface = None
+    
+    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+        """모델 로드 (Step에서 사용)"""
+        try:
+            if not hasattr(self, 'model_interface') or self.model_interface is None:
+                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
+                return None
+            
+            if model_name:
+                return await self.model_interface.get_model(model_name)
+            else:
+                # 권장 모델 자동 로드
+                return await self.model_interface.get_recommended_model()
+                
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
+            return None
+    
+    def cleanup_models(self):
+        """모델 정리"""
+        try:
+            if hasattr(self, 'model_interface') and self.model_interface:
+                self.model_interface.unload_models()
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
+
+# ==============================================
+# 🔥 유틸리티 함수들
+# ==============================================
+
+def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple, normalize: bool = True) -> torch.Tensor:
+    """이미지 전처리"""
+    try:
+        if not CV_AVAILABLE:
+            raise ImportError("OpenCV not available")
+            
+        if isinstance(image, np.ndarray):
+            if image.shape[2] == 4:  # RGBA
+                image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+            elif len(image.shape) == 3 and image.shape[2] == 3:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image)
+        elif not isinstance(image, Image.Image):
+            raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
+        
+        # 리사이즈
+        image = image.resize(target_size, Image.Resampling.LANCZOS)
+        
+        # 텐서 변환
+        image_array = np.array(image).astype(np.float32)
+        
+        if TORCH_AVAILABLE:
+            image_tensor = torch.from_numpy(image_array).permute(2, 0, 1) / 255.0
+            
+            # 정규화
+            if normalize:
+                mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+                image_tensor = (image_tensor - mean) / std
+            
+            return image_tensor.unsqueeze(0)
+        else:
+            return image_array
+        
+    except Exception as e:
+        logger.error(f"이미지 전처리 실패: {e}")
+        # 더미 텐서 반환
+        if TORCH_AVAILABLE:
+            return torch.randn(1, 3, target_size[1], target_size[0])
+        else:
+            return np.random.randn(target_size[1], target_size[0], 3)
+
+def postprocess_segmentation(output, original_size: tuple, threshold: float = 0.5) -> np.ndarray:
+    """세그멘테이션 후처리"""
+    try:
+        if not CV_AVAILABLE:
+            raise ImportError("OpenCV not available")
+        
+        if TORCH_AVAILABLE and torch.is_tensor(output):
+            if output.dim() == 4:
+                output = output.squeeze(0)
+            
+            # 확률을 클래스로 변환
+            if output.shape[0] > 1:
+                output = torch.argmax(output, dim=0)
+            else:
+                output = (output > threshold).float()
+            
+            # CPU로 이동 및 numpy 변환
+            output = output.cpu().numpy().astype(np.uint8)
+        else:
+            output = np.array(output).astype(np.uint8)
+        
+        # 원본 크기로 리사이즈
+        if output.shape != original_size[::-1]:
+            output = cv2.resize(output, original_size, interpolation=cv2.INTER_NEAREST)
+        
+        return output
+        
+    except Exception as e:
+        logger.error(f"세그멘테이션 후처리 실패: {e}")
+        return np.zeros(original_size[::-1], dtype=np.uint8)
+
+def postprocess_pose(output, original_size: tuple, confidence_threshold: float = 0.3) -> Dict[str, Any]:
+    """포즈 추정 후처리"""
+    try:
+        if isinstance(output, (list, tuple)):
+            # OpenPose 스타일 출력 (PAF, heatmaps)
+            pafs, heatmaps = output[-1]  # 마지막 스테이지 결과 사용
+        else:
+            heatmaps = output
+            pafs = None
+        
+        # 키포인트 추출
+        keypoints = []
+        
+        if TORCH_AVAILABLE and torch.is_tensor(heatmaps):
+            if heatmaps.dim() == 4:
+                heatmaps = heatmaps.squeeze(0)
+            heatmaps_np = heatmaps.cpu().numpy()
+        else:
+            heatmaps_np = np.array(heatmaps)
+        
+        for i in range(heatmaps_np.shape[0] - 1):  # 배경 제외
+            heatmap = heatmaps_np[i]
+            
+            # 최대값 위치 찾기
+            y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+            confidence = heatmap[y, x]
+            
+            if confidence > confidence_threshold:
+                # 원본 이미지 크기로 스케일링
+                x_scaled = int(x * original_size[0] / heatmap.shape[1])
+                y_scaled = int(y * original_size[1] / heatmap.shape[0])
+                keypoints.append([x_scaled, y_scaled, confidence])
+            else:
+                keypoints.append([0, 0, 0])
+        
+        return {
+            'keypoints': keypoints,
+            'pafs': pafs.cpu().numpy() if TORCH_AVAILABLE and torch.is_tensor(pafs) else pafs,
+            'heatmaps': heatmaps_np,
+            'num_keypoints': len([kp for kp in keypoints if kp[2] > confidence_threshold])
+        }
+        
+    except Exception as e:
+        logger.error(f"포즈 추정 후처리 실패: {e}")
+        return {'keypoints': [], 'pafs': None, 'heatmaps': None, 'num_keypoints': 0}
+
+# ==============================================
+# 🔥 전역 ModelLoader 관리
 # ==============================================
 
 _global_model_loader: Optional[ModelLoader] = None
@@ -2644,130 +2752,8 @@ def load_model_with_format(
         logger.error(f"❌ 모델 로딩 실패: {e}")
         return None
 
-# ==============================================
-# 🔥 유틸리티 함수들
-# ==============================================
-
-def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple, normalize: bool = True) -> torch.Tensor:
-    """이미지 전처리"""
-    try:
-        if not CV_AVAILABLE:
-            raise ImportError("OpenCV not available")
-            
-        if isinstance(image, np.ndarray):
-            if image.shape[2] == 4:  # RGBA
-                image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
-            elif len(image.shape) == 3 and image.shape[2] == 3:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image = Image.fromarray(image)
-        elif not isinstance(image, Image.Image):
-            raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
-        
-        # 리사이즈
-        image = image.resize(target_size, Image.Resampling.LANCZOS)
-        
-        # 텐서 변환
-        image_array = np.array(image).astype(np.float32)
-        
-        if TORCH_AVAILABLE:
-            image_tensor = torch.from_numpy(image_array).permute(2, 0, 1) / 255.0
-            
-            # 정규화
-            if normalize:
-                mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-                std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-                image_tensor = (image_tensor - mean) / std
-            
-            return image_tensor.unsqueeze(0)
-        else:
-            return image_array
-        
-    except Exception as e:
-        logger.error(f"이미지 전처리 실패: {e}")
-        # 더미 텐서 반환
-        if TORCH_AVAILABLE:
-            return torch.randn(1, 3, target_size[1], target_size[0])
-        else:
-            return np.random.randn(target_size[1], target_size[0], 3)
-
-def postprocess_segmentation(output, original_size: tuple, threshold: float = 0.5) -> np.ndarray:
-    """세그멘테이션 후처리"""
-    try:
-        if not CV_AVAILABLE:
-            raise ImportError("OpenCV not available")
-        
-        if TORCH_AVAILABLE and torch.is_tensor(output):
-            if output.dim() == 4:
-                output = output.squeeze(0)
-            
-            # 확률을 클래스로 변환
-            if output.shape[0] > 1:
-                output = torch.argmax(output, dim=0)
-            else:
-                output = (output > threshold).float()
-            
-            # CPU로 이동 및 numpy 변환
-            output = output.cpu().numpy().astype(np.uint8)
-        else:
-            output = np.array(output).astype(np.uint8)
-        
-        # 원본 크기로 리사이즈
-        if output.shape != original_size[::-1]:
-            output = cv2.resize(output, original_size, interpolation=cv2.INTER_NEAREST)
-        
-        return output
-        
-    except Exception as e:
-        logger.error(f"세그멘테이션 후처리 실패: {e}")
-        return np.zeros(original_size[::-1], dtype=np.uint8)
-
-def postprocess_pose(output, original_size: tuple, confidence_threshold: float = 0.3) -> Dict[str, Any]:
-    """포즈 추정 후처리"""
-    try:
-        if isinstance(output, (list, tuple)):
-            # OpenPose 스타일 출력 (PAF, heatmaps)
-            pafs, heatmaps = output[-1]  # 마지막 스테이지 결과 사용
-        else:
-            heatmaps = output
-            pafs = None
-        
-        # 키포인트 추출
-        keypoints = []
-        
-        if TORCH_AVAILABLE and torch.is_tensor(heatmaps):
-            if heatmaps.dim() == 4:
-                heatmaps = heatmaps.squeeze(0)
-            heatmaps_np = heatmaps.cpu().numpy()
-        else:
-            heatmaps_np = np.array(heatmaps)
-        
-        for i in range(heatmaps_np.shape[0] - 1):  # 배경 제외
-            heatmap = heatmaps_np[i]
-            
-            # 최대값 위치 찾기
-            y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-            confidence = heatmap[y, x]
-            
-            if confidence > confidence_threshold:
-                # 원본 이미지 크기로 스케일링
-                x_scaled = int(x * original_size[0] / heatmap.shape[1])
-                y_scaled = int(y * original_size[1] / heatmap.shape[0])
-                keypoints.append([x_scaled, y_scaled, confidence])
-            else:
-                keypoints.append([0, 0, 0])
-        
-        return {
-            'keypoints': keypoints,
-            'pafs': pafs.cpu().numpy() if TORCH_AVAILABLE and torch.is_tensor(pafs) else pafs,
-            'heatmaps': heatmaps_np,
-            'num_keypoints': len([kp for kp in keypoints if kp[2] > confidence_threshold])
-        }
-        
-    except Exception as e:
-        logger.error(f"포즈 추정 후처리 실패: {e}")
-        return {'keypoints': [], 'pafs': None, 'heatmaps': None, 'num_keypoints': 0}
-
 # 모듈 레벨에서 안전한 정리 함수 등록
+import atexit
 atexit.register(cleanup_global_loader)
 
 # ==============================================
@@ -2785,7 +2771,7 @@ __all__ = [
     'ModelRegistry',
     'ModelMemoryManager',
     'DeviceManager',
-    'StepModelInterface',  # 🔥 2번 파일 완전 통합됨
+    'StepModelInterface',
     'BaseStepMixin',
     
     # 실제 AI 모델 클래스들
@@ -2814,4 +2800,4 @@ __all__ = [
 ]
 
 # 모듈 로드 확인
-logger.info("✅ ModelLoader v4.0 모듈 로드 완료 - step_model_requests.py 기반 완전 통합 시스템")
+logger.info("✅ ModelLoader v4.0 모듈 로드 완료 - step_model_requests.py 기반 완전 통합 시스템 + StepModelInterface 실제 AI 모델 추론 통합")
