@@ -662,7 +662,7 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # Model Loader를 통한 로드 시도
             try:
-                self.u2net_model = await self.model_interface.load_model_async('u2net_cloth_seg', u2net_config)
+                self.u2net_model = await self.model_interface.load_model_async('u2net_cloth_seg')
                 self.logger.info("✅ U2-Net 모델 로드 성공 (Model Loader)")
             except Exception as e:
                 self.logger.warning(f"Model Loader를 통한 U2-Net 로드 실패: {e}")

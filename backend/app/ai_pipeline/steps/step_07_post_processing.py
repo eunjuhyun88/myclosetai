@@ -514,7 +514,7 @@ class PostProcessingStep(BaseStepMixin):
             }
             
             try:
-                self.sr_model = await self.model_interface.load_model_async('srresnet_x4', sr_config)
+                self.sr_model = await self.model_interface.load_model_async('srresnet_x4')
                 self.logger.info("✅ Super Resolution 모델 로드 성공")
             except Exception as e:
                 self.logger.warning(f"SR 모델 로드 실패: {e}")
@@ -530,7 +530,7 @@ class PostProcessingStep(BaseStepMixin):
             }
             
             try:
-                self.denoise_model = await self.model_interface.load_model_async('denoise_net', denoise_config)
+                self.denoise_model = await self.model_interface.load_model_async('denoise_net')
                 self.logger.info("✅ Denoising 모델 로드 성공")
             except Exception as e:
                 self.logger.warning(f"Denoising 모델 로드 실패: {e}")
