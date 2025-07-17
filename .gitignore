@@ -43,10 +43,6 @@ temp/
 **/temp/
 !**/temp/.gitkeep
 
-# ============================================================================
-# 기본 Python & 프로젝트 설정 (기존 유지)
-# ============================================================================
-
 # Python
 __pycache__/
 *.py[cod]
@@ -78,6 +74,44 @@ mycloset_env/
 frontend/node_modules/
 frontend/package-lock.json
 *.lock
+cat > .gitignore << 'EOF'
+# Node.js
+frontend/node_modules/
+frontend/.next/
+frontend/build/
+frontend/dist/
+frontend/.vite/
+
+# Python
+*.pyc
+__pycache__/
+backend/venv/
+backend/temp_archive/
+get-pip.py
+
+# AI 모델 체크포인트
+backend/ai_models/checkpoints/
+*.bin
+*.pth
+*.ckpt
+*.safetensors
+
+# 캐시 및 로그 파일
+.cache/
+*_cache.json
+*.log
+*.lock
+*.metadata
+
+# 백업 파일
+*.backup*
+*.bak
+
+# 시스템 파일
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 
 # 환경
 mycloset_env/
