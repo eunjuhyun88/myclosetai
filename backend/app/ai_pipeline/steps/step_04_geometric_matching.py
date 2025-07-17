@@ -7,6 +7,7 @@
 ✅ M3 Max 최적화
 ✅ 프로덕션 레벨 안정성
 ✅ 🆕 기하학적 매칭 시각화 이미지 생성 기능 추가
+✅ 🔥 PyTorch 2.1 완전 호환성 수정
 """
 
 import os
@@ -63,6 +64,97 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+# ==============================================
+# 🔥 PyTorch 2.1 호환성 메모리 관리 유틸리티
+# ==============================================
+
+def safe_mps_memory_cleanup(device: str = "mps") -> Dict[str, Any]:
+    """PyTorch 2.1 호환 안전한 MPS 메모리 정리"""
+    result = {
+        "success": False,
+        "method": "none",
+        "device": device,
+        "pytorch_version": torch.__version__
+    }
+    
+    try:
+        # 기본 가비지 컬렉션
+        gc.collect()
+        
+        if device == "mps" and torch.backends.mps.is_available():
+            # PyTorch 2.1 버전별 MPS 메모리 정리
+            try:
+                # Method 1: torch.mps.empty_cache() (PyTorch 2.1+)
+                if hasattr(torch.mps, 'empty_cache'):
+                    torch.mps.empty_cache()
+                    result.update({
+                        "success": True,
+                        "method": "torch.mps.empty_cache"
+                    })
+                    logger.debug("✅ torch.mps.empty_cache() 실행 완료")
+                
+                # Method 2: torch.mps.synchronize() (fallback)
+                elif hasattr(torch.mps, 'synchronize'):
+                    torch.mps.synchronize()
+                    result.update({
+                        "success": True,
+                        "method": "torch.mps.synchronize"
+                    })
+                    logger.debug("✅ torch.mps.synchronize() 실행 완료")
+                
+                # Method 3: Manual cleanup for older versions
+                else:
+                    # 수동 메모리 정리
+                    result.update({
+                        "success": True,
+                        "method": "manual_gc_cleanup"
+                    })
+                    logger.debug("✅ 수동 메모리 정리 완료")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ MPS 메모리 정리 실패: {e}")
+                result.update({
+                    "success": True,  # GC는 성공했으므로 True
+                    "method": "gc_fallback",
+                    "warning": str(e)
+                })
+        
+        elif device == "cuda" and torch.cuda.is_available():
+            # CUDA 메모리 정리
+            try:
+                torch.cuda.empty_cache()
+                result.update({
+                    "success": True,
+                    "method": "torch.cuda.empty_cache"
+                })
+                logger.debug("✅ torch.cuda.empty_cache() 실행 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ CUDA 메모리 정리 실패: {e}")
+                result.update({
+                    "success": True,
+                    "method": "gc_fallback",
+                    "warning": str(e)
+                })
+        
+        else:
+            # CPU 또는 기타 디바이스
+            result.update({
+                "success": True,
+                "method": "gc_only"
+            })
+            logger.debug("✅ CPU 메모리 정리 완료")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ 메모리 정리 전체 실패: {e}")
+        return {
+            "success": False,
+            "method": "error",
+            "device": device,
+            "error": str(e)
+        }
 
 # ==============================================
 # 🧠 AI 모델 클래스들
@@ -351,7 +443,7 @@ class GeometricMatchingStep:
         # 스텝 특화 초기화
         self._initialize_step_specific()
         
-        self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device}")
+        self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device} (PyTorch {torch.__version__})")
     
     def _auto_detect_device(self, device: Optional[str]) -> str:
         """디바이스 자동 감지"""
@@ -487,7 +579,7 @@ class GeometricMatchingStep:
             # 3. 특징 추출기 설정
             await self._setup_feature_extractor()
             
-            # 4. M3 Max 최적화 적용
+            # 4. M3 Max 최적화 적용 (PyTorch 2.1 호환)
             if self.is_m3_max:
                 await self._apply_m3_max_optimizations()
             
@@ -561,14 +653,14 @@ class GeometricMatchingStep:
             raise
     
     async def _apply_m3_max_optimizations(self):
-        """M3 Max 특화 최적화 적용"""
+        """M3 Max 특화 최적화 적용 (PyTorch 2.1 호환)"""
         try:
             optimizations = []
             
-            # 1. MPS 백엔드 최적화
-            if torch.backends.mps.is_available():
-                torch.backends.mps.empty_cache()
-                optimizations.append("MPS Memory Optimization")
+            # 1. 🔥 PyTorch 2.1 호환 MPS 백엔드 최적화
+            memory_result = safe_mps_memory_cleanup(self.device)
+            if memory_result["success"]:
+                optimizations.append(f"MPS Memory Optimization ({memory_result['method']})")
             
             # 2. 모델 최적화
             if hasattr(torch, 'jit') and self.geometric_model:
@@ -666,6 +758,9 @@ class GeometricMatchingStep:
             # 9. 통계 업데이트
             self._update_stats(quality_score, processing_time)
             
+            # 🔥 10. PyTorch 2.1 호환 메모리 정리
+            memory_cleanup = safe_mps_memory_cleanup(self.device)
+            
             self.logger.info(f"✅ 기하학적 매칭 완료 - 품질: {quality_score:.3f}, 시간: {processing_time:.2f}s")
             
             # 🆕 API 호환성을 위한 결과 구조 (기존 필드 + 시각화 필드)
@@ -702,7 +797,9 @@ class GeometricMatchingStep:
                         'device': self.device,
                         'quality_level': self.quality_level,
                         'model_type': 'Neural TPS',
-                        'optimization': 'M3 Max' if self.is_m3_max else self.device
+                        'optimization': 'M3 Max' if self.is_m3_max else self.device,
+                        'pytorch_version': torch.__version__,
+                        'memory_cleanup': memory_cleanup
                     },
                     
                     # 품질 메트릭
@@ -728,7 +825,9 @@ class GeometricMatchingStep:
                     'num_keypoints': self.matching_config['num_keypoints'],
                     'grid_size': self.tps_config['grid_size'],
                     'device': self.device,
-                    'optimization_enabled': self.optimization_enabled
+                    'optimization_enabled': self.optimization_enabled,
+                    'pytorch_version': torch.__version__,
+                    'memory_management': memory_cleanup
                 }
             }
             
@@ -746,7 +845,8 @@ class GeometricMatchingStep:
                     'step_info': {
                         'step_name': 'geometric_matching',
                         'step_number': 4,
-                        'error': str(e)
+                        'error': str(e),
+                        'pytorch_version': torch.__version__
                     }
                 },
                 'error': str(e)
@@ -1526,7 +1626,8 @@ class GeometricMatchingStep:
                     "m3_max_enabled": self.is_m3_max,
                     "optimization_enabled": self.optimization_enabled,
                     "memory_gb": self.memory_gb,
-                    "device_type": self.device_type
+                    "device_type": self.device_type,
+                    "pytorch_version": torch.__version__
                 },
                 "visualization": {
                     "show_keypoints": self.visualization_config.get('show_keypoints', True),
@@ -1540,11 +1641,12 @@ class GeometricMatchingStep:
             return {
                 "step_name": "geometric_matching",
                 "step_number": 4,
-                "error": str(e)
+                "error": str(e),
+                "pytorch_version": torch.__version__
             }
     
     async def cleanup(self):
-        """리소스 정리"""
+        """리소스 정리 - PyTorch 2.1 호환"""
         try:
             self.logger.info("🧹 4단계: 리소스 정리 중...")
             
@@ -1565,14 +1667,12 @@ class GeometricMatchingStep:
             if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=True)
             
-            # 디바이스별 메모리 정리
-            if torch.backends.mps.is_available():
-                torch.mps.empty_cache()
-            elif torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # 🔥 PyTorch 2.1 호환 메모리 정리
+            memory_result = safe_mps_memory_cleanup(self.device)
             
             gc.collect()
-            self.logger.info("✅ 4단계: 리소스 정리 완료")
+            
+            self.logger.info(f"✅ 4단계: 리소스 정리 완료 - 메모리 정리: {memory_result['method']}")
             
         except Exception as e:
             self.logger.warning(f"⚠️ 4단계: 리소스 정리 실패: {e}")
@@ -1610,5 +1710,6 @@ __all__ = [
     'GeometricMatchingModel',
     'TPSTransformNetwork',
     'create_geometric_matching_step',
-    'create_m3_max_geometric_matching_step'
+    'create_m3_max_geometric_matching_step',
+    'safe_mps_memory_cleanup'  # 🆕 PyTorch 2.1 호환 유틸리티
 ]

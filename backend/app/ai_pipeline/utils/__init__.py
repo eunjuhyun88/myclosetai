@@ -1,89 +1,341 @@
 # app/ai_pipeline/utils/__init__.py
 """
-🍎 MyCloset AI 파이프라인 유틸리티 모듈 - 최적 생성자 패턴 적용
-✅ 완전한 통합 관리 시스템
-🔥 단순함 + 편의성 + 확장성 + 일관성
+🍎 MyCloset AI 파이프라인 유틸리티 모듈 v3.0 - 완전 재구성
+✅ 최적 생성자 패턴 적용 + 실제 모델 자동 탐지
+✅ M3 Max 128GB 최적화 설계
+✅ Step 클래스 완벽 호환 + 프로덕션 안정성
+✅ 단순함 + 편의성 + 확장성 + 일관성
+🔥 핵심: 모든 Step 클래스에서 바로 사용 가능한 통합 시스템
 """
 
 import os
 import gc
+import sys
+import time
 import logging
 import asyncio
-from typing import Dict, Any, Optional, Union, List, Callable
-from pathlib import Path
-import weakref
-from functools import lru_cache
 import threading
-import time
+from typing import Dict, Any, Optional, Union, List, Callable, Tuple
+from pathlib import Path
+from functools import lru_cache
+import weakref
 
-# 로깅 설정
+# 기본 로깅 설정
 logger = logging.getLogger(__name__)
 
-# ============================================
-# 🔥 핵심: 선택적 라이브러리 import 시스템
-# ============================================
+# ==============================================
+# 🔥 시스템 환경 감지 및 설정
+# ==============================================
 
-# PyTorch 기본 확인
+@lru_cache(maxsize=1)
+def _detect_system_info() -> Dict[str, Any]:
+    """시스템 정보 감지 (캐시됨)"""
+    try:
+        import platform
+        system_info = {
+            "platform": platform.system(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "python_version": sys.version_info[:3]
+        }
+        
+        # M3 Max 감지
+        is_m3_max = False
+        try:
+            if platform.system() == 'Darwin':
+                import subprocess
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True, timeout=5)
+                is_m3_max = 'M3' in result.stdout
+        except:
+            pass
+        
+        system_info["is_m3_max"] = is_m3_max
+        
+        # GPU 감지
+        gpu_type = "없음"
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                gpu_type = "MPS (Apple Silicon)"
+            elif torch.cuda.is_available():
+                gpu_type = f"CUDA ({torch.cuda.get_device_name(0)})"
+        except:
+            pass
+        
+        system_info["gpu_type"] = gpu_type
+        
+        # 메모리 감지
+        try:
+            import psutil
+            system_info["memory_gb"] = round(psutil.virtual_memory().total / (1024**3))
+        except:
+            system_info["memory_gb"] = 16  # 기본값
+        
+        return system_info
+        
+    except Exception as e:
+        logger.warning(f"시스템 정보 감지 실패: {e}")
+        return {
+            "platform": "Unknown",
+            "is_m3_max": False,
+            "gpu_type": "없음",
+            "memory_gb": 16
+        }
+
+# 시스템 정보 전역 변수
+SYSTEM_INFO = _detect_system_info()
+IS_M3_MAX = SYSTEM_INFO["is_m3_max"]
+MEMORY_GB = SYSTEM_INFO["memory_gb"]
+
+# 디바이스 자동 감지
+@lru_cache(maxsize=1)
+def _detect_default_device() -> str:
+    """기본 디바이스 감지"""
+    try:
+        import torch
+        if torch.backends.mps.is_available():
+            return "mps"
+        elif torch.cuda.is_available():
+            return "cuda"
+        else:
+            return "cpu"
+    except ImportError:
+        return "cpu"
+
+DEFAULT_DEVICE = _detect_default_device()
+
+# PyTorch 가용성 확인
 try:
     import torch
     TORCH_AVAILABLE = True
-    logger.info("✅ PyTorch 사용 가능")
+    logger.info(f"✅ PyTorch 사용 가능 - 디바이스: {DEFAULT_DEVICE}")
 except ImportError:
     TORCH_AVAILABLE = False
     logger.warning("⚠️ PyTorch 사용 불가")
 
-# 개별 유틸리티 모듈들 안전하게 import
+# ==============================================
+# 🔥 핵심 유틸리티 모듈들 안전한 Import
+# ==============================================
+
+# 1. MemoryManager - 메모리 관리 시스템
 try:
     from .memory_manager import (
         MemoryManager,
         MemoryStats,
         create_memory_manager,
+        get_memory_manager,
         get_global_memory_manager,
         initialize_global_memory_manager,
         optimize_memory_usage,
+        optimize_memory,
+        check_memory,
         check_memory_available,
-        get_memory_info
+        get_memory_info,
+        memory_efficient
     )
     MEMORY_MANAGER_AVAILABLE = True
     logger.info("✅ MemoryManager 모듈 로드 성공")
 except ImportError as e:
     MEMORY_MANAGER_AVAILABLE = False
-    MemoryManager = None
     logger.warning(f"⚠️ MemoryManager import 실패: {e}")
+    
+    # 🔥 핵심: 폴백 MemoryManager (기본 기능 제공)
+    class MemoryManager:
+        def __init__(self, device="auto", **kwargs):
+            self.device = device if device != "auto" else DEFAULT_DEVICE
+            self.logger = logging.getLogger(f"{__name__}.FallbackMemoryManager")
+            
+        async def initialize(self) -> bool:
+            return True
+            
+        def get_memory_stats(self):
+            return {"device": self.device, "status": "fallback"}
+            
+        def check_memory_pressure(self):
+            return {"status": "normal", "message": "fallback mode"}
+            
+        def clear_cache(self, aggressive=False):
+            if TORCH_AVAILABLE:
+                import gc
+                gc.collect()
+                
+        async def cleanup(self):
+            self.clear_cache()
+    
+    # 폴백 함수들
+    def create_memory_manager(device="auto", **kwargs):
+        return MemoryManager(device=device, **kwargs)
+    
+    def get_memory_manager(**kwargs):
+        return create_memory_manager(**kwargs)
+    
+    def get_global_memory_manager(**kwargs):
+        return get_memory_manager(**kwargs)
+    
+    def initialize_global_memory_manager(device="mps", **kwargs):
+        return create_memory_manager(device=device, **kwargs)
+    
+    def optimize_memory_usage(device=None, aggressive=False):
+        manager = create_memory_manager(device=device or DEFAULT_DEVICE)
+        manager.clear_cache(aggressive=aggressive)
+        return {"success": True, "device": manager.device}
+    
+    def check_memory_available(min_gb=1.0):
+        return True  # 폴백에서는 항상 True
+    
+    def get_memory_info():
+        return {"device": DEFAULT_DEVICE, "fallback": True}
 
+# 2. ModelLoader - AI 모델 로딩 시스템
 try:
     from .model_loader import (
         ModelLoader,
         ModelConfig,
         ModelFormat,
         ModelType,
-        ModelRegistry,
-        ModelMemoryManager,
+        ModelPriority,
+        LoadedModel,
         StepModelInterface,
         BaseStepMixin,
         create_model_loader,
         get_global_model_loader,
         initialize_global_model_loader,
+        cleanup_global_loader,
         load_model_async,
         load_model_sync,
         preprocess_image,
         postprocess_segmentation,
         postprocess_pose,
-        # 실제 AI 모델 클래스들
+        # AI 모델 클래스들
+        BaseModel,
         GraphonomyModel,
         OpenPoseModel,
         U2NetModel,
         GeometricMatchingModel,
-        HRVITONModel
+        EnhancementModel,
+        CLIPModel
     )
     MODEL_LOADER_AVAILABLE = True
     logger.info("✅ ModelLoader 모듈 로드 성공")
 except ImportError as e:
     MODEL_LOADER_AVAILABLE = False
-    ModelLoader = None
-    ModelConfig = None
     logger.warning(f"⚠️ ModelLoader import 실패: {e}")
+    
+    # 🔥 핵심: 폴백 ModelLoader (기본 기능 제공)
+    from enum import Enum
+    from dataclasses import dataclass
+    
+    class ModelType(Enum):
+        HUMAN_PARSING = "human_parsing"
+        POSE_ESTIMATION = "pose_estimation"
+        CLOTH_SEGMENTATION = "cloth_segmentation"
+        GEOMETRIC_MATCHING = "geometric_matching"
+        CLOTH_WARPING = "cloth_warping"
+        VIRTUAL_FITTING = "virtual_fitting"
+        POST_PROCESSING = "post_processing"
+        QUALITY_ASSESSMENT = "quality_assessment"
+    
+    class ModelFormat(Enum):
+        PYTORCH = "pytorch"
+        SAFETENSORS = "safetensors"
+        DIFFUSERS = "diffusers"
+        ONNX = "onnx"
+    
+    class ModelPriority(Enum):
+        CRITICAL = 1
+        HIGH = 2
+        MEDIUM = 3
+        LOW = 4
+    
+    @dataclass
+    class ModelConfig:
+        name: str
+        model_type: ModelType
+        model_class: str
+        checkpoint_path: Optional[str] = None
+        device: str = "auto"
+        precision: str = "fp16"
+        input_size: Tuple[int, int] = (512, 512)
+        priority: ModelPriority = ModelPriority.MEDIUM
+        metadata: Dict[str, Any] = None
+    
+    class ModelLoader:
+        def __init__(self, device=None, **kwargs):
+            self.device = device if device else DEFAULT_DEVICE
+            self.logger = logging.getLogger(f"{__name__}.FallbackModelLoader")
+            self.model_configs = {}
+            self.loaded_models = {}
+            
+        async def initialize(self) -> bool:
+            return True
+            
+        def register_model(self, name: str, config: ModelConfig) -> bool:
+            self.model_configs[name] = config
+            return True
+            
+        async def load_model(self, name: str, force_reload=False):
+            self.logger.warning(f"폴백 모드: {name} 모델 로드 시뮬레이션")
+            return None
+            
+        def list_models(self):
+            return list(self.model_configs.keys())
+        
+        def cleanup(self):
+            self.loaded_models.clear()
+    
+    class StepModelInterface:
+        def __init__(self, model_loader, step_name):
+            self.model_loader = model_loader
+            self.step_name = step_name
+            
+        async def get_model(self, model_name=None):
+            return None
+            
+        def cleanup(self):
+            pass
+    
+    class BaseStepMixin:
+        def _setup_model_interface(self, model_loader=None):
+            self.model_interface = StepModelInterface(model_loader or ModelLoader(), self.__class__.__name__)
+            
+        async def get_model(self, model_name=None):
+            if hasattr(self, 'model_interface'):
+                return await self.model_interface.get_model(model_name)
+            return None
+    
+    # 폴백 팩토리 함수들
+    def create_model_loader(device="auto", **kwargs):
+        return ModelLoader(device=device, **kwargs)
+    
+    def get_global_model_loader():
+        return create_model_loader()
+    
+    def initialize_global_model_loader(**kwargs):
+        return {"success": True, "message": "Fallback mode initialized"}
+    
+    def cleanup_global_loader():
+        pass
+    
+    async def load_model_async(model_name):
+        return None
+    
+    def load_model_sync(model_name):
+        return None
+    
+    def preprocess_image(image, target_size=(512, 512), normalize=True, device="cpu"):
+        logger.warning("폴백 모드: 이미지 전처리 시뮬레이션")
+        return None
+    
+    def postprocess_segmentation(output, original_size, threshold=0.5):
+        logger.warning("폴백 모드: 세그멘테이션 후처리 시뮬레이션")
+        return None
+    
+    def postprocess_pose(output, original_size, confidence_threshold=0.3):
+        logger.warning("폴백 모드: 포즈 후처리 시뮬레이션")
+        return {"keypoints": [], "num_keypoints": 0}
 
+# 3. DataConverter - 데이터 변환 시스템
 try:
     from .data_converter import (
         DataConverter,
@@ -97,827 +349,525 @@ try:
     logger.info("✅ DataConverter 모듈 로드 성공")
 except ImportError as e:
     DATA_CONVERTER_AVAILABLE = False
-    DataConverter = None
     logger.warning(f"⚠️ DataConverter import 실패: {e}")
+    
+    # 🔥 핵심: 폴백 DataConverter (기본 기능 제공)
+    class DataConverter:
+        def __init__(self, device=None, **kwargs):
+            self.device = device if device else DEFAULT_DEVICE
+            self.logger = logging.getLogger(f"{__name__}.FallbackDataConverter")
+            self.default_size = kwargs.get('default_size', (512, 512))
+            
+        async def initialize(self) -> bool:
+            return True
+            
+        def image_to_tensor(self, image, size=None, normalize=False, **kwargs):
+            self.logger.warning("폴백 모드: 이미지→텐서 변환 시뮬레이션")
+            return None
+            
+        def tensor_to_image(self, tensor, denormalize=False, format="PIL"):
+            self.logger.warning("폴백 모드: 텐서→이미지 변환 시뮬레이션")
+            return None
+            
+        def batch_convert_images(self, images, target_format="tensor", **kwargs):
+            return [None] * len(images)
+            
+        def resize_image(self, image, size, method="bilinear", preserve_aspect_ratio=False):
+            self.logger.warning("폴백 모드: 이미지 크기 조정 시뮬레이션")
+            return image
+    
+    # 폴백 팩토리 함수들
+    def create_data_converter(default_size=(512, 512), device="auto", **kwargs):
+        return DataConverter(device=device, default_size=default_size, **kwargs)
+    
+    def get_global_data_converter():
+        return create_data_converter()
+    
+    def initialize_global_data_converter(**kwargs):
+        return create_data_converter(**kwargs)
+    
+    def quick_image_to_tensor(image, size=(512, 512)):
+        return None
+    
+    def quick_tensor_to_image(tensor):
+        return None
 
-# 🍎 M3 Max 감지
-def _detect_m3_max() -> bool:
-    """M3 Max 칩 자동 감지"""
-    try:
-        import platform
-        import subprocess
-        
-        if platform.system() == 'Darwin':  # macOS
-            result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                  capture_output=True, text=True)
-            return 'M3' in result.stdout
-    except:
-        pass
-    return False
+# 4. 자동 모델 탐지 시스템 (선택적)
+try:
+    from .auto_model_detector import (
+        AdvancedModelDetector,
+        AdvancedModelLoaderAdapter,
+        DetectedModel,
+        ModelCategory,
+        create_advanced_detector,
+        quick_model_detection,
+        detect_and_integrate_with_model_loader,
+        export_model_registry_code,
+        validate_model_paths,
+        benchmark_model_loading
+    )
+    AUTO_MODEL_DETECTOR_AVAILABLE = True
+    logger.info("✅ AutoModelDetector 모듈 로드 성공")
+except ImportError as e:
+    AUTO_MODEL_DETECTOR_AVAILABLE = False
+    logger.warning(f"⚠️ AutoModelDetector import 실패: {e}")
+    
+    # 기본 폴백 (자동 탐지 없이)
+    def quick_model_detection(**kwargs):
+        return {"total_models": 0, "message": "Auto detection not available"}
 
-# 시스템 정보
-IS_M3_MAX = _detect_m3_max()
-DEFAULT_DEVICE = 'mps' if IS_M3_MAX else ('cuda' if TORCH_AVAILABLE and torch.cuda.is_available() else 'cpu')
+# ==============================================
+# 🔥 통합 관리 시스템
+# ==============================================
 
-# ============================================
-# 🔥 핵심: 통합 유틸리티 매니저
-# ============================================
-
-class OptimalUtilsManager:
+class UtilsManager:
     """
-    🍎 최적 생성자 패턴 기반 통합 유틸리티 매니저
-    모든 AI 파이프라인 유틸리티를 단일 인터페이스로 관리
+    🍎 통합 유틸리티 관리자 - 최적 생성자 패턴 적용
+    ✅ 모든 유틸리티를 하나의 인터페이스로 통합
+    ✅ Step 클래스에서 바로 사용 가능
     """
     
     _instance = None
-    _lock = threading.RLock()
+    _lock = threading.Lock()
     
-    def __new__(cls, *args, **kwargs):
-        """싱글톤 패턴 적용 (선택적)"""
-        if kwargs.get('singleton', True):
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                return cls._instance
-        return super().__new__(cls)
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
     
-    def __init__(
-        self,
-        device: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ):
-        """
-        ✅ 최적 생성자 - 유틸리티 통합 관리
-
-        Args:
-            device: 사용할 디바이스 (None=자동감지, 'cpu', 'cuda', 'mps')
-            config: 통합 설정 딕셔너리
-            **kwargs: 확장 파라미터들
-                - auto_initialize: bool = True  # 자동 초기화
-                - memory_gb: float = 128.0 if IS_M3_MAX else 16.0  # 메모리 크기
-                - is_m3_max: bool = IS_M3_MAX  # M3 Max 여부
-                - optimization_enabled: bool = True  # 최적화 활성화
-                - quality_level: str = "maximum" if IS_M3_MAX else "balanced"
-                - use_fp16: bool = True  # FP16 사용
-                - enable_caching: bool = True  # 캐싱 활성화
-                - lazy_loading: bool = True  # 지연 로딩
-                - singleton: bool = True  # 싱글톤 사용
-        """
-        # 중복 초기화 방지
-        if hasattr(self, '_initialized') and self._initialized:
+    def __init__(self):
+        if self._initialized:
             return
             
-        # 1. 💡 지능적 디바이스 자동 감지
-        self.device = self._auto_detect_device(device)
-
-        # 2. 📋 기본 설정
-        self.config = config or {}
-        self.step_name = self.__class__.__name__
-        self.logger = logging.getLogger(f"utils.{self.step_name}")
-
-        # 3. 🔧 시스템 파라미터 (M3 Max 최적화)
-        self.memory_gb = kwargs.get('memory_gb', 128.0 if IS_M3_MAX else 16.0)
-        self.is_m3_max = kwargs.get('is_m3_max', IS_M3_MAX)
-        self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.quality_level = kwargs.get('quality_level', "maximum" if IS_M3_MAX else "balanced")
+        self.logger = logging.getLogger(f"{__name__}.UtilsManager")
         
-        # 4. ⚙️ 유틸리티 특화 설정
-        self.use_fp16 = kwargs.get('use_fp16', True)
-        self.enable_caching = kwargs.get('enable_caching', True)
-        self.lazy_loading = kwargs.get('lazy_loading', True)
-        self.auto_initialize = kwargs.get('auto_initialize', True)
-
-        # 5. 🎯 유틸리티 인스턴스들
-        self.memory_manager: Optional[MemoryManager] = None
-        self.model_loader: Optional[ModelLoader] = None
-        self.data_converter: Optional[DataConverter] = None
+        # 컴포넌트 초기화
+        self.memory_manager = None
+        self.model_loader = None
+        self.data_converter = None
         
-        # 6. ✅ 상태 관리
-        self.initialized = False
-        self.initialization_results = {}
-        self._weak_refs = weakref.WeakSet()
-        
-        # 7. 🚀 자동 초기화
-        if self.auto_initialize:
-            self.initialize_all()
+        # 상태 관리
+        self.is_initialized = False
+        self.initialization_time = None
         
         self._initialized = True
-        self.logger.info(f"🎯 OptimalUtilsManager 생성 완료 - 디바이스: {self.device}")
-
-    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
-        """💡 지능적 디바이스 자동 감지"""
-        if preferred_device:
-            return preferred_device
-
-        if not TORCH_AVAILABLE:
-            return 'cpu'
-
-        try:
-            if torch.backends.mps.is_available():
-                return 'mps'  # M3 Max 우선
-            elif torch.cuda.is_available():
-                return 'cuda'  # NVIDIA GPU
-            else:
-                return 'cpu'  # 폴백
-        except:
-            return 'cpu'
-
-    def initialize_all(self) -> Dict[str, bool]:
-        """모든 유틸리티 초기화"""
+        
+        self.logger.info("🎯 UtilsManager 인스턴스 생성")
+    
+    async def initialize(
+        self,
+        device: Optional[str] = None,
+        memory_gb: Optional[float] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """통합 초기화"""
+        if self.is_initialized:
+            return {"success": True, "message": "Already initialized"}
+        
         start_time = time.time()
-        results = {}
+        device = device or DEFAULT_DEVICE
+        memory_gb = memory_gb or MEMORY_GB
         
-        self.logger.info("🚀 유틸리티 통합 초기화 시작")
+        self.logger.info(f"🚀 UtilsManager 초기화 시작 - 디바이스: {device}")
+        
+        results = {
+            "memory_manager": False,
+            "model_loader": False,
+            "data_converter": False,
+            "errors": []
+        }
         
         try:
-            # 1. Memory Manager 초기화
+            # 1. MemoryManager 초기화
             if MEMORY_MANAGER_AVAILABLE:
                 try:
-                    memory_config = self.config.get('memory_manager', {})
-                    self.memory_manager = MemoryManager(
-                        device=self.device,
-                        config=memory_config,
-                        memory_gb=self.memory_gb,
-                        is_m3_max=self.is_m3_max,
-                        optimization_enabled=self.optimization_enabled,
-                        **memory_config
+                    self.memory_manager = create_memory_manager(
+                        device=device,
+                        memory_gb=memory_gb,
+                        is_m3_max=IS_M3_MAX,
+                        optimization_enabled=True,
+                        **kwargs
                     )
-                    results['memory_manager'] = True
-                    self.logger.info("✅ MemoryManager 초기화 성공")
+                    await self.memory_manager.initialize()
+                    results["memory_manager"] = True
+                    self.logger.info("✅ MemoryManager 초기화 완료")
                 except Exception as e:
+                    results["errors"].append(f"MemoryManager: {e}")
                     self.logger.error(f"❌ MemoryManager 초기화 실패: {e}")
-                    results['memory_manager'] = False
-            else:
-                results['memory_manager'] = False
-                self.logger.warning("⚠️ MemoryManager 사용 불가")
             
-            # 2. Model Loader 초기화
+            # 2. ModelLoader 초기화
             if MODEL_LOADER_AVAILABLE:
                 try:
-                    loader_config = self.config.get('model_loader', {})
-                    self.model_loader = ModelLoader(
-                        device=self.device,
-                        config=loader_config,
-                        memory_gb=self.memory_gb,
-                        is_m3_max=self.is_m3_max,
-                        optimization_enabled=self.optimization_enabled,
-                        use_fp16=self.use_fp16,
-                        **loader_config
+                    self.model_loader = create_model_loader(
+                        device=device,
+                        memory_limit_gb=memory_gb,
+                        auto_scan=True,
+                        **kwargs
                     )
-                    results['model_loader'] = True
-                    self.logger.info("✅ ModelLoader 초기화 성공")
+                    await self.model_loader.initialize()
+                    results["model_loader"] = True
+                    self.logger.info("✅ ModelLoader 초기화 완료")
                 except Exception as e:
+                    results["errors"].append(f"ModelLoader: {e}")
                     self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
-                    results['model_loader'] = False
-            else:
-                results['model_loader'] = False
-                self.logger.warning("⚠️ ModelLoader 사용 불가")
             
-            # 3. Data Converter 초기화
+            # 3. DataConverter 초기화
             if DATA_CONVERTER_AVAILABLE:
                 try:
-                    converter_config = self.config.get('data_converter', {})
-                    self.data_converter = DataConverter(
-                        device=self.device,
-                        config=converter_config,
-                        memory_gb=self.memory_gb,
-                        is_m3_max=self.is_m3_max,
-                        optimization_enabled=self.optimization_enabled,
-                        **converter_config
+                    self.data_converter = create_data_converter(
+                        device=device,
+                        default_size=kwargs.get('default_size', (512, 512)),
+                        is_m3_max=IS_M3_MAX,
+                        **kwargs
                     )
-                    results['data_converter'] = True
-                    self.logger.info("✅ DataConverter 초기화 성공")
+                    await self.data_converter.initialize()
+                    results["data_converter"] = True
+                    self.logger.info("✅ DataConverter 초기화 완료")
                 except Exception as e:
+                    results["errors"].append(f"DataConverter: {e}")
                     self.logger.error(f"❌ DataConverter 초기화 실패: {e}")
-                    results['data_converter'] = False
-            else:
-                results['data_converter'] = False
-                self.logger.warning("⚠️ DataConverter 사용 불가")
             
-            # 4. 초기화 결과 분석
-            success_count = sum(results.values())
-            total_count = len(results)
+            # 4. 폴백 인스턴스 생성 (필요한 경우)
+            if not self.memory_manager:
+                self.memory_manager = create_memory_manager(device=device)
+            if not self.model_loader:
+                self.model_loader = create_model_loader(device=device)
+            if not self.data_converter:
+                self.data_converter = create_data_converter(device=device)
             
-            self.initialized = success_count > 0
-            self.initialization_results = results
+            self.is_initialized = True
+            self.initialization_time = time.time() - start_time
             
-            # 5. M3 Max 특화 최적화
-            if self.is_m3_max and self.optimization_enabled and success_count > 0:
-                self._apply_m3_max_optimizations()
+            success_count = sum(results[key] for key in ["memory_manager", "model_loader", "data_converter"])
             
-            elapsed_time = time.time() - start_time
+            self.logger.info(f"🎉 UtilsManager 초기화 완료 ({self.initialization_time:.2f}s)")
+            self.logger.info(f"📊 성공한 컴포넌트: {success_count}/3")
             
-            if self.initialized:
-                self.logger.info(f"🎉 유틸리티 통합 초기화 완료: {success_count}/{total_count} 성공 ({elapsed_time:.2f}s)")
-            else:
-                self.logger.error(f"❌ 유틸리티 초기화 실패: 모든 모듈 사용 불가")
-            
-            return results
+            return {
+                "success": True,
+                "initialization_time": self.initialization_time,
+                "device": device,
+                "components": results,
+                "system_info": SYSTEM_INFO
+            }
             
         except Exception as e:
-            self.logger.error(f"❌ 유틸리티 매니저 초기화 치명적 실패: {e}")
+            self.logger.error(f"❌ UtilsManager 초기화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "components": results
+            }
+    
+    def create_step_interface(self, step_name: str) -> Dict[str, Any]:
+        """Step 클래스용 통합 인터페이스 생성"""
+        try:
+            interface = {
+                "step_name": step_name,
+                "memory_manager": self.memory_manager,
+                "model_loader": self.model_loader,
+                "data_converter": self.data_converter,
+                "get_model": self._create_get_model_func(step_name),
+                "process_image": self._create_process_image_func(),
+                "optimize_memory": self._create_optimize_memory_func(),
+                "logger": logging.getLogger(f"steps.{step_name}")
+            }
+            
+            self.logger.info(f"🔗 {step_name} 인터페이스 생성 완료")
+            return interface
+            
+        except Exception as e:
+            self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
             return {"error": str(e)}
-
-    def _apply_m3_max_optimizations(self):
-        """🍎 M3 Max 특화 최적화 적용"""
-        try:
-            optimizations = []
-            
-            # 1. 메모리 관리 최적화
-            if self.memory_manager:
-                # 128GB 메모리 활용 최적화
-                optimizations.append("Unified Memory Architecture")
-                
-            # 2. 모델 로더 최적화  
-            if self.model_loader:
-                # Neural Engine 활용 준비
-                optimizations.append("Neural Engine Ready")
-                
-            # 3. 데이터 변환 최적화
-            if self.data_converter:
-                # Metal Performance Shaders 활용
-                optimizations.append("Metal Performance Shaders")
-            
-            # 4. PyTorch MPS 최적화
-            if TORCH_AVAILABLE and torch.backends.mps.is_available():
-                optimizations.append("PyTorch MPS Backend")
-            
-            if optimizations:
-                self.logger.info(f"🍎 M3 Max 최적화 적용: {', '.join(optimizations)}")
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ M3 Max 최적화 실패: {e}")
-
-    # ============================================
-    # 🔥 유틸리티 접근 메서드들
-    # ============================================
-
-    def get_memory_manager(self) -> Optional[MemoryManager]:
-        """메모리 매니저 반환"""
-        if not self.memory_manager and MEMORY_MANAGER_AVAILABLE:
-            self.logger.info("🔄 지연 로딩: MemoryManager 초기화")
-            self._initialize_memory_manager()
-        return self.memory_manager
-
-    def get_model_loader(self) -> Optional[ModelLoader]:
-        """모델 로더 반환"""
-        if not self.model_loader and MODEL_LOADER_AVAILABLE:
-            self.logger.info("🔄 지연 로딩: ModelLoader 초기화")
-            self._initialize_model_loader()
-        return self.model_loader
-
-    def get_data_converter(self) -> Optional[DataConverter]:
-        """데이터 변환기 반환"""
-        if not self.data_converter and DATA_CONVERTER_AVAILABLE:
-            self.logger.info("🔄 지연 로딩: DataConverter 초기화")
-            self._initialize_data_converter()
-        return self.data_converter
-
-    def _initialize_memory_manager(self):
-        """지연 로딩: MemoryManager 초기화"""
-        try:
-            if MEMORY_MANAGER_AVAILABLE:
-                memory_config = self.config.get('memory_manager', {})
-                self.memory_manager = MemoryManager(
-                    device=self.device,
-                    config=memory_config,
-                    **memory_config
-                )
-        except Exception as e:
-            self.logger.error(f"지연 로딩 실패 - MemoryManager: {e}")
-
-    def _initialize_model_loader(self):
-        """지연 로딩: ModelLoader 초기화"""
-        try:
-            if MODEL_LOADER_AVAILABLE:
-                loader_config = self.config.get('model_loader', {})
-                self.model_loader = ModelLoader(
-                    device=self.device,
-                    config=loader_config,
-                    **loader_config
-                )
-        except Exception as e:
-            self.logger.error(f"지연 로딩 실패 - ModelLoader: {e}")
-
-    def _initialize_data_converter(self):
-        """지연 로딩: DataConverter 초기화"""
-        try:
-            if DATA_CONVERTER_AVAILABLE:
-                converter_config = self.config.get('data_converter', {})
-                self.data_converter = DataConverter(
-                    device=self.device,
-                    config=converter_config,
-                    **converter_config
-                )
-        except Exception as e:
-            self.logger.error(f"지연 로딩 실패 - DataConverter: {e}")
-
-    def get_all_utils(self) -> Dict[str, Any]:
-        """모든 유틸리티 인스턴스 반환"""
-        return {
-            'memory_manager': self.get_memory_manager(),
-            'model_loader': self.get_model_loader(),
-            'data_converter': self.get_data_converter()
-        }
-
-    def get_utils_info(self) -> Dict[str, Any]:
-        """유틸리티 통합 정보 조회"""
-        info = {
-            "manager_initialized": self.initialized,
-            "device": self.device,
-            "is_m3_max": self.is_m3_max,
-            "memory_gb": self.memory_gb,
-            "optimization_enabled": self.optimization_enabled,
-            "quality_level": self.quality_level,
-            "config_keys": list(self.config.keys()),
-            "system_info": {
-                "torch_available": TORCH_AVAILABLE,
-                "default_device": DEFAULT_DEVICE,
-                "mps_available": TORCH_AVAILABLE and torch.backends.mps.is_available() if TORCH_AVAILABLE else False,
-                "cuda_available": TORCH_AVAILABLE and torch.cuda.is_available() if TORCH_AVAILABLE else False
-            },
-            "available_utils": {
-                "memory_manager": MEMORY_MANAGER_AVAILABLE and self.get_memory_manager() is not None,
-                "model_loader": MODEL_LOADER_AVAILABLE and self.get_model_loader() is not None,
-                "data_converter": DATA_CONVERTER_AVAILABLE and self.get_data_converter() is not None
-            },
-            "library_status": {
-                "memory_manager": MEMORY_MANAGER_AVAILABLE,
-                "model_loader": MODEL_LOADER_AVAILABLE,
-                "data_converter": DATA_CONVERTER_AVAILABLE
-            },
-            "initialization_results": self.initialization_results
-        }
-        
-        # 각 유틸리티의 상세 정보 추가
-        if self.memory_manager:
+    
+    def _create_get_model_func(self, step_name: str) -> Callable:
+        """모델 로드 함수 생성"""
+        async def get_model(model_name: Optional[str] = None):
             try:
-                info["memory_manager_info"] = {
-                    "device": self.memory_manager.device,
-                    "memory_limit_gb": getattr(self.memory_manager, 'memory_limit_gb', 'N/A'),
-                    "is_m3_max": getattr(self.memory_manager, 'is_m3_max', self.is_m3_max)
-                }
+                if self.model_loader:
+                    if hasattr(self.model_loader, 'create_step_interface'):
+                        interface = self.model_loader.create_step_interface(step_name)
+                        return await interface.get_model(model_name)
+                    else:
+                        return await self.model_loader.load_model(model_name)
+                return None
             except Exception as e:
-                info["memory_manager_info"] = {"error": str(e)}
-        
-        if self.model_loader:
+                self.logger.error(f"❌ {step_name} 모델 로드 실패: {e}")
+                return None
+        return get_model
+    
+    def _create_process_image_func(self) -> Callable:
+        """이미지 처리 함수 생성"""
+        def process_image(image, operation="to_tensor", **kwargs):
             try:
-                info["model_loader_info"] = {
-                    "device": self.model_loader.device,
-                    "use_fp16": getattr(self.model_loader, 'use_fp16', 'N/A'),
-                    "max_cached_models": getattr(self.model_loader, 'max_cached_models', 'N/A'),
-                    "loaded_models": len(getattr(self.model_loader, 'model_cache', {}))
-                }
+                if self.data_converter:
+                    if operation == "to_tensor":
+                        return self.data_converter.image_to_tensor(image, **kwargs)
+                    elif operation == "from_tensor":
+                        return self.data_converter.tensor_to_image(image, **kwargs)
+                    elif operation == "resize":
+                        return self.data_converter.resize_image(image, **kwargs)
+                return None
             except Exception as e:
-                info["model_loader_info"] = {"error": str(e)}
-        
-        if self.data_converter:
+                self.logger.error(f"❌ 이미지 처리 실패: {e}")
+                return None
+        return process_image
+    
+    def _create_optimize_memory_func(self) -> Callable:
+        """메모리 최적화 함수 생성"""
+        async def optimize_memory(aggressive: bool = False):
             try:
-                info["data_converter_info"] = {
-                    "device": self.data_converter.device,
-                    "default_size": getattr(self.data_converter, 'default_size', 'N/A'),
-                    "use_gpu_acceleration": getattr(self.data_converter, 'use_gpu_acceleration', 'N/A')
-                }
+                if self.memory_manager:
+                    if hasattr(self.memory_manager, 'smart_cleanup'):
+                        self.memory_manager.smart_cleanup()
+                    elif hasattr(self.memory_manager, 'clear_cache'):
+                        self.memory_manager.clear_cache(aggressive=aggressive)
+                    return {"success": True}
+                return {"success": False, "message": "MemoryManager not available"}
             except Exception as e:
-                info["data_converter_info"] = {"error": str(e)}
-        
-        return info
-
-    # ============================================
-    # 🔥 통합 작업 메서드들
-    # ============================================
-
-    async def optimize_memory(self) -> Dict[str, Any]:
-        """통합 메모리 최적화"""
+                self.logger.error(f"❌ 메모리 최적화 실패: {e}")
+                return {"success": False, "error": str(e)}
+        return optimize_memory
+    
+    def get_system_status(self) -> Dict[str, Any]:
+        """시스템 상태 조회"""
         try:
-            results = {"success": False, "operations": []}
+            status = {
+                "is_initialized": self.is_initialized,
+                "initialization_time": self.initialization_time,
+                "system_info": SYSTEM_INFO,
+                "components": {
+                    "memory_manager": {
+                        "available": MEMORY_MANAGER_AVAILABLE,
+                        "initialized": self.memory_manager is not None
+                    },
+                    "model_loader": {
+                        "available": MODEL_LOADER_AVAILABLE,
+                        "initialized": self.model_loader is not None
+                    },
+                    "data_converter": {
+                        "available": DATA_CONVERTER_AVAILABLE,
+                        "initialized": self.data_converter is not None
+                    }
+                }
+            }
             
-            # 1. 메모리 매니저를 통한 최적화
-            if self.memory_manager:
+            # 상세 정보 추가
+            if self.memory_manager and hasattr(self.memory_manager, 'get_memory_stats'):
                 try:
-                    await self.memory_manager.cleanup()
-                    results["operations"].append("memory_manager_cleanup")
-                except Exception as e:
-                    self.logger.warning(f"메모리 매니저 정리 실패: {e}")
+                    status["memory_stats"] = self.memory_manager.get_memory_stats().__dict__
+                except:
+                    pass
             
-            # 2. 모델 로더 캐시 정리
-            if self.model_loader:
+            if self.model_loader and hasattr(self.model_loader, 'get_system_info'):
                 try:
-                    await self.model_loader._cleanup_least_used_models()
-                    results["operations"].append("model_cache_cleanup")
-                except Exception as e:
-                    self.logger.warning(f"모델 캐시 정리 실패: {e}")
+                    status["model_loader_info"] = self.model_loader.get_system_info()
+                except:
+                    pass
             
-            # 3. 시스템 레벨 정리
-            try:
-                gc.collect()
-                if TORCH_AVAILABLE:
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    elif torch.backends.mps.is_available():
-                        try:
-                            torch.mps.empty_cache()
-                        except:
-                            pass
-                results["operations"].append("system_cleanup")
-            except Exception as e:
-                self.logger.warning(f"시스템 정리 실패: {e}")
-            
-            results["success"] = len(results["operations"]) > 0
-            
-            if results["success"]:
-                self.logger.info(f"🧹 통합 메모리 최적화 완료: {', '.join(results['operations'])}")
-            
-            return results
+            return status
             
         except Exception as e:
-            self.logger.error(f"❌ 통합 메모리 최적화 실패: {e}")
-            return {"success": False, "error": str(e)}
-
-    def cleanup(self):
+            return {"error": str(e)}
+    
+    async def cleanup(self):
         """리소스 정리"""
         try:
-            cleanup_operations = []
+            if self.model_loader and hasattr(self.model_loader, 'cleanup'):
+                self.model_loader.cleanup()
             
-            # 1. 개별 유틸리티 정리
-            if self.model_loader:
-                try:
-                    self.model_loader.cleanup()
-                    cleanup_operations.append("model_loader")
-                except Exception as e:
-                    self.logger.warning(f"ModelLoader 정리 실패: {e}")
+            if self.memory_manager and hasattr(self.memory_manager, 'cleanup'):
+                await self.memory_manager.cleanup()
             
-            if self.memory_manager:
-                try:
-                    if hasattr(self.memory_manager, 'cleanup'):
-                        self.memory_manager.cleanup()
-                    cleanup_operations.append("memory_manager")
-                except Exception as e:
-                    self.logger.warning(f"MemoryManager 정리 실패: {e}")
-            
-            if self.data_converter:
-                try:
-                    if hasattr(self.data_converter, 'cleanup'):
-                        self.data_converter.cleanup()
-                    cleanup_operations.append("data_converter")
-                except Exception as e:
-                    self.logger.warning(f"DataConverter 정리 실패: {e}")
-            
-            # 2. 참조 정리
-            self.memory_manager = None
-            self.model_loader = None
-            self.data_converter = None
-            self._weak_refs.clear()
-            
-            # 3. 상태 리셋
-            self.initialized = False
-            self.initialization_results = {}
-            
-            if cleanup_operations:
-                self.logger.info(f"✅ OptimalUtilsManager 정리 완료: {', '.join(cleanup_operations)}")
+            self.is_initialized = False
+            self.logger.info("✅ UtilsManager 정리 완료")
             
         except Exception as e:
-            self.logger.error(f"❌ OptimalUtilsManager 정리 실패: {e}")
+            self.logger.error(f"❌ UtilsManager 정리 실패: {e}")
 
-    def __del__(self):
-        """소멸자"""
-        try:
-            self.cleanup()
-        except:
-            pass
+# ==============================================
+# 🔥 전역 함수들 - Step 클래스에서 바로 사용
+# ==============================================
 
-# ============================================
-# 🔥 전역 매니저 관리
-# ============================================
+# 전역 UtilsManager 인스턴스
+_global_utils_manager: Optional[UtilsManager] = None
+_utils_lock = threading.Lock()
 
-_global_utils_manager: Optional[OptimalUtilsManager] = None
-_manager_lock = threading.RLock()
-
-def get_global_utils_manager() -> Optional[OptimalUtilsManager]:
-    """전역 유틸리티 매니저 반환"""
-    global _global_utils_manager
-    return _global_utils_manager
-
-def initialize_global_utils(**kwargs) -> OptimalUtilsManager:
-    """전역 유틸리티 매니저 초기화"""
+def get_utils_manager() -> UtilsManager:
+    """전역 UtilsManager 인스턴스 반환"""
     global _global_utils_manager
     
-    with _manager_lock:
+    with _utils_lock:
         if _global_utils_manager is None:
-            _global_utils_manager = OptimalUtilsManager(**kwargs)
-            logger.info("🌍 전역 유틸리티 매니저 생성 완료")
+            _global_utils_manager = UtilsManager()
         return _global_utils_manager
 
-def reset_global_utils():
-    """전역 유틸리티 매니저 리셋"""
-    global _global_utils_manager
+def initialize_global_utils(device: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+    """
+    🔥 전역 유틸리티 시스템 초기화 - main.py에서 사용
     
-    with _manager_lock:
-        if _global_utils_manager:
-            _global_utils_manager.cleanup()
-            _global_utils_manager = None
-            logger.info("🔄 전역 유틸리티 매니저 리셋 완료")
-
-# ============================================
-# 🔥 편의 함수들 (최적 생성자 패턴 호환)
-# ============================================
-
-def create_optimal_utils(
-    device: Optional[str] = None,
-    memory_gb: Optional[float] = None,
-    is_m3_max: Optional[bool] = None,
-    optimization_enabled: bool = True,
-    **kwargs
-) -> OptimalUtilsManager:
-    """최적 생성자 패턴으로 유틸리티 매니저 생성"""
+    Args:
+        device: 사용할 디바이스 ('auto', 'mps', 'cuda', 'cpu')
+        **kwargs: 추가 설정
     
-    # 기본값 설정
-    if memory_gb is None:
-        memory_gb = 128.0 if (is_m3_max or IS_M3_MAX) else 16.0
-    
-    if is_m3_max is None:
-        is_m3_max = IS_M3_MAX
-    
-    return OptimalUtilsManager(
-        device=device,
-        memory_gb=memory_gb,
-        is_m3_max=is_m3_max,
-        optimization_enabled=optimization_enabled,
-        singleton=False,  # 새 인스턴스 생성
-        **kwargs
-    )
-
-# ============================================
-# 🔥 빠른 접근 함수들
-# ============================================
-
-def get_memory_manager(**kwargs) -> Optional[MemoryManager]:
-    """메모리 매니저 빠른 접근"""
-    # 1. 전역 매니저에서 시도
-    manager = get_global_utils_manager()
-    if manager:
-        mm = manager.get_memory_manager()
-        if mm:
-            return mm
-    
-    # 2. 개별 전역 인스턴스 확인
-    if MEMORY_MANAGER_AVAILABLE:
-        try:
-            return get_global_memory_manager()
-        except:
-            pass
-    
-    # 3. 새 인스턴스 생성 (최후 수단)
-    if MEMORY_MANAGER_AVAILABLE and kwargs.get('create_if_missing', False):
-        try:
-            return create_memory_manager(**kwargs)
-        except Exception as e:
-            logger.warning(f"메모리 매니저 생성 실패: {e}")
-    
-    return None
-
-def get_model_loader(**kwargs) -> Optional[ModelLoader]:
-    """모델 로더 빠른 접근"""
-    # 1. 전역 매니저에서 시도
-    manager = get_global_utils_manager()
-    if manager:
-        ml = manager.get_model_loader()
-        if ml:
-            return ml
-    
-    # 2. 개별 전역 인스턴스 확인
-    if MODEL_LOADER_AVAILABLE:
-        try:
-            return get_global_model_loader()
-        except:
-            pass
-    
-    # 3. 새 인스턴스 생성 (최후 수단)
-    if MODEL_LOADER_AVAILABLE and kwargs.get('create_if_missing', False):
-        try:
-            return create_model_loader(**kwargs)
-        except Exception as e:
-            logger.warning(f"모델 로더 생성 실패: {e}")
-    
-    return None
-
-def get_data_converter(**kwargs) -> Optional[DataConverter]:
-    """데이터 변환기 빠른 접근"""
-    # 1. 전역 매니저에서 시도
-    manager = get_global_utils_manager()
-    if manager:
-        dc = manager.get_data_converter()
-        if dc:
-            return dc
-    
-    # 2. 개별 전역 인스턴스 확인
-    if DATA_CONVERTER_AVAILABLE:
-        try:
-            return get_global_data_converter()
-        except:
-            pass
-    
-    # 3. 새 인스턴스 생성 (최후 수단)
-    if DATA_CONVERTER_AVAILABLE and kwargs.get('create_if_missing', False):
-        try:
-            return create_data_converter(**kwargs)
-        except Exception as e:
-            logger.warning(f"데이터 변환기 생성 실패: {e}")
-    
-    return None
-
-# ============================================
-# 🔥 통합 유틸리티 함수들
-# ============================================
-
-def get_system_info() -> Dict[str, Any]:
-    """시스템 정보 조회"""
-    return {
-        "device": DEFAULT_DEVICE,
-        "is_m3_max": IS_M3_MAX,
-        "torch_available": TORCH_AVAILABLE,
-        "available_modules": {
-            "memory_manager": MEMORY_MANAGER_AVAILABLE,
-            "model_loader": MODEL_LOADER_AVAILABLE,
-            "data_converter": DATA_CONVERTER_AVAILABLE
-        },
-        "global_manager_initialized": _global_utils_manager is not None
-    }
-
-def check_utils_health() -> Dict[str, Any]:
-    """유틸리티 상태 건강성 체크"""
-    health = {
-        "overall_status": "healthy",
-        "issues": [],
-        "recommendations": []
-    }
-    
+    Returns:
+        초기화 결과 정보
+    """
     try:
-        # 1. 모듈 가용성 체크
-        if not any([MEMORY_MANAGER_AVAILABLE, MODEL_LOADER_AVAILABLE, DATA_CONVERTER_AVAILABLE]):
-            health["overall_status"] = "critical"
-            health["issues"].append("모든 유틸리티 모듈 사용 불가")
-            health["recommendations"].append("의존성 설치 확인 필요")
+        manager = get_utils_manager()
         
-        # 2. 전역 매니저 체크
-        global_manager = get_global_utils_manager()
-        if global_manager:
-            if not global_manager.initialized:
-                health["issues"].append("전역 매니저 초기화 실패")
-                health["recommendations"].append("initialize_global_utils() 호출 필요")
+        # 비동기 초기화 실행
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            # 이미 실행 중인 루프에서는 태스크로 실행
+            future = asyncio.create_task(manager.initialize(device=device, **kwargs))
+            return {"success": True, "message": "Initialization started", "future": future}
         else:
-            health["recommendations"].append("전역 매니저 초기화 권장")
-        
-        # 3. 디바이스 호환성 체크
-        if DEFAULT_DEVICE == 'cpu' and TORCH_AVAILABLE:
-            health["issues"].append("GPU 가속 사용 불가")
-            health["recommendations"].append("GPU 드라이버 또는 PyTorch 설치 확인")
-        
-        # 4. 메모리 체크
-        if MEMORY_MANAGER_AVAILABLE:
-            try:
-                mm = get_memory_manager()
-                if mm:
-                    stats = mm.get_memory_stats()
-                    if stats.cpu_percent > 90:
-                        health["issues"].append("높은 메모리 사용률")
-                        health["recommendations"].append("메모리 정리 권장")
-            except:
-                pass
-        
-        # 전체 상태 결정
-        if health["issues"]:
-            if health["overall_status"] != "critical":
-                health["overall_status"] = "warning"
-        
-        return health
-        
+            result = loop.run_until_complete(manager.initialize(device=device, **kwargs))
+            return result
+            
     except Exception as e:
-        return {
-            "overall_status": "error",
-            "issues": [f"건강성 체크 실패: {e}"],
-            "recommendations": ["시스템 재시작 권장"]
-        }
-
-async def optimize_all_utils() -> Dict[str, Any]:
-    """모든 유틸리티 최적화"""
-    try:
-        results = {"operations": [], "success": False}
-        
-        # 전역 매니저를 통한 최적화
-        global_manager = get_global_utils_manager()
-        if global_manager:
-            manager_results = await global_manager.optimize_memory()
-            if manager_results.get("success"):
-                results["operations"].extend(manager_results.get("operations", []))
-        
-        # 개별 최적화
-        if MEMORY_MANAGER_AVAILABLE:
-            try:
-                optimize_result = optimize_memory_usage()
-                if optimize_result.get("success"):
-                    results["operations"].append("standalone_memory_optimization")
-            except:
-                pass
-        
-        results["success"] = len(results["operations"]) > 0
-        
-        if results["success"]:
-            logger.info(f"🚀 전체 유틸리티 최적화 완료: {', '.join(results['operations'])}")
-        
-        return results
-        
-    except Exception as e:
-        logger.error(f"❌ 전체 유틸리티 최적화 실패: {e}")
+        logger.error(f"❌ 전역 유틸리티 초기화 실패: {e}")
         return {"success": False, "error": str(e)}
 
-# ============================================
-# 🔥 하위 호환성 별칭들
-# ============================================
+def create_step_interface(step_name: str) -> Dict[str, Any]:
+    """
+    🔥 Step 클래스용 인터페이스 생성 - 모든 Step에서 사용
+    
+    Args:
+        step_name: Step 클래스 이름
+    
+    Returns:
+        Step용 통합 인터페이스
+    """
+    try:
+        manager = get_utils_manager()
+        return manager.create_step_interface(step_name)
+    except Exception as e:
+        logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
+        return {"error": str(e)}
 
-# 기존 이름으로도 접근 가능하도록 별칭 설정
-if MEMORY_MANAGER_AVAILABLE:
-    GPUMemoryManager = MemoryManager  # 하위 호환
+def get_system_status() -> Dict[str, Any]:
+    """시스템 상태 조회"""
+    try:
+        manager = get_utils_manager()
+        return manager.get_system_status()
+    except Exception as e:
+        return {"error": str(e)}
 
-if MODEL_LOADER_AVAILABLE:
-    AIModelLoader = ModelLoader  # 하위 호환
+def reset_global_utils():
+    """전역 유틸리티 리셋"""
+    global _global_utils_manager
+    
+    try:
+        with _utils_lock:
+            if _global_utils_manager:
+                asyncio.create_task(_global_utils_manager.cleanup())
+                _global_utils_manager = None
+        logger.info("✅ 전역 유틸리티 리셋 완료")
+    except Exception as e:
+        logger.warning(f"⚠️ 전역 유틸리티 리셋 실패: {e}")
 
-if DATA_CONVERTER_AVAILABLE:
-    ImageConverter = DataConverter  # 하위 호환
+# 편의 함수들 (하위 호환)
+def get_memory_manager_instance(**kwargs):
+    """메모리 매니저 인스턴스 반환"""
+    manager = get_utils_manager()
+    return manager.memory_manager or create_memory_manager(**kwargs)
 
-# ============================================
-# 🔥 Export 목록 구성
-# ============================================
+def get_model_loader_instance(**kwargs):
+    """모델 로더 인스턴스 반환"""
+    manager = get_utils_manager()
+    return manager.model_loader or create_model_loader(**kwargs)
+
+def get_data_converter_instance(**kwargs):
+    """데이터 변환기 인스턴스 반환"""
+    manager = get_utils_manager()
+    return manager.data_converter or create_data_converter(**kwargs)
+
+# ==============================================
+# 🔥 __all__ 정의 - 모든 export 정리
+# ==============================================
 
 __all__ = [
-    # === 메인 매니저 ===
-    'OptimalUtilsManager',
-    'get_global_utils_manager',
+    # 🎯 핵심 클래스들
+    'UtilsManager',
+    
+    # 🔥 주요 전역 함수들 (Step에서 사용)
+    'get_utils_manager',
     'initialize_global_utils',
+    'create_step_interface',
+    'get_system_status',
     'reset_global_utils',
-    'create_optimal_utils',
     
-    # === 빠른 접근 함수들 ===
-    'get_memory_manager',
-    'get_model_loader', 
-    'get_data_converter',
+    # 📦 컴포넌트 인스턴스 함수들
+    'get_memory_manager_instance',
+    'get_model_loader_instance', 
+    'get_data_converter_instance',
     
-    # === 시스템 정보 ===
-    'get_system_info',
-    'check_utils_health',
-    'optimize_all_utils',
-    
-    # === 상태 확인 ===
-    'MEMORY_MANAGER_AVAILABLE',
-    'MODEL_LOADER_AVAILABLE',
-    'DATA_CONVERTER_AVAILABLE',
-    'TORCH_AVAILABLE',
+    # 🍎 시스템 정보
+    'SYSTEM_INFO',
     'IS_M3_MAX',
-    'DEFAULT_DEVICE'
+    'MEMORY_GB',
+    'DEFAULT_DEVICE',
+    'TORCH_AVAILABLE',
 ]
 
-# 사용 가능한 유틸리티들을 동적으로 추가
+# MemoryManager 모듈이 사용 가능한 경우 추가
 if MEMORY_MANAGER_AVAILABLE:
     __all__.extend([
         'MemoryManager',
         'MemoryStats',
         'create_memory_manager',
+        'get_memory_manager',
         'get_global_memory_manager',
         'initialize_global_memory_manager',
         'optimize_memory_usage',
+        'optimize_memory',
+        'check_memory',
         'check_memory_available',
         'get_memory_info',
-        'GPUMemoryManager'  # 하위 호환
+        'memory_efficient'
     ])
 
+# ModelLoader 모듈이 사용 가능한 경우 추가
 if MODEL_LOADER_AVAILABLE:
     __all__.extend([
         'ModelLoader',
         'ModelConfig',
         'ModelFormat',
         'ModelType',
-        'ModelRegistry',
-        'ModelMemoryManager',
+        'ModelPriority',
+        'LoadedModel',
         'StepModelInterface',
         'BaseStepMixin',
         'create_model_loader',
         'get_global_model_loader',
         'initialize_global_model_loader',
+        'cleanup_global_loader',
         'load_model_async',
         'load_model_sync',
         'preprocess_image',
         'postprocess_segmentation',
         'postprocess_pose',
         # AI 모델 클래스들
+        'BaseModel',
         'GraphonomyModel',
         'OpenPoseModel',
         'U2NetModel',
         'GeometricMatchingModel',
-        'HRVITONModel',
-        'AIModelLoader'  # 하위 호환
+        'EnhancementModel',
+        'CLIPModel'
     ])
 
+# DataConverter 모듈이 사용 가능한 경우 추가
 if DATA_CONVERTER_AVAILABLE:
     __all__.extend([
         'DataConverter',
@@ -925,65 +875,88 @@ if DATA_CONVERTER_AVAILABLE:
         'get_global_data_converter',
         'initialize_global_data_converter',
         'quick_image_to_tensor',
-        'quick_tensor_to_image',
-        'ImageConverter'  # 하위 호환
+        'quick_tensor_to_image'
     ])
 
-# ============================================
-# 🔥 모듈 초기화 및 로깅
-# ============================================
+# AutoModelDetector 모듈이 사용 가능한 경우 추가
+if AUTO_MODEL_DETECTOR_AVAILABLE:
+    __all__.extend([
+        'AdvancedModelDetector',
+        'AdvancedModelLoaderAdapter',
+        'DetectedModel',
+        'ModelCategory',
+        'create_advanced_detector',
+        'quick_model_detection',
+        'detect_and_integrate_with_model_loader',
+        'export_model_registry_code',
+        'validate_model_paths',
+        'benchmark_model_loading'
+    ])
+
+# ==============================================
+# 🔥 모듈 초기화 로깅 및 최종 설정
+# ==============================================
 
 def _log_initialization_summary():
     """초기화 요약 로깅"""
     available_count = sum([
         MEMORY_MANAGER_AVAILABLE,
         MODEL_LOADER_AVAILABLE, 
-        DATA_CONVERTER_AVAILABLE
+        DATA_CONVERTER_AVAILABLE,
+        AUTO_MODEL_DETECTOR_AVAILABLE
     ])
     
-    total_count = 3
+    total_count = 4
     
-    logger.info("=" * 60)
-    logger.info("🔧 MyCloset AI 파이프라인 유틸리티 모듈 로드 완료")
-    logger.info("=" * 60)
+    logger.info("=" * 70)
+    logger.info("🍎 MyCloset AI 파이프라인 유틸리티 v3.0 - 완전 재구성")
+    logger.info("=" * 70)
     logger.info(f"📊 사용 가능한 유틸리티: {available_count}/{total_count}")
-    logger.info(f"   - MemoryManager: {'✅' if MEMORY_MANAGER_AVAILABLE else '❌'}")
-    logger.info(f"   - ModelLoader: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
-    logger.info(f"   - DataConverter: {'✅' if DATA_CONVERTER_AVAILABLE else '❌'}")
+    logger.info(f"   - MemoryManager: {'✅' if MEMORY_MANAGER_AVAILABLE else '❌ (폴백 사용)'}")
+    logger.info(f"   - ModelLoader: {'✅' if MODEL_LOADER_AVAILABLE else '❌ (폴백 사용)'}")
+    logger.info(f"   - DataConverter: {'✅' if DATA_CONVERTER_AVAILABLE else '❌ (폴백 사용)'}")
+    logger.info(f"   - AutoModelDetector: {'✅' if AUTO_MODEL_DETECTOR_AVAILABLE else '❌'}")
     logger.info(f"🍎 시스템 정보:")
+    logger.info(f"   - Platform: {SYSTEM_INFO['platform']}")
     logger.info(f"   - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
+    logger.info(f"   - Memory: {MEMORY_GB}GB")
+    logger.info(f"   - GPU: {SYSTEM_INFO['gpu_type']}")
     logger.info(f"   - 기본 디바이스: {DEFAULT_DEVICE}")
     logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
     
-    if available_count == total_count:
-        logger.info("✅ 모든 유틸리티 모듈이 성공적으로 로드되었습니다!")
+    if available_count >= 2:  # 최소 2개 이상 사용 가능
+        logger.info("✅ 파이프라인 유틸리티 시스템 준비 완료!")
     elif available_count > 0:
-        logger.warning(f"⚠️ 일부 유틸리티 모듈만 로드되었습니다 ({available_count}/{total_count})")
+        logger.warning(f"⚠️ 일부 유틸리티만 사용 가능 ({available_count}/{total_count}) - 폴백 모드로 동작")
     else:
-        logger.error("❌ 모든 유틸리티 모듈 로드에 실패했습니다. 의존성을 확인하세요.")
+        logger.error("❌ 모든 유틸리티 사용 불가 - 의존성 설치 필요")
     
-    logger.info("=" * 60)
+    logger.info("=" * 70)
 
 # 초기화 요약 출력
 _log_initialization_summary()
 
-# 자동 전역 매니저 초기화 (환경변수 기반)
+# 자동 초기화 (환경변수 기반)
 try:
-    auto_init = os.getenv('AUTO_INIT_UTILS', 'false').lower() in ('true', '1', 'yes', 'on')
+    auto_init = os.getenv('AUTO_INIT_PIPELINE_UTILS', 'false').lower() in ('true', '1', 'yes', 'on')
     if auto_init:
-        initialize_global_utils()
-        logger.info("🚀 전역 유틸리티 매니저 자동 초기화 완료")
+        device = os.getenv('PIPELINE_DEVICE', DEFAULT_DEVICE)
+        result = initialize_global_utils(device=device)
+        if result.get('success'):
+            logger.info("🚀 파이프라인 유틸리티 자동 초기화 완료")
+        else:
+            logger.warning(f"⚠️ 파이프라인 유틸리티 자동 초기화 실패: {result.get('error', 'Unknown')}")
 except Exception as e:
-    logger.warning(f"⚠️ 전역 유틸리티 매니저 자동 초기화 실패: {e}")
+    logger.warning(f"⚠️ 자동 초기화 실패: {e}")
 
-# 모듈 정리 함수 등록
+# 종료 시 정리 함수 등록
 import atexit
 
 def _cleanup_on_exit():
     """프로그램 종료 시 정리"""
     try:
         reset_global_utils()
-        logger.info("🔚 유틸리티 모듈 종료 정리 완료")
+        logger.info("🔚 파이프라인 유틸리티 종료 정리 완료")
     except:
         pass
 
@@ -991,8 +964,15 @@ atexit.register(_cleanup_on_exit)
 
 # 최종 확인 메시지
 if MEMORY_MANAGER_AVAILABLE or MODEL_LOADER_AVAILABLE or DATA_CONVERTER_AVAILABLE:
-    logger.info("🎯 최적 생성자 패턴 AI 파이프라인 유틸리티 준비 완료")
+    logger.info("🎯 최적 생성자 패턴 AI 파이프라인 유틸리티 v3.0 준비 완료")
+    logger.info("🔥 Step 클래스에서 create_step_interface() 함수로 바로 사용 가능")
 else:
-    logger.error("💥 모든 유틸리티 모듈 사용 불가 - 의존성 설치 필요")
+    logger.error("💥 모든 유틸리티 모듈 사용 불가 - 폴백 모드로만 동작")
 
-logger.info("🏁 AI 파이프라인 유틸리티 모듈 로딩 완료")
+logger.info("🏁 AI 파이프라인 유틸리티 모듈 v3.0 로딩 완료")
+
+# 디버그 정보 (개발 환경에서만)
+if os.getenv('DEBUG_PIPELINE_UTILS', 'false').lower() in ('true', '1'):
+    logger.debug(f"🐛 DEBUG: 전체 export 목록 ({len(__all__)}개)")
+    for i, item in enumerate(__all__, 1):
+        logger.debug(f"   {i:2d}. {item}")
