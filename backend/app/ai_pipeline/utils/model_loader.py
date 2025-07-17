@@ -28,6 +28,7 @@ import logging
 import json
 import pickle
 import sqlite3
+import atexit
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Type, Callable, Tuple
 from abc import ABC, abstractmethod
@@ -91,7 +92,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 핵심 Enum 및 데이터 구조
+# 🔥 핵심 Enum 및 데이터 구조 (가장 먼저 정의)
 # ==============================================
 
 class ModelFormat(Enum):
@@ -242,7 +243,7 @@ except ImportError as e:
     logger.warning(f"⚠️ auto_model_detector 모듈 연동 실패: {e}")
 
 # ==============================================
-# 🔥 실제 AI 모델 클래스들
+# 🔥 실제 AI 모델 클래스들 (기본 클래스들)
 # ==============================================
 
 class BaseModel(nn.Module if TORCH_AVAILABLE else object):
@@ -436,7 +437,7 @@ else:
     HRVITONModel = BaseModel
 
 # ==============================================
-# 🔥 모델 레지스트리
+# 🔥 시스템 관리 클래스들 (ModelLoader보다 먼저 정의)
 # ==============================================
 
 class ModelRegistry:
@@ -485,10 +486,6 @@ class ModelRegistry:
         with self._lock:
             return list(self.registered_models.keys())
 
-# ==============================================
-# 🔥 메모리 관리자
-# ==============================================
-
 class ModelMemoryManager:
     """모델 메모리 관리자 - M3 Max 특화"""
     
@@ -507,10 +504,898 @@ class ModelMemoryManager:
                                       capture_output=True, text=True)
                 return 'M3' in result.stdout
         except:
+            pass
+        return False
+    
+    def get_available_memory(self) -> float:
+        """사용 가능한 메모리 (GB) 반환"""
+        try:
+            if self.device == "cuda" and TORCH_AVAILABLE and torch.cuda.is_available():
+                total_memory = torch.cuda.get_device_properties(0).total_memory
+                allocated_memory = torch.cuda.memory_allocated()
+                return (total_memory - allocated_memory) / 1024**3
+            elif self.device == "mps":
+                try:
+                    import psutil
+                    memory = psutil.virtual_memory()
+                    available_gb = memory.available / 1024**3
+                    if self.is_m3_max:
+                        return min(available_gb, 100.0)  # 128GB 중 사용 가능한 부분
+                    return available_gb
+                except ImportError:
+                    return 64.0 if self.is_m3_max else 16.0
+            else:
+                try:
+                    import psutil
+                    memory = psutil.virtual_memory()
+                    return memory.available / 1024**3
+                except ImportError:
+                    return 8.0
+        except Exception as e:
+            logger.warning(f"⚠️ 메모리 조회 실패: {e}")
+            return 8.0
+    
+    def cleanup_memory(self):
+        """메모리 정리 - M3 Max 최적화"""
+        try:
+            gc.collect()
+            
+            if TORCH_AVAILABLE:
+                if self.device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                elif self.device == "mps" and torch.backends.mps.is_available():
+                    try:
+                        if hasattr(torch.backends.mps, 'empty_cache'):
+                            torch.backends.mps.empty_cache()
+                        if self.is_m3_max:
+                            torch.mps.synchronize()
+                    except:
+                        pass
+            
+            logger.debug("🧹 메모리 정리 완료")
+        except Exception as e:
+            logger.warning(f"⚠️ 메모리 정리 실패: {e}")
+    
+    def check_memory_pressure(self) -> bool:
+        """메모리 압박 상태 체크"""
+        try:
+            available_memory = self.get_available_memory()
+            threshold = 4.0 if self.is_m3_max else 2.0
+            return available_memory < threshold
+        except Exception:
+            return False
+
+class DeviceManager:
+    """M3 Max 특화 디바이스 관리자"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
+        self.available_devices = self._detect_available_devices()
+        self.optimal_device = self._select_optimal_device()
+        self.is_m3_max = self._detect_m3_max()
+        
+    def _detect_available_devices(self) -> List[str]:
+        """사용 가능한 디바이스 탐지"""
+        devices = ["cpu"]
+        
+        if TORCH_AVAILABLE:
+            if torch.backends.mps.is_available():
+                devices.append("mps")
+                self.logger.info("🍎 M3 Max MPS 사용 가능")
+            
+            if torch.cuda.is_available():
+                devices.append("cuda")
+                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+                devices.extend(cuda_devices)
+                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
+        
+        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
+        return devices
+    
+    def _select_optimal_device(self) -> str:
+        """최적 디바이스 선택"""
+        if "mps" in self.available_devices:
+            return "mps"
+        elif "cuda" in self.available_devices:
+            return "cuda"
+        else:
+            return "cpu"
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 감지"""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+    
+    def resolve_device(self, requested_device: str) -> str:
+        """요청된 디바이스를 실제 디바이스로 변환"""
+        if requested_device == "auto":
+            return self.optimal_device
+        elif requested_device in self.available_devices:
+            return requested_device
+        else:
+            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
+            return self.optimal_device
+
+# ==============================================
+# 🔥 Step 클래스 연동 믹스인 (StepModelInterface보다 먼저 정의)
+# ==============================================
+
+class BaseStepMixin:
+    """Step 클래스들이 상속받을 ModelLoader 연동 믹스인"""
+    
+    def _setup_model_interface(self, model_loader: Optional['ModelLoader'] = None):
+        """모델 인터페이스 설정"""
+        try:
+            if model_loader is None:
+                # 전역 모델 로더 사용 (순환참조 방지를 위해 함수 내에서 import)
+                model_loader = get_global_model_loader()
+            
+            self.model_interface = model_loader.create_step_interface(
+                self.__class__.__name__
+            )
+            
+            logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료")
+            
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
+            self.model_interface = None
+    
+    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+        """모델 로드 (Step에서 사용)"""
+        try:
+            if not hasattr(self, 'model_interface') or self.model_interface is None:
+                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
+                return None
+            
+            if model_name:
+                return await self.model_interface.get_model(model_name)
+            else:
+                # 권장 모델 자동 로드
+                return await self.model_interface.get_recommended_model()
+                
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
+            return None
+    
+    def cleanup_models(self):
+        """모델 정리"""
+        try:
+            if hasattr(self, 'model_interface') and self.model_interface:
+                self.model_interface.unload_models()
+        except Exception as e:
+            logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
+
+# ==============================================
+# 🔥 완전 통합 StepModelInterface 클래스 (ModelLoader보다 먼저 정의)
+# ==============================================
+
+class StepModelInterface:
+    """
+    🔥 Step 클래스들을 위한 완전 통합 모델 인터페이스 (2번 파일 완전 통합)
+    ✅ load_model_async 메서드 구현
+    ✅ 실제 AI 모델들 로드 및 추론
+    ✅ M3 Max 128GB 최적화
+    ✅ 모든 기존 인터페이스 100% 유지
+    """
+    
+    def __init__(self, model_loader: 'ModelLoader', step_name: str):
+        self.model_loader = model_loader
+        self.step_name = step_name
+        self.loaded_models: Dict[str, Any] = {}
+        self.model_cache: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+        self.logger = logging.getLogger(f"StepInterface.{step_name}")
+        
+        # 🔥 Step별 실제 AI 모델 매핑 (2번 파일에서 통합)
+        self.step_model_mapping = {
+            'HumanParsingStep': {
+                'primary': 'self_correction_human_parsing',
+                'models': ['graphonomy', 'lip', 'pascal_part', 'atr']
+            },
+            'PoseEstimationStep': {
+                'primary': 'openpose',
+                'models': ['openpose', 'alphapose', 'hrnet', 'mediapipe']
+            },
+            'ClothSegmentationStep': {
+                'primary': 'u2net_cloth_seg',
+                'models': ['u2net', 'deeplabv3', 'pspnet', 'fcn']
+            },
+            'GeometricMatchingStep': {
+                'primary': 'geometric_matching_net',
+                'models': ['gm_net', 'tps_transformation']
+            },
+            'ClothWarpingStep': {
+                'primary': 'cloth_warping_net',
+                'models': ['warping_net', 'tps_net', 'spatial_transformer']
+            },
+            'VirtualFittingStep': {
+                'primary': 'ootdiffusion',
+                'models': ['ootdiffusion', 'hr_viton', 'viton_hd', 'stable_diffusion']
+            },
+            'PostProcessingStep': {
+                'primary': 'super_resolution',
+                'models': ['srresnet', 'esrgan', 'real_esrgan', 'edsr']
+            },
+            'QualityAssessmentStep': {
+                'primary': 'quality_assessment_net',
+                'models': ['clip_similarity', 'lpips', 'psnr', 'ssim']
+            }
+        }
+        
+        # 🔥 실제 모델 경로 설정 (2번 파일에서 통합)
+        self.model_paths = self._setup_model_paths()
+        
+        self.logger.info(f"🔗 {step_name} 완전 통합 인터페이스 초기화 완료")
+    
+    def _setup_model_paths(self) -> Dict[str, str]:
+        """실제 AI 모델 경로 설정 (2번 파일에서 통합)"""
+        base_path = Path("ai_models")
+        
+        return {
+            # Human Parsing Models
+            'graphonomy': str(base_path / "Self-Correction-Human-Parsing" / "exp" / "inference.pth"),
+            'self_correction_human_parsing': str(base_path / "Self-Correction-Human-Parsing" / "exp" / "inference.pth"),
+            
+            # Pose Estimation Models  
+            'openpose': str(base_path / "openpose" / "models"),
+            'mediapipe': str(base_path / "mediapipe" / "pose_landmarker.task"),
+            
+            # Cloth Segmentation Models
+            'u2net': str(base_path / "u2net" / "u2net.pth"),
+            'u2net_cloth_seg': str(base_path / "u2net" / "u2net_cloth_seg.pth"),
+            
+            # Virtual Fitting Models
+            'ootdiffusion': str(base_path / "OOTDiffusion"),
+            'hr_viton': str(base_path / "HR-VITON"),
+            'viton_hd': str(base_path / "VITON-HD"),
+            
+            # Geometric Matching
+            'geometric_matching_net': str(base_path / "geometric_matching" / "gmm_final.pth"),
+            'tps_transformation': str(base_path / "tps" / "tps_final.pth"),
+            
+            # Cloth Warping
+            'cloth_warping_net': str(base_path / "cloth_warping" / "tom_final.pth"),
+            'warping_net': str(base_path / "warping" / "warping_final.pth"),
+            
+            # Post Processing
+            'srresnet': str(base_path / "super_resolution" / "srresnet_x4.pth"),
+            'esrgan': str(base_path / "super_resolution" / "esrgan_x4.pth"),
+            
+            # Quality Assessment
+            'clip_similarity': str(base_path / "clip-vit-base-patch32"),
+            'lpips': str(base_path / "lpips" / "alex.pth")
+        }
+    
+    async def load_model_async(self, model_name: str, model_path: Optional[str] = None, **kwargs) -> Optional[Any]:
+        """
+        🔥 실제 AI 모델 비동기 로드 (2번 파일에서 완전 통합)
+        """
+        try:
+            # 캐시에서 확인
+            if model_name in self.loaded_models:
+                self.logger.info(f"✅ 캐시된 모델 반환: {model_name}")
+                return self.loaded_models[model_name]
+            
+            # 실제 모델 경로 결정
+            if model_path is None:
+                model_path = self.model_paths.get(model_name)
+                if not model_path:
+                    # Step별 추천 모델 사용
+                    recommended = self._get_recommended_model_name()
+                    model_path = self.model_paths.get(recommended)
+            
+            if not model_path:
+                raise ValueError(f"모델 경로를 찾을 수 없음: {model_name}")
+            
+            # 비동기 로드 실행
+            loop = asyncio.get_event_loop()
+            model = await loop.run_in_executor(
+                None, 
+                self._load_real_model_sync, 
+                model_name, 
+                model_path, 
+                kwargs
+            )
+            
+            if model:
+                self.loaded_models[model_name] = model
+                self.logger.info(f"✅ 실제 AI 모델 로드 완료: {model_name}")
+                return model
+            else:
+                self.logger.error(f"❌ 모델 로드 실패: {model_name}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 모델 로드 실패 {model_name}: {e}")
+            return None
+    
+    def _load_real_model_sync(self, model_name: str, model_path: str, kwargs: Dict) -> Optional[Any]:
+        """실제 AI 모델 동기 로드"""
+        try:
+            model_path_obj = Path(model_path)
+            
+            # 파일 존재 확인
+            if not (model_path_obj.exists() or model_path_obj.parent.exists()):
+                self.logger.warning(f"⚠️ 모델 파일이 없음: {model_path}")
+                return self._create_fallback_model(model_name)
+            
+            # 모델 타입별 로드
+            if model_name in ['graphonomy', 'self_correction_human_parsing']:
+                return self._load_human_parsing_model(model_path)
+            elif model_name in ['openpose']:
+                return self._load_openpose_model(model_path)
+            elif model_name in ['u2net', 'u2net_cloth_seg']:
+                return self._load_u2net_model(model_path)
+            elif model_name in ['ootdiffusion']:
+                return self._load_ootdiffusion_model(model_path)
+            elif model_name in ['clip_similarity']:
+                return self._load_clip_model(model_path)
+            elif model_name in ['geometric_matching_net', 'tps_transformation']:
+                return self._load_geometric_model(model_path)
+            elif model_name in ['cloth_warping_net', 'warping_net']:
+                return self._load_warping_model(model_path)
+            elif model_name in ['srresnet', 'esrgan']:
+                return self._load_sr_model(model_path)
+            else:
+                # 일반 PyTorch 모델
+                return self._load_pytorch_model(model_path)
+                
+        except Exception as e:
+            self.logger.error(f"❌ 실제 모델 로드 실패 {model_name}: {e}")
+            return self._create_fallback_model(model_name)
+    
+    def _load_human_parsing_model(self, model_path: str) -> Any:
+        """Human Parsing 모델 로드"""
+        try:
+            if not TORCH_AVAILABLE:
+                raise ImportError("PyTorch not available")
+            
+            # Self-Correction Human Parsing 모델
+            model = GraphonomyModel(num_classes=20, backbone='resnet101')
+            
+            if Path(model_path).exists():
+                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                    model.load_state_dict(checkpoint['state_dict'], strict=False)
+                else:
+                    model.load_state_dict(checkpoint, strict=False)
+                self.logger.info(f"✅ Human Parsing 체크포인트 로드: {model_path}")
+            
+            model.to(self.model_loader.device)
+            model.eval()
+            
+            return {
+                'model': model,
+                'type': 'human_parsing',
+                'device': self.model_loader.device,
+                'inference': self._create_human_parsing_inference(model)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Human Parsing 모델 로드 실패: {e}")
+            return self._create_fallback_model('human_parsing')
+    
+    def _load_openpose_model(self, model_path: str) -> Any:
+        """OpenPose 모델 로드"""
+        try:
+            if MEDIAPIPE_AVAILABLE:
+                # MediaPipe Pose 사용
+                import mediapipe as mp
+                
+                mp_pose = mp.solutions.pose
+                pose = mp_pose.Pose(
+                    static_image_mode=True,
+                    model_complexity=2,
+                    enable_segmentation=True,
+                    min_detection_confidence=0.5
+                )
+                
+                return {
+                    'model': pose,
+                    'type': 'pose_estimation',
+                    'backend': 'mediapipe',
+                    'inference': self._create_pose_inference(pose)
+                }
+            else:
+                # OpenPose 대체 구현
+                model = OpenPoseModel(num_keypoints=17)
+                if Path(model_path).exists():
+                    checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                    model.load_state_dict(checkpoint, strict=False)
+                
+                model.to(self.model_loader.device)
+                model.eval()
+                
+                return {
+                    'model': model,
+                    'type': 'pose_estimation',
+                    'backend': 'pytorch',
+                    'inference': self._create_pose_inference(model)
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Pose 모델 로드 실패: {e}")
+            return self._create_fallback_model('pose_estimation')
+    
+    def _load_u2net_model(self, model_path: str) -> Any:
+        """U2-Net 모델 로드"""
+        try:
+            model = U2NetModel(in_ch=3, out_ch=1)
+            
+            if Path(model_path).exists():
+                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                model.load_state_dict(checkpoint, strict=False)
+                self.logger.info(f"✅ U2-Net 체크포인트 로드: {model_path}")
+            
+            model.to(self.model_loader.device)
+            model.eval()
+            
+            return {
+                'model': model,
+                'type': 'segmentation',
+                'device': self.model_loader.device,
+                'inference': self._create_segmentation_inference(model)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"U2-Net 모델 로드 실패: {e}")
+            return self._create_fallback_model('segmentation')
+    
+    def _load_ootdiffusion_model(self, model_path: str) -> Any:
+        """OOTDiffusion 모델 로드"""
+        try:
+            if DIFFUSERS_AVAILABLE:
+                from diffusers import StableDiffusionInpaintPipeline
+                
+                if Path(model_path).exists():
+                    pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=torch.float32,  # M3 Max 호환
+                        device_map=self.model_loader.device
+                    )
+                else:
+                    # Hugging Face에서 로드
+                    pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+                        "stabilityai/stable-diffusion-2-inpainting",
+                        torch_dtype=torch.float32,
+                        device_map=self.model_loader.device
+                    )
+                
+                return {
+                    'model': pipeline,
+                    'type': 'virtual_fitting',
+                    'backend': 'diffusers',
+                    'inference': self._create_virtual_fitting_inference(pipeline)
+                }
+            else:
+                raise ImportError("Diffusers not available")
+                
+        except Exception as e:
+            self.logger.error(f"OOTDiffusion 모델 로드 실패: {e}")
+            return self._create_fallback_model('virtual_fitting')
+    
+    def _load_clip_model(self, model_path: str) -> Any:
+        """CLIP 모델 로드"""
+        try:
+            if TRANSFORMERS_AVAILABLE:
+                from transformers import CLIPModel, CLIPProcessor
+                
+                if Path(model_path).exists():
+                    model = CLIPModel.from_pretrained(model_path)
+                    processor = CLIPProcessor.from_pretrained(model_path)
+                else:
+                    model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+                    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+                
+                model.to(self.model_loader.device)
+                
+                return {
+                    'model': model,
+                    'processor': processor,
+                    'type': 'similarity',
+                    'backend': 'transformers',
+                    'inference': self._create_clip_inference(model, processor)
+                }
+            else:
+                raise ImportError("Transformers not available")
+                
+        except Exception as e:
+            self.logger.error(f"CLIP 모델 로드 실패: {e}")
+            return self._create_fallback_model('similarity')
+    
+    def _load_geometric_model(self, model_path: str) -> Any:
+        """Geometric Matching 모델 로드"""
+        try:
+            model = GeometricMatchingModel(feature_size=256)
+            
+            if Path(model_path).exists():
+                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                model.load_state_dict(checkpoint, strict=False)
+            
+            model.to(self.model_loader.device)
+            model.eval()
+            
+            return {
+                'model': model,
+                'type': 'geometric_matching',
+                'inference': self._create_geometric_inference(model)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Geometric 모델 로드 실패: {e}")
+            return self._create_fallback_model('geometric_matching')
+    
+    def _load_warping_model(self, model_path: str) -> Any:
+        """Cloth Warping 모델 로드"""
+        try:
+            model = HRVITONModel(input_nc=3, output_nc=3, ngf=64)
+            
+            if Path(model_path).exists():
+                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                model.load_state_dict(checkpoint, strict=False)
+            
+            model.to(self.model_loader.device)
+            model.eval()
+            
+            return {
+                'model': model,
+                'type': 'cloth_warping',
+                'inference': self._create_warping_inference(model)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Warping 모델 로드 실패: {e}")
+            return self._create_fallback_model('cloth_warping')
+    
+    def _load_sr_model(self, model_path: str) -> Any:
+        """Super Resolution 모델 로드"""
+        try:
+            # 간단한 Super Resolution 모델
+            if TORCH_AVAILABLE:
+                class SRResNet(nn.Module):
+                    def __init__(self, scale_factor=4):
+                        super().__init__()
+                        self.scale_factor = scale_factor
+                        self.conv1 = nn.Conv2d(3, 64, 3, 1, 1)
+                        self.conv2 = nn.Conv2d(64, 64, 3, 1, 1)
+                        self.conv3 = nn.Conv2d(64, 3 * (scale_factor ** 2), 3, 1, 1)
+                        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
+                    
+                    def forward(self, x):
+                        x1 = F.relu(self.conv1(x))
+                        x2 = F.relu(self.conv2(x1))
+                        x3 = self.conv3(x2)
+                        return self.pixel_shuffle(x3)
+                
+                model = SRResNet(scale_factor=4)
+                
+                if Path(model_path).exists():
+                    checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                    model.load_state_dict(checkpoint, strict=False)
+                
+                model.to(self.model_loader.device)
+                model.eval()
+                
+                return {
+                    'model': model,
+                    'type': 'super_resolution',
+                    'inference': self._create_sr_inference(model)
+                }
+            else:
+                return self._create_fallback_model('super_resolution')
+            
+        except Exception as e:
+            self.logger.error(f"SR 모델 로드 실패: {e}")
+            return self._create_fallback_model('super_resolution')
+    
+    def _load_pytorch_model(self, model_path: str) -> Any:
+        """일반 PyTorch 모델 로드"""
+        try:
+            if TORCH_AVAILABLE:
+                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
+                
+                return {
+                    'checkpoint': checkpoint,
+                    'type': 'pytorch',
+                    'device': self.model_loader.device,
+                    'inference': lambda x: {"result": "pytorch_inference", "input_shape": x.shape if hasattr(x, 'shape') else str(x)}
+                }
+            else:
+                return self._create_fallback_model('pytorch')
+            
+        except Exception as e:
+            self.logger.error(f"PyTorch 모델 로드 실패: {e}")
+            return self._create_fallback_model('pytorch')
+    
+    def _create_fallback_model(self, model_type: str) -> Dict[str, Any]:
+        """폴백 모델 생성 (실제 추론 가능)"""
+        if model_type == 'human_parsing':
+            return {
+                'model': None,
+                'type': 'human_parsing_fallback',
+                'inference': lambda image: self._fallback_human_parsing(image)
+            }
+        elif model_type == 'pose_estimation':
+            return {
+                'model': None,
+                'type': 'pose_estimation_fallback',
+                'inference': lambda image: self._fallback_pose_estimation(image)
+            }
+        elif model_type == 'segmentation':
+            return {
+                'model': None,
+                'type': 'segmentation_fallback',
+                'inference': lambda image: self._fallback_segmentation(image)
+            }
+        else:
+            return {
+                'model': None,
+                'type': f'{model_type}_fallback',
+                'inference': lambda x: {"result": f"fallback_{model_type}", "confidence": 0.7}
+            }
+    
+    # ==============================================
+    # 🔥 추론 함수 생성 메서드들
+    # ==============================================
+    
+    def _create_human_parsing_inference(self, model):
+        """Human Parsing 추론 함수 생성"""
+        def inference(image):
+            try:
+                if not isinstance(image, torch.Tensor):
+                    # PIL Image나 numpy array를 tensor로 변환
+                    if isinstance(image, np.ndarray):
+                        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
+                    else:
+                        # PIL Image
+                        image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
+                
+                image = image.unsqueeze(0).to(self.model_loader.device)
+                
+                with torch.no_grad():
+                    output = model(image)
+                    parsing_map = torch.argmax(output, dim=1).cpu().numpy()[0]
+                
+                return {
+                    "parsing_map": parsing_map,
+                    "confidence": 0.95,
+                    "num_parts": len(np.unique(parsing_map))
+                }
+            except Exception as e:
+                self.logger.error(f"Human parsing 추론 실패: {e}")
+                return self._fallback_human_parsing(image)
+        
+        return inference
+    
+    def _create_pose_inference(self, model):
+        """Pose Estimation 추론 함수 생성"""
+        def inference(image):
+            try:
+                if hasattr(model, 'process'):  # MediaPipe
+                    if isinstance(image, np.ndarray):
+                        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    else:
+                        rgb_image = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB)
+                    
+                    results = model.process(rgb_image)
+                    
+                    if results.pose_landmarks:
+                        landmarks = []
+                        for landmark in results.pose_landmarks.landmark:
+                            landmarks.append([landmark.x, landmark.y, landmark.z])
+                        
+                        return {
+                            "keypoints": landmarks,
+                            "confidence": 0.92,
+                            "num_joints": len(landmarks)
+                        }
+                else:  # PyTorch model
+                    if not isinstance(image, torch.Tensor):
+                        image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
+                    
+                    image = image.unsqueeze(0).to(self.model_loader.device)
+                    
+                    with torch.no_grad():
+                        heatmaps = model(image)
+                        keypoints = self._extract_keypoints_from_heatmaps(heatmaps)
+                    
+                    return {
+                        "keypoints": keypoints,
+                        "confidence": 0.88,
+                        "num_joints": len(keypoints)
+                    }
+                
+            except Exception as e:
+                self.logger.error(f"Pose estimation 추론 실패: {e}")
+                return self._fallback_pose_estimation(image)
+        
+        return inference
+    
+    def _create_segmentation_inference(self, model):
+        """Segmentation 추론 함수 생성"""
+        def inference(image):
+            try:
+                if not isinstance(image, torch.Tensor):
+                    image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
+                
+                image = image.unsqueeze(0).to(self.model_loader.device)
+                
+                with torch.no_grad():
+                    pred = model(image)
+                    mask = torch.sigmoid(pred).cpu().numpy()[0, 0]
+                
+                return {
+                    "mask": mask,
+                    "confidence": 0.91,
+                    "mask_area": np.sum(mask > 0.5)
+                }
+            except Exception as e:
+                self.logger.error(f"Segmentation 추론 실패: {e}")
+                return self._fallback_segmentation(image)
+        
+        return inference
+    
+    def _create_virtual_fitting_inference(self, pipeline):
+        """Virtual Fitting 추론 함수 생성"""
+        def inference(person_image, cloth_image, mask=None):
+            try:
+                result = pipeline(
+                    prompt="person wearing cloth",
+                    image=person_image,
+                    mask_image=mask,
+                    num_inference_steps=20,
+                    guidance_scale=7.5
+                )
+                
+                return {
+                    "fitted_image": result.images[0],
+                    "confidence": 0.89,
+                    "quality_score": 0.85
+                }
+            except Exception as e:
+                self.logger.error(f"Virtual fitting 추론 실패: {e}")
+                return {"error": str(e)}
+        
+        return inference
+    
+    def _create_clip_inference(self, model, processor):
+        """CLIP 추론 함수 생성"""
+        def inference(image, text=None):
+            try:
+                inputs = processor(images=image, text=text, return_tensors="pt", padding=True)
+                inputs = {k: v.to(self.model_loader.device) for k, v in inputs.items()}
+                
+                with torch.no_grad():
+                    outputs = model(**inputs)
+                    similarity = torch.cosine_similarity(
+                        outputs.image_embeds, 
+                        outputs.text_embeds
+                    ).item()
+                
+                return {
+                    "similarity": similarity,
+                    "confidence": 0.94,
+                    "embedding_dim": outputs.image_embeds.shape[-1]
+                }
+            except Exception as e:
+                self.logger.error(f"CLIP 추론 실패: {e}")
+                return {"similarity": 0.5, "error": str(e)}
+        
+        return inference
+    
+    def _create_geometric_inference(self, model):
+        """Geometric Matching 추론 함수 생성"""
+        def inference(person_image, cloth_image):
+            try:
+                # 이미지 전처리
+                person_tensor = self._preprocess_for_geometric(person_image)
+                cloth_tensor = self._preprocess_for_geometric(cloth_image)
+                
+                with torch.no_grad():
+                    result = model(person_tensor, cloth_tensor)
+                    theta = result['tps_params']
+                    warped_cloth = self._apply_geometric_transform(cloth_tensor, theta)
+                
+                return {
+                    "warped_cloth": warped_cloth,
+                    "transformation_matrix": theta.cpu().numpy(),
+                    "confidence": 0.87
+                }
+            except Exception as e:
+                self.logger.error(f"Geometric matching 추론 실패: {e}")
+                return {"error": str(e)}
+        
+        return inference
+    
+    def _create_warping_inference(self, model):
+        """Cloth Warping 추론 함수 생성"""
+        def inference(person_image, cloth_image, pose_keypoints=None):
+            try:
+                # 입력 전처리
+                person_tensor = self._preprocess_for_geometric(person_image)
+                cloth_tensor = self._preprocess_for_geometric(cloth_image)
+                
+                with torch.no_grad():
+                    result = model(person_tensor, cloth_tensor)
+                    warped_cloth = result['generated_image']
+                    composition_mask = result['attention_map']
+                
+                return {
+                    "warped_cloth": warped_cloth,
+                    "composition_mask": composition_mask,
+                    "confidence": 0.86
+                }
+            except Exception as e:
+                self.logger.error(f"Cloth warping 추론 실패: {e}")
+                return {"error": str(e)}
+        
+        return inference
+    
+    def _create_sr_inference(self, model):
+        """Super Resolution 추론 함수 생성"""
+        def inference(low_res_image):
+            try:
+                if not isinstance(low_res_image, torch.Tensor):
+                    low_res_image = torch.from_numpy(np.array(low_res_image)).permute(2, 0, 1).float() / 255.0
+                
+                low_res_image = low_res_image.unsqueeze(0).to(self.model_loader.device)
+                
+                with torch.no_grad():
+                    high_res = model(low_res_image)
+                    high_res = torch.clamp(high_res, 0, 1)
+                
+                return {
+                    "high_res_image": high_res,
+                    "scale_factor": 4,
+                    "confidence": 0.90
+                }
+            except Exception as e:
+                self.logger.error(f"Super resolution 추론 실패: {e}")
+                return {"error": str(e)}
+        
+        return inference
+    
+    # ==============================================
+    # 🔥 폴백 추론 함수들
+    # ==============================================
+    
+    def _fallback_human_parsing(self, image):
+        """Human Parsing 폴백"""
+        try:
+            if isinstance(image, np.ndarray):
+                h, w = image.shape[:2]
+            else:
+                w, h = image.size
+            
+            # 간단한 규칙 기반 파싱
+            parsing_map = np.zeros((h, w), dtype=np.uint8)
+            
+            # 상의 영역 (대략적)
+            parsing_map[h//4:h//2, w//4:3*w//4] = 5  # upper clothes
+            # 하의 영역
+            parsing_map[h//2:3*h//4, w//4:3*w//4] = 9  # pants
+            # 머리 영역
+            parsing_map[0:h//4, w//3:2*w//3] = 1  # hair
+            
+            return {
+                "parsing_map": parsing_map,
+                "confidence": 0.6,
+                "num_parts": len(np.unique(parsing_map)),
+                "fallback": True
+            }
+        except:
             return {"error": "Human parsing fallback failed"}
     
     def _fallback_pose_estimation(self, image):
-        """Pose Estimation 폴백 (2번 파일에서 완전 통합)"""
+        """Pose Estimation 폴백"""
         try:
             # 17개 COCO keypoints의 기본 위치 (정규화된 좌표)
             default_keypoints = [
@@ -535,7 +1420,7 @@ class ModelMemoryManager:
             return {"error": "Pose estimation fallback failed"}
     
     def _fallback_segmentation(self, image):
-        """Segmentation 폴백 (2번 파일에서 완전 통합)"""
+        """Segmentation 폴백"""
         try:
             if isinstance(image, np.ndarray):
                 h, w = image.shape[:2]
@@ -557,16 +1442,16 @@ class ModelMemoryManager:
             return {"error": "Segmentation fallback failed"}
     
     # ==============================================
-    # 🔥 유틸리티 메서드들 (2번 파일에서 완전 통합)
+    # 🔥 유틸리티 메서드들
     # ==============================================
     
     def _get_recommended_model_name(self) -> str:
-        """Step별 추천 모델 이름 반환 (2번 파일에서 완전 통합)"""
+        """Step별 추천 모델 이름 반환"""
         step_config = self.step_model_mapping.get(self.step_name, {})
         return step_config.get('primary', 'unknown')
     
     def _extract_keypoints_from_heatmaps(self, heatmaps):
-        """히트맵에서 키포인트 추출 (2번 파일에서 완전 통합)"""
+        """히트맵에서 키포인트 추출"""
         keypoints = []
         if isinstance(heatmaps, (list, tuple)):
             # OpenPose 스타일: [(paf, heatmap)]
@@ -579,13 +1464,13 @@ class ModelMemoryManager:
         return keypoints
     
     def _preprocess_for_geometric(self, image):
-        """Geometric Matching용 전처리 (2번 파일에서 완전 통합)"""
+        """Geometric Matching용 전처리"""
         if not isinstance(image, torch.Tensor):
             image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
         return image.unsqueeze(0).to(self.model_loader.device)
     
     def _apply_geometric_transform(self, cloth_tensor, theta):
-        """Geometric 변환 적용 (2번 파일에서 완전 통합)"""
+        """Geometric 변환 적용"""
         # TPS(Thin Plate Spline) 변환 적용
         batch_size = cloth_tensor.size(0)
         # 간단한 affine 변환으로 근사
@@ -593,22 +1478,6 @@ class ModelMemoryManager:
         grid = F.affine_grid(affine_matrix, cloth_tensor.size(), align_corners=False)
         warped = F.grid_sample(cloth_tensor, grid, align_corners=False)
         return warped
-    
-    def _prepare_warping_inputs(self, person_image, cloth_image, pose_keypoints):
-        """Warping을 위한 입력 준비 (2번 파일에서 완전 통합)"""
-        person_tensor = self._preprocess_for_geometric(person_image)
-        cloth_tensor = self._preprocess_for_geometric(cloth_image)
-        
-        inputs = {
-            'person': person_tensor,
-            'cloth': cloth_tensor
-        }
-        
-        if pose_keypoints is not None:
-            pose_tensor = torch.tensor(pose_keypoints).float().to(self.model_loader.device)
-            inputs['pose'] = pose_tensor
-        
-        return inputs
     
     # ==============================================
     # 🔥 기존 인터페이스 메서드들 (100% 호환성 유지)
@@ -649,7 +1518,7 @@ class ModelMemoryManager:
             return None
     
     def get_model_sync(self, model_name: str, **kwargs) -> Optional[Any]:
-        """모델 가져오기 (동기) (2번 파일에서 완전 통합)"""
+        """모델 가져오기 (동기)"""
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
@@ -690,15 +1559,15 @@ class ModelMemoryManager:
             self.logger.error(f"❌ {self.step_name} 모델 언로드 실패: {e}")
     
     def is_loaded(self, model_name: str) -> bool:
-        """모델 로드 상태 확인 (2번 파일에서 완전 통합)"""
+        """모델 로드 상태 확인"""
         return model_name in self.loaded_models
     
     def list_loaded_models(self) -> List[str]:
-        """로드된 모델 목록 (2번 파일에서 완전 통합)"""
+        """로드된 모델 목록"""
         return list(self.loaded_models.keys())
     
     def get_step_info(self) -> Dict[str, Any]:
-        """Step 정보 반환 (2번 파일에서 완전 통합)"""
+        """Step 정보 반환"""
         return {
             "step_name": self.step_name,
             "loaded_models": self.list_loaded_models(),
@@ -710,7 +1579,7 @@ class ModelMemoryManager:
         }
 
 # ==============================================
-# 🔥 완전 통합 ModelLoader 클래스 v4.0
+# 🔥 완전 통합 ModelLoader 클래스 v4.0 (이제 정의)
 # ==============================================
 
 class ModelLoader:
@@ -920,27 +1789,28 @@ class ModelLoader:
     def _initialize_auto_detection(self):
         """auto_model_detector 초기화 및 연동"""
         try:
-            self.auto_detector = create_advanced_detector(
-                search_paths=[self.model_cache_dir],
-                enable_deep_scan=True,
-                enable_metadata_extraction=True
-            )
-            
-            # 자동 탐지 실행
-            detected_models = self.auto_detector.detect_all_models(min_confidence=0.3)
-            
-            # 탐지된 모델들 등록
-            registered_count = 0
-            for model_name, detected_model in detected_models.items():
-                try:
-                    if self._register_detected_model(model_name, detected_model):
-                        registered_count += 1
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 탐지 모델 등록 실패 {model_name}: {e}")
-                    continue
-            
-            self.detected_models = detected_models
-            self.logger.info(f"🔍 자동 탐지 완료: {len(detected_models)}개 발견, {registered_count}개 등록")
+            if AUTO_DETECTOR_AVAILABLE:
+                self.auto_detector = create_advanced_detector(
+                    search_paths=[self.model_cache_dir],
+                    enable_deep_scan=True,
+                    enable_metadata_extraction=True
+                )
+                
+                # 자동 탐지 실행
+                detected_models = self.auto_detector.detect_all_models(min_confidence=0.3)
+                
+                # 탐지된 모델들 등록
+                registered_count = 0
+                for model_name, detected_model in detected_models.items():
+                    try:
+                        if self._register_detected_model(model_name, detected_model):
+                            registered_count += 1
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 탐지 모델 등록 실패 {model_name}: {e}")
+                        continue
+                
+                self.detected_models = detected_models
+                self.logger.info(f"🔍 자동 탐지 완료: {len(detected_models)}개 발견, {registered_count}개 등록")
             
         except Exception as e:
             self.logger.error(f"❌ auto_model_detector 초기화 실패: {e}")
@@ -1589,65 +2459,10 @@ class ModelLoader:
 
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
         """비동기 모델 로드"""
-        try:
-            return await asyncio.get_event_loop().run_in_executor(
-                None, self.load_model, model_name, **kwargs
-            )
-        except Exception as e:
-            self.logger.error(f"비동기 모델 로드 실패 {model_name}: {e}")
-            return None
+        return await self.load_model(model_name, **kwargs)
 
 # ==============================================
-# 🔥 Step 클래스 연동 믹스인
-# ==============================================
-
-class BaseStepMixin:
-    """Step 클래스들이 상속받을 ModelLoader 연동 믹스인"""
-    
-    def _setup_model_interface(self, model_loader: Optional[ModelLoader] = None):
-        """모델 인터페이스 설정"""
-        try:
-            if model_loader is None:
-                # 전역 모델 로더 사용
-                model_loader = get_global_model_loader()
-            
-            self.model_interface = model_loader.create_step_interface(
-                self.__class__.__name__
-            )
-            
-            logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료")
-            
-        except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
-            self.model_interface = None
-    
-    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """모델 로드 (Step에서 사용)"""
-        try:
-            if not hasattr(self, 'model_interface') or self.model_interface is None:
-                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
-                return None
-            
-            if model_name:
-                return await self.model_interface.get_model(model_name)
-            else:
-                # 권장 모델 자동 로드
-                return await self.model_interface.get_recommended_model()
-                
-        except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
-            return None
-    
-    def cleanup_models(self):
-        """모델 정리"""
-        try:
-            if hasattr(self, 'model_interface') and self.model_interface:
-                self.model_interface.unload_models()
-        except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
-
-# ==============================================
-# 🔥 전역 ModelLoader 관리
+# 🔥 전역 ModelLoader 관리 (이제 정의)
 # ==============================================
 
 _global_model_loader: Optional[ModelLoader] = None
@@ -1953,7 +2768,6 @@ def postprocess_pose(output, original_size: tuple, confidence_threshold: float =
         return {'keypoints': [], 'pafs': None, 'heatmaps': None, 'num_keypoints': 0}
 
 # 모듈 레벨에서 안전한 정리 함수 등록
-import atexit
 atexit.register(cleanup_global_loader)
 
 # ==============================================
@@ -2000,848 +2814,4 @@ __all__ = [
 ]
 
 # 모듈 로드 확인
-logger.info("✅ ModelLoader v4.0 모듈 로드 완료 - step_model_requests.py 기반 완전 통합 시스템")pass
-        return False
-    
-    def get_available_memory(self) -> float:
-        """사용 가능한 메모리 (GB) 반환"""
-        try:
-            if self.device == "cuda" and TORCH_AVAILABLE and torch.cuda.is_available():
-                total_memory = torch.cuda.get_device_properties(0).total_memory
-                allocated_memory = torch.cuda.memory_allocated()
-                return (total_memory - allocated_memory) / 1024**3
-            elif self.device == "mps":
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    available_gb = memory.available / 1024**3
-                    if self.is_m3_max:
-                        return min(available_gb, 100.0)  # 128GB 중 사용 가능한 부분
-                    return available_gb
-                except ImportError:
-                    return 64.0 if self.is_m3_max else 16.0
-            else:
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    return memory.available / 1024**3
-                except ImportError:
-                    return 8.0
-        except Exception as e:
-            logger.warning(f"⚠️ 메모리 조회 실패: {e}")
-            return 8.0
-    
-    def cleanup_memory(self):
-        """메모리 정리 - M3 Max 최적화"""
-        try:
-            gc.collect()
-            
-            if TORCH_AVAILABLE:
-                if self.device == "cuda" and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                elif self.device == "mps" and torch.backends.mps.is_available():
-                    try:
-                        if hasattr(torch.backends.mps, 'empty_cache'):
-                            torch.backends.mps.empty_cache()
-                        if self.is_m3_max:
-                            torch.mps.synchronize()
-                    except:
-                        pass
-            
-            logger.debug("🧹 메모리 정리 완료")
-        except Exception as e:
-            logger.warning(f"⚠️ 메모리 정리 실패: {e}")
-    
-    def check_memory_pressure(self) -> bool:
-        """메모리 압박 상태 체크"""
-        try:
-            available_memory = self.get_available_memory()
-            threshold = 4.0 if self.is_m3_max else 2.0
-            return available_memory < threshold
-        except Exception:
-            return False
-
-# ==============================================
-# 🔥 디바이스 관리자
-# ==============================================
-
-class DeviceManager:
-    """M3 Max 특화 디바이스 관리자"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
-        self.available_devices = self._detect_available_devices()
-        self.optimal_device = self._select_optimal_device()
-        self.is_m3_max = self._detect_m3_max()
-        
-    def _detect_available_devices(self) -> List[str]:
-        """사용 가능한 디바이스 탐지"""
-        devices = ["cpu"]
-        
-        if TORCH_AVAILABLE:
-            if torch.backends.mps.is_available():
-                devices.append("mps")
-                self.logger.info("🍎 M3 Max MPS 사용 가능")
-            
-            if torch.cuda.is_available():
-                devices.append("cuda")
-                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-                devices.extend(cuda_devices)
-                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
-        
-        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
-        return devices
-    
-    def _select_optimal_device(self) -> str:
-        """최적 디바이스 선택"""
-        if "mps" in self.available_devices:
-            return "mps"
-        elif "cuda" in self.available_devices:
-            return "cuda"
-        else:
-            return "cpu"
-    
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 칩 감지"""
-        try:
-            import platform
-            import subprocess
-            if platform.system() == 'Darwin':
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-    
-    def resolve_device(self, requested_device: str) -> str:
-        """요청된 디바이스를 실제 디바이스로 변환"""
-        if requested_device == "auto":
-            return self.optimal_device
-        elif requested_device in self.available_devices:
-            return requested_device
-        else:
-            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
-            return self.optimal_device
-
-# ==============================================
-# 🔥 완전 통합 StepModelInterface 클래스 (2번 파일 통합)
-# ==============================================
-
-class StepModelInterface:
-    """
-    🔥 Step 클래스들을 위한 완전 통합 모델 인터페이스 (2번 파일 완전 통합)
-    ✅ load_model_async 메서드 구현
-    ✅ 실제 AI 모델들 로드 및 추론
-    ✅ M3 Max 128GB 최적화
-    ✅ 모든 기존 인터페이스 100% 유지
-    """
-    
-    def __init__(self, model_loader: 'ModelLoader', step_name: str):
-        self.model_loader = model_loader
-        self.step_name = step_name
-        self.loaded_models: Dict[str, Any] = {}
-        self.model_cache: Dict[str, Any] = {}
-        self._lock = threading.RLock()
-        self.logger = logging.getLogger(f"StepInterface.{step_name}")
-        
-        # 🔥 Step별 실제 AI 모델 매핑 (2번 파일에서 통합)
-        self.step_model_mapping = {
-            'HumanParsingStep': {
-                'primary': 'self_correction_human_parsing',
-                'models': ['graphonomy', 'lip', 'pascal_part', 'atr']
-            },
-            'PoseEstimationStep': {
-                'primary': 'openpose',
-                'models': ['openpose', 'alphapose', 'hrnet', 'mediapipe']
-            },
-            'ClothSegmentationStep': {
-                'primary': 'u2net_cloth_seg',
-                'models': ['u2net', 'deeplabv3', 'pspnet', 'fcn']
-            },
-            'GeometricMatchingStep': {
-                'primary': 'geometric_matching_net',
-                'models': ['gm_net', 'tps_transformation']
-            },
-            'ClothWarpingStep': {
-                'primary': 'cloth_warping_net',
-                'models': ['warping_net', 'tps_net', 'spatial_transformer']
-            },
-            'VirtualFittingStep': {
-                'primary': 'ootdiffusion',
-                'models': ['ootdiffusion', 'hr_viton', 'viton_hd', 'stable_diffusion']
-            },
-            'PostProcessingStep': {
-                'primary': 'super_resolution',
-                'models': ['srresnet', 'esrgan', 'real_esrgan', 'edsr']
-            },
-            'QualityAssessmentStep': {
-                'primary': 'quality_assessment_net',
-                'models': ['clip_similarity', 'lpips', 'psnr', 'ssim']
-            }
-        }
-        
-        # 🔥 실제 모델 경로 설정 (2번 파일에서 통합)
-        self.model_paths = self._setup_model_paths()
-        
-        self.logger.info(f"🔗 {step_name} 완전 통합 인터페이스 초기화 완료")
-    
-    def _setup_model_paths(self) -> Dict[str, str]:
-        """실제 AI 모델 경로 설정 (2번 파일에서 통합)"""
-        base_path = Path("ai_models")
-        
-        return {
-            # Human Parsing Models
-            'graphonomy': str(base_path / "Self-Correction-Human-Parsing" / "exp" / "inference.pth"),
-            'self_correction_human_parsing': str(base_path / "Self-Correction-Human-Parsing" / "exp" / "inference.pth"),
-            
-            # Pose Estimation Models  
-            'openpose': str(base_path / "openpose" / "models"),
-            'mediapipe': str(base_path / "mediapipe" / "pose_landmarker.task"),
-            
-            # Cloth Segmentation Models
-            'u2net': str(base_path / "u2net" / "u2net.pth"),
-            'u2net_cloth_seg': str(base_path / "u2net" / "u2net_cloth_seg.pth"),
-            
-            # Virtual Fitting Models
-            'ootdiffusion': str(base_path / "OOTDiffusion"),
-            'hr_viton': str(base_path / "HR-VITON"),
-            'viton_hd': str(base_path / "VITON-HD"),
-            
-            # Geometric Matching
-            'geometric_matching_net': str(base_path / "geometric_matching" / "gmm_final.pth"),
-            'tps_transformation': str(base_path / "tps" / "tps_final.pth"),
-            
-            # Cloth Warping
-            'cloth_warping_net': str(base_path / "cloth_warping" / "tom_final.pth"),
-            'warping_net': str(base_path / "warping" / "warping_final.pth"),
-            
-            # Post Processing
-            'srresnet': str(base_path / "super_resolution" / "srresnet_x4.pth"),
-            'esrgan': str(base_path / "super_resolution" / "esrgan_x4.pth"),
-            
-            # Quality Assessment
-            'clip_similarity': str(base_path / "clip-vit-base-patch32"),
-            'lpips': str(base_path / "lpips" / "alex.pth")
-        }
-    
-    async def load_model_async(self, model_name: str, model_path: Optional[str] = None, **kwargs) -> Optional[Any]:
-        """
-        🔥 실제 AI 모델 비동기 로드 (2번 파일에서 완전 통합)
-        
-        Args:
-            model_name: 모델 이름
-            model_path: 모델 경로 (선택적)
-            **kwargs: 추가 파라미터
-            
-        Returns:
-            로드된 실제 AI 모델
-        """
-        try:
-            # 캐시에서 확인
-            if model_name in self.loaded_models:
-                self.logger.info(f"✅ 캐시된 모델 반환: {model_name}")
-                return self.loaded_models[model_name]
-            
-            # 실제 모델 경로 결정
-            if model_path is None:
-                model_path = self.model_paths.get(model_name)
-                if not model_path:
-                    # Step별 추천 모델 사용
-                    recommended = self._get_recommended_model_name()
-                    model_path = self.model_paths.get(recommended)
-            
-            if not model_path:
-                raise ValueError(f"모델 경로를 찾을 수 없음: {model_name}")
-            
-            # 비동기 로드 실행
-            loop = asyncio.get_event_loop()
-            model = await loop.run_in_executor(
-                None, 
-                self._load_real_model_sync, 
-                model_name, 
-                model_path, 
-                kwargs
-            )
-            
-            if model:
-                self.loaded_models[model_name] = model
-                self.logger.info(f"✅ 실제 AI 모델 로드 완료: {model_name}")
-                return model
-            else:
-                self.logger.error(f"❌ 모델 로드 실패: {model_name}")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"❌ 비동기 모델 로드 실패 {model_name}: {e}")
-            return None
-    
-    def _load_real_model_sync(self, model_name: str, model_path: str, kwargs: Dict) -> Optional[Any]:
-        """실제 AI 모델 동기 로드 (2번 파일에서 완전 통합)"""
-        try:
-            model_path_obj = Path(model_path)
-            
-            # 파일 존재 확인
-            if not (model_path_obj.exists() or model_path_obj.parent.exists()):
-                self.logger.warning(f"⚠️ 모델 파일이 없음: {model_path}")
-                return self._create_fallback_model(model_name)
-            
-            # 모델 타입별 로드
-            if model_name in ['graphonomy', 'self_correction_human_parsing']:
-                return self._load_human_parsing_model(model_path)
-            elif model_name in ['openpose']:
-                return self._load_openpose_model(model_path)
-            elif model_name in ['u2net', 'u2net_cloth_seg']:
-                return self._load_u2net_model(model_path)
-            elif model_name in ['ootdiffusion']:
-                return self._load_ootdiffusion_model(model_path)
-            elif model_name in ['clip_similarity']:
-                return self._load_clip_model(model_path)
-            elif model_name in ['geometric_matching_net', 'tps_transformation']:
-                return self._load_geometric_model(model_path)
-            elif model_name in ['cloth_warping_net', 'warping_net']:
-                return self._load_warping_model(model_path)
-            elif model_name in ['srresnet', 'esrgan']:
-                return self._load_sr_model(model_path)
-            else:
-                # 일반 PyTorch 모델
-                return self._load_pytorch_model(model_path)
-                
-        except Exception as e:
-            self.logger.error(f"❌ 실제 모델 로드 실패 {model_name}: {e}")
-            return self._create_fallback_model(model_name)
-    
-    def _load_human_parsing_model(self, model_path: str) -> Any:
-        """Human Parsing 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            if not TORCH_AVAILABLE:
-                raise ImportError("PyTorch not available")
-            
-            # Self-Correction Human Parsing 모델
-            model = GraphonomyModel(num_classes=20, backbone='resnet101')
-            
-            if Path(model_path).exists():
-                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-                    model.load_state_dict(checkpoint['state_dict'], strict=False)
-                else:
-                    model.load_state_dict(checkpoint, strict=False)
-                self.logger.info(f"✅ Human Parsing 체크포인트 로드: {model_path}")
-            
-            model.to(self.model_loader.device)
-            model.eval()
-            
-            return {
-                'model': model,
-                'type': 'human_parsing',
-                'device': self.model_loader.device,
-                'inference': self._create_human_parsing_inference(model)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Human Parsing 모델 로드 실패: {e}")
-            return self._create_fallback_model('human_parsing')
-    
-    def _load_openpose_model(self, model_path: str) -> Any:
-        """OpenPose 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            if MEDIAPIPE_AVAILABLE:
-                # MediaPipe Pose 사용
-                import mediapipe as mp
-                
-                mp_pose = mp.solutions.pose
-                pose = mp_pose.Pose(
-                    static_image_mode=True,
-                    model_complexity=2,
-                    enable_segmentation=True,
-                    min_detection_confidence=0.5
-                )
-                
-                return {
-                    'model': pose,
-                    'type': 'pose_estimation',
-                    'backend': 'mediapipe',
-                    'inference': self._create_pose_inference(pose)
-                }
-            else:
-                # OpenPose 대체 구현
-                model = OpenPoseModel(num_keypoints=17)
-                if Path(model_path).exists():
-                    checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                    model.load_state_dict(checkpoint, strict=False)
-                
-                model.to(self.model_loader.device)
-                model.eval()
-                
-                return {
-                    'model': model,
-                    'type': 'pose_estimation',
-                    'backend': 'pytorch',
-                    'inference': self._create_pose_inference(model)
-                }
-                
-        except Exception as e:
-            self.logger.error(f"Pose 모델 로드 실패: {e}")
-            return self._create_fallback_model('pose_estimation')
-    
-    def _load_u2net_model(self, model_path: str) -> Any:
-        """U2-Net 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            model = U2NetModel(in_ch=3, out_ch=1)
-            
-            if Path(model_path).exists():
-                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                model.load_state_dict(checkpoint, strict=False)
-                self.logger.info(f"✅ U2-Net 체크포인트 로드: {model_path}")
-            
-            model.to(self.model_loader.device)
-            model.eval()
-            
-            return {
-                'model': model,
-                'type': 'segmentation',
-                'device': self.model_loader.device,
-                'inference': self._create_segmentation_inference(model)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"U2-Net 모델 로드 실패: {e}")
-            return self._create_fallback_model('segmentation')
-    
-    def _load_ootdiffusion_model(self, model_path: str) -> Any:
-        """OOTDiffusion 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            if DIFFUSERS_AVAILABLE:
-                from diffusers import StableDiffusionInpaintPipeline
-                
-                if Path(model_path).exists():
-                    pipeline = StableDiffusionInpaintPipeline.from_pretrained(
-                        model_path,
-                        torch_dtype=torch.float32,  # M3 Max 호환
-                        device_map=self.model_loader.device
-                    )
-                else:
-                    # Hugging Face에서 로드
-                    pipeline = StableDiffusionInpaintPipeline.from_pretrained(
-                        "stabilityai/stable-diffusion-2-inpainting",
-                        torch_dtype=torch.float32,
-                        device_map=self.model_loader.device
-                    )
-                
-                return {
-                    'model': pipeline,
-                    'type': 'virtual_fitting',
-                    'backend': 'diffusers',
-                    'inference': self._create_virtual_fitting_inference(pipeline)
-                }
-            else:
-                raise ImportError("Diffusers not available")
-                
-        except Exception as e:
-            self.logger.error(f"OOTDiffusion 모델 로드 실패: {e}")
-            return self._create_fallback_model('virtual_fitting')
-    
-    def _load_clip_model(self, model_path: str) -> Any:
-        """CLIP 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            if TRANSFORMERS_AVAILABLE:
-                from transformers import CLIPModel, CLIPProcessor
-                
-                if Path(model_path).exists():
-                    model = CLIPModel.from_pretrained(model_path)
-                    processor = CLIPProcessor.from_pretrained(model_path)
-                else:
-                    model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-                    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-                
-                model.to(self.model_loader.device)
-                
-                return {
-                    'model': model,
-                    'processor': processor,
-                    'type': 'similarity',
-                    'backend': 'transformers',
-                    'inference': self._create_clip_inference(model, processor)
-                }
-            else:
-                raise ImportError("Transformers not available")
-                
-        except Exception as e:
-            self.logger.error(f"CLIP 모델 로드 실패: {e}")
-            return self._create_fallback_model('similarity')
-    
-    def _load_geometric_model(self, model_path: str) -> Any:
-        """Geometric Matching 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            model = GeometricMatchingModel(feature_size=256)
-            
-            if Path(model_path).exists():
-                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                model.load_state_dict(checkpoint, strict=False)
-            
-            model.to(self.model_loader.device)
-            model.eval()
-            
-            return {
-                'model': model,
-                'type': 'geometric_matching',
-                'inference': self._create_geometric_inference(model)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Geometric 모델 로드 실패: {e}")
-            return self._create_fallback_model('geometric_matching')
-    
-    def _load_warping_model(self, model_path: str) -> Any:
-        """Cloth Warping 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            model = HRVITONModel(input_nc=3, output_nc=3, ngf=64)
-            
-            if Path(model_path).exists():
-                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                model.load_state_dict(checkpoint, strict=False)
-            
-            model.to(self.model_loader.device)
-            model.eval()
-            
-            return {
-                'model': model,
-                'type': 'cloth_warping',
-                'inference': self._create_warping_inference(model)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Warping 모델 로드 실패: {e}")
-            return self._create_fallback_model('cloth_warping')
-    
-    def _load_sr_model(self, model_path: str) -> Any:
-        """Super Resolution 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            # 간단한 Super Resolution 모델
-            class SRResNet(nn.Module):
-                def __init__(self, scale_factor=4):
-                    super().__init__()
-                    self.scale_factor = scale_factor
-                    self.conv1 = nn.Conv2d(3, 64, 3, 1, 1)
-                    self.conv2 = nn.Conv2d(64, 64, 3, 1, 1)
-                    self.conv3 = nn.Conv2d(64, 3 * (scale_factor ** 2), 3, 1, 1)
-                    self.pixel_shuffle = nn.PixelShuffle(scale_factor)
-                
-                def forward(self, x):
-                    x1 = F.relu(self.conv1(x))
-                    x2 = F.relu(self.conv2(x1))
-                    x3 = self.conv3(x2)
-                    return self.pixel_shuffle(x3)
-            
-            model = SRResNet(scale_factor=4)
-            
-            if Path(model_path).exists():
-                checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-                model.load_state_dict(checkpoint, strict=False)
-            
-            model.to(self.model_loader.device)
-            model.eval()
-            
-            return {
-                'model': model,
-                'type': 'super_resolution',
-                'inference': self._create_sr_inference(model)
-            }
-            
-        except Exception as e:
-            self.logger.error(f"SR 모델 로드 실패: {e}")
-            return self._create_fallback_model('super_resolution')
-    
-    def _load_pytorch_model(self, model_path: str) -> Any:
-        """일반 PyTorch 모델 로드 (2번 파일에서 완전 통합)"""
-        try:
-            checkpoint = torch.load(model_path, map_location=self.model_loader.device, weights_only=True)
-            
-            return {
-                'checkpoint': checkpoint,
-                'type': 'pytorch',
-                'device': self.model_loader.device,
-                'inference': lambda x: {"result": "pytorch_inference", "input_shape": x.shape if hasattr(x, 'shape') else str(x)}
-            }
-            
-        except Exception as e:
-            self.logger.error(f"PyTorch 모델 로드 실패: {e}")
-            return self._create_fallback_model('pytorch')
-    
-    def _create_fallback_model(self, model_type: str) -> Dict[str, Any]:
-        """폴백 모델 생성 (실제 추론 가능) (2번 파일에서 완전 통합)"""
-        if model_type == 'human_parsing':
-            return {
-                'model': None,
-                'type': 'human_parsing_fallback',
-                'inference': lambda image: self._fallback_human_parsing(image)
-            }
-        elif model_type == 'pose_estimation':
-            return {
-                'model': None,
-                'type': 'pose_estimation_fallback',
-                'inference': lambda image: self._fallback_pose_estimation(image)
-            }
-        elif model_type == 'segmentation':
-            return {
-                'model': None,
-                'type': 'segmentation_fallback',
-                'inference': lambda image: self._fallback_segmentation(image)
-            }
-        else:
-            return {
-                'model': None,
-                'type': f'{model_type}_fallback',
-                'inference': lambda x: {"result": f"fallback_{model_type}", "confidence": 0.7}
-            }
-    
-    # ==============================================
-    # 🔥 추론 함수 생성 메서드들 (2번 파일에서 완전 통합)
-    # ==============================================
-    
-    def _create_human_parsing_inference(self, model):
-        """Human Parsing 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(image):
-            try:
-                if not isinstance(image, torch.Tensor):
-                    # PIL Image나 numpy array를 tensor로 변환
-                    if isinstance(image, np.ndarray):
-                        image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0
-                    else:
-                        # PIL Image
-                        image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
-                
-                image = image.unsqueeze(0).to(self.model_loader.device)
-                
-                with torch.no_grad():
-                    output = model(image)
-                    parsing_map = torch.argmax(output, dim=1).cpu().numpy()[0]
-                
-                return {
-                    "parsing_map": parsing_map,
-                    "confidence": 0.95,
-                    "num_parts": len(np.unique(parsing_map))
-                }
-            except Exception as e:
-                self.logger.error(f"Human parsing 추론 실패: {e}")
-                return self._fallback_human_parsing(image)
-        
-        return inference
-    
-    def _create_pose_inference(self, model):
-        """Pose Estimation 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(image):
-            try:
-                if hasattr(model, 'process'):  # MediaPipe
-                    if isinstance(image, np.ndarray):
-                        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    else:
-                        rgb_image = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB)
-                    
-                    results = model.process(rgb_image)
-                    
-                    if results.pose_landmarks:
-                        landmarks = []
-                        for landmark in results.pose_landmarks.landmark:
-                            landmarks.append([landmark.x, landmark.y, landmark.z])
-                        
-                        return {
-                            "keypoints": landmarks,
-                            "confidence": 0.92,
-                            "num_joints": len(landmarks)
-                        }
-                else:  # PyTorch model
-                    if not isinstance(image, torch.Tensor):
-                        image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
-                    
-                    image = image.unsqueeze(0).to(self.model_loader.device)
-                    
-                    with torch.no_grad():
-                        heatmaps = model(image)
-                        keypoints = self._extract_keypoints_from_heatmaps(heatmaps)
-                    
-                    return {
-                        "keypoints": keypoints,
-                        "confidence": 0.88,
-                        "num_joints": len(keypoints)
-                    }
-                
-            except Exception as e:
-                self.logger.error(f"Pose estimation 추론 실패: {e}")
-                return self._fallback_pose_estimation(image)
-        
-        return inference
-    
-    def _create_segmentation_inference(self, model):
-        """Segmentation 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(image):
-            try:
-                if not isinstance(image, torch.Tensor):
-                    image = torch.from_numpy(np.array(image)).permute(2, 0, 1).float() / 255.0
-                
-                image = image.unsqueeze(0).to(self.model_loader.device)
-                
-                with torch.no_grad():
-                    pred = model(image)
-                    mask = torch.sigmoid(pred).cpu().numpy()[0, 0]
-                
-                return {
-                    "mask": mask,
-                    "confidence": 0.91,
-                    "mask_area": np.sum(mask > 0.5)
-                }
-            except Exception as e:
-                self.logger.error(f"Segmentation 추론 실패: {e}")
-                return self._fallback_segmentation(image)
-        
-        return inference
-    
-    def _create_virtual_fitting_inference(self, pipeline):
-        """Virtual Fitting 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(person_image, cloth_image, mask=None):
-            try:
-                result = pipeline(
-                    prompt="person wearing cloth",
-                    image=person_image,
-                    mask_image=mask,
-                    num_inference_steps=20,
-                    guidance_scale=7.5
-                )
-                
-                return {
-                    "fitted_image": result.images[0],
-                    "confidence": 0.89,
-                    "quality_score": 0.85
-                }
-            except Exception as e:
-                self.logger.error(f"Virtual fitting 추론 실패: {e}")
-                return {"error": str(e)}
-        
-        return inference
-    
-    def _create_clip_inference(self, model, processor):
-        """CLIP 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(image, text=None):
-            try:
-                inputs = processor(images=image, text=text, return_tensors="pt", padding=True)
-                inputs = {k: v.to(self.model_loader.device) for k, v in inputs.items()}
-                
-                with torch.no_grad():
-                    outputs = model(**inputs)
-                    similarity = torch.cosine_similarity(
-                        outputs.image_embeds, 
-                        outputs.text_embeds
-                    ).item()
-                
-                return {
-                    "similarity": similarity,
-                    "confidence": 0.94,
-                    "embedding_dim": outputs.image_embeds.shape[-1]
-                }
-            except Exception as e:
-                self.logger.error(f"CLIP 추론 실패: {e}")
-                return {"similarity": 0.5, "error": str(e)}
-        
-        return inference
-    
-    def _create_geometric_inference(self, model):
-        """Geometric Matching 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(person_image, cloth_image):
-            try:
-                # 이미지 전처리
-                person_tensor = self._preprocess_for_geometric(person_image)
-                cloth_tensor = self._preprocess_for_geometric(cloth_image)
-                
-                with torch.no_grad():
-                    result = model(person_tensor, cloth_tensor)
-                    theta = result['tps_params']
-                    warped_cloth = self._apply_geometric_transform(cloth_tensor, theta)
-                
-                return {
-                    "warped_cloth": warped_cloth,
-                    "transformation_matrix": theta.cpu().numpy(),
-                    "confidence": 0.87
-                }
-            except Exception as e:
-                self.logger.error(f"Geometric matching 추론 실패: {e}")
-                return {"error": str(e)}
-        
-        return inference
-    
-    def _create_warping_inference(self, model):
-        """Cloth Warping 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(person_image, cloth_image, pose_keypoints=None):
-            try:
-                # 입력 전처리
-                person_tensor = self._preprocess_for_geometric(person_image)
-                cloth_tensor = self._preprocess_for_geometric(cloth_image)
-                
-                with torch.no_grad():
-                    result = model(person_tensor, cloth_tensor)
-                    warped_cloth = result['generated_image']
-                    composition_mask = result['attention_map']
-                
-                return {
-                    "warped_cloth": warped_cloth,
-                    "composition_mask": composition_mask,
-                    "confidence": 0.86
-                }
-            except Exception as e:
-                self.logger.error(f"Cloth warping 추론 실패: {e}")
-                return {"error": str(e)}
-        
-        return inference
-    
-    def _create_sr_inference(self, model):
-        """Super Resolution 추론 함수 생성 (2번 파일에서 완전 통합)"""
-        def inference(low_res_image):
-            try:
-                if not isinstance(low_res_image, torch.Tensor):
-                    low_res_image = torch.from_numpy(np.array(low_res_image)).permute(2, 0, 1).float() / 255.0
-                
-                low_res_image = low_res_image.unsqueeze(0).to(self.model_loader.device)
-                
-                with torch.no_grad():
-                    high_res = model(low_res_image)
-                    high_res = torch.clamp(high_res, 0, 1)
-                
-                return {
-                    "high_res_image": high_res,
-                    "scale_factor": 4,
-                    "confidence": 0.90
-                }
-            except Exception as e:
-                self.logger.error(f"Super resolution 추론 실패: {e}")
-                return {"error": str(e)}
-        
-        return inference
-    
-    # ==============================================
-    # 🔥 폴백 추론 함수들 (2번 파일에서 완전 통합)
-    # ==============================================
-    
-    def _fallback_human_parsing(self, image):
-        """Human Parsing 폴백 (2번 파일에서 완전 통합)"""
-        try:
-            if isinstance(image, np.ndarray):
-                h, w = image.shape[:2]
-            else:
-                w, h = image.size
-            
-            # 간단한 규칙 기반 파싱
-            parsing_map = np.zeros((h, w), dtype=np.uint8)
-            
-            # 상의 영역 (대략적)
-            parsing_map[h//4:h//2, w//4:3*w//4] = 5  # upper clothes
-            # 하의 영역
-            parsing_map[h//2:3*h//4, w//4:3*w//4] = 9  # pants
-            # 머리 영역
-            parsing_map[0:h//4, w//3:2*w//3] = 1  # hair
-            
-            return {
-                "parsing_map": parsing_map,
-                "confidence": 0.6,
-                "num_parts": len(np.unique(parsing_map)),
-                "fallback": True
-            }
-        except:
+logger.info("✅ ModelLoader v4.0 모듈 로드 완료 - step_model_requests.py 기반 완전 통합 시스템")
