@@ -1,7 +1,7 @@
 # app/ai_pipeline/steps/step_07_post_processing.py
 """
 MyCloset AI - 7단계: 후처리 (Post Processing) + 시각화 기능
-🔥 완전 통합 프로덕션 버전 - M3 Max 128GB 최적화
+🔥 완전 통합 프로덕션 버전 - M3 Max 128GB 최적화 + logger 속성 누락 문제 해결
 
 ✅ 통일된 생성자 패턴 100% 적용
 ✅ Model Loader + Memory Manager 완전 연동  
@@ -10,6 +10,7 @@ MyCloset AI - 7단계: 후처리 (Post Processing) + 시각화 기능
 ✅ M3 Max Neural Engine + Metal Performance Shaders 활용
 ✅ 다중 향상 기법 (Super Resolution, Denoising, Sharpening 등)
 ✅ Graceful Degradation + 완벽한 에러 처리
+✅ logger 속성 누락 문제 완전 해결
 ✅ 🆕 후처리 결과 시각화 이미지 생성 기능 추가
 """
 
@@ -257,7 +258,7 @@ class DenoiseNet(nn.Module):
 
 class PostProcessingStep(BaseStepMixin):
     """
-    7단계: 후처리 - 완전 통합 프로덕션 버전 + 시각화
+    7단계: 후처리 - 완전 통합 프로덕션 버전 + 시각화 + logger 속성 누락 문제 해결
     
     ✅ 통일된 생성자 패턴 적용
     ✅ Model Loader + Memory Manager 완전 연동
@@ -265,6 +266,7 @@ class PostProcessingStep(BaseStepMixin):
     ✅ M3 Max 128GB 최적화
     ✅ 다중 이미지 향상 기법
     ✅ Graceful Degradation
+    ✅ logger 속성 누락 문제 완전 해결
     ✅ 🆕 후처리 결과 시각화 이미지 생성
     """
     
@@ -274,29 +276,40 @@ class PostProcessingStep(BaseStepMixin):
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """✅ 완전 통합 생성자 - 통일된 패턴 적용"""
+        """✅ 완전 통합 생성자 - 통일된 패턴 적용 + logger 속성 누락 문제 해결"""
         
-        # === 1. 통일된 기본 초기화 ===
+        # === 🔥 STEP 1: logger 속성 누락 문제 해결 ===
+        if not hasattr(self, 'logger'):
+            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
+            self.logger.info(f"🔧 {self.__class__.__name__} logger 초기화 완료")
+        
+        # === 2. BaseStepMixin 초기화 호출 ===
+        if MODEL_LOADER_AVAILABLE:
+            try:
+                super().__init__(**kwargs)
+            except Exception as e:
+                self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패: {e}")
+        
+        # === 3. 통일된 기본 초기화 ===
         self.device = self._auto_detect_device(device)
         self.config = config or {}
         self.step_name = self.__class__.__name__
-        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
         
-        # === 2. 표준 시스템 파라미터 ===
+        # === 4. 표준 시스템 파라미터 ===
         self.device_type = kwargs.get('device_type', 'auto')
         self.memory_gb = kwargs.get('memory_gb', 16.0)
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        # === 3. Step별 설정 병합 ===
+        # === 5. Step별 설정 병합 ===
         self._merge_step_specific_config(kwargs)
         
-        # === 4. 초기화 상태 ===
+        # === 6. 초기화 상태 ===
         self.is_initialized = False
         self._initialization_lock = threading.RLock()
         
-        # === 5. Model Loader 연동 (BaseStepMixin) ===
+        # === 7. Model Loader 연동 (BaseStepMixin) ===
         if MODEL_LOADER_AVAILABLE:
             try:
                 self._setup_model_interface()
@@ -306,10 +319,10 @@ class PostProcessingStep(BaseStepMixin):
         else:
             self.model_interface = None
         
-        # === 6. Step 특화 초기화 ===
+        # === 8. Step 특화 초기화 ===
         self._initialize_step_specific()
         
-        # === 7. 초기화 완료 로깅 ===
+        # === 9. 초기화 완료 로깅 ===
         self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device}")
         if self.is_m3_max:
             self.logger.info(f"🍎 M3 Max 최적화 모드 (메모리: {self.memory_gb}GB)")
@@ -380,6 +393,28 @@ class PostProcessingStep(BaseStepMixin):
         self.enhancement_strength = kwargs.get('enhancement_strength', 0.7)
         self.preserve_faces = kwargs.get('preserve_faces', True)
         self.auto_adjust_brightness = kwargs.get('auto_adjust_brightness', True)
+
+    def _setup_model_interface(self):
+        """Model Loader 인터페이스 설정"""
+        try:
+            if hasattr(self, 'logger'):
+                self.logger.debug("🔗 Model Loader 인터페이스 설정 중...")
+            
+            # 전역 모델 로더 사용
+            model_loader = get_global_model_loader()
+            if model_loader:
+                self.model_interface = model_loader.create_step_interface(self.step_name)
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"✅ {self.step_name} Model Loader 인터페이스 연결 완료")
+            else:
+                if hasattr(self, 'logger'):
+                    self.logger.warning(f"⚠️ 전역 ModelLoader를 찾을 수 없음")
+                self.model_interface = None
+                
+        except Exception as e:
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ Model Loader 인터페이스 설정 실패: {e}")
+            self.model_interface = None
 
     def _initialize_step_specific(self):
         """7단계 특화 초기화"""
@@ -1400,7 +1435,7 @@ class PostProcessingStep(BaseStepMixin):
             return ""
 
     # ==============================================
-    # 🔧 기존 함수들 (변경 없음)
+    # 🔧 기존 함수들 (이미지 향상 알고리즘)
     # ==============================================
 
     async def _apply_super_resolution(self, image: np.ndarray) -> Optional[np.ndarray]:
@@ -2351,7 +2386,7 @@ __all__ = [
 ]
 
 # 모듈 초기화 로깅
-logger.info("✅ Step 07 후처리 모듈 로드 완료")
+logger.info("✅ Step 07 후처리 모듈 로드 완료 - logger 속성 누락 문제 해결")
 logger.info(f"   - Model Loader 연동: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
 logger.info(f"   - Memory Manager 연동: {'✅' if MEMORY_MANAGER_AVAILABLE else '❌'}")
 logger.info(f"   - PyTorch 사용 가능: {'✅' if torch.cuda.is_available() or torch.backends.mps.is_available() else '❌'}")

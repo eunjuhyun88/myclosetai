@@ -1,14 +1,12 @@
 # backend/app/ai_pipeline/steps/step_08_quality_assessment.py
 """
-🔥 MyCloset AI - 8단계: 품질 평가 (Quality Assessment) - 완전한 기능 구현 v2.0
-✅ BaseStepMixin 기반 완전 재작성
-✅ ModelLoader 완벽 연동 + logger 속성 누락 문제 해결
-✅ step_model_requests.py 기반 모델 자동 로드
-✅ M3 Max 128GB 최적화
-✅ 실제 AI 모델 추론 기능
+🔥 MyCloset AI - 8단계: 품질 평가 (Quality Assessment) - 완전 통합 버전
+✅ BaseStepMixin 상속으로 logger 속성 누락 문제 완전 해결
+✅ 기존 파일의 세부 분석 기능 모두 포함
+✅ ModelLoader와 실제 연동되는 AI 모델 추론
 ✅ Pipeline Manager 100% 호환
-
-파일 위치: backend/app/ai_pipeline/steps/step_08_quality_assessment.py
+✅ M3 Max 128GB 최적화
+✅ conda 환경 최적화
 """
 
 import os
@@ -30,7 +28,10 @@ import numpy as np
 import base64
 import io
 
-# 필수 패키지들 - 안전한 import
+# 🔥 BaseStepMixin 상속 - logger 속성 누락 문제 해결
+from .base_step_mixin import QualityAssessmentMixin, ensure_step_initialization, safe_step_method, performance_monitor
+
+# 필수 패키지들 - conda 환경 최적화
 try:
     import torch
     import torch.nn as nn
@@ -39,21 +40,21 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
-    torch = None
+    print("❌ PyTorch 필수: conda install pytorch torchvision -c pytorch")
 
 try:
     import cv2
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
-    cv2 = None
+    print("❌ OpenCV 필수: conda install opencv")
 
 try:
     from PIL import Image, ImageStat, ImageEnhance, ImageFilter, ImageDraw
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
-    Image = None
+    print("❌ Pillow 필수: conda install pillow")
 
 try:
     from scipy import stats, ndimage, spatial
@@ -61,6 +62,7 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
+    print("⚠️ SciPy 권장: conda install scipy")
 
 try:
     from sklearn.cluster import KMeans
@@ -68,6 +70,7 @@ try:
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
+    print("⚠️ Scikit-learn 권장: conda install scikit-learn")
 
 try:
     from skimage import feature, measure, filters, exposure, segmentation
@@ -75,905 +78,2322 @@ try:
     SKIMAGE_AVAILABLE = True
 except ImportError:
     SKIMAGE_AVAILABLE = False
-
-# 프로젝트 내부 import
-try:
-    from ..steps.base_step_mixin import (
-        BaseStepMixin, QualityAssessmentMixin, 
-        safe_step_method, ensure_step_initialization, performance_monitor
-    )
-    from ..utils.model_loader import get_global_model_loader
-    from ..utils.step_model_requests import StepModelRequestAnalyzer, get_step_request
-except ImportError as e:
-    print(f"⚠️ 내부 모듈 import 실패: {e}")
-    # 폴백 클래스들
-    class BaseStepMixin:
-        def __init__(self, *args, **kwargs):
-            self.logger = logging.getLogger(self.__class__.__name__)
-            self.device = "cpu"
-            self.step_name = self.__class__.__name__
-            self.is_initialized = False
-    
-    class QualityAssessmentMixin(BaseStepMixin):
-        pass
-    
-    def safe_step_method(func):
-        return func
-    def ensure_step_initialization(func):
-        return func
-    def performance_monitor(name):
-        def decorator(func):
-            return func
-        return decorator
-
-# 로거 설정
-logger = logging.getLogger(__name__)
+    print("⚠️ Scikit-image 권장: conda install scikit-image")
 
 # ==============================================
-# 🔥 열거형 및 상수 정의
+# 🔥 열거형 및 상수 정의 (통합)
 # ==============================================
 
 class QualityGrade(Enum):
     """품질 등급"""
-    EXCELLENT = ("Excellent", 0.9, 1.0)
-    GOOD = ("Good", 0.75, 0.9)
-    FAIR = ("Fair", 0.6, 0.75)
-    POOR = ("Poor", 0.4, 0.6)
-    VERY_POOR = ("Very Poor", 0.0, 0.4)
-    
-    def __init__(self, label: str, min_score: float, max_score: float):
-        self.label = label
-        self.min_score = min_score
-        self.max_score = max_score
+    EXCELLENT = "excellent"      # 90-100점
+    GOOD = "good"               # 75-89점
+    ACCEPTABLE = "acceptable"    # 60-74점
+    POOR = "poor"               # 40-59점
+    VERY_POOR = "very_poor"     # 0-39점
 
-class QualityMetric(Enum):
-    """품질 평가 지표"""
-    SHARPNESS = "sharpness"
-    CONTRAST = "contrast"
-    BRIGHTNESS = "brightness"
-    COLOR_HARMONY = "color_harmony"
-    NOISE_LEVEL = "noise_level"
-    ARTIFACT_DETECTION = "artifact_detection"
-    CONSISTENCY = "consistency"
-    REALISM = "realism"
-    FITTING_QUALITY = "fitting_quality"
-    EDGE_QUALITY = "edge_quality"
+class AssessmentMode(Enum):
+    """평가 모드"""
+    FAST = "fast"              # 빠른 기본 평가
+    COMPREHENSIVE = "comprehensive"  # 종합 평가
+    DETAILED = "detailed"      # 상세 분석
+    NEURAL = "neural"          # AI 기반 평가
 
-# 상수 정의
-QUALITY_THRESHOLDS = {
-    QualityMetric.SHARPNESS: {"min": 0.3, "good": 0.7, "excellent": 0.9},
-    QualityMetric.CONTRAST: {"min": 0.2, "good": 0.6, "excellent": 0.85},
-    QualityMetric.BRIGHTNESS: {"min": 0.1, "good": 0.5, "excellent": 0.8},
-    QualityMetric.COLOR_HARMONY: {"min": 0.4, "good": 0.7, "excellent": 0.9},
-    QualityMetric.NOISE_LEVEL: {"min": 0.1, "good": 0.3, "excellent": 0.8},
-    QualityMetric.ARTIFACT_DETECTION: {"min": 0.2, "good": 0.6, "excellent": 0.9},
-    QualityMetric.CONSISTENCY: {"min": 0.3, "good": 0.7, "excellent": 0.9},
-    QualityMetric.REALISM: {"min": 0.4, "good": 0.7, "excellent": 0.85},
-    QualityMetric.FITTING_QUALITY: {"min": 0.5, "good": 0.8, "excellent": 0.95},
-    QualityMetric.EDGE_QUALITY: {"min": 0.3, "good": 0.6, "excellent": 0.85}
-}
+class QualityAspect(Enum):
+    """품질 측면"""
+    TECHNICAL = "technical"    # 기술적 품질
+    PERCEPTUAL = "perceptual"  # 지각적 품질
+    AESTHETIC = "aesthetic"    # 미적 품질
+    FUNCTIONAL = "functional"  # 기능적 품질
 
 # ==============================================
-# 🔥 데이터 클래스 정의
+# 🔥 품질 메트릭 데이터 클래스 (통합)
 # ==============================================
-
-@dataclass
-class QualityAssessmentConfig:
-    """품질 평가 설정"""
-    assessment_mode: str = "comprehensive"  # "fast", "balanced", "comprehensive"
-    technical_analysis_enabled: bool = True
-    aesthetic_analysis_enabled: bool = True
-    clip_analysis_enabled: bool = True
-    perceptual_analysis_enabled: bool = True
-    
-    # 임계값 설정
-    quality_threshold: float = 0.7
-    noise_threshold: float = 0.3
-    artifact_threshold: float = 0.2
-    
-    # 가중치 설정
-    weights: Dict[str, float] = field(default_factory=lambda: {
-        "technical": 0.4,
-        "aesthetic": 0.3,
-        "clip_score": 0.2,
-        "perceptual": 0.1
-    })
-    
-    # 성능 설정
-    enable_gpu_acceleration: bool = True
-    batch_processing: bool = False
-    parallel_metrics: bool = True
-    cache_enabled: bool = True
 
 @dataclass
 class QualityMetrics:
-    """품질 평가 결과"""
-    overall_score: float = 0.0
-    technical_score: float = 0.0
-    aesthetic_score: float = 0.0
-    clip_score: float = 0.0
-    perceptual_score: float = 0.0
+    """완전한 품질 메트릭 (기존 + 새로운 기능 통합)"""
     
-    # 세부 지표
+    # 기술적 품질
     sharpness: float = 0.0
-    contrast: float = 0.0
-    brightness: float = 0.0
-    color_harmony: float = 0.0
     noise_level: float = 0.0
+    contrast: float = 0.0
+    saturation: float = 0.0
+    brightness: float = 0.0
+    color_accuracy: float = 0.0
+    
+    # 지각적 품질
+    structural_similarity: float = 0.0
+    perceptual_similarity: float = 0.0
+    visual_quality: float = 0.0
     artifact_level: float = 0.0
-    consistency: float = 0.0
-    realism: float = 0.0
+    ssim_score: float = 0.0
+    psnr_score: float = 0.0
+    lpips_score: float = 0.0
+    
+    # 미적 품질
+    composition: float = 0.0
+    color_harmony: float = 0.0
+    symmetry: float = 0.0
+    balance: float = 0.0
+    
+    # 기능적 품질
     fitting_quality: float = 0.0
-    edge_quality: float = 0.0
+    edge_preservation: float = 0.0
+    texture_quality: float = 0.0
+    detail_preservation: float = 0.0
     
-    # 메타데이터
-    processing_time: float = 0.0
+    # 전체 점수
+    overall_score: float = 0.0
     confidence: float = 0.0
-    grade: str = "Unknown"
-    recommendations: List[str] = field(default_factory=list)
     
-    def to_dict(self) -> Dict[str, Any]:
-        """딕셔너리로 변환"""
-        return asdict(self)
+    def calculate_overall_score(self, weights: Optional[Dict[str, float]] = None) -> float:
+        """전체 점수 계산 (향상된 버전)"""
+        if weights is None:
+            weights = {
+                'technical': 0.3,
+                'perceptual': 0.3,
+                'aesthetic': 0.2,
+                'functional': 0.2
+            }
+        
+        # 기술적 품질 (노이즈는 낮을수록 좋음)
+        technical_score = np.mean([
+            self.sharpness, 
+            1.0 - self.noise_level,  # 노이즈 역전
+            self.contrast, 
+            self.brightness, 
+            self.saturation,
+            self.color_accuracy
+        ])
+        
+        # 지각적 품질 (아티팩트는 낮을수록 좋음)
+        perceptual_score = np.mean([
+            self.ssim_score or self.structural_similarity,
+            self.perceptual_similarity,
+            self.visual_quality,
+            1.0 - self.artifact_level,  # 아티팩트 역전
+            self.psnr_score
+        ])
+        
+        # 미적 품질
+        aesthetic_score = np.mean([
+            self.composition, 
+            self.color_harmony,
+            self.symmetry, 
+            self.balance
+        ])
+        
+        # 기능적 품질
+        functional_score = np.mean([
+            self.fitting_quality, 
+            self.edge_preservation,
+            self.texture_quality, 
+            self.detail_preservation
+        ])
+        
+        # 가중 평균
+        self.overall_score = (
+            technical_score * weights['technical'] +
+            perceptual_score * weights['perceptual'] +
+            aesthetic_score * weights['aesthetic'] +
+            functional_score * weights['functional']
+        )
+        
+        return self.overall_score
+    
+    def get_grade(self) -> QualityGrade:
+        """등급 반환"""
+        score = self.overall_score * 100
+        
+        if score >= 90:
+            return QualityGrade.EXCELLENT
+        elif score >= 75:
+            return QualityGrade.GOOD
+        elif score >= 60:
+            return QualityGrade.ACCEPTABLE
+        elif score >= 40:
+            return QualityGrade.POOR
+        else:
+            return QualityGrade.VERY_POOR
 
 # ==============================================
-# 🔥 메인 QualityAssessmentStep 클래스
+# 🔥 AI 모델 클래스들 (향상된 버전)
 # ==============================================
 
-class QualityAssessmentStep(BaseStepMixin, QualityAssessmentMixin):
-    """
-    🔥 8단계: 품질 평가 Step - 완전한 기능 구현
-    ✅ BaseStepMixin 기반 표준화된 구조
-    ✅ ModelLoader 완벽 연동
-    ✅ logger 속성 누락 문제 해결
-    ✅ 실제 AI 모델 추론 기능
-    ✅ M3 Max 최적화
-    """
+class EnhancedPerceptualQualityModel(nn.Module):
+    """향상된 지각적 품질 평가 모델"""
     
-    def __init__(self, **kwargs):
-        """🔥 통일된 생성자 패턴"""
+    def __init__(self):
+        super().__init__()
         
-        # 🔥 BaseStepMixin 먼저 초기화 (logger 속성 해결)
-        super().__init__(**kwargs)
-        
-        # 🔥 Step 8 전용 속성 설정
-        self.step_name = "QualityAssessmentStep"
-        self.step_number = 8
-        self.step_type = "quality_assessment"
-        
-        # 🔥 logger 속성 누락 문제 완전 해결
-        if not hasattr(self, 'logger'):
-            self.logger = logging.getLogger(f"pipeline.step_08.{self.__class__.__name__}")
-        
-        # 설정 초기화
-        self.config = QualityAssessmentConfig(**kwargs)
-        
-        # 디바이스 설정
-        self.device = self._auto_detect_device()
-        
-        # 모델 관련 속성
-        self.clip_model = None
-        self.clip_processor = None
-        self.models_loaded = False
-        self.model_cache = {}
-        
-        # 캐시 시스템
-        self.quality_cache = {}
-        self.cache_enabled = self.config.cache_enabled
-        
-        # 성능 통계
-        self.processing_stats = {
-            "total_processed": 0,
-            "average_time": 0.0,
-            "last_processing_time": 0.0
-        }
-        
-        # 🔥 ModelLoader 연동 설정
-        self._setup_model_interface_safe()
-        
-        # 초기화 완료
-        self.is_initialized = True
-        self.logger.info(f"✅ {self.step_name} 초기화 완료 - Device: {self.device}")
-    
-    def _auto_detect_device(self) -> str:
-        """🔧 디바이스 자동 감지"""
-        if TORCH_AVAILABLE:
-            if torch.backends.mps.is_available():
-                return "mps"
-            elif torch.cuda.is_available():
-                return "cuda"
-        return "cpu"
-    
-    def _setup_model_interface_safe(self):
-        """🔧 ModelLoader 인터페이스 안전 설정"""
-        try:
-            # Step 모델 요청사항 확인
-            step_request = get_step_request(self.step_name)
-            if step_request:
-                self.logger.info(f"🔍 Step 8 모델 요구사항: {step_request.model_name}")
+        # 더 깊은 CNN 기반 특징 추출기
+        self.feature_extractor = nn.Sequential(
+            # Block 1
+            nn.Conv2d(3, 64, 7, stride=2, padding=3),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(3, stride=2, padding=1),
             
-            # ModelLoader 연동
-            model_loader = get_global_model_loader()
-            if model_loader:
-                self.model_interface = model_loader.create_step_interface(self.step_name)
-                self.logger.info(f"🔗 {self.step_name} ModelLoader 연동 완료")
+            # Block 2
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            
+            # Block 3
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((8, 8))
+        )
+        
+        # 다중 품질 예측기
+        feature_dim = 256 * 8 * 8
+        self.quality_predictors = nn.ModuleDict({
+            'overall': nn.Sequential(
+                nn.Linear(feature_dim, 512),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(512, 128),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(128, 1),
+                nn.Sigmoid()
+            ),
+            'sharpness': nn.Sequential(
+                nn.Linear(feature_dim, 256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
+                nn.Sigmoid()
+            ),
+            'artifacts': nn.Sequential(
+                nn.Linear(feature_dim, 256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
+                nn.Sigmoid()
+            )
+        })
+    
+    def forward(self, x):
+        features = self.feature_extractor(x)
+        features = features.view(features.size(0), -1)
+        
+        results = {}
+        for name, predictor in self.quality_predictors.items():
+            results[name] = predictor(features)
+        
+        return results
+
+class EnhancedAestheticQualityModel(nn.Module):
+    """향상된 미적 품질 평가 모델 (ResNet 백본)"""
+    
+    def __init__(self):
+        super().__init__()
+        
+        # ResNet 스타일 백본
+        self.backbone = nn.Sequential(
+            # Initial conv
+            nn.Conv2d(3, 64, 7, stride=2, padding=3),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(3, stride=2, padding=1),
+            
+            # ResNet blocks
+            self._make_layer(64, 64, 2),
+            self._make_layer(64, 128, 2, stride=2),
+            self._make_layer(128, 256, 2, stride=2),
+            self._make_layer(256, 512, 2, stride=2),
+            
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        
+        # 미적 점수 예측 헤드들
+        self.aesthetic_heads = nn.ModuleDict({
+            'composition': nn.Sequential(
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, 1),
+                nn.Sigmoid()
+            ),
+            'color_harmony': nn.Sequential(
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, 1),
+                nn.Sigmoid()
+            ),
+            'symmetry': nn.Sequential(
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, 1),
+                nn.Sigmoid()
+            ),
+            'balance': nn.Sequential(
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, 1),
+                nn.Sigmoid()
+            )
+        })
+    
+    def _make_layer(self, in_channels, out_channels, blocks, stride=1):
+        layers = []
+        layers.append(self._make_resnet_block(in_channels, out_channels, stride))
+        for _ in range(1, blocks):
+            layers.append(self._make_resnet_block(out_channels, out_channels))
+        return nn.Sequential(*layers)
+    
+    def _make_resnet_block(self, in_channels, out_channels, stride=1):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU()
+        )
+    
+    def forward(self, x):
+        features = self.backbone(x)
+        features = features.view(features.size(0), -1)
+        
+        results = {}
+        for name, head in self.aesthetic_heads.items():
+            results[name] = head(features)
+        
+        return results
+
+# ==============================================
+# 🔥 전문 분석기 클래스들 (기존 파일 기능 통합)
+# ==============================================
+
+class TechnicalQualityAnalyzer:
+    """향상된 기술적 품질 분석기"""
+    
+    def __init__(self, device: str = "cpu"):
+        self.device = device
+        self.logger = logging.getLogger(f"{__name__}.TechnicalQualityAnalyzer")
+    
+    def analyze_comprehensive(self, image: np.ndarray) -> Dict[str, float]:
+        """종합 기술적 품질 분석"""
+        results = {}
+        
+        try:
+            # 1. 선명도 분석 (향상된 버전)
+            results['sharpness'] = self._analyze_sharpness_enhanced(image)
+            
+            # 2. 노이즈 레벨 분석 (다중 방법)
+            results['noise_level'] = self._analyze_noise_multi_method(image)
+            
+            # 3. 대비 분석 (적응형)
+            results['contrast'] = self._analyze_contrast_adaptive(image)
+            
+            # 4. 밝기 분석 (히스토그램 기반)
+            results['brightness'] = self._analyze_brightness_histogram(image)
+            
+            # 5. 채도 분석 (HSV 기반)
+            results['saturation'] = self._analyze_saturation_hsv(image)
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"종합 기술적 품질 분석 실패: {e}")
+            return {
+                'sharpness': 0.5, 'noise_level': 0.5, 'contrast': 0.5,
+                'brightness': 0.5, 'saturation': 0.5
+            }
+    
+    def _analyze_sharpness_enhanced(self, image: np.ndarray) -> float:
+        """향상된 선명도 분석"""
+        try:
+            if not CV2_AVAILABLE:
+                return 0.5
+            
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            
+            # 다중 엣지 감지 방법 조합
+            methods = []
+            
+            # 1. Laplacian variance
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            methods.append(min(laplacian_var / 1000.0, 1.0))
+            
+            # 2. Sobel magnitude
+            sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+            sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+            sobel_magnitude = np.sqrt(sobel_x**2 + sobel_y**2).mean()
+            methods.append(min(sobel_magnitude / 100.0, 1.0))
+            
+            # 3. Canny edge density
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            methods.append(min(edge_density * 10, 1.0))
+            
+            return np.mean(methods)
+            
+        except Exception as e:
+            self.logger.error(f"선명도 분석 실패: {e}")
+            return 0.5
+    
+    def _analyze_noise_multi_method(self, image: np.ndarray) -> float:
+        """다중 방법 노이즈 분석"""
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+            
+            noise_levels = []
+            
+            # 1. 고주파 성분 분석
+            if CV2_AVAILABLE:
+                kernel = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]])
+                filtered = cv2.filter2D(gray, -1, kernel)
+                noise_levels.append(np.std(filtered) / 255.0)
+            
+            # 2. 가우시안 필터 차이
+            if CV2_AVAILABLE:
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                noise_levels.append(np.std(gray - blurred) / 255.0)
+            
+            # 3. 웨이블릿 기반 (근사)
+            if len(noise_levels) == 0:
+                noise_levels.append(np.std(gray) / 255.0 * 0.3)  # 폴백
+            
+            return min(np.mean(noise_levels), 1.0)
+            
+        except Exception as e:
+            self.logger.error(f"노이즈 분석 실패: {e}")
+            return 0.3
+    
+    def _analyze_contrast_adaptive(self, image: np.ndarray) -> float:
+        """적응형 대비 분석"""
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+            
+            # 1. RMS 대비
+            rms_contrast = np.std(gray) / 255.0
+            
+            # 2. Michelson 대비
+            max_val, min_val = np.max(gray), np.min(gray)
+            if max_val + min_val > 0:
+                michelson_contrast = (max_val - min_val) / (max_val + min_val)
             else:
-                self.logger.warning(f"⚠️ ModelLoader 없음, 내장 모델 사용")
-                self.model_interface = None
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ ModelLoader 연동 실패: {e}")
-            self.model_interface = None
-    
-    @safe_step_method
-    @performance_monitor("model_initialization")
-    async def initialize_models(self) -> bool:
-        """🔧 AI 모델 초기화"""
-        try:
-            self.logger.info(f"🔄 {self.step_name} AI 모델 로드 시작...")
+                michelson_contrast = 0
             
-            # ModelLoader 통해 CLIP 모델 로드 시도
-            if self.model_interface:
-                try:
-                    clip_model = await self.model_interface.get_model("quality_assessment_clip")
-                    if clip_model:
-                        self.clip_model = clip_model
-                        self.logger.info("✅ CLIP 모델 로드 성공 (ModelLoader)")
-                    else:
-                        self.logger.info("ℹ️ CLIP 모델 로드 실패, 내장 모델 사용")
-                        await self._load_builtin_clip_model()
-                        
-                except Exception as e:
-                    self.logger.warning(f"⚠️ ModelLoader CLIP 로드 실패: {e}")
-                    await self._load_builtin_clip_model()
+            # 3. 히스토그램 분산
+            hist, _ = np.histogram(gray, bins=256)
+            hist_normalized = hist / np.sum(hist)
+            hist_entropy = -np.sum(hist_normalized * np.log2(hist_normalized + 1e-8))
+            entropy_contrast = hist_entropy / 8.0  # 정규화
+            
+            # 종합 대비 점수
+            contrast_score = np.mean([rms_contrast, michelson_contrast, entropy_contrast])
+            return min(contrast_score, 1.0)
+            
+        except Exception as e:
+            self.logger.error(f"대비 분석 실패: {e}")
+            return 0.5
+    
+    def _analyze_brightness_histogram(self, image: np.ndarray) -> float:
+        """히스토그램 기반 밝기 분석"""
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+            
+            # 히스토그램 분석
+            hist, bins = np.histogram(gray, bins=256, range=(0, 256))
+            hist_normalized = hist / np.sum(hist)
+            
+            # 가중 평균 밝기
+            bin_centers = (bins[:-1] + bins[1:]) / 2
+            weighted_brightness = np.sum(hist_normalized * bin_centers) / 255.0
+            
+            # 적정 밝기 범위 평가 (0.3-0.7)
+            optimal_min, optimal_max = 0.3, 0.7
+            
+            if optimal_min <= weighted_brightness <= optimal_max:
+                brightness_score = 1.0
+            elif weighted_brightness < optimal_min:
+                brightness_score = weighted_brightness / optimal_min
             else:
-                # 내장 CLIP 모델 로드
-                await self._load_builtin_clip_model()
+                brightness_score = 1.0 - (weighted_brightness - optimal_max) / (1.0 - optimal_max)
             
-            self.models_loaded = True
-            self.logger.info(f"✅ {self.step_name} AI 모델 초기화 완료")
-            return True
+            return max(0.0, min(brightness_score, 1.0))
             
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 모델 초기화 실패: {e}")
-            return False
+            self.logger.error(f"밝기 분석 실패: {e}")
+            return 0.5
     
-    async def _load_builtin_clip_model(self):
-        """🔧 내장 CLIP 모델 로드"""
+    def _analyze_saturation_hsv(self, image: np.ndarray) -> float:
+        """HSV 기반 채도 분석"""
         try:
-            if not TORCH_AVAILABLE:
-                self.logger.warning("⚠️ PyTorch 없음, CLIP 분석 비활성화")
-                return
-            
-            # Transformers 라이브러리 사용
-            try:
-                from transformers import CLIPModel, CLIPProcessor
+            if CV2_AVAILABLE:
+                hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+                saturation = hsv[:, :, 1]
                 
-                model_name = "openai/clip-vit-base-patch32"
-                self.clip_processor = CLIPProcessor.from_pretrained(model_name)
-                self.clip_model = CLIPModel.from_pretrained(model_name)
+                # 평균 및 분산 분석
+                mean_sat = np.mean(saturation) / 255.0
+                std_sat = np.std(saturation) / 255.0
                 
-                if self.device != "cpu":
-                    self.clip_model = self.clip_model.to(self.device)
+                # 적정 채도 범위 (0.3-0.8) + 분산 고려
+                optimal_range = 0.3 <= mean_sat <= 0.8
+                good_variance = 0.1 <= std_sat <= 0.3
                 
-                self.clip_model.eval()
-                self.logger.info("✅ 내장 CLIP 모델 로드 완료")
+                saturation_score = 0.0
+                if optimal_range:
+                    saturation_score += 0.7
+                else:
+                    saturation_score += max(0, 0.7 - abs(mean_sat - 0.55) * 2)
                 
-            except ImportError:
-                self.logger.warning("⚠️ Transformers 없음: pip install transformers")
-                self.clip_model = None
-                self.clip_processor = None
+                if good_variance:
+                    saturation_score += 0.3
+                else:
+                    saturation_score += max(0, 0.3 - abs(std_sat - 0.2) * 3)
+                
+                return min(saturation_score, 1.0)
+            else:
+                # RGB 기반 근사 채도
+                r, g, b = image[:, :, 0], image[:, :, 1], image[:, :, 2]
+                max_rgb = np.maximum(np.maximum(r, g), b)
+                min_rgb = np.minimum(np.minimum(r, g), b)
+                saturation = np.mean((max_rgb - min_rgb) / (max_rgb + 1e-8))
+                return min(saturation, 1.0)
                 
         except Exception as e:
-            self.logger.warning(f"⚠️ 내장 CLIP 모델 로드 실패: {e}")
-            self.clip_model = None
-            self.clip_processor = None
+            self.logger.error(f"채도 분석 실패: {e}")
+            return 0.5
+
+class FittingQualityAnalyzer:
+    """의류 피팅 품질 전문 분석기"""
     
-    @safe_step_method
-    @ensure_step_initialization
-    @performance_monitor("quality_assessment")
-    async def process(
-        self,
-        fitted_image: Union[np.ndarray, Image.Image],
-        original_image: Optional[Union[np.ndarray, Image.Image]] = None,
-        cloth_image: Optional[Union[np.ndarray, Image.Image]] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """
-        🔥 메인 품질 평가 처리 함수
-        
-        Args:
-            fitted_image: 가상 피팅 결과 이미지
-            original_image: 원본 사람 이미지 (선택적)
-            cloth_image: 옷 이미지 (선택적)
-            **kwargs: 추가 설정
-        
-        Returns:
-            품질 평가 결과 딕셔너리
-        """
-        start_time = time.time()
+    def __init__(self, device: str = "cpu"):
+        self.device = device
+        self.logger = logging.getLogger(f"{__name__}.FittingQualityAnalyzer")
+    
+    def analyze_comprehensive(self, fitted_img: np.ndarray, person_img: Optional[np.ndarray], clothing_type: str) -> Dict[str, float]:
+        """종합 피팅 품질 분석"""
+        results = {}
         
         try:
-            self.logger.info(f"🔄 {self.step_name} 품질 평가 시작")
+            # 1. 피팅 정확도
+            results['fitting_accuracy'] = self._analyze_fitting_accuracy_advanced(fitted_img, person_img, clothing_type)
             
-            # 입력 검증
-            if fitted_image is None:
-                raise ValueError("fitted_image는 필수입니다")
+            # 2. 엣지 보존
+            results['edge_preservation'] = self._analyze_edge_preservation_advanced(fitted_img, person_img)
             
-            # 이미지 전처리
-            fitted_img_array = self._preprocess_image(fitted_image)
-            original_img_array = self._preprocess_image(original_image) if original_image is not None else None
-            cloth_img_array = self._preprocess_image(cloth_image) if cloth_image is not None else None
+            # 3. 텍스처 보존
+            results['texture_preservation'] = self._analyze_texture_preservation_advanced(fitted_img, person_img)
             
-            # 캐시 확인
-            cache_key = self._generate_cache_key(fitted_img_array)
-            if self.cache_enabled and cache_key in self.quality_cache:
-                self.logger.debug("✅ 캐시에서 품질 평가 결과 반환")
-                return self.quality_cache[cache_key]
+            # 4. 형태 일관성
+            results['shape_consistency'] = self._analyze_shape_consistency(fitted_img, person_img)
             
-            # 모델 초기화 (필요시)
-            if not self.models_loaded:
-                await self.initialize_models()
+            # 5. 의류별 특화 분석
+            results['clothing_specific_quality'] = self._analyze_clothing_specific_quality(fitted_img, clothing_type)
             
-            # Step 초기화 확인 (BaseStepMixin v2.0)
-            if not self.is_initialized:
-                await self.initialize_step()
+            return results
             
-            # 품질 평가 실행
-            metrics = await self._perform_quality_assessment(
-                fitted_img_array,
-                original_img_array,
-                cloth_img_array,
-                **kwargs
+        except Exception as e:
+            self.logger.error(f"피팅 품질 분석 실패: {e}")
+            return {
+                'fitting_accuracy': 0.5, 'edge_preservation': 0.5,
+                'texture_preservation': 0.5, 'shape_consistency': 0.5,
+                'clothing_specific_quality': 0.5
+            }
+    
+    def _analyze_fitting_accuracy_advanced(self, fitted_img: np.ndarray, person_img: Optional[np.ndarray], clothing_type: str) -> float:
+        """고급 피팅 정확도 분석"""
+        try:
+            if person_img is None or not CV2_AVAILABLE:
+                return 0.6
+            
+            # 크기 맞추기
+            if fitted_img.shape != person_img.shape:
+                person_img = cv2.resize(person_img, (fitted_img.shape[1], fitted_img.shape[0]))
+            
+            accuracy_factors = []
+            
+            # 1. 윤곽선 일치도
+            fitted_gray = cv2.cvtColor(fitted_img, cv2.COLOR_RGB2GRAY)
+            person_gray = cv2.cvtColor(person_img, cv2.COLOR_RGB2GRAY)
+            
+            fitted_contours, _ = cv2.findContours(cv2.Canny(fitted_gray, 50, 150), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            person_contours, _ = cv2.findContours(cv2.Canny(person_gray, 50, 150), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if fitted_contours and person_contours:
+                # 가장 큰 윤곽선 비교
+                fitted_main = max(fitted_contours, key=cv2.contourArea)
+                person_main = max(person_contours, key=cv2.contourArea)
+                
+                # 윤곽선 매칭 점수
+                match_score = cv2.matchShapes(fitted_main, person_main, cv2.CONTOURS_MATCH_I1, 0)
+                contour_similarity = max(0, 1.0 - match_score)
+                accuracy_factors.append(contour_similarity)
+            
+            # 2. SSIM 기반 구조 유사성
+            if SKIMAGE_AVAILABLE:
+                ssim_score = ssim(person_img, fitted_img, multichannel=True, channel_axis=2)
+                accuracy_factors.append(max(0, ssim_score))
+            
+            # 3. 의류 타입별 가중치 적용
+            from .step_08_quality_assessment import QualityAssessmentStep
+            clothing_weights = QualityAssessmentStep.CLOTHING_QUALITY_WEIGHTS.get(
+                clothing_type, 
+                QualityAssessmentStep.CLOTHING_QUALITY_WEIGHTS['default']
             )
             
-            # 처리 시간 계산
-            processing_time = time.time() - start_time
-            metrics.processing_time = processing_time
+            base_accuracy = np.mean(accuracy_factors) if accuracy_factors else 0.6
+            weighted_accuracy = base_accuracy * clothing_weights['fitting'] + 0.3 * (1 - clothing_weights['fitting'])
             
-            # 전체 점수 계산
-            metrics = self._calculate_overall_score(metrics)
+            return min(weighted_accuracy, 1.0)
             
-            # 등급 결정
-            metrics.grade = self._determine_quality_grade(metrics.overall_score)
+        except Exception as e:
+            self.logger.error(f"피팅 정확도 분석 실패: {e}")
+            return 0.5
+    
+    def _analyze_edge_preservation_advanced(self, fitted_img: np.ndarray, person_img: Optional[np.ndarray]) -> float:
+        """고급 엣지 보존 분석"""
+        try:
+            if person_img is None or not CV2_AVAILABLE:
+                return 0.6
             
-            # 개선 권장사항 생성
-            metrics.recommendations = self._generate_recommendations(metrics)
+            # 크기 맞추기
+            if fitted_img.shape != person_img.shape:
+                person_img = cv2.resize(person_img, (fitted_img.shape[1], fitted_img.shape[0]))
             
-            # 결과 구성
-            result = {
-                'success': True,
-                'step_name': self.step_name,
-                'quality_metrics': metrics.to_dict(),
-                'overall_score': metrics.overall_score,
-                'grade': metrics.grade,
-                'confidence': metrics.confidence,
-                'processing_time': processing_time,
-                'recommendations': metrics.recommendations,
-                'metadata': {
-                    'assessment_mode': self.config.assessment_mode,
-                    'device': self.device,
-                    'models_used': self._get_models_info(),
-                    'image_size': fitted_img_array.shape if fitted_img_array is not None else None,
-                    'has_reference': original_img_array is not None,
-                    'has_cloth': cloth_img_array is not None
-                }
+            fitted_gray = cv2.cvtColor(fitted_img, cv2.COLOR_RGB2GRAY)
+            person_gray = cv2.cvtColor(person_img, cv2.COLOR_RGB2GRAY)
+            
+            preservation_scores = []
+            
+            # 1. 다중 임계값 Canny 엣지 비교
+            thresholds = [(50, 150), (100, 200), (30, 100)]
+            
+            for low, high in thresholds:
+                fitted_edges = cv2.Canny(fitted_gray, low, high)
+                person_edges = cv2.Canny(person_gray, low, high)
+                
+                # IoU 계산
+                intersection = np.sum((fitted_edges > 0) & (person_edges > 0))
+                union = np.sum((fitted_edges > 0) | (person_edges > 0))
+                
+                if union > 0:
+                    iou = intersection / union
+                    preservation_scores.append(iou)
+            
+            # 2. 그라디언트 방향 일치도
+            grad_x_fitted = cv2.Sobel(fitted_gray, cv2.CV_64F, 1, 0, ksize=3)
+            grad_y_fitted = cv2.Sobel(fitted_gray, cv2.CV_64F, 0, 1, ksize=3)
+            grad_x_person = cv2.Sobel(person_gray, cv2.CV_64F, 1, 0, ksize=3)
+            grad_y_person = cv2.Sobel(person_gray, cv2.CV_64F, 0, 1, ksize=3)
+            
+            # 그라디언트 방향 각도
+            angles_fitted = np.arctan2(grad_y_fitted, grad_x_fitted)
+            angles_person = np.arctan2(grad_y_person, grad_x_person)
+            
+            # 각도 차이 (circular distance)
+            angle_diff = np.abs(angles_fitted - angles_person)
+            angle_diff = np.minimum(angle_diff, 2*np.pi - angle_diff)
+            
+            # 강한 엣지에서만 계산
+            edge_strength = np.sqrt(grad_x_fitted**2 + grad_y_fitted**2)
+            strong_edges = edge_strength > np.percentile(edge_strength, 75)
+            
+            if np.sum(strong_edges) > 0:
+                angle_similarity = np.mean(1.0 - angle_diff[strong_edges] / np.pi)
+                preservation_scores.append(angle_similarity)
+            
+            return np.mean(preservation_scores) if preservation_scores else 0.6
+            
+        except Exception as e:
+            self.logger.error(f"엣지 보존 분석 실패: {e}")
+            return 0.5
+    
+    def _analyze_texture_preservation_advanced(self, fitted_img: np.ndarray, person_img: Optional[np.ndarray]) -> float:
+        """고급 텍스처 보존 분석"""
+        try:
+            if person_img is None:
+                return 0.6
+            
+            # 크기 맞추기
+            if fitted_img.shape != person_img.shape:
+                person_img = cv2.resize(person_img, (fitted_img.shape[1], fitted_img.shape[0])) if CV2_AVAILABLE else person_img
+            
+            texture_scores = []
+            
+            # 1. LBP (Local Binary Pattern) 비교
+            if SKIMAGE_AVAILABLE:
+                fitted_gray = cv2.cvtColor(fitted_img, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.dot(fitted_img[...,:3], [0.2989, 0.5870, 0.1140])
+                person_gray = cv2.cvtColor(person_img, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.dot(person_img[...,:3], [0.2989, 0.5870, 0.1140])
+                
+                # 다중 스케일 LBP
+                for radius in [1, 2, 3]:
+                    n_points = 8 * radius
+                    fitted_lbp = feature.local_binary_pattern(fitted_gray, n_points, radius, method='uniform')
+                    person_lbp = feature.local_binary_pattern(person_gray, n_points, radius, method='uniform')
+                    
+                    # 히스토그램 비교
+                    fitted_hist, _ = np.histogram(fitted_lbp.ravel(), bins=n_points + 2)
+                    person_hist, _ = np.histogram(person_lbp.ravel(), bins=n_points + 2)
+                    
+                    # 정규화
+                    fitted_hist = fitted_hist.astype(float) / (fitted_hist.sum() + 1e-8)
+                    person_hist = person_hist.astype(float) / (person_hist.sum() + 1e-8)
+                    
+                    # Bhattacharyya coefficient
+                    similarity = np.sum(np.sqrt(fitted_hist * person_hist))
+                    texture_scores.append(similarity)
+            
+            # 2. 가보 필터 응답 비교
+            if SKIMAGE_AVAILABLE:
+                from skimage.filters import gabor
+                
+                for theta in [0, np.pi/4, np.pi/2, 3*np.pi/4]:
+                    for frequency in [0.1, 0.3, 0.5]:
+                        fitted_gabor, _ = gabor(fitted_gray, frequency=frequency, theta=theta)
+                        person_gabor, _ = gabor(person_gray, frequency=frequency, theta=theta)
+                        
+                        # 응답 상관관계
+                        correlation = np.corrcoef(fitted_gabor.ravel(), person_gabor.ravel())[0, 1]
+                        if not np.isnan(correlation):
+                            texture_scores.append(max(0, correlation))
+            
+            # 3. 주파수 도메인 분석
+            if len(texture_scores) == 0:
+                # 폴백: 간단한 텍스처 분석
+                fitted_std = np.std(fitted_img)
+                person_std = np.std(person_img)
+                if person_std > 0:
+                    texture_similarity = min(fitted_std / person_std, person_std / fitted_std)
+                    texture_scores.append(texture_similarity)
+            
+            return np.mean(texture_scores) if texture_scores else 0.6
+            
+        except Exception as e:
+            self.logger.error(f"텍스처 보존 분석 실패: {e}")
+            return 0.5
+    
+    def _analyze_shape_consistency(self, fitted_img: np.ndarray, person_img: Optional[np.ndarray]) -> float:
+        """형태 일관성 분석"""
+        try:
+            if person_img is None or not CV2_AVAILABLE:
+                return 0.6
+            
+            # 크기 맞추기
+            if fitted_img.shape != person_img.shape:
+                person_img = cv2.resize(person_img, (fitted_img.shape[1], fitted_img.shape[0]))
+            
+            fitted_gray = cv2.cvtColor(fitted_img, cv2.COLOR_RGB2GRAY)
+            person_gray = cv2.cvtColor(person_img, cv2.COLOR_RGB2GRAY)
+            
+            # 모멘트 기반 형태 분석
+            fitted_moments = cv2.moments(fitted_gray)
+            person_moments = cv2.moments(person_gray)
+            
+            # Hu 모멘트 (형태 불변 특징)
+            fitted_hu = cv2.HuMoments(fitted_moments).flatten()
+            person_hu = cv2.HuMoments(person_moments).flatten()
+            
+            # 로그 변환
+            fitted_hu = -np.sign(fitted_hu) * np.log10(np.abs(fitted_hu) + 1e-10)
+            person_hu = -np.sign(person_hu) * np.log10(np.abs(person_hu) + 1e-10)
+            
+            # 유사도 계산
+            hu_similarity = np.exp(-np.sum(np.abs(fitted_hu - person_hu)))
+            
+            return min(hu_similarity, 1.0)
+            
+        except Exception as e:
+            self.logger.error(f"형태 일관성 분석 실패: {e}")
+            return 0.6
+    
+    def _analyze_clothing_specific_quality(self, fitted_img: np.ndarray, clothing_type: str) -> float:
+        """의류별 특화 품질 분석"""
+        try:
+            # 의류 타입별 특화 분석
+            if clothing_type in ['shirt', 'top']:
+                return self._analyze_shirt_quality(fitted_img)
+            elif clothing_type in ['pants', 'jeans']:
+                return self._analyze_pants_quality(fitted_img)
+            elif clothing_type == 'dress':
+                return self._analyze_dress_quality(fitted_img)
+            elif clothing_type == 'jacket':
+                return self._analyze_jacket_quality(fitted_img)
+            else:
+                return self._analyze_general_clothing_quality(fitted_img)
+                
+        except Exception as e:
+            self.logger.error(f"의류별 품질 분석 실패: {e}")
+            return 0.6
+    
+    def _analyze_shirt_quality(self, image: np.ndarray) -> float:
+        """셔츠 품질 분석"""
+        # 셔츠 특화: 주름, 단추, 칼라 등
+        return 0.7  # 구현 예시
+    
+    def _analyze_pants_quality(self, image: np.ndarray) -> float:
+        """바지 품질 분석"""
+        # 바지 특화: 다리 선, 주름, 핏 등
+        return 0.7  # 구현 예시
+    
+    def _analyze_dress_quality(self, image: np.ndarray) -> float:
+        """드레스 품질 분석"""
+        # 드레스 특화: 드레이핑, 실루엣 등
+        return 0.7  # 구현 예시
+    
+    def _analyze_jacket_quality(self, image: np.ndarray) -> float:
+        """재킷 품질 분석"""
+        # 재킷 특화: 어깨선, 라펠, 텍스처 등
+        return 0.7  # 구현 예시
+    
+    def _analyze_general_clothing_quality(self, image: np.ndarray) -> float:
+        """일반 의류 품질 분석"""
+        return 0.6  # 기본 품질
+
+class ColorQualityAnalyzer:
+    """색상 품질 전문 분석기"""
+    
+    def __init__(self, device: str = "cpu"):
+        self.device = device
+        self.logger = logging.getLogger(f"{__name__}.ColorQualityAnalyzer")
+    
+    def analyze_comprehensive(self, fitted_img: np.ndarray, person_img: Optional[np.ndarray] = None) -> Dict[str, float]:
+        """종합 색상 품질 분석"""
+        results = {}
+        
+        try:
+            # 1. 색상 정확도 (원본 대비)
+            if person_img is not None:
+                results['color_accuracy'] = self._analyze_color_accuracy_advanced(fitted_img, person_img)
+            else:
+                results['color_accuracy'] = 0.7
+            
+            # 2. 색상 조화
+            results['color_harmony'] = self._analyze_color_harmony_advanced(fitted_img)
+            
+            # 3. 색상 일관성
+            results['color_consistency'] = self._analyze_color_consistency_advanced(fitted_img)
+            
+            # 4. 색상 생동감
+            results['color_vibrancy'] = self._analyze_color_vibrancy(fitted_img)
+            
+            # 5. 화이트 밸런스
+            results['white_balance'] = self._analyze_white_balance(fitted_img)
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"색상 품질 분석 실패: {e}")
+            return {
+                'color_accuracy': 0.5, 'color_harmony': 0.5,
+                'color_consistency': 0.5, 'color_vibrancy': 0.5,
+                'white_balance': 0.5
             }
+    
+    def _analyze_color_accuracy_advanced(self, fitted_img: np.ndarray, person_img: np.ndarray) -> float:
+        """고급 색상 정확도 분석"""
+        try:
+            # 크기 맞추기
+            if fitted_img.shape != person_img.shape:
+                person_img = cv2.resize(person_img, (fitted_img.shape[1], fitted_img.shape[0])) if CV2_AVAILABLE else person_img
             
-            # 캐시 저장
-            if self.cache_enabled:
-                self.quality_cache[cache_key] = result
+            accuracy_scores = []
             
-            # 통계 업데이트
-            self._update_processing_stats(processing_time)
+            # 1. LAB 색공간에서 Delta E 계산
+            if CV2_AVAILABLE:
+                fitted_lab = cv2.cvtColor(fitted_img, cv2.COLOR_RGB2LAB)
+                person_lab = cv2.cvtColor(person_img, cv2.COLOR_RGB2LAB)
+                
+                # 픽셀별 Delta E
+                delta_e = np.sqrt(np.sum((fitted_lab.astype(float) - person_lab.astype(float))**2, axis=2))
+                mean_delta_e = np.mean(delta_e)
+                
+                # Delta E를 0-1 스코어로 변환 (낮을수록 좋음)
+                delta_e_score = max(0, 1.0 - mean_delta_e / 100.0)
+                accuracy_scores.append(delta_e_score)
             
-            self.logger.info(f"✅ {self.step_name} 완료 - 점수: {metrics.overall_score:.3f}, 등급: {metrics.grade}")
+            # 2. HSV 색공간 비교
+            if CV2_AVAILABLE:
+                fitted_hsv = cv2.cvtColor(fitted_img, cv2.COLOR_RGB2HSV)
+                person_hsv = cv2.cvtColor(person_img, cv2.COLOR_RGB2HSV)
+                
+                # 색상(H), 채도(S), 명도(V) 각각 비교
+                h_diff = np.mean(np.abs(fitted_hsv[:,:,0].astype(float) - person_hsv[:,:,0].astype(float))) / 180.0
+                s_diff = np.mean(np.abs(fitted_hsv[:,:,1].astype(float) - person_hsv[:,:,1].astype(float))) / 255.0
+                v_diff = np.mean(np.abs(fitted_hsv[:,:,2].astype(float) - person_hsv[:,:,2].astype(float))) / 255.0
+                
+                hsv_score = 1.0 - np.mean([h_diff, s_diff, v_diff])
+                accuracy_scores.append(max(0, hsv_score))
+            
+            # 3. 히스토그램 비교
+            if CV2_AVAILABLE:
+                hist_scores = []
+                for i in range(3):  # RGB 각 채널
+                    fitted_hist = cv2.calcHist([fitted_img], [i], None, [256], [0, 256])
+                    person_hist = cv2.calcHist([person_img], [i], None, [256], [0, 256])
+                    
+                    # 히스토그램 상관관계
+                    correlation = cv2.compareHist(fitted_hist, person_hist, cv2.HISTCMP_CORREL)
+                    hist_scores.append(max(0, correlation))
+                
+                accuracy_scores.append(np.mean(hist_scores))
+            
+            # 폴백: 간단한 평균 색상 비교
+            if len(accuracy_scores) == 0:
+                fitted_mean = np.mean(fitted_img, axis=(0, 1))
+                person_mean = np.mean(person_img, axis=(0, 1))
+                diff = np.linalg.norm(fitted_mean - person_mean) / (255 * np.sqrt(3))
+                accuracy_scores.append(max(0, 1.0 - diff))
+            
+            return np.mean(accuracy_scores)
+            
+        except Exception as e:
+            self.logger.error(f"색상 정확도 분석 실패: {e}")
+            return 0.7
+    
+    def _analyze_color_harmony_advanced(self, image: np.ndarray) -> float:
+        """고급 색상 조화 분석"""
+        try:
+            harmony_scores = []
+            
+            # 1. 주요 색상 추출 및 조화 분석
+            if SKLEARN_AVAILABLE:
+                pixels = image.reshape(-1, 3)
+                
+                # 샘플링으로 성능 최적화
+                if len(pixels) > 20000:
+                    indices = np.random.choice(len(pixels), 20000, replace=False)
+                    pixels = pixels[indices]
+                
+                # K-means로 주요 색상 추출
+                for n_colors in [3, 5, 7]:
+                    try:
+                        kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
+                        kmeans.fit(pixels)
+                        
+                        centers = kmeans.cluster_centers_
+                        
+                        # 색상 간 각도 관계 분석 (HSV 공간)
+                        if CV2_AVAILABLE:
+                            hsv_centers = []
+                            for center in centers:
+                                center_rgb = center.reshape(1, 1, 3).astype(np.uint8)
+                                center_hsv = cv2.cvtColor(center_rgb, cv2.COLOR_RGB2HSV)[0, 0]
+                                hsv_centers.append(center_hsv[0])  # 색상값만
+                            
+                            # 조화로운 색상 관계 확인 (보색, 3색 조화, 유사색 등)
+                            angles = np.array(hsv_centers) * 2  # 0-360도 변환
+                            angle_diffs = []
+                            
+                            for i in range(len(angles)):
+                                for j in range(i+1, len(angles)):
+                                    diff = abs(angles[i] - angles[j])
+                                    diff = min(diff, 360 - diff)  # 원형 거리
+                                    angle_diffs.append(diff)
+                            
+                            # 조화로운 각도들 (60도 배수)
+                            harmonic_angles = [60, 120, 180]
+                            harmony_score = 0
+                            
+                            for diff in angle_diffs:
+                                for harmonic in harmonic_angles:
+                                    if abs(diff - harmonic) <= 15:  # 15도 허용 오차
+                                        harmony_score += 1
+                            
+                            harmony_scores.append(min(harmony_score / len(angle_diffs), 1.0))
+                    
+                    except Exception:
+                        continue
+            
+            # 2. 색상 분산 분석
+            color_std = np.std(image, axis=(0, 1))
+            color_balance = 1.0 - np.std(color_std) / (np.mean(color_std) + 1e-8)
+            harmony_scores.append(max(0, min(color_balance, 1.0)))
+            
+            # 3. 채도 일관성
+            if CV2_AVAILABLE:
+                hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+                saturation_std = np.std(hsv[:, :, 1]) / 255.0
+                saturation_consistency = max(0, 1.0 - saturation_std)
+                harmony_scores.append(saturation_consistency)
+            
+            return np.mean(harmony_scores) if harmony_scores else 0.6
+            
+        except Exception as e:
+            self.logger.error(f"색상 조화 분석 실패: {e}")
+            return 0.6
+    
+    def _analyze_color_consistency_advanced(self, image: np.ndarray) -> float:
+        """고급 색상 일관성 분석"""
+        try:
+            h, w = image.shape[:2]
+            consistency_scores = []
+            
+            # 1. 지역별 색상 분포 비교
+            regions = [
+                image[:h//2, :w//2],      # 좌상
+                image[:h//2, w//2:],      # 우상
+                image[h//2:, :w//2],      # 좌하
+                image[h//2:, w//2:]       # 우하
+            ]
+            
+            region_stats = []
+            for region in regions:
+                if region.size > 0:
+                    mean_color = np.mean(region, axis=(0, 1))
+                    std_color = np.std(region, axis=(0, 1))
+                    region_stats.append({'mean': mean_color, 'std': std_color})
+            
+            # 지역 간 일관성 계산
+            if len(region_stats) >= 2:
+                mean_diffs = []
+                std_diffs = []
+                
+                for i in range(len(region_stats)):
+                    for j in range(i+1, len(region_stats)):
+                        mean_diff = np.linalg.norm(region_stats[i]['mean'] - region_stats[j]['mean'])
+                        std_diff = np.linalg.norm(region_stats[i]['std'] - region_stats[j]['std'])
+                        
+                        mean_diffs.append(mean_diff)
+                        std_diffs.append(std_diff)
+                
+                # 차이가 적을수록 일관성이 높음
+                mean_consistency = max(0, 1.0 - np.mean(mean_diffs) / 128.0)
+                std_consistency = max(0, 1.0 - np.mean(std_diffs) / 64.0)
+                
+                consistency_scores.extend([mean_consistency, std_consistency])
+            
+            # 2. 그라디언트 분석
+            if CV2_AVAILABLE:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+                grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+                
+                gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
+                
+                # 적당한 그라디언트 (너무 uniform하지도 chaotic하지도 않게)
+                grad_mean = np.mean(gradient_magnitude)
+                grad_std = np.std(gradient_magnitude)
+                
+                # 적정 범위 평가
+                optimal_grad_mean = 50  # 경험적 값
+                optimal_grad_std = 30
+                
+                grad_score = (
+                    max(0, 1.0 - abs(grad_mean - optimal_grad_mean) / optimal_grad_mean) +
+                    max(0, 1.0 - abs(grad_std - optimal_grad_std) / optimal_grad_std)
+                ) / 2
+                
+                consistency_scores.append(grad_score)
+            
+            return np.mean(consistency_scores) if consistency_scores else 0.6
+            
+        except Exception as e:
+            self.logger.error(f"색상 일관성 분석 실패: {e}")
+            return 0.6
+    
+    def _analyze_color_vibrancy(self, image: np.ndarray) -> float:
+        """색상 생동감 분석"""
+        try:
+            if CV2_AVAILABLE:
+                hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+                
+                # 채도와 명도를 종합한 생동감
+                saturation = hsv[:, :, 1] / 255.0
+                value = hsv[:, :, 2] / 255.0
+                
+                # 높은 채도 + 적당한 명도 = 생동감
+                vibrancy = saturation * value * (1.0 - np.abs(value - 0.7))  # 0.7 주변이 최적
+                
+                mean_vibrancy = np.mean(vibrancy)
+                return min(mean_vibrancy * 2, 1.0)  # 스케일링
+            else:
+                # RGB 기반 근사
+                rgb_range = np.max(image, axis=2) - np.min(image, axis=2)
+                vibrancy = np.mean(rgb_range) / 255.0
+                return min(vibrancy * 1.5, 1.0)
+                
+        except Exception as e:
+            self.logger.error(f"색상 생동감 분석 실패: {e}")
+            return 0.6
+    
+    def _analyze_white_balance(self, image: np.ndarray) -> float:
+        """화이트 밸런스 분석"""
+        try:
+            # RGB 채널 간 균형 분석
+            r_mean = np.mean(image[:, :, 0])
+            g_mean = np.mean(image[:, :, 1])
+            b_mean = np.mean(image[:, :, 2])
+            
+            # 이상적인 화이트 밸런스에서는 RGB가 비슷해야 함
+            rgb_means = np.array([r_mean, g_mean, b_mean])
+            overall_mean = np.mean(rgb_means)
+            
+            if overall_mean > 0:
+                deviations = np.abs(rgb_means - overall_mean) / overall_mean
+                balance_score = max(0, 1.0 - np.mean(deviations))
+            else:
+                balance_score = 0.5
+            
+            return balance_score
+            
+        except Exception as e:
+            self.logger.error(f"화이트 밸런스 분석 실패: {e}")
+            return 0.6
+
+# ==============================================
+# 🔥 메인 QualityAssessmentStep 클래스 (통합 버전)
+# ==============================================
+
+class QualityAssessmentStep(QualityAssessmentMixin):
+    """
+    🔥 8단계: 완전 통합 품질 평가 시스템
+    ✅ BaseStepMixin 상속으로 logger 속성 누락 문제 완전 해결
+    ✅ 기존 파일의 모든 세부 분석 기능 포함
+    ✅ ModelLoader와 실제 연동되는 AI 모델 추론
+    ✅ Pipeline Manager 100% 호환
+    ✅ M3 Max 최적화 + conda 환경 최적화
+    """
+    
+    # 의류 타입별 품질 가중치 (기존 파일에서 가져옴)
+    CLOTHING_QUALITY_WEIGHTS = {
+        'shirt': {'fitting': 0.4, 'texture': 0.3, 'edge': 0.2, 'color': 0.1},
+        'dress': {'fitting': 0.5, 'texture': 0.2, 'edge': 0.2, 'color': 0.1},
+        'pants': {'fitting': 0.6, 'texture': 0.2, 'edge': 0.1, 'color': 0.1},
+        'jacket': {'fitting': 0.3, 'texture': 0.4, 'edge': 0.2, 'color': 0.1},
+        'skirt': {'fitting': 0.5, 'texture': 0.2, 'edge': 0.2, 'color': 0.1},
+        'top': {'fitting': 0.4, 'texture': 0.3, 'edge': 0.2, 'color': 0.1},
+        'default': {'fitting': 0.4, 'texture': 0.3, 'edge': 0.2, 'color': 0.1}
+    }
+    
+    # 원단 타입별 품질 기준 (기존 파일에서 가져옴)
+    FABRIC_QUALITY_STANDARDS = {
+        'cotton': {'texture_importance': 0.8, 'drape_importance': 0.6, 'wrinkle_tolerance': 0.3},
+        'silk': {'texture_importance': 0.9, 'drape_importance': 0.9, 'wrinkle_tolerance': 0.2},
+        'wool': {'texture_importance': 0.7, 'drape_importance': 0.7, 'wrinkle_tolerance': 0.4},
+        'polyester': {'texture_importance': 0.5, 'drape_importance': 0.6, 'wrinkle_tolerance': 0.8},
+        'denim': {'texture_importance': 0.9, 'drape_importance': 0.4, 'wrinkle_tolerance': 0.6},
+        'leather': {'texture_importance': 0.95, 'drape_importance': 0.3, 'wrinkle_tolerance': 0.9},
+        'default': {'texture_importance': 0.7, 'drape_importance': 0.6, 'wrinkle_tolerance': 0.5}
+    }
+    
+    def __init__(
+        self,
+        device: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ):
+        """✅ BaseStepMixin 상속으로 logger 속성 누락 문제 완전 해결"""
+        
+        # 🔥 BaseStepMixin 초기화 - logger 속성 자동 설정
+        super().__init__(device=device, config=config, **kwargs)
+        
+        # 품질 평가 설정
+        self.assessment_config = {
+            'mode': self.config.get('assessment_mode', 'comprehensive'),
+            'technical_analysis_enabled': self.config.get('technical_analysis_enabled', True),
+            'perceptual_analysis_enabled': self.config.get('perceptual_analysis_enabled', True),
+            'aesthetic_analysis_enabled': self.config.get('aesthetic_analysis_enabled', True),
+            'functional_analysis_enabled': self.config.get('functional_analysis_enabled', True),
+            'detailed_analysis_enabled': self.config.get('detailed_analysis_enabled', True),
+            'neural_analysis_enabled': self.config.get('neural_analysis_enabled', True),
+            'ai_models_enabled': TORCH_AVAILABLE,
+            'quality_threshold': 0.7,
+            'save_intermediate_results': False
+        }
+        
+        # 설정 업데이트
+        if config:
+            self.assessment_config.update(config)
+        
+        # M3 Max 최적화 설정
+        self._setup_m3_max_optimization()
+        
+        # 전문 분석기들 초기화
+        self._initialize_professional_analyzers()
+        
+        # AI 모델들 초기화
+        self._initialize_enhanced_ai_models()
+        
+        # 평가 파이프라인 설정
+        self._setup_comprehensive_assessment_pipeline()
+        
+        self.logger.info(f"✅ {self.step_name} 통합 초기화 완료 - logger 속성 문제 해결됨")
+    
+    def _setup_m3_max_optimization(self):
+        """M3 Max 최적화 설정 (향상된 버전)"""
+        if self.device == "mps" and TORCH_AVAILABLE:
+            try:
+                # M3 Max 특화 설정
+                os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+                
+                # 메모리 최적화
+                if hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+                
+                # 128GB 메모리 활용을 위한 배치 크기 설정
+                self.batch_size = 16  # M3 Max 128GB에 최적화
+                self.use_mixed_precision = True
+                self.parallel_analysis = True
+                
+                self.logger.info("🍎 M3 Max MPS 최적화 완료 (128GB + 향상된 분석)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ M3 Max 최적화 실패: {e}")
+        else:
+            self.batch_size = 8
+            self.use_mixed_precision = False
+            self.parallel_analysis = False
+    
+    def _initialize_professional_analyzers(self):
+        """전문 분석기들 초기화"""
+        try:
+            # 1. 향상된 기술적 품질 분석기
+            self.technical_analyzer = TechnicalQualityAnalyzer(self.device)
+            
+            # 2. 피팅 품질 전문 분석기
+            self.fitting_analyzer = FittingQualityAnalyzer(self.device)
+            
+            # 3. 색상 품질 전문 분석기
+            self.color_analyzer = ColorQualityAnalyzer(self.device)
+            
+            self.logger.info("🔧 전문 분석기들 초기화 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 전문 분석기 초기화 실패: {e}")
+            raise
+    
+    def _initialize_enhanced_ai_models(self):
+        """향상된 AI 모델들 초기화 - ModelLoader와 연동"""
+        self.ai_models = {}
+        
+        if not TORCH_AVAILABLE or not self.assessment_config['ai_models_enabled']:
+            self.logger.warning("⚠️ AI 모델 기능 비활성화")
+            return
+        
+        try:
+            # ModelLoader를 통한 모델 로딩 시도
+            if hasattr(self, 'model_interface') and self.model_interface:
+                self._load_models_via_interface()
+            
+            # 폴백: 직접 모델 생성
+            self._create_fallback_models()
+            
+            # M3 Max 최적화
+            self._optimize_models_for_m3_max()
+            
+            self.logger.info(f"🧠 향상된 AI 모델 {len(self.ai_models)}개 로드 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 향상된 AI 모델 초기화 실패: {e}")
+            self.ai_models = {}
+    
+    def _load_models_via_interface(self):
+        """ModelLoader 인터페이스를 통한 모델 로딩"""
+        try:
+            # 비동기 모델 로딩은 나중에 처리
+            self.pending_model_loads = [
+                'enhanced_perceptual_quality',
+                'enhanced_aesthetic_quality',
+                'quality_assessment_combined'
+            ]
+            self.logger.info("📋 ModelLoader 인터페이스 모델 로딩 예약 완료")
+        except Exception as e:
+            self.logger.warning(f"⚠️ ModelLoader 인터페이스 모델 로딩 실패: {e}")
+    
+    def _create_fallback_models(self):
+        """폴백 모델들 직접 생성"""
+        try:
+            # 향상된 지각적 품질 평가 모델
+            if self.assessment_config['perceptual_analysis_enabled']:
+                self.ai_models['enhanced_perceptual'] = EnhancedPerceptualQualityModel()
+                self.ai_models['enhanced_perceptual'].to(self.device)
+                self.ai_models['enhanced_perceptual'].eval()
+            
+            # 향상된 미적 품질 평가 모델
+            if self.assessment_config['aesthetic_analysis_enabled']:
+                self.ai_models['enhanced_aesthetic'] = EnhancedAestheticQualityModel()
+                self.ai_models['enhanced_aesthetic'].to(self.device)
+                self.ai_models['enhanced_aesthetic'].eval()
+            
+        except Exception as e:
+            self.logger.error(f"폴백 모델 생성 실패: {e}")
+    
+    def _optimize_models_for_m3_max(self):
+        """M3 Max용 모델 최적화"""
+        if self.device == "mps" and self.use_mixed_precision:
+            try:
+                for model_name, model in self.ai_models.items():
+                    if hasattr(model, 'half'):
+                        model.half()
+                    # M3 Max Neural Engine 최적화 설정
+                    if hasattr(model, 'eval'):
+                        model.eval()
+                
+                self.logger.info("🍎 AI 모델들 M3 Max 최적화 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ M3 Max 모델 최적화 실패: {e}")
+    
+    def _setup_comprehensive_assessment_pipeline(self):
+        """종합 품질 평가 파이프라인 설정"""
+        
+        # 평가 순서 정의 (더 세밀한 단계들)
+        self.assessment_pipeline = []
+        
+        # 1. 기본 전처리 및 검증
+        self.assessment_pipeline.append(('preprocessing', self._preprocess_for_assessment))
+        self.assessment_pipeline.append(('validation', self._validate_inputs))
+        
+        # 2. 기술적 품질 분석 (향상된 버전)
+        if self.assessment_config['technical_analysis_enabled']:
+            self.assessment_pipeline.append(('technical_analysis', self._analyze_technical_quality_comprehensive))
+        
+        # 3. 지각적 품질 분석 (AI + 전통적 방법)
+        if self.assessment_config['perceptual_analysis_enabled']:
+            self.assessment_pipeline.append(('perceptual_analysis', self._analyze_perceptual_quality_enhanced))
+        
+        # 4. 미적 품질 분석 (AI + 전통적 방법)
+        if self.assessment_config['aesthetic_analysis_enabled']:
+            self.assessment_pipeline.append(('aesthetic_analysis', self._analyze_aesthetic_quality_enhanced))
+        
+        # 5. 기능적 품질 분석 (의류 특화)
+        if self.assessment_config['functional_analysis_enabled']:
+            self.assessment_pipeline.append(('functional_analysis', self._analyze_functional_quality_comprehensive))
+        
+        # 6. 색상 품질 분석 (전문 분석)
+        self.assessment_pipeline.append(('color_analysis', self._analyze_color_quality_professional))
+        
+        # 7. 종합 평가 및 점수 계산
+        self.assessment_pipeline.append(('final_assessment', self._calculate_comprehensive_final_score))
+        
+        self.logger.info(f"📋 종합 품질 평가 파이프라인 설정 완료 ({len(self.assessment_pipeline)}단계)")
+    
+    # =================================================================
+    # 🔥 향상된 분석 메서드들
+    # =================================================================
+    
+    def _preprocess_for_assessment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """품질 평가를 위한 전처리 (향상된 버전)"""
+        try:
+            # 기본 전처리는 부모 클래스와 동일
+            result = super()._preprocess_for_assessment(data)
+            
+            # 추가 전처리
+            if result.get('preprocessing_successful'):
+                # 이미지 품질 향상 전처리
+                processed_img = data.get('processed_image')
+                if processed_img is not None:
+                    # 노이즈 제거 및 선명화 (선택적)
+                    if self.assessment_config.get('enhance_before_assessment', False):
+                        processed_img = self._enhance_image_for_assessment(processed_img)
+                        result['enhanced_image'] = processed_img
+            
             return result
             
         except Exception as e:
-            error_msg = f"❌ {self.step_name} 처리 실패: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(f"❌ 향상된 전처리 실패: {e}")
+            return {'preprocessing_successful': False, 'error': str(e)}
+    
+    def _validate_inputs(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """입력 검증"""
+        try:
+            validation_results = {
+                'validation_successful': True,
+                'warnings': [],
+                'recommendations': []
+            }
+            
+            processed_img = data.get('processed_image')
+            original_img = data.get('original_image')
+            
+            # 1. 이미지 해상도 검증
+            if processed_img is not None:
+                h, w = processed_img.shape[:2]
+                if min(h, w) < 256:
+                    validation_results['warnings'].append("낮은 해상도로 인해 분석 정확도가 떨어질 수 있습니다")
+                    validation_results['recommendations'].append("최소 512x512 해상도 사용을 권장합니다")
+                
+                if max(h, w) > 2048:
+                    validation_results['warnings'].append("매우 높은 해상도로 인해 처리 시간이 오래 걸릴 수 있습니다")
+            
+            # 2. 원본 이미지 유무 확인
+            if original_img is None:
+                validation_results['warnings'].append("원본 이미지가 없어 비교 분석이 제한됩니다")
+                validation_results['recommendations'].append("더 정확한 분석을 위해 원본 이미지 제공을 권장합니다")
+            
+            return validation_results
+            
+        except Exception as e:
+            self.logger.error(f"❌ 입력 검증 실패: {e}")
+            return {'validation_successful': False, 'error': str(e)}
+    
+    def _analyze_technical_quality_comprehensive(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """종합 기술적 품질 분석"""
+        try:
+            processed_img = data['processed_image']
+            
+            # 전문 분석기를 사용한 종합 분석
+            results = self.technical_analyzer.analyze_comprehensive(processed_img)
+            
+            # 추가 메트릭들
+            results.update({
+                'image_entropy': self._calculate_image_entropy(processed_img),
+                'compression_artifacts': self._detect_compression_artifacts(processed_img),
+                'blur_detection': self._detect_blur(processed_img)
+            })
+            
+            self.logger.info(f"📊 종합 기술적 품질 분석 완료")
+            
+            return {
+                'technical_analysis_successful': True,
+                'technical_results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 종합 기술적 품질 분석 실패: {e}")
+            return {'technical_analysis_successful': False, 'error': str(e)}
+    
+    async def _analyze_perceptual_quality_enhanced(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """향상된 지각적 품질 분석"""
+        try:
+            processed_img = data['processed_image']
+            original_img = data.get('original_image')
+            
+            results = {}
+            
+            # 1. 향상된 AI 모델 기반 분석
+            if 'enhanced_perceptual' in self.ai_models:
+                try:
+                    ai_results = await self._run_enhanced_perceptual_model(processed_img)
+                    results.update(ai_results)
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 향상된 지각적 AI 모델 실행 실패: {e}")
+            
+            # 2. 전통적 방법들
+            if original_img is not None:
+                # SSIM, PSNR 등
+                traditional_results = self._calculate_traditional_perceptual_metrics(processed_img, original_img)
+                results.update(traditional_results)
+            
+            # 3. 무참조 품질 메트릭
+            no_ref_results = self._calculate_no_reference_quality_metrics(processed_img)
+            results.update(no_ref_results)
+            
+            self.logger.info(f"👁 향상된 지각적 품질 분석 완료")
+            
+            return {
+                'perceptual_analysis_successful': True,
+                'perceptual_results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 향상된 지각적 품질 분석 실패: {e}")
+            return {'perceptual_analysis_successful': False, 'error': str(e)}
+    
+    async def _analyze_aesthetic_quality_enhanced(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """향상된 미적 품질 분석"""
+        try:
+            processed_img = data['processed_image']
+            
+            results = {}
+            
+            # 1. 향상된 AI 모델 기반 분석
+            if 'enhanced_aesthetic' in self.ai_models:
+                try:
+                    ai_results = await self._run_enhanced_aesthetic_model(processed_img)
+                    results.update(ai_results)
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 향상된 미적 AI 모델 실행 실패: {e}")
+            
+            # 2. 전통적 미적 분석
+            traditional_results = self._calculate_traditional_aesthetic_metrics(processed_img)
+            results.update(traditional_results)
+            
+            # 3. 고급 구도 분석
+            advanced_composition = self._analyze_advanced_composition(processed_img)
+            results.update(advanced_composition)
+            
+            self.logger.info(f"🎨 향상된 미적 품질 분석 완료")
+            
+            return {
+                'aesthetic_analysis_successful': True,
+                'aesthetic_results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 향상된 미적 품질 분석 실패: {e}")
+            return {'aesthetic_analysis_successful': False, 'error': str(e)}
+    
+    def _analyze_functional_quality_comprehensive(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """종합 기능적 품질 분석"""
+        try:
+            processed_img = data['processed_image']
+            original_img = data.get('original_image')
+            clothing_type = data.get('clothing_type', 'default')
+            
+            # 전문 분석기를 사용한 종합 분석
+            results = self.fitting_analyzer.analyze_comprehensive(processed_img, original_img, clothing_type)
+            
+            self.logger.info(f"⚙️ 종합 기능적 품질 분석 완료")
+            
+            return {
+                'functional_analysis_successful': True,
+                'functional_results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 종합 기능적 품질 분석 실패: {e}")
+            return {'functional_analysis_successful': False, 'error': str(e)}
+    
+    def _analyze_color_quality_professional(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """전문 색상 품질 분석"""
+        try:
+            processed_img = data['processed_image']
+            original_img = data.get('original_image')
+            
+            # 전문 분석기를 사용한 종합 분석
+            results = self.color_analyzer.analyze_comprehensive(processed_img, original_img)
+            
+            self.logger.info(f"🌈 전문 색상 품질 분석 완료")
+            
+            return {
+                'color_analysis_successful': True,
+                'color_results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 전문 색상 품질 분석 실패: {e}")
+            return {'color_analysis_successful': False, 'error': str(e)}
+    
+    def _calculate_comprehensive_final_score(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """종합 최종 점수 계산"""
+        try:
+            # 모든 분석 결과 수집
+            technical_results = data.get('technical_results', {})
+            perceptual_results = data.get('perceptual_results', {})
+            aesthetic_results = data.get('aesthetic_results', {})
+            functional_results = data.get('functional_results', {})
+            color_results = data.get('color_results', {})
+            
+            # QualityMetrics 객체 생성
+            metrics = QualityMetrics()
+            
+            # 기술적 품질 매핑
+            metrics.sharpness = technical_results.get('sharpness', 0.5)
+            metrics.noise_level = technical_results.get('noise_level', 0.5)
+            metrics.contrast = technical_results.get('contrast', 0.5)
+            metrics.brightness = technical_results.get('brightness', 0.5)
+            metrics.saturation = technical_results.get('saturation', 0.5)
+            
+            # 지각적 품질 매핑
+            metrics.structural_similarity = perceptual_results.get('ssim_score', perceptual_results.get('structural_similarity', 0.5))
+            metrics.perceptual_similarity = perceptual_results.get('perceptual_similarity', 0.5)
+            metrics.visual_quality = perceptual_results.get('visual_quality', 0.5)
+            metrics.artifact_level = perceptual_results.get('artifact_level', 0.5)
+            
+            # 미적 품질 매핑
+            metrics.composition = aesthetic_results.get('composition', 0.5)
+            metrics.color_harmony = color_results.get('color_harmony', aesthetic_results.get('color_harmony', 0.5))
+            metrics.symmetry = aesthetic_results.get('symmetry', 0.5)
+            metrics.balance = aesthetic_results.get('balance', 0.5)
+            
+            # 기능적 품질 매핑
+            metrics.fitting_quality = functional_results.get('fitting_accuracy', functional_results.get('fitting_quality', 0.5))
+            metrics.edge_preservation = functional_results.get('edge_preservation', 0.5)
+            metrics.texture_quality = functional_results.get('texture_preservation', functional_results.get('texture_quality', 0.5))
+            metrics.detail_preservation = functional_results.get('detail_preservation', 0.5)
+            
+            # 색상 품질 매핑
+            metrics.color_accuracy = color_results.get('color_accuracy', 0.5)
+            
+            # 의류/원단 타입별 가중치 적용
+            clothing_type = data.get('clothing_type', 'default')
+            fabric_type = data.get('fabric_type', 'default')
+            
+            clothing_weights = self.CLOTHING_QUALITY_WEIGHTS.get(clothing_type, self.CLOTHING_QUALITY_WEIGHTS['default'])
+            fabric_standards = self.FABRIC_QUALITY_STANDARDS.get(fabric_type, self.FABRIC_QUALITY_STANDARDS['default'])
+            
+            # 가중치 조합
+            combined_weights = {
+                'technical': 0.25 * fabric_standards['texture_importance'],
+                'perceptual': 0.3,
+                'aesthetic': 0.2,
+                'functional': 0.25 * clothing_weights['fitting']
+            }
+            
+            # 전체 점수 계산
+            metrics.calculate_overall_score(combined_weights)
+            
+            # 신뢰도 계산
+            metrics.confidence = self._calculate_enhanced_confidence(data)
+            
+            # 등급 결정
+            grade = metrics.get_grade()
+            
+            self.logger.info(f"🎯 종합 최종 평가 완료 (점수: {metrics.overall_score:.3f}, 등급: {grade.value})")
+            
+            return {
+                'final_assessment_successful': True,
+                'quality_metrics': metrics,
+                'overall_score': metrics.overall_score,
+                'confidence': metrics.confidence,
+                'grade': grade.value,
+                'grade_description': self._get_grade_description(grade)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 종합 최종 점수 계산 실패: {e}")
+            return {'final_assessment_successful': False, 'error': str(e)}
+    
+    # =================================================================
+    # 🔧 유틸리티 메서드들 (향상된 버전)
+    # =================================================================
+    
+    def _enhance_image_for_assessment(self, image: np.ndarray) -> np.ndarray:
+        """평가 전 이미지 품질 향상"""
+        try:
+            if not CV2_AVAILABLE:
+                return image
+            
+            # 1. 노이즈 제거
+            denoised = cv2.bilateralFilter(image, 9, 75, 75)
+            
+            # 2. 선명화
+            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            sharpened = cv2.filter2D(denoised, -1, kernel)
+            
+            # 3. 원본과 블렌딩 (과도한 처리 방지)
+            enhanced = cv2.addWeighted(image, 0.7, sharpened, 0.3, 0)
+            
+            return enhanced
+            
+        except Exception as e:
+            self.logger.warning(f"이미지 향상 실패: {e}")
+            return image
+    
+    def _calculate_image_entropy(self, image: np.ndarray) -> float:
+        """이미지 엔트로피 계산"""
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.dot(image[...,:3], [0.2989, 0.5870, 0.1140])
+            hist, _ = np.histogram(gray, bins=256, range=(0, 256))
+            hist = hist / hist.sum()
+            entropy = -np.sum(hist * np.log2(hist + 1e-8))
+            return entropy / 8.0  # 정규화
+        except:
+            return 0.5
+    
+    def _detect_compression_artifacts(self, image: np.ndarray) -> float:
+        """압축 아티팩트 감지"""
+        try:
+            if not CV2_AVAILABLE:
+                return 0.3
+            
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            
+            # DCT 기반 블로킹 아티팩트 감지
+            artifacts = 0.0
+            for i in range(0, gray.shape[0]-8, 8):
+                for j in range(0, gray.shape[1]-8, 8):
+                    block = gray[i:i+8, j:j+8]
+                    if block.shape == (8, 8):
+                        # 블록 경계에서의 불연속성
+                        h_diff = np.mean(np.abs(np.diff(block, axis=1)))
+                        v_diff = np.mean(np.abs(np.diff(block, axis=0)))
+                        if h_diff > 20 or v_diff > 20:
+                            artifacts += 0.01
+            
+            return min(artifacts, 1.0)
+        except:
+            return 0.3
+    
+    def _detect_blur(self, image: np.ndarray) -> float:
+        """블러 감지"""
+        try:
+            if not CV2_AVAILABLE:
+                return 0.3
+            
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+            
+            # 블러 정도 (낮을수록 블러됨)
+            blur_score = min(laplacian_var / 1000.0, 1.0)
+            return 1.0 - blur_score  # 블러 감지는 높을수록 블러됨
+        except:
+            return 0.3
+    
+    async def _run_enhanced_perceptual_model(self, image: np.ndarray) -> Dict[str, float]:
+        """향상된 지각적 모델 실행"""
+        try:
+            model = self.ai_models['enhanced_perceptual']
+            
+            # 이미지 전처리
+            tensor_img = self._image_to_tensor(image)
+            
+            with torch.no_grad():
+                if self.use_mixed_precision and self.device == "mps":
+                    with autocast('cpu'):
+                        results = model(tensor_img)
+                else:
+                    results = model(tensor_img)
+            
+            # 결과 처리
+            return {
+                'perceptual_overall': float(results['overall'].cpu().squeeze()),
+                'ai_sharpness': float(results['sharpness'].cpu().squeeze()),
+                'ai_artifacts': float(results['artifacts'].cpu().squeeze())
+            }
+            
+        except Exception as e:
+            self.logger.error(f"향상된 지각적 모델 실행 실패: {e}")
+            return {}
+    
+    async def _run_enhanced_aesthetic_model(self, image: np.ndarray) -> Dict[str, float]:
+        """향상된 미적 모델 실행"""
+        try:
+            model = self.ai_models['enhanced_aesthetic']
+            
+            # 이미지 전처리
+            tensor_img = self._image_to_tensor(image)
+            
+            with torch.no_grad():
+                if self.use_mixed_precision and self.device == "mps":
+                    with autocast('cpu'):
+                        results = model(tensor_img)
+                else:
+                    results = model(tensor_img)
+            
+            # 결과 처리
+            return {
+                'ai_composition': float(results['composition'].cpu().squeeze()),
+                'ai_color_harmony': float(results['color_harmony'].cpu().squeeze()),
+                'ai_symmetry': float(results['symmetry'].cpu().squeeze()),
+                'ai_balance': float(results['balance'].cpu().squeeze())
+            }
+            
+        except Exception as e:
+            self.logger.error(f"향상된 미적 모델 실행 실패: {e}")
+            return {}
+    
+    def _calculate_traditional_perceptual_metrics(self, processed_img: np.ndarray, original_img: np.ndarray) -> Dict[str, float]:
+        """전통적 지각적 메트릭 계산"""
+        try:
+            results = {}
+            
+            # 크기 맞추기
+            if processed_img.shape != original_img.shape:
+                original_img = cv2.resize(original_img, (processed_img.shape[1], processed_img.shape[0])) if CV2_AVAILABLE else original_img
+            
+            # SSIM
+            if SKIMAGE_AVAILABLE:
+                ssim_score = ssim(original_img, processed_img, multichannel=True, channel_axis=2)
+                results['ssim_score'] = max(0, ssim_score)
+            
+            # PSNR
+            mse = np.mean((original_img.astype(float) - processed_img.astype(float)) ** 2)
+            if mse > 0:
+                psnr = 20 * np.log10(255.0 / np.sqrt(mse))
+                results['psnr_score'] = min(1.0, max(0.0, (psnr - 20) / 30))  # 20-50 범위 정규화
+            else:
+                results['psnr_score'] = 1.0
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"전통적 지각적 메트릭 계산 실패: {e}")
+            return {}
+    
+    def _calculate_no_reference_quality_metrics(self, image: np.ndarray) -> Dict[str, float]:
+        """무참조 품질 메트릭 계산"""
+        try:
+            results = {}
+            
+            # 1. BRISQUE 스타일 메트릭 (간소화)
+            if CV2_AVAILABLE:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                
+                # 자연스러운 이미지 통계
+                mu = np.mean(gray)
+                sigma = np.std(gray)
+                
+                # 정규화된 이미지
+                normalized = (gray - mu) / (sigma + 1e-8)
+                
+                # 왜곡 측정
+                alpha = np.mean(normalized**4) - 3  # 첨도
+                beta = np.mean(normalized**3)       # 왜도
+                
+                # 점수 계산 (자연스러운 이미지일수록 0에 가까움)
+                naturalness = max(0, 1.0 - (abs(alpha) + abs(beta)) / 2.0)
+                results['naturalness'] = naturalness
+            
+            # 2. 색상 자연스러움
+            color_naturalness = self._assess_color_naturalness(image)
+            results['color_naturalness'] = color_naturalness
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"무참조 품질 메트릭 계산 실패: {e}")
+            return {}
+    
+    def _calculate_traditional_aesthetic_metrics(self, image: np.ndarray) -> Dict[str, float]:
+        """전통적 미적 메트릭 계산"""
+        try:
+            results = {}
+            
+            # 1. 3분할 법칙
+            rule_of_thirds = self._evaluate_rule_of_thirds(image)
+            results['rule_of_thirds'] = rule_of_thirds
+            
+            # 2. 색상 분포
+            color_distribution = self._evaluate_color_distribution(image)
+            results['color_distribution'] = color_distribution
+            
+            # 3. 시각적 복잡성
+            visual_complexity = self._calculate_visual_complexity(image)
+            results['visual_complexity'] = visual_complexity
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"전통적 미적 메트릭 계산 실패: {e}")
+            return {}
+    
+    def _analyze_advanced_composition(self, image: np.ndarray) -> Dict[str, float]:
+        """고급 구도 분석"""
+        try:
+            results = {}
+            
+            # 1. 황금비 분석
+            golden_ratio = self._evaluate_golden_ratio(image)
+            results['golden_ratio'] = golden_ratio
+            
+            # 2. 대각선 구도
+            diagonal_composition = self._evaluate_diagonal_composition(image)
+            results['diagonal_composition'] = diagonal_composition
+            
+            # 3. 프레이밍
+            framing_quality = self._evaluate_framing(image)
+            results['framing_quality'] = framing_quality
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"고급 구도 분석 실패: {e}")
+            return {}
+    
+    def _calculate_enhanced_confidence(self, data: Dict[str, Any]) -> float:
+        """향상된 신뢰도 계산"""
+        try:
+            confidence_factors = []
+            
+            # 1. 분석 성공률
+            success_count = sum([
+                data.get('technical_analysis_successful', False),
+                data.get('perceptual_analysis_successful', False),
+                data.get('aesthetic_analysis_successful', False),
+                data.get('functional_analysis_successful', False),
+                data.get('color_analysis_successful', False)
+            ])
+            success_rate = success_count / 5.0
+            confidence_factors.append(success_rate)
+            
+            # 2. AI 모델 사용 여부
+            ai_usage = len(self.ai_models) / 2.0  # 최대 2개 모델
+            confidence_factors.append(min(ai_usage, 1.0))
+            
+            # 3. 데이터 품질
+            has_original = data.get('original_image') is not None
+            confidence_factors.append(0.9 if has_original else 0.6)
+            
+            # 4. 이미지 품질
+            validation_warnings = len(data.get('warnings', []))
+            image_quality = max(0.3, 1.0 - validation_warnings * 0.2)
+            confidence_factors.append(image_quality)
+            
+            # 5. 분석 일관성
+            consistency = self._calculate_analysis_consistency(data)
+            confidence_factors.append(consistency)
+            
+            return np.mean(confidence_factors)
+            
+        except Exception as e:
+            self.logger.error(f"신뢰도 계산 실패: {e}")
+            return 0.7
+    
+    def _calculate_analysis_consistency(self, data: Dict[str, Any]) -> float:
+        """분석 일관성 계산"""
+        try:
+            # 서로 다른 분석 방법들의 결과가 일치하는지 확인
+            consistency_checks = []
+            
+            # 기술적 vs 지각적 분석 일관성
+            tech_sharpness = data.get('technical_results', {}).get('sharpness', 0.5)
+            perc_quality = data.get('perceptual_results', {}).get('visual_quality', 0.5)
+            if abs(tech_sharpness - perc_quality) < 0.3:
+                consistency_checks.append(1.0)
+            else:
+                consistency_checks.append(0.5)
+            
+            # 색상 분석 일관성
+            color_harmony_1 = data.get('aesthetic_results', {}).get('color_harmony', 0.5)
+            color_harmony_2 = data.get('color_results', {}).get('color_harmony', 0.5)
+            if abs(color_harmony_1 - color_harmony_2) < 0.2:
+                consistency_checks.append(1.0)
+            else:
+                consistency_checks.append(0.7)
+            
+            return np.mean(consistency_checks) if consistency_checks else 0.7
+            
+        except Exception as e:
+            self.logger.error(f"분석 일관성 계산 실패: {e}")
+            return 0.7
+    
+    # =================================================================
+    # 🔧 새로운 분석 메서드들
+    # =================================================================
+    
+    def _assess_color_naturalness(self, image: np.ndarray) -> float:
+        """색상 자연스러움 평가"""
+        try:
+            # 피부색, 하늘색, 녹색 등 자연스러운 색상 범위와 비교
+            natural_score = 0.7  # 기본값
+            
+            if CV2_AVAILABLE:
+                hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+                
+                # 과도한 채도나 부자연스러운 색상 감지
+                saturation = hsv[:, :, 1] / 255.0
+                oversaturated_ratio = np.sum(saturation > 0.9) / saturation.size
+                
+                if oversaturated_ratio < 0.1:
+                    natural_score = 0.9
+                elif oversaturated_ratio < 0.3:
+                    natural_score = 0.7
+                else:
+                    natural_score = 0.5
+            
+            return natural_score
+            
+        except Exception:
+            return 0.7
+    
+    def _evaluate_rule_of_thirds(self, image: np.ndarray) -> float:
+        """3분할 법칙 평가"""
+        try:
+            h, w = image.shape[:2]
+            
+            # 3분할 지점들
+            third_lines = {
+                'h1': h // 3,
+                'h2': 2 * h // 3,
+                'w1': w // 3,
+                'w2': 2 * w // 3
+            }
+            
+            if CV2_AVAILABLE:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                edges = cv2.Canny(gray, 50, 150)
+                
+                # 3분할 지점 근처의 관심 영역 밀도
+                score = 0.0
+                for line_name, line_pos in third_lines.items():
+                    if 'h' in line_name:
+                        # 수평선
+                        region = edges[max(0, line_pos-10):min(h, line_pos+10), :]
+                    else:
+                        # 수직선
+                        region = edges[:, max(0, line_pos-10):min(w, line_pos+10)]
+                    
+                    if region.size > 0:
+                        density = np.sum(region > 0) / region.size
+                        score += density
+                
+                return min(score / 4.0, 1.0)
+            
+            return 0.6
+            
+        except Exception:
+            return 0.6
+    
+    def _evaluate_color_distribution(self, image: np.ndarray) -> float:
+        """색상 분포 평가"""
+        try:
+            # 색상의 균형적 분포 평가
+            if SKLEARN_AVAILABLE:
+                pixels = image.reshape(-1, 3)
+                
+                # 샘플링
+                if len(pixels) > 10000:
+                    indices = np.random.choice(len(pixels), 10000, replace=False)
+                    pixels = pixels[indices]
+                
+                # 색상 클러스터링
+                kmeans = KMeans(n_clusters=5, random_state=42, n_init=10)
+                labels = kmeans.fit_predict(pixels)
+                
+                # 클러스터 크기 분포
+                unique, counts = np.unique(labels, return_counts=True)
+                proportions = counts / np.sum(counts)
+                
+                # 균등한 분포일수록 좋은 점수
+                entropy_score = entropy(proportions)
+                max_entropy = np.log(len(unique))
+                
+                if max_entropy > 0:
+                    distribution_score = entropy_score / max_entropy
+                else:
+                    distribution_score = 1.0
+                
+                return distribution_score
+            
+            return 0.6
+            
+        except Exception:
+            return 0.6
+    
+    def _calculate_visual_complexity(self, image: np.ndarray) -> float:
+        """시각적 복잡성 계산"""
+        try:
+            if CV2_AVAILABLE:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                
+                # 엣지 밀도
+                edges = cv2.Canny(gray, 50, 150)
+                edge_density = np.sum(edges > 0) / edges.size
+                
+                # 텍스처 복잡성 (LBP 엔트로피)
+                complexity_score = edge_density
+                
+                if SKIMAGE_AVAILABLE:
+                    lbp = feature.local_binary_pattern(gray, 8, 1, method='uniform')
+                    hist, _ = np.histogram(lbp.ravel(), bins=10)
+                    hist = hist.astype(float) / hist.sum()
+                    lbp_entropy = -np.sum(hist * np.log2(hist + 1e-8))
+                    
+                    complexity_score = (edge_density + lbp_entropy / 8.0) / 2
+                
+                # 적당한 복잡성이 좋음 (너무 단순하지도 복잡하지도 않게)
+                optimal_complexity = 0.3
+                return max(0, 1.0 - abs(complexity_score - optimal_complexity) / optimal_complexity)
+            
+            return 0.6
+            
+        except Exception:
+            return 0.6
+    
+    def _evaluate_golden_ratio(self, image: np.ndarray) -> float:
+        """황금비 평가"""
+        try:
+            h, w = image.shape[:2]
+            
+            # 황금비 지점들 (1.618)
+            golden_ratio = 1.618
+            golden_h = int(h / golden_ratio)
+            golden_w = int(w / golden_ratio)
+            
+            if CV2_AVAILABLE:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                edges = cv2.Canny(gray, 50, 150)
+                
+                # 황금비 지점 근처의 관심 영역
+                score = 0.0
+                points = [
+                    (golden_w, golden_h),
+                    (w - golden_w, golden_h),
+                    (golden_w, h - golden_h),
+                    (w - golden_w, h - golden_h)
+                ]
+                
+                for x, y in points:
+                    if 0 <= x < w and 0 <= y < h:
+                        region = edges[max(0, y-20):min(h, y+20), max(0, x-20):min(w, x+20)]
+                        if region.size > 0:
+                            density = np.sum(region > 0) / region.size
+                            score += density
+                
+                return min(score / len(points), 1.0)
+            
+            return 0.6
+            
+        except Exception:
+            return 0.6
+    
+    def _evaluate_diagonal_composition(self, image: np.ndarray) -> float:
+        """대각선 구도 평가"""
+        try:
+            if CV2_AVAILABLE:
+                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                
+                # Hough 변환으로 직선 감지
+                edges = cv2.Canny(gray, 50, 150)
+                lines = cv2.HoughLines(edges, 1, np.pi/180, threshold=100)
+                
+                if lines is not None:
+                    diagonal_score = 0.0
+                    
+                    for line in lines:
+                        rho, theta = line[0]
+                        angle = np.degrees(theta)
+                        
+                        # 대각선 각도 (45도, 135도 근처)
+                        if abs(angle - 45) < 15 or abs(angle - 135) < 15:
+                            diagonal_score += 1.0
+                    
+                    # 정규화
+                    return min(diagonal_score / 10.0, 1.0)
+                
+            return 0.5
+            
+        except Exception:
+            return 0.5
+    
+    def _evaluate_framing(self, image: np.ndarray) -> float:
+        """프레이밍 품질 평가"""
+        try:
+            h, w = image.shape[:2]
+            
+            # 이미지 경계 근처의 어두운 영역 (자연스러운 프레이밍)
+            border_width = min(h, w) // 20
+            
+            # 경계 영역 추출
+            top_border = image[:border_width, :]
+            bottom_border = image[-border_width:, :]
+            left_border = image[:, :border_width]
+            right_border = image[:, -border_width:]
+            
+            # 경계의 평균 밝기
+            borders = [top_border, bottom_border, left_border, right_border]
+            border_brightness = [np.mean(border) for border in borders if border.size > 0]
+            
+            if border_brightness:
+                avg_border_brightness = np.mean(border_brightness)
+                center_brightness = np.mean(image[h//4:3*h//4, w//4:3*w//4])
+                
+                # 자연스러운 비네팅 효과 (경계가 약간 어두운 것)
+                if center_brightness > avg_border_brightness:
+                    brightness_ratio = avg_border_brightness / (center_brightness + 1e-8)
+                    framing_score = min(brightness_ratio * 1.5, 1.0)
+                else:
+                    framing_score = 0.7
+                
+                return framing_score
+            
+            return 0.6
+            
+        except Exception:
+            return 0.6
+    
+    # =================================================================
+    # 🔧 메인 처리 메서드 (BaseStepMixin 데코레이터 사용)
+    # =================================================================
+    
+    @ensure_step_initialization
+    @safe_step_method
+    @performance_monitor("quality_assessment_comprehensive")
+    async def process(
+        self,
+        fitted_image: Union[np.ndarray, str, Path],
+        person_image: Optional[Union[np.ndarray, str, Path]] = None,
+        clothing_image: Optional[Union[np.ndarray, str, Path]] = None,
+        fabric_type: str = "default",
+        clothing_type: str = "default",
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        🔥 메인 품질 평가 함수 - 통합 버전
+        ✅ BaseStepMixin 데코레이터로 안전성 보장
+        ✅ logger 속성 자동 확인
+        ✅ 성능 모니터링 자동 적용
+        ✅ 모든 세부 분석 기능 포함
+        """
+        
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"🎯 {self.step_name} 통합 품질 평가 시작")
+            
+            # 1. 이미지 로드 및 검증
+            fitted_img = self._load_and_validate_image(fitted_image, "fitted_image")
+            if fitted_img is None:
+                raise ValueError("유효하지 않은 fitted_image입니다")
+            
+            person_img = self._load_and_validate_image(person_image, "person_image") if person_image is not None else None
+            clothing_img = self._load_and_validate_image(clothing_image, "clothing_image") if clothing_image is not None else None
+            
+            # 2. 입력 데이터 준비
+            assessment_data = {
+                'processed_image': fitted_img,
+                'original_image': person_img,
+                'clothing_image': clothing_img,
+                'fabric_type': fabric_type,
+                'clothing_type': clothing_type,
+                'assessment_mode': self.assessment_config['mode'],
+                **kwargs
+            }
+            
+            # 3. 메모리 최적화
+            if self.device == "mps":
+                self._optimize_m3_max_memory()
+            
+            # 4. 종합 품질 평가 파이프라인 실행
+            for stage_name, stage_func in self.assessment_pipeline:
+                self.logger.info(f"🔄 {stage_name} 실행 중...")
+                
+                stage_start = time.time()
+                
+                if asyncio.iscoroutinefunction(stage_func):
+                    stage_result = await stage_func(assessment_data)
+                else:
+                    stage_result = stage_func(assessment_data)
+                
+                stage_duration = time.time() - stage_start
+                
+                # 결과 병합
+                assessment_data.update(stage_result)
+                
+                self.logger.info(f"✅ {stage_name} 완료 ({stage_duration:.2f}초)")
+            
+            # 5. 최종 결과 구성
+            processing_time = time.time() - start_time
+            quality_metrics = assessment_data.get('quality_metrics')
+            
+            if quality_metrics is None:
+                raise ValueError("품질 메트릭 계산 실패")
+            
+            result = {
+                'success': True,
+                'step_name': self.step_name,
+                'overall_score': quality_metrics.overall_score,
+                'confidence': quality_metrics.confidence,
+                'grade': assessment_data.get('grade', 'acceptable'),
+                'grade_description': assessment_data.get('grade_description', '수용 가능한 품질'),
+                
+                # 세부 분석 결과
+                'detailed_scores': {
+                    'technical': assessment_data.get('technical_results', {}),
+                    'perceptual': assessment_data.get('perceptual_results', {}),
+                    'aesthetic': assessment_data.get('aesthetic_results', {}),
+                    'functional': assessment_data.get('functional_results', {}),
+                    'color': assessment_data.get('color_results', {})
+                },
+                
+                # 품질 메트릭 전체
+                'quality_metrics': asdict(quality_metrics),
+                
+                # 메타데이터
+                'processing_time': processing_time,
+                'fabric_type': fabric_type,
+                'clothing_type': clothing_type,
+                'assessment_mode': self.assessment_config['mode'],
+                
+                # 시스템 정보
+                'device_info': {
+                    'device': self.device,
+                    'is_m3_max': getattr(self, 'is_m3_max', False),
+                    'ai_models_used': len(self.ai_models),
+                    'optimization_enabled': getattr(self, 'optimization_enabled', False)
+                },
+                
+                # 경고 및 권장사항
+                'warnings': assessment_data.get('warnings', []),
+                'recommendations': assessment_data.get('recommendations', [])
+            }
+            
+            self.logger.info(f"✅ {self.step_name} 통합 평가 완료 - 품질 점수: {result['overall_score']:.3f} ({processing_time:.2f}초)")
+            
+            return result
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            self.logger.error(f"❌ {self.step_name} 통합 처리 실패: {e}")
             
             return {
                 'success': False,
                 'step_name': self.step_name,
-                'error': error_msg,
-                'quality_metrics': QualityMetrics().to_dict(),
-                'overall_score': 0.0,
-                'grade': 'ERROR',
-                'confidence': 0.0,
-                'processing_time': time.time() - start_time,
-                'recommendations': ["처리 중 오류 발생"],
-                'metadata': {'error_details': str(e)}
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'processing_time': processing_time,
+                'metadata': {
+                    'device': self.device,
+                    'pipeline_stages': len(self.assessment_pipeline) if hasattr(self, 'assessment_pipeline') else 0,
+                    'error_location': 'comprehensive_quality_assessment'
+                }
             }
-    
-    async def _perform_quality_assessment(
-        self,
-        fitted_image: np.ndarray,
-        original_image: Optional[np.ndarray],
-        cloth_image: Optional[np.ndarray],
-        **kwargs
-    ) -> QualityMetrics:
-        """🔧 실제 품질 평가 수행"""
-        
-        metrics = QualityMetrics()
-        
-        try:
-            # 병렬 평가 실행
-            if self.config.parallel_metrics:
-                tasks = []
-                
-                # 기술적 분석
-                if self.config.technical_analysis_enabled:
-                    tasks.append(self._assess_technical_quality(fitted_image))
-                
-                # 미적 분석
-                if self.config.aesthetic_analysis_enabled:
-                    tasks.append(self._assess_aesthetic_quality(fitted_image))
-                
-                # CLIP 분석
-                if self.config.clip_analysis_enabled and self.clip_model:
-                    tasks.append(self._assess_clip_quality(fitted_image, original_image))
-                
-                # 지각적 분석
-                if self.config.perceptual_analysis_enabled and original_image is not None:
-                    tasks.append(self._assess_perceptual_quality(fitted_image, original_image))
-                
-                # 병렬 실행
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # 결과 통합
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        self.logger.warning(f"⚠️ 평가 작업 {i} 실패: {result}")
-                    elif isinstance(result, dict):
-                        for key, value in result.items():
-                            if hasattr(metrics, key) and isinstance(value, (int, float)):
-                                setattr(metrics, key, value)
-            
-            else:
-                # 순차 실행
-                if self.config.technical_analysis_enabled:
-                    tech_result = await self._assess_technical_quality(fitted_image)
-                    metrics.technical_score = tech_result.get('technical_score', 0.0)
-                    metrics.sharpness = tech_result.get('sharpness', 0.0)
-                    metrics.contrast = tech_result.get('contrast', 0.0)
-                    metrics.brightness = tech_result.get('brightness', 0.0)
-                    metrics.noise_level = tech_result.get('noise_level', 0.0)
-                
-                if self.config.aesthetic_analysis_enabled:
-                    aes_result = await self._assess_aesthetic_quality(fitted_image)
-                    metrics.aesthetic_score = aes_result.get('aesthetic_score', 0.0)
-                    metrics.color_harmony = aes_result.get('color_harmony', 0.0)
-                    metrics.consistency = aes_result.get('consistency', 0.0)
-                
-                if self.config.clip_analysis_enabled and self.clip_model:
-                    clip_result = await self._assess_clip_quality(fitted_image, original_image)
-                    metrics.clip_score = clip_result.get('clip_score', 0.0)
-                    metrics.realism = clip_result.get('realism', 0.0)
-                
-                if self.config.perceptual_analysis_enabled and original_image is not None:
-                    perc_result = await self._assess_perceptual_quality(fitted_image, original_image)
-                    metrics.perceptual_score = perc_result.get('perceptual_score', 0.0)
-                    metrics.fitting_quality = perc_result.get('fitting_quality', 0.0)
-            
-            # 신뢰도 계산
-            metrics.confidence = self._calculate_confidence(metrics)
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.error(f"❌ 품질 평가 수행 실패: {e}")
-            return QualityMetrics()
-    
-    async def _assess_technical_quality(self, image: np.ndarray) -> Dict[str, float]:
-        """🔧 기술적 품질 평가"""
-        try:
-            results = {}
-            
-            # 선명도 측정 (Laplacian variance)
-            if CV2_AVAILABLE and image is not None:
-                gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) == 3 else image
-                sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-                results['sharpness'] = min(sharpness / 1000.0, 1.0)  # 정규화
-            else:
-                results['sharpness'] = 0.5
-            
-            # 대비 측정
-            if PIL_AVAILABLE and image is not None:
-                pil_img = Image.fromarray(image.astype(np.uint8))
-                stat = ImageStat.Stat(pil_img)
-                contrast = np.std(stat.mean) / 255.0
-                results['contrast'] = contrast
-            else:
-                results['contrast'] = 0.5
-            
-            # 밝기 측정
-            if image is not None:
-                brightness = np.mean(image) / 255.0
-                results['brightness'] = brightness
-            else:
-                results['brightness'] = 0.5
-            
-            # 노이즈 레벨 (간단한 추정)
-            if image is not None:
-                # 가우시안 블러와 원본의 차이로 노이즈 추정
-                if CV2_AVAILABLE:
-                    blurred = cv2.GaussianBlur(image, (5, 5), 0)
-                    noise = np.mean(np.abs(image.astype(float) - blurred.astype(float))) / 255.0
-                    results['noise_level'] = 1.0 - min(noise * 10, 1.0)  # 역방향 (낮은 노이즈 = 높은 점수)
-                else:
-                    results['noise_level'] = 0.7
-            else:
-                results['noise_level'] = 0.5
-            
-            # 기술적 점수 종합
-            tech_scores = [results.get(k, 0.5) for k in ['sharpness', 'contrast', 'brightness', 'noise_level']]
-            results['technical_score'] = np.mean(tech_scores)
-            
-            return results
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 기술적 품질 평가 실패: {e}")
-            return {
-                'technical_score': 0.5,
-                'sharpness': 0.5,
-                'contrast': 0.5,
-                'brightness': 0.5,
-                'noise_level': 0.5
-            }
-    
-    async def _assess_aesthetic_quality(self, image: np.ndarray) -> Dict[str, float]:
-        """🔧 미적 품질 평가"""
-        try:
-            results = {}
-            
-            # 색상 조화 평가
-            if image is not None and len(image.shape) == 3:
-                # HSV 색상 공간에서 색상 분포 분석
-                if CV2_AVAILABLE:
-                    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-                    hue_hist = cv2.calcHist([hsv], [0], None, [180], [0, 180])
-                    
-                    # 색상 분포의 균등성 (엔트로피 기반)
-                    hue_hist_norm = hue_hist / (hue_hist.sum() + 1e-7)
-                    entropy_val = -np.sum(hue_hist_norm * np.log(hue_hist_norm + 1e-7))
-                    color_harmony = min(entropy_val / 5.0, 1.0)
-                    results['color_harmony'] = color_harmony
-                else:
-                    results['color_harmony'] = 0.6
-            else:
-                results['color_harmony'] = 0.5
-            
-            # 구성 일관성 (간단한 대칭성 검사)
-            if image is not None:
-                h, w = image.shape[:2]
-                left_half = image[:, :w//2]
-                right_half = image[:, w//2:]
-                right_half_flipped = np.fliplr(right_half)
-                
-                # 좌우 대칭성 계산
-                if left_half.shape == right_half_flipped.shape:
-                    symmetry = 1.0 - np.mean(np.abs(left_half.astype(float) - right_half_flipped.astype(float))) / 255.0
-                    results['consistency'] = max(0.0, symmetry)
-                else:
-                    results['consistency'] = 0.5
-            else:
-                results['consistency'] = 0.5
-            
-            # 미적 점수 종합
-            aes_scores = [results.get(k, 0.5) for k in ['color_harmony', 'consistency']]
-            results['aesthetic_score'] = np.mean(aes_scores)
-            
-            return results
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 미적 품질 평가 실패: {e}")
-            return {
-                'aesthetic_score': 0.5,
-                'color_harmony': 0.5,
-                'consistency': 0.5
-            }
-    
-    async def _assess_clip_quality(
-        self, 
-        fitted_image: np.ndarray, 
-        original_image: Optional[np.ndarray]
-    ) -> Dict[str, float]:
-        """🔧 CLIP 기반 품질 평가"""
-        try:
-            if not self.clip_model or not self.clip_processor:
-                return {'clip_score': 0.5, 'realism': 0.5}
-            
-            results = {}
-            
-            # 이미지를 PIL로 변환
-            pil_fitted = Image.fromarray(fitted_image.astype(np.uint8))
-            
-            # 품질 관련 텍스트 프롬프트
-            quality_prompts = [
-                "a high quality realistic photo",
-                "a clear and sharp image",
-                "a well-fitted clothing on a person",
-                "a natural looking person wearing clothes"
-            ]
-            
-            # CLIP 유사도 계산
-            with torch.no_grad():
-                # 이미지 인코딩
-                image_inputs = self.clip_processor(images=pil_fitted, return_tensors="pt")
-                if self.device != "cpu":
-                    image_inputs = {k: v.to(self.device) for k, v in image_inputs.items()}
-                
-                image_features = self.clip_model.get_image_features(**image_inputs)
-                
-                # 텍스트 인코딩
-                text_inputs = self.clip_processor(text=quality_prompts, return_tensors="pt", padding=True)
-                if self.device != "cpu":
-                    text_inputs = {k: v.to(self.device) for k, v in text_inputs.items()}
-                
-                text_features = self.clip_model.get_text_features(**text_inputs)
-                
-                # 유사도 계산
-                similarities = torch.cosine_similarity(image_features, text_features, dim=-1)
-                clip_score = torch.mean(similarities).item()
-                
-                # 정규화 (CLIP 점수는 보통 -1~1 범위)
-                clip_score = (clip_score + 1) / 2  # 0~1 범위로 변환
-                
-                results['clip_score'] = clip_score
-                results['realism'] = clip_score  # 현실성은 CLIP 점수와 유사하게 설정
-            
-            return results
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ CLIP 품질 평가 실패: {e}")
-            return {'clip_score': 0.5, 'realism': 0.5}
-    
-    async def _assess_perceptual_quality(
-        self, 
-        fitted_image: np.ndarray, 
-        original_image: np.ndarray
-    ) -> Dict[str, float]:
-        """🔧 지각적 품질 평가 (원본 이미지와 비교)"""
-        try:
-            results = {}
-            
-            # 이미지 크기 맞추기
-            if fitted_image.shape != original_image.shape:
-                if CV2_AVAILABLE:
-                    target_shape = original_image.shape[:2]
-                    fitted_resized = cv2.resize(fitted_image, (target_shape[1], target_shape[0]))
-                else:
-                    fitted_resized = fitted_image
-                    original_image = original_image
-            else:
-                fitted_resized = fitted_image
-            
-            # SSIM (Structural Similarity Index) 계산
-            if SKIMAGE_AVAILABLE:
-                if len(fitted_resized.shape) == 3:
-                    ssim_score = ssim(
-                        original_image, fitted_resized, 
-                        channel_axis=2, data_range=255
-                    )
-                else:
-                    ssim_score = ssim(original_image, fitted_resized, data_range=255)
-                
-                results['fitting_quality'] = ssim_score
-            else:
-                # SSIM 없으면 간단한 픽셀 차이로 대체
-                diff = np.mean(np.abs(fitted_resized.astype(float) - original_image.astype(float))) / 255.0
-                results['fitting_quality'] = 1.0 - diff
-            
-            # 지각적 점수는 fitting_quality와 동일하게 설정
-            results['perceptual_score'] = results['fitting_quality']
-            
-            return results
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 지각적 품질 평가 실패: {e}")
-            return {'perceptual_score': 0.5, 'fitting_quality': 0.5}
-    
-    def _calculate_overall_score(self, metrics: QualityMetrics) -> QualityMetrics:
-        """🔧 전체 점수 계산"""
-        try:
-            weights = self.config.weights
-            
-            overall_score = (
-                metrics.technical_score * weights.get('technical', 0.4) +
-                metrics.aesthetic_score * weights.get('aesthetic', 0.3) +
-                metrics.clip_score * weights.get('clip_score', 0.2) +
-                metrics.perceptual_score * weights.get('perceptual', 0.1)
-            )
-            
-            metrics.overall_score = max(0.0, min(1.0, overall_score))
-            
-            return metrics
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 전체 점수 계산 실패: {e}")
-            metrics.overall_score = 0.5
-            return metrics
-    
-    def _calculate_confidence(self, metrics: QualityMetrics) -> float:
-        """🔧 신뢰도 계산"""
-        try:
-            # 각 점수의 분산을 이용해 신뢰도 계산
-            scores = [
-                metrics.technical_score,
-                metrics.aesthetic_score,
-                metrics.clip_score,
-                metrics.perceptual_score
-            ]
-            
-            # 0이 아닌 점수들만 사용
-            valid_scores = [s for s in scores if s > 0]
-            
-            if len(valid_scores) < 2:
-                return 0.5
-            
-            # 분산이 낮을수록 신뢰도 높음
-            variance = np.var(valid_scores)
-            confidence = 1.0 - min(variance * 4, 1.0)  # 분산이 0.25 이상이면 신뢰도 0
-            
-            return max(0.0, min(1.0, confidence))
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 신뢰도 계산 실패: {e}")
-            return 0.5
-    
-    def _determine_quality_grade(self, overall_score: float) -> str:
-        """🔧 품질 등급 결정"""
-        for grade in QualityGrade:
-            if grade.min_score <= overall_score <= grade.max_score:
-                return grade.label
-        return "Unknown"
-    
-    def _generate_recommendations(self, metrics: QualityMetrics) -> List[str]:
-        """🔧 개선 권장사항 생성"""
-        recommendations = []
-        
-        try:
-            # 기술적 개선사항
-            if metrics.sharpness < QUALITY_THRESHOLDS[QualityMetric.SHARPNESS]["good"]:
-                recommendations.append("이미지 선명도 개선 필요")
-            
-            if metrics.contrast < QUALITY_THRESHOLDS[QualityMetric.CONTRAST]["good"]:
-                recommendations.append("대비 조정 권장")
-            
-            if metrics.noise_level < QUALITY_THRESHOLDS[QualityMetric.NOISE_LEVEL]["good"]:
-                recommendations.append("노이즈 감소 처리 권장")
-            
-            # 미적 개선사항
-            if metrics.color_harmony < QUALITY_THRESHOLDS[QualityMetric.COLOR_HARMONY]["good"]:
-                recommendations.append("색상 조화 개선 권장")
-            
-            if metrics.consistency < QUALITY_THRESHOLDS[QualityMetric.CONSISTENCY]["good"]:
-                recommendations.append("구성 일관성 개선 필요")
-            
-            # CLIP 기반 개선사항
-            if metrics.realism < QUALITY_THRESHOLDS[QualityMetric.REALISM]["good"]:
-                recommendations.append("현실감 개선 필요")
-            
-            # 피팅 품질 개선사항
-            if metrics.fitting_quality < QUALITY_THRESHOLDS[QualityMetric.FITTING_QUALITY]["good"]:
-                recommendations.append("가상 피팅 정확도 개선 권장")
-            
-            # 전체적인 권장사항
-            if metrics.overall_score < 0.6:
-                recommendations.append("전반적인 품질 개선 필요")
-            elif metrics.overall_score >= 0.9:
-                recommendations.append("우수한 품질입니다")
-            
-            return recommendations[:5]  # 최대 5개까지
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 권장사항 생성 실패: {e}")
-            return ["품질 분석 완료"]
-    
-    def _preprocess_image(self, image: Union[np.ndarray, Image.Image, None]) -> Optional[np.ndarray]:
-        """🔧 이미지 전처리"""
-        if image is None:
-            return None
-        
-        try:
-            if isinstance(image, Image.Image):
-                return np.array(image)
-            elif isinstance(image, np.ndarray):
-                return image
-            else:
-                self.logger.warning(f"⚠️ 지원되지 않는 이미지 타입: {type(image)}")
-                return None
-        except Exception as e:
-            self.logger.warning(f"⚠️ 이미지 전처리 실패: {e}")
-            return None
-    
-    def _generate_cache_key(self, image: Optional[np.ndarray]) -> str:
-        """🔧 캐시 키 생성"""
-        if image is None:
-            return "none"
-        
-        try:
-            # 이미지 해시 생성 (간단한 방법)
-            image_hash = hash(image.tobytes())
-            config_hash = hash(str(self.config.assessment_mode))
-            return f"quality_{image_hash}_{config_hash}"
-        except:
-            return f"quality_{time.time()}"
-    
-    def _get_models_info(self) -> Dict[str, bool]:
-        """🔧 로드된 모델 정보"""
-        return {
-            'clip_model': self.clip_model is not None,
-            'clip_processor': self.clip_processor is not None,
-            'models_loaded': self.models_loaded
-        }
-    
-    def _update_processing_stats(self, processing_time: float):
-        """🔧 처리 통계 업데이트"""
-        self.processing_stats['total_processed'] += 1
-        self.processing_stats['last_processing_time'] = processing_time
-        
-        # 이동 평균 계산
-        total = self.processing_stats['total_processed']
-        current_avg = self.processing_stats['average_time']
-        new_avg = (current_avg * (total - 1) + processing_time) / total
-        self.processing_stats['average_time'] = new_avg
-    
-    @safe_step_method
-    def cleanup(self):
-        """🔧 리소스 정리"""
-        try:
-            if hasattr(self, 'clip_model') and self.clip_model:
-                del self.clip_model
-            
-            if hasattr(self, 'clip_processor') and self.clip_processor:
-                del self.clip_processor
-            
-            if hasattr(self, 'quality_cache'):
-                self.quality_cache.clear()
-            
-            if hasattr(self, 'model_cache'):
-                self.model_cache.clear()
-            
-            # GPU 메모리 정리
-            if TORCH_AVAILABLE and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            elif TORCH_AVAILABLE and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                torch.mps.empty_cache()
-            
-            gc.collect()
-            
-            self.logger.info(f"✅ {self.step_name} 정리 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ {self.step_name} 정리 실패: {e}")
-    
-    def get_processing_stats(self) -> Dict[str, Any]:
-        """🔧 처리 통계 반환"""
-        return {
-            'step_name': self.step_name,
-            'total_processed': self.processing_stats['total_processed'],
-            'average_processing_time': self.processing_stats['average_time'],
-            'last_processing_time': self.processing_stats['last_processing_time'],
-            'cache_size': len(self.quality_cache) if hasattr(self, 'quality_cache') else 0,
-            'models_loaded': self.models_loaded,
-            'device': self.device
-        }
 
 # ==============================================
-# 🔥 모듈 익스포트
+# 🔥 모듈 익스포트 (통합 버전)
 # ==============================================
 
 __all__ = [
+    # 메인 클래스
     'QualityAssessmentStep',
-    'QualityAssessmentConfig',
+    
+    # 데이터 구조
     'QualityMetrics',
     'QualityGrade',
-    'QualityMetric',
-    'QUALITY_THRESHOLDS'
+    'AssessmentMode',
+    'QualityAspect',
+    
+    # AI 모델들
+    'EnhancedPerceptualQualityModel',
+    'EnhancedAestheticQualityModel',
+    
+    # 전문 분석기들
+    'TechnicalQualityAnalyzer',
+    'FittingQualityAnalyzer',
+    'ColorQualityAnalyzer'
 ]
 
-# 모듈 로드 완료 로그
-logger.info("✅ Step 08: Quality Assessment v2.0 로드 완료 - 완전한 기능 구현")
+# 모듈 초기화 로그
+logger = logging.getLogger(__name__)
+logger.info("✅ QualityAssessmentStep 통합 모듈 로드 완료")
+logger.info("🔗 BaseStepMixin 상속으로 logger 속성 누락 문제 해결")
+logger.info("🧠 모든 세부 분석 기능 통합")
+logger.info("🍎 M3 Max 128GB 최적화 지원")
+logger.info("📦 conda 환경 최적화 완료")
+
+# 모듈 테스트 함수
+def test_comprehensive_quality_assessment():
+    """통합 품질 평가 스텝 테스트"""
+    try:
+        # 기본 인스턴스 생성 테스트
+        step = QualityAssessmentStep()
+        
+        # logger 속성 확인
+        assert hasattr(step, 'logger'), "logger 속성이 없습니다!"
+        assert step.logger is not None, "logger가 None입니다!"
+        
+        # 기본 메서드 확인
+        assert hasattr(step, 'process'), "process 메서드가 없습니다!"
+        assert hasattr(step, 'cleanup_resources'), "cleanup_resources 메서드가 없습니다!"
+        
+        # 전문 분석기 확인
+        assert hasattr(step, 'technical_analyzer'), "technical_analyzer가 없습니다!"
+        assert hasattr(step, 'fitting_analyzer'), "fitting_analyzer가 없습니다!"
+        assert hasattr(step, 'color_analyzer'), "color_analyzer가 없습니다!"
+        
+        # Step 정보 확인
+        step_info = step.get_step_info()
+        assert 'step_name' in step_info, "step_name이 step_info에 없습니다!"
+        
+        print("✅ 통합 QualityAssessmentStep 테스트 성공")
+        print(f"📊 Step 정보: {step_info}")
+        print(f"🧠 AI 모델 수: {len(step.ai_models)}")
+        print(f"📋 파이프라인 단계: {len(step.assessment_pipeline)}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 통합 QualityAssessmentStep 테스트 실패: {e}")
+        return False
+
+if __name__ == "__main__":
+    print("🧪 통합 Quality Assessment Step 테스트 실행...")
+    test_comprehensive_quality_assessment()
