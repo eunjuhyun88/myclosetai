@@ -217,64 +217,31 @@ class BaseConfigModel(BaseModel):
         protected_namespaces=()
     )
 
-class BodyMeasurements(BaseConfigModel):
-    """신체 치수 정보 (M3 Max 최적화)"""
-    height: PositiveFloat = Field(..., ge=140, le=220, description="키 (cm)")
-    weight: PositiveFloat = Field(..., ge=30, le=150, description="체중 (kg)")
-    chest: Optional[PositiveFloat] = Field(None, ge=60, le=150, description="가슴둘레 (cm)")
-    waist: Optional[PositiveFloat] = Field(None, ge=50, le=120, description="허리둘레 (cm)")
-    hip: Optional[PositiveFloat] = Field(None, ge=70, le=150, description="엉덩이둘레 (cm)")
-    shoulder_width: Optional[PositiveFloat] = Field(None, ge=30, le=60, description="어깨너비 (cm)")
-    arm_length: Optional[PositiveFloat] = Field(None, ge=50, le=90, description="팔길이 (cm)")
-    leg_length: Optional[PositiveFloat] = Field(None, ge=60, le=120, description="다리길이 (cm)")
-    neck: Optional[PositiveFloat] = Field(None, ge=25, le=50, description="목둘레 (cm)")
+class BodyMeasurements(BaseModel):
+    """신체 측정값 (FormData 호환)"""
+    height: float = Field(..., description="키 (cm)", ge=140, le=220)
+    weight: float = Field(..., description="몸무게 (kg)", ge=40, le=150)
+    chest: Optional[float] = Field(None, description="가슴둘레 (cm)", ge=70, le=130)
+    waist: Optional[float] = Field(None, description="허리둘레 (cm)", ge=60, le=120)
+    hips: Optional[float] = Field(None, description="엉덩이둘레 (cm)", ge=80, le=140)
     
-    @field_validator('height')
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "height": 175.0,
+                "weight": 70.0,
+                "chest": 95.0,
+                "waist": 80.0,
+                "hips": 98.0
+            }
+        }
+    
+    @field_validator('height', 'weight', 'chest', 'waist', 'hips')
     @classmethod
-    def validate_height_range(cls, v: float) -> float:
-        """키 범위 검증"""
-        if not 140 <= v <= 220:
-            raise ValueError('키는 140cm와 220cm 사이여야 합니다')
+    def validate_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError('측정값은 0보다 커야 합니다')
         return v
-    
-    @field_validator('weight')
-    @classmethod
-    def validate_weight_range(cls, v: float) -> float:
-        """체중 범위 검증"""
-        if not 30 <= v <= 150:
-            raise ValueError('체중은 30kg과 150kg 사이여야 합니다')
-        return v
-    
-    @model_validator(mode='after')
-    def validate_proportions(self):
-        """신체 비율 검증"""
-        if self.chest and self.waist:
-            if self.chest <= self.waist:
-                raise ValueError('가슴둘레는 허리둘레보다 커야 합니다')
-        
-        if self.hip and self.waist:
-            if self.hip <= self.waist:
-                raise ValueError('엉덩이둘레는 허리둘레보다 커야 합니다')
-        
-        return self
-    
-    @property
-    def bmi(self) -> float:
-        """BMI 계산"""
-        return self.weight / ((self.height / 100) ** 2)
-    
-    @property
-    def body_type(self) -> str:
-        """체형 분류"""
-        bmi = self.bmi
-        if bmi < 18.5:
-            return "underweight"
-        elif bmi < 25:
-            return "normal"
-        elif bmi < 30:
-            return "overweight"
-        else:
-            return "obese"
 
 class StylePreferences(BaseConfigModel):
     """스타일 선호도 (확장)"""

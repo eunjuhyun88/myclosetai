@@ -247,19 +247,34 @@ async def step_1_upload_validation(
             status_code=500
         )
 
+
 @router.post("/2/measurements-validation", response_model=APIResponse)
 async def step_2_measurements_validation(
-    measurements: BodyMeasurements,
+    # 🔥 FormData로 개별 필드 받기 (프론트엔드와 일치)
+    height: float = Form(..., description="키 (cm)", ge=140, le=220),
+    weight: float = Form(..., description="몸무게 (kg)", ge=40, le=150),
+    chest: Optional[float] = Form(None, description="가슴둘레 (cm)", ge=70, le=130),
+    waist: Optional[float] = Form(None, description="허리둘레 (cm)", ge=60, le=120),
+    hips: Optional[float] = Form(None, description="엉덩이둘레 (cm)", ge=80, le=140),
     session_id: Optional[str] = Form(None, description="세션 ID (선택적)"),
     service_manager: Optional[StepServiceManager] = Depends(get_service_manager)
 ):
-    """2단계: 신체 측정 검증 API"""
+    """2단계: 신체 측정 검증 API (FormData 방식)"""
     start_time = time.time()
     
     if not service_manager:
         return create_safe_error_response("StepService를 사용할 수 없습니다")
     
     try:
+        # 🔥 FormData를 BodyMeasurements 객체로 변환
+        measurements = BodyMeasurements(
+            height=height,
+            weight=weight,
+            chest=chest,
+            waist=waist,
+            hips=hips
+        )
+        
         # API 스키마를 서비스 레이어용으로 변환
         service_measurements = convert_body_measurements(measurements)
         
@@ -275,6 +290,21 @@ async def step_2_measurements_validation(
         return JSONResponse(
             content=api_response,
             status_code=200 if api_response["success"] else 400
+        )
+        
+    except ValidationError as e:
+        logger.error(f"❌ Step 2 입력 검증 오류: {e}")
+        
+        error_response = create_error_response(
+            error_message=f"입력값 검증 실패: {str(e)}",
+            step_name="신체 측정 검증",
+            step_id=2,
+            processing_time=time.time() - start_time
+        )
+        
+        return JSONResponse(
+            content=error_response,
+            status_code=422  # Unprocessable Entity
         )
         
     except Exception as e:
