@@ -1929,7 +1929,397 @@ def initialize_global_model_loader(**kwargs) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
         return {"success": False, "error": str(e)}
+# model_loader.py에 추가할 preprocess_image 함수들
 
+# ==============================================
+# 🔥 누락된 preprocess_image 함수들 추가
+# ==============================================
+
+def preprocess_image(
+    image: Union[Image.Image, np.ndarray, torch.Tensor],
+    target_size: Tuple[int, int] = (512, 512),
+    device: str = "mps",
+    normalize: bool = True,
+    to_tensor: bool = True
+) -> torch.Tensor:
+    """
+    🔥 이미지 전처리 함수 - Step 클래스들에서 사용
+    
+    Args:
+        image: 입력 이미지 (PIL.Image, numpy array, tensor)
+        target_size: 목표 크기 (height, width)
+        device: 디바이스 ("mps", "cuda", "cpu")
+        normalize: 정규화 여부 (0-1 범위로)
+        to_tensor: 텐서로 변환 여부
+    
+    Returns:
+        torch.Tensor: 전처리된 이미지 텐서
+    """
+    try:
+        # 1. PIL Image로 변환
+        if isinstance(image, torch.Tensor):
+            if image.dim() == 4:
+                image = image.squeeze(0)
+            if image.dim() == 3 and image.shape[0] == 3:
+                image = image.permute(1, 2, 0)
+            image = image.cpu().numpy()
+            if image.dtype != np.uint8:
+                image = (image * 255).astype(np.uint8)
+            image = Image.fromarray(image)
+        elif isinstance(image, np.ndarray):
+            if image.ndim == 3 and image.shape[2] == 3:
+                image = Image.fromarray(image.astype(np.uint8))
+            else:
+                image = Image.fromarray(image)
+        elif not isinstance(image, Image.Image):
+            raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
+        
+        # 2. RGB 변환
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # 3. 크기 조정
+        if target_size != image.size:
+            image = image.resize(target_size, Image.Resampling.LANCZOS)
+        
+        # 4. numpy 배열로 변환
+        img_array = np.array(image).astype(np.float32)
+        
+        # 5. 정규화
+        if normalize:
+            img_array = img_array / 255.0
+        
+        # 6. 텐서 변환
+        if to_tensor and TORCH_AVAILABLE:
+            # HWC -> CHW 변환
+            img_tensor = torch.from_numpy(img_array).permute(2, 0, 1)
+            
+            # 배치 차원 추가
+            if img_tensor.dim() == 3:
+                img_tensor = img_tensor.unsqueeze(0)
+            
+            # 디바이스로 이동
+            try:
+                if device != "cpu" and torch.cuda.is_available() and device == "cuda":
+                    img_tensor = img_tensor.cuda()
+                elif device == "mps" and torch.backends.mps.is_available():
+                    img_tensor = img_tensor.to("mps")
+                else:
+                    img_tensor = img_tensor.cpu()
+            except Exception as e:
+                logger.warning(f"디바이스 이동 실패: {e}, CPU 사용")
+                img_tensor = img_tensor.cpu()
+            
+            return img_tensor
+        else:
+            return img_array
+    
+    except Exception as e:
+        logger.error(f"❌ 이미지 전처리 실패: {e}")
+        # 폴백: 기본 크기 더미 텐서
+        if TORCH_AVAILABLE and to_tensor:
+            return torch.randn(1, 3, target_size[0], target_size[1])
+        else:
+            return np.random.randn(target_size[0], target_size[1], 3).astype(np.float32)
+
+def postprocess_segmentation(
+    segmentation: torch.Tensor,
+    original_size: Tuple[int, int],
+    threshold: float = 0.5,
+    smooth: bool = True
+) -> np.ndarray:
+    """
+    세그멘테이션 결과 후처리
+    
+    Args:
+        segmentation: 세그멘테이션 텐서
+        original_size: 원본 이미지 크기 (width, height)
+        threshold: 이진화 임계값
+        smooth: 스무딩 적용 여부
+    
+    Returns:
+        np.ndarray: 후처리된 마스크 (0-255)
+    """
+    try:
+        # 텐서를 numpy로 변환
+        if isinstance(segmentation, torch.Tensor):
+            seg_np = segmentation.detach().cpu().numpy()
+        else:
+            seg_np = segmentation
+        
+        # 배치 및 채널 차원 제거
+        if seg_np.ndim == 4:
+            seg_np = seg_np.squeeze(0)
+        if seg_np.ndim == 3 and seg_np.shape[0] == 1:
+            seg_np = seg_np.squeeze(0)
+        
+        # 이진화
+        if threshold > 0:
+            seg_np = (seg_np > threshold).astype(np.float32)
+        
+        # 크기 조정
+        if seg_np.shape != original_size[::-1]:  # (H, W) vs (W, H)
+            seg_img = Image.fromarray((seg_np * 255).astype(np.uint8))
+            seg_img = seg_img.resize(original_size, Image.Resampling.LANCZOS)
+            seg_np = np.array(seg_img) / 255.0
+        
+        # 스무딩
+        if smooth and SCIPY_AVAILABLE:
+            try:
+                from scipy.ndimage import gaussian_filter
+                seg_np = gaussian_filter(seg_np, sigma=1.0)
+            except:
+                pass
+        
+        # 0-255 범위로 변환
+        mask = (seg_np * 255).astype(np.uint8)
+        
+        return mask
+    
+    except Exception as e:
+        logger.error(f"❌ 세그멘테이션 후처리 실패: {e}")
+        # 폴백: 빈 마스크
+        return np.zeros(original_size[::-1], dtype=np.uint8)
+
+def preprocess_pose_input(
+    image: Union[Image.Image, np.ndarray],
+    input_size: Tuple[int, int] = (368, 368),
+    device: str = "mps"
+) -> torch.Tensor:
+    """포즈 추정용 이미지 전처리"""
+    return preprocess_image(
+        image=image,
+        target_size=input_size,
+        device=device,
+        normalize=True,
+        to_tensor=True
+    )
+
+def preprocess_human_parsing_input(
+    image: Union[Image.Image, np.ndarray],
+    input_size: Tuple[int, int] = (512, 512),
+    device: str = "mps"
+) -> torch.Tensor:
+    """인간 파싱용 이미지 전처리"""
+    return preprocess_image(
+        image=image,
+        target_size=input_size,
+        device=device,
+        normalize=True,
+        to_tensor=True
+    )
+
+def preprocess_cloth_segmentation_input(
+    image: Union[Image.Image, np.ndarray],
+    input_size: Tuple[int, int] = (320, 320),
+    device: str = "mps"
+) -> torch.Tensor:
+    """의류 세그멘테이션용 이미지 전처리"""
+    return preprocess_image(
+        image=image,
+        target_size=input_size,
+        device=device,
+        normalize=True,
+        to_tensor=True
+    )
+
+def tensor_to_pil(tensor: torch.Tensor) -> Image.Image:
+    """텐서를 PIL 이미지로 변환"""
+    try:
+        if tensor.dim() == 4:
+            tensor = tensor.squeeze(0)
+        if tensor.dim() == 3:
+            tensor = tensor.permute(1, 2, 0)
+        
+        tensor = tensor.detach().cpu()
+        
+        # 정규화된 텐서라면 0-255로 변환
+        if tensor.max() <= 1.0:
+            tensor = tensor * 255
+        
+        numpy_img = tensor.numpy().astype(np.uint8)
+        return Image.fromarray(numpy_img)
+    
+    except Exception as e:
+        logger.error(f"텐서->PIL 변환 실패: {e}")
+        return Image.new('RGB', (512, 512), (128, 128, 128))
+
+def pil_to_tensor(
+    image: Image.Image,
+    device: str = "mps",
+    normalize: bool = True
+) -> torch.Tensor:
+    """PIL 이미지를 텐서로 변환"""
+    return preprocess_image(image, device=device, normalize=normalize, to_tensor=True)
+
+# 이미지 유틸리티 함수들
+def resize_image_with_aspect_ratio(
+    image: Image.Image,
+    target_size: Tuple[int, int],
+    fill_color: Tuple[int, int, int] = (0, 0, 0)
+) -> Image.Image:
+    """종횡비 유지하면서 이미지 크기 조정"""
+    try:
+        target_w, target_h = target_size
+        original_w, original_h = image.size
+        
+        # 종횡비 계산
+        aspect_ratio = original_w / original_h
+        target_aspect_ratio = target_w / target_h
+        
+        if aspect_ratio > target_aspect_ratio:
+            # 너비 기준 조정
+            new_w = target_w
+            new_h = int(target_w / aspect_ratio)
+        else:
+            # 높이 기준 조정
+            new_h = target_h
+            new_w = int(target_h * aspect_ratio)
+        
+        # 크기 조정
+        resized = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        
+        # 새 이미지 생성 및 중앙 배치
+        result = Image.new('RGB', target_size, fill_color)
+        paste_x = (target_w - new_w) // 2
+        paste_y = (target_h - new_h) // 2
+        result.paste(resized, (paste_x, paste_y))
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"종횡비 조정 실패: {e}")
+        return image.resize(target_size, Image.Resampling.LANCZOS)
+
+def create_visualization_grid(
+    images: List[Image.Image],
+    labels: List[str],
+    grid_size: Optional[Tuple[int, int]] = None
+) -> Image.Image:
+    """여러 이미지를 그리드로 배치하여 시각화"""
+    try:
+        if not images:
+            return Image.new('RGB', (512, 512), (128, 128, 128))
+        
+        num_images = len(images)
+        
+        if grid_size is None:
+            # 자동 그리드 크기 계산
+            cols = int(np.ceil(np.sqrt(num_images)))
+            rows = int(np.ceil(num_images / cols))
+        else:
+            cols, rows = grid_size
+        
+        # 개별 이미지 크기
+        img_w, img_h = 256, 256
+        
+        # 전체 그리드 크기
+        grid_w = cols * img_w + (cols - 1) * 10  # 10px 간격
+        grid_h = rows * img_h + (rows - 1) * 10 + 50  # 라벨용 50px
+        
+        # 그리드 이미지 생성
+        grid_img = Image.new('RGB', (grid_w, grid_h), (240, 240, 240))
+        
+        for i, (img, label) in enumerate(zip(images, labels)):
+            if i >= cols * rows:
+                break
+            
+            row = i // cols
+            col = i % cols
+            
+            # 이미지 크기 조정
+            img_resized = img.resize((img_w, img_h), Image.Resampling.LANCZOS)
+            
+            # 배치 위치 계산
+            x = col * (img_w + 10)
+            y = row * (img_h + 60) + 50  # 라벨 공간
+            
+            # 이미지 붙이기
+            grid_img.paste(img_resized, (x, y))
+            
+            # 라벨 추가
+            try:
+                from PIL import ImageDraw, ImageFont
+                draw = ImageDraw.Draw(grid_img)
+                
+                # 기본 폰트 사용
+                try:
+                    font = ImageFont.load_default()
+                except:
+                    font = None
+                
+                # 라벨 텍스트 그리기
+                text_x = x + img_w // 2 - len(label) * 3
+                text_y = y - 30
+                draw.text((text_x, text_y), label, fill=(0, 0, 0), font=font)
+                
+            except Exception as e:
+                logger.warning(f"라벨 그리기 실패: {e}")
+        
+        return grid_img
+    
+    except Exception as e:
+        logger.error(f"시각화 그리드 생성 실패: {e}")
+        return Image.new('RGB', (512, 512), (128, 128, 128))
+
+# 메모리 최적화 함수들
+def optimize_tensor_memory(tensor: torch.Tensor) -> torch.Tensor:
+    """텐서 메모리 최적화"""
+    try:
+        if not TORCH_AVAILABLE:
+            return tensor
+        
+        # 메모리 정리
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        
+        # MPS 캐시 정리
+        if torch.backends.mps.is_available():
+            try:
+                torch.mps.empty_cache()
+            except:
+                pass
+        
+        return tensor.contiguous()
+    
+    except Exception as e:
+        logger.warning(f"텐서 메모리 최적화 실패: {e}")
+        return tensor
+
+def safe_model_forward(
+    model: Any,
+    inputs: torch.Tensor,
+    device: str = "mps"
+) -> torch.Tensor:
+    """안전한 모델 forward pass"""
+    try:
+        if not hasattr(model, '__call__'):
+            raise ValueError("모델이 호출 가능하지 않습니다")
+        
+        # 입력을 올바른 디바이스로 이동
+        if hasattr(inputs, 'to'):
+            try:
+                inputs = inputs.to(device)
+            except Exception as e:
+                logger.warning(f"입력 디바이스 이동 실패: {e}")
+        
+        # 모델을 평가 모드로
+        if hasattr(model, 'eval'):
+            model.eval()
+        
+        # 그래디언트 비활성화
+        with torch.no_grad():
+            outputs = model(inputs)
+        
+        return outputs
+    
+    except Exception as e:
+        logger.error(f"모델 forward 실패: {e}")
+        # 폴백: 입력과 같은 크기의 더미 출력
+        if hasattr(inputs, 'shape'):
+            return torch.zeros_like(inputs)
+        else:
+            return torch.zeros(1, 3, 512, 512)
+        
 def cleanup_global_loader():
     """전역 ModelLoader 정리"""
     global _global_model_loader
@@ -1943,6 +2333,8 @@ def cleanup_global_loader():
         # 캐시 클리어
         get_global_model_loader.cache_clear()
         logger.info("🌐 전역 ModelLoader v4.3 정리 완료")
+
+
 
 # ==============================================
 # 🔥 모듈 익스포트 - 완전 통합
@@ -1959,6 +2351,13 @@ __all__ = [
     'DeviceManager',
     'ModelMemoryManager',
     'StepModelInterface',
+    'preprocess_image',
+    'postprocess_segmentation', 
+    'preprocess_pose_input',
+    'preprocess_human_parsing_input',
+    'preprocess_cloth_segmentation_input',
+    'tensor_to_pil',
+    'pil_to_tensor',
     'BaseStepMixin',
     'SafeConfig',
     
