@@ -1,11 +1,12 @@
 # backend/app/ai_pipeline/steps/step_05_cloth_warping.py
 """
-🔥 MyCloset AI - 완전한 ClothWarpingStep v3.0 (PoseEstimationStep 패턴 완전 적용)
-✅ utils 통합 인터페이스 **완전 연동**
+🔥 MyCloset AI - 완전한 ClothWarpingStep v3.1 (Logger 속성 완벽 해결)
+✅ logger 속성 누락 문제 완전 해결
+✅ BaseStepMixin 완벽 상속 및 초기화
+✅ ModelLoader 완전 연동
+✅ utils 통합 인터페이스 완전 연동
 ✅ 통일된 생성자 패턴 (PoseEstimationStep과 동일)
 ✅ 완전한 에러 처리 및 캐시 관리
-✅ logger 속성 누락 문제 완전 해결
-✅ BaseStepMixin 완벽 상속
 ✅ **모든 기능 100% 포함** - 아무것도 빠지지 않음
 ✅ M3 Max 128GB 최적화
 ✅ AI 모델 완전 연동 (HRVITON, TOM, Physics)
@@ -104,6 +105,14 @@ except ImportError:
     
     # 폴백 BaseStepMixin
     class BaseStepMixin:
+        def __init__(self, *args, **kwargs):
+            # 🔥 핵심: logger 속성 항상 설정
+            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
+            self.is_initialized = False
+            self.step_name = self.__class__.__name__
+            self.step_number = 5
+            self.performance_stats = {}
+        
         def _setup_model_interface(self):
             pass
 
@@ -122,9 +131,16 @@ except ImportError:
         return decorator
     
     class ClothWarpingMixin(BaseStepMixin):
-        pass
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # 🔥 핵심: logger 속성 명시적 설정
+            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
+            self.step_number = 5
+            self.step_type = "cloth_warping"
+            self.enable_physics = True
+            self.output_format = "warped_cloth"
 
-# 로거 설정
+# 🔥 로거 설정 (최우선)
 logger = logging.getLogger(__name__)
 
 # ==============================================
@@ -739,16 +755,17 @@ class WarpingVisualizer:
         return canvas
 
 # ==============================================
-# 🔥 완전한 ClothWarpingStep 클래스 (PoseEstimationStep 패턴 완전 적용)
+# 🔥 완전한 ClothWarpingStep 클래스 (Logger 속성 완벽 해결)
 # ==============================================
 
 class ClothWarpingStep(ClothWarpingMixin):
     """
-    🔥 완전한 Cloth Warping Step v3.0 - PoseEstimationStep 패턴 완전 적용
+    🔥 완전한 Cloth Warping Step v3.1 - Logger 속성 완벽 해결 버전
+    ✅ logger 속성 누락 문제 완전 해결
+    ✅ BaseStepMixin 완벽 상속 및 초기화
     ✅ utils 통합 인터페이스 완전 연동
     ✅ 통일된 생성자 패턴
     ✅ 완전한 에러 처리 및 캐시 관리
-    ✅ logger 속성 완벽 지원
     ✅ 모든 기능 100% 포함
     """
     
@@ -761,31 +778,43 @@ class ClothWarpingStep(ClothWarpingMixin):
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """✅ 통일된 생성자 패턴 - BaseStepMixin + utils 완전 통합 (PoseEstimationStep과 동일)"""
+        """✅ 통일된 생성자 패턴 - BaseStepMixin + utils 완전 통합 + logger 완벽 지원"""
         
-        # 1. BaseStepMixin 초기화
-        super().__init__()
+        # 🔥 핵심 1: logger 속성을 가장 먼저 설정 (반드시 필요)
+        self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
         
-        # 2. 기본 설정
+        # 🔥 핵심 2: BaseStepMixin 초기화 (super() 호출)
+        try:
+            super().__init__()
+        except Exception as e:
+            self.logger.warning(f"BaseStepMixin 초기화 실패: {e}")
+            # 폴백 초기화
+            self.is_initialized = False
+            self.step_name = self.__class__.__name__
+            self.step_number = 5
+            self.performance_stats = {}
+        
+        # 3. 기본 설정
         self.device = self._auto_detect_device(device)
         self.config = config or {}
         self.step_name = self.__class__.__name__
         self.step_number = 5
-        self.logger = logging.getLogger(f"pipeline.{self.step_name}")
         
-        # 3. 시스템 정보 추출 (kwargs에서) - PoseEstimationStep 패턴
+        # 4. 시스템 정보 추출 (kwargs에서) - PoseEstimationStep 패턴
         self.device_type = kwargs.get('device_type', self._get_device_type())
         self.memory_gb = float(kwargs.get('memory_gb', self._get_memory_gb()))
         self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         self.quality_level = kwargs.get('quality_level', 'balanced')
         
-        # 4. 설정 업데이트
+        # 5. 설정 업데이트
         self._update_config_from_kwargs(kwargs)
         
-        # 5. 초기화
+        # 6. 초기화 상태 관리
         self.is_initialized = False
         self.initialization_error = None
+        
+        # 7. 성능 통계 초기화
         self.performance_stats = {
             'total_processed': 0,
             'total_time': 0.0,
@@ -798,7 +827,7 @@ class ClothWarpingStep(ClothWarpingMixin):
             'cache_misses': 0
         }
         
-        # 6. 의류 워핑 시스템 초기화
+        # 8. 의류 워핑 시스템 초기화
         try:
             self._initialize_step_specific()
             self._setup_utils_interface()  # 🔥 핵심: utils 통합 인터페이스 설정
@@ -809,6 +838,8 @@ class ClothWarpingStep(ClothWarpingMixin):
         except Exception as e:
             self.initialization_error = str(e)
             self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+            # 초기화 실패해도 Step 객체는 생성되도록 함
+            self.is_initialized = False
     
     def _auto_detect_device(self, device: Optional[str]) -> str:
         """디바이스 자동 감지 - M3 Max 최적화 (PoseEstimationStep 동일)"""
@@ -826,7 +857,7 @@ class ClothWarpingStep(ClothWarpingMixin):
                 elif torch.cuda.is_available():
                     return "cuda"
             except Exception as e:
-                logger.warning(f"디바이스 감지 실패: {e}")
+                self.logger.warning(f"디바이스 감지 실패: {e}")
         
         return "cpu"
     
@@ -840,7 +871,7 @@ class ClothWarpingStep(ClothWarpingMixin):
             else:
                 return "cpu"
         except Exception as e:
-            logger.warning(f"디바이스 타입 감지 실패: {e}")
+            self.logger.warning(f"디바이스 타입 감지 실패: {e}")
             return "cpu"
     
     def _get_memory_gb(self) -> float:
@@ -853,7 +884,7 @@ class ClothWarpingStep(ClothWarpingMixin):
             else:
                 return 16.0  # 기본값
         except Exception as e:
-            logger.warning(f"메모리 감지 실패: {e}")
+            self.logger.warning(f"메모리 감지 실패: {e}")
             return 16.0
     
     def _detect_m3_max(self) -> bool:
@@ -869,7 +900,7 @@ class ClothWarpingStep(ClothWarpingMixin):
                                       capture_output=True, text=True, timeout=5)
                 return "M3" in result.stdout and "Max" in result.stdout
         except Exception as e:
-            logger.debug(f"M3 Max 감지 실패: {e}")
+            self.logger.debug(f"M3 Max 감지 실패: {e}")
             pass
         return False
     
@@ -1087,7 +1118,7 @@ class ClothWarpingStep(ClothWarpingMixin):
                 try:
                     await self.optimize_memory_func()
                 except Exception as e:
-                    logger.debug(f"메모리 최적화 실패: {e}")
+                    self.logger.debug(f"메모리 최적화 실패: {e}")
             
             # 5. 메인 워핑 파이프라인 실행
             warping_result = await self._execute_warping_pipeline(
@@ -1614,11 +1645,9 @@ class ClothWarpingStep(ClothWarpingMixin):
                 if PIL_AVAILABLE:
                     pil_img = Image.open(image_input)
                     image = np.array(pil_img.convert('RGB'))
-                elif CV2_AVAILABLE:
+                else:
                     image = cv2.imread(str(image_input))
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                else:
-                    raise ImportError("PIL 또는 OpenCV가 필요합니다")
             else:
                 raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
             
@@ -2179,7 +2208,7 @@ class ClothWarpingStep(ClothWarpingMixin):
         return {
             "step_name": "ClothWarping",
             "class_name": self.__class__.__name__,
-            "version": "3.0-complete-utils-integrated",
+            "version": "3.1-complete-logger-fixed",
             "device": self.device,
             "device_type": self.device_type,
             "memory_gb": self.memory_gb,
@@ -2516,7 +2545,7 @@ __all__ = [
     'CLOTHING_WARPING_WEIGHTS'
 ]
 
-logger.info("✅ ClothWarpingStep v3.0 완전 버전 로드 완료 - PoseEstimationStep 패턴 완전 적용")
+logger.info("✅ ClothWarpingStep v3.1 완전 버전 로드 완료 - Logger 속성 완벽 해결")
 logger.info("🔗 utils 통합 인터페이스 완전 연동")
 logger.info("🎯 통일된 생성자 패턴 적용")
 logger.info("💾 완전한 에러 처리 및 캐시 관리")
@@ -2524,4 +2553,4 @@ logger.info("🤖 ModelLoader 인터페이스 **완전 연동**")
 logger.info("🎨 시각화 기능 완전 구현")
 logger.info("⚙️ 물리 시뮬레이션 엔진 포함")
 logger.info("🍎 M3 Max 128GB 최적화 지원")
-logger.info("🔥 **모든 기능 100% 포함된 완전 버전 - PoseEstimationStep 패턴 완전 적용**")
+logger.info("🔥 **Logger 속성 누락 문제 완전 해결 - 모든 기능 100% 포함된 완전 버전**")
