@@ -1246,10 +1246,11 @@ class ColorQualityAnalyzer:
 # 🔥 메인 QualityAssessmentStep 클래스 (통합 버전)
 # ==============================================
 
-class QualityAssessmentStep(QualityAssessmentMixin):
+class QualityAssessmentStep:
     """
     🔥 8단계: 완전 통합 품질 평가 시스템
-    ✅ BaseStepMixin 상속으로 logger 속성 누락 문제 완전 해결
+    ✅ MRO 오류 해결 - 직접 구현으로 변경
+    ✅ BaseStepMixin 기능을 직접 포함
     ✅ 순환참조 완전 해결 (한방향 참조)
     ✅ ModelLoader 의존성 역전 패턴 적용
     ✅ 기존 파일의 모든 세부 분석 기능 포함
@@ -1285,20 +1286,22 @@ class QualityAssessmentStep(QualityAssessmentMixin):
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """✅ QualityAssessmentMixin 상속으로 logger 속성 누락 문제 완전 해결"""
+        """✅ MRO 오류 해결 - 직접 구현으로 logger 속성 누락 문제 완전 해결"""
         
-        # 🔥 QualityAssessmentMixin 초기화 - logger 속성 자동 설정
-        super().__init__(device=device, config=config, **kwargs)
+        # 🔥 BaseStepMixin 기능을 직접 구현 - MRO 오류 방지
+        self._setup_basic_logging()
+        self._setup_step_properties(**kwargs)
+        self._setup_device_configuration(device, **kwargs)
         
         # 품질 평가 설정
         self.assessment_config = {
-            'mode': getattr(self.config, 'assessment_mode', 'comprehensive') if hasattr(self.config, 'assessment_mode') else 'comprehensive',
-            'technical_analysis_enabled': getattr(self.config, 'technical_analysis_enabled', True) if hasattr(self.config, 'technical_analysis_enabled') else True,
-            'perceptual_analysis_enabled': getattr(self.config, 'perceptual_analysis_enabled', True) if hasattr(self.config, 'perceptual_analysis_enabled') else True,
-            'aesthetic_analysis_enabled': getattr(self.config, 'aesthetic_analysis_enabled', True) if hasattr(self.config, 'aesthetic_analysis_enabled') else True,
-            'functional_analysis_enabled': getattr(self.config, 'functional_analysis_enabled', True) if hasattr(self.config, 'functional_analysis_enabled') else True,
-            'detailed_analysis_enabled': getattr(self.config, 'detailed_analysis_enabled', True) if hasattr(self.config, 'detailed_analysis_enabled') else True,
-            'neural_analysis_enabled': getattr(self.config, 'neural_analysis_enabled', True) if hasattr(self.config, 'neural_analysis_enabled') else True,
+            'mode': config.get('assessment_mode', 'comprehensive') if config else 'comprehensive',
+            'technical_analysis_enabled': config.get('technical_analysis_enabled', True) if config else True,
+            'perceptual_analysis_enabled': config.get('perceptual_analysis_enabled', True) if config else True,
+            'aesthetic_analysis_enabled': config.get('aesthetic_analysis_enabled', True) if config else True,
+            'functional_analysis_enabled': config.get('functional_analysis_enabled', True) if config else True,
+            'detailed_analysis_enabled': config.get('detailed_analysis_enabled', True) if config else True,
+            'neural_analysis_enabled': config.get('neural_analysis_enabled', True) if config else True,
             'ai_models_enabled': TORCH_AVAILABLE,
             'quality_threshold': 0.7,
             'save_intermediate_results': False
@@ -1323,7 +1326,122 @@ class QualityAssessmentStep(QualityAssessmentMixin):
         # 평가 파이프라인 설정
         self._setup_comprehensive_assessment_pipeline()
         
-        self.logger.info(f"✅ {self.step_name} 통합 초기화 완료 - 순환참조 문제 해결됨")
+        self.logger.info(f"✅ {self.step_name} 통합 초기화 완료 - MRO 오류 해결됨")
+    
+    def _setup_basic_logging(self):
+        """기본 로깅 설정 - BaseStepMixin 대체"""
+        try:
+            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
+            if not self.logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter(
+                    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                )
+                handler.setFormatter(formatter)
+                self.logger.addHandler(handler)
+                self.logger.setLevel(logging.INFO)
+        except Exception as e:
+            # 폴백
+            self.logger = logging.getLogger(__name__)
+            self.logger.error(f"로거 설정 실패: {e}")
+    
+    def _setup_step_properties(self, **kwargs):
+        """Step 속성 설정 - BaseStepMixin 대체"""
+        try:
+            # Step 기본 정보
+            self.step_name = 'quality_assessment'
+            self.step_number = 8
+            self.step_type = "quality_assessment"
+            self.quality_threshold = 0.7
+            self.output_format = "quality_scores"
+            
+            # Quality Assessment 특화 속성들
+            self.assessment_modes = ['perceptual', 'technical', 'aesthetic', 'fitting']
+            self.quality_aspects = ['sharpness', 'color', 'fitting', 'realism', 'artifacts']
+            self.scoring_weights = {
+                'perceptual': 0.4,
+                'technical': 0.3,
+                'aesthetic': 0.2,
+                'fitting': 0.1
+            }
+            
+            # 초기화 상태
+            self.is_initialized = False
+            self.initialization_error = None
+            self.error_count = 0
+            self.last_error = None
+            
+            # AI 모델들
+            self.ai_models = {}
+            self.assessment_pipeline = []
+            
+            # 전문 분석기들
+            self.technical_analyzer = None
+            self.fitting_analyzer = None  
+            self.color_analyzer = None
+            
+        except Exception as e:
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Step 속성 설정 실패: {e}")
+            raise
+    
+    def _setup_device_configuration(self, device: Optional[str] = None, **kwargs):
+        """디바이스 설정 - BaseStepMixin 대체"""
+        try:
+            # 디바이스 자동 감지
+            if device is None or device == 'auto':
+                if TORCH_AVAILABLE:
+                    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        self.device = 'mps'
+                    elif torch.cuda.is_available():
+                        self.device = 'cuda'
+                    else:
+                        self.device = 'cpu'
+                else:
+                    self.device = 'cpu'
+            else:
+                self.device = device
+            
+            # 디바이스 타입 및 시스템 정보
+            self.device_type = self._detect_device_type()
+            self.memory_gb = kwargs.get('memory_gb', self._detect_memory())
+            self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
+            
+            self.logger.info(f"🔧 디바이스 설정: {self.device} ({self.device_type})")
+            
+        except Exception as e:
+            self.logger.error(f"디바이스 설정 실패: {e}")
+            self.device = 'cpu'
+            self.device_type = 'cpu'
+            self.memory_gb = 8
+            self.is_m3_max = False
+    
+    def _detect_device_type(self) -> str:
+        """디바이스 타입 감지"""
+        if self.device == 'mps':
+            return 'Apple Silicon'
+        elif self.device == 'cuda':
+            return 'NVIDIA GPU'
+        else:
+            return 'CPU'
+    
+    def _detect_memory(self) -> float:
+        """메모리 감지"""
+        try:
+            import psutil
+            memory = psutil.virtual_memory()
+            return round(memory.total / (1024**3), 1)  # GB
+        except:
+            return 8.0  # 기본값
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 감지"""
+        try:
+            import platform
+            system_info = platform.processor()
+            return 'M3' in system_info or (self.device == 'mps' and self.memory_gb >= 128)
+        except:
+            return False
     
     def _setup_m3_max_optimization(self):
         """M3 Max 최적화 설정 (향상된 버전)"""
@@ -2371,6 +2489,46 @@ logger.info("🍎 M3 Max 128GB 최적화 지원")
 logger.info("📦 conda 환경 최적화 완료")
 
 # 모듈 테스트 함수
+# ==============================================
+# 🔥 모듈 익스포트 (통합 버전)
+# ==============================================
+
+__all__ = [
+    # 메인 클래스
+    'QualityAssessmentStep',
+    
+    # 데이터 구조
+    'QualityMetrics',
+    'QualityGrade',
+    'AssessmentMode',
+    'QualityAspect',
+    
+    # AI 모델들
+    'EnhancedPerceptualQualityModel',
+    'EnhancedAestheticQualityModel',
+    
+    # 전문 분석기들
+    'TechnicalQualityAnalyzer',
+    'FittingQualityAnalyzer',
+    'ColorQualityAnalyzer',
+    
+    # 인터페이스
+    'ModelLoaderInterface'
+]
+
+# 모듈 초기화 로그
+logger = logging.getLogger(__name__)
+logger.info("✅ QualityAssessmentStep MRO 해결 버전 로드 완료")
+logger.info("🔗 BaseStepMixin 기능 직접 구현으로 logger 속성 문제 해결")
+logger.info("🔄 순환참조 완전 해결 - 한방향 참조 구조")
+logger.info("🧠 모든 세부 분석 기능 통합")
+logger.info("🍎 M3 Max 128GB 최적화 지원")
+logger.info("📦 conda 환경 최적화 완료")
+
+# ==============================================
+# 🔥 모듈 테스트 함수
+# ==============================================
+
 def test_comprehensive_quality_assessment():
     """통합 품질 평가 스텝 테스트"""
     try:
@@ -2394,17 +2552,26 @@ def test_comprehensive_quality_assessment():
         step_info = step.get_step_info()
         assert 'step_name' in step_info, "step_name이 step_info에 없습니다!"
         
-        print("✅ 순환참조 해결 QualityAssessmentStep 테스트 성공")
+        # MRO 확인
+        mro = [cls.__name__ for cls in step.__class__.__mro__]
+        print(f"📋 MRO 체인: {' -> '.join(mro)}")
+        
+        print("✅ MRO 해결 QualityAssessmentStep 테스트 성공")
         print(f"📊 Step 정보: {step_info}")
         print(f"🧠 AI 모델 수: {len(step.ai_models)}")
         print(f"📋 파이프라인 단계: {len(step.assessment_pipeline)}")
+        print(f"🔧 디바이스: {step.device} ({step.device_type})")
+        print(f"💾 메모리: {step.memory_gb}GB")
+        print(f"🍎 M3 Max: {'✅' if step.is_m3_max else '❌'}")
         
         return True
         
     except Exception as e:
-        print(f"❌ 순환참조 해결 QualityAssessmentStep 테스트 실패: {e}")
+        print(f"❌ MRO 해결 QualityAssessmentStep 테스트 실패: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 if __name__ == "__main__":
-    print("🧪 순환참조 해결 Quality Assessment Step 테스트 실행...")
+    print("🧪 MRO 해결 Quality Assessment Step 테스트 실행...")
     test_comprehensive_quality_assessment()

@@ -85,7 +85,7 @@ except ImportError:
     print("⚠️ psutil 권장: pip install psutil")
 
 # ==============================================
-# 🔥 BaseStepMixin 연동 (한방향 참조)
+# 🔥 MRO 안전한 BaseStepMixin 연동 (완전 수정)
 # ==============================================
 
 try:
@@ -93,16 +93,26 @@ try:
     BASE_STEP_MIXIN_AVAILABLE = True
 except ImportError:
     BASE_STEP_MIXIN_AVAILABLE = False
-    # 안전한 폴백 BaseStepMixin
+    # 🔥 MRO 안전한 폴백 BaseStepMixin
     class BaseStepMixin:
+        """MRO 안전한 폴백 BaseStepMixin"""
         def __init__(self, *args, **kwargs):
             # logger 속성 누락 문제 완전 해결
             if not hasattr(self, 'logger'):
                 class_name = self.__class__.__name__
                 self.logger = logging.getLogger(f"pipeline.{class_name}")
                 self.logger.info(f"🔧 {class_name} 폴백 logger 초기화 완료")
+            
+            # MRO 안전한 기본 속성 설정
+            if not hasattr(self, 'device'):
+                self.device = kwargs.get('device', 'auto')
+            if not hasattr(self, 'model_interface'):
+                self.model_interface = None
+            if not hasattr(self, 'config'):
+                self.config = kwargs.get('config', {})
         
         def _setup_model_interface(self):
+            """폴백 모델 인터페이스 설정"""
             pass
 
 # ==============================================
@@ -374,19 +384,31 @@ class PoseEstimationStep(BaseStepMixin):
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """✅ 완전 재작성된 생성자 - 모든 호환성 문제 해결"""
+        """✅ MRO 안전한 생성자 - 모든 호환성 문제 해결"""
         
         # 🔥 1. logger 속성 누락 문제 완전 해결 - 최우선
         if not hasattr(self, 'logger'):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.logger.info(f"🔧 {self.__class__.__name__} logger 초기화 완료")
         
-        # 🔥 2. BaseStepMixin 초기화 (logger 설정 후)
+        # 🔥 2. MRO 안전한 BaseStepMixin 초기화
         if BASE_STEP_MIXIN_AVAILABLE:
             try:
-                super().__init__(**kwargs)
+                # MRO 체크: BaseStepMixin이 마지막이 아닌 경우에만 super() 호출
+                mro = type(self).__mro__
+                if len(mro) > 2 and BaseStepMixin in mro[1:-1]:
+                    # BaseStepMixin이 중간에 있으면 안전하게 초기화
+                    BaseStepMixin.__init__(self, **kwargs)
+                else:
+                    # BaseStepMixin 직접 초기화 (안전)
+                    self._init_base_step_mixin_safely(**kwargs)
             except Exception as e:
                 self.logger.warning(f"BaseStepMixin 초기화 실패: {e}")
+                # 폴백: 직접 초기화
+                self._init_base_step_mixin_safely(**kwargs)
+        else:
+            # BaseStepMixin 없는 경우 폴백 초기화
+            self._init_base_step_mixin_safely(**kwargs)
         
         # 🔥 3. 기본 설정
         self.device = self._auto_detect_device(device)
@@ -430,6 +452,34 @@ class PoseEstimationStep(BaseStepMixin):
         except Exception as e:
             self.initialization_error = str(e)
             self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+    
+    def _init_base_step_mixin_safely(self, **kwargs):
+        """🔥 MRO 안전한 BaseStepMixin 초기화 폴백"""
+        try:
+            # BaseStepMixin의 기본 속성들을 직접 설정
+            if not hasattr(self, 'device'):
+                self.device = kwargs.get('device', 'auto')
+            if not hasattr(self, 'model_interface'):
+                self.model_interface = None
+            if not hasattr(self, 'config'):
+                # SafeConfig가 없는 경우 기본 dict 사용
+                try:
+                    from app.ai_pipeline.steps.base_step_mixin import SafeConfig
+                    self.config = SafeConfig(kwargs.get('config', {}))
+                except ImportError:
+                    self.config = kwargs.get('config', {})
+            
+            self.logger.debug("✅ BaseStepMixin 폴백 초기화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ BaseStepMixin 폴백 초기화 실패: {e}")
+            # 최소한의 안전 설정
+            if not hasattr(self, 'device'):
+                self.device = 'cpu'
+            if not hasattr(self, 'model_interface'):
+                self.model_interface = None
+            if not hasattr(self, 'config'):
+                self.config = {}
     
     def _auto_detect_device(self, device: Optional[str] = None) -> str:
         """디바이스 자동 감지 - M3 Max 최적화"""
