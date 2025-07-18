@@ -771,6 +771,140 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ {step_name} 인터페이스 정리 실패: {e}")
     
+    def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        """모델 정보 조회"""
+        try:
+            with self._lock:
+                info = {
+                    'name': model_name,
+                    'registered': model_name in self.model_configs,
+                    'cached': any(model_name in key for key in self.model_cache.keys()),
+                    'device': self.device,
+                    'config': None,
+                    'load_time': None,
+                    'last_access': None,
+                    'access_count': 0
+                }
+                
+                # 모델 설정 정보
+                if model_name in self.model_configs:
+                    config = self.model_configs[model_name]
+                    info['config'] = {
+                        'model_type': str(getattr(config, 'model_type', 'unknown')),
+                        'model_class': getattr(config, 'model_class', 'unknown'),
+                        'input_size': getattr(config, 'input_size', (512, 512)),
+                        'num_classes': getattr(config, 'num_classes', None)
+                    }
+                
+                # 캐시 정보
+                for cache_key in self.model_cache.keys():
+                    if model_name in cache_key:
+                        info['cached'] = True
+                        info['load_time'] = self.load_times.get(cache_key)
+                        info['last_access'] = self.last_access.get(cache_key)
+                        info['access_count'] = self.access_counts.get(cache_key, 0)
+                        break
+                
+                return info
+                
+        except Exception as e:
+            self.logger.error(f"❌ 모델 정보 조회 실패 {model_name}: {e}")
+            return {'name': model_name, 'error': str(e)}
+    
+    def list_models(self) -> Dict[str, Dict[str, Any]]:
+        """등록된 모든 모델 목록"""
+        try:
+            with self._lock:
+                models_info = {}
+                
+                # 등록된 모델들
+                for model_name in self.model_configs.keys():
+                    models_info[model_name] = self.get_model_info(model_name)
+                
+                # SafeModelService 모델들
+                safe_models = self.safe_model_service.list_models()
+                for model_name, status in safe_models.items():
+                    if model_name not in models_info:
+                        models_info[model_name] = {
+                            'name': model_name,
+                            'source': 'SafeModelService',
+                            'status': status
+                        }
+                
+                return models_info
+                
+        except Exception as e:
+            self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
+            return {}
+    
+    def get_system_stats(self) -> Dict[str, Any]:
+        """시스템 통계 정보"""
+        try:
+            with self._lock:
+                stats = {
+                    'device': self.device,
+                    'is_m3_max': self.is_m3_max,
+                    'memory_gb': self.memory_gb,
+                    'model_cache_dir': str(self.model_cache_dir),
+                    'cached_models': len(self.model_cache),
+                    'registered_models': len(self.model_configs),
+                    'step_interfaces': len(self.step_interfaces),
+                    'total_loads': sum(self.access_counts.values()),
+                    'optimization_enabled': self.optimization_enabled,
+                    'use_fp16': self.use_fp16,
+                    'max_cached_models': self.max_cached_models
+                }
+                
+                # 메모리 정보
+                if hasattr(self.memory_manager, 'get_available_memory'):
+                    try:
+                        available_memory = self.memory_manager.get_available_memory()
+                        stats['available_memory_gb'] = available_memory
+                    except:
+                        stats['available_memory_gb'] = 'unknown'
+                
+                # SafeModelService 통계
+                service_stats = self.safe_model_service.get_service_statistics()
+                stats['safe_model_service'] = service_stats
+                
+                return stats
+                
+        except Exception as e:
+            self.logger.error(f"❌ 시스템 통계 조회 실패: {e}")
+            return {'error': str(e)}
+    
+    def warmup_all_models(self) -> Dict[str, bool]:
+        """모든 등록된 모델 워밍업"""
+        try:
+            warmup_results = {}
+            
+            # 등록된 모델들 워밍업
+            for model_name in self.model_configs.keys():
+                try:
+                    # SafeModelService를 통한 워밍업
+                    success = asyncio.run(self.safe_model_service.warmup_model(model_name))
+                    warmup_results[model_name] = success
+                    
+                    if success:
+                        self.logger.info(f"✅ 모델 워밍업 성공: {model_name}")
+                    else:
+                        self.logger.warning(f"⚠️ 모델 워밍업 실패: {model_name}")
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ 모델 워밍업 오류 {model_name}: {e}")
+                    warmup_results[model_name] = False
+            
+            success_count = sum(1 for success in warmup_results.values() if success)
+            total_count = len(warmup_results)
+            
+            self.logger.info(f"🔥 모델 워밍업 완료: {success_count}/{total_count} 성공")
+            
+            return warmup_results
+            
+        except Exception as e:
+            self.logger.error(f"❌ 전체 모델 워밍업 실패: {e}")
+            return {}
+    
     def cleanup(self):
         """🔥 완전한 리소스 정리"""
         try:
@@ -1003,20 +1137,20 @@ class BaseStepMixin:
             
             if success:
                 self.model_interface = interface
-                logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료 (SafeFunctionValidator)")
+                self.logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료 (SafeFunctionValidator)")
             else:
                 self.logger.warning(f"⚠️ create_step_interface 호출 실패: {message}")
                 self.model_interface = None
             
         except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
+            self.logger.error(f"❌ {self.__class__.__name__} 모델 인터페이스 설정 실패: {e}")
             self.model_interface = None
     
     async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
         """모델 로드 (Step에서 사용) - Dict Callable 오류 완전 해결"""
         try:
             if not hasattr(self, 'model_interface') or self.model_interface is None:
-                logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
+                self.logger.warning(f"⚠️ {self.__class__.__name__} 모델 인터페이스가 없습니다")
                 return None
             
             if model_name:
@@ -1029,7 +1163,7 @@ class BaseStepMixin:
                 if success:
                     return result
                 else:
-                    logger.warning(f"⚠️ get_model 호출 실패: {message}")
+                    self.logger.warning(f"⚠️ get_model 호출 실패: {message}")
                     return None
             else:
                 # 권장 모델 자동 로드
@@ -1039,11 +1173,11 @@ class BaseStepMixin:
                 if success:
                     return result
                 else:
-                    logger.warning(f"⚠️ get_recommended_model 호출 실패: {message}")
+                    self.logger.warning(f"⚠️ get_recommended_model 호출 실패: {message}")
                     return None
                 
         except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
+            self.logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
             return None
     
     def cleanup_models(self):
@@ -1055,9 +1189,9 @@ class BaseStepMixin:
                 success, result, message = self.function_validator.safe_call(cleanup_method)
                 
                 if not success:
-                    logger.warning(f"⚠️ unload_models 호출 실패: {message}")
+                    self.logger.warning(f"⚠️ unload_models 호출 실패: {message}")
         except Exception as e:
-            logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
+            self.logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
 
 # ==============================================
 # 🔥 전역 ModelLoader 관리 - Dict Callable 오류 완전 해결
@@ -1301,19 +1435,18 @@ else:
 ========================================================================================
 
 ✅ 'dict' object is not callable 근본 원인 해결 (완전 강화)
-✅ SafeModelService 통합으로 안전한 호출 보장 (기능 강화)
+✅ SafeModelService + SafeFunctionValidator 통합 (기능 강화)  
 ✅ NumPy 2.x 완전 호환성 해결
 ✅ BaseStepMixin v3.3 완벽 연동
 ✅ M3 Max 128GB 최적화 완성
 ✅ conda 환경 완벽 지원
 ✅ StepModelInterface 실제 AI 모델 추론 기능 완전 통합
 ✅ 프로덕션 안정성 최고 수준
-✅ 모든 기존 기능 유지 + 개선
-✅ 함수명/클래스명 수정 없이 오류 해결 완료
+✅ 모든 기존 기능명/클래스명 유지 + 개선
 
 Author: MyCloset AI Team
 Date: 2025-07-19
-Version: 5.1 (Dict Callable Error Complete Fix - Enhanced)
+Version: 5.1 (Complete Dict Callable Error Fix - Enhanced)
 """
 
 import os
