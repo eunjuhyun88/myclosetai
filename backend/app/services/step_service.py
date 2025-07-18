@@ -497,216 +497,121 @@ class PipelineManagerService(BaseStepService):
 # ============================================================================
 # 🎯 구체적인 단계별 서비스들 (시각화 완전 통합)
 # ============================================================================
-
 class UploadValidationService(PipelineManagerService):
     """1단계: 이미지 업로드 검증 서비스 (시각화 포함)"""
     
     def __init__(self, device: Optional[str] = None):
         super().__init__("UploadValidation", 1, device)
     
-    async def _validate_service_inputs(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """입력 검증"""
-        person_image = inputs.get("person_image")
-        clothing_image = inputs.get("clothing_image")
-        
-        if not person_image or not clothing_image:
-            return {
-                "valid": False,
-                "error": "person_image와 clothing_image가 필요합니다"
-            }
-        
-        # UploadFile 타입 검증
-        from fastapi import UploadFile
-        if not isinstance(person_image, UploadFile) or not isinstance(clothing_image, UploadFile):
-            return {
-                "valid": False,
-                "error": "person_image와 clothing_image는 UploadFile 타입이어야 합니다"
-            }
-        
-        return {"valid": True}
-    
-    async def _process_service_logic(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """이미지 업로드 검증 비즈니스 로직"""
-        try:
-            person_image = inputs["person_image"]
-            clothing_image = inputs["clothing_image"]
-            
-            # 파일 내용 검증
-            person_content = await person_image.read()
-            await person_image.seek(0)
-            clothing_content = await clothing_image.read()
-            await clothing_image.seek(0)
-            
-            person_validation = validate_image_file_content(person_content, "person")
-            clothing_validation = validate_image_file_content(clothing_content, "clothing")
-            
-            if not person_validation["valid"] or not clothing_validation["valid"]:
-                return {
-                    "success": False,
-                    "error": "파일 검증 실패",
-                    "details": {
-                        "person_error": person_validation.get("error"),
-                        "clothing_error": clothing_validation.get("error")
-                    }
-                }
-            
-            # 이미지 품질 분석
-            person_img = await self._load_image_from_content(person_content)
-            clothing_img = await self._load_image_from_content(clothing_content)
-            
-            person_quality = await self._analyze_image_quality(person_img, "person")
-            clothing_quality = await self._analyze_image_quality(clothing_img, "clothing")
-            
-            overall_confidence = (person_quality["confidence"] + clothing_quality["confidence"]) / 2
-            
-            # 🆕 세션 ID 생성 (1단계에서)
-            import uuid
-            session_id = f"session_{uuid.uuid4().hex[:12]}"
-            
-            return {
-                "success": True,
-                "message": "이미지 업로드 검증 완료",
-                "confidence": overall_confidence,
-                "details": {
-                    "session_id": session_id,  # 🔥 세션 ID 추가
-                    "person_analysis": person_quality,
-                    "clothing_analysis": clothing_quality,
-                    "overall_quality": overall_confidence,
-                    "ready_for_next_step": overall_confidence > 0.5,
-                    "recommendations": self._generate_quality_recommendations(overall_confidence),
-                    # 시각화용 이미지 저장
-                    "person_image_processed": person_img,
-                    "clothing_image_processed": clothing_img
-                }
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 이미지 업로드 검증 실패: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-    
-    async def _generate_step_visualizations(self, inputs: Dict[str, Any], results: Dict[str, Any]) -> Dict[str, str]:
-        """1단계 시각화 생성"""
-        try:
-            if not self.visualization_enabled or not IMAGE_UTILS_AVAILABLE:
-                return {}
-            
-            details = results.get("details", {})
-            person_img = details.get("person_image_processed")
-            clothing_img = details.get("clothing_image_processed")
-            
-            if not person_img or not clothing_img:
-                return {}
-            
-            visualizations = {}
-            
-            # 1. 업로드된 이미지들 표시 (크기 조정 및 품질 향상)
-            if isinstance(person_img, Image.Image):
-                person_enhanced = self.image_processor.enhance_image(person_img)
-                visualizations['person_preview'] = convert_image_to_base64(person_enhanced)
-            
-            if isinstance(clothing_img, Image.Image):
-                clothing_enhanced = self.image_processor.enhance_image(clothing_img)
-                visualizations['clothing_preview'] = convert_image_to_base64(clothing_enhanced)
-            
-            # 2. 품질 분석 시각화
-            person_quality = details.get("person_analysis", {})
-            clothing_quality = details.get("clothing_analysis", {})
-            
-            if person_quality and clothing_quality:
-                quality_chart = await self._create_quality_analysis_chart(person_quality, clothing_quality)
-                if quality_chart:
-                    visualizations['quality_analysis'] = convert_image_to_base64(quality_chart)
-            
-            # 3. 비교 이미지 (사이드 바이 사이드)
-            if person_img and clothing_img:
-                comparison_img = self._create_upload_comparison(person_img, clothing_img, details)
-                if comparison_img:
-                    visualizations['upload_comparison'] = convert_image_to_base64(comparison_img)
-            
-            self.logger.info(f"✅ 1단계 시각화 생성 완료: {len(visualizations)}개")
-            return visualizations
-            
-        except Exception as e:
-            self.logger.error(f"❌ 1단계 시각화 생성 실패: {e}")
-            return {}
-    
-    async def _load_image_from_content(self, content: bytes) -> Image.Image:
-        """이미지 내용에서 PIL 이미지 로드"""
-        image = Image.open(BytesIO(content)).convert('RGB')
-        return image.resize((512, 512), Image.Resampling.LANCZOS)
-    
-    async def _analyze_image_quality(self, image: Image.Image, image_type: str) -> Dict[str, Any]:
-        """이미지 품질 분석"""
-        try:
-            import cv2
-            
-            width, height = image.size
-            cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-            gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-            
-            # 선명도 분석
-            sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
-            sharpness_score = min(1.0, sharpness / 1000.0)
-            
-            # 밝기 분석
-            brightness = np.mean(cv_image)
-            brightness_score = 1.0 - abs(brightness - 127.5) / 127.5
-            
-            # 대비 분석
-            contrast = gray.std()
-            contrast_score = min(1.0, contrast / 64.0)
-            
-            # 종합 품질 점수
-            quality_score = (sharpness_score * 0.5 + brightness_score * 0.3 + contrast_score * 0.2)
-            
-            return {
-                "confidence": quality_score,
-                "quality_metrics": {
-                    "sharpness": sharpness_score,
-                    "brightness": brightness_score,
-                    "contrast": contrast_score,
-                    "resolution": f"{width}x{height}"
-                },
-                "analysis_method": "OpenCV 기반 분석"
-            }
-            
-        except Exception as e:
-            self.logger.warning(f"이미지 품질 분석 실패: {e}")
-            return {
-                "confidence": 0.7,
-                "quality_metrics": {"error": str(e)},
-                "analysis_method": "기본 분석"
-            }
-    
-    def _generate_quality_recommendations(self, quality_score: float) -> List[str]:
-        """품질 점수 기반 추천사항 생성"""
-        recommendations = []
-        
-        if quality_score > 0.8:
-            recommendations.append("이미지 품질이 우수합니다")
-            recommendations.append("최상의 가상 피팅 결과를 기대할 수 있습니다")
-        elif quality_score > 0.6:
-            recommendations.append("이미지 품질이 양호합니다")
-            recommendations.append("좋은 가상 피팅 결과를 얻을 수 있습니다")
-        elif quality_score > 0.4:
-            recommendations.append("이미지 품질이 보통입니다")
-            recommendations.append("더 선명한 이미지를 사용하면 결과가 향상됩니다")
-        else:
-            recommendations.append("이미지 품질 개선이 필요합니다")
-            recommendations.append("조명이 좋은 환경에서 다시 촬영해보세요")
-            recommendations.append("카메라 초점을 맞춰서 촬영해보세요")
-        
-        return recommendations
+    # ... 기존 메서드들 ...
     
     async def _create_quality_analysis_chart(self, person_quality: Dict, clothing_quality: Dict) -> Optional[Image.Image]:
         """품질 분석 차트 생성"""
         try:
             if not self.image_processor:
                 return None
-
+            
+            # 차트 이미지 생성 (간단한 막대 차트)
+            chart_width = 400
+            chart_height = 300
+            chart_img = Image.new('RGB', (chart_width, chart_height), (255, 255, 255))
+            
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(chart_img)
+            
+            # 제목
+            font = self.image_processor.get_font("arial", 16)
+            draw.text((chart_width//2 - 60, 20), "이미지 품질 분석", fill=(0, 0, 0), font=font)
+            
+            # 품질 점수 막대
+            person_score = person_quality.get("confidence", 0)
+            clothing_score = clothing_quality.get("confidence", 0)
+            
+            bar_width = 150
+            bar_height = 30
+            y_start = 80
+            
+            # 사용자 이미지 막대
+            draw.text((50, y_start), "사용자 이미지:", fill=(0, 0, 0), font=self.image_processor.get_font("arial", 12))
+            person_bar_width = int(bar_width * person_score)
+            draw.rectangle([50, y_start + 25, 50 + person_bar_width, y_start + 25 + bar_height], 
+                         fill=(0, 150, 255))
+            draw.text((210, y_start + 30), f"{person_score:.1%}", fill=(0, 0, 0), 
+                     font=self.image_processor.get_font("arial", 12))
+            
+            # 의류 이미지 막대
+            y_start += 80
+            draw.text((50, y_start), "의류 이미지:", fill=(0, 0, 0), font=self.image_processor.get_font("arial", 12))
+            clothing_bar_width = int(bar_width * clothing_score)
+            draw.rectangle([50, y_start + 25, 50 + clothing_bar_width, y_start + 25 + bar_height], 
+                         fill=(255, 150, 0))
+            draw.text((210, y_start + 30), f"{clothing_score:.1%}", fill=(0, 0, 0), 
+                     font=self.image_processor.get_font("arial", 12))
+            
+            # 전체 점수
+            overall_score = (person_score + clothing_score) / 2
+            y_start += 80
+            draw.text((50, y_start), "전체 품질:", fill=(0, 0, 0), font=self.image_processor.get_font("arial", 14))
+            overall_bar_width = int(bar_width * overall_score)
+            color = (0, 200, 0) if overall_score > 0.7 else (255, 200, 0) if overall_score > 0.5 else (255, 100, 100)
+            draw.rectangle([50, y_start + 25, 50 + overall_bar_width, y_start + 25 + bar_height], 
+                         fill=color)
+            draw.text((210, y_start + 30), f"{overall_score:.1%}", fill=(0, 0, 0), 
+                     font=self.image_processor.get_font("arial", 14))
+            
+            return chart_img
+            
+        except Exception as e:
+            self.logger.error(f"❌ 품질 분석 차트 생성 실패: {e}")
+            return None
+    
+    def _create_upload_comparison(self, person_img: Image.Image, clothing_img: Image.Image, details: Dict) -> Optional[Image.Image]:
+        """업로드 비교 이미지 생성"""
+        try:
+            if not self.image_processor:
+                return None
+            
+            # 이미지 크기 통일
+            target_size = (300, 400)
+            person_resized = person_img.resize(target_size, Image.Resampling.LANCZOS)
+            clothing_resized = clothing_img.resize(target_size, Image.Resampling.LANCZOS)
+            
+            # 비교 이미지 생성
+            comparison_width = target_size[0] * 2 + 40  # 여백 40px
+            comparison_height = target_size[1] + 100    # 텍스트용 100px
+            
+            comparison = Image.new('RGB', (comparison_width, comparison_height), (245, 245, 245))
+            
+            # 이미지 배치
+            comparison.paste(person_resized, (10, 60))
+            comparison.paste(clothing_resized, (target_size[0] + 30, 60))
+            
+            # 라벨 및 정보 추가
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(comparison)
+            
+            # 제목
+            title_font = self.image_processor.get_font("arial", 18)
+            draw.text((comparison_width//2 - 80, 15), "업로드된 이미지", fill=(0, 0, 0), font=title_font)
+            
+            # 개별 라벨
+            label_font = self.image_processor.get_font("arial", 14)
+            draw.text((10 + target_size[0]//2 - 30, 40), "사용자", fill=(0, 0, 0), font=label_font)
+            draw.text((target_size[0] + 30 + target_size[0]//2 - 20, 40), "의류", fill=(0, 0, 0), font=label_font)
+            
+            # 품질 정보
+            person_quality = details.get("person_analysis", {}).get("confidence", 0)
+            clothing_quality = details.get("clothing_analysis", {}).get("confidence", 0)
+            
+            info_font = self.image_processor.get_font("arial", 12)
+            draw.text((10, target_size[1] + 70), f"품질: {person_quality:.1%}", fill=(0, 100, 200), font=info_font)
+            draw.text((target_size[0] + 30, target_size[1] + 70), f"품질: {clothing_quality:.1%}", fill=(200, 100, 0), font=info_font)
+            
+            return comparison
+            
+        except Exception as e:
+            self.logger.error(f"❌ 업로드 비교 이미지 생성 실패: {e}")
+            return None
 
 class PoseEstimationService(PipelineManagerService):
     """4단계: 포즈 추정 서비스 (시각화 완전 통합)"""
