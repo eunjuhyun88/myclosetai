@@ -81,6 +81,21 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 # 🔗 순환참조 해결 - 의존성 역전 패턴
+
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
 class ModelLoaderInterface:
     """ModelLoader 인터페이스 (순환참조 해결)"""
     

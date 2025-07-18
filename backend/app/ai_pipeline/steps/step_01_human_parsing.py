@@ -62,7 +62,22 @@ except ImportError as e:
     logging.error(f"BaseStepMixin 임포트 실패: {e}")
     BASE_STEP_MIXIN_AVAILABLE = False
     # 안전한 폴백 클래스
-    class BaseStepMixin:
+    
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
+class BaseStepMixin:
         def __init__(self, *args, **kwargs):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.device = "cpu"
@@ -729,7 +744,7 @@ class HumanParsingStep(BaseStepMixin):
             # FP16 변환 (M3 Max 최적화)
             if self.config.use_fp16 and self.device != 'cpu':
                 try:
-                    normalized = normalized.half()
+                    normalized = normalized.half() if self.device != "cpu" else self
                 except Exception as e:
                     self.logger.warning(f"⚠️ FP16 변환 실패: {e}")
             

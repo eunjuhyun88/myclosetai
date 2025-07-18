@@ -100,7 +100,22 @@ except ImportError:
     BASE_MIXIN_AVAILABLE = False
     
     # 폴백 BaseStepMixin 정의
-    class BaseStepMixin:
+    
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
+class BaseStepMixin:
         def __init__(self, *args, **kwargs):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.device = self._auto_detect_device()
@@ -424,12 +439,12 @@ class VirtualFittingStep(BaseStepMixin):
             # === 11. 시각화 설정 ===
             self.visualization_config = {
                 'enabled': self.enable_visualization,
-                'quality': self.config.get('visualization_quality', 'medium'),
-                'show_process_steps': self.config.get('show_process_steps', True),
-                'show_fit_analysis': self.config.get('show_fit_analysis', True),
-                'show_fabric_details': self.config.get('show_fabric_details', True),
-                'overlay_opacity': self.config.get('overlay_opacity', 0.7),
-                'comparison_mode': self.config.get('comparison_mode', 'side_by_side')
+                'quality': self.getattr(config, "get", lambda x, y: y)('visualization_quality', 'medium'),
+                'show_process_steps': self.getattr(config, "get", lambda x, y: y)('show_process_steps', True),
+                'show_fit_analysis': self.getattr(config, "get", lambda x, y: y)('show_fit_analysis', True),
+                'show_fabric_details': self.getattr(config, "get", lambda x, y: y)('show_fabric_details', True),
+                'overlay_opacity': self.getattr(config, "get", lambda x, y: y)('overlay_opacity', 0.7),
+                'comparison_mode': self.getattr(config, "get", lambda x, y: y)('comparison_mode', 'side_by_side')
             }
             
             # === 12. 캐시 시스템 ===
@@ -990,7 +1005,7 @@ class VirtualFittingStep(BaseStepMixin):
                 optimizations.append("MPS memory optimization")
             
             # 2. Neural Engine 준비
-            if self.fitting_config.get('enable_neural_engine', True):
+            if self.fitting_getattr(config, "get", lambda x, y: y)('enable_neural_engine', True):
                 optimizations.append("Neural Engine ready")
             
             # 3. 메모리 풀링
@@ -1979,7 +1994,7 @@ class VirtualFittingStep(BaseStepMixin):
             overlay = Image.blend(person_pil, fitted_resized, opacity)
             
             # 경계선 추가 (선택적)
-            if self.visualization_config.get('show_boundaries', True):
+            if self.visualization_getattr(config, "get", lambda x, y: y)('show_boundaries', True):
                 overlay = self._add_boundary_lines(overlay, person_pil, fitted_resized)
             
             return overlay
@@ -1998,7 +2013,7 @@ class VirtualFittingStep(BaseStepMixin):
             width, height = overlay.size
             
             # 상의 경계 (대략적)
-            clothing_type = self.config.get('clothing_type', 'shirt')
+            clothing_type = self.getattr(config, "get", lambda x, y: y)('clothing_type', 'shirt')
             if clothing_type in ['shirt', 'blouse', 'jacket']:
                 # 상체 영역 경계
                 x1, y1 = width//4, height//4

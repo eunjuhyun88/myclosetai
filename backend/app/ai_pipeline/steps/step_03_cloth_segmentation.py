@@ -74,7 +74,22 @@ try:
 except ImportError:
     BASE_STEP_MIXIN_AVAILABLE = False
     # 🔥 폴백: 기본 클래스 정의
-    class BaseStepMixin:
+    
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
+class BaseStepMixin:
         def __init__(self, *args, **kwargs):
             # 🔥 logger 속성 문제 완전 해결
             if not hasattr(self, 'logger'):
@@ -797,7 +812,7 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # FP16 최적화 (M3 Max)
             if self.segmentation_config.use_fp16 and self.device != 'cpu':
-                self.u2net_model = self.u2net_model.half()
+                self.u2net_model = self.u2net_model.half() if self.device != "cpu" else self
             
             self.logger.info("✅ U2-Net 직접 로드 완료")
             
@@ -1393,7 +1408,7 @@ class ClothSegmentationStep(BaseStepMixin):
             input_tensor = transform(image).unsqueeze(0).to(self.device)
             
             if self.segmentation_config.use_fp16 and self.device != 'cpu':
-                input_tensor = input_tensor.half()
+                input_tensor = input_tensor.half() if self.device != "cpu" else self
             
             # 추론
             with torch.no_grad():

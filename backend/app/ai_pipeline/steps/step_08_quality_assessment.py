@@ -84,6 +84,21 @@ except ImportError:
 # 🔥 열거형 및 상수 정의 (통합)
 # ==============================================
 
+
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
 class QualityGrade(Enum):
     """품질 등급"""
     EXCELLENT = "excellent"      # 90-100점
@@ -1331,7 +1346,7 @@ class QualityAssessmentStep(QualityAssessmentMixin):
             try:
                 for model_name, model in self.ai_models.items():
                     if hasattr(model, 'half'):
-                        model.half()
+                        model.half() if self.device != "cpu" else self
                     # M3 Max Neural Engine 최적화 설정
                     if hasattr(model, 'eval'):
                         model.eval()

@@ -37,12 +37,27 @@ try:
     MIXIN_AVAILABLE = True
 except ImportError:
     # 폴백: 기본 Mixin 클래스 정의
-    class BaseStepMixin:
+    
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
+class BaseStepMixin:
         def __init__(self, *args, **kwargs):
             if not hasattr(self, 'logger'):
                 self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
     
-    class GeometricMatchingMixin(BaseStepMixin):
+class GeometricMatchingMixin(BaseStepMixin):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.step_number = 4
@@ -50,7 +65,7 @@ except ImportError:
             self.num_control_points = 25
             self.output_format = "transformation_matrix"
     
-    MIXIN_AVAILABLE = False
+MIXIN_AVAILABLE = False
 
 # ModelLoader 연동
 try:

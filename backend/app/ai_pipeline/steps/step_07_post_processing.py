@@ -103,6 +103,21 @@ logger = logging.getLogger(__name__)
 # 1. 열거형 및 데이터 클래스 정의
 # ==============================================
 
+
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
 class EnhancementMethod(Enum):
     """향상 방법"""
     SUPER_RESOLUTION = "super_resolution"
@@ -607,9 +622,9 @@ class PostProcessingStep(BaseStepMixin):
             # FP16 최적화 (M3 Max)
             if self.is_m3_max and self.device != 'cpu':
                 if self.sr_model:
-                    self.sr_model = self.sr_model.half()
+                    self.sr_model = self.sr_model.half() if self.device != "cpu" else self
                 if self.denoise_model:
-                    self.denoise_model = self.denoise_model.half()
+                    self.denoise_model = self.denoise_model.half() if self.device != "cpu" else self
             
         except Exception as e:
             self.logger.error(f"모델 직접 로드 실패: {e}")
@@ -1454,7 +1469,7 @@ class PostProcessingStep(BaseStepMixin):
             input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
             
             if self.is_m3_max and self.device != 'cpu':
-                input_tensor = input_tensor.half()
+                input_tensor = input_tensor.half() if self.device != "cpu" else self
             
             # 추론
             with torch.no_grad():
@@ -1492,7 +1507,7 @@ class PostProcessingStep(BaseStepMixin):
             input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
             
             if self.is_m3_max and self.device != 'cpu':
-                input_tensor = input_tensor.half()
+                input_tensor = input_tensor.half() if self.device != "cpu" else self
             
             # 추론
             with torch.no_grad():

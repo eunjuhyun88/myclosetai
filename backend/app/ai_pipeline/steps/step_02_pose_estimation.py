@@ -85,7 +85,22 @@ try:
 except ImportError:
     BASE_STEP_MIXIN_AVAILABLE = False
     # 폴백 BaseStepMixin
-    class BaseStepMixin:
+    
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
+class BaseStepMixin:
         def __init__(self, *args, **kwargs):
             # 🔥 핵심: logger 속성 누락 문제 완전 해결
             if not hasattr(self, 'logger'):
