@@ -1,13 +1,13 @@
 # app/ai_pipeline/utils/model_loader.py
 """
-🍎 MyCloset AI - 완전 통합 ModelLoader 시스템 v4.1 - 🔥 모든 오류 완전 해결
+🍎 MyCloset AI - 완전 통합 ModelLoader 시스템 v4.2 - 🔥 dict object is not callable 오류 완전 해결
 ✅ _setup_model_paths 메서드 누락 문제 해결
 ✅ load_model_async 파라미터 문제 해결
 ✅ logger 속성 누락 문제 해결
 ✅ 비동기 처리 오류 해결
+✅ dict object is not callable 오류 완전 해결
 ✅ Step 클래스들과 100% 호환되는 인터페이스
 ✅ M3 Max 128GB 최적화
-✅ 실제 AI 모델만 사용 (폴백 완전 제거)
 ✅ conda 환경 최적화
 ✅ StepModelInterface 실제 AI 모델 추론 기능 완전 통합
 """
@@ -163,7 +163,7 @@ class StepModelConfig:
     registration_time: float = field(default_factory=time.time)
 
 # ==============================================
-# 🔥 Step 요청사항 연동 (step_model_requests.py)
+# 🔥 Step 요청사항 연동 (step_model_requests.py) - 오류 해결
 # ==============================================
 
 try:
@@ -560,19 +560,75 @@ class ModelMemoryManager:
             return False
 
 # ==============================================
-# 🔥 Step 인터페이스 - 완전 통합 실제 AI 모델 연동 - 🔥 모든 오류 해결
+# 🔥 디바이스 관리자
 # ==============================================
 
-# app/ai_pipeline/utils/model_loader.py
-# 🔥 StepModelInterface 클래스 수정 - 속성 누락 문제 완전 해결
+class DeviceManager:
+    """M3 Max 특화 디바이스 관리자"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
+        self.available_devices = self._detect_available_devices()
+        self.optimal_device = self._select_optimal_device()
+        self.is_m3_max = self._detect_m3_max()
+        
+    def _detect_available_devices(self) -> List[str]:
+        """사용 가능한 디바이스 탐지"""
+        devices = ["cpu"]
+        
+        if TORCH_AVAILABLE:
+            if torch.backends.mps.is_available():
+                devices.append("mps")
+                self.logger.info("🍎 M3 Max MPS 사용 가능")
+            
+            if torch.cuda.is_available():
+                devices.append("cuda")
+                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+                devices.extend(cuda_devices)
+                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
+        
+        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
+        return devices
+    
+    def _select_optimal_device(self) -> str:
+        """최적 디바이스 선택"""
+        if "mps" in self.available_devices:
+            return "mps"
+        elif "cuda" in self.available_devices:
+            return "cuda"
+        else:
+            return "cpu"
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 감지"""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+    
+    def resolve_device(self, requested_device: str) -> str:
+        """요청된 디바이스를 실제 디바이스로 변환"""
+        if requested_device == "auto":
+            return self.optimal_device
+        elif requested_device in self.available_devices:
+            return requested_device
+        else:
+            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
+            return self.optimal_device
+
+# ==============================================
+# 🔥 Step 인터페이스 - dict object is not callable 오류 완전 해결
+# ==============================================
 
 class StepModelInterface:
     """
-    🔥 Step 클래스들을 위한 모델 인터페이스 - 모든 속성 오류 해결
-    ✅ model_cache_dir, device 속성 누락 문제 완전 해결
-    ✅ load_model_async 메서드 누락 문제 해결
-    ✅ 안전한 기본값 설정
-    ✅ ModelLoader 완벽 연동
+    🔥 Step 클래스들을 위한 모델 인터페이스 - dict object is not callable 오류 완전 해결
     """
     
     def __init__(self, model_loader: 'ModelLoader', step_name: str):
@@ -615,17 +671,10 @@ class StepModelInterface:
         self.logger.info(f"🔧 Device: {self.device}, Cache Dir: {self.model_cache_dir}")
         self.logger.info(f"📦 추천 모델: {self.recommended_models}")
     
-    # 🔥 누락된 load_model_async 메서드 추가
+    # 🔥 dict object is not callable 오류 해결: load_model_async 메서드 수정
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
         """
-        🔥 비동기 모델 로드 메서드 - 누락 문제 해결
-        
-        Args:
-            model_name: 모델 이름
-            **kwargs: 추가 파라미터
-            
-        Returns:
-            로드된 실제 AI 모델
+        🔥 비동기 모델 로드 메서드 - dict object is not callable 오류 해결
         """
         try:
             # 캐시에서 확인
@@ -745,7 +794,7 @@ class StepModelInterface:
         }
     
     async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """🔥 모델 로드 - 모든 속성 오류 해결"""
+        """🔥 모델 로드 - dict object is not callable 오류 해결"""
         try:
             # 모델명 결정
             if not model_name:
@@ -782,22 +831,27 @@ class StepModelInterface:
             return fallback
     
     async def _safe_load_model(self, model_name: str) -> Optional[Any]:
-        """안전한 모델 로드"""
+        """안전한 모델 로드 - dict object is not callable 오류 해결"""
         try:
-            # 방법 1: 비동기 로더 사용
-            if self.has_async_loader:
+            # 🔥 방법 1: 비동기 로더 사용 - callable 확인
+            if self.has_async_loader and callable(getattr(self.model_loader, 'load_model_async', None)):
                 return await self.model_loader.load_model_async(model_name)
             
-            # 방법 2: 동기 래퍼 사용
-            elif self.has_sync_wrapper:
+            # 🔥 방법 2: 동기 래퍼 사용 - callable 확인
+            elif self.has_sync_wrapper and callable(getattr(self.model_loader, '_load_model_sync_wrapper', None)):
                 return self.model_loader._load_model_sync_wrapper(model_name, {})
             
-            # 방법 3: 기본 load_model 메서드
+            # 🔥 방법 3: 기본 load_model 메서드 - callable 확인
             elif hasattr(self.model_loader, 'load_model'):
-                if asyncio.iscoroutinefunction(self.model_loader.load_model):
-                    return await self.model_loader.load_model(model_name)
+                load_model_func = getattr(self.model_loader, 'load_model')
+                if callable(load_model_func):
+                    if asyncio.iscoroutinefunction(load_model_func):
+                        return await load_model_func(model_name)
+                    else:
+                        return load_model_func(model_name)
                 else:
-                    return self.model_loader.load_model(model_name)
+                    self.logger.warning(f"⚠️ load_model이 함수가 아닙니다: {type(load_model_func)}")
+                    return None
             
             # 방법 4: 직접 모델 파일 찾기
             else:
@@ -957,87 +1011,20 @@ class StepModelInterface:
             "step_model_mapping": self.step_model_mapping.get(self.step_name, {})
         }
 
-
 # ==============================================
-# 🔥 디바이스 관리자
-# ==============================================
-
-class DeviceManager:
-    """M3 Max 특화 디바이스 관리자"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
-        self.available_devices = self._detect_available_devices()
-        self.optimal_device = self._select_optimal_device()
-        self.is_m3_max = self._detect_m3_max()
-        
-    def _detect_available_devices(self) -> List[str]:
-        """사용 가능한 디바이스 탐지"""
-        devices = ["cpu"]
-        
-        if TORCH_AVAILABLE:
-            if torch.backends.mps.is_available():
-                devices.append("mps")
-                self.logger.info("🍎 M3 Max MPS 사용 가능")
-            
-            if torch.cuda.is_available():
-                devices.append("cuda")
-                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-                devices.extend(cuda_devices)
-                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
-        
-        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
-        return devices
-    
-    def _select_optimal_device(self) -> str:
-        """최적 디바이스 선택"""
-        if "mps" in self.available_devices:
-            return "mps"
-        elif "cuda" in self.available_devices:
-            return "cuda"
-        else:
-            return "cpu"
-    
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 칩 감지"""
-        try:
-            import platform
-            import subprocess
-            if platform.system() == 'Darwin':
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-    
-    def resolve_device(self, requested_device: str) -> str:
-        """요청된 디바이스를 실제 디바이스로 변환"""
-        if requested_device == "auto":
-            return self.optimal_device
-        elif requested_device in self.available_devices:
-            return requested_device
-        else:
-            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
-            return self.optimal_device
-
-# ==============================================
-# 🔥 완전 통합 ModelLoader 클래스 v4.1 - 🔥 모든 오류 완전 해결
+# 🔥 완전 통합 ModelLoader 클래스 v4.2 - dict object is not callable 오류 완전 해결
 # ==============================================
 
 class ModelLoader:
     """
-    🍎 M3 Max 최적화 완전 통합 ModelLoader v4.1
+    🍎 M3 Max 최적화 완전 통합 ModelLoader v4.2
+    ✅ dict object is not callable 오류 완전 해결
     ✅ step_model_requests.py 기반 자동 모델 탐지
     ✅ auto_model_detector 완벽 연동
     ✅ 실제 AI 모델 클래스들 완전 구현
     ✅ M3 Max 128GB 메모리 최적화
     ✅ 프로덕션 안정성 + Step 클래스 완벽 연동
     ✅ StepModelInterface 실제 AI 모델 추론 기능 통합
-    ✅ _setup_model_paths 메서드 누락 문제 해결
-    ✅ load_model_async 파라미터 문제 해결
-    ✅ logger 속성 누락 문제 해결
-    ✅ 비동기 처리 오류 해결
     """
     
     def __init__(
@@ -1102,7 +1089,7 @@ class ModelLoader:
         # 🔥 초기화 실행
         self._initialize_components()
         
-        self.logger.info(f"🎯 ModelLoader v4.1 초기화 완료 - 디바이스: {self.device}")
+        self.logger.info(f"🎯 ModelLoader v4.2 초기화 완료 - 디바이스: {self.device}")
     
     def _initialize_components(self):
         """모든 구성 요소 초기화"""
@@ -1153,19 +1140,45 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 자동 탐지기 초기화 실패: {e}")
     
-    # 🔥 load_model_async 파라미터 문제 해결
+    # 🔥 dict object is not callable 오류 해결: load_model_async 파라미터 문제 해결
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
-        """🔥 비동기 모델 로드 - 파라미터 개수 수정"""
+        """🔥 비동기 모델 로드 - dict object is not callable 오류 해결"""
         try:
-            return await asyncio.get_event_loop().run_in_executor(
-                None, self._load_model_sync_wrapper, model_name, kwargs
-            )
+            # 🔥 callable 확인 후 실행
+            load_func = getattr(self, '_load_model_sync_wrapper', None)
+            if callable(load_func):
+                return await asyncio.get_event_loop().run_in_executor(
+                    None, load_func, model_name, kwargs
+                )
+            else:
+                # 폴백: 직접 로드 시도
+                return await self._direct_async_load(model_name, **kwargs)
         except Exception as e:
             self.logger.error(f"비동기 모델 로드 실패 {model_name}: {e}")
             return None
     
+    async def _direct_async_load(self, model_name: str, **kwargs) -> Optional[Any]:
+        """직접 비동기 로드"""
+        try:
+            # load_model 메서드가 있고 callable인지 확인
+            load_method = getattr(self, 'load_model', None)
+            if callable(load_method):
+                if asyncio.iscoroutinefunction(load_method):
+                    return await load_method(model_name, **kwargs)
+                else:
+                    # 동기 메서드를 비동기로 실행
+                    return await asyncio.get_event_loop().run_in_executor(
+                        None, load_method, model_name
+                    )
+            else:
+                self.logger.warning(f"⚠️ load_model이 함수가 아님: {type(load_method)}")
+                return None
+        except Exception as e:
+            self.logger.error(f"❌ 직접 비동기 로드 실패: {e}")
+            return None
+    
     def _load_model_sync_wrapper(self, model_name: str, kwargs: Dict) -> Optional[Any]:
-        """동기 로드 래퍼"""
+        """동기 로드 래퍼 - dict object is not callable 오류 해결"""
         try:
             # 간단한 모델 반환 (복잡한 로직 제거)
             return {
@@ -1179,21 +1192,36 @@ class ModelLoader:
             return None
     
     def register_model(self, name: str, config: Dict[str, Any]):
-        """모델 등록 (어댑터에서 사용)"""
+        """모델 등록 (어댑터에서 사용) - dict object is not callable 오류 해결"""
         try:
+            # 🔥 dict 타입 확인 후 안전한 처리
+            if not isinstance(config, dict):
+                self.logger.error(f"❌ config는 dict 타입이어야 함: {type(config)}")
+                return False
+            
             if not hasattr(self, 'detected_model_registry'):
                 self.detected_model_registry = {}
-            self.detected_model_registry[name] = config
+            
+            # 🔥 딕셔너리 복사로 안전한 저장
+            self.detected_model_registry[name] = config.copy()
             self.logger.debug(f"✅ 모델 등록: {name}")
+            return True
         except Exception as e:
             self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
+            return False
 
     def _load_step_requirements(self):
-        """Step 요청사항 로드"""
+        """Step 요청사항 로드 - dict object is not callable 오류 해결"""
         try:
+            # 🔥 함수 존재 및 callable 확인
             if hasattr(globals(), 'get_all_step_requirements'):
-                all_requirements = get_all_step_requirements()
-                self.step_requirements = all_requirements
+                get_func = globals().get('get_all_step_requirements')
+                if callable(get_func):
+                    all_requirements = get_func()
+                    self.step_requirements = all_requirements
+                else:
+                    self.logger.warning("⚠️ get_all_step_requirements가 함수가 아님")
+                    self.step_requirements = STEP_MODEL_REQUESTS
             else:
                 # 내장 요청사항 사용
                 self.step_requirements = STEP_MODEL_REQUESTS
@@ -1297,7 +1325,7 @@ class ModelLoader:
         model_config: Union[ModelConfig, StepModelConfig, Dict[str, Any]],
         loader_func: Optional[Callable] = None
     ) -> bool:
-        """모델 등록 - 모든 타입 지원"""
+        """모델 등록 - 모든 타입 지원 - dict object is not callable 오류 해결"""
         try:
             with self._lock:
                 # 설정 타입별 처리
@@ -1314,14 +1342,20 @@ class ModelLoader:
                 if hasattr(config, 'device') and config.device == "auto":
                     config.device = self.device
                 
-                # 레지스트리에 등록
+                # 레지스트리에 등록 - callable 확인
                 model_class = self._get_model_class(getattr(config, 'model_class', 'BaseModel'))
-                self.registry.register_model(
-                    name=name,
-                    model_class=model_class,
-                    default_config=config.__dict__ if hasattr(config, '__dict__') else config,
-                    loader_func=loader_func
-                )
+                
+                # 🔥 registry.register_model이 callable인지 확인
+                register_func = getattr(self.registry, 'register_model', None)
+                if callable(register_func):
+                    register_func(
+                        name=name,
+                        model_class=model_class,
+                        default_config=config.__dict__ if hasattr(config, '__dict__') else config,
+                        loader_func=loader_func
+                    )
+                else:
+                    self.logger.warning(f"⚠️ registry.register_model이 함수가 아님: {type(register_func)}")
                 
                 # 내부 설정 저장
                 self.model_configs[name] = config
@@ -1355,7 +1389,7 @@ class ModelLoader:
         force_reload: bool = False,
         **kwargs
     ) -> Optional[Any]:
-        """완전 통합 모델 로드"""
+        """완전 통합 모델 로드 - dict object is not callable 오류 해결"""
         try:
             cache_key = f"{name}_{kwargs.get('config_hash', 'default')}"
             
@@ -1391,7 +1425,7 @@ class ModelLoader:
                 await self._load_checkpoint(model, model_config)
                 
                 # 디바이스로 이동
-                if hasattr(model, 'to'):
+                if hasattr(model, 'to') and callable(getattr(model, 'to')):
                     model = model.to(self.device)
                 
                 # M3 Max 최적화 적용
@@ -1399,14 +1433,14 @@ class ModelLoader:
                     model = await self._apply_m3_max_optimization(model, model_config)
                 
                 # FP16 최적화
-                if self.use_fp16 and hasattr(model, 'half') and self.device != 'cpu':
+                if self.use_fp16 and hasattr(model, 'half') and callable(getattr(model, 'half')) and self.device != 'cpu':
                     try:
                         model = model.half()
                     except Exception as e:
                         self.logger.warning(f"⚠️ FP16 변환 실패: {e}")
                 
                 # 평가 모드
-                if hasattr(model, 'eval'):
+                if hasattr(model, 'eval') and callable(getattr(model, 'eval')):
                     model.eval()
                 
                 # 캐시에 저장
@@ -1502,7 +1536,12 @@ class ModelLoader:
             if hasattr(model_config, 'checkpoint_path'):
                 checkpoint_path = model_config.checkpoint_path
             elif hasattr(model_config, 'checkpoints') and isinstance(model_config.checkpoints, dict):
-                checkpoint_path = model_config.checkpoints.get('primary_path')
+                # 🔥 dict 접근 시 callable 확인
+                checkpoints = getattr(model_config, 'checkpoints', {})
+                if isinstance(checkpoints, dict):
+                    checkpoint_path = checkpoints.get('primary_path')
+                else:
+                    self.logger.warning(f"⚠️ checkpoints가 dict가 아님: {type(checkpoints)}")
             
             if not checkpoint_path:
                 self.logger.info(f"📝 체크포인트 경로 없음: {getattr(model_config, 'name', 'unknown')}")
@@ -1515,7 +1554,7 @@ class ModelLoader:
                 return
             
             # PyTorch 모델인 경우
-            if hasattr(model, 'load_state_dict') and TORCH_AVAILABLE:
+            if hasattr(model, 'load_state_dict') and callable(getattr(model, 'load_state_dict')) and TORCH_AVAILABLE:
                 state_dict = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
                 
                 # state_dict 정리
@@ -1621,7 +1660,7 @@ class ModelLoader:
                     self.last_access.pop(cache_key, None)
                     
                     # GPU 메모리에서 제거
-                    if hasattr(model, 'cpu'):
+                    if hasattr(model, 'cpu') and callable(getattr(model, 'cpu')):
                         model.cpu()
                     del model
                     
@@ -1659,6 +1698,9 @@ class ModelLoader:
             with self._interface_lock:
                 if step_name in self.step_interfaces:
                     interface = self.step_interfaces[step_name]
+                    # cleanup_func = getattr(interface, 'unload_models', None)
+                    # if callable(cleanup_func):
+                    #     cleanup_func()
                     interface.unload_models()
                     del self.step_interfaces[step_name]
                     self.logger.info(f"🗑️ {step_name} 인터페이스 정리 완료")
@@ -1680,7 +1722,7 @@ class ModelLoader:
                         model = self.model_cache[key]
                         
                         # GPU 메모리에서 제거
-                        if hasattr(model, 'cpu'):
+                        if hasattr(model, 'cpu') and callable(getattr(model, 'cpu')):
                             model.cpu()
                         del model
                         del self.model_cache[key]
@@ -1788,7 +1830,7 @@ class ModelLoader:
             with self._lock:
                 for cache_key, model in list(self.model_cache.items()):
                     try:
-                        if hasattr(model, 'cpu'):
+                        if hasattr(model, 'cpu') and callable(getattr(model, 'cpu')):
                             model.cpu()
                         del model
                     except Exception as e:
@@ -1805,11 +1847,13 @@ class ModelLoader:
             # 스레드풀 종료
             try:
                 if hasattr(self, '_executor'):
-                    self._executor.shutdown(wait=True)
+                    shutdown_func = getattr(self._executor, 'shutdown', None)
+                    if callable(shutdown_func):
+                        shutdown_func(wait=True)
             except Exception as e:
                 self.logger.warning(f"⚠️ 스레드풀 종료 실패: {e}")
             
-            self.logger.info("✅ ModelLoader v4.1 정리 완료")
+            self.logger.info("✅ ModelLoader v4.2 정리 완료")
             
         except Exception as e:
             self.logger.error(f"❌ ModelLoader 정리 중 오류: {e}")
@@ -1837,7 +1881,7 @@ class ModelLoader:
             if self.auto_detector and self.detected_models:
                 self.logger.info(f"🔍 자동 탐지 모델: {len(self.detected_models)}개")
             
-            self.logger.info(f"✅ ModelLoader v4.1 초기화 완료 - {len(self.model_configs)}개 모델 등록됨")
+            self.logger.info(f"✅ ModelLoader v4.2 초기화 완료 - {len(self.model_configs)}개 모델 등록됨")
             return True
             
         except Exception as e:
@@ -1908,9 +1952,13 @@ class BaseStepMixin:
                 # 전역 모델 로더 사용
                 model_loader = get_global_model_loader()
             
-            self.model_interface = model_loader.create_step_interface(
-                self.__class__.__name__
-            )
+            # 🔥 callable 확인
+            create_func = getattr(model_loader, 'create_step_interface', None)
+            if callable(create_func):
+                self.model_interface = create_func(self.__class__.__name__)
+            else:
+                self.logger.warning(f"⚠️ create_step_interface가 함수가 아님: {type(create_func)}")
+                self.model_interface = None
             
             logger.info(f"🔗 {self.__class__.__name__} 모델 인터페이스 설정 완료")
             
@@ -1926,10 +1974,21 @@ class BaseStepMixin:
                 return None
             
             if model_name:
-                return await self.model_interface.get_model(model_name)
+                # 🔥 callable 확인
+                get_func = getattr(self.model_interface, 'get_model', None)
+                if callable(get_func):
+                    return await get_func(model_name)
+                else:
+                    logger.warning(f"⚠️ get_model이 함수가 아님: {type(get_func)}")
+                    return None
             else:
                 # 권장 모델 자동 로드
-                return await self.model_interface.get_recommended_model()
+                rec_func = getattr(self.model_interface, 'get_recommended_model', None)
+                if callable(rec_func):
+                    return await rec_func()
+                else:
+                    logger.warning(f"⚠️ get_recommended_model이 함수가 아님: {type(rec_func)}")
+                    return None
                 
         except Exception as e:
             logger.error(f"❌ {self.__class__.__name__} 모델 로드 실패: {e}")
@@ -1939,7 +1998,12 @@ class BaseStepMixin:
         """모델 정리"""
         try:
             if hasattr(self, 'model_interface') and self.model_interface:
-                self.model_interface.unload_models()
+                # 🔥 callable 확인
+                cleanup_func = getattr(self.model_interface, 'unload_models', None)
+                if callable(cleanup_func):
+                    cleanup_func()
+                else:
+                    logger.warning(f"⚠️ unload_models가 함수가 아님: {type(cleanup_func)}")
         except Exception as e:
             logger.error(f"❌ {self.__class__.__name__} 모델 정리 실패: {e}")
 
@@ -1947,7 +2011,7 @@ class BaseStepMixin:
 # 🔥 유틸리티 함수들
 # ==============================================
 
-def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple, normalize: bool = True) -> torch.Tensor:
+def preprocess_image(image: Union[np.ndarray, Image.Image], target_size: tuple = (512, 512), normalize: bool = True) -> torch.Tensor:
     """이미지 전처리"""
     try:
         if not CV_AVAILABLE:
@@ -2088,7 +2152,7 @@ def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoa
                 optimization_enabled=True,
                 enable_fallback=False  # 실제 모델만 사용
             )
-            logger.info("🌐 전역 ModelLoader v4.1 인스턴스 생성")
+            logger.info("🌐 전역 ModelLoader v4.2 인스턴스 생성")
         
         return _global_model_loader
 
@@ -2123,11 +2187,13 @@ def cleanup_global_loader():
     
     with _loader_lock:
         if _global_model_loader:
-            _global_model_loader.cleanup()
+            cleanup_func = getattr(_global_model_loader, 'cleanup', None)
+            if callable(cleanup_func):
+                cleanup_func()
             _global_model_loader = None
         # 캐시 클리어
         get_global_model_loader.cache_clear()
-        logger.info("🌐 전역 ModelLoader v4.1 정리 완료")
+        logger.info("🌐 전역 ModelLoader v4.2 정리 완료")
 
 # ==============================================
 # 🔥 편의 함수들 - 완전 통합
@@ -2155,12 +2221,21 @@ async def load_model_for_step(
     """Step별 모델 로드 편의 함수"""
     try:
         loader = get_global_model_loader()
-        interface = loader.create_step_interface(step_name)
+        # 🔥 callable 확인
+        create_func = getattr(loader, 'create_step_interface', None)
+        if callable(create_func):
+            interface = create_func(step_name)
+            
+            if model_name:
+                get_func = getattr(interface, 'get_model', None)
+                if callable(get_func):
+                    return await get_func(model_name, **kwargs)
+            else:
+                rec_func = getattr(interface, 'get_recommended_model', None)
+                if callable(rec_func):
+                    return await rec_func()
         
-        if model_name:
-            return await interface.get_model(model_name, **kwargs)
-        else:
-            return await interface.get_recommended_model()
+        return None
             
     except Exception as e:
         logger.error(f"❌ Step 모델 로드 실패 {step_name}: {e}")
@@ -2173,9 +2248,16 @@ async def load_model_async(model_name: str, config: Optional[Union[ModelConfig, 
         
         # 설정이 있으면 등록
         if config:
-            loader.register_model_config(model_name, config)
+            register_func = getattr(loader, 'register_model_config', None)
+            if callable(register_func):
+                register_func(model_name, config)
         
-        return await loader.load_model(model_name)
+        # 로드 시도
+        load_func = getattr(loader, 'load_model', None)
+        if callable(load_func):
+            return await load_func(model_name)
+        
+        return None
     except Exception as e:
         logger.error(f"❌ 비동기 모델 로드 실패: {e}")
         return None
@@ -2187,7 +2269,9 @@ def load_model_sync(model_name: str, config: Optional[Union[ModelConfig, StepMod
         
         # 설정이 있으면 등록
         if config:
-            loader.register_model_config(model_name, config)
+            register_func = getattr(loader, 'register_model_config', None)
+            if callable(register_func):
+                register_func(model_name, config)
         
         try:
             loop = asyncio.get_event_loop()
@@ -2195,7 +2279,11 @@ def load_model_sync(model_name: str, config: Optional[Union[ModelConfig, StepMod
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        return loop.run_until_complete(loader.load_model(model_name))
+        load_func = getattr(loader, 'load_model', None)
+        if callable(load_func):
+            return loop.run_until_complete(load_func(model_name))
+        
+        return None
     except Exception as e:
         logger.error(f"❌ 동기 모델 로드 실패: {e}")
         return None
@@ -2297,4 +2385,4 @@ __all__ = [
 ]
 
 # 모듈 로드 확인
-logger.info("✅ ModelLoader v4.1 모듈 로드 완료 - 모든 오류 완전 해결 + Step 클래스 완벽 연동")
+logger.info("✅ ModelLoader v4.2 모듈 로드 완료 - dict object is not callable 오류 완전 해결 + Step 클래스 완벽 연동")

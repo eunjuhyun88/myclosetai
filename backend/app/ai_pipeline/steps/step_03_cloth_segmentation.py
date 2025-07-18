@@ -944,6 +944,7 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # LRU 캐시로 변환
             from functools import lru_cache
+from app.utils.safe_caller import safe_call, safe_warmup
             self._cached_segmentation = lru_cache(maxsize=cache_size)(self._perform_segmentation_cached)
             
             self.logger.info(f"💾 캐시 시스템 초기화 완료 (크기: {cache_size})")
@@ -2537,7 +2538,7 @@ print(f"사용 가능한 방법: {step.get_available_methods()}")
 print(f"지원 의류 타입: {step.get_supported_clothing_types()}")
 
 # 🔥 시스템 워밍업 - 실제 AI 모델 준비
-await step.warmup()
+await safe_warmup(step)
 
 # ⏱ 처리 시간 추정 - 정확한 계산
 estimated_time = step.estimate_processing_time((1024, 768), "rembg")
