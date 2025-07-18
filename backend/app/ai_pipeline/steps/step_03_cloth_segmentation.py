@@ -936,6 +936,9 @@ class ClothSegmentationStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"M3 Max 워밍업 실패: {e}")
 
+# backend/app/ai_pipeline/steps/step_03_cloth_segmentation.py
+# 947번째 줄 근처 완전 수정
+
     def _initialize_cache_system(self):
         """캐시 시스템 초기화"""
         try:
@@ -944,7 +947,6 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # LRU 캐시로 변환
             from functools import lru_cache
-from app.utils.safe_caller import safe_call, safe_warmup
             self._cached_segmentation = lru_cache(maxsize=cache_size)(self._perform_segmentation_cached)
             
             self.logger.info(f"💾 캐시 시스템 초기화 완료 (크기: {cache_size})")
@@ -980,15 +982,6 @@ from app.utils.safe_caller import safe_call, safe_warmup
     ) -> Dict[str, Any]:
         """
         ✅ 통일된 처리 인터페이스 - Pipeline Manager 호환 + 시각화
-        
-        Args:
-            clothing_image: 입력 의류 이미지
-            clothing_type: 의류 타입 (shirt, dress, pants 등)
-            quality_level: 품질 레벨 (fast, balanced, high, ultra)
-            **kwargs: 추가 매개변수
-                
-        Returns:
-            Dict[str, Any]: 세그멘테이션 결과 + 시각화 이미지
         """
         if not self.is_initialized:
             await self.initialize()
@@ -1063,7 +1056,6 @@ from app.utils.safe_caller import safe_call, safe_warmup
             )
             
             return self._format_result_with_visualization(error_result)
-
     # ==============================================
     # 🆕 시각화 함수들 - 완전 구현
     # ==============================================
