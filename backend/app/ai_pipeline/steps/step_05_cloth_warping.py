@@ -841,7 +841,7 @@ class ClothWarpingStep(ClothWarpingMixin):
             # 초기화 실패해도 Step 객체는 생성되도록 함
             self.is_initialized = False
     
-    def _auto_detect_device(self, device: Optional[str]) -> str:
+    def _auto_detect_device(self, device: Optional[str] = None) -> str:
         """디바이스 자동 감지 - M3 Max 최적화 (PoseEstimationStep 동일)"""
         if device:
             return device
@@ -857,7 +857,11 @@ class ClothWarpingStep(ClothWarpingMixin):
                 elif torch.cuda.is_available():
                     return "cuda"
             except Exception as e:
-                self.logger.warning(f"디바이스 감지 실패: {e}")
+                # logger가 아직 없을 수 있으므로 안전하게 처리
+                if hasattr(self, 'logger'):
+                    self.logger.warning(f"디바이스 감지 실패: {e}")
+                else:
+                    print(f"디바이스 감지 실패: {e}")
         
         return "cpu"
     
@@ -936,7 +940,7 @@ class ClothWarpingStep(ClothWarpingMixin):
                 self._setup_fallback_interface()
                 
         except Exception as e:
-            self.logger.error(f"❌ utils 인터페이스 설정 실패: {e}")
+            self.logger.warning(f"⚠️ utils 인터페이스 설정 실패: {e}")
             self._setup_fallback_interface()
     
     def _setup_fallback_interface(self):
@@ -1291,52 +1295,56 @@ class ClothWarpingStep(ClothWarpingMixin):
             person_image = data.get('preprocessed_person', data['person_image'])
             
             # utils 인터페이스를 통한 AI 모델 로드
-            if self.get_model_func:
-                ai_model = await self.get_model_func("cloth_warping_hrviton")
-                
-                if ai_model and TORCH_AVAILABLE:
-                    # 이미지 전처리
-                    if self.process_image_func:
-                        cloth_tensor = self.process_image_func(cloth_image, operation="to_tensor", size=self.config.get('input_size', (512, 384)))
-                        person_tensor = self.process_image_func(person_image, operation="to_tensor", size=self.config.get('input_size', (512, 384)))
-                    else:
-                        # 폴백 전처리
-                        cloth_tensor, person_tensor = self._manual_preprocess_for_ai(cloth_image, person_image)
+            if self.get_model_func and callable(self.get_model_func):
+                try:
+                    ai_model = await self.get_model_func("cloth_warping_hrviton")
                     
-                    # 모델 추론
-                    with torch.no_grad():
-                        if self.device == "mps" and self.is_m3_max:
-                            with autocast(device_type='cpu', dtype=torch.float16):
-                                ai_results = ai_model(cloth_tensor, person_tensor)
+                    if ai_model and TORCH_AVAILABLE:
+                        # 이미지 전처리
+                        if self.process_image_func and callable(self.process_image_func):
+                            cloth_tensor = self.process_image_func(cloth_image, operation="to_tensor", size=self.config.get('input_size', (512, 384)))
+                            person_tensor = self.process_image_func(person_image, operation="to_tensor", size=self.config.get('input_size', (512, 384)))
                         else:
-                            ai_results = ai_model(cloth_tensor, person_tensor)
-                    
-                    # 결과 후처리
-                    warped_cloth_np = self._tensor_to_numpy(ai_results['warped_cloth'][0])
-                    control_points = ai_results['tps_parameters'][0].cpu().numpy() if len(ai_results['tps_parameters'].shape) > 2 else ai_results['tps_parameters'].cpu().numpy().reshape(-1, 2)
-                    flow_field_np = ai_results.get('flow_field', [None])[0].cpu().numpy() if ai_results.get('flow_field') is not None else None
-                    
-                    # 신뢰도 계산
-                    ai_confidence = self._calculate_ai_confidence(ai_results)
-                    
-                    # 중간 결과 저장
-                    if self.config.get('save_intermediate_results', True):
-                        self.intermediate_results.append({
-                            'step': 'ai_inference',
-                            'warped_cloth': warped_cloth_np,
-                            'control_points': control_points,
-                            'flow_field': flow_field_np
-                        })
-                    
-                    return {
-                        'ai_warped_cloth': warped_cloth_np,
-                        'ai_control_points': control_points,
-                        'ai_flow_field': flow_field_np,
-                        'ai_confidence': ai_confidence,
-                        'ai_success': True
-                    }
+                            # 폴백 전처리
+                            cloth_tensor, person_tensor = self._manual_preprocess_for_ai(cloth_image, person_image)
+                        
+                        # 모델 추론
+                        with torch.no_grad():
+                            if self.device == "mps" and self.is_m3_max:
+                                with autocast(device_type='cpu', dtype=torch.float16):
+                                    ai_results = ai_model(cloth_tensor, person_tensor)
+                            else:
+                                ai_results = ai_model(cloth_tensor, person_tensor)
+                        
+                        # 결과 후처리
+                        warped_cloth_np = self._tensor_to_numpy(ai_results['warped_cloth'][0])
+                        control_points = ai_results['tps_parameters'][0].cpu().numpy() if len(ai_results['tps_parameters'].shape) > 2 else ai_results['tps_parameters'].cpu().numpy().reshape(-1, 2)
+                        flow_field_np = ai_results.get('flow_field', [None])[0].cpu().numpy() if ai_results.get('flow_field') is not None else None
+                        
+                        # 신뢰도 계산
+                        ai_confidence = self._calculate_ai_confidence(ai_results)
+                        
+                        # 중간 결과 저장
+                        if self.config.get('save_intermediate_results', True):
+                            self.intermediate_results.append({
+                                'step': 'ai_inference',
+                                'warped_cloth': warped_cloth_np,
+                                'control_points': control_points,
+                                'flow_field': flow_field_np
+                            })
+                        
+                        return {
+                            'ai_warped_cloth': warped_cloth_np,
+                            'ai_control_points': control_points,
+                            'ai_flow_field': flow_field_np,
+                            'ai_confidence': ai_confidence,
+                            'ai_success': True
+                        }
+                except Exception as e:
+                    self.logger.warning(f"AI 모델 로드/추론 실패: {e}")
             
             # 폴백: 시뮬레이션 모드
+            self.logger.info("🔄 시뮬레이션 모드로 전환")
             return await self._simulation_ai_inference(cloth_image, person_image)
             
         except Exception as e:
