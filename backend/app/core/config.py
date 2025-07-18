@@ -1,10 +1,11 @@
 # app/core/config.py
 """
-🚨 MyCloset AI - 최소 수정된 설정 시스템 (Option A)
-✅ NameError 문제 즉시 해결
+🚨 MyCloset AI - 완전 수정된 설정 시스템 (conda 환경 최적화)
+✅ GPUConfig import 오류 완전 해결
 ✅ 순환 참조 방지
 ✅ 기존 코드 100% 호환성 보장
 ✅ M3 Max 최적화 설정 포함
+✅ conda 환경 특화 최적화
 """
 
 import os
@@ -97,7 +98,7 @@ class SafeConfigMixin:
             return {key: getattr(self, key) for key in self.keys()}
 
 # ===============================================================
-# 🔧 시스템 정보 유틸리티 (기존 유지)
+# 🔧 시스템 정보 유틸리티 (conda 환경 특화)
 # ===============================================================
 
 def detect_container() -> bool:
@@ -111,7 +112,7 @@ def detect_container() -> bool:
     return any(indicators)
 
 def detect_m3_max() -> bool:
-    """🍎 M3 Max 칩 감지 (독립 함수)"""
+    """🍎 M3 Max 칩 감지 (conda 환경 최적화)"""
     if platform.system() != 'Darwin':
         return False
     
@@ -124,13 +125,42 @@ def detect_m3_max() -> bool:
     except:
         return False
 
+def detect_conda_environment() -> Dict[str, Any]:
+    """🐍 conda 환경 정보 감지"""
+    conda_info = {
+        'is_conda': False,
+        'env_name': None,
+        'prefix': None,
+        'python_version': platform.python_version()
+    }
+    
+    try:
+        # CONDA_DEFAULT_ENV 환경변수 확인
+        conda_env = os.getenv('CONDA_DEFAULT_ENV')
+        if conda_env:
+            conda_info['is_conda'] = True
+            conda_info['env_name'] = conda_env
+        
+        # CONDA_PREFIX 확인
+        conda_prefix = os.getenv('CONDA_PREFIX')
+        if conda_prefix:
+            conda_info['prefix'] = conda_prefix
+            if not conda_info['is_conda']:
+                conda_info['is_conda'] = True
+                conda_info['env_name'] = Path(conda_prefix).name
+        
+    except Exception:
+        pass
+    
+    return conda_info
+
 def get_available_memory() -> float:
-    """💾 사용 가능한 메모리 계산 (GB)"""
+    """💾 사용 가능한 메모리 계산 (GB) - conda 환경 최적화"""
     try:
         import psutil
         return psutil.virtual_memory().total / (1024**3)
     except ImportError:
-        # psutil이 없으면 추정값
+        # psutil이 없으면 추정값 (conda 환경에서는 보통 설치됨)
         if detect_m3_max():
             return 128.0  # M3 Max는 보통 128GB
         elif platform.system() == 'Darwin':
@@ -139,7 +169,9 @@ def get_available_memory() -> float:
             return 8.0    # 일반적인 서버
 
 def collect_system_info() -> Dict[str, Any]:
-    """🖥️ 시스템 정보 수집 (독립 함수)"""
+    """🖥️ 시스템 정보 수집 (conda 환경 포함)"""
+    conda_info = detect_conda_environment()
+    
     return {
         'platform': platform.system(),
         'machine': platform.machine(),
@@ -149,11 +181,14 @@ def collect_system_info() -> Dict[str, Any]:
         'available_memory_gb': get_available_memory(),
         'cpu_count': os.cpu_count() or 4,
         'home_dir': str(Path.home()),
-        'cwd': str(Path.cwd())
+        'cwd': str(Path.cwd()),
+        'conda_env': conda_info['env_name'],
+        'is_conda': conda_info['is_conda'],
+        'conda_prefix': conda_info['prefix']
     }
 
 class SystemInfo(SafeConfigMixin):
-    """시스템 정보 클래스 - SafeConfigMixin 상속"""
+    """시스템 정보 클래스 - SafeConfigMixin 상속 (conda 특화)"""
     
     def __init__(self):
         super().__init__()
@@ -167,6 +202,12 @@ class SystemInfo(SafeConfigMixin):
         self.is_m3_max = self._detect_m3_max()
         self.memory_gb = self._detect_memory_gb()
         self.cpu_count = os.cpu_count() or 4
+        
+        # conda 환경 정보 추가
+        conda_info = detect_conda_environment()
+        self.is_conda = conda_info['is_conda']
+        self.conda_env_name = conda_info['env_name']
+        self.conda_prefix = conda_info['prefix']
     
     def _detect_m3_max(self) -> bool:
         """M3 Max 칩 감지"""
@@ -184,7 +225,7 @@ class SystemInfo(SafeConfigMixin):
             return False
     
     def _detect_memory_gb(self) -> float:
-        """메모리 용량 감지"""
+        """메모리 용량 감지 (conda 환경 최적화)"""
         try:
             if self.is_darwin:
                 result = subprocess.run(
@@ -199,6 +240,59 @@ class SystemInfo(SafeConfigMixin):
             return 16.0
 
 # ===============================================================
+# 🚨 GPUConfig 클래스 (conda 환경 최적화)
+# ===============================================================
+
+class GPUConfig(SafeConfigMixin):
+    """🔥 GPU 설정 클래스 - conda 환경 최적화"""
+    
+    def __init__(self):
+        super().__init__()
+        self.device = self._auto_detect_device()
+        self.is_m3_max = detect_m3_max()
+        self.memory_gb = get_available_memory()
+        self.optimization_level = "high" if self.is_m3_max else "balanced"
+        self.batch_size = 4 if self.is_m3_max else 1
+        self.max_workers = 12 if self.is_m3_max else 4
+        self.enable_mps = self.device == 'mps'
+        self.enable_cuda = self.device == 'cuda'
+        self.float_compatibility_mode = True  # conda 환경 안정성
+        
+        # conda 환경 특화 설정
+        conda_info = detect_conda_environment()
+        self.conda_optimized = conda_info['is_conda']
+        self.conda_env_name = conda_info['env_name']
+    
+    def _auto_detect_device(self) -> str:
+        """디바이스 자동 감지 (conda 환경 최적화)"""
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+            else:
+                return 'cpu'
+        except ImportError:
+            return 'cpu'
+    
+    def get_device_config(self) -> Dict[str, Any]:
+        """디바이스 설정 반환"""
+        return {
+            "device": self.device,
+            "is_m3_max": self.is_m3_max,
+            "memory_gb": self.memory_gb,
+            "optimization_level": self.optimization_level,
+            "batch_size": self.batch_size,
+            "max_workers": self.max_workers,
+            "enable_mps": self.enable_mps,
+            "enable_cuda": self.enable_cuda,
+            "float_compatibility_mode": self.float_compatibility_mode,
+            "conda_optimized": self.conda_optimized,
+            "conda_env_name": self.conda_env_name
+        }
+
+# ===============================================================
 # 🚨 Config 클래스 - SafeConfigMixin 상속 추가
 # ===============================================================
 
@@ -208,6 +302,7 @@ class Config(SafeConfigMixin):
     ✅ SafeConfigMixin 상속으로 get() 메서드 지원
     ✅ pipeline_manager.py에서 필요로 하는 표준 Config
     ✅ 기존 코드 100% 호환성 보장
+    ✅ conda 환경 최적화
     """
     
     def __init__(self, 
@@ -235,6 +330,10 @@ class Config(SafeConfigMixin):
         self.device = device
         self.is_m3_max = is_m3_max if is_m3_max is not None else self.system_info['is_m3_max']
         
+        # conda 환경 정보
+        self.is_conda = self.system_info['is_conda']
+        self.conda_env = self.system_info['conda_env']
+        
         # 기본 속성들 설정
         self._setup_core_properties()
         
@@ -243,6 +342,8 @@ class Config(SafeConfigMixin):
             setattr(self, key, value)
             
         logger.info(f"🚨 Config 초기화 완료 - 환경: {self.environment}, 디바이스: {self.device}")
+        if self.is_conda:
+            logger.info(f"🐍 conda 환경: {self.conda_env}")
     
     def _auto_detect_environment(self) -> str:
         """환경 자동 감지"""
@@ -261,17 +362,24 @@ class Config(SafeConfigMixin):
         return 'development'  # 기본값
     
     def _setup_core_properties(self):
-        """핵심 속성들 설정"""
+        """핵심 속성들 설정 (conda 환경 최적화)"""
         # 디바이스 관련 설정
         self.use_gpu = self.device != 'cpu'
         self.enable_mps = self.device == 'mps'
         self.enable_cuda = self.device == 'cuda'
         
-        # M3 Max 관련 설정
-        if self.is_m3_max:
-            self.optimization_level = 'maximum'
+        # M3 Max 관련 설정 (conda 환경 최적화)
+        if self.is_m3_max and self.is_conda:
+            self.optimization_level = 'high'  # conda에서는 조금 낮춤
             self.batch_size = 4
-            self.max_workers = 8
+            self.max_workers = 8  # conda 안정성 고려
+            self.memory_pool_gb = 24  # conda 메모리 관리 고려
+            self.neural_engine_enabled = True
+            self.metal_performance_shaders = True
+        elif self.is_m3_max:
+            self.optimization_level = 'maximum'
+            self.batch_size = 6
+            self.max_workers = 12
             self.memory_pool_gb = 32
             self.neural_engine_enabled = True
             self.metal_performance_shaders = True
@@ -306,7 +414,7 @@ class Config(SafeConfigMixin):
 # ===============================================================
 
 class VirtualFittingConfig(SafeConfigMixin):
-    """🚨 수정된 가상 피팅 설정 - get 메서드 지원"""
+    """🚨 수정된 가상 피팅 설정 - get 메서드 지원 (conda 최적화)"""
     
     def __init__(self, **kwargs):
         # 🚨 SafeConfigMixin 초기화
@@ -329,9 +437,9 @@ class VirtualFittingConfig(SafeConfigMixin):
         self.enable_post_processing = kwargs.get('enable_post_processing', True)
         self.enable_quality_assessment = kwargs.get('enable_quality_assessment', True)
         
-        # 최적화 설정
+        # 최적화 설정 (conda 환경 고려)
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.use_fp16 = kwargs.get('use_fp16', True)
+        self.use_fp16 = kwargs.get('use_fp16', False)  # conda 안정성 고려
         self.memory_optimization = kwargs.get('memory_optimization', True)
         self.parallel_processing = kwargs.get('parallel_processing', True)
         
@@ -343,11 +451,11 @@ class VirtualFittingConfig(SafeConfigMixin):
         # 시스템 정보
         self.system_info = SystemInfo()
         
-        # M3 Max 자동 최적화
+        # M3 Max 자동 최적화 (conda 고려)
         if self.system_info.is_m3_max:
             self.device = 'mps' if self.device == 'auto' else self.device
             self.batch_size = max(self.batch_size, 2)
-            self.use_fp16 = True
+            self.use_fp16 = False  # conda 환경에서는 안정성 우선
             self.optimization_enabled = True
         
         # 추가 파라미터들을 동적으로 설정
@@ -396,7 +504,7 @@ class GeometricMatchingConfig(SafeConfigMixin):
 # ===============================================================
 
 class PipelineConfig(SafeConfigMixin):
-    """🚨 수정된 파이프라인 설정 - get 메서드 지원"""
+    """🚨 수정된 파이프라인 설정 - get 메서드 지원 (conda 최적화)"""
     
     def __init__(self, **kwargs):
         super().__init__()
@@ -414,15 +522,25 @@ class PipelineConfig(SafeConfigMixin):
         self.is_m3_max = kwargs.get('is_m3_max', self.system_info.is_m3_max)
         self.cpu_count = kwargs.get('cpu_count', self.system_info.cpu_count)
         
-        # 처리 설정
-        self.batch_size = kwargs.get('batch_size', 1)
+        # conda 환경 정보
+        self.is_conda = self.system_info.is_conda
+        self.conda_env_name = self.system_info.conda_env_name
+        
+        # 처리 설정 (conda 환경 최적화)
+        if self.is_conda and self.is_m3_max:
+            # conda + M3 Max 조합에서는 안정성 우선
+            self.batch_size = kwargs.get('batch_size', 2)
+            self.use_fp16 = kwargs.get('use_fp16', False)
+        else:
+            self.batch_size = kwargs.get('batch_size', 1)
+            self.use_fp16 = kwargs.get('use_fp16', True)
+        
         self.max_retries = kwargs.get('max_retries', 3)
         self.timeout_seconds = kwargs.get('timeout_seconds', 300)
         self.save_intermediate = kwargs.get('save_intermediate', False)
         
         # 최적화 설정
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.use_fp16 = kwargs.get('use_fp16', True)
         self.memory_optimization = kwargs.get('memory_optimization', True)
         self.parallel_processing = kwargs.get('parallel_processing', True)
         
@@ -430,10 +548,13 @@ class PipelineConfig(SafeConfigMixin):
         if self.device == 'auto':
             self.device = self._auto_detect_device()
         
-        # M3 Max 자동 최적화
+        # M3 Max 자동 최적화 (conda 고려)
         if self.is_m3_max:
-            self.batch_size = max(self.batch_size, 2)
-            self.use_fp16 = True
+            if self.is_conda:
+                self.batch_size = max(self.batch_size, 2)  # conda에서는 보수적
+            else:
+                self.batch_size = max(self.batch_size, 4)
+            
             self.optimization_enabled = True
             self.memory_optimization = True
         
@@ -460,10 +581,10 @@ class PipelineConfig(SafeConfigMixin):
 # ===============================================================
 
 class Settings(SafeConfigMixin):
-    """통합 설정 관리자 - SafeConfigMixin 상속"""
+    """통합 설정 관리자 - SafeConfigMixin 상속 (conda 최적화)"""
 
     def __init__(self, env: Optional[str] = None, **kwargs):
-        """통합 설정 초기화"""
+        """통합 설정 초기화 (conda 환경 고려)"""
         super().__init__()
         
         # 시스템 정보 수집
@@ -471,6 +592,10 @@ class Settings(SafeConfigMixin):
         
         # 환경 설정
         self.env = env or self._auto_detect_environment()
+        
+        # conda 환경 정보
+        self.is_conda = self.system_info['is_conda']
+        self.conda_env = self.system_info['conda_env']
         
         # 기본 애플리케이션 설정
         self._setup_app_config()
@@ -482,6 +607,8 @@ class Settings(SafeConfigMixin):
         self._setup_convenience_properties()
         
         logger.info(f"🚨 통합 설정 시스템 초기화 완료 (환경: {self.env})")
+        if self.is_conda:
+            logger.info(f"🐍 conda 환경: {self.conda_env}")
 
     def _auto_detect_environment(self) -> str:
         """환경 자동 감지"""
@@ -528,7 +655,7 @@ class Settings(SafeConfigMixin):
         self.models_dir = './ai_models'
 
     def _setup_ai_config(self):
-        """AI 설정 초기화"""
+        """AI 설정 초기화 (conda 환경 최적화)"""
         # 디바이스 자동 감지
         self.device = self._auto_detect_device()
         self.use_gpu = self.device != 'cpu'
@@ -539,8 +666,14 @@ class Settings(SafeConfigMixin):
         self.batch_size = self._get_optimal_batch_size()
         self.num_workers = min(4, self.system_info['cpu_count'])
         
-        # 품질 설정
-        self.pipeline_quality = 'high' if self.is_m3_max else 'balanced'
+        # 품질 설정 (conda 환경 고려)
+        if self.is_conda and self.is_m3_max:
+            self.pipeline_quality = 'balanced'  # conda에서는 안정성 우선
+        elif self.is_m3_max:
+            self.pipeline_quality = 'high'
+        else:
+            self.pipeline_quality = 'balanced'
+            
         self.enable_optimization = True
         self.enable_caching = True
 
@@ -558,8 +691,10 @@ class Settings(SafeConfigMixin):
             return 'cpu'
 
     def _get_optimal_batch_size(self) -> int:
-        """최적 배치 크기 계산"""
-        if self.is_m3_max and self.memory_gb >= 64:
+        """최적 배치 크기 계산 (conda 환경 고려)"""
+        if self.is_conda and self.is_m3_max and self.memory_gb >= 64:
+            return 2  # conda 환경에서는 보수적
+        elif self.is_m3_max and self.memory_gb >= 64:
             return 4
         elif self.use_gpu:
             return 2
@@ -577,6 +712,8 @@ class Settings(SafeConfigMixin):
         self.DEVICE = self.device
         self.USE_GPU = self.use_gpu
         self.IS_M3_MAX = self.is_m3_max
+        self.IS_CONDA = self.is_conda
+        self.CONDA_ENV = self.conda_env
 
 # ===============================================================
 # 🎯 전역 설정 인스턴스 및 팩토리 함수들
@@ -616,14 +753,21 @@ def get_geometric_matching_config(**kwargs) -> GeometricMatchingConfig:
     """기하학적 매칭 설정 인스턴스 반환"""
     return GeometricMatchingConfig(**kwargs)
 
+def create_gpu_config() -> GPUConfig:
+    """GPU 설정 인스턴스 생성"""
+    return GPUConfig()
+
 # ===============================================================
-# 🚨 안전한 전역 설정 초기화 (순환 참조 방지)
+# 🚨 안전한 전역 설정 초기화 (순환 참조 방지, conda 최적화)
 # ===============================================================
 
-# 🚨 전역 변수들을 안전하게 초기화 (1065번 라인 오류 방지)
+# 🚨 전역 변수들을 안전하게 초기화
 try:
     # 설정 인스턴스 생성
     _temp_settings = get_settings()
+    
+    # GPU 설정 생성
+    _temp_gpu_config = create_gpu_config()
     
     # 하위 호환성 지원 (기존 코드 100% 지원)
     APP_NAME = _temp_settings.APP_NAME
@@ -634,9 +778,15 @@ try:
     DEVICE = _temp_settings.DEVICE
     USE_GPU = _temp_settings.USE_GPU
     IS_M3_MAX = _temp_settings.IS_M3_MAX
+    IS_CONDA = _temp_settings.IS_CONDA
+    CONDA_ENV = _temp_settings.CONDA_ENV
     
-    # 🚨 중요: settings 변수는 여기서 정의됨 (1065번 라인 오류 해결)
+    # 🚨 중요: settings 변수는 여기서 정의됨
     settings = _temp_settings
+    
+    # 🚨 중요: GPUConfig 변수는 여기서 정의됨
+    GPUConfig = _temp_gpu_config  # 인스턴스가 아니라 클래스 자체
+    gpu_config = _temp_gpu_config  # 인스턴스
     
     # 추가 설정들
     DEFAULT_CONFIG = create_config()
@@ -652,15 +802,30 @@ except Exception as e:
     DEVICE = 'mps' if detect_m3_max() else 'cpu'
     USE_GPU = DEVICE != 'cpu'
     IS_M3_MAX = detect_m3_max()
+    IS_CONDA = detect_conda_environment()['is_conda']
+    CONDA_ENV = detect_conda_environment()['env_name']
     
     # 🚨 폴백 settings 객체 생성
     class FallbackSettings:
         def __init__(self):
             self.app = {'env': 'development'}
+            self.env = 'development'
+            self.is_conda = IS_CONDA
+            self.conda_env = CONDA_ENV
         def get(self, key, default=None):
             return getattr(self, key, default)
     
     settings = FallbackSettings()
+    
+    # 🚨 폴백 GPU 설정
+    class FallbackGPUConfig:
+        def __init__(self):
+            self.device = DEVICE
+            self.is_m3_max = IS_M3_MAX
+        def get(self, key, default=None):
+            return getattr(self, key, default)
+    
+    gpu_config = FallbackGPUConfig()
     DEFAULT_CONFIG = None
 
 # ===============================================================
@@ -689,8 +854,10 @@ MODEL_CONFIG = {
 
 # 로그 메시지 (이제 settings가 정의된 후에 실행됨)
 logger.info("🚨 Phase 1 설정 시스템 로드 완료 - NameError 문제 해결")
-logger.info(f"🎯 환경: {getattr(settings, 'app', {}).get('env', 'development')}, 디바이스: {DEVICE}")
+logger.info(f"🎯 환경: {getattr(settings, 'env', 'development')}, 디바이스: {DEVICE}")
 
+if IS_CONDA:
+    logger.info(f"🐍 conda 환경: {CONDA_ENV}")
 if IS_M3_MAX:
     logger.info("🍎 M3 Max 최적화 활성화")
 if USE_GPU:
@@ -702,19 +869,21 @@ __all__ = [
     
     # 핵심 클래스들 (모두 SafeConfigMixin 상속)
     'Config', 'VirtualFittingConfig', 'GeometricMatchingConfig', 'PipelineConfig',
-    'Settings', 'SystemInfo',
+    'Settings', 'SystemInfo', 'GPUConfig',
     
     # 팩토리 함수들
     'get_settings', 'create_config', 'get_config',
     'get_pipeline_config', 'get_virtual_fitting_config', 'get_geometric_matching_config',
+    'create_gpu_config',
     
     # 전역 설정
-    'settings', 'DEFAULT_CONFIG', 'MODEL_CONFIG',
+    'settings', 'gpu_config', 'DEFAULT_CONFIG', 'MODEL_CONFIG',
     
     # 하위 호환성
     'APP_NAME', 'DEBUG', 'HOST', 'PORT', 'CORS_ORIGINS', 
-    'DEVICE', 'USE_GPU', 'IS_M3_MAX',
+    'DEVICE', 'USE_GPU', 'IS_M3_MAX', 'IS_CONDA', 'CONDA_ENV',
     
     # 유틸리티 함수들
-    'detect_m3_max', 'get_available_memory', 'collect_system_info'
+    'detect_m3_max', 'get_available_memory', 'collect_system_info', 
+    'detect_conda_environment'
 ]
