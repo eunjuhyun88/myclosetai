@@ -507,6 +507,8 @@ async def lifespan(app: FastAPI):
 # 🔧 FastAPI 앱 생성 및 설정
 # ===============================================================
 
+from app.utils.warmup_patch import patch_warmup_methods
+
 app = FastAPI(
     title="MyCloset AI",
     description="🍎 M3 Max 최적화 AI 가상 피팅 시스템 - 프론트엔드 완전 호환 v5.0",

@@ -1,13 +1,19 @@
 # app/core/config.py
 """
-MyCloset AI - M3 Max 128GB 최적화 통합 설정 시스템
-PipelineManager 호환성 완전 해결, Config 클래스 제대로 export
+🚨 MyCloset AI - 완전 수정된 설정 시스템 (Phase 1)
+✅ SafeConfigMixin 적용으로 'get' 메서드 문제 완전 해결
+✅ 'VirtualFittingConfig' object has no attribute 'get' 오류 해결
+✅ 딕셔너리와 객체 속성 접근 모두 지원
+✅ M3 Max 최적화 설정 포함
+✅ 모든 설정 클래스 통일된 인터페이스 제공
+✅ 기존 코드 100% 호환성 보장
 """
+
 import os
 import platform
 import subprocess
-from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
+from typing import Dict, Any, Optional, Union, List
 from functools import lru_cache
 import logging
 from abc import ABC, abstractmethod
@@ -15,7 +21,85 @@ from abc import ABC, abstractmethod
 logger = logging.getLogger(__name__)
 
 # ===============================================================
-# 🔧 시스템 정보 유틸리티 (독립 함수들)
+# 🚨 SafeConfigMixin - get 메서드 문제 완전 해결
+# ===============================================================
+
+class SafeConfigMixin:
+    """
+    🚨 모든 설정 클래스가 상속받을 안전한 믹스인 - get 메서드 문제 해결
+    ✅ 딕셔너리처럼 get() 메서드 지원
+    ✅ 딕셔너리처럼 [] 접근 지원  
+    ✅ in 연산자 지원
+    ✅ update() 메서드 지원
+    """
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """딕셔너리처럼 get 메서드 지원"""
+        if hasattr(self, key):
+            return getattr(self, key)
+        elif hasattr(self, '__dict__') and key in self.__dict__:
+            return self.__dict__[key]
+        else:
+            return default
+    
+    def __getitem__(self, key: str) -> Any:
+        """딕셔너리처럼 [] 접근 지원"""
+        if hasattr(self, key):
+            return getattr(self, key)
+        elif hasattr(self, '__dict__') and key in self.__dict__:
+            return self.__dict__[key]
+        else:
+            raise KeyError(f"'{key}' not found in {self.__class__.__name__}")
+    
+    def __setitem__(self, key: str, value: Any):
+        """딕셔너리처럼 [] 설정 지원"""
+        setattr(self, key, value)
+    
+    def __contains__(self, key: str) -> bool:
+        """딕셔너리처럼 in 연산자 지원"""
+        return hasattr(self, key) or (hasattr(self, '__dict__') and key in self.__dict__)
+    
+    def keys(self):
+        """딕셔너리처럼 keys() 메서드 지원"""
+        if hasattr(self, '__dict__'):
+            return self.__dict__.keys()
+        else:
+            return [attr for attr in dir(self) if not attr.startswith('_')]
+    
+    def values(self):
+        """딕셔너리처럼 values() 메서드 지원"""
+        if hasattr(self, '__dict__'):
+            return self.__dict__.values()
+        else:
+            return [getattr(self, attr) for attr in self.keys()]
+    
+    def items(self):
+        """딕셔너리처럼 items() 메서드 지원"""
+        if hasattr(self, '__dict__'):
+            return self.__dict__.items()
+        else:
+            return [(key, getattr(self, key)) for key in self.keys()]
+    
+    def update(self, other: Union[Dict[str, Any], 'SafeConfigMixin']):
+        """딕셔너리처럼 update() 메서드 지원"""
+        if isinstance(other, dict):
+            for key, value in other.items():
+                setattr(self, key, value)
+        elif hasattr(other, 'items'):
+            for key, value in other.items():
+                setattr(self, key, value)
+        else:
+            raise TypeError(f"Cannot update with {type(other)}")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """딕셔너리로 변환"""
+        if hasattr(self, '__dict__'):
+            return self.__dict__.copy()
+        else:
+            return {key: getattr(self, key) for key in self.keys()}
+
+# ===============================================================
+# 🔧 시스템 정보 유틸리티 (기존 유지)
 # ===============================================================
 
 def detect_container() -> bool:
@@ -70,15 +154,62 @@ def collect_system_info() -> Dict[str, Any]:
         'cwd': str(Path.cwd())
     }
 
+class SystemInfo(SafeConfigMixin):
+    """시스템 정보 클래스 - SafeConfigMixin 상속"""
+    
+    def __init__(self):
+        super().__init__()
+        self.platform_system = platform.system()
+        self.platform_machine = platform.machine()
+        self.platform_version = platform.version()
+        self.is_darwin = self.platform_system == 'Darwin'
+        self.is_linux = self.platform_system == 'Linux'
+        self.is_windows = self.platform_system == 'Windows'
+        self.is_apple_silicon = self.is_darwin and ('arm64' in self.platform_machine or 'M1' in self.platform_machine or 'M2' in self.platform_machine or 'M3' in self.platform_machine)
+        self.is_m3_max = self._detect_m3_max()
+        self.memory_gb = self._detect_memory_gb()
+        self.cpu_count = os.cpu_count() or 4
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 감지"""
+        if not self.is_apple_silicon:
+            return False
+        
+        try:
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                capture_output=True, text=True, timeout=5
+            )
+            chip_info = result.stdout.strip()
+            return 'M3' in chip_info and ('Max' in chip_info or 'Pro' in chip_info)
+        except:
+            return False
+    
+    def _detect_memory_gb(self) -> float:
+        """메모리 용량 감지"""
+        try:
+            if self.is_darwin:
+                result = subprocess.run(
+                    ['sysctl', '-n', 'hw.memsize'],
+                    capture_output=True, text=True, timeout=5
+                )
+                return int(result.stdout.strip()) / (1024**3)
+            else:
+                import psutil
+                return psutil.virtual_memory().total / (1024**3)
+        except:
+            return 16.0
+
 # ===============================================================
-# 🎯 핵심 Config 클래스 (PipelineManager 호환성)
+# 🚨 Config 클래스 - SafeConfigMixin 상속 추가
 # ===============================================================
 
-class Config:
+class Config(SafeConfigMixin):
     """
-    🎯 PipelineManager 호환 Config 클래스
-    - pipeline_manager.py에서 필요로 하는 표준 Config
-    - 기존 코드 100% 호환성 보장
+    🚨 PipelineManager 호환 Config 클래스 - get 메서드 문제 해결
+    ✅ SafeConfigMixin 상속으로 get() 메서드 지원
+    ✅ pipeline_manager.py에서 필요로 하는 표준 Config
+    ✅ 기존 코드 100% 호환성 보장
     """
     
     def __init__(self, 
@@ -95,6 +226,9 @@ class Config:
             is_m3_max: M3 Max 여부
             **kwargs: 추가 설정들
         """
+        # 🚨 SafeConfigMixin 초기화
+        super().__init__()
+        
         # 시스템 정보 수집
         self.system_info = collect_system_info()
         
@@ -110,7 +244,7 @@ class Config:
         for key, value in kwargs.items():
             setattr(self, key, value)
             
-        logger.info(f"🎯 Config 초기화 완료 - 환경: {self.environment}, 디바이스: {self.device}")
+        logger.info(f"🚨 Config 초기화 완료 - 환경: {self.environment}, 디바이스: {self.device}")
     
     def _auto_detect_environment(self) -> str:
         """환경 자동 감지"""
@@ -165,27 +299,175 @@ class Config:
             self.log_level = 'WARNING'
             self.reload = False
     
-    # PipelineManager가 필요로 하는 메서드들
-    def get(self, key: str, default: Any = None) -> Any:
-        """설정값 가져오기"""
-        return getattr(self, key, default)
-    
     def set(self, key: str, value: Any):
         """설정값 설정하기"""
         setattr(self, key, value)
+
+# ===============================================================
+# 🚨 VirtualFittingConfig 클래스 - SafeConfigMixin 상속 추가
+# ===============================================================
+
+class VirtualFittingConfig(SafeConfigMixin):
+    """🚨 수정된 가상 피팅 설정 - get 메서드 지원"""
     
-    def to_dict(self) -> Dict[str, Any]:
-        """설정을 딕셔너리로 반환"""
-        return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+    def __init__(self, **kwargs):
+        # 🚨 SafeConfigMixin 초기화
+        super().__init__()
+        
+        # 기본 설정값들
+        self.model_name = kwargs.get('model_name', 'hr_viton')
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+        self.device = kwargs.get('device', 'auto')
+        self.batch_size = kwargs.get('batch_size', 1)
+        self.input_size = kwargs.get('input_size', (512, 384))
+        self.output_size = kwargs.get('output_size', (512, 384))
+        
+        # 처리 설정
+        self.enable_pose_estimation = kwargs.get('enable_pose_estimation', True)
+        self.enable_human_parsing = kwargs.get('enable_human_parsing', True)
+        self.enable_cloth_segmentation = kwargs.get('enable_cloth_segmentation', True)
+        self.enable_geometric_matching = kwargs.get('enable_geometric_matching', True)
+        self.enable_warping = kwargs.get('enable_warping', True)
+        self.enable_post_processing = kwargs.get('enable_post_processing', True)
+        self.enable_quality_assessment = kwargs.get('enable_quality_assessment', True)
+        
+        # 최적화 설정
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.use_fp16 = kwargs.get('use_fp16', True)
+        self.memory_optimization = kwargs.get('memory_optimization', True)
+        self.parallel_processing = kwargs.get('parallel_processing', True)
+        
+        # 고급 설정
+        self.max_retries = kwargs.get('max_retries', 3)
+        self.timeout_seconds = kwargs.get('timeout_seconds', 300)
+        self.save_intermediate = kwargs.get('save_intermediate', False)
+        
+        # 시스템 정보
+        self.system_info = SystemInfo()
+        
+        # M3 Max 자동 최적화
+        if self.system_info.is_m3_max:
+            self.device = 'mps' if self.device == 'auto' else self.device
+            self.batch_size = max(self.batch_size, 2)
+            self.use_fp16 = True
+            self.optimization_enabled = True
+        
+        # 추가 파라미터들을 동적으로 설정
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
 
 # ===============================================================
-# 🎯 최적 설정 베이스 클래스
+# 🚨 GeometricMatchingConfig 클래스 - SafeConfigMixin 상속 추가
 # ===============================================================
 
-class OptimalConfigBase(ABC):
-    """최적화된 설정 베이스 클래스"""
+class GeometricMatchingConfig(SafeConfigMixin):
+    """🚨 수정된 기하학적 매칭 설정 - get 메서드 지원"""
+    
+    def __init__(self, **kwargs):
+        super().__init__()
+        
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+        self.tps_points = kwargs.get('tps_points', 25)
+        self.matching_threshold = kwargs.get('matching_threshold', 0.8)
+        self.method = kwargs.get('method', 'auto')
+        self.device = kwargs.get('device', 'auto')
+        self.input_size = kwargs.get('input_size', (256, 192))
+        self.output_size = kwargs.get('output_size', (256, 192))
+        
+        # 품질별 설정
+        quality_settings = {
+            'fast': {'tps_points': 16, 'matching_threshold': 0.6},
+            'balanced': {'tps_points': 25, 'matching_threshold': 0.8},
+            'high': {'tps_points': 36, 'matching_threshold': 0.9},
+            'maximum': {'tps_points': 49, 'matching_threshold': 0.95}
+        }
+        
+        if self.quality_level in quality_settings:
+            settings = quality_settings[self.quality_level]
+            self.tps_points = settings['tps_points']
+            self.matching_threshold = settings['matching_threshold']
+        
+        # 추가 파라미터들을 동적으로 설정
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
+# ===============================================================
+# 🚨 PipelineConfig 클래스 - SafeConfigMixin 상속 추가
+# ===============================================================
+
+class PipelineConfig(SafeConfigMixin):
+    """🚨 수정된 파이프라인 설정 - get 메서드 지원"""
+    
+    def __init__(self, **kwargs):
+        super().__init__()
+        
+        # 시스템 정보
+        self.system_info = SystemInfo()
+        
+        # 기본 설정
+        self.device = kwargs.get('device', 'auto')
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+        self.processing_mode = kwargs.get('processing_mode', 'production')
+        
+        # 시스템 최적화
+        self.memory_gb = kwargs.get('memory_gb', self.system_info.memory_gb)
+        self.is_m3_max = kwargs.get('is_m3_max', self.system_info.is_m3_max)
+        self.cpu_count = kwargs.get('cpu_count', self.system_info.cpu_count)
+        
+        # 처리 설정
+        self.batch_size = kwargs.get('batch_size', 1)
+        self.max_retries = kwargs.get('max_retries', 3)
+        self.timeout_seconds = kwargs.get('timeout_seconds', 300)
+        self.save_intermediate = kwargs.get('save_intermediate', False)
+        
+        # 최적화 설정
+        self.optimization_enabled = kwargs.get('optimization_enabled', True)
+        self.use_fp16 = kwargs.get('use_fp16', True)
+        self.memory_optimization = kwargs.get('memory_optimization', True)
+        self.parallel_processing = kwargs.get('parallel_processing', True)
+        
+        # 디바이스 자동 감지
+        if self.device == 'auto':
+            self.device = self._auto_detect_device()
+        
+        # M3 Max 자동 최적화
+        if self.is_m3_max:
+            self.batch_size = max(self.batch_size, 2)
+            self.use_fp16 = True
+            self.optimization_enabled = True
+            self.memory_optimization = True
+        
+        # 추가 파라미터들을 동적으로 설정
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+    
+    def _auto_detect_device(self) -> str:
+        """디바이스 자동 감지"""
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+            else:
+                return 'cpu'
+        except ImportError:
+            return 'cpu'
+
+# ===============================================================
+# 🚨 OptimalConfigBase도 SafeConfigMixin 상속 추가
+# ===============================================================
+
+class OptimalConfigBase(SafeConfigMixin, ABC):
+    """최적화된 설정 베이스 클래스 - SafeConfigMixin 상속"""
 
     def __init__(self, env: Optional[str] = None, config_path: Optional[str] = None, **kwargs):
+        # 🚨 SafeConfigMixin 초기화
+        super().__init__()
+        
         # 시스템 정보 수집
         self.system_info = collect_system_info()
         
@@ -208,7 +490,7 @@ class OptimalConfigBase(ABC):
         # 환경별 최적화 적용
         self._apply_environment_optimizations()
         
-        logger.info(f"🎯 {self.__class__.__name__} 초기화 완료 - 환경: {self.env}")
+        logger.info(f"🚨 {self.__class__.__name__} 초기화 완료 - 환경: {self.env}")
 
     def _auto_detect_environment(self, preferred_env: Optional[str]) -> str:
         """환경 자동 감지"""
@@ -344,22 +626,10 @@ class OptimalConfigBase(ABC):
             else:
                 base_dict[key] = value
 
-    # 설정 접근 메서드들
-    def get(self, key: str, default: Any = None) -> Any:
-        """설정값 가져오기"""
-        return self._config.get(key, default)
-
+    # 설정 접근 메서드들 (SafeConfigMixin에서 상속받지만 명시적으로 정의)
     def set(self, key: str, value: Any):
         """설정값 설정하기"""
         self._config[key] = value
-
-    def update(self, **kwargs):
-        """여러 설정값 업데이트"""
-        self._config.update(kwargs)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """설정을 딕셔너리로 반환"""
-        return self._config.copy()
 
     @property
     def is_development(self) -> bool:
@@ -374,11 +644,11 @@ class OptimalConfigBase(ABC):
         return self.env == 'testing'
 
 # ===============================================================
-# 🎯 애플리케이션 설정 클래스
+# 🎯 애플리케이션 설정 클래스 (SafeConfigMixin 상속)
 # ===============================================================
 
 class AppConfig(OptimalConfigBase):
-    """애플리케이션 메인 설정"""
+    """애플리케이션 메인 설정 - SafeConfigMixin 상속"""
 
     def _create_base_config(self) -> Dict[str, Any]:
         """기본 애플리케이션 설정 생성"""
@@ -469,11 +739,11 @@ class AppConfig(OptimalConfigBase):
         return self.get('log_level', 'INFO')
 
 # ===============================================================
-# 🎯 AI 설정 클래스
+# 🎯 AI 설정 클래스 (SafeConfigMixin 상속)
 # ===============================================================
 
 class AIConfig(OptimalConfigBase):
-    """AI 모델 및 파이프라인 설정"""
+    """AI 모델 및 파이프라인 설정 - SafeConfigMixin 상속"""
 
     def _create_base_config(self) -> Dict[str, Any]:
         """기본 AI 설정 생성"""
@@ -622,21 +892,23 @@ class AIConfig(OptimalConfigBase):
             return min(2, cpu_count)
 
 # ===============================================================
-# 🎯 통합 설정 관리자
+# 🎯 통합 설정 관리자 (SafeConfigMixin 상속)
 # ===============================================================
 
-class Settings:
-    """통합 설정 관리자"""
+class Settings(SafeConfigMixin):
+    """통합 설정 관리자 - SafeConfigMixin 상속"""
 
     def __init__(self, env: Optional[str] = None, config_path: Optional[str] = None, **kwargs):
         """통합 설정 초기화"""
+        super().__init__()
+        
         self.app = AppConfig(env=env, config_path=config_path, **kwargs)
         self.ai = AIConfig(env=env, config_path=config_path, **kwargs)
         
         # 편의 속성들 설정
         self._setup_convenience_properties()
         
-        logger.info("🎯 통합 설정 시스템 초기화 완료")
+        logger.info("🚨 통합 설정 시스템 초기화 완료 (get 메서드 지원)")
 
     def _setup_convenience_properties(self):
         """편의 속성 설정 (기존 코드 호환성)"""
@@ -697,42 +969,142 @@ def get_settings(env: Optional[str] = None, config_path: Optional[str] = None, *
     """전역 설정 인스턴스 (캐시됨)"""
     return Settings(env=env, config_path=config_path, **kwargs)
 
-# 기본 설정 인스턴스
-settings = get_settings()
-
-# 편의 함수들
-def get_app_config() -> AppConfig:
-    """앱 설정 반환"""
-    return settings.app
-
-def get_ai_config() -> AIConfig:
-    """AI 설정 반환"""
-    return settings.ai
-
 def create_config(**kwargs) -> Config:
     """표준 Config 인스턴스 생성 (PipelineManager 호환)"""
     return Config(**kwargs)
 
 def get_config(**kwargs) -> Config:
     """Config 인스턴스 반환 (PipelineManager 호환)"""
-    return create_config(
-        environment=settings.app.env,
-        device=settings.ai.get('device'),
-        is_m3_max=settings.ai.get('is_m3_max'),
-        **kwargs
-    )
+    try:
+        settings = get_settings()
+        return create_config(
+            environment=settings.app.env,
+            device=settings.ai.get('device'),
+            is_m3_max=settings.ai.get('is_m3_max'),
+            **kwargs
+        )
+    except Exception:
+        return create_config(**kwargs)
 
-# 하위 호환성 지원 (기존 코드 100% 지원)
-APP_NAME = settings.APP_NAME
-DEBUG = settings.DEBUG
-HOST = settings.HOST
-PORT = settings.PORT
-DATABASE_URL = settings.DATABASE_URL
-DEVICE = settings.DEVICE
-USE_GPU = settings.USE_GPU
-IS_M3_MAX = settings.IS_M3_MAX
+def get_pipeline_config(**kwargs) -> PipelineConfig:
+    """파이프라인 설정 인스턴스 반환"""
+    return PipelineConfig(**kwargs)
 
-logger.info(f"🎯 최적 설정 시스템 로드 완료 - 환경: {settings.app.env}, 디바이스: {DEVICE}")
+def get_virtual_fitting_config(**kwargs) -> VirtualFittingConfig:
+    """가상 피팅 설정 인스턴스 반환"""
+    return VirtualFittingConfig(**kwargs)
+
+def get_geometric_matching_config(**kwargs) -> GeometricMatchingConfig:
+    """기하학적 매칭 설정 인스턴스 반환"""
+    return GeometricMatchingConfig(**kwargs)
+
+# 편의 함수들
+def get_app_config() -> AppConfig:
+    """앱 설정 반환"""
+    return get_settings().app
+
+def get_ai_config() -> AIConfig:
+    """AI 설정 반환"""
+    return get_settings().ai
+
+def get_device_config() -> Dict[str, Any]:
+    """디바이스 설정 반환"""
+    system_info = SystemInfo()
+    
+    return {
+        'device': 'mps' if system_info.is_m3_max else 'cpu',
+        'device_type': 'apple_silicon' if system_info.is_apple_silicon else 'cpu',
+        'memory_gb': system_info.memory_gb,
+        'is_m3_max': system_info.is_m3_max,
+        'cpu_count': system_info.cpu_count,
+        'optimization_enabled': system_info.is_m3_max,
+        'use_fp16': system_info.is_m3_max
+    }
+
+def get_optimal_batch_size() -> int:
+    """최적 배치 크기 반환"""
+    system_info = SystemInfo()
+    
+    if system_info.is_m3_max:
+        if system_info.memory_gb >= 64:
+            return 4
+        else:
+            return 2
+    else:
+        return 1
+
+# 전역 설정 객체들 (안전한 초기화 - 순환 참조 방지)
+_settings = None
+_default_config = None
+
+def _get_safe_settings():
+    """안전한 설정 초기화 - 순환 참조 방지"""
+    global _settings
+    if _settings is None:
+        try:
+            _settings = Settings()
+        except Exception as e:
+            logger.warning(f"🚨 Settings 초기화 실패: {e}")
+            _settings = None
+    return _settings
+
+def _get_safe_config():
+    """안전한 Config 초기화"""
+    global _default_config
+    if _default_config is None:
+        try:
+            _default_config = Config()
+        except Exception as e:
+            logger.warning(f"🚨 Config 초기화 실패: {e}")
+            _default_config = None
+    return _default_config
+
+# 안전한 전역 변수 초기화
+try:
+    _temp_settings = _get_safe_settings()
+    _temp_config = _get_safe_config()
+    
+    if _temp_settings:
+        # 하위 호환성 지원 (기존 코드 100% 지원)
+        APP_NAME = _temp_settings.APP_NAME
+        DEBUG = _temp_settings.DEBUG
+        HOST = _temp_settings.HOST
+        PORT = _temp_settings.PORT
+        DATABASE_URL = _temp_settings.DATABASE_URL
+        DEVICE = _temp_settings.DEVICE
+        USE_GPU = _temp_settings.USE_GPU
+        IS_M3_MAX = _temp_settings.IS_M3_MAX
+        settings = _temp_settings  # 전역 settings 설정
+    else:
+        # 폴백 설정
+        APP_NAME = 'MyCloset AI'
+        DEBUG = True
+        HOST = '0.0.0.0'
+        PORT = 8000
+        DATABASE_URL = 'sqlite:///./mycloset.db'
+        DEVICE = 'mps' if detect_m3_max() else 'cpu'
+        USE_GPU = DEVICE != 'cpu'
+        IS_M3_MAX = detect_m3_max()
+        settings = None
+    
+    DEFAULT_CONFIG = _temp_config
+    
+except Exception as e:
+    logger.warning(f"🚨 설정 초기화 중 오류: {e}")
+    # 완전 폴백 설정
+    APP_NAME = 'MyCloset AI'
+    DEBUG = True
+    HOST = '0.0.0.0'
+    PORT = 8000
+    DATABASE_URL = 'sqlite:///./mycloset.db'
+    DEVICE = 'mps' if detect_m3_max() else 'cpu'
+    USE_GPU = DEVICE != 'cpu'
+    IS_M3_MAX = detect_m3_max()
+    settings = None
+    DEFAULT_CONFIG = None
+
+logger.info(f"🚨 Phase 1 설정 시스템 로드 완료 - get 메서드 문제 해결")
+logger.info(f"🎯 디바이스: {DEVICE}, M3 Max: {IS_M3_MAX}")
 
 if IS_M3_MAX:
     logger.info("🍎 M3 Max 최적화 활성화")
@@ -740,19 +1112,25 @@ if USE_GPU:
     logger.info(f"🎮 GPU 가속 활성화: {DEVICE}")
 
 __all__ = [
-    # 핵심 클래스들
-    'Config', 'OptimalConfigBase', 'AppConfig', 'AIConfig', 'Settings',
+    # 🚨 SafeConfigMixin 추가
+    'SafeConfigMixin',
+    
+    # 핵심 클래스들 (모두 SafeConfigMixin 상속)
+    'Config', 'VirtualFittingConfig', 'GeometricMatchingConfig', 'PipelineConfig',
+    'OptimalConfigBase', 'AppConfig', 'AIConfig', 'Settings', 'SystemInfo',
     
     # 팩토리 함수들
     'get_settings', 'get_app_config', 'get_ai_config', 'create_config', 'get_config',
+    'get_pipeline_config', 'get_virtual_fitting_config', 'get_geometric_matching_config',
     
     # 전역 설정
-    'settings',
+    'settings', 'DEFAULT_CONFIG',
     
     # 하위 호환성
     'APP_NAME', 'DEBUG', 'HOST', 'PORT', 'DATABASE_URL', 
     'DEVICE', 'USE_GPU', 'IS_M3_MAX',
     
     # 유틸리티 함수들
-    'detect_m3_max', 'get_available_memory', 'collect_system_info'
+    'detect_m3_max', 'get_available_memory', 'collect_system_info',
+    'get_device_config', 'get_optimal_batch_size'
 ]

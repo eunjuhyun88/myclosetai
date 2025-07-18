@@ -1,11 +1,12 @@
-# backend/app/ai_pipeline/steps/base_step_mixin.py
+# app/ai_pipeline/steps/base_step_mixin.py
 """
-🔥 MyCloset AI - 완전 수정된 BaseStepMixin v2.0
-✅ 모든 Step 클래스의 logger 속성 누락 문제 완전 해결
-✅ ModelLoader 인터페이스 완벽 연동  
-✅ 표준화된 초기화 패턴
+🔥 MyCloset AI - BaseStepMixin v2.2 - 초기화 문제 완전 해결
+✅ object.__init__() 파라미터 문제 해결
+✅ 다중 상속 안전한 처리 
+✅ logger 속성 누락 문제 완전 해결
+✅ _auto_detect_device() device 인자 오류 완전 해결
+✅ ModelLoader 인터페이스 완벽 연동
 ✅ M3 Max 128GB 최적화
-✅ 비동기 처리 완벽 지원
 """
 
 import os
@@ -40,34 +41,81 @@ except ImportError:
     CV_AVAILABLE = False
 
 # ==============================================
-# 🔥 완전 수정된 BaseStepMixin
+# 🔥 완전 수정된 BaseStepMixin v2.2 - 초기화 문제 해결
 # ==============================================
 
 class BaseStepMixin:
     """
-    🔥 모든 Step 클래스가 상속받는 기본 Mixin
+    🔥 모든 Step 클래스가 상속받는 기본 Mixin - 초기화 문제 완전 해결
+    ✅ object.__init__() 파라미터 문제 완전 해결
     ✅ logger 속성 누락 문제 완전 해결
+    ✅ _auto_detect_device() 인자 없이 호출 가능
     ✅ ModelLoader 인터페이스 안전한 연동
     ✅ 표준화된 초기화 패턴
     ✅ M3 Max 최적화 지원
     """
     
     def __init__(self, *args, **kwargs):
-        """기본 Mixin 초기화 - 모든 Step 클래스에서 호출되어야 함"""
+        """
+        🔥 기본 Mixin 초기화 - 다중 상속 안전 처리
+        
+        이 메서드는 모든 Step 클래스에서 호출되어야 함
+        """
+        # 🔥 다중 상속 시 안전한 super() 호출
+        try:
+            # kwargs에서 BaseStepMixin이 모르는 파라미터들 필터링
+            base_kwargs = {}
+            
+            # 알려진 파라미터들만 전달
+            known_params = {
+                'device', 'quality_level', 'device_type', 'memory_gb', 
+                'is_m3_max', 'optimization_enabled', 'batch_size'
+            }
+            
+            # 다른 클래스들이 사용할 수 있는 파라미터들은 유지
+            for key, value in kwargs.items():
+                if key not in known_params:
+                    base_kwargs[key] = value
+            
+            # 안전한 super() 호출 - 파라미터 없이
+            super().__init__()
+            
+        except TypeError as e:
+            # super().__init__()이 파라미터를 받지 않는 경우 (object 클래스)
+            # 이 경우는 정상이므로 무시
+            pass
+        
         # 🔥 logger 속성 누락 문제 해결 - 반드시 먼저 설정
         if not hasattr(self, 'logger'):
             class_name = self.__class__.__name__
             self.logger = logging.getLogger(f"pipeline.{class_name}")
             self.logger.info(f"🔧 {class_name} logger 초기화 완료")
         
-        # 기본 속성들 초기화
+        # 기본 속성들 초기화 - device 인자 없이 안전하게 호출
         self.step_name = getattr(self, 'step_name', self.__class__.__name__)
-        self.device = getattr(self, 'device', self._auto_detect_device())
-        self.is_initialized = False
-        self.model_interface = None
-        self.performance_metrics = {}
-        self.error_count = 0
-        self.last_error = None
+        
+        # 🔥 device 설정 - Step 클래스별 안전한 처리
+        if not hasattr(self, 'device'):
+            # kwargs에서 device 파라미터 확인
+            device_from_kwargs = kwargs.get('device', kwargs.get('preferred_device', 'auto'))
+            try:
+                self.device = self._auto_detect_device(device_from_kwargs)
+            except TypeError:
+                # Step 클래스에서 인자를 요구하는 경우 기본값 전달
+                self.device = "mps" if TORCH_AVAILABLE and torch.backends.mps.is_available() else "cpu"
+                self.logger.info(f"🔧 기본 디바이스 설정: {self.device}")
+        
+        # 🔥 기본 속성들 안전하게 초기화
+        if not hasattr(self, 'is_initialized'):
+            self.is_initialized = False
+        if not hasattr(self, 'model_interface'):
+            self.model_interface = None
+        if not hasattr(self, 'performance_metrics'):
+            self.performance_metrics = {}
+        if not hasattr(self, 'error_count'):
+            self.error_count = 0
+        if not hasattr(self, 'last_error'):
+            self.last_error = None
         
         # M3 Max 최적화 설정
         self._setup_m3_max_optimization()
@@ -75,25 +123,46 @@ class BaseStepMixin:
         # ModelLoader 인터페이스 설정 (안전)
         self._setup_model_interface_safe()
         
-        self.logger.info(f"✅ {self.step_name} BaseStepMixin 초기화 완료")
+        self.logger.info(f"✅ {self.step_name} BaseStepMixin v2.2 초기화 완료")
     
-    def _auto_detect_device(self) -> str:
-        """디바이스 자동 탐지 (M3 Max 최적화)"""
-        if not TORCH_AVAILABLE:
-            return "cpu"
+    def _auto_detect_device(self, preferred_device: Optional[str] = None, device: Optional[str] = None) -> str:
+        """🔥 디바이스 자동 탐지 - 모든 Step 클래스와 호환 (M3 Max 최적화)"""
+        try:
+            # device 또는 preferred_device 중 하나라도 주어진 경우 우선 사용
+            target_device = device or preferred_device
+            if target_device and target_device != "auto":
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"🎯 지정된 디바이스 사용: {target_device}")
+                return target_device
             
-        # M3 Max MPS 지원 확인
-        if torch.backends.mps.is_available():
-            return "mps"
-        elif torch.cuda.is_available():
-            return "cuda"
-        else:
+            if not TORCH_AVAILABLE:
+                if hasattr(self, 'logger'):
+                    self.logger.warning("⚠️ PyTorch 없음, CPU 사용")
+                return "cpu"
+                
+            # M3 Max MPS 지원 확인 (최우선)
+            if torch.backends.mps.is_available():
+                if hasattr(self, 'logger'):
+                    self.logger.info("🍎 M3 Max MPS 디바이스 감지")
+                return "mps"
+            elif torch.cuda.is_available():
+                if hasattr(self, 'logger'):
+                    self.logger.info("🔥 CUDA 디바이스 감지")
+                return "cuda"
+            else:
+                if hasattr(self, 'logger'):
+                    self.logger.info("💻 CPU 디바이스 사용")
+                return "cpu"
+                
+        except Exception as e:
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ 디바이스 탐지 실패: {e}, CPU 사용")
             return "cpu"
     
     def _setup_m3_max_optimization(self):
         """M3 Max 최적화 설정"""
         try:
-            if self.device == "mps" and TORCH_AVAILABLE:
+            if getattr(self, 'device', 'cpu') == "mps" and TORCH_AVAILABLE:
                 # M3 Max 특화 설정
                 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
                 os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
@@ -102,9 +171,11 @@ class BaseStepMixin:
                 if hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
                 
-                self.logger.info("🍎 M3 Max MPS 최적화 설정 완료")
+                if hasattr(self, 'logger'):
+                    self.logger.info("🍎 M3 Max MPS 최적화 설정 완료")
         except Exception as e:
-            self.logger.warning(f"⚠️ M3 Max 최적화 설정 실패: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.warning(f"⚠️ M3 Max 최적화 설정 실패: {e}")
     
     def _setup_model_interface_safe(self):
         """ModelLoader 인터페이스 안전한 설정"""
@@ -115,13 +186,16 @@ class BaseStepMixin:
             model_loader = get_global_model_loader()
             if model_loader:
                 self.model_interface = model_loader.create_step_interface(self.step_name)
-                self.logger.info(f"🔗 {self.step_name} ModelLoader 인터페이스 연결 완료")
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"🔗 {self.step_name} ModelLoader 인터페이스 연결 완료")
             else:
-                self.logger.warning(f"⚠️ {self.step_name} 전역 ModelLoader를 찾을 수 없음")
+                if hasattr(self, 'logger'):
+                    self.logger.warning(f"⚠️ {self.step_name} 전역 ModelLoader를 찾을 수 없음")
                 self.model_interface = None
                 
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} ModelLoader 인터페이스 설정 실패: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ {self.step_name} ModelLoader 인터페이스 설정 실패: {e}")
             self.model_interface = None
     
     async def initialize_step(self) -> bool:
@@ -132,7 +206,7 @@ class BaseStepMixin:
                 self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             
             if not hasattr(self, 'device'):
-                self.device = self._auto_detect_device()
+                self.device = self._auto_detect_device()  # 🔥 인자 없이 호출
             
             # ModelLoader 인터페이스 재설정 (필요시)
             if not hasattr(self, 'model_interface') or self.model_interface is None:
@@ -143,7 +217,8 @@ class BaseStepMixin:
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
             self.last_error = str(e)
             self.error_count += 1
             return False
@@ -152,7 +227,8 @@ class BaseStepMixin:
         """모델 로드 (Step에서 사용)"""
         try:
             if not self.model_interface:
-                self.logger.warning(f"⚠️ {self.step_name} ModelLoader 인터페이스가 없습니다")
+                if hasattr(self, 'logger'):
+                    self.logger.warning(f"⚠️ {self.step_name} ModelLoader 인터페이스가 없습니다")
                 return None
             
             if model_name:
@@ -162,7 +238,8 @@ class BaseStepMixin:
                 return await self.model_interface.get_recommended_model()
                 
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 모델 로드 실패: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ {self.step_name} 모델 로드 실패: {e}")
             self.last_error = str(e)
             self.error_count += 1
             return None
@@ -172,24 +249,29 @@ class BaseStepMixin:
         try:
             if hasattr(self, 'model_interface') and self.model_interface:
                 self.model_interface.unload_models()
-                self.logger.info(f"🧹 {self.step_name} 모델 정리 완료")
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"🧹 {self.step_name} 모델 정리 완료")
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 모델 정리 실패: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ {self.step_name} 모델 정리 실패: {e}")
     
     def get_step_info(self) -> Dict[str, Any]:
         """Step 상태 정보 반환"""
         return {
-            "step_name": self.step_name,
-            "device": self.device,
-            "is_initialized": self.is_initialized,
-            "has_model_interface": self.model_interface is not None,
-            "error_count": self.error_count,
-            "last_error": self.last_error,
-            "performance_metrics": self.performance_metrics
+            "step_name": getattr(self, 'step_name', self.__class__.__name__),
+            "device": getattr(self, 'device', 'unknown'),
+            "is_initialized": getattr(self, 'is_initialized', False),
+            "has_model_interface": getattr(self, 'model_interface', None) is not None,
+            "error_count": getattr(self, 'error_count', 0),
+            "last_error": getattr(self, 'last_error', None),
+            "performance_metrics": getattr(self, 'performance_metrics', {})
         }
     
     def record_performance(self, operation: str, duration: float, success: bool = True):
         """성능 메트릭 기록"""
+        if not hasattr(self, 'performance_metrics'):
+            self.performance_metrics = {}
+            
         if operation not in self.performance_metrics:
             self.performance_metrics[operation] = {
                 "total_calls": 0,
@@ -212,23 +294,24 @@ class BaseStepMixin:
         """🔧 기본 처리 메서드 (하위 클래스에서 오버라이드)"""
         try:
             start_time = time.time()
-            self.logger.info(f"🔄 {self.step_name} 기본 처리 실행")
+            if hasattr(self, 'logger'):
+                self.logger.info(f"🔄 {self.step_name} 기본 처리 실행")
             
             # 초기화 확인
-            if not self.is_initialized:
+            if not getattr(self, 'is_initialized', False):
                 await self.initialize_step()
             
             # 기본 처리 결과
             result = {
                 'success': True,
-                'step_name': self.step_name,
-                'result': f'{self.step_name} 기본 처리 완료',
+                'step_name': getattr(self, 'step_name', self.__class__.__name__),
+                'result': f'{getattr(self, "step_name", self.__class__.__name__)} 기본 처리 완료',
                 'confidence': 0.5,
                 'processing_time': time.time() - start_time,
                 'metadata': {
-                    'device': self.device,
+                    'device': getattr(self, 'device', 'unknown'),
                     'fallback': True,
-                    'model_interface_available': self.model_interface is not None
+                    'model_interface_available': getattr(self, 'model_interface', None) is not None
                 }
             }
             
@@ -238,16 +321,20 @@ class BaseStepMixin:
             
         except Exception as e:
             duration = time.time() - start_time if 'start_time' in locals() else 0.0
-            self.logger.error(f"❌ {self.step_name} 처리 실패: {e}")
-            self.last_error = str(e)
-            self.error_count += 1
+            if hasattr(self, 'logger'):
+                self.logger.error(f"❌ {getattr(self, 'step_name', self.__class__.__name__)} 처리 실패: {e}")
+            
+            if hasattr(self, 'last_error'):
+                self.last_error = str(e)
+            if hasattr(self, 'error_count'):
+                self.error_count += 1
             
             # 성능 기록 (실패)
             self.record_performance("process", duration, False)
             
             return {
                 'success': False,
-                'step_name': self.step_name,
+                'step_name': getattr(self, 'step_name', self.__class__.__name__),
                 'error': str(e),
                 'confidence': 0.0,
                 'processing_time': duration
@@ -261,7 +348,7 @@ class BaseStepMixin:
             pass
 
 # ==============================================
-# 🔥 Step별 특화 Mixin들
+# 🔥 Step별 특화 Mixin들 - 안전한 초기화
 # ==============================================
 
 class HumanParsingMixin(BaseStepMixin):
@@ -433,6 +520,6 @@ __all__ = [
 
 # 로거 설정
 logger = logging.getLogger(__name__)
-logger.info("✅ BaseStepMixin v2.0 로드 완료 - 모든 Step 클래스 logger 속성 누락 문제 해결")
+logger.info("✅ BaseStepMixin v2.2 로드 완료 - 초기화 문제 완전 해결")
 logger.info("🔗 ModelLoader 인터페이스 완벽 연동")
 logger.info("🍎 M3 Max 128GB 최적화 지원")

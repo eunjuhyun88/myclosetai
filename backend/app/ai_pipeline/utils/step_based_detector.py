@@ -1093,6 +1093,7 @@ class StepBasedDetector:
         try:
             # steps 모듈에서 Step 클래스 로드 시도
             from ..steps import get_step_class
+from app.utils.safe_caller import safe_call, safe_warmup
             
             step_class = get_step_class(step_name)
             
@@ -1718,8 +1719,8 @@ def generate_pipeline_config_from_steps(
         
         # 설정 생성기 사용
         config_generator = StepPipelineConfigGenerator(detector)
-        pipeline_config = config_generator.generate_pipeline_config()
-        model_loader_config = config_generator.generate_model_loader_compatible_config()
+        pipeline_config = config_generator.generate_pipeline_safe_call(config)
+        model_loader_config = config_generator.generate_model_loader_compatible_safe_call(config)
         
         # 최종 결과
         available_count = len(detector.get_available_steps())
@@ -1834,7 +1835,7 @@ def integrate_with_pipeline_manager(
         config_generator = StepPipelineConfigGenerator(detector)
         
         # PipelineManager 설정 생성
-        pipeline_config = config_generator.generate_pipeline_config()
+        pipeline_config = config_generator.generate_pipeline_safe_call(config)
         
         # PipelineManager와 통합 (순환참조 방지)
         integration_result = {}
@@ -1890,7 +1891,7 @@ class StepToModelLoaderAdapter:
         """ModelLoader가 기대하는 형태로 설정 반환"""
         try:
             config_generator = StepPipelineConfigGenerator(self.detector)
-            model_loader_config = config_generator.generate_model_loader_compatible_config()
+            model_loader_config = config_generator.generate_model_loader_compatible_safe_call(config)
             return model_loader_config.get("model_configs", [])
         except Exception as e:
             self.logger.error(f"모델 설정 생성 실패: {e}")
