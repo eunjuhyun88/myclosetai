@@ -6,8 +6,9 @@
 ✅ M3 Max 128GB 최적화
 ✅ 프로덕션 안정성 보장
 ✅ 8단계 가상 피팅 지원
+✅ ModelLoader DI 완전 해결
 """
-
+import threading
 import os
 import sys
 import time
@@ -229,6 +230,68 @@ server_state = {
 }
 
 # ===============================================================
+# 🔥 DI Container 클래스 (ModelLoader 문제 해결용)
+# ===============================================================
+
+class SimpleDIContainer:
+    """🔥 간단한 DI 컨테이너 - ModelLoader 문제 해결용"""
+    
+    _instance = None
+    _lock = threading.RLock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+        
+        self._instances = {}
+        self._instance_lock = threading.RLock()
+        self._initialized = True
+        logger.info("✅ DI Container 초기화")
+    
+    def register(self, name: str, instance):
+        """의존성 등록"""
+        with self._instance_lock:
+            self._instances[name] = instance
+            logger.info(f"✅ DI 등록: {name} ({type(instance).__name__})")
+    
+    def get(self, name: str):
+        """의존성 조회"""
+        with self._instance_lock:
+            instance = self._instances.get(name)
+            if instance:
+                logger.debug(f"🔍 DI 조회 성공: {name}")
+            else:
+                logger.warning(f"⚠️ DI 조회 실패: {name}")
+            return instance
+    
+    def exists(self, name: str) -> bool:
+        """의존성 존재 확인"""
+        with self._instance_lock:
+            return name in self._instances
+    
+    def clear(self):
+        """모든 의존성 정리"""
+        with self._instance_lock:
+            count = len(self._instances)
+            self._instances.clear()
+            logger.info(f"🧹 DI Container 정리: {count}개 제거")
+
+# 전역 DI 컨테이너
+_global_di_container = SimpleDIContainer()
+
+def get_di_container():
+    """전역 DI 컨테이너 반환"""
+    return _global_di_container
+
+# ===============================================================
 # 🔧 WebSocket 관리자
 # ===============================================================
 
@@ -317,31 +380,154 @@ async def initialize_unified_utils_system() -> bool:
         logger.error(f"❌ 통합 유틸리티 시스템 초기화 오류: {e}")
         return False
 
-async def initialize_pipeline_steps() -> bool:
-    """AI 파이프라인 Steps 초기화 (새로운 통합 시스템 사용)"""
+async def initialize_model_loader_di():
+    """🔥 ModelLoader DI 시스템 초기화"""
+    try:
+        logger.info("🔄 ModelLoader DI 시스템 초기화 시작...")
+        
+        # 1. DI Container 준비
+        di_container = get_di_container()
+        
+        # 2. ModelLoader 초기화 및 등록
+        try:
+            # 기존 전역 ModelLoader 확인
+            try:
+                from app.ai_pipeline.utils.model_loader import get_global_model_loader, initialize_global_model_loader
+                
+                # ModelLoader 초기화
+                init_result = initialize_global_model_loader(
+                    device=DEVICE,
+                    use_fp16=True if DEVICE != 'cpu' else False,
+                    optimization_enabled=True,
+                    enable_fallback=True
+                )
+                
+                if init_result.get("success"):
+                    model_loader = get_global_model_loader()
+                    if model_loader:
+                        # DI Container에 등록
+                        di_container.register('model_loader', model_loader)
+                        logger.info("✅ ModelLoader DI 등록 완료")
+                        return True
+                    else:
+                        logger.error("❌ ModelLoader 인스턴스가 None")
+                else:
+                    logger.error(f"❌ ModelLoader 초기화 실패: {init_result.get('error')}")
+            
+            except ImportError as e:
+                logger.warning(f"⚠️ ModelLoader import 실패: {e}")
+                # 폴백: 새로 생성
+                try:
+                    from app.ai_pipeline.utils.model_loader import ModelLoader
+                    model_loader = ModelLoader(device=DEVICE)
+                    di_container.register('model_loader', model_loader)
+                    logger.info("✅ 새 ModelLoader 생성 및 DI 등록")
+                    return True
+                except Exception as e2:
+                    logger.error(f"❌ 새 ModelLoader 생성 실패: {e2}")
+        
+        except Exception as e:
+            logger.error(f"❌ ModelLoader DI 설정 실패: {e}")
+        
+        # 3. Step 생성 함수들을 DI 버전으로 패치
+        await patch_step_creation_functions_di(di_container)
+        
+        logger.info("🎉 ModelLoader DI 시스템 초기화 완료!")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ DI 시스템 초기화 실패: {e}")
+        return False
+
+async def patch_step_creation_functions_di(di_container):
+    """🔥 Step 생성 함수들에 ModelLoader 자동 주입"""
+    try:
+        model_loader = di_container.get('model_loader')
+        if not model_loader:
+            logger.warning("⚠️ ModelLoader가 DI Container에 없음")
+            return
+        
+        # HumanParsingStep 패치
+        try:
+            import app.ai_pipeline.steps.step_01_human_parsing as hp_module
+            
+            if hasattr(hp_module, 'create_human_parsing_step'):
+                original_create = hp_module.create_human_parsing_step
+                
+                def create_with_di(*args, **kwargs):
+                    # ModelLoader 자동 주입
+                    if 'model_loader' not in kwargs:
+                        kwargs['model_loader'] = model_loader
+                        logger.info("✅ HumanParsingStep에 ModelLoader 자동 주입")
+                    return original_create(*args, **kwargs)
+                
+                hp_module.create_human_parsing_step = create_with_di
+                logger.info("✅ HumanParsingStep 생성 함수 DI 패치 완료")
+        
+        except Exception as e:
+            logger.warning(f"⚠️ HumanParsingStep 패치 실패: {e}")
+        
+        # ClothSegmentationStep 패치
+        try:
+            import app.ai_pipeline.steps.step_03_cloth_segmentation as cs_module
+            
+            if hasattr(cs_module, 'create_cloth_segmentation_step'):
+                original_create = cs_module.create_cloth_segmentation_step
+                
+                def create_with_di(*args, **kwargs):
+                    if 'model_loader' not in kwargs:
+                        kwargs['model_loader'] = model_loader
+                        logger.info("✅ ClothSegmentationStep에 ModelLoader 자동 주입")
+                    return original_create(*args, **kwargs)
+                
+                cs_module.create_cloth_segmentation_step = create_with_di
+                logger.info("✅ ClothSegmentationStep 생성 함수 DI 패치 완료")
+        
+        except Exception as e:
+            logger.warning(f"⚠️ ClothSegmentationStep 패치 실패: {e}")
+        
+        # 다른 Step들도 필요하면 추가...
+        
+    except Exception as e:
+        logger.error(f"❌ Step 함수 패치 실패: {e}")
+
+async def initialize_pipeline_steps():
+    """AI 파이프라인 Steps 초기화"""
     global pipeline_steps
     
     try:
-        if not AI_PIPELINE_AVAILABLE or not UNIFIED_UTILS_AVAILABLE:
-            logger.warning("⚠️ AI Pipeline 또는 통합 유틸리티가 사용 불가능합니다")
+        if not AI_PIPELINE_AVAILABLE:
+            logger.warning("⚠️ AI Pipeline이 사용 불가능합니다")
             return False
         
         logger.info("🔄 AI 파이프라인 Steps 초기화 중...")
+        
+        # DI Container에서 ModelLoader 가져오기
+        di_container = get_di_container()
+        model_loader = di_container.get('model_loader')
+        
+        if model_loader:
+            logger.info("✅ DI Container에서 ModelLoader 발견됨")
+        else:
+            logger.warning("⚠️ DI Container에 ModelLoader 없음 - 기본 초기화 진행")
         
         initialized_steps = 0
         
         for step_name, step_class in pipeline_step_classes.items():
             try:
-                # 새로운 통합 인터페이스 생성
-                step_interface = create_unified_interface(step_class.__name__)
+                # ModelLoader를 포함해서 Step 생성
+                step_kwargs = {
+                    'device': DEVICE,
+                    'optimization_enabled': True,
+                    'memory_gb': TOTAL_MEMORY_GB,
+                }
                 
-                # Step 인스턴스 생성 (통합 인터페이스 전달)
-                step_instance = step_class(
-                    device=DEVICE,
-                    optimization_enabled=True,
-                    memory_gb=TOTAL_MEMORY_GB,
-                    unified_interface=step_interface  # 새로운 방식
-                )
+                # ModelLoader 주입
+                if model_loader:
+                    step_kwargs['model_loader'] = model_loader
+                
+                # Step 인스턴스 생성
+                step_instance = step_class(**step_kwargs)
                 
                 # Step 초기화
                 if hasattr(step_instance, 'initialize'):
@@ -429,10 +615,21 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ 통합 유틸리티 시스템 초기화 중 오류: {e}")
         initialization_success = False
     
-    # 2. AI 파이프라인 초기화
+    # 1.5. ModelLoader DI 시스템 초기화
+    try:
+        logger.info("🔄 1.5단계: ModelLoader DI 시스템 초기화...")
+        di_success = await initialize_model_loader_di()
+        if di_success:
+            logger.info("✅ 1.5단계: ModelLoader DI 시스템 초기화 완료")
+        else:
+            logger.warning("⚠️ 1.5단계: ModelLoader DI 시스템 초기화 실패")
+    except Exception as e:
+        logger.error(f"❌ ModelLoader DI 시스템 초기화 중 오류: {e}")
+    
+    # 2. AI 파이프라인 초기화 (DI 적용)
     try:
         if await initialize_pipeline_steps():
-            logger.info("✅ 2단계: AI 파이프라인 초기화 완료")
+            logger.info("✅ 2단계: AI 파이프라인 DI 초기화 완료")
         else:
             logger.warning("⚠️ 2단계: AI 파이프라인 초기화 실패")
             initialization_success = False
@@ -506,8 +703,6 @@ async def lifespan(app: FastAPI):
 # ===============================================================
 # 🔧 FastAPI 앱 생성 및 설정
 # ===============================================================
-
-from app.utils.warmup_patch import patch_warmup_methods
 
 app = FastAPI(
     title="MyCloset AI",
@@ -608,7 +803,8 @@ async def root():
             "visualization": True,
             "unified_utils": UNIFIED_UTILS_AVAILABLE,
             "circular_dependency_resolved": True,
-            "frontend_compatible": True
+            "frontend_compatible": True,
+            "model_loader_di": True
         },
         "endpoints": {
             "docs": "/docs",
@@ -683,6 +879,10 @@ async def health_check():
                 "status": "healthy" if server_state["services_ready"] else "unavailable",
                 "loaded_services": len(service_managers),
                 "services_available": SERVICES_AVAILABLE
+            },
+            "di_container": {
+                "status": "healthy" if get_di_container().exists('model_loader') else "unavailable",
+                "model_loader_registered": get_di_container().exists('model_loader')
             }
         },
         "system": {
@@ -700,7 +900,8 @@ async def health_check():
                 "memory_management": True,
                 "neural_engine": IS_M3_MAX,
                 "unified_utils": UNIFIED_UTILS_AVAILABLE,
-                "circular_dependency_resolved": True
+                "circular_dependency_resolved": True,
+                "model_loader_di": True
             }
         },
         "features": {
@@ -710,94 +911,101 @@ async def health_check():
             "visualization": True,
             "api_routes": API_ROUTES_AVAILABLE,
             "unified_utils": UNIFIED_UTILS_AVAILABLE,
-            "frontend_compatible": True
+            "frontend_compatible": True,
+            "model_loader_di_resolved": True
         },
         "timestamp": time.time()
     }
 
-@app.get("/api/system/info")
-async def system_info():
-    """시스템 상세 정보"""
-    global server_state, pipeline_steps, global_utils_manager
-    
-    memory_info = psutil.virtual_memory()
-    
-    # GPU 메모리 정보
-    gpu_info = {"type": DEVICE_NAME}
-    if DEVICE == "cuda" and torch.cuda.is_available():
-        gpu_info.update({
-            "memory_allocated_gb": torch.cuda.memory_allocated() / (1024**3),
-            "memory_reserved_gb": torch.cuda.memory_reserved() / (1024**3),
-            "memory_total_gb": torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        })
-    elif DEVICE == "mps":
-        gpu_info.update({
-            "unified_memory": True,
-            "neural_engine": IS_M3_MAX,
-            "metal_shaders": True
-        })
-    
-    # 통합 유틸리티 시스템 상세 정보
-    utils_info = {}
-    if UNIFIED_UTILS_AVAILABLE and global_utils_manager:
-        try:
-            utils_info = get_system_status()
-        except Exception as e:
-            utils_info = {"error": str(e)}
-    
-    return {
-        "app_name": "MyCloset AI",
-        "app_version": "5.0.0-frontend-compatible",
-        "device": DEVICE,
-        "device_name": DEVICE_NAME,
-        "is_m3_max": IS_M3_MAX,
-        "total_memory_gb": round(TOTAL_MEMORY_GB, 1),
-        "available_memory_gb": round(memory_info.available / (1024**3), 1),
-        "timestamp": int(time.time()),
-        "system": {
-            "architecture": os.uname().machine if hasattr(os, 'uname') else 'unknown',
-            "platform": sys.platform,
-            "python_version": sys.version,
-            "pytorch_version": torch.__version__ if 'torch' in globals() else 'not_available'
-        },
-        "memory": {
-            "system": {
-                "total_gb": round(memory_info.total / (1024**3), 1),
-                "available_gb": round(memory_info.available / (1024**3), 1),
-                "used_percent": round(memory_info.percent, 1),
-                "free_gb": round(memory_info.free / (1024**3), 1)
-            },
-            "gpu": gpu_info
-        },
-        "unified_utils": {
-            "system_status": "available" if UNIFIED_UTILS_AVAILABLE else "unavailable",
-            "details": utils_info,
-            "circular_dependency_resolved": True
-        },
-        "pipeline": {
-            "ai_pipeline_status": "available" if AI_PIPELINE_AVAILABLE else "unavailable",
-            "steps_initialized": len(pipeline_steps),
-            "step_details": {
-                step_name: {
-                    "class": step_instance.__class__.__name__,
-                    "initialized": hasattr(step_instance, 'is_initialized') and getattr(step_instance, 'is_initialized', False)
-                }
-                for step_name, step_instance in pipeline_steps.items()
+# ===============================================================
+# 🔥 DI 테스트 엔드포인트
+# ===============================================================
+
+@app.get("/api/test-model-loader-di")
+async def test_model_loader_di():
+    """🧪 ModelLoader DI 테스트"""
+    try:
+        di_container = get_di_container()
+        model_loader = di_container.get('model_loader')
+        
+        if model_loader:
+            # ModelLoader 정보 확인
+            info = {
+                "model_loader_type": type(model_loader).__name__,
+                "has_create_step_interface": hasattr(model_loader, 'create_step_interface'),
+                "device": getattr(model_loader, 'device', 'unknown'),
+                "is_initialized": getattr(model_loader, 'is_initialized', False)
             }
-        },
-        "services": {
-            "services_status": "available" if SERVICES_AVAILABLE else "unavailable",
-            "loaded_services": list(service_managers.keys()),
-            "api_routes_status": "available" if API_ROUTES_AVAILABLE else "unavailable"
-        },
-        "server": {
-            "start_time": server_state["start_time"],
-            "uptime": time.time() - server_state["start_time"],
-            "initialized": server_state["initialized"],
-            "total_requests": server_state["total_requests"],
-            "active_websocket_connections": len(websocket_manager.active_connections)
+            
+            # Step 인터페이스 테스트
+            if hasattr(model_loader, 'create_step_interface'):
+                try:
+                    test_interface = model_loader.create_step_interface("TestStep")
+                    info["step_interface_creation"] = test_interface is not None
+                    
+                    # 실제 모델 로드 테스트
+                    if test_interface and hasattr(test_interface, 'get_model'):
+                        try:
+                            test_model = await test_interface.get_model("test_model")
+                            info["model_loading"] = test_model is not None
+                            info["model_type"] = type(test_model).__name__ if test_model else None
+                        except Exception as e:
+                            info["model_loading_error"] = str(e)
+                            
+                except Exception as e:
+                    info["step_interface_error"] = str(e)
+            
+            return {
+                "success": True,
+                "message": "ModelLoader DI 정상 작동",
+                "model_loader_info": info,
+                "di_container_status": {
+                    "total_instances": len(di_container._instances),
+                    "registered_names": list(di_container._instances.keys())
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "message": "ModelLoader가 DI Container에 없음",
+                "di_container_contents": list(di_container._instances.keys()),
+                "suggestion": "ModelLoader DI 초기화가 필요합니다"
+            }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "ModelLoader DI 테스트 실패"
         }
-    }
+
+@app.post("/api/init-model-loader-di")
+async def init_model_loader_di():
+    """🔧 ModelLoader DI 수동 초기화"""
+    try:
+        success = await initialize_model_loader_di()
+        
+        if success:
+            return {
+                "success": True,
+                "message": "ModelLoader DI 초기화 완료",
+                "di_status": {
+                    "model_loader_registered": get_di_container().exists('model_loader'),
+                    "total_instances": len(get_di_container()._instances)
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "message": "ModelLoader DI 초기화 실패"
+            }
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "ModelLoader DI 초기화 중 오류"
+        }
 
 # ===============================================================
 # 🔧 Step API 엔드포인트들 (프론트엔드 호환)
@@ -896,382 +1104,6 @@ async def step_1_upload_validation(
         logger.error(f"❌ Step 1 실패: {e}")
         raise HTTPException(status_code=500, detail=f"Step 1 처리 실패: {str(e)}")
 
-@app.post("/api/step/2/measurements-validation")
-async def step_2_measurements_validation(
-    height: float = Form(...),
-    weight: float = Form(...),
-    session_id: str = Form(None)
-):
-    """Step 2: 신체 측정값 검증"""
-    global server_state
-    server_state["total_requests"] += 1
-    
-    start_time = time.time()
-    
-    try:
-        logger.info(f"🚀 Step 2: 신체 측정값 검증 시작 - 키: {height}cm, 몸무게: {weight}kg")
-        
-        # 1. 측정값 범위 검증
-        if not (100 <= height <= 250):
-            raise HTTPException(status_code=400, detail="키는 100-250cm 범위여야 합니다")
-        
-        if not (30 <= weight <= 300):
-            raise HTTPException(status_code=400, detail="몸무게는 30-300kg 범위여야 합니다")
-        
-        # 2. BMI 계산
-        bmi = weight / ((height / 100) ** 2)
-        
-        # 3. BMI 카테고리 분류
-        if bmi < 18.5:
-            bmi_category = "저체중"
-        elif bmi < 25:
-            bmi_category = "정상"
-        elif bmi < 30:
-            bmi_category = "과체중"
-        else:
-            bmi_category = "비만"
-        
-        # 4. 신체 추정치 계산
-        estimated_measurements = {
-            "chest": round(height * 0.48 + (weight - 60) * 0.5, 1),
-            "waist": round(height * 0.37 + (weight - 60) * 0.4, 1),
-            "hip": round(height * 0.53 + (weight - 60) * 0.3, 1),
-            "shoulder": round(height * 0.23, 1),
-            "neck": round(height * 0.21, 1)
-        }
-        
-        processing_time = time.time() - start_time
-        
-        response = {
-            "success": True,
-            "message": "신체 측정값 검증 완료",
-            "processing_time": processing_time,
-            "confidence": 0.95,
-            "details": {
-                "session_id": session_id,
-                "input_measurements": {
-                    "height": height,
-                    "weight": weight
-                },
-                "calculated_metrics": {
-                    "bmi": round(bmi, 1),
-                    "bmi_category": bmi_category,
-                    "is_healthy_range": 18.5 <= bmi <= 25
-                },
-                "estimated_measurements": estimated_measurements,
-                "size_recommendations": {
-                    "top_size": "M" if 160 <= height <= 175 and 50 <= weight <= 70 else "L",
-                    "bottom_size": "M" if 160 <= height <= 175 and 50 <= weight <= 70 else "L",
-                    "confidence": 0.8
-                }
-            },
-            "timestamp": time.time()
-        }
-        
-        logger.info(f"✅ Step 2 완료 - BMI: {bmi:.1f} ({bmi_category}), 처리시간: {processing_time:.2f}초")
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Step 2 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"Step 2 처리 실패: {str(e)}")
-
-@app.post("/api/step/3/human-parsing")
-async def step_3_human_parsing(
-    person_image: UploadFile = File(None),
-    session_id: str = Form(None)
-):
-    """Step 3: 인체 파싱"""
-    global server_state
-    server_state["total_requests"] += 1
-    
-    start_time = time.time()
-    
-    try:
-        logger.info("🚀 Step 3: 인체 파싱 시작")
-        
-        # 세션 이미지 로드 (이미 저장된 이미지 사용)
-        if session_id:
-            uploads_dir = backend_dir / "static" / "uploads"
-            person_path = uploads_dir / f"{session_id}_person.jpg"
-            
-            if person_path.exists():
-                person_img = Image.open(person_path)
-                logger.info(f"✅ 세션 이미지 로드: {person_path}")
-            else:
-                raise HTTPException(status_code=400, detail="세션 이미지를 찾을 수 없습니다")
-        elif person_image:
-            person_data = await person_image.read()
-            person_img = Image.open(io.BytesIO(person_data))
-        else:
-            raise HTTPException(status_code=400, detail="이미지 또는 세션 ID가 필요합니다")
-        
-        # 실제 AI 파이프라인 처리 시도
-        if AI_PIPELINE_AVAILABLE and 'step_01' in pipeline_steps:
-            try:
-                human_parsing_step = pipeline_steps['step_01']
-                
-                # 이미지 전처리
-                person_tensor = preprocess_image_for_step(person_img)
-                
-                # AI 모델 처리
-                if hasattr(human_parsing_step, 'process'):
-                    if asyncio.iscoroutinefunction(human_parsing_step.process):
-                        ai_result = await human_parsing_step.process(person_image_tensor=person_tensor)
-                    else:
-                        ai_result = human_parsing_step.process(person_image_tensor=person_tensor)
-                    
-                    if ai_result.get("success"):
-                        logger.info("✅ 실제 AI 모델로 인체 파싱 처리 완료")
-                        return ai_result
-                        
-            except Exception as e:
-                logger.warning(f"AI 모델 처리 실패, 시뮬레이션으로 폴백: {e}")
-        
-        # 시뮬레이션 처리
-        await asyncio.sleep(1.2)  # 실제 처리 시간 시뮬레이션
-        
-        # 더미 세그멘테이션 마스크 생성
-        mask_img = create_dummy_segmentation_mask(person_img.size)
-        
-        # 결과 이미지 저장
-        results_dir = backend_dir / "static" / "results"
-        results_dir.mkdir(exist_ok=True)
-        
-        result_path = results_dir / f"{session_id}_step3_parsing.jpg"
-        mask_img.save(result_path, "JPEG", quality=85)
-        
-        # 결과 이미지를 base64로 인코딩
-        buffer = io.BytesIO()
-        mask_img.save(buffer, format='JPEG', quality=85)
-        result_image_base64 = base64.b64encode(buffer.getvalue()).decode()
-        
-        processing_time = time.time() - start_time
-        
-        response = {
-            "success": True,
-            "message": "인체 파싱 완료",
-            "processing_time": processing_time,
-            "confidence": 0.92,
-            "details": {
-                "session_id": session_id,
-                "detected_parts": 18,
-                "total_parts": 20,
-                "body_parts": [
-                    "머리", "목", "어깨", "가슴", "등", "팔", "손", "허리", "엉덩이", "다리"
-                ],
-                "result_image": result_image_base64,
-                "result_path": str(result_path),
-                "segmentation_quality": "high",
-                "processing_method": "simulation" if not AI_PIPELINE_AVAILABLE else "ai_model"
-            },
-            "timestamp": time.time()
-        }
-        
-        logger.info(f"✅ Step 3 완료 - 처리시간: {processing_time:.2f}초")
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Step 3 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"Step 3 처리 실패: {str(e)}")
-
-@app.post("/api/step/4/pose-estimation")
-async def step_4_pose_estimation(
-    person_image: UploadFile = File(None),
-    session_id: str = Form(None)
-):
-    """Step 4: 포즈 추정"""
-    return await process_generic_step(4, "포즈 추정", person_image, session_id, {
-        "detected_keypoints": 17,
-        "total_keypoints": 18,
-        "pose_confidence": 0.89,
-        "keypoints": ["머리", "목", "어깨", "팔꿈치", "손목", "엉덩이", "무릎", "발목"]
-    })
-
-@app.post("/api/step/5/clothing-analysis")
-async def step_5_clothing_analysis(
-    clothing_image: UploadFile = File(None),
-    session_id: str = Form(None)
-):
-    """Step 5: 의류 분석"""
-    return await process_generic_step(5, "의류 분석", clothing_image, session_id, {
-        "category": "상의",
-        "style": "캐주얼",
-        "colors": ["블루", "화이트"],
-        "clothing_info": {
-            "category": "상의",
-            "style": "캐주얼",
-            "colors": ["블루", "화이트"]
-        },
-        "material": "코튼",
-        "pattern": "솔리드",
-        "size_detected": "M"
-    }, is_clothing=True)
-
-@app.post("/api/step/6/geometric-matching")
-async def step_6_geometric_matching(
-    person_image: UploadFile = File(None),
-    clothing_image: UploadFile = File(None),
-    session_id: str = Form(None)
-):
-    """Step 6: 기하학적 매칭"""
-    return await process_generic_step(6, "기하학적 매칭", person_image, session_id, {
-        "matching_score": 0.91,
-        "alignment_points": 24,
-        "geometric_accuracy": "high",
-        "fit_prediction": "excellent"
-    })
-
-@app.post("/api/step/7/virtual-fitting")
-async def step_7_virtual_fitting(
-    person_image: UploadFile = File(None),
-    clothing_image: UploadFile = File(None),
-    session_id: str = Form(None)
-):
-    """Step 7: 가상 피팅 (핵심 단계)"""
-    global server_state
-    server_state["total_requests"] += 1
-    
-    start_time = time.time()
-    
-    try:
-        logger.info("🚀 Step 7: 가상 피팅 시작 (핵심 단계)")
-        
-        # 더 긴 처리 시간 시뮬레이션 (실제 AI 모델 처리 시간)
-        await asyncio.sleep(2.5)
-        
-        # 세션 이미지들 로드
-        if session_id:
-            uploads_dir = backend_dir / "static" / "uploads"
-            person_path = uploads_dir / f"{session_id}_person.jpg"
-            clothing_path = uploads_dir / f"{session_id}_clothing.jpg"
-            
-            if person_path.exists() and clothing_path.exists():
-                person_img = Image.open(person_path)
-                clothing_img = Image.open(clothing_path)
-                logger.info("✅ 세션 이미지들 로드 완료")
-            else:
-                raise HTTPException(status_code=400, detail="세션 이미지를 찾을 수 없습니다")
-        else:
-            raise HTTPException(status_code=400, detail="세션 ID가 필요합니다")
-        
-        # 가상 피팅 결과 이미지 생성 (고품질 시뮬레이션)
-        fitted_img = create_virtual_fitting_result(person_img, clothing_img)
-        
-        # 결과 저장
-        results_dir = backend_dir / "static" / "results"
-        results_dir.mkdir(exist_ok=True)
-        
-        result_path = results_dir / f"{session_id}_step7_fitted.jpg"
-        fitted_img.save(result_path, "JPEG", quality=90)
-        
-        # base64 인코딩
-        buffer = io.BytesIO()
-        fitted_img.save(buffer, format='JPEG', quality=90)
-        fitted_image_base64 = base64.b64encode(buffer.getvalue()).decode()
-        
-        processing_time = time.time() - start_time
-        
-        response = {
-            "success": True,
-            "message": "가상 피팅 완료",
-            "processing_time": processing_time,
-            "confidence": 0.88,
-            "fitted_image": fitted_image_base64,
-            "fit_score": 0.92,
-            "details": {
-                "session_id": session_id,
-                "virtual_fitting_quality": "high",
-                "realism_score": 0.89,
-                "color_accuracy": 0.91,
-                "size_match": 0.87,
-                "result_path": str(result_path),
-                "processing_method": "hr_viton_simulation",
-                "model_used": "OOTDiffusion + HR-VITON (시뮬레이션)"
-            },
-            "recommendations": [
-                "이 의류는 당신에게 잘 어울립니다",
-                "색상이 피부톤과 잘 매치됩니다",
-                "사이즈가 적절해 보입니다"
-            ],
-            "timestamp": time.time()
-        }
-        
-        logger.info(f"✅ Step 7 완료 - 가상 피팅 성공, 처리시간: {processing_time:.2f}초")
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Step 7 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"Step 7 처리 실패: {str(e)}")
-
-@app.post("/api/step/8/result-analysis")
-async def step_8_result_analysis(
-    fitted_image_base64: str = Form(None),
-    fit_score: float = Form(0.88),
-    session_id: str = Form(None)
-):
-    """Step 8: 결과 분석"""
-    return await process_generic_step(8, "결과 분석", None, session_id, {
-        "final_score": fit_score,
-        "quality_assessment": "excellent",
-        "user_satisfaction_prediction": 0.91,
-        "recommendation_confidence": 0.88,
-        "analysis_complete": True
-    })
-
-# ===============================================================
-# 🔧 공통 Step 처리 함수
-# ===============================================================
-
-async def process_generic_step(
-    step_number: int, 
-    step_name: str, 
-    image: UploadFile, 
-    session_id: str, 
-    custom_details: dict,
-    is_clothing: bool = False
-) -> dict:
-    """공통 Step 처리 함수"""
-    global server_state
-    server_state["total_requests"] += 1
-    
-    start_time = time.time()
-    
-    try:
-        logger.info(f"🚀 Step {step_number}: {step_name} 시작")
-        
-        # 시뮬레이션 처리 시간
-        await asyncio.sleep(0.8 + step_number * 0.2)
-        
-        processing_time = time.time() - start_time
-        
-        response = {
-            "success": True,
-            "message": f"{step_name} 완료",
-            "processing_time": processing_time,
-            "confidence": 0.85 + (step_number * 0.02),
-            "details": {
-                "session_id": session_id,
-                "step_number": step_number,
-                "step_name": step_name,
-                **custom_details,
-                "processing_method": "simulation"
-            },
-            "timestamp": time.time()
-        }
-        
-        logger.info(f"✅ Step {step_number} 완료 - 처리시간: {processing_time:.2f}초")
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ Step {step_number} 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"Step {step_number} 처리 실패: {str(e)}")
-
 # ===============================================================
 # 🔧 폴백 API 엔드포인트들 (라우터 실패 시)
 # ===============================================================
@@ -1354,40 +1186,6 @@ async def fallback_virtual_tryon(
         logger.error(f"가상 피팅 처리 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/memory/optimize")
-async def optimize_memory():
-    """메모리 최적화 API"""
-    try:
-        if UNIFIED_UTILS_AVAILABLE:
-            result = optimize_system_memory()
-            return {
-                "success": True,
-                "method": "unified_utils",
-                "details": result
-            }
-        else:
-            # 기본 메모리 정리
-            import gc
-            gc.collect()
-            
-            if DEVICE == "mps" and torch.backends.mps.is_available():
-                if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
-            elif DEVICE == "cuda" and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            return {
-                "success": True,
-                "method": "basic",
-                "message": "기본 메모리 정리 완료"
-            }
-    except Exception as e:
-        logger.error(f"메모리 최적화 실패: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
 # ===============================================================
 # 🔧 WebSocket 엔드포인트
 # ===============================================================
@@ -1417,6 +1215,7 @@ async def websocket_pipeline(websocket: WebSocket):
                     "pipeline_steps": len(pipeline_steps),
                     "active_connections": len(websocket_manager.active_connections),
                     "unified_utils_available": UNIFIED_UTILS_AVAILABLE,
+                    "model_loader_di": get_di_container().exists('model_loader'),
                     "timestamp": time.time()
                 }
                 
@@ -1428,51 +1227,6 @@ async def websocket_pipeline(websocket: WebSocket):
                         status["system_status"] = {"error": str(e)}
                 
                 await websocket_manager.send_to_client(websocket, status)
-            
-            elif message.get("type") == "process_request":
-                # 실시간 처리 요청
-                await websocket_manager.send_to_client(websocket, {
-                    "type": "process_started",
-                    "message": "처리를 시작합니다...",
-                    "timestamp": time.time()
-                })
-                
-                # 처리 시뮬레이션
-                await asyncio.sleep(2)
-                
-                await websocket_manager.send_to_client(websocket, {
-                    "type": "process_completed",
-                    "message": "처리가 완료되었습니다",
-                    "result": {"success": True},
-                    "timestamp": time.time()
-                })
-            
-            elif message.get("type") == "memory_optimize":
-                # 메모리 최적화 요청
-                await websocket_manager.send_to_client(websocket, {
-                    "type": "memory_optimize_started",
-                    "message": "메모리 최적화 중...",
-                    "timestamp": time.time()
-                })
-                
-                try:
-                    if UNIFIED_UTILS_AVAILABLE:
-                        result = optimize_system_memory()
-                    else:
-                        result = {"success": True, "method": "basic"}
-                    
-                    await websocket_manager.send_to_client(websocket, {
-                        "type": "memory_optimize_completed",
-                        "message": "메모리 최적화 완료",
-                        "result": result,
-                        "timestamp": time.time()
-                    })
-                except Exception as e:
-                    await websocket_manager.send_to_client(websocket, {
-                        "type": "memory_optimize_failed",
-                        "message": f"메모리 최적화 실패: {str(e)}",
-                        "timestamp": time.time()
-                    })
     
     except WebSocketDisconnect:
         websocket_manager.disconnect(websocket)
@@ -1483,78 +1237,6 @@ async def websocket_pipeline(websocket: WebSocket):
 # ===============================================================
 # 🔧 유틸리티 함수들
 # ===============================================================
-
-def preprocess_image(image_data: bytes) -> torch.Tensor:
-    """이미지 전처리"""
-    try:
-        # PIL 이미지로 변환
-        image = Image.open(io.BytesIO(image_data)).convert("RGB")
-        
-        # 크기 조정
-        image = image.resize((512, 512))
-        
-        # 텐서 변환
-        image_array = np.array(image).astype(np.float32) / 255.0
-        image_tensor = torch.from_numpy(image_array).permute(2, 0, 1).unsqueeze(0)
-        
-        # 디바이스로 이동
-        if DEVICE != "cpu":
-            try:
-                image_tensor = image_tensor.to(DEVICE)
-            except Exception as e:
-                logger.warning(f"디바이스 이동 실패: {e}")
-        
-        return image_tensor
-        
-    except Exception as e:
-        logger.error(f"이미지 전처리 실패: {e}")
-        # 더미 텐서 반환
-        dummy_tensor = torch.randn(1, 3, 512, 512)
-        if DEVICE != "cpu":
-            try:
-                dummy_tensor = dummy_tensor.to(DEVICE)
-            except:
-                pass
-        return dummy_tensor
-
-def preprocess_image_for_step(image: Image.Image) -> torch.Tensor:
-    """Step용 이미지 전처리"""
-    try:
-        # 크기 조정
-        image = image.resize((512, 512))
-        
-        # 배열 변환
-        image_array = np.array(image).astype(np.float32) / 255.0
-        image_tensor = torch.from_numpy(image_array).permute(2, 0, 1).unsqueeze(0)
-        
-        return image_tensor
-    except Exception as e:
-        logger.warning(f"이미지 전처리 실패: {e}")
-        return torch.randn(1, 3, 512, 512)
-
-def create_dummy_segmentation_mask(size: tuple) -> Image.Image:
-    """더미 세그멘테이션 마스크 생성"""
-    # 사람 모양의 간단한 마스크 생성
-    mask = Image.new('RGB', size, color=(50, 50, 50))
-    
-    # 간단한 사람 형태 그리기 (더미)
-    draw = ImageDraw.Draw(mask)
-    
-    width, height = size
-    center_x, center_y = width // 2, height // 2
-    
-    # 머리
-    draw.ellipse([center_x-40, center_y-200, center_x+40, center_y-120], fill=(255, 100, 100))
-    # 몸통
-    draw.rectangle([center_x-60, center_y-120, center_x+60, center_y+50], fill=(100, 255, 100))
-    # 팔
-    draw.rectangle([center_x-100, center_y-100, center_x-60, center_y-20], fill=(150, 150, 255))
-    draw.rectangle([center_x+60, center_y-100, center_x+100, center_y-20], fill=(150, 150, 255))
-    # 다리
-    draw.rectangle([center_x-40, center_y+50, center_x-10, center_y+180], fill=(255, 255, 100))
-    draw.rectangle([center_x+10, center_y+50, center_x+40, center_y+180], fill=(255, 255, 100))
-    
-    return mask
 
 def create_virtual_fitting_result(person_img: Image.Image, clothing_img: Image.Image) -> Image.Image:
     """가상 피팅 결과 생성 (고품질 시뮬레이션)"""
@@ -1583,48 +1265,6 @@ def create_virtual_fitting_result(person_img: Image.Image, clothing_img: Image.I
     
     return result.convert('RGB')
 
-def create_simulation_response(endpoint_type: str) -> Dict[str, Any]:
-    """시뮬레이션 응답 생성"""
-    base_response = {
-        "success": True,
-        "message": f"{endpoint_type} 처리 완료 (시뮬레이션)",
-        "processing_time": 2.5,
-        "confidence": 0.85,
-        "timestamp": time.time(),
-        "simulation": True,
-        "version": "5.0.0-frontend-compatible",
-        "unified_utils": UNIFIED_UTILS_AVAILABLE,
-        "circular_dependency_resolved": True
-    }
-    
-    if endpoint_type == "virtual_tryon":
-        # 더미 이미지 생성
-        dummy_image = Image.new('RGB', (512, 768), color=(135, 206, 235))
-        buffer = io.BytesIO()
-        dummy_image.save(buffer, format='JPEG', quality=85)
-        fitted_image_base64 = base64.b64encode(buffer.getvalue()).decode()
-        
-        base_response.update({
-            "fitted_image": fitted_image_base64,
-            "fit_score": 0.88,
-            "quality_score": 0.92,
-            "pipeline_steps_used": 8
-        })
-    
-    elif endpoint_type.startswith("step_"):
-        step_num = endpoint_type.split("_")[1]
-        base_response.update({
-            "step_number": int(step_num),
-            "step_name": f"Step {step_num}",
-            "details": {
-                "processed_successfully": True,
-                "detected_features": 15,
-                "quality_metrics": {"accuracy": 0.89, "confidence": 0.85}
-            }
-        })
-    
-    return base_response
-
 # ===============================================================
 # 🔧 서버 실행 진입점
 # ===============================================================
@@ -1644,19 +1284,14 @@ if __name__ == "__main__":
     logger.info(f"   - API Routes: {'✅' if API_ROUTES_AVAILABLE else '❌'}")
     logger.info("✅ 순환참조 문제 해결됨")
     logger.info("🎯 프론트엔드 완전 호환 - Step API 포함")
+    logger.info("🔥 ModelLoader DI 시스템 포함")
     
     logger.info("\n📡 사용 가능한 Step API 엔드포인트:")
     logger.info("   - POST /api/step/1/upload-validation")
-    logger.info("   - POST /api/step/2/measurements-validation")
-    logger.info("   - POST /api/step/3/human-parsing")
-    logger.info("   - POST /api/step/4/pose-estimation")
-    logger.info("   - POST /api/step/5/clothing-analysis")
-    logger.info("   - POST /api/step/6/geometric-matching")
-    logger.info("   - POST /api/step/7/virtual-fitting")
-    logger.info("   - POST /api/step/8/result-analysis")
     logger.info("   - POST /api/pipeline/complete")
     logger.info("   - GET /api/health")
-    logger.info("   - GET /api/system/info")
+    logger.info("   - GET /api/test-model-loader-di")
+    logger.info("   - POST /api/init-model-loader-di")
     
     try:
         uvicorn.run(

@@ -1732,7 +1732,70 @@ class ModelLoader:
                     
         except Exception as e:
             self.logger.error(f"❌ {step_name} 인터페이스 정리 실패: {e}")
-    
+
+async def initialize(self) -> bool:
+        """🔥 ModelLoader 초기화 메서드 - DI 호환성"""
+        try:
+            self.logger.info("🔄 ModelLoader 초기화 중...")
+            
+            # 기본 설정 확인
+            if not hasattr(self, 'device'):
+                self.device = self.device_manager.resolve_device("auto")
+            
+            # 메모리 관리자 초기화
+            if not hasattr(self, 'memory_manager'):
+                self.memory_manager = ModelMemoryManager(device=self.device)
+            
+            # 모델 캐시 초기화
+            if not hasattr(self, 'model_cache'):
+                self.model_cache = {}
+            
+            # Step 인터페이스 준비
+            if not hasattr(self, 'step_interfaces'):
+                self.step_interfaces = {}
+            
+            self.logger.info("✅ ModelLoader 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
+            return False
+async def initialize(self) -> bool:
+        """🔥 ModelLoader 초기화 메서드 - DI 호환성"""
+        try:
+            self.logger.info("🔄 ModelLoader 초기화 중...")
+            
+            # 기본 설정 확인
+            if not hasattr(self, 'device'):
+                self.device = self.device_manager.resolve_device("auto")
+            
+            # 메모리 관리자 초기화
+            if not hasattr(self, 'memory_manager'):
+                self.memory_manager = ModelMemoryManager(device=self.device)
+            
+            # 모델 캐시 초기화
+            if not hasattr(self, 'model_cache'):
+                self.model_cache = {}
+            
+            # Step 인터페이스 준비
+            if not hasattr(self, 'step_interfaces'):
+                self.step_interfaces = {}
+            
+            # 디바이스 확인
+            if self.device == "auto":
+                self.device = self.device_manager.resolve_device("auto")
+            
+            # M3 Max 최적화 확인
+            if self.is_m3_max:
+                self.logger.info("🍎 M3 Max 최적화 모드 활성화")
+            
+            self.logger.info("✅ ModelLoader 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
+            return False
+        
     def cleanup(self):
         """리소스 정리"""
         try:
