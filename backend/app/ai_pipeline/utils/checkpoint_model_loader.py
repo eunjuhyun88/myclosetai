@@ -1,132 +1,98 @@
 # app/ai_pipeline/utils/checkpoint_model_loader.py
 """
 체크포인트 분석 기반 ModelLoader 완전 연동
-실제 다운로드된 127.2GB 체크포인트들 활용
+실제 다운로드된 80GB 체크포인트들 활용
 """
 
-import os
-import torch
+from app.ai_pipeline.utils.model_loader import ModelLoader, ModelConfig, ModelType
+from app.core.optimized_model_paths import (
+    ANALYZED_MODELS, get_optimal_model_for_step, 
+    get_checkpoint_path, get_largest_checkpoint
+)
 from pathlib import Path
-from typing import Dict, Any, Optional, List
 import logging
-
-try:
-    from app.core.optimized_model_paths import (
-        ANALYZED_MODELS, get_optimal_model_for_step, 
-        get_checkpoint_path, get_largest_checkpoint
-    )
-    OPTIMIZED_PATHS_AVAILABLE = True
-except ImportError:
-    OPTIMIZED_PATHS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
-class CheckpointModelLoader:
-    """체크포인트 분석 기반 모델 로더"""
+class CheckpointModelLoader(ModelLoader):
+    """체크포인트 분석 기반 확장 ModelLoader"""
     
-    def __init__(self, device: str = "auto"):
-        self.device = self._setup_device(device)
-        self.models = {}
-        self.loaded_models = {}
-        
-        if OPTIMIZED_PATHS_AVAILABLE:
-            self._register_analyzed_models()
-        else:
-            logger.warning("⚠️ 최적화된 모델 경로가 없습니다")
-    
-    def _setup_device(self, device: str) -> str:
-        """디바이스 설정"""
-        if device == "auto":
-            if torch.backends.mps.is_available():
-                return "mps"
-            elif torch.cuda.is_available():
-                return "cuda"
-            else:
-                return "cpu"
-        return device
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._register_analyzed_models()
     
     def _register_analyzed_models(self):
-        """분석된 체크포인트 모델들 등록"""
-        if not OPTIMIZED_PATHS_AVAILABLE:
-            return
-            
+        """분석된 체크포인트 모델들 자동 등록"""
+        logger.info("📦 분석된 체크포인트 모델들 등록 중...")
+        
         registered_count = 0
         
         for model_name, model_info in ANALYZED_MODELS.items():
             if not model_info["ready"]:
                 continue
-            
-            try:
-                # 모델 정보 등록
-                self.models[model_name] = {
-                    "name": model_info["name"],
-                    "type": model_info["type"],
-                    "step": model_info["step"],
-                    "path": model_info["path"],
-                    "checkpoints": model_info["checkpoints"],
-                    "size_mb": model_info["size_mb"],
-                    "priority": model_info["priority"]
-                }
                 
+            try:
+                # ModelType 매핑
+                model_type = self._map_to_model_type(model_info["type"])
+                if not model_type:
+                    continue
+                
+                # 가장 큰 체크포인트 경로
+                main_checkpoint = get_largest_checkpoint(model_name)
+                checkpoint_path = get_checkpoint_path(model_name, main_checkpoint) if main_checkpoint else None
+                
+                # 모델 설정 생성
+                model_config = ModelConfig(
+                    name=model_info["name"],
+                    model_type=model_type,
+                    model_class=self._get_model_class(model_info["type"]),
+                    checkpoint_path=str(checkpoint_path) if checkpoint_path else None,
+                    input_size=(512, 512),
+                    device=self.device
+                )
+                
+                # 모델 등록
+                self.register_model(model_name, model_config)
                 registered_count += 1
+                
+                logger.info(f"   ✅ {model_name}: {model_info['name']}")
                 
             except Exception as e:
                 logger.warning(f"   ⚠️ {model_name} 등록 실패: {e}")
         
-        logger.info(f"📦 {registered_count}개 체크포인트 모델 등록 완료")
+        logger.info(f"📦 총 {registered_count}개 체크포인트 모델 등록 완료")
     
-    async def load_model(self, model_name: str, **kwargs) -> Optional[Any]:
-        """모델 로드"""
-        if model_name in self.loaded_models:
-            return self.loaded_models[model_name]
-        
-        if model_name not in self.models:
-            logger.warning(f"⚠️ 등록되지 않은 모델: {model_name}")
-            return None
-        
-        try:
-            model_info = self.models[model_name]
-            
-            # 가장 큰 체크포인트 경로 찾기
-            largest_checkpoint = get_largest_checkpoint(model_name)
-            if not largest_checkpoint:
-                logger.warning(f"⚠️ {model_name}의 체크포인트를 찾을 수 없습니다")
-                return None
-            
-            checkpoint_path = get_checkpoint_path(model_name, largest_checkpoint)
-            
-            if not checkpoint_path or not checkpoint_path.exists():
-                logger.warning(f"⚠️ {model_name}의 체크포인트 파일이 없습니다: {checkpoint_path}")
-                return None
-            
-            # PyTorch 모델 로드
-            logger.info(f"🔧 {model_name} 로딩 중... ({checkpoint_path})")
-            
-            # 안전한 로드
-            try:
-                model = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
-            except:
-                # weights_only가 지원되지 않는 경우 폴백
-                model = torch.load(checkpoint_path, map_location=self.device)
-            
-            # 모델 정리 및 디바이스 이동
-            if isinstance(model, dict):
-                if 'model' in model:
-                    model = model['model']
-                elif 'state_dict' in model:
-                    model = model['state_dict']
-            
-            # 캐시에 저장
-            self.loaded_models[model_name] = model
-            
-            logger.info(f"✅ {model_name} 로딩 완료")
-            return model
-            
-        except Exception as e:
-            logger.error(f"❌ {model_name} 로딩 실패: {e}")
-            return None
+    def _map_to_model_type(self, analysis_type: str) -> Optional[ModelType]:
+        """분석 타입을 ModelType으로 매핑"""
+        mapping = {
+            'diffusion': ModelType.DIFFUSION,
+            'virtual_tryon': ModelType.VIRTUAL_FITTING,
+            'human_parsing': ModelType.HUMAN_PARSING,
+            'pose_estimation': ModelType.POSE_ESTIMATION,
+            'cloth_segmentation': ModelType.CLOTH_SEGMENTATION,
+            'geometric_matching': ModelType.GEOMETRIC_MATCHING,
+            'cloth_warping': ModelType.CLOTH_WARPING,
+            'detection': ModelType.SEGMENTATION,
+            'text_image': ModelType.DIFFUSION
+        }
+        return mapping.get(analysis_type)
     
-    async def load_optimal_model_for_step(self, step: str, **kwargs) -> Optional[Any]:
+    def _get_model_class(self, analysis_type: str) -> str:
+        """분석 타입에서 모델 클래스명 추출"""
+        mapping = {
+            'diffusion': 'StableDiffusionPipeline',
+            'virtual_tryon': 'HRVITONModel',
+            'human_parsing': 'GraphonomyModel',
+            'pose_estimation': 'OpenPoseModel',
+            'cloth_segmentation': 'U2NetModel',
+            'geometric_matching': 'GeometricMatchingModel',
+            'cloth_warping': 'HRVITONModel',
+            'detection': 'DetectronModel',
+            'text_image': 'CLIPModel'
+        }
+        return mapping.get(analysis_type, 'BaseModel')
+    
+    async def load_optimal_model_for_step(self, step: str, **kwargs):
         """단계별 최적 모델 로드"""
         optimal_model = get_optimal_model_for_step(step)
         if not optimal_model:
@@ -135,27 +101,8 @@ class CheckpointModelLoader:
         
         logger.info(f"🎯 {step} 최적 모델 로드: {optimal_model}")
         return await self.load_model(optimal_model, **kwargs)
-    
-    def get_model_info(self, model_name: str) -> Optional[Dict]:
-        """모델 정보 반환"""
-        return self.models.get(model_name)
-    
-    def list_models(self) -> Dict[str, Dict]:
-        """등록된 모델 목록"""
-        return self.models.copy()
-    
-    def clear_cache(self):
-        """모델 캐시 정리"""
-        self.loaded_models.clear()
-        
-        if self.device == "mps" and torch.backends.mps.is_available():
-            torch.mps.empty_cache()
-        elif self.device == "cuda" and torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        logger.info("🧹 모델 캐시 정리 완료")
 
-# 전역 모델 로더
+# 전역 체크포인트 모델 로더
 _global_checkpoint_loader: Optional[CheckpointModelLoader] = None
 
 def get_checkpoint_model_loader(**kwargs) -> CheckpointModelLoader:
@@ -165,24 +112,20 @@ def get_checkpoint_model_loader(**kwargs) -> CheckpointModelLoader:
         _global_checkpoint_loader = CheckpointModelLoader(**kwargs)
     return _global_checkpoint_loader
 
-async def load_best_model_for_step(step: str, **kwargs) -> Optional[Any]:
+async def load_best_model_for_step(step: str, **kwargs):
     """단계별 최고 성능 모델 로드"""
     loader = get_checkpoint_model_loader()
     return await loader.load_optimal_model_for_step(step, **kwargs)
 
 # 빠른 접근 함수들
-async def load_best_diffusion_model(**kwargs) -> Optional[Any]:
+async def load_best_diffusion_model(**kwargs):
     """최고 성능 Diffusion 모델 로드"""
     return await load_best_model_for_step("step_06_virtual_fitting", **kwargs)
 
-async def load_best_human_parsing_model(**kwargs) -> Optional[Any]:
+async def load_best_human_parsing_model(**kwargs):
     """최고 성능 인체 파싱 모델 로드"""
     return await load_best_model_for_step("step_01_human_parsing", **kwargs)
 
-async def load_best_pose_model(**kwargs) -> Optional[Any]:
+async def load_best_pose_model(**kwargs):
     """최고 성능 포즈 추정 모델 로드"""
     return await load_best_model_for_step("step_02_pose_estimation", **kwargs)
-
-async def load_best_cloth_segmentation_model(**kwargs) -> Optional[Any]:
-    """최고 성능 의류 분할 모델 로드"""
-    return await load_best_model_for_step("step_03_cloth_segmentation", **kwargs)
