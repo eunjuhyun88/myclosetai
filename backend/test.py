@@ -1,9 +1,4 @@
-# 🔧 경로 문제 해결된 테스트 명령어들
 
-cd backend
-
-# 1️⃣ Python 경로 확인 및 수정
-python3 << 'EOF'
 import sys
 import os
 from pathlib import Path

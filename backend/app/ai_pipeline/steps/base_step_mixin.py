@@ -1,12 +1,12 @@
 # app/ai_pipeline/steps/base_step_mixin.py
 """
-🔥 MyCloset AI - BaseStepMixin v3.0 - 완전 통합 버전
+🔥 MyCloset AI - BaseStepMixin v3.1 - 완전 수정 버전
 =====================================
 
-✅ 두 파일의 장점을 모두 통합
 ✅ object.__init__() 파라미터 문제 완전 해결
 ✅ logger 속성 누락 문제 완전 해결
 ✅ device 속성 오류 완전 해결
+✅ config 객체 호출 오류 완전 해결
 ✅ ModelLoader 인터페이스 완벽 연동
 ✅ M3 Max 128GB 최적화 지원
 ✅ 다중 상속 안전한 처리
@@ -15,7 +15,7 @@
 
 Author: MyCloset AI Team
 Date: 2025-07-18
-Version: 3.0 (통합 완성 버전)
+Version: 3.1 (완전 수정 버전)
 """
 
 import os
@@ -68,15 +68,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 완전 통합된 BaseStepMixin v3.0
+# 🔥 완전 수정된 BaseStepMixin v3.1
 # ==============================================
 
 class BaseStepMixin:
     """
-    🔥 완전 통합된 BaseStepMixin v3.0
+    🔥 완전 수정된 BaseStepMixin v3.1
     
     모든 Step 클래스가 상속받는 기본 Mixin 클래스
-    ✅ 두 파일의 장점을 모두 통합
     ✅ 모든 초기화 문제 완전 해결
     ✅ conda 환경 완벽 지원
     ✅ M3 Max 128GB 최적화
@@ -89,29 +88,12 @@ class BaseStepMixin:
         다중 상속 시 안전하게 처리하며, object.__init__() 파라미터 문제 해결
         """
         
-        # 🔥 Step 1: 다중 상속 안전한 super() 호출
+        # 🔥 Step 1: 다중 상속 안전한 super() 호출 (파라미터 문제 해결)
         try:
-            # kwargs에서 BaseStepMixin이 모르는 파라미터들 필터링
-            base_kwargs = {}
-            
-            # 알려진 파라미터들 정의
-            known_params = {
-                'device', 'quality_level', 'device_type', 'memory_gb', 
-                'is_m3_max', 'optimization_enabled', 'batch_size',
-                'config', 'cache_dir', 'preferred_device'
-            }
-            
-            # 다른 클래스들이 사용할 수 있는 파라미터들은 유지
-            for key, value in kwargs.items():
-                if key not in known_params:
-                    base_kwargs[key] = value
-            
-            # 안전한 super() 호출 - 파라미터 없이 호출
+            # object.__init__()은 파라미터를 받지 않으므로 빈 파라미터로 호출
             super().__init__()
-            
-        except TypeError:
-            # super().__init__()이 파라미터를 받지 않는 경우 (object 클래스)
-            # 이 경우는 정상이므로 무시
+        except TypeError as e:
+            # TypeError 발생 시 super() 호출 없이 진행 (object 클래스인 경우)
             pass
         
         # 🔥 Step 2: 기본 속성들 먼저 설정 (logger 속성 누락 문제 해결)
@@ -135,8 +117,9 @@ class BaseStepMixin:
         self.quality_level = kwargs.get('quality_level', 'balanced')
         self.batch_size = kwargs.get('batch_size', self._calculate_optimal_batch_size())
         
-        # 🔥 Step 6: 설정 처리 (딕셔너리/객체 모두 안전하게 처리)
-        self.config = self._create_safe_config(kwargs.get('config', {}))
+        # 🔥 Step 6: 설정 처리 (config 객체 호출 오류 해결)
+        raw_config = kwargs.get('config', {})
+        self.config = self._create_safe_config(raw_config)
         
         # 🔥 Step 7: 상태 관리 초기화
         self.is_initialized = False
@@ -162,7 +145,7 @@ class BaseStepMixin:
         self._setup_pytorch_optimization()
         
         # 🔥 초기화 완료 로깅
-        self.logger.info(f"✅ {self.step_name} BaseStepMixin v3.0 초기화 완료")
+        self.logger.info(f"✅ {self.step_name} BaseStepMixin v3.1 초기화 완료")
         self.logger.info(f"🔧 Device: {self.device} ({self.device_type})")
         self.logger.info(f"📊 Memory: {self.memory_gb}GB, M3 Max: {'✅' if self.is_m3_max else '❌'}")
         self.logger.info(f"⚙️ Quality: {self.quality_level}, Batch: {self.batch_size}")
@@ -251,25 +234,38 @@ class BaseStepMixin:
             return 1
     
     def _create_safe_config(self, config_data: Any) -> 'SafeConfig':
-        """안전한 설정 객체 생성"""
+        """🔧 안전한 설정 객체 생성 (config 객체 호출 오류 해결)"""
         
         class SafeConfig:
             """안전한 설정 클래스 - 딕셔너리와 객체 모두 지원"""
             
             def __init__(self, data: Any):
+                self._data = {}
+                
                 if hasattr(data, '__dict__'):
                     # 설정 객체인 경우
                     self._data = data.__dict__.copy()
-                    for key, value in self._data.items():
-                        setattr(self, key, value)
                 elif isinstance(data, dict):
                     # 딕셔너리인 경우
                     self._data = data.copy()
-                    for key, value in self._data.items():
-                        setattr(self, key, value)
+                elif hasattr(data, '__call__'):
+                    # callable 객체인 경우 (config() 호출 방지)
+                    try:
+                        # 안전하게 호출 시도
+                        result = data()
+                        if isinstance(result, dict):
+                            self._data = result.copy()
+                        else:
+                            self._data = {}
+                    except Exception:
+                        self._data = {}
                 else:
                     # 기타 경우
                     self._data = {}
+                
+                # 속성으로 설정
+                for key, value in self._data.items():
+                    setattr(self, key, value)
             
             def get(self, key: str, default=None):
                 """딕셔너리처럼 get 메서드 지원"""
@@ -299,6 +295,12 @@ class BaseStepMixin:
                     self._data.update(other)
                     for key, value in other.items():
                         setattr(self, key, value)
+            
+            def __str__(self):
+                return str(self._data)
+            
+            def __repr__(self):
+                return f"SafeConfig({self._data})"
         
         return SafeConfig(config_data)
     
@@ -368,6 +370,13 @@ class BaseStepMixin:
             self.logger.error(f"❌ {self.step_name} ModelLoader 인터페이스 설정 실패: {e}")
             self.model_interface = None
             self.model_loader = None
+    
+    # 🔧 메서드 시그니처 수정 (missing positional argument 문제 해결)
+    def _auto_detect_device_safe(self, preferred_device: Optional[str] = None) -> str:
+        """안전한 디바이스 자동 탐지 (파라미터 포함)"""
+        if preferred_device and preferred_device != "auto":
+            return preferred_device
+        return self._auto_detect_device()
     
     async def initialize_step(self) -> bool:
         """🚀 Step 완전 초기화"""
@@ -502,196 +511,6 @@ class BaseStepMixin:
         
         return DummyModel(model_name, self.device, self.step_name)
     
-    def preprocess_input(self, input_data: Any, target_size: tuple = (512, 512)) -> Any:
-        """🔄 입력 데이터 전처리 - 강화된 버전"""
-        try:
-            if input_data is None:
-                return None
-            
-            # PIL 이미지 처리
-            if PIL_AVAILABLE and isinstance(input_data, Image.Image):
-                image = input_data.convert('RGB')
-                original_size = image.size
-                
-                if image.size != target_size:
-                    image = image.resize(target_size, Image.Resampling.LANCZOS)
-                
-                # 텐서 변환
-                if TORCH_AVAILABLE and NUMPY_AVAILABLE:
-                    img_array = np.array(image).astype(np.float32) / 255.0
-                    img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
-                    
-                    # 디바이스로 이동
-                    if self.device != "cpu":
-                        img_tensor = img_tensor.to(self.device)
-                    
-                    return img_tensor
-                else:
-                    return image
-            
-            # PyTorch 텐서 처리
-            elif TORCH_AVAILABLE and isinstance(input_data, torch.Tensor):
-                # 디바이스 이동
-                if input_data.device.type != self.device:
-                    input_data = input_data.to(self.device)
-                
-                # 데이터 타입 최적화
-                if hasattr(self, 'dtype') and input_data.dtype != self.dtype:
-                    if self.dtype in [torch.float16, torch.float32]:
-                        input_data = input_data.to(self.dtype)
-                
-                return input_data
-            
-            # NumPy 배열 처리
-            elif NUMPY_AVAILABLE and isinstance(input_data, np.ndarray):
-                if TORCH_AVAILABLE:
-                    tensor = torch.from_numpy(input_data).to(self.device)
-                    return tensor
-                else:
-                    return input_data
-            
-            # 기타 데이터
-            else:
-                return input_data
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ 입력 전처리 실패: {e}")
-            return input_data
-    
-    def postprocess_output(self, output_data: Any, original_size: Optional[tuple] = None) -> Any:
-        """🔄 출력 데이터 후처리 - 강화된 버전"""
-        try:
-            if output_data is None:
-                return None
-            
-            # PyTorch 텐서를 이미지로 변환
-            if TORCH_AVAILABLE and isinstance(output_data, torch.Tensor):
-                # 배치 차원 제거
-                if output_data.dim() == 4 and output_data.shape[0] == 1:
-                    output_data = output_data.squeeze(0)
-                
-                # 채널 순서 조정 (CHW -> HWC)
-                if output_data.dim() == 3 and output_data.shape[0] <= 4:
-                    output_data = output_data.permute(1, 2, 0)
-                
-                # CPU로 이동 및 정규화
-                output_data = output_data.cpu().detach()
-                
-                # 값 범위 정규화
-                if output_data.dtype in [torch.float16, torch.float32]:
-                    output_data = torch.clamp(output_data, 0, 1)
-                
-                # PIL 이미지로 변환
-                if PIL_AVAILABLE and NUMPY_AVAILABLE:
-                    if output_data.dtype in [torch.float16, torch.float32]:
-                        array = (output_data.numpy() * 255).astype(np.uint8)
-                    else:
-                        array = output_data.numpy().astype(np.uint8)
-                    
-                    # 단일 채널인 경우 RGB로 변환
-                    if array.ndim == 2:
-                        array = np.stack([array] * 3, axis=-1)
-                    elif array.shape[-1] == 1:
-                        array = np.repeat(array, 3, axis=-1)
-                    
-                    image = Image.fromarray(array)
-                    
-                    # 원본 크기로 리사이즈
-                    if original_size and image.size != original_size:
-                        image = image.resize(original_size, Image.Resampling.LANCZOS)
-                    
-                    return image
-                else:
-                    return output_data
-            
-            # 기타 데이터
-            else:
-                return output_data
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ 출력 후처리 실패: {e}")
-            return output_data
-    
-    async def safe_process(self, *args, **kwargs) -> Dict[str, Any]:
-        """🛡️ 안전한 처리 래퍼 - 강화된 버전"""
-        start_time = time.time()
-        
-        try:
-            # 초기화 확인
-            if not getattr(self, 'is_initialized', False):
-                await self.initialize_step()
-            
-            # 실제 처리 메서드 호출
-            if hasattr(self, 'process'):
-                result = await self.process(*args, **kwargs)
-            elif hasattr(self, '_process'):
-                result = await self._process(*args, **kwargs)
-            else:
-                result = await self._default_process(*args, **kwargs)
-            
-            processing_time = time.time() - start_time
-            self.last_processing_time = processing_time
-            self.total_processing_count += 1
-            
-            # 결과 표준화
-            if not isinstance(result, dict):
-                result = {
-                    'success': True,
-                    'result': result,
-                    'confidence': 0.8,
-                    'quality_score': 0.8,
-                    'processing_time': processing_time,
-                    'method': 'default'
-                }
-            else:
-                result.setdefault('success', True)
-                result.setdefault('confidence', 0.8)
-                result.setdefault('quality_score', result.get('confidence', 0.8))
-                result.setdefault('processing_time', processing_time)
-                result.setdefault('method', 'processed')
-            
-            # 성능 메트릭 기록
-            self.record_performance("process", processing_time, True)
-            
-            self.logger.debug(f"✅ {self.step_name} 처리 완료: {processing_time:.3f}초")
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 처리 실패: {e}")
-            self.logger.error(f"📋 오류 상세: {traceback.format_exc()}")
-            
-            self.error_count += 1
-            processing_time = time.time() - start_time
-            self.last_error = str(e)
-            
-            # 성능 메트릭 기록 (실패)
-            self.record_performance("process", processing_time, False)
-            
-            return {
-                'success': False,
-                'error': str(e),
-                'confidence': 0.0,
-                'quality_score': 0.0,
-                'processing_time': processing_time,
-                'method': 'error',
-                'step_name': self.step_name
-            }
-    
-    async def _default_process(self, *args, **kwargs) -> Dict[str, Any]:
-        """기본 처리 메서드 (하위클래스에서 오버라이드)"""
-        self.logger.info(f"🔄 {self.step_name} 기본 처리 실행")
-        
-        return {
-            'success': True,
-            'result': args[0] if args else None,
-            'confidence': 0.8,
-            'quality_score': 0.8,
-            'processing_time': 0.1,
-            'method': 'default',
-            'message': f'{self.step_name} 기본 처리 완료',
-            'step_name': self.step_name
-        }
-    
     def record_performance(self, operation: str, duration: float, success: bool = True):
         """📊 성능 메트릭 기록"""
         if not hasattr(self, 'performance_metrics'):
@@ -777,7 +596,7 @@ class BaseStepMixin:
             pass
 
 # ==============================================
-# 🔥 Step별 특화 Mixin들 - 완전한 8단계
+# 🔥 Step별 특화 Mixin들
 # ==============================================
 
 class HumanParsingMixin(BaseStepMixin):
@@ -978,8 +797,8 @@ __all__ = [
     'DEFAULT_DEVICE'
 ]
 
-# 로거 설정
-logger.info("✅ BaseStepMixin v3.0 완전 통합 버전 로드 완료")
+# 모듈 초기화 로그
+logger.info("✅ BaseStepMixin v3.1 완전 수정 버전 로드 완료")
 logger.info("🔗 ModelLoader 인터페이스 완벽 연동")
 logger.info("🍎 M3 Max 128GB 최적화 지원")
 logger.info("🐍 conda 환경 완벽 지원")

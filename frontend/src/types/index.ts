@@ -6,4 +6,4 @@ export type {
   QualityMetrics,
   UserMeasurements,
   ClothingAnalysis
-} from '../services/pipeline_api';
+} from '../services/PipelineAPIClient';
