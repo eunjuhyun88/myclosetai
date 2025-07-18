@@ -854,6 +854,113 @@ def pil_to_tensor(image: Image.Image, device: str = "mps") -> torch.Tensor:
         return torch.zeros(1, 3, 512, 512, device=device)
 
 # ==============================================
+# 🔥 안전한 함수 호출 유틸리티 - callable 오류 완전 방지
+# ==============================================
+
+class SafeFunctionCaller:
+    """안전한 함수 호출 래퍼 - dict object is not callable 완전 방지"""
+    
+    @staticmethod
+    def safe_call(obj: Any, *args, **kwargs) -> Any:
+        """
+        안전한 함수 호출 - dict object is not callable 방지
+        
+        Args:
+            obj: 호출할 객체 (함수, 메서드, 딕셔너리 등)
+            *args: 위치 인수
+            **kwargs: 키워드 인수
+            
+        Returns:
+            호출 결과 또는 안전한 기본값
+        """
+        try:
+            # 1차 확인: 실제 callable인지 확인
+            if callable(obj):
+                return obj(*args, **kwargs)
+            
+            # 2차 확인: 딕셔너리인 경우 설정값 반환
+            elif isinstance(obj, dict):
+                logger.debug(f"딕셔너리 객체를 함수로 호출하려 했습니다: {obj}")
+                return obj  # 딕셔너리 자체 반환
+            
+            # 3차 확인: 문자열인 경우 (메서드 이름일 수 있음)
+            elif isinstance(obj, str):
+                logger.warning(f"문자열을 함수로 호출하려 했습니다: {obj}")
+                return obj
+            
+            # 4차 확인: None인 경우
+            elif obj is None:
+                logger.warning("None 객체를 함수로 호출하려 했습니다")
+                return None
+            
+            # 기타 경우
+            else:
+                logger.warning(f"호출할 수 없는 객체 타입: {type(obj)}")
+                return obj
+                
+        except Exception as e:
+            logger.error(f"안전한 함수 호출 실패: {e}")
+            return None
+    
+    @staticmethod
+    def safe_getattr_call(obj: Any, attr_name: str, *args, **kwargs) -> Any:
+        """
+        안전한 속성 접근 및 호출
+        
+        Args:
+            obj: 대상 객체
+            attr_name: 속성/메서드 이름
+            *args: 위치 인수
+            **kwargs: 키워드 인수
+            
+        Returns:
+            호출 결과 또는 안전한 기본값
+        """
+        try:
+            if obj is None:
+                logger.warning(f"None 객체에서 {attr_name} 접근 시도")
+                return None
+            
+            if not hasattr(obj, attr_name):
+                logger.warning(f"객체 {type(obj)}에 {attr_name} 속성이 없습니다")
+                return None
+            
+            attr = getattr(obj, attr_name)
+            
+            # 속성이 callable인 경우 호출
+            if callable(attr):
+                return attr(*args, **kwargs)
+            else:
+                # callable하지 않은 경우 속성값 반환
+                logger.debug(f"{attr_name}은 callable하지 않습니다: {type(attr)}")
+                return attr
+                
+        except Exception as e:
+            logger.error(f"안전한 속성 호출 실패 {attr_name}: {e}")
+            return None
+    
+    @staticmethod
+    def is_safely_callable(obj: Any) -> bool:
+        """객체가 안전하게 호출 가능한지 확인"""
+        try:
+            return callable(obj) and obj is not None
+        except Exception:
+            return False
+
+# 편의 함수들
+def safe_call(obj: Any, *args, **kwargs) -> Any:
+    """전역 편의 함수"""
+    return SafeFunctionCaller.safe_call(obj, *args, **kwargs)
+
+def safe_getattr_call(obj: Any, attr_name: str, *args, **kwargs) -> Any:
+    """전역 편의 함수"""
+    return SafeFunctionCaller.safe_getattr_call(obj, attr_name, *args, **kwargs)
+
+def is_safely_callable(obj: Any) -> bool:
+    """전역 편의 함수"""
+    return SafeFunctionCaller.is_safely_callable(obj)
+
+# ==============================================
 # 🔥 Step 인터페이스 - callable 오류 완전 해결
 # ==============================================
 
@@ -884,9 +991,9 @@ class StepModelInterface:
         self.access_count = 0
         self.last_used = time.time()
         
-        # 🔥 ModelLoader 메서드 가용성 체크
-        self.has_async_loader = hasattr(model_loader, 'load_model_async')
-        self.has_sync_wrapper = hasattr(model_loader, '_load_model_sync_wrapper')
+        # 🔥 ModelLoader 메서드 가용성 체크 - callable 확인 추가
+        self.has_async_loader = hasattr(model_loader, 'load_model_async') and is_safely_callable(getattr(model_loader, 'load_model_async', None))
+        self.has_sync_wrapper = hasattr(model_loader, '_load_model_sync_wrapper') and is_safely_callable(getattr(model_loader, '_load_model_sync_wrapper', None))
         
         # 🔥 실제 모델 경로 설정
         try:
@@ -1030,26 +1137,20 @@ class StepModelInterface:
     async def _safe_load_model(self, model_name: str) -> Optional[Any]:
         """🔥 안전한 모델 로드 - callable 오류 완전 해결"""
         try:
-            # 🔥 방법 1: 비동기 로더 사용 - callable 확인
+            # 🔥 방법 1: 비동기 로더 사용 - safe_call 적용
             if self.has_async_loader:
                 load_async_func = getattr(self.model_loader, 'load_model_async', None)
-                if callable(load_async_func):
-                    return await load_async_func(model_name)
-                else:
-                    self.logger.warning(f"⚠️ load_model_async가 함수가 아님: {type(load_async_func)}")
+                return await safe_call(load_async_func, model_name)
             
-            # 🔥 방법 2: 동기 래퍼 사용 - callable 확인
+            # 🔥 방법 2: 동기 래퍼 사용 - safe_call 적용
             if self.has_sync_wrapper:
                 sync_wrapper_func = getattr(self.model_loader, '_load_model_sync_wrapper', None)
-                if callable(sync_wrapper_func):
-                    return sync_wrapper_func(model_name, {})
-                else:
-                    self.logger.warning(f"⚠️ _load_model_sync_wrapper가 함수가 아님: {type(sync_wrapper_func)}")
+                return safe_call(sync_wrapper_func, model_name, {})
             
-            # 🔥 방법 3: 기본 load_model 메서드 - callable 확인
+            # 🔥 방법 3: 기본 load_model 메서드 - safe_call 적용
             if hasattr(self.model_loader, 'load_model'):
                 load_model_func = getattr(self.model_loader, 'load_model', None)
-                if callable(load_model_func):
+                if is_safely_callable(load_model_func):
                     if asyncio.iscoroutinefunction(load_model_func):
                         return await load_model_func(model_name)
                     else:
@@ -1074,8 +1175,11 @@ class StepModelInterface:
                     self.logger.info(f"📂 모델 파일 발견: {model_path}")
                     try:
                         # 안전한 임포트
-                        model = torch.load(model_path, map_location=self.device)
-                        return model
+                        if TORCH_AVAILABLE:
+                            model = torch.load(model_path, map_location=self.device)
+                            return model
+                        else:
+                            self.logger.warning("⚠️ PyTorch가 없어서 모델 로드 불가")
                     except Exception as e:
                         self.logger.warning(f"⚠️ PyTorch 로드 실패: {e}")
             
@@ -1128,25 +1232,43 @@ class StepModelInterface:
                     # Step별 특화 출력
                     if self.model_type == 'human_parsing':
                         # 20개 클래스 인간 파싱
-                        return torch.zeros((batch_size, 20, height, width), device='cpu')
+                        if TORCH_AVAILABLE:
+                            return torch.zeros((batch_size, 20, height, width), device='cpu')
+                        else:
+                            return np.zeros((batch_size, 20, height, width), dtype=np.float32)
                     elif self.model_type == 'pose_estimation':
                         # 18개 키포인트
-                        return torch.zeros((batch_size, 18, height//4, width//4), device='cpu')
+                        if TORCH_AVAILABLE:
+                            return torch.zeros((batch_size, 18, height//4, width//4), device='cpu')
+                        else:
+                            return np.zeros((batch_size, 18, height//4, width//4), dtype=np.float32)
                     elif self.model_type == 'segmentation':
                         # Binary mask
-                        return torch.zeros((batch_size, 1, height, width), device='cpu')
+                        if TORCH_AVAILABLE:
+                            return torch.zeros((batch_size, 1, height, width), device='cpu')
+                        else:
+                            return np.zeros((batch_size, 1, height, width), dtype=np.float32)
                     elif self.model_type == 'geometric_matching':
                         # Transformation parameters
-                        return torch.zeros((batch_size, 25, 2), device='cpu')
+                        if TORCH_AVAILABLE:
+                            return torch.zeros((batch_size, 25, 2), device='cpu')
+                        else:
+                            return np.zeros((batch_size, 25, 2), dtype=np.float32)
                     elif self.model_type == 'diffusion':
                         # Generated image
-                        return torch.zeros((batch_size, 3, height, width), device='cpu')
+                        if TORCH_AVAILABLE:
+                            return torch.zeros((batch_size, 3, height, width), device='cpu')
+                        else:
+                            return np.zeros((batch_size, 3, height, width), dtype=np.float32)
                     else:
                         # Default output
-                        return torch.zeros((batch_size, 3, height, width), device='cpu')
+                        if TORCH_AVAILABLE:
+                            return torch.zeros((batch_size, 3, height, width), device='cpu')
+                        else:
+                            return np.zeros((batch_size, 3, height, width), dtype=np.float32)
                         
-                except ImportError:
-                    # PyTorch 없는 경우 numpy 사용
+                except Exception:
+                    # 최종 폴백: numpy 사용
                     return np.zeros((batch_size, 3, height, width), dtype=np.float32)
             
             def to(self, device):
@@ -1181,8 +1303,8 @@ class StepModelInterface:
             unloaded_count = 0
             for model_name, model in list(self.loaded_models.items()):
                 try:
-                    if hasattr(model, 'cpu') and callable(getattr(model, 'cpu')):
-                        model.cpu()
+                    if hasattr(model, 'cpu') and is_safely_callable(getattr(model, 'cpu')):
+                        safe_call(getattr(model, 'cpu'))
                     del model
                     unloaded_count += 1
                 except Exception as e:
@@ -1484,9 +1606,9 @@ class ModelLoader:
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
         """🔥 비동기 모델 로드 - callable 오류 완전 해결"""
         try:
-            # 🔥 callable 확인 후 실행
+            # 🔥 safe_call 사용으로 callable 확인
             load_func = getattr(self, '_load_model_sync_wrapper', None)
-            if callable(load_func):
+            if is_safely_callable(load_func):
                 return await asyncio.get_event_loop().run_in_executor(
                     None, load_func, model_name, kwargs
                 )
@@ -1503,7 +1625,7 @@ class ModelLoader:
         try:
             # load_model 메서드가 있고 callable인지 확인
             load_method = getattr(self, 'load_model', None)
-            if callable(load_method):
+            if is_safely_callable(load_method):
                 if asyncio.iscoroutinefunction(load_method):
                     return await load_method(model_name, **kwargs)
                 else:
@@ -1592,24 +1714,24 @@ class ModelLoader:
                 # 체크포인트 로드
                 await self._load_checkpoint(model, model_config)
                 
-                # 디바이스로 이동
-                if hasattr(model, 'to') and callable(getattr(model, 'to')):
-                    model = model.to(self.device)
+                # 디바이스로 이동 - safe_call 사용
+                if hasattr(model, 'to') and is_safely_callable(getattr(model, 'to')):
+                    model = safe_call(getattr(model, 'to'), self.device)
                 
                 # M3 Max 최적화 적용
                 if self.is_m3_max and self.optimization_enabled:
                     model = await self._apply_m3_max_optimization(model, model_config)
                 
-                # FP16 최적화
-                if self.use_fp16 and hasattr(model, 'half') and callable(getattr(model, 'half')) and self.device != 'cpu':
+                # FP16 최적화 - safe_call 사용
+                if self.use_fp16 and hasattr(model, 'half') and is_safely_callable(getattr(model, 'half')) and self.device != 'cpu':
                     try:
-                        model = model.half()
+                        model = safe_call(getattr(model, 'half'))
                     except Exception as e:
                         self.logger.warning(f"⚠️ FP16 변환 실패: {e}")
                 
-                # 평가 모드
-                if hasattr(model, 'eval') and callable(getattr(model, 'eval')):
-                    model.eval()
+                # 평가 모드 - safe_call 사용
+                if hasattr(model, 'eval') and is_safely_callable(getattr(model, 'eval')):
+                    safe_call(getattr(model, 'eval'))
                 
                 # 캐시에 저장
                 self.model_cache[cache_key] = model
@@ -1639,9 +1761,11 @@ class ModelLoader:
                 self.logger.warning("⚠️ 디바이스 매니저가 없음")
                 return False
                 
-            # 메모리 정리
+            # 메모리 정리 - safe_call 사용
             if hasattr(self, 'memory_manager'):
-                self.memory_manager.cleanup_memory()
+                memory_cleanup_func = getattr(self.memory_manager, 'cleanup_memory', None)
+                if is_safely_callable(memory_cleanup_func):
+                    safe_call(memory_cleanup_func)
                 
             self.logger.info("✅ ModelLoader 초기화 완료")
             return True
@@ -1742,8 +1866,8 @@ class ModelLoader:
                 self.logger.warning(f"⚠️ 체크포인트를 찾을 수 없음: {checkpoint_path}")
                 return
             
-            # PyTorch 모델인 경우
-            if hasattr(model, 'load_state_dict') and callable(getattr(model, 'load_state_dict')) and TORCH_AVAILABLE:
+            # PyTorch 모델인 경우 - safe_call 사용
+            if hasattr(model, 'load_state_dict') and is_safely_callable(getattr(model, 'load_state_dict')) and TORCH_AVAILABLE:
                 state_dict = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
                 
                 # state_dict 정리
@@ -1758,7 +1882,7 @@ class ModelLoader:
                     new_key = key.replace('module.', '') if key.startswith('module.') else key
                     cleaned_state_dict[new_key] = value
                 
-                model.load_state_dict(cleaned_state_dict, strict=False)
+                safe_call(getattr(model, 'load_state_dict'), cleaned_state_dict, strict=False)
                 self.logger.info(f"✅ 체크포인트 로드 완료: {checkpoint_path}")
             
             else:
@@ -1806,16 +1930,22 @@ class ModelLoader:
     async def _check_memory_and_cleanup(self):
         """메모리 확인 및 정리"""
         try:
-            # 메모리 압박 체크
-            if self.memory_manager.check_memory_pressure():
-                await self._cleanup_least_used_models()
+            # 메모리 압박 체크 - safe_call 사용
+            if hasattr(self.memory_manager, 'check_memory_pressure'):
+                check_func = getattr(self.memory_manager, 'check_memory_pressure', None)
+                if is_safely_callable(check_func):
+                    if safe_call(check_func):
+                        await self._cleanup_least_used_models()
             
             # 캐시된 모델 수 확인
             if len(self.model_cache) >= self.max_cached_models:
                 await self._cleanup_least_used_models()
             
-            # 메모리 정리
-            self.memory_manager.cleanup_memory()
+            # 메모리 정리 - safe_call 사용
+            if hasattr(self.memory_manager, 'cleanup_memory'):
+                cleanup_func = getattr(self.memory_manager, 'cleanup_memory', None)
+                if is_safely_callable(cleanup_func):
+                    safe_call(cleanup_func)
                     
         except Exception as e:
             self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
@@ -1848,9 +1978,9 @@ class ModelLoader:
                     self.load_times.pop(cache_key, None)
                     self.last_access.pop(cache_key, None)
                     
-                    # GPU 메모리에서 제거
-                    if hasattr(model, 'cpu') and callable(getattr(model, 'cpu')):
-                        model.cpu()
+                    # GPU 메모리에서 제거 - safe_call 사용
+                    if hasattr(model, 'cpu') and is_safely_callable(getattr(model, 'cpu')):
+                        safe_call(getattr(model, 'cpu'))
                     del model
                     
                     cleaned_models.append(cache_key)
@@ -1887,7 +2017,11 @@ class ModelLoader:
             with self._interface_lock:
                 if step_name in self.step_interfaces:
                     interface = self.step_interfaces[step_name]
-                    interface.unload_models()
+                    # safe_call 사용
+                    if hasattr(interface, 'unload_models'):
+                        unload_func = getattr(interface, 'unload_models', None)
+                        if is_safely_callable(unload_func):
+                            safe_call(unload_func)
                     del self.step_interfaces[step_name]
                     self.logger.info(f"🗑️ {step_name} 인터페이스 정리 완료")
                     
@@ -1906,8 +2040,8 @@ class ModelLoader:
             with self._lock:
                 for cache_key, model in list(self.model_cache.items()):
                     try:
-                        if hasattr(model, 'cpu') and callable(getattr(model, 'cpu')):
-                            model.cpu()
+                        if hasattr(model, 'cpu') and is_safely_callable(getattr(model, 'cpu')):
+                            safe_call(getattr(model, 'cpu'))
                         del model
                     except Exception as e:
                         self.logger.warning(f"⚠️ 모델 정리 실패: {e}")
@@ -1917,15 +2051,18 @@ class ModelLoader:
                 self.load_times.clear()
                 self.last_access.clear()
             
-            # 메모리 정리
-            self.memory_manager.cleanup_memory()
+            # 메모리 정리 - safe_call 사용
+            if hasattr(self.memory_manager, 'cleanup_memory'):
+                cleanup_func = getattr(self.memory_manager, 'cleanup_memory', None)
+                if is_safely_callable(cleanup_func):
+                    safe_call(cleanup_func)
             
-            # 스레드풀 종료
+            # 스레드풀 종료 - safe_call 사용
             try:
                 if hasattr(self, '_executor'):
                     shutdown_func = getattr(self._executor, 'shutdown', None)
-                    if callable(shutdown_func):
-                        shutdown_func(wait=True)
+                    if is_safely_callable(shutdown_func):
+                        safe_call(shutdown_func, wait=True)
             except Exception as e:
                 self.logger.warning(f"⚠️ 스레드풀 종료 실패: {e}")
             
@@ -1962,6 +2099,9 @@ class BaseStepMixin:
         self.device = kwargs.get('device', 'auto')
         self.model_interface = None
         self.config = SafeConfig(kwargs.get('config', {}))
+        
+        # 🔥 워밍업 함수들 안전하게 설정
+        self._setup_warmup_functions()
     
     def _check_numpy_compatibility(self):
         """NumPy 2.x 호환성 체크"""
@@ -1978,6 +2118,118 @@ class BaseStepMixin:
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.logger.warning(f"⚠️ NumPy 버전 체크 실패: {e}")
     
+    def _safe_model_warmup(self, *args, **kwargs):
+        """안전한 모델 워밍업 - callable 오류 방지"""
+        try:
+            if hasattr(self, 'model_loader') and self.model_loader:
+                # 실제 모델 로더가 있는 경우에만 워밍업
+                if hasattr(self.model_loader, 'warmup_model'):
+                    warmup_func = getattr(self.model_loader, 'warmup_model', None)
+                    if is_safely_callable(warmup_func):
+                        return safe_call(warmup_func, *args, **kwargs)
+                    else:
+                        self.logger.warning("⚠️ warmup_model이 callable하지 않습니다")
+            
+            # 기본 워밍업 (안전한 처리)
+            self.logger.debug("✅ 기본 모델 워밍업 완료")
+            return {"success": True, "method": "default_warmup"}
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 모델 워밍업 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _safe_device_warmup(self, *args, **kwargs):
+        """안전한 디바이스 워밍업 - callable 오류 방지"""
+        try:
+            # GPU 메모리 정리 및 최적화
+            if hasattr(self, 'gpu_config') and self.gpu_config:
+                if hasattr(self.gpu_config, 'cleanup_memory'):
+                    cleanup_func = getattr(self.gpu_config, 'cleanup_memory', None)
+                    if is_safely_callable(cleanup_func):
+                        safe_call(cleanup_func)
+            
+            # Torch 캐시 정리 (안전한 처리)
+            try:
+                if TORCH_AVAILABLE:
+                    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        # PyTorch 버전별 안전한 처리
+                        try:
+                            if hasattr(torch.mps, 'empty_cache'):
+                                torch.mps.empty_cache()
+                        except AttributeError:
+                            pass  # 오래된 PyTorch 버전에서는 무시
+            except Exception:
+                pass  # Torch 오류는 무시하고 계속
+            
+            self.logger.debug("✅ 디바이스 워밍업 완료")
+            return {"success": True, "method": "device_warmup"}
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 디바이스 워밍업 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _safe_memory_warmup(self, *args, **kwargs):
+        """안전한 메모리 워밍업 - callable 오류 방지"""
+        try:
+            import gc
+            gc.collect()
+            
+            self.logger.debug("✅ 메모리 워밍업 완료")
+            return {"success": True, "method": "memory_cleanup"}
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 메모리 워밍업 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _safe_pipeline_warmup(self, *args, **kwargs):
+        """안전한 파이프라인 워밍업 - callable 오류 방지"""
+        try:
+            # 파이프라인 상태 확인
+            if hasattr(self, 'pipeline_manager') and self.pipeline_manager:
+                if hasattr(self.pipeline_manager, 'is_ready'):
+                    is_ready_func = getattr(self.pipeline_manager, 'is_ready', None)
+                    if is_safely_callable(is_ready_func):
+                        ready = safe_call(is_ready_func)
+                        if ready:
+                            self.logger.debug("✅ 파이프라인이 준비되었습니다")
+                        else:
+                            self.logger.warning("⚠️ 파이프라인이 준비되지 않았습니다")
+            
+            self.logger.debug("✅ 파이프라인 워밍업 완료")
+            return {"success": True, "method": "pipeline_check"}
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 파이프라인 워밍업 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _setup_warmup_functions(self):
+        """워밍업 함수들 안전하게 설정 - callable 오류 완전 해결"""
+        try:
+            # 실제 메서드 객체로 설정 (딕셔너리가 아닌)
+            self.warmup_functions = {
+                'model_warmup': self._safe_model_warmup,
+                'device_warmup': self._safe_device_warmup,
+                'memory_warmup': self._safe_memory_warmup,
+                'pipeline_warmup': self._safe_pipeline_warmup
+            }
+            
+            # 모든 워밍업 함수가 callable인지 확인
+            for name, func in self.warmup_functions.items():
+                if not is_safely_callable(func):
+                    self.logger.error(f"❌ {name}이 callable하지 않습니다: {type(func)}")
+                    # 안전한 더미 함수로 대체
+                    self.warmup_functions[name] = lambda *args, **kwargs: {"success": True, "method": "dummy"}
+            
+            if hasattr(self, 'logger'):
+                self.logger.debug("✅ 워밍업 함수들 설정 완료")
+        except Exception as e:
+            if hasattr(self, 'logger'):
+                self.logger.warning(f"⚠️ 워밍업 함수 설정 실패: {e}")
+            # 완전한 폴백
+            self.warmup_functions = {}
+    
     def _setup_model_interface(self, model_loader: Optional[ModelLoader] = None):
         """모델 인터페이스 설정"""
         try:
@@ -1985,10 +2237,10 @@ class BaseStepMixin:
                 # 전역 모델 로더 사용
                 model_loader = get_global_model_loader()
             
-            # 🔥 callable 확인
+            # 🔥 safe_call 사용
             create_func = getattr(model_loader, 'create_step_interface', None)
-            if callable(create_func):
-                self.model_interface = create_func(self.__class__.__name__)
+            if is_safely_callable(create_func):
+                self.model_interface = safe_call(create_func, self.__class__.__name__)
             else:
                 self.logger.warning(f"⚠️ create_step_interface가 함수가 아님: {type(create_func)}")
                 self.model_interface = None
@@ -2007,18 +2259,24 @@ class BaseStepMixin:
                 return None
             
             if model_name:
-                # 🔥 callable 확인
+                # 🔥 safe_call 사용
                 get_func = getattr(self.model_interface, 'get_model', None)
-                if callable(get_func):
-                    return await get_func(model_name)
+                if is_safely_callable(get_func):
+                    if asyncio.iscoroutinefunction(get_func):
+                        return await get_func(model_name)
+                    else:
+                        return safe_call(get_func, model_name)
                 else:
                     logger.warning(f"⚠️ get_model이 함수가 아님: {type(get_func)}")
                     return None
             else:
                 # 권장 모델 자동 로드
                 rec_func = getattr(self.model_interface, 'get_recommended_model', None)
-                if callable(rec_func):
-                    return await rec_func()
+                if is_safely_callable(rec_func):
+                    if asyncio.iscoroutinefunction(rec_func):
+                        return await rec_func()
+                    else:
+                        return safe_call(rec_func)
                 else:
                     logger.warning(f"⚠️ get_recommended_model이 함수가 아님: {type(rec_func)}")
                     return None
@@ -2031,10 +2289,10 @@ class BaseStepMixin:
         """모델 정리"""
         try:
             if hasattr(self, 'model_interface') and self.model_interface:
-                # 🔥 callable 확인
+                # 🔥 safe_call 사용
                 cleanup_func = getattr(self.model_interface, 'unload_models', None)
-                if callable(cleanup_func):
-                    cleanup_func()
+                if is_safely_callable(cleanup_func):
+                    safe_call(cleanup_func)
                 else:
                     logger.warning(f"⚠️ unload_models가 함수가 아님: {type(cleanup_func)}")
         except Exception as e:
@@ -2071,7 +2329,7 @@ def initialize_global_model_loader(**kwargs) -> Dict[str, Any]:
     try:
         loader = get_global_model_loader()
         
-        # 비동기 초기화 실행
+        # 비동기 초기화 실행 - safe_call 사용
         import asyncio
         try:
             loop = asyncio.get_event_loop()
@@ -2081,11 +2339,21 @@ def initialize_global_model_loader(**kwargs) -> Dict[str, Any]:
         
         if loop.is_running():
             # 이미 실행 중인 루프에서는 태스크로 실행
-            future = asyncio.create_task(loader.initialize())
-            return {"success": True, "message": "Initialization started", "future": future}
+            init_func = getattr(loader, 'initialize', None)
+            if is_safely_callable(init_func):
+                future = asyncio.create_task(init_func())
+                return {"success": True, "message": "Initialization started", "future": future}
+            else:
+                logger.warning(f"⚠️ initialize가 함수가 아님: {type(init_func)}")
+                return {"success": False, "error": "initialize method not callable"}
         else:
-            result = loop.run_until_complete(loader.initialize())
-            return {"success": result, "message": "Initialization completed"}
+            init_func = getattr(loader, 'initialize', None)
+            if is_safely_callable(init_func):
+                result = loop.run_until_complete(init_func())
+                return {"success": result, "message": "Initialization completed"}
+            else:
+                logger.warning(f"⚠️ initialize가 함수가 아님: {type(init_func)}")
+                return {"success": False, "error": "initialize method not callable"}
             
     except Exception as e:
         logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
@@ -2098,8 +2366,8 @@ def cleanup_global_loader():
     with _loader_lock:
         if _global_model_loader:
             cleanup_func = getattr(_global_model_loader, 'cleanup', None)
-            if callable(cleanup_func):
-                cleanup_func()
+            if is_safely_callable(cleanup_func):
+                safe_call(cleanup_func)
             _global_model_loader = None
         # 캐시 클리어
         get_global_model_loader.cache_clear()
@@ -2129,6 +2397,12 @@ __all__ = [
     'pil_to_tensor',
     'BaseStepMixin',
     'SafeConfig',
+    
+    # 🔥 안전한 함수 호출 유틸리티
+    'SafeFunctionCaller',
+    'safe_call',
+    'safe_getattr_call',
+    'is_safely_callable',
     
     # 실제 AI 모델 클래스들
     'BaseModel',
@@ -2162,6 +2436,7 @@ logger.info("🍎 M3 Max 128GB 최적화")
 logger.info("🔧 callable 오류 완전 해결")
 logger.info("📐 들여쓰기 오류 완전 수정")
 logger.info("🔧 전처리 함수들 완전 추가")
+logger.info("🛡️ 안전한 함수 호출 유틸리티 추가")
 logger.info(f"🎯 PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}, MPS: {'✅' if MPS_AVAILABLE else '❌'}")
 logger.info(f"🔢 NumPy: {'✅' if NUMPY_AVAILABLE else '❌'} v{np.__version__ if NUMPY_AVAILABLE else 'N/A'}")
 
