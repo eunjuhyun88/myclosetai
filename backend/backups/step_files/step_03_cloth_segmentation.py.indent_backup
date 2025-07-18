@@ -45,41 +45,37 @@ try:
     import rembg
     from rembg import remove, new_session
     REMBG_AVAILABLE = True
-except:
+except ImportError:
     REMBG_AVAILABLE = False
 
 try:
-
     from sklearn.cluster import KMeans
     from sklearn.preprocessing import StandardScaler
     SKLEARN_AVAILABLE = True
-except:
+except ImportError:
     SKLEARN_AVAILABLE = False
 
 try:
-
     import segment_anything as sam
     SAM_AVAILABLE = True
-except:
+except ImportError:
     SAM_AVAILABLE = False
 
 try:
-
     from transformers import pipeline
     TRANSFORMERS_AVAILABLE = True
-except:
+except ImportError:
     TRANSFORMERS_AVAILABLE = False
 
 # 🔥 MyCloset AI 핵심 유틸리티 연동 - 완전 수정
 try:
     from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
     BASE_STEP_MIXIN_AVAILABLE = True
-except:
+except ImportError:
     BASE_STEP_MIXIN_AVAILABLE = False
     # 🔥 폴백: 기본 클래스 정의
     
-    def _setup_model_precision:
-    
+    def _setup_model_precision(self, model):
         """M3 Max 호환 정밀도 설정"""
         try:
             if self.device == "mps":
@@ -89,15 +85,14 @@ except:
                 return model.half()
             else:
                 return model.float()
-        except:
+        except Exception as e:
             self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
             return model.float()
 
 class BaseStepMixin:
-
-    def __init__(self, *args, **kwargs):
+        def __init__(self, *args, **kwargs):
             # 🔥 logger 속성 문제 완전 해결
-            if:
+            if not hasattr(self, 'logger'):
                 class_name = self.__class__.__name__
                 self.logger = logging.getLogger(f"pipeline.{class_name}")
             
@@ -110,31 +105,28 @@ class BaseStepMixin:
             self.logger.info(f"🔥 BaseStepMixin 폴백 초기화: {class_name}")
 
 try:
-
     from app.ai_pipeline.utils.model_loader import (
         ModelLoader, ModelConfig, ModelType,
         get_global_model_loader, create_model_loader
     )
     MODEL_LOADER_AVAILABLE = True
-except:
+except ImportError:
     MODEL_LOADER_AVAILABLE = False
 
 try:
-
     from app.ai_pipeline.utils.memory_manager import (
         MemoryManager, get_global_memory_manager, optimize_memory_usage
     )
     MEMORY_MANAGER_AVAILABLE = True
-except:
+except ImportError:
     MEMORY_MANAGER_AVAILABLE = False
 
 try:
-
     from app.ai_pipeline.utils.data_converter import (
         DataConverter, get_global_data_converter
     )
     DATA_CONVERTER_AVAILABLE = True
-except:
+except ImportError:
     DATA_CONVERTER_AVAILABLE = False
 
 # 🔥 로깅 설정 - 반드시 최상단에서 설정
@@ -144,8 +136,7 @@ logger = logging.getLogger(__name__)
 # 1. 열거형 및 데이터 클래스 정의
 # ==============================================
 
-class SegmentationMethod:
-
+class SegmentationMethod(Enum):
     """세그멘테이션 방법"""
     U2NET = "u2net"
     REMBG = "rembg"
@@ -156,8 +147,7 @@ class SegmentationMethod:
     HYBRID = "hybrid"
     AUTO = "auto"
 
-class ClothingType:
-
+class ClothingType(Enum):
     """의류 타입"""
     SHIRT = "shirt"
     DRESS = "dress"
@@ -170,8 +160,7 @@ class ClothingType:
     BOTTOM = "bottom"
     UNKNOWN = "unknown"
 
-class QualityLevel:
-
+class QualityLevel(Enum):
     """품질 레벨"""
     FAST = "fast"
     BALANCED = "balanced"
@@ -233,24 +222,21 @@ CLOTHING_COLORS = {
 # 2. U2-Net 모델 정의 (프로덕션 최적화)
 # ==============================================
 
-class REBNCONV:
-
+class REBNCONV(nn.Module):
     """U2-Net의 기본 컨볼루션 블록"""
-    def __init__:
+    def __init__(self, in_ch=3, out_ch=3, dirate=1):
         super(REBNCONV, self).__init__()
         self.conv_s1 = nn.Conv2d(in_ch, out_ch, 3, padding=1*dirate, dilation=1*dirate)
         self.bn_s1 = nn.BatchNorm2d(out_ch)
         self.relu_s1 = nn.ReLU(inplace=True)
     
-    def forward:
-    
+    def forward(self, x):
         hx = self.relu_s1(self.bn_s1(self.conv_s1(x)))
         return hx
 
-class RSU7:
-
+class RSU7(nn.Module):
     """U2-Net RSU-7 블록"""
-    def __init__:
+    def __init__(self, in_ch=3, mid_ch=12, out_ch=3):
         super(RSU7, self).__init__()
         self.rebnconvin = REBNCONV(in_ch, out_ch, dirate=1)
         
@@ -289,8 +275,7 @@ class RSU7:
         
         self.rebnconv1d = REBNCONV(mid_ch*2, out_ch, dirate=1)
     
-    def forward:
-    
+    def forward(self, x):
         hx = x
         hxin = self.rebnconvin(hx)
         
@@ -331,10 +316,9 @@ class RSU7:
         
         return hx1d + hxin
 
-class U2NET:
-
+class U2NET(nn.Module):
     """U2-Net 메인 모델 (의류 세그멘테이션 최적화)"""
-    def __init__:
+    def __init__(self, in_ch=3, out_ch=1):
         super(U2NET, self).__init__()
         
         self.stage1 = RSU7(in_ch, 32, 64)
@@ -372,8 +356,7 @@ class U2NET:
         
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear')
     
-    def forward:
-    
+    def forward(self, x):
         hx = x
         
         # 인코더
@@ -431,14 +414,13 @@ class U2NET:
         out = self.outconv(torch.cat((side1, side2, side3, side4, side5, side6), 1))
         
         return torch.sigmoid(out), torch.sigmoid(side1), torch.sigmoid(side2), \
-                torch.sigmoid(side3), torch.sigmoid(side4), torch.sigmoid(side5), torch.sigmoid(side6)
+               torch.sigmoid(side3), torch.sigmoid(side4), torch.sigmoid(side5), torch.sigmoid(side6)
 
 # ==============================================
 # 3. 🔥 완전 수정된 ClothSegmentationStep 클래스
 # ==============================================
 
-class ClothSegmentationStep:
-
+class ClothSegmentationStep(BaseStepMixin):
     """
     3단계: 의류 세그멘테이션 - 🔥 모든 문제 완전 해결 버전
     
@@ -460,11 +442,11 @@ class ClothSegmentationStep:
         """🔥 완전 수정된 생성자 - 모든 문제 해결"""
         
         # 🔥 1. logger 속성 먼저 설정 (가장 중요!)
-        if:
+        if not hasattr(self, 'logger'):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
         
         # 🔥 2. BaseStepMixin 올바른 호출
-        if:
+        if BASE_STEP_MIXIN_AVAILABLE:
             super().__init__(*[], **kwargs)  # 빈 args로 호출
         else:
             # 폴백 초기화
@@ -499,11 +481,10 @@ class ClothSegmentationStep:
         
         # 🔥 9. 완료 로깅
         self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device}")
-        if:
+        if self.is_m3_max:
             self.logger.info(f"🍎 M3 Max 최적화 모드 (메모리: {self.memory_gb}GB)")
     
-    def _setup_model_interface:
-    
+    def _setup_model_interface(self):
         """🔥 ModelLoader 인터페이스 설정 - 완전 수정"""
         try:
             if MODEL_LOADER_AVAILABLE:
@@ -519,32 +500,28 @@ class ClothSegmentationStep:
                 self.model_loader = None
                 self.model_interface = None
         
-        except:
-        
+        except Exception as e:
             self.logger.warning(f"ModelLoader 연동 실패: {e}")
             self.model_loader = None
             self.model_interface = None
     
-    def _auto_detect_device:
-    
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""
-        if:
+        if preferred_device:
             return preferred_device
 
         try:
-
             import torch
-            if:
+            if torch.backends.mps.is_available():
                 return 'mps'  # M3 Max 우선
             elif torch.cuda.is_available():
                 return 'cuda'  # NVIDIA GPU
             else:
                 return 'cpu'  # 폴백
-        except:
+        except ImportError:
             return 'cpu'
 
-    def _detect_m3_max:
-
+    def _detect_m3_max(self) -> bool:
         """🍎 M3 Max 칩 자동 감지"""
         try:
             import platform
@@ -552,42 +529,38 @@ class ClothSegmentationStep:
 
             if platform.system() == 'Darwin':  # macOS
                 result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                        capture_output=True, text=True)
+                                      capture_output=True, text=True)
                 cpu_info = result.stdout.strip()
                 return 'M3 Max' in cpu_info or 'M3' in cpu_info
         except:
             pass
         return False
 
-    def _merge_step_specific_config:
-
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
         """3단계 특화 설정 병합"""
         
         # 세그멘테이션 설정
         self.segmentation_config = SegmentationConfig()
         
         # 설정 업데이트
-        if:
+        if 'segmentation_method' in kwargs:
             self.segmentation_config.method = SegmentationMethod(kwargs['segmentation_method'])
         
-        if:
-        
+        if 'input_size' in kwargs:
             self.segmentation_config.input_size = kwargs['input_size']
         
-        if:
-        
+        if 'quality_level' in self.config:
             self.segmentation_config.quality_level = QualityLevel(self.config['quality_level'])
         
         # 🆕 시각화 설정
-        if:
+        if 'enable_visualization' in kwargs:
             self.segmentation_config.enable_visualization = kwargs['enable_visualization']
         
-        if:
-        
+        if 'visualization_quality' in kwargs:
             self.segmentation_config.visualization_quality = kwargs['visualization_quality']
         
         # M3 Max 특화 설정
-        if:
+        if self.is_m3_max:
             self.segmentation_config.use_fp16 = True
             self.segmentation_config.batch_size = min(8, max(1, int(self.memory_gb / 16)))
             self.segmentation_config.cache_size = min(200, max(50, int(self.memory_gb * 2)))
@@ -598,8 +571,7 @@ class ClothSegmentationStep:
         self.enable_edge_refinement = kwargs.get('enable_edge_refinement', True)
         self.confidence_threshold = kwargs.get('confidence_threshold', 0.8)
 
-    def _initialize_step_specific:
-
+    def _initialize_step_specific(self):
         """3단계 특화 초기화"""
         
         # 캐시 및 상태 관리
@@ -638,37 +610,34 @@ class ClothSegmentationStep:
         
         self.logger.info(f"📦 3단계 특화 초기화 완료 - 사용 가능한 방법: {len(self.available_methods)}개")
 
-    def _setup_memory_manager:
-
+    def _setup_memory_manager(self):
         """메모리 관리자 설정"""
-        if:
+        if MEMORY_MANAGER_AVAILABLE:
             try:
                 self.memory_manager = get_global_memory_manager()
-                if:
+                if not self.memory_manager:
                     from app.ai_pipeline.utils.memory_manager import create_memory_manager
                     self.memory_manager = create_memory_manager(device=self.device)
                 self.logger.info("✅ Memory Manager 연결 성공")
-            except:
+            except Exception as e:
                 self.logger.warning(f"Memory Manager 연동 실패: {e}")
                 self.memory_manager = None
         else:
             self.memory_manager = None
 
-    def _setup_data_converter:
-
+    def _setup_data_converter(self):
         """데이터 변환기 설정"""
-        if:
+        if DATA_CONVERTER_AVAILABLE:
             try:
                 self.data_converter = get_global_data_converter()
                 self.logger.info("✅ Data Converter 연결 성공")
-            except:
+            except Exception as e:
                 self.logger.warning(f"Data Converter 연동 실패: {e}")
                 self.data_converter = None
         else:
             self.data_converter = None
 
-    def _setup_model_paths:
-
+    def _setup_model_paths(self):
         """🔥 모델 경로 설정 - ModelLoader 호환"""
         try:
             # 기본 경로 설정
@@ -689,12 +658,10 @@ class ClothSegmentationStep:
             
             self.logger.info("📁 모델 경로 설정 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"모델 경로 설정 실패: {e}")
 
-    def _detect_available_methods:
-
+    def _detect_available_methods(self) -> List[SegmentationMethod]:
         """사용 가능한 세그멘테이션 방법 감지"""
         methods = []
         
@@ -702,22 +669,22 @@ class ClothSegmentationStep:
         methods.append(SegmentationMethod.TRADITIONAL)
         
         # RemBG 확인
-        if:
+        if REMBG_AVAILABLE:
             methods.append(SegmentationMethod.REMBG)
             self.logger.info("✅ RemBG 사용 가능")
         
         # SAM 확인
-        if:
+        if SAM_AVAILABLE:
             methods.append(SegmentationMethod.SAM)
             self.logger.info("✅ SAM 사용 가능")
         
         # U2-Net (Model Loader 통해 확인)
-        if:
+        if self.model_interface:
             methods.append(SegmentationMethod.U2NET)
             self.logger.info("✅ U2-Net 사용 가능 (Model Loader)")
         
         # Transformers 기반 모델
-        if:
+        if TRANSFORMERS_AVAILABLE:
             methods.append(SegmentationMethod.DEEP_LAB)
             self.logger.info("✅ DeepLab 사용 가능")
         
@@ -731,25 +698,24 @@ class ClothSegmentationStep:
             bool: 초기화 성공 여부
         """
         async with asyncio.Lock():
-            if:
+            if self.is_initialized:
                 return True
         
         try:
-        
             self.logger.info("🔄 3단계: 의류 세그멘테이션 시스템 초기화 중...")
             
             # 1. AI 모델들 초기화
             await self._initialize_ai_models()
             
             # 2. RemBG 세션 초기화
-            if:
+            if REMBG_AVAILABLE:
                 await self._initialize_rembg_sessions()
             
             # 3. 전통적 방법들 초기화
             self._initialize_traditional_methods()
             
             # 4. M3 Max 최적화 워밍업
-            if:
+            if self.is_m3_max and self.optimization_enabled:
                 await self._warmup_m3_max()
             
             # 5. 캐시 시스템 초기화
@@ -760,8 +726,7 @@ class ClothSegmentationStep:
             
             return True
             
-        except:
-            
+        except Exception as e:
             error_msg = f"세그멘테이션 시스템 초기화 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
             
@@ -774,7 +739,7 @@ class ClothSegmentationStep:
     async def _initialize_ai_models(self):
         """🔥 AI 모델들 초기화 - ModelLoader 완벽 활용"""
         try:
-            if:
+            if not self.model_interface:
                 self.logger.warning("Model Loader 인터페이스가 없습니다. 직접 로드 시도.")
                 await self._load_u2net_direct()
                 return
@@ -784,25 +749,22 @@ class ClothSegmentationStep:
                 # load_model_async 올바른 호출
                 self.u2net_model = await self.model_interface.load_model_async('u2net_cloth_seg')
                 
-                if:
-                
+                if self.u2net_model:
                     self.logger.info("✅ U2-Net 모델 로드 성공 (ModelLoader)")
                 else:
                     self.logger.warning("ModelLoader에서 None 반환 - 직접 로드 시도")
                     await self._load_u2net_direct()
                     
-            except:
-                    
+            except Exception as e:
                 self.logger.warning(f"ModelLoader를 통한 U2-Net 로드 실패: {e}")
                 # 직접 로드 시도
                 await self._load_u2net_direct()
             
             # 추가 모델들 (DeepLab, Mask R-CNN 등)
-            if:
+            if TRANSFORMERS_AVAILABLE:
                 await self._initialize_transformer_models()
                 
-        except:
-                
+        except Exception as e:
             self.logger.error(f"AI 모델 초기화 실패: {e}")
 
     async def _load_u2net_direct(self):
@@ -823,13 +785,13 @@ class ClothSegmentationStep:
             
             model_loaded = False
             for checkpoint_path in checkpoint_candidates:
-                if:
+                if checkpoint_path.exists():
                     try:
                         self.logger.info(f"📁 체크포인트 로드 시도: {checkpoint_path}")
                         state_dict = torch.load(checkpoint_path, map_location=self.device)
                         
                         # state_dict 키 정리 (DataParallel 등의 prefix 제거)
-                        if:
+                        if any(key.startswith('module.') for key in state_dict.keys()):
                             state_dict = {key.replace('module.', ''): value for key, value in state_dict.items()}
                         
                         self.u2net_model.load_state_dict(state_dict, strict=False)
@@ -837,13 +799,11 @@ class ClothSegmentationStep:
                         model_loaded = True
                         break
                         
-                    except:
-                        
+                    except Exception as e:
                         self.logger.warning(f"체크포인트 로드 실패 {checkpoint_path}: {e}")
                         continue
             
-            if:
-            
+            if not model_loaded:
                 self.logger.warning("⚠️ U2-Net 체크포인트가 없습니다. 사전 훈련되지 않은 모델 사용.")
             
             # 디바이스 이동 및 eval 모드
@@ -851,13 +811,12 @@ class ClothSegmentationStep:
             self.u2net_model.eval()
             
             # FP16 최적화 (M3 Max)
-            if:
+            if self.segmentation_config.use_fp16 and self.device != 'cpu':
                 self.u2net_model = self.u2net_model.half() if self.device != "cpu" else self
             
             self.logger.info("✅ U2-Net 직접 로드 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"U2-Net 직접 로드 실패: {e}")
             self.u2net_model = None
 
@@ -872,19 +831,18 @@ class ClothSegmentationStep:
                     device=0 if self.device == 'cuda' else -1
                 )
                 self.logger.info("✅ DeepLab 파이프라인 초기화 완료")
-            except:
+            except Exception as e:
                 self.logger.warning(f"DeepLab 초기화 실패: {e}")
                 self.deeplab_pipeline = None
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"Transformer 모델 초기화 실패: {e}")
             self.deeplab_pipeline = None
 
     async def _initialize_rembg_sessions(self):
         """🔥 RemBG 세션들 초기화 - 실제 작동"""
         try:
-            if:
+            if not REMBG_AVAILABLE:
                 return
             
             self.logger.info("🔄 RemBG 세션 초기화 시작...")
@@ -910,7 +868,7 @@ class ClothSegmentationStep:
                     session = new_session(model_name)
                     self.rembg_sessions[name] = session
                     self.logger.info(f"✅ RemBG 세션 생성 완료: {name}")
-                except:
+                except Exception as e:
                     self.logger.warning(f"RemBG 세션 {name} 생성 실패: {e}")
             
             # 기본 세션 설정
@@ -926,14 +884,12 @@ class ClothSegmentationStep:
                 self.default_rembg_session = None
                 self.logger.warning("⚠️ RemBG 세션 생성 실패 - 폴백 모드")
                 
-        except:
-                
+        except Exception as e:
             self.logger.error(f"RemBG 세션 초기화 실패: {e}")
             self.rembg_sessions = {}
             self.default_rembg_session = None
 
-    def _initialize_traditional_methods:
-
+    def _initialize_traditional_methods(self):
         """전통적 컴퓨터 비전 방법들 초기화"""
         try:
             # GrabCut 알고리즘 설정
@@ -943,7 +899,7 @@ class ClothSegmentationStep:
             }
             
             # K-means 클러스터링 설정 (scikit-learn 사용 가능 시)
-            if:
+            if SKLEARN_AVAILABLE:
                 self.kmeans_config = {
                     'n_clusters': 2,
                     'random_state': 42,
@@ -959,14 +915,13 @@ class ClothSegmentationStep:
             
             self.logger.info("✅ 전통적 방법들 초기화 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"전통적 방법 초기화 실패: {e}")
 
     async def _warmup_m3_max(self):
         """🍎 M3 Max 최적화 워밍업"""
         try:
-            if:
+            if not self.is_m3_max:
                 return
             
             self.logger.info("🍎 M3 Max 최적화 워밍업 시작...")
@@ -974,35 +929,32 @@ class ClothSegmentationStep:
             # 더미 텐서로 GPU 워밍업
             dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
             
-            if:
-            
+            if hasattr(self, 'u2net_model') and self.u2net_model:
                 with torch.no_grad():
                     _ = self.u2net_model(dummy_input)
                 self.logger.info("✅ U2-Net M3 Max 워밍업 완료")
             
             # MPS 캐시 최적화
-            if:
+            if self.device == 'mps':
                 try:
-                    if:
+                    if hasattr(torch.mps, 'empty_cache'):
                         torch.mps.empty_cache()
                 except:
                     pass
             
             # 메모리 최적화
-            if:
+            if self.memory_manager:
                 await self.memory_manager.optimize_for_m3_max()
             
             self.logger.info("🍎 M3 Max 워밍업 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"M3 Max 워밍업 실패: {e}")
 
 # backend/app/ai_pipeline/steps/step_03_cloth_segmentation.py
 # 947번째 줄 근처 완전 수정
 
-    def _initialize_cache_system:
-
+    def _initialize_cache_system(self):
         """캐시 시스템 초기화"""
         try:
             # 캐시 크기 설정 (M3 Max 최적화)
@@ -1014,19 +966,16 @@ class ClothSegmentationStep:
             
             self.logger.info(f"💾 캐시 시스템 초기화 완료 (크기: {cache_size})")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"캐시 시스템 초기화 실패: {e}")
 
-    def _initialize_fallback_system:
-
+    def _initialize_fallback_system(self):
         """최소한의 폴백 시스템 초기화"""
         try:
             # 가장 기본적인 방법들만 활성화
             self.available_methods = [SegmentationMethod.TRADITIONAL]
             
-            if:
-            
+            if REMBG_AVAILABLE:
                 try:
                     self.available_methods.append(SegmentationMethod.REMBG)
                     self.default_rembg_session = new_session('u2net')
@@ -1036,8 +985,7 @@ class ClothSegmentationStep:
             
             self.logger.info("⚠️ 폴백 시스템 초기화 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"폴백 시스템 초기화도 실패: {e}")
 
     async def process(
@@ -1050,18 +998,17 @@ class ClothSegmentationStep:
         """
         ✅ 통일된 처리 인터페이스 - Pipeline Manager 호환 + 시각화
         """
-        if:
+        if not self.is_initialized:
             await self.initialize()
         
         start_time = time.time()
         
         try:
-        
             self.logger.info(f"👕 의류 세그멘테이션 시작 - 타입: {clothing_type}, 품질: {quality_level}")
             
             # 1. 캐시 확인
             cache_key = self._generate_cache_key(clothing_image, clothing_type, quality_level)
-            if:
+            if kwargs.get('cache_result', True) and cache_key in self.segmentation_cache:
                 cached_result = self.segmentation_cache[cache_key]
                 self.processing_stats['cache_hits'] += 1
                 self.logger.info("💾 캐시에서 결과 반환")
@@ -1081,16 +1028,16 @@ class ClothSegmentationStep:
             )
             
             # 5. 후처리
-            if:
+            if self.enable_post_processing and result.success:
                 result = await self._post_process_result(result, processed_image)
             
             # 6. 품질 평가
-            if:
+            if result.success:
                 result.quality_score = self._evaluate_quality(processed_image, result.mask)
                 result.confidence_score = self._calculate_confidence(result)
             
             # 🆕 7. 시각화 이미지 생성
-            if:
+            if result.success and self.segmentation_config.enable_visualization:
                 visualization_results = await self._create_segmentation_visualization(
                     result, processed_image, clothing_type
                 )
@@ -1098,21 +1045,20 @@ class ClothSegmentationStep:
                 result.metadata.update(visualization_results)
             
             # 8. 결과 캐싱
-            if:
+            if kwargs.get('cache_result', True) and result.success:
                 self.segmentation_cache[cache_key] = result
-                if:
+                if len(self.segmentation_cache) > self.segmentation_config.cache_size:
                     self._cleanup_cache()
             
             # 9. 통계 업데이트
             self._update_statistics(result, time.time() - start_time)
             
             self.logger.info(f"✅ 세그멘테이션 완료 - 방법: {result.method_used}, "
-                            f"품질: {result.quality_score:.3f}, 시간: {result.processing_time:.3f}초")
+                           f"품질: {result.quality_score:.3f}, 시간: {result.processing_time:.3f}초")
             
             return self._format_result_with_visualization(result)
             
-        except:
-            
+        except Exception as e:
             error_msg = f"세그멘테이션 처리 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
             
@@ -1139,7 +1085,7 @@ class ClothSegmentationStep:
         🆕 의류 세그멘테이션 결과 시각화 이미지들 생성
         """
         try:
-            if:
+            if not self.segmentation_config.enable_visualization or not result.success:
                 return {
                     "result_image": "",
                     "overlay_image": "",
@@ -1178,8 +1124,7 @@ class ClothSegmentationStep:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(self.executor, _create_visualizations)
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"❌ 시각화 생성 실패: {e}")
             return {
                 "result_image": "",
@@ -1188,8 +1133,7 @@ class ClothSegmentationStep:
                 "boundary_image": ""
             }
     
-    def _create_colored_segmentation:
-    
+    def _create_colored_segmentation(self, mask: np.ndarray, clothing_type: str) -> Image.Image:
         """색상화된 세그멘테이션 결과 생성"""
         try:
             height, width = mask.shape
@@ -1207,15 +1151,13 @@ class ClothSegmentationStep:
             
             return Image.fromarray(colored_image)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 색상 세그멘테이션 생성 실패: {e}")
             # 폴백: 기본 그레이스케일 이미지
             gray_image = np.stack([mask, mask, mask], axis=2)
             return Image.fromarray(gray_image)
     
-    def _create_overlay_visualization:
-    
+    def _create_overlay_visualization(self, original_image: Image.Image, segmentation_image: Image.Image) -> Image.Image:
         """원본과 세그멘테이션 오버레이 이미지 생성"""
         try:
             # 크기 맞추기
@@ -1228,13 +1170,11 @@ class ClothSegmentationStep:
             
             return overlay
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 오버레이 생성 실패: {e}")
             return original_image
     
-    def _create_mask_visualization:
-    
+    def _create_mask_visualization(self, mask: np.ndarray) -> Image.Image:
         """마스크 시각화 이미지 생성"""
         try:
             # 마스크를 3채널로 변환
@@ -1245,14 +1185,12 @@ class ClothSegmentationStep:
             
             return Image.fromarray(mask_colored)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 마스크 시각화 생성 실패: {e}")
             # 폴백: 기본 마스크
             return Image.fromarray(mask)
     
-    def _create_boundary_visualization:
-    
+    def _create_boundary_visualization(self, original_image: Image.Image, mask: np.ndarray) -> Image.Image:
         """경계선 시각화 이미지 생성"""
         try:
             # 경계선 검출
@@ -1271,20 +1209,18 @@ class ClothSegmentationStep:
             
             return Image.fromarray(result_image)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 경계선 시각화 생성 실패: {e}")
             return original_image
     
-    def _pil_to_base64:
-    
+    def _pil_to_base64(self, pil_image: Image.Image) -> str:
         """PIL 이미지를 base64 문자열로 변환"""
         try:
             buffer = BytesIO()
             
             # 품질 설정
             quality = 85
-            if:
+            if self.segmentation_config.visualization_quality == "high":
                 quality = 95
             elif self.segmentation_config.visualization_quality == "low":
                 quality = 70
@@ -1292,8 +1228,7 @@ class ClothSegmentationStep:
             pil_image.save(buffer, format='JPEG', quality=quality)
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ base64 변환 실패: {e}")
             return ""
 
@@ -1301,29 +1236,28 @@ class ClothSegmentationStep:
     # 🔧 핵심 처리 함수들 - 완전 구현
     # ==============================================
 
-    def _preprocess_image:
-
+    def _preprocess_image(self, image: Union[str, np.ndarray, Image.Image, torch.Tensor]) -> Image.Image:
         """이미지 전처리"""
         try:
             # 타입별 변환
-            if:
+            if isinstance(image, str):
                 pil_image = Image.open(image).convert('RGB')
             elif isinstance(image, np.ndarray):
-                if:
+                if image.dtype == np.uint8:
                     pil_image = Image.fromarray(image)
                 else:
                     pil_image = Image.fromarray((image * 255).astype(np.uint8))
-                if:
+                if pil_image.mode != 'RGB':
                     pil_image = pil_image.convert('RGB')
             elif isinstance(image, torch.Tensor):
-                if:
+                if self.data_converter:
                     pil_image = self.data_converter.tensor_to_pil(image)
                 else:
                     # 직접 변환
                     numpy_image = image.detach().cpu().numpy()
-                    if:
+                    if numpy_image.ndim == 4:
                         numpy_image = numpy_image.squeeze(0)
-                    if:
+                    if numpy_image.shape[0] in [1, 3]:
                         numpy_image = numpy_image.transpose(1, 2, 0)
                     numpy_image = (numpy_image * 255).astype(np.uint8)
                     pil_image = Image.fromarray(numpy_image).convert('RGB')
@@ -1334,43 +1268,40 @@ class ClothSegmentationStep:
             
             # 크기 조정 (설정에 따라)
             target_size = self.segmentation_config.input_size
-            if:
+            if pil_image.size != target_size:
                 pil_image = pil_image.resize(target_size, Image.Resampling.LANCZOS)
             
             return pil_image
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"이미지 전처리 실패: {e}")
             raise
 
-    def _select_best_method:
-
+    def _select_best_method(self, image: Image.Image, clothing_type: str, quality_level: str) -> SegmentationMethod:
         """최적 세그멘테이션 방법 선택"""
         try:
             # 품질 레벨에 따른 우선순위
-            if:
+            if quality_level == "ultra":
                 priority = [SegmentationMethod.U2NET, SegmentationMethod.SAM, 
-                            SegmentationMethod.DEEP_LAB, SegmentationMethod.REMBG]
+                           SegmentationMethod.DEEP_LAB, SegmentationMethod.REMBG]
             elif quality_level == "high":
                 priority = [SegmentationMethod.U2NET, SegmentationMethod.REMBG, 
-                            SegmentationMethod.DEEP_LAB]
+                           SegmentationMethod.DEEP_LAB]
             elif quality_level == "balanced":
                 priority = [SegmentationMethod.REMBG, SegmentationMethod.U2NET, 
-                            SegmentationMethod.TRADITIONAL]
+                           SegmentationMethod.TRADITIONAL]
             else:  # fast
                 priority = [SegmentationMethod.REMBG, SegmentationMethod.TRADITIONAL]
             
             # 사용 가능한 방법 중에서 선택
             for method in priority:
-                if:
+                if method in self.available_methods:
                     return method
             
             # 폴백
             return SegmentationMethod.TRADITIONAL
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"방법 선택 실패: {e}")
             return SegmentationMethod.TRADITIONAL
 
@@ -1388,12 +1319,10 @@ class ClothSegmentationStep:
             # 메인 방법 시도
             result = await self._perform_single_segmentation(image, method, clothing_type)
             
-            if:
-            
+            if result.success:
                 return result
             
-            if:
-            
+            if not enable_fallback:
                 return result
             
             # 폴백 방법들 시도
@@ -1405,11 +1334,11 @@ class ClothSegmentationStep:
                     fallback_result = await self._perform_single_segmentation(
                         image, fallback_method, clothing_type
                     )
-                    if:
+                    if fallback_result.success:
                         fallback_result.metadata['original_method'] = method.value
                         fallback_result.metadata['fallback_used'] = True
                         return fallback_result
-                except:
+                except Exception as e:
                     self.logger.warning(f"폴백 방법 {fallback_method.value} 실패: {e}")
                     continue
             
@@ -1420,8 +1349,7 @@ class ClothSegmentationStep:
                 method_used=method.value
             )
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"세그멘테이션 수행 실패: {e}",
@@ -1438,9 +1366,7 @@ class ClothSegmentationStep:
         start_time = time.time()
         
         try:
-        
-            if:
-        
+            if method == SegmentationMethod.U2NET:
                 result = await self._segment_with_u2net(image)
             elif method == SegmentationMethod.REMBG:
                 result = await self._segment_with_rembg(image)
@@ -1458,8 +1384,7 @@ class ClothSegmentationStep:
             
             return result
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"{method.value} 세그멘테이션 실패: {e}",
@@ -1470,7 +1395,7 @@ class ClothSegmentationStep:
     async def _segment_with_u2net(self, image: Image.Image) -> SegmentationResult:
         """🔥 U2-Net을 사용한 세그멘테이션 - 실제 작동"""
         try:
-            if:
+            if not hasattr(self, 'u2net_model') or self.u2net_model is None:
                 raise RuntimeError("U2-Net 모델이 로드되지 않았습니다")
             
             # 이미지를 텐서로 변환
@@ -1482,8 +1407,7 @@ class ClothSegmentationStep:
             
             input_tensor = transform(image).unsqueeze(0).to(self.device)
             
-            if:
-            
+            if self.segmentation_config.use_fp16 and self.device != 'cpu':
                 input_tensor = input_tensor.half() if self.device != "cpu" else self
             
             # 추론
@@ -1491,7 +1415,7 @@ class ClothSegmentationStep:
                 outputs = self.u2net_model(input_tensor)
                 
                 # 메인 출력 사용
-                if:
+                if isinstance(outputs, tuple):
                     mask_tensor = outputs[0]
                 else:
                     mask_tensor = outputs
@@ -1505,7 +1429,7 @@ class ClothSegmentationStep:
                 binary_mask = (mask_np > threshold).astype(np.uint8) * 255
                 
                 # 마스크 크기 조정
-                if:
+                if binary_mask.shape != image.size[::-1]:
                     binary_mask = cv2.resize(binary_mask, image.size, interpolation=cv2.INTER_NEAREST)
                 
                 # 세그멘테이션된 이미지 생성
@@ -1521,8 +1445,7 @@ class ClothSegmentationStep:
                 metadata={'threshold_used': threshold}
             )
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"U2-Net 세그멘테이션 실패: {e}"
@@ -1531,16 +1454,15 @@ class ClothSegmentationStep:
     async def _segment_with_rembg(self, image: Image.Image) -> SegmentationResult:
         """🔥 RemBG를 사용한 세그멘테이션 - 실제 작동"""
         try:
-            if:
+            if not REMBG_AVAILABLE:
                 raise RuntimeError("RemBG가 사용 불가능합니다")
             
             # 세션 선택
             session = None
-            if:
+            if hasattr(self, 'rembg_sessions') and self.rembg_sessions:
                 session = self.rembg_sessions.get('cloth', self.default_rembg_session)
             
-            if:
-            
+            if session is None:
                 session = new_session('u2net')
             
             # 배경 제거
@@ -1564,8 +1486,7 @@ class ClothSegmentationStep:
                 metadata={'session_used': 'cloth' if session in getattr(self, 'rembg_sessions', {}).values() else 'default'}
             )
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"RemBG 세그멘테이션 실패: {e}"
@@ -1574,7 +1495,7 @@ class ClothSegmentationStep:
     async def _segment_with_sam(self, image: Image.Image) -> SegmentationResult:
         """SAM(Segment Anything Model)을 사용한 세그멘테이션"""
         try:
-            if:
+            if not SAM_AVAILABLE:
                 raise RuntimeError("SAM이 사용 불가능합니다")
             
             # SAM 구현 (간소화된 버전)
@@ -1602,8 +1523,7 @@ class ClothSegmentationStep:
                 metadata={'method': 'sam_simplified'}
             )
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"SAM 세그멘테이션 실패: {e}"
@@ -1612,7 +1532,7 @@ class ClothSegmentationStep:
     async def _segment_with_deeplab(self, image: Image.Image) -> SegmentationResult:
         """DeepLab을 사용한 세그멘테이션"""
         try:
-            if:
+            if not hasattr(self, 'deeplab_pipeline') or self.deeplab_pipeline is None:
                 raise RuntimeError("DeepLab 파이프라인이 초기화되지 않았습니다")
             
             # DeepLab 추론
@@ -1647,8 +1567,7 @@ class ClothSegmentationStep:
                 metadata={'deeplab_results_count': len(results)}
             )
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"DeepLab 세그멘테이션 실패: {e}"
@@ -1675,7 +1594,7 @@ class ClothSegmentationStep:
                 
                 # GrabCut 적용
                 cv2.grabCut(image_np, mask, rect, bgd_model, fgd_model, 
-                            self.grabcut_config['iterations'], cv2.GC_INIT_WITH_RECT)
+                           self.grabcut_config['iterations'], cv2.GC_INIT_WITH_RECT)
                 
                 # 마스크 처리
                 mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
@@ -1728,8 +1647,7 @@ class ClothSegmentationStep:
                 metadata={'method': 'grabcut' if 'mask2' in locals() else 'threshold'}
             )
             
-        except:
-            
+        except Exception as e:
             return SegmentationResult(
                 success=False,
                 error_message=f"전통적 방법 세그멘테이션 실패: {e}"
@@ -1738,27 +1656,27 @@ class ClothSegmentationStep:
     async def _post_process_result(self, result: SegmentationResult, original_image: Image.Image) -> SegmentationResult:
         """세그멘테이션 결과 후처리"""
         try:
-            if:
+            if not result.success or result.mask is None:
                 return result
             
             mask = result.mask.copy()
             
             # 1. 형태학적 처리
-            if:
+            if self.enable_post_processing:
                 kernel = np.ones((3, 3), np.uint8)
                 
                 # 노이즈 제거
                 mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
                 
                 # 홀 채우기
-                if:
+                if self.segmentation_config.enable_hole_filling:
                     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
                 
                 # 경계 부드럽게
                 mask = cv2.medianBlur(mask, 5)
             
             # 2. 경계 개선
-            if:
+            if self.enable_edge_refinement:
                 mask = self._refine_edges(mask, np.array(original_image))
             
             # 3. 세그멘테이션된 이미지 재생성
@@ -1772,13 +1690,11 @@ class ClothSegmentationStep:
             
             return result
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"후처리 실패: {e}")
             return result
 
-    def _refine_edges:
-
+    def _refine_edges(self, mask: np.ndarray, image: np.ndarray) -> np.ndarray:
         """경계 개선"""
         try:
             # 가우시안 블러를 사용한 경계 부드럽게
@@ -1801,16 +1717,14 @@ class ClothSegmentationStep:
             
             return mask
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"경계 개선 실패: {e}")
             return mask
 
-    def _evaluate_quality:
-
+    def _evaluate_quality(self, image: Image.Image, mask: np.ndarray) -> float:
         """세그멘테이션 품질 평가"""
         try:
-            if:
+            if mask is None:
                 return 0.0
             
             height, width = mask.shape
@@ -1821,7 +1735,7 @@ class ClothSegmentationStep:
             fg_ratio = foreground_pixels / total_pixels
             
             # 이상적인 비율: 20-80%
-            if:
+            if 0.2 <= fg_ratio <= 0.8:
                 ratio_score = 1.0
             elif fg_ratio < 0.1 or fg_ratio > 0.9:
                 ratio_score = 0.0
@@ -1855,16 +1769,14 @@ class ClothSegmentationStep:
             
             return min(max(quality_score, 0.0), 1.0)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"품질 평가 실패: {e}")
             return 0.5
 
-    def _calculate_confidence:
-
+    def _calculate_confidence(self, result: SegmentationResult) -> float:
         """신뢰도 계산"""
         try:
-            if:
+            if not result.success or result.mask is None:
                 return 0.0
             
             # 방법별 기본 신뢰도
@@ -1886,13 +1798,12 @@ class ClothSegmentationStep:
             
             return min(max(final_confidence, 0.0), 1.0)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"신뢰도 계산 실패: {e}")
             return 0.5
 
     def _generate_cache_key(self, image: Union[str, np.ndarray, Image.Image, torch.Tensor], 
-                            clothing_type: str, quality_level: str) -> str:
+                          clothing_type: str, quality_level: str) -> str:
         """캐시 키 생성"""
         try:
             # 이미지 해시 생성
@@ -1902,7 +1813,7 @@ class ClothSegmentationStep:
                 image_hash = f"file_{hash(image)}_{stat.st_mtime}"
             else:
                 # 이미지 데이터의 해시
-                if:
+                if isinstance(image, Image.Image):
                     image_bytes = self._pil_to_bytes(image)
                 elif isinstance(image, np.ndarray):
                     image_bytes = image.tobytes()
@@ -1917,16 +1828,14 @@ class ClothSegmentationStep:
             cache_key = f"{image_hash}_{clothing_type}_{quality_level}_{self.device}"
             return cache_key
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"캐시 키 생성 실패: {e}")
             return f"fallback_{time.time()}_{clothing_type}_{quality_level}"
 
-    def _cleanup_cache:
-
+    def _cleanup_cache(self):
         """캐시 정리 (LRU 방식)"""
         try:
-            if:
+            if len(self.segmentation_cache) <= self.segmentation_config.cache_size:
                 return
             
             # 가장 오래된 항목들 제거
@@ -1942,18 +1851,15 @@ class ClothSegmentationStep:
             
             self.logger.info(f"💾 캐시 정리 완료: {remove_count}개 항목 제거")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"캐시 정리 실패: {e}")
 
-    def _update_statistics:
-
+    def _update_statistics(self, result: SegmentationResult, processing_time: float):
         """통계 업데이트"""
         try:
             self.processing_stats['total_processed'] += 1
             
-            if:
-            
+            if result.success:
                 self.processing_stats['successful_segmentations'] += 1
                 
                 # 품질 점수 평균 업데이트
@@ -1967,7 +1873,7 @@ class ClothSegmentationStep:
             
             # 방법별 사용 통계
             method = result.method_used
-            if:
+            if method not in self.processing_stats['method_usage']:
                 self.processing_stats['method_usage'][method] = 0
             self.processing_stats['method_usage'][method] += 1
             
@@ -1979,12 +1885,10 @@ class ClothSegmentationStep:
                 (current_avg_time * (total_processed - 1) + processing_time) / total_processed
             )
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"통계 업데이트 실패: {e}")
 
-    def _format_result_with_visualization:
-
+    def _format_result_with_visualization(self, result: SegmentationResult) -> Dict[str, Any]:
         """🆕 시각화가 포함된 결과를 표준 딕셔너리 형태로 포맷"""
         try:
             # 기본 결과 구조
@@ -2050,8 +1954,7 @@ class ClothSegmentationStep:
             
             return formatted_result
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"결과 포맷팅 실패: {e}")
             return {
                 'success': False,
@@ -2070,8 +1973,7 @@ class ClothSegmentationStep:
                 }
             }
 
-    def _pil_to_bytes:
-
+    def _pil_to_bytes(self, image: Image.Image) -> bytes:
         """PIL 이미지를 바이트로 변환"""
         buffer = BytesIO()
         image.save(buffer, format='PNG')
@@ -2085,14 +1987,13 @@ class ClothSegmentationStep:
     # 🔧 추가 유틸리티 함수들 - 완전 구현
     # ==============================================
 
-    def get_statistics:
-
+    def get_statistics(self) -> Dict[str, Any]:
         """처리 통계 반환"""
         try:
             stats = self.processing_stats.copy()
             
             # 성공률 계산
-            if:
+            if stats['total_processed'] > 0:
                 stats['success_rate'] = stats['successful_segmentations'] / stats['total_processed']
             else:
                 stats['success_rate'] = 0.0
@@ -2116,13 +2017,11 @@ class ClothSegmentationStep:
             
             return stats
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"통계 조회 실패: {e}")
             return {'error': str(e)}
 
-    def get_clothing_mask:
-
+    def get_clothing_mask(self, mask: np.ndarray, category: str) -> np.ndarray:
         """특정 의류 카테고리의 통합 마스크 반환"""
         try:
             # 의류 카테고리별 마스크 생성
@@ -2138,12 +2037,11 @@ class ClothSegmentationStep:
             else:
                 # 기본값
                 return (mask > 128).astype(np.uint8)
-        except:
+        except Exception as e:
             self.logger.warning(f"의류 마스크 생성 실패: {e}")
             return np.zeros_like(mask, dtype=np.uint8)
 
-    def visualize_segmentation:
-
+    def visualize_segmentation(self, mask: np.ndarray, clothing_type: str = "shirt") -> np.ndarray:
         """세그멘테이션 결과 시각화 (디버깅용)"""
         try:
             # 의류 타입에 따른 색상 선택
@@ -2159,8 +2057,7 @@ class ClothSegmentationStep:
             
             return colored_image
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"세그멘테이션 시각화 실패: {e}")
             # 폴백: 그레이스케일
             return np.stack([mask, mask, mask], axis=2)
@@ -2169,7 +2066,7 @@ class ClothSegmentationStep:
         """🔍 3단계 상세 정보 반환"""
         try:
             memory_stats = {}
-            if:
+            if self.memory_manager:
                 try:
                     memory_stats = await self.memory_manager.get_usage_stats()
                 except:
@@ -2199,7 +2096,7 @@ class ClothSegmentationStep:
                     "size": len(self.segmentation_cache),
                     "max_size": self.segmentation_config.cache_size,
                     "hit_rate": (self.processing_stats['cache_hits'] / 
-                                max(1, self.processing_stats['total_processed'])) * 100
+                               max(1, self.processing_stats['total_processed'])) * 100
                 },
                 "memory_usage": memory_stats,
                 "optimization": {
@@ -2218,8 +2115,7 @@ class ClothSegmentationStep:
                 }
             }
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"Step 정보 조회 실패: {e}")
             return {
                 "step_name": "cloth_segmentation",
@@ -2228,18 +2124,15 @@ class ClothSegmentationStep:
                 "initialized": self.is_initialized
             }
 
-    def get_supported_clothing_types:
-
+    def get_supported_clothing_types(self) -> List[str]:
         """지원되는 의류 타입 목록 반환"""
         return [ct.value for ct in ClothingType]
 
-    def get_available_methods:
-
+    def get_available_methods(self) -> List[str]:
         """사용 가능한 세그멘테이션 방법 목록 반환"""
         return [method.value for method in self.available_methods]
 
-    def get_method_info:
-
+    def get_method_info(self, method_name: str) -> Dict[str, Any]:
         """특정 방법의 상세 정보 반환"""
         method_info = {
             'u2net': {
@@ -2297,8 +2190,7 @@ class ClothSegmentationStep:
         try:
             self.logger.info("🔥 3단계 세그멘테이션 시스템 워밍업 시작...")
             
-            if:
-            
+            if not self.is_initialized:
                 await self.initialize()
             
             # 더미 이미지로 워밍업
@@ -2309,21 +2201,19 @@ class ClothSegmentationStep:
                 try:
                     self.logger.info(f"🔥 {method.value} 워밍업 중...")
                     result = await self._perform_single_segmentation(dummy_image, method, "shirt")
-                    if:
+                    if result.success:
                         self.logger.info(f"✅ {method.value} 워밍업 완료")
                     else:
                         self.logger.warning(f"⚠️ {method.value} 워밍업 실패")
-                except:
+                except Exception as e:
                     self.logger.warning(f"⚠️ {method.value} 워밍업 오류: {e}")
             
             self.logger.info("✅ 3단계 세그멘테이션 워밍업 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"❌ 워밍업 실패: {e}")
 
-    def estimate_processing_time:
-
+    def estimate_processing_time(self, image_size: Tuple[int, int], method: str = "auto") -> float:
         """처리 시간 추정"""
         try:
             width, height = image_size
@@ -2341,7 +2231,7 @@ class ClothSegmentationStep:
             if method == "auto":
                 # 사용 가능한 방법 중 가장 빠른 것
                 method = min(self.available_methods, 
-                            key=lambda m: time_per_mpx.get(m.value, 1.0)).value
+                           key=lambda m: time_per_mpx.get(m.value, 1.0)).value
             
             mpx = total_pixels / 1_000_000  # 메가픽셀 변환
             base_time = time_per_mpx.get(method, 1.0) * mpx
@@ -2359,8 +2249,7 @@ class ClothSegmentationStep:
             
             return max(0.1, estimated_time)  # 최소 0.1초
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"처리 시간 추정 실패: {e}")
             return 2.0  # 기본값
 
@@ -2375,29 +2264,28 @@ class ClothSegmentationStep:
             self.session_cache.clear()
             
             # 모델 메모리 해제
-            if:
+            if hasattr(self, 'u2net_model') and self.u2net_model:
                 del self.u2net_model
                 self.u2net_model = None
             
-            if:
-            
+            if hasattr(self, 'deeplab_pipeline') and self.deeplab_pipeline:
                 del self.deeplab_pipeline
                 self.deeplab_pipeline = None
             
             # RemBG 세션 정리
-            if:
+            if hasattr(self, 'rembg_sessions'):
                 self.rembg_sessions.clear()
             
             # 스레드 풀 종료
-            if:
+            if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=True)
             
             # 메모리 정리
-            if:
+            if self.memory_manager:
                 await self.memory_manager.cleanup_memory()
             
             # PyTorch 캐시 정리
-            if:
+            if self.device == 'mps' and hasattr(torch.mps, 'empty_cache'):
                 try:
                     torch.mps.empty_cache()
                 except:
@@ -2414,15 +2302,13 @@ class ClothSegmentationStep:
             self.is_initialized = False
             self.logger.info("✅ 3단계 세그멘테이션 시스템 정리 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"정리 과정에서 오류 발생: {e}")
 
-    def __del__:
-
+    def __del__(self):
         """소멸자"""
         try:
-            if:
+            if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=False)
         except:
             pass
@@ -2442,12 +2328,11 @@ def create_cloth_segmentation_step(
     """
     try:
         return ClothSegmentationStep(device=device, config=config, **kwargs)
-    except:
+    except Exception as e:
         logger.error(f"ClothSegmentationStep 생성 실패: {e}")
         raise
 
-def create_m3_max_segmentation_step:
-
+def create_m3_max_segmentation_step(**kwargs) -> ClothSegmentationStep:
     """M3 Max 최적화된 세그멘테이션 스텝 생성"""
     m3_max_config = {
         'device': 'mps',
@@ -2558,7 +2443,7 @@ async def test_cloth_segmentation_with_visualization():
         result = await step.process(dummy_image, clothing_type="shirt", quality_level="high")
         
         # 결과 확인
-        if:
+        if result["success"]:
             print("✅ 처리 성공!")
             print(f"📊 방법: {result['method_used']}")
             print(f"📊 신뢰도: {result.get('confidence_score', 0):.3f}")
@@ -2574,8 +2459,7 @@ async def test_cloth_segmentation_with_visualization():
         await step.cleanup()
         print("🧹 리소스 정리 완료")
         
-    except:
-        
+    except Exception as e:
         print(f"❌ 테스트 실패: {e}")
 
 async def benchmark_segmentation_methods():
@@ -2583,7 +2467,6 @@ async def benchmark_segmentation_methods():
     print("🏃‍♂️ 세그멘테이션 방법별 성능 벤치마크 시작")
     
     try:
-    
         step = create_cloth_segmentation_step(device="auto")
         
         # 테스트 이미지
@@ -2597,7 +2480,6 @@ async def benchmark_segmentation_methods():
             start_time = time.time()
             
             try:
-            
                 result = await step.process(
                     test_image, 
                     clothing_type="shirt",
@@ -2614,8 +2496,7 @@ async def benchmark_segmentation_methods():
                 
                 print(f"✅ {method}: {processing_time:.3f}초")
                 
-            except:
-                
+            except Exception as e:
                 results[method] = {
                     'success': False,
                     'error': str(e),
@@ -2628,16 +2509,15 @@ async def benchmark_segmentation_methods():
         print("=" * 50)
         
         for method, result in results.items():
-            if:
+            if result['success']:
                 print(f"{method:12}: {result['processing_time']:6.3f}초 "
-                        f"(신뢰도: {result['confidence']:5.3f}, 품질: {result['quality']:5.3f})")
+                      f"(신뢰도: {result['confidence']:5.3f}, 품질: {result['quality']:5.3f})")
             else:
                 print(f"{method:12}: 실패")
         
         await step.cleanup()
         
-    except:
-        
+    except Exception as e:
         print(f"❌ 벤치마크 실패: {e}")
 
 
@@ -2672,7 +2552,7 @@ estimated_time = step.estimate_processing_time((1024, 768), "rembg")
 print(f"예상 처리 시간: {estimated_time:.2f}초")
 
 # 🎨 시각화 결과 확인 - 완전 구현됨
-if:
+if result['success']:
     result_image = result['details']['result_image']  # base64 이미지
     overlay_image = result['details']['overlay_image']  # 오버레이 이미지
     print("시각화 완료!")

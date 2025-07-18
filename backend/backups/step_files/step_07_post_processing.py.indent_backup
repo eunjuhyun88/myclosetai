@@ -47,29 +47,26 @@ try:
     from scipy.ndimage import gaussian_filter, median_filter
     from scipy.signal import convolve2d
     SCIPY_AVAILABLE = True
-except:
+except ImportError:
     SCIPY_AVAILABLE = False
 
 try:
-
     from skimage import restoration, filters, exposure, morphology
     from skimage.measure import compare_ssim, compare_psnr
     SKIMAGE_AVAILABLE = True
-except:
+except ImportError:
     SKIMAGE_AVAILABLE = False
 
 try:
-
     from sklearn.cluster import KMeans
     SKLEARN_AVAILABLE = True
-except:
+except ImportError:
     SKLEARN_AVAILABLE = False
 
 try:
-
     import cupy as cp
     CUPY_AVAILABLE = True
-except:
+except ImportError:
     CUPY_AVAILABLE = False
 
 # MyCloset AI 핵심 유틸리티 연동
@@ -79,26 +76,24 @@ try:
         get_global_model_loader, create_model_loader
     )
     MODEL_LOADER_AVAILABLE = True
-except:
+except ImportError:
     MODEL_LOADER_AVAILABLE = False
     BaseStepMixin = object
 
 try:
-
     from app.ai_pipeline.utils.memory_manager import (
         MemoryManager, get_global_memory_manager, optimize_memory_usage
     )
     MEMORY_MANAGER_AVAILABLE = True
-except:
+except ImportError:
     MEMORY_MANAGER_AVAILABLE = False
 
 try:
-
     from app.ai_pipeline.utils.data_converter import (
         DataConverter, get_global_data_converter
     )
     DATA_CONVERTER_AVAILABLE = True
-except:
+except ImportError:
     DATA_CONVERTER_AVAILABLE = False
 
 # 로깅 설정
@@ -109,9 +104,7 @@ logger = logging.getLogger(__name__)
 # ==============================================
 
 
-    def _setup_model_precision:
-
-
+    def _setup_model_precision(self, model):
         """M3 Max 호환 정밀도 설정"""
         try:
             if self.device == "mps":
@@ -121,12 +114,11 @@ logger = logging.getLogger(__name__)
                 return model.half()
             else:
                 return model.float()
-        except:
+        except Exception as e:
             self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
             return model.float()
 
-class EnhancementMethod:
-
+class EnhancementMethod(Enum):
     """향상 방법"""
     SUPER_RESOLUTION = "super_resolution"
     NOISE_REDUCTION = "noise_reduction"
@@ -138,16 +130,14 @@ class EnhancementMethod:
     TEXTURE_ENHANCEMENT = "texture_enhancement"
     AUTO = "auto"
 
-class QualityLevel:
-
+class QualityLevel(Enum):
     """품질 레벨"""
     FAST = "fast"
     BALANCED = "balanced"
     HIGH = "high"
     ULTRA = "ultra"
 
-class ProcessingMode:
-
+class ProcessingMode(Enum):
     """처리 모드"""
     REAL_TIME = "real_time"
     QUALITY = "quality"
@@ -191,10 +181,9 @@ class PostProcessingResult:
 # 2. 고급 이미지 향상 신경망 모델
 # ==============================================
 
-class SRResNet:
-
+class SRResNet(nn.Module):
     """Super Resolution ResNet 모델"""
-    def __init__:
+    def __init__(self, in_channels=3, out_channels=3, num_features=64, num_blocks=16):
         super(SRResNet, self).__init__()
         
         # 초기 컨볼루션
@@ -219,8 +208,7 @@ class SRResNet:
         # 최종 출력
         self.conv_last = nn.Conv2d(num_features, out_channels, 9, padding=4)
     
-    def _make_res_block:
-    
+    def _make_res_block(self, num_features):
         """잔차 블록 생성"""
         return nn.Sequential(
             nn.Conv2d(num_features, num_features, 3, padding=1),
@@ -230,8 +218,7 @@ class SRResNet:
             nn.BatchNorm2d(num_features)
         )
     
-    def forward:
-    
+    def forward(self, x):
         """순전파"""
         # 초기 특성 추출
         feat = self.relu(self.conv_first(x))
@@ -250,10 +237,9 @@ class SRResNet:
         
         return out
 
-class DenoiseNet:
-
+class DenoiseNet(nn.Module):
     """노이즈 제거 신경망"""
-    def __init__:
+    def __init__(self, in_channels=3, out_channels=3, num_features=64):
         super(DenoiseNet, self).__init__()
         
         self.encoder = nn.Sequential(
@@ -276,8 +262,7 @@ class DenoiseNet:
             nn.Sigmoid()
         )
     
-    def forward:
-    
+    def forward(self, x):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return decoded
@@ -286,8 +271,7 @@ class DenoiseNet:
 # 3. 메인 PostProcessingStep 클래스
 # ==============================================
 
-class PostProcessingStep:
-
+class PostProcessingStep(BaseStepMixin):
     """
     7단계: 후처리 - 완전 통합 프로덕션 버전 + 시각화 + logger 속성 누락 문제 해결
     
@@ -310,15 +294,15 @@ class PostProcessingStep:
         """✅ 완전 통합 생성자 - 통일된 패턴 적용 + logger 속성 누락 문제 해결"""
         
         # === 🔥 STEP 1: logger 속성 누락 문제 해결 ===
-        if:
+        if not hasattr(self, 'logger'):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.logger.info(f"🔧 {self.__class__.__name__} logger 초기화 완료")
         
         # === 2. BaseStepMixin 초기화 호출 ===
-        if:
+        if MODEL_LOADER_AVAILABLE:
             try:
                 super().__init__(**kwargs)
-            except:
+            except Exception as e:
                 self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패: {e}")
         
         # === 3. 통일된 기본 초기화 ===
@@ -341,10 +325,10 @@ class PostProcessingStep:
         self._initialization_lock = threading.RLock()
         
         # === 7. Model Loader 연동 (BaseStepMixin) ===
-        if:
+        if MODEL_LOADER_AVAILABLE:
             try:
                 self._setup_model_interface()
-            except:
+            except Exception as e:
                 self.logger.warning(f"Model Loader 연동 실패: {e}")
                 self.model_interface = None
         else:
@@ -355,29 +339,26 @@ class PostProcessingStep:
         
         # === 9. 초기화 완료 로깅 ===
         self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device}")
-        if:
+        if self.is_m3_max:
             self.logger.info(f"🍎 M3 Max 최적화 모드 (메모리: {self.memory_gb}GB)")
     
-    def _auto_detect_device:
-    
+    def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""
-        if:
+        if preferred_device:
             return preferred_device
 
         try:
-
             import torch
-            if:
+            if torch.backends.mps.is_available():
                 return 'mps'  # M3 Max 우선
             elif torch.cuda.is_available():
                 return 'cuda'  # NVIDIA GPU
             else:
                 return 'cpu'  # 폴백
-        except:
+        except ImportError:
             return 'cpu'
 
-    def _detect_m3_max:
-
+    def _detect_m3_max(self) -> bool:
         """🍎 M3 Max 칩 자동 감지"""
         try:
             import platform
@@ -385,30 +366,27 @@ class PostProcessingStep:
 
             if platform.system() == 'Darwin':  # macOS
                 result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                        capture_output=True, text=True)
+                                      capture_output=True, text=True)
                 cpu_info = result.stdout.strip()
                 return 'M3 Max' in cpu_info or 'M3' in cpu_info
         except:
             pass
         return False
 
-    def _merge_step_specific_config:
-
+    def _merge_step_specific_config(self, kwargs: Dict[str, Any]):
         """7단계 특화 설정 병합"""
         
         # 후처리 설정
         self.post_processing_config = PostProcessingConfig()
         
         # 설정 업데이트
-        if:
+        if 'quality_level' in kwargs:
             self.post_processing_config.quality_level = QualityLevel(kwargs['quality_level'])
         
-        if:
-        
+        if 'processing_mode' in kwargs:
             self.post_processing_config.processing_mode = ProcessingMode(kwargs['processing_mode'])
         
-        if:
-        
+        if 'enabled_methods' in kwargs:
             self.post_processing_config.enabled_methods = [
                 EnhancementMethod(method) for method in kwargs['enabled_methods']
             ]
@@ -420,7 +398,7 @@ class PostProcessingStep:
         self.post_processing_config.show_enhancement_details = kwargs.get('show_enhancement_details', True)
         
         # M3 Max 특화 설정
-        if:
+        if self.is_m3_max:
             self.post_processing_config.use_gpu_acceleration = True
             self.post_processing_config.max_resolution = (4096, 4096)  # M3 Max 고해상도 지원
             self.post_processing_config.batch_size = min(8, max(1, int(self.memory_gb / 16)))
@@ -431,33 +409,29 @@ class PostProcessingStep:
         self.preserve_faces = kwargs.get('preserve_faces', True)
         self.auto_adjust_brightness = kwargs.get('auto_adjust_brightness', True)
 
-    def _setup_model_interface:
-
+    def _setup_model_interface(self):
         """Model Loader 인터페이스 설정"""
         try:
-            if:
+            if hasattr(self, 'logger'):
                 self.logger.debug("🔗 Model Loader 인터페이스 설정 중...")
             
             # 전역 모델 로더 사용
             model_loader = get_global_model_loader()
-            if:
+            if model_loader:
                 self.model_interface = model_loader.create_step_interface(self.step_name)
-                if:
+                if hasattr(self, 'logger'):
                     self.logger.info(f"✅ {self.step_name} Model Loader 인터페이스 연결 완료")
             else:
-                if:
+                if hasattr(self, 'logger'):
                     self.logger.warning(f"⚠️ 전역 ModelLoader를 찾을 수 없음")
                 self.model_interface = None
                 
-        except:
-                
-            if:
-                
+        except Exception as e:
+            if hasattr(self, 'logger'):
                 self.logger.error(f"❌ Model Loader 인터페이스 설정 실패: {e}")
             self.model_interface = None
 
-    def _initialize_step_specific:
-
+    def _initialize_step_specific(self):
         """7단계 특화 초기화"""
         
         # 캐시 및 상태 관리
@@ -483,23 +457,23 @@ class PostProcessingStep:
         )
         
         # 메모리 관리
-        if:
+        if MEMORY_MANAGER_AVAILABLE:
             try:
                 self.memory_manager = get_global_memory_manager()
-                if:
+                if not self.memory_manager:
                     from app.ai_pipeline.utils.memory_manager import create_memory_manager
                     self.memory_manager = create_memory_manager(device=self.device)
-            except:
+            except Exception as e:
                 self.logger.warning(f"Memory Manager 연동 실패: {e}")
                 self.memory_manager = None
         else:
             self.memory_manager = None
         
         # 데이터 변환기
-        if:
+        if DATA_CONVERTER_AVAILABLE:
             try:
                 self.data_converter = get_global_data_converter()
-            except:
+            except Exception as e:
                 self.logger.warning(f"Data Converter 연동 실패: {e}")
                 self.data_converter = None
         else:
@@ -530,29 +504,28 @@ class PostProcessingStep:
             bool: 초기화 성공 여부
         """
         async with asyncio.Lock():
-            if:
+            if self.is_initialized:
                 return True
         
         try:
-        
             self.logger.info("🔄 7단계: 후처리 시스템 초기화 중...")
             
             # 1. AI 모델들 초기화
             await self._initialize_ai_models()
             
             # 2. 얼굴 검출기 초기화
-            if:
+            if self.preserve_faces:
                 await self._initialize_face_detector()
             
             # 3. 이미지 필터 초기화
             self._initialize_image_filters()
             
             # 4. GPU 가속 초기화 (M3 Max/CUDA)
-            if:
+            if self.post_processing_config.use_gpu_acceleration:
                 await self._initialize_gpu_acceleration()
             
             # 5. M3 Max 최적화 워밍업
-            if:
+            if self.is_m3_max and self.optimization_enabled:
                 await self._warmup_m3_max()
             
             # 6. 캐시 시스템 초기화
@@ -563,8 +536,7 @@ class PostProcessingStep:
             
             return True
             
-        except:
-            
+        except Exception as e:
             error_msg = f"후처리 시스템 초기화 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
             
@@ -577,7 +549,7 @@ class PostProcessingStep:
     async def _initialize_ai_models(self):
         """AI 모델들 초기화 (Model Loader 활용)"""
         try:
-            if:
+            if not self.model_interface:
                 self.logger.warning("Model Loader 인터페이스가 없습니다. 직접 모델 로드 시도.")
                 await self._load_models_direct()
                 return
@@ -592,10 +564,9 @@ class PostProcessingStep:
             }
             
             try:
-            
                 self.sr_model = await self.model_interface.load_model_async('srresnet_x4')
                 self.logger.info("✅ Super Resolution 모델 로드 성공")
-            except:
+            except Exception as e:
                 self.logger.warning(f"SR 모델 로드 실패: {e}")
                 self.sr_model = None
             
@@ -609,15 +580,13 @@ class PostProcessingStep:
             }
             
             try:
-            
                 self.denoise_model = await self.model_interface.load_model_async('denoise_net')
                 self.logger.info("✅ Denoising 모델 로드 성공")
-            except:
+            except Exception as e:
                 self.logger.warning(f"Denoising 모델 로드 실패: {e}")
                 self.denoise_model = None
                 
-        except:
-                
+        except Exception as e:
             self.logger.error(f"AI 모델 초기화 실패: {e}")
             await self._load_models_direct()
 
@@ -627,7 +596,7 @@ class PostProcessingStep:
             # Super Resolution 모델
             self.sr_model = SRResNet(in_channels=3, out_channels=3)
             sr_checkpoint = self.checkpoint_path / "srresnet_x4.pth"
-            if:
+            if sr_checkpoint.exists():
                 state_dict = torch.load(sr_checkpoint, map_location=self.device)
                 self.sr_model.load_state_dict(state_dict)
                 self.logger.info("✅ SR 모델 체크포인트 로드 성공")
@@ -640,7 +609,7 @@ class PostProcessingStep:
             # Denoising 모델
             self.denoise_model = DenoiseNet(in_channels=3, out_channels=3)
             denoise_checkpoint = self.checkpoint_path / "denoise_net.pth"
-            if:
+            if denoise_checkpoint.exists():
                 state_dict = torch.load(denoise_checkpoint, map_location=self.device)
                 self.denoise_model.load_state_dict(state_dict)
                 self.logger.info("✅ Denoising 모델 체크포인트 로드 성공")
@@ -651,14 +620,13 @@ class PostProcessingStep:
             self.denoise_model.eval()
             
             # FP16 최적화 (M3 Max)
-            if:
+            if self.is_m3_max and self.device != 'cpu':
                 if self.sr_model:
                     self.sr_model = self.sr_model.half() if self.device != "cpu" else self
-                if:
+                if self.denoise_model:
                     self.denoise_model = self.denoise_model.half() if self.device != "cpu" else self
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"모델 직접 로드 실패: {e}")
             self.sr_model = None
             self.denoise_model = None
@@ -670,8 +638,7 @@ class PostProcessingStep:
             face_net_path = self.checkpoint_path / "opencv_face_detector_uint8.pb"
             face_config_path = self.checkpoint_path / "opencv_face_detector.pbtxt"
             
-            if:
-            
+            if face_net_path.exists() and face_config_path.exists():
                 self.face_detector = cv2.dnn.readNetFromTensorflow(
                     str(face_net_path), str(face_config_path)
                 )
@@ -682,13 +649,11 @@ class PostProcessingStep:
                 self.face_detector = cv2.CascadeClassifier(cascade_path)
                 self.logger.info("✅ Haar Cascade 얼굴 검출기 로드 성공")
                 
-        except:
-                
+        except Exception as e:
             self.logger.warning(f"얼굴 검출기 초기화 실패: {e}")
             self.face_detector = None
 
-    def _initialize_image_filters:
-
+    def _initialize_image_filters(self):
         """이미지 필터 초기화"""
         try:
             # 커스텀 커널들
@@ -717,8 +682,7 @@ class PostProcessingStep:
             
             self.logger.info("✅ 이미지 필터 초기화 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"이미지 필터 초기화 실패: {e}")
 
     async def _initialize_gpu_acceleration(self):
@@ -733,7 +697,7 @@ class PostProcessingStep:
                 self.logger.info("🚀 CUDA 가속 활성화")
                 
                 # CuPy 사용 가능시 활성화
-                if:
+                if CUPY_AVAILABLE:
                     self.use_cupy = True
                     self.logger.info("✅ CuPy 가속 활성화")
                 else:
@@ -741,14 +705,13 @@ class PostProcessingStep:
             else:
                 self.logger.info("💻 CPU 모드에서 실행")
                 
-        except:
-                
+        except Exception as e:
             self.logger.warning(f"GPU 가속 초기화 실패: {e}")
 
     async def _warmup_m3_max(self):
         """M3 Max 최적화 워밍업"""
         try:
-            if:
+            if not self.is_m3_max:
                 return
             
             self.logger.info("🍎 M3 Max 최적화 워밍업 시작...")
@@ -756,38 +719,34 @@ class PostProcessingStep:
             # 더미 이미지로 GPU 워밍업
             dummy_image = torch.randn(1, 3, 512, 512).to(self.device)
             
-            if:
-            
+            if self.sr_model:
                 with torch.no_grad():
                     _ = self.sr_model(dummy_image)
                 self.logger.info("✅ Super Resolution M3 Max 워밍업 완료")
             
-            if:
-            
+            if self.denoise_model:
                 with torch.no_grad():
                     _ = self.denoise_model(dummy_image)
                 self.logger.info("✅ Denoising M3 Max 워밍업 완료")
             
             # MPS 캐시 최적화
-            if:
+            if self.device == 'mps':
                 try:
-                    if:
+                    if hasattr(torch.mps, 'empty_cache'):
                         torch.mps.empty_cache()
                 except:
                     pass
             
             # 메모리 최적화
-            if:
+            if self.memory_manager:
                 await self.memory_manager.optimize_for_m3_max()
             
             self.logger.info("🍎 M3 Max 워밍업 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"M3 Max 워밍업 실패: {e}")
 
-    def _initialize_cache_system:
-
+    def _initialize_cache_system(self):
         """캐시 시스템 초기화"""
         try:
             # 캐시 크기 설정 (M3 Max 최적화)
@@ -799,12 +758,10 @@ class PostProcessingStep:
             
             self.logger.info(f"💾 캐시 시스템 초기화 완료 (크기: {cache_size})")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"캐시 시스템 초기화 실패: {e}")
 
-    def _initialize_fallback_system:
-
+    def _initialize_fallback_system(self):
         """최소한의 폴백 시스템 초기화"""
         try:
             # 가장 기본적인 방법들만 활성화
@@ -816,8 +773,7 @@ class PostProcessingStep:
             
             self.logger.info("⚠️ 폴백 시스템 초기화 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"폴백 시스템 초기화도 실패: {e}")
 
     async def process(
@@ -840,18 +796,17 @@ class PostProcessingStep:
         Returns:
             Dict[str, Any]: 후처리 결과 + 시각화 이미지
         """
-        if:
+        if not self.is_initialized:
             await self.initialize()
         
         start_time = time.time()
         
         try:
-        
             self.logger.info("✨ 후처리 시작...")
             
             # 1. 캐시 확인
             cache_key = self._generate_cache_key(fitting_result, enhancement_options)
-            if:
+            if kwargs.get('use_cache', True) and cache_key in self.enhancement_cache:
                 cached_result = self.enhancement_cache[cache_key]
                 self.processing_stats['cache_hits'] += 1
                 self.logger.info("💾 캐시에서 결과 반환")
@@ -869,7 +824,7 @@ class PostProcessingStep:
             )
             
             # 🆕 5. 시각화 이미지 생성
-            if:
+            if self.post_processing_config.enable_visualization and result.success:
                 visualization_results = await self._create_enhancement_visualization(
                     processed_input, result, options
                 )
@@ -877,21 +832,20 @@ class PostProcessingStep:
                 result.metadata['visualization'] = visualization_results
             
             # 6. 결과 캐싱
-            if:
+            if kwargs.get('use_cache', True) and result.success:
                 self.enhancement_cache[cache_key] = result
-                if:
+                if len(self.enhancement_cache) > self.post_processing_config.cache_size:
                     self._cleanup_cache()
             
             # 7. 통계 업데이트
             self._update_statistics(result, time.time() - start_time)
             
             self.logger.info(f"✅ 후처리 완료 - 개선도: {result.quality_improvement:.3f}, "
-                            f"시간: {result.processing_time:.3f}초")
+                           f"시간: {result.processing_time:.3f}초")
             
             return self._format_result(result)
             
-        except:
-            
+        except Exception as e:
             error_msg = f"후처리 처리 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
             
@@ -904,15 +858,13 @@ class PostProcessingStep:
             
             return self._format_result(error_result)
 
-    def _process_input_data:
-
+    def _process_input_data(self, fitting_result: Dict[str, Any]) -> Dict[str, Any]:
         """입력 데이터 처리"""
         try:
             # 가상 피팅 결과에서 이미지 추출
             fitted_image = fitting_result.get('fitted_image') or fitting_result.get('result_image')
             
-            if:
-            
+            if fitted_image is None:
                 raise ValueError("피팅된 이미지가 없습니다")
             
             # 타입별 변환
@@ -924,13 +876,13 @@ class PostProcessingStep:
                 image_pil = Image.open(BytesIO(image_data)).convert('RGB')
                 fitted_image = np.array(image_pil)
             elif isinstance(fitted_image, torch.Tensor):
-                if:
+                if self.data_converter:
                     fitted_image = self.data_converter.tensor_to_numpy(fitted_image)
                 else:
                     fitted_image = fitted_image.detach().cpu().numpy()
-                    if:
+                    if fitted_image.ndim == 4:
                         fitted_image = fitted_image.squeeze(0)
-                    if:
+                    if fitted_image.shape[0] in [1, 3]:
                         fitted_image = fitted_image.transpose(1, 2, 0)
                     fitted_image = (fitted_image * 255).astype(np.uint8)
             elif isinstance(fitted_image, Image.Image):
@@ -939,12 +891,12 @@ class PostProcessingStep:
                 raise ValueError(f"지원되지 않는 이미지 타입: {type(fitted_image)}")
             
             # 이미지 검증
-            if:
+            if fitted_image.ndim != 3 or fitted_image.shape[2] != 3:
                 raise ValueError(f"잘못된 이미지 형태: {fitted_image.shape}")
             
             # 크기 제한 확인
             max_height, max_width = self.post_processing_config.max_resolution
-            if:
+            if fitted_image.shape[0] > max_height or fitted_image.shape[1] > max_width:
                 fitted_image = self._resize_image_preserve_ratio(fitted_image, max_height, max_width)
             
             return {
@@ -955,13 +907,11 @@ class PostProcessingStep:
                 'metadata': fitting_result.get('metadata', {})
             }
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"입력 데이터 처리 실패: {e}")
             raise
 
-    def _prepare_enhancement_options:
-
+    def _prepare_enhancement_options(self, enhancement_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """향상 옵션 준비"""
         try:
             # 기본 옵션
@@ -979,13 +929,12 @@ class PostProcessingStep:
             }
             
             # 사용자 옵션으로 덮어쓰기
-            if:
+            if enhancement_options:
                 default_options.update(enhancement_options)
             
             return default_options
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"향상 옵션 준비 실패: {e}")
             return {}
 
@@ -1004,91 +953,90 @@ class PostProcessingStep:
             original_quality = self._calculate_image_quality(image)
             
             # 1. Super Resolution (해상도 향상)
-            if:
+            if options.get('apply_super_resolution', False) and self.sr_model:
                 try:
                     enhanced_image = await self._apply_super_resolution(image)
-                    if:
+                    if enhanced_image is not None:
                         image = enhanced_image
                         applied_methods.append('super_resolution')
                         enhancement_log.append("Super Resolution 적용")
                         self.logger.info("✅ Super Resolution 적용 완료")
-                except:
+                except Exception as e:
                     self.logger.warning(f"Super Resolution 실패: {e}")
             
             # 2. Noise Reduction (노이즈 제거)
-            if:
+            if options.get('apply_noise_reduction', False):
                 try:
-                    if:
+                    if self.denoise_model:
                         enhanced_image = await self._apply_ai_denoising(image)
                     else:
                         enhanced_image = self._apply_traditional_denoising(image)
                     
-                    if:
-                    
+                    if enhanced_image is not None:
                         image = enhanced_image
                         applied_methods.append('noise_reduction')
                         enhancement_log.append("노이즈 제거 적용")
                         self.logger.info("✅ 노이즈 제거 적용 완료")
-                except:
+                except Exception as e:
                     self.logger.warning(f"노이즈 제거 실패: {e}")
             
             # 3. Sharpening (선명도 향상)
-            if:
+            if options.get('apply_sharpening', False):
                 try:
                     enhanced_image = self._apply_advanced_sharpening(image, options['enhancement_strength'])
-                    if:
+                    if enhanced_image is not None:
                         image = enhanced_image
                         applied_methods.append('sharpening')
                         enhancement_log.append("선명도 향상 적용")
                         self.logger.info("✅ 선명도 향상 적용 완료")
-                except:
+                except Exception as e:
                     self.logger.warning(f"선명도 향상 실패: {e}")
             
             # 4. Color Correction (색상 보정)
-            if:
+            if options.get('apply_color_correction', False):
                 try:
                     enhanced_image = self._apply_color_correction(image)
-                    if:
+                    if enhanced_image is not None:
                         image = enhanced_image
                         applied_methods.append('color_correction')
                         enhancement_log.append("색상 보정 적용")
                         self.logger.info("✅ 색상 보정 적용 완료")
-                except:
+                except Exception as e:
                     self.logger.warning(f"색상 보정 실패: {e}")
             
             # 5. Contrast Enhancement (대비 향상)
-            if:
+            if options.get('apply_contrast_enhancement', False):
                 try:
                     enhanced_image = self._apply_contrast_enhancement(image)
-                    if:
+                    if enhanced_image is not None:
                         image = enhanced_image
                         applied_methods.append('contrast_enhancement')
                         enhancement_log.append("대비 향상 적용")
                         self.logger.info("✅ 대비 향상 적용 완료")
-                except:
+                except Exception as e:
                     self.logger.warning(f"대비 향상 실패: {e}")
             
             # 6. Face Enhancement (얼굴 향상) - 얼굴 검출된 경우만
-            if:
+            if options.get('preserve_faces', False) and self.face_detector:
                 try:
                     faces = self._detect_faces(image)
-                    if:
+                    if len(faces) > 0:
                         enhanced_image = self._enhance_face_regions(image, faces)
-                        if:
+                        if enhanced_image is not None:
                             image = enhanced_image
                             applied_methods.append('face_enhancement')
                             enhancement_log.append(f"얼굴 향상 적용 ({len(faces)}개 얼굴)")
                             self.logger.info(f"✅ 얼굴 향상 적용 완료 ({len(faces)}개)")
-                except:
+                except Exception as e:
                     self.logger.warning(f"얼굴 향상 실패: {e}")
             
             # 7. 최종 후처리
             try:
                 final_image = self._apply_final_post_processing(image)
-                if:
+                if final_image is not None:
                     image = final_image
                     enhancement_log.append("최종 후처리 적용")
-            except:
+            except Exception as e:
                 self.logger.warning(f"최종 후처리 실패: {e}")
             
             # 품질 개선도 계산
@@ -1110,8 +1058,7 @@ class PostProcessingStep:
                 }
             )
             
-        except:
-            
+        except Exception as e:
             return PostProcessingResult(
                 success=False,
                 error_message=f"향상 파이프라인 실패: {e}",
@@ -1140,22 +1087,21 @@ class PostProcessingStep:
             Dict[str, str]: base64 인코딩된 시각화 이미지들
         """
         try:
-            if:
+            if not self.post_processing_config.enable_visualization:
                 return {
                     'before_after_comparison': '',
                     'enhancement_details': '',
                     'quality_metrics': ''
                 }
             
-            def _create_visualizations:
-            
+            def _create_visualizations():
                 original_image = processed_input['image']
                 enhanced_image = result.enhanced_image
                 
                 visualizations = {}
                 
                 # 1. 🔄 Before/After 비교 이미지
-                if:
+                if self.post_processing_config.show_before_after:
                     before_after = self._create_before_after_comparison(
                         original_image, enhanced_image, result
                     )
@@ -1164,7 +1110,7 @@ class PostProcessingStep:
                     visualizations['before_after_comparison'] = ''
                 
                 # 2. 📊 향상 세부사항 시각화
-                if:
+                if self.post_processing_config.show_enhancement_details:
                     enhancement_details = self._create_enhancement_details_visualization(
                         original_image, enhanced_image, result, options
                     )
@@ -1184,8 +1130,7 @@ class PostProcessingStep:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(self.executor, _create_visualizations)
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"❌ 시각화 생성 실패: {e}")
             return {
                 'before_after_comparison': '',
@@ -1239,7 +1184,7 @@ class PostProcessingStep:
             # 품질 개선 정보
             improvement_text = f"품질 개선: {result.quality_improvement:.1%}"
             methods_text = f"적용된 방법: {', '.join(result.applied_methods[:3])}"
-            if:
+            if len(result.applied_methods) > 3:
                 methods_text += f" 외 {len(result.applied_methods) - 3}개"
             
             draw.text((25, canvas_height - 40), improvement_text, fill=(0, 150, 0), font=text_font)
@@ -1247,12 +1192,11 @@ class PostProcessingStep:
             
             # 구분선
             draw.line([(target_size[0] + 50, 50), (target_size[0] + 50, 50 + target_size[1])], 
-                    fill=(200, 200, 200), width=2)
+                     fill=(200, 200, 200), width=2)
             
             return np.array(canvas_pil)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ Before/After 비교 이미지 생성 실패: {e}")
             # 폴백: 기본 이미지
             return np.ones((600, 1100, 3), dtype=np.uint8) * 200
@@ -1296,7 +1240,6 @@ class PostProcessingStep:
             draw = ImageDraw.Draw(canvas_pil)
             
             try:
-            
                 font = ImageFont.truetype("arial.ttf", 12)
                 title_font = ImageFont.truetype("arial.ttf", 16)
             except:
@@ -1320,13 +1263,11 @@ class PostProcessingStep:
             
             return np.array(canvas_pil)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 향상 세부사항 시각화 실패: {e}")
             return np.ones((600, 1200, 3), dtype=np.uint8) * 200
     
-    def _create_histogram_image:
-    
+    def _create_histogram_image(self, image: np.ndarray, size: Tuple[int, int]) -> np.ndarray:
         """히스토그램 이미지 생성"""
         try:
             # RGB 히스토그램 계산
@@ -1340,20 +1281,18 @@ class PostProcessingStep:
                 hist = cv2.normalize(hist, hist, 0, size[1]-20, cv2.NORM_MINMAX)
                 
                 for j in range(256):
-                    if:
+                    if j < size[0]:
                         pt1 = (j, size[1]-10)
                         pt2 = (j, size[1]-10-int(hist[j]))
                         cv2.line(hist_image, pt1, pt2, color_val, 1)
             
             return hist_image
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 히스토그램 생성 실패: {e}")
             return np.ones((*size, 3), dtype=np.uint8) * 240
     
-    def _create_metrics_chart:
-    
+    def _create_metrics_chart(self, result: PostProcessingResult, size: Tuple[int, int]) -> np.ndarray:
         """품질 메트릭 차트 생성"""
         try:
             chart_image = np.ones((size[1], size[0], 3), dtype=np.uint8) * 255
@@ -1374,7 +1313,6 @@ class PostProcessingStep:
             draw = ImageDraw.Draw(chart_pil)
             
             try:
-            
                 font = ImageFont.truetype("arial.ttf", 10)
             except:
                 font = ImageFont.load_default()
@@ -1393,8 +1331,7 @@ class PostProcessingStep:
             
             return np.array(chart_pil)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 메트릭 차트 생성 실패: {e}")
             return np.ones(size + (3,), dtype=np.uint8) * 240
     
@@ -1456,7 +1393,7 @@ class PostProcessingStep:
             draw.text((20, y_offset), f"품질 레벨: {quality_level.title()}", fill=(100, 100, 100), font=text_font)
             
             # 메타데이터 정보
-            if:
+            if 'original_quality' in result.metadata and 'final_quality' in result.metadata:
                 y_offset += 40
                 draw.text((20, y_offset), "품질 점수:", fill=(50, 50, 50), font=subtitle_font)
                 y_offset += 25
@@ -1472,24 +1409,22 @@ class PostProcessingStep:
             
             # 배경
             draw.rectangle([progress_x, progress_y, progress_x + progress_width, progress_y + progress_height], 
-                            fill=(220, 220, 220), outline=(180, 180, 180))
+                          fill=(220, 220, 220), outline=(180, 180, 180))
             
             # 진행도
             progress_fill = min(progress_width, int((improvement_percent / 50) * progress_width))
-            if:
+            if progress_fill > 0:
                 progress_color = (0, 200, 0) if improvement_percent > 15 else (255, 200, 0) if improvement_percent > 5 else (255, 100, 100)
                 draw.rectangle([progress_x, progress_y, progress_x + progress_fill, progress_y + progress_height], 
-                                fill=progress_color)
+                              fill=progress_color)
             
             return np.array(canvas_pil)
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ 품질 메트릭 시각화 실패: {e}")
             return np.ones((400, 600, 3), dtype=np.uint8) * 200
     
-    def _numpy_to_base64:
-    
+    def _numpy_to_base64(self, image: np.ndarray) -> str:
         """numpy 배열을 base64 문자열로 변환"""
         try:
             # PIL 이미지로 변환
@@ -1500,7 +1435,7 @@ class PostProcessingStep:
             
             # 품질 설정
             quality = 90
-            if:
+            if self.post_processing_config.visualization_quality == 'high':
                 quality = 95
             elif self.post_processing_config.visualization_quality == 'low':
                 quality = 75
@@ -1510,8 +1445,7 @@ class PostProcessingStep:
             # base64 인코딩
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"⚠️ base64 변환 실패: {e}")
             return ""
 
@@ -1522,7 +1456,7 @@ class PostProcessingStep:
     async def _apply_super_resolution(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Super Resolution 적용"""
         try:
-            if:
+            if not self.sr_model:
                 return None
             
             # 이미지를 텐서로 변환
@@ -1534,8 +1468,7 @@ class PostProcessingStep:
             pil_image = Image.fromarray(image)
             input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
             
-            if:
-            
+            if self.is_m3_max and self.device != 'cpu':
                 input_tensor = input_tensor.half() if self.device != "cpu" else self
             
             # 추론
@@ -1547,7 +1480,7 @@ class PostProcessingStep:
                 
                 # 텐서를 numpy로 변환
                 output_np = output_tensor.squeeze().cpu().float().numpy()
-                if:
+                if output_np.ndim == 3:
                     output_np = output_np.transpose(1, 2, 0)
                 
                 # 0-255 범위로 변환
@@ -1555,15 +1488,14 @@ class PostProcessingStep:
                 
                 return enhanced_image
                 
-        except:
-                
+        except Exception as e:
             self.logger.error(f"Super Resolution 적용 실패: {e}")
             return None
 
     async def _apply_ai_denoising(self, image: np.ndarray) -> Optional[np.ndarray]:
         """AI 기반 노이즈 제거"""
         try:
-            if:
+            if not self.denoise_model:
                 return None
             
             # 이미지를 텐서로 변환
@@ -1574,8 +1506,7 @@ class PostProcessingStep:
             pil_image = Image.fromarray(image)
             input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
             
-            if:
-            
+            if self.is_m3_max and self.device != 'cpu':
                 input_tensor = input_tensor.half() if self.device != "cpu" else self
             
             # 추론
@@ -1584,7 +1515,7 @@ class PostProcessingStep:
                 
                 # 텐서를 numpy로 변환
                 output_np = output_tensor.squeeze().cpu().float().numpy()
-                if:
+                if output_np.ndim == 3:
                     output_np = output_np.transpose(1, 2, 0)
                 
                 # 0-255 범위로 변환
@@ -1592,17 +1523,15 @@ class PostProcessingStep:
                 
                 return denoised_image
                 
-        except:
-                
+        except Exception as e:
             self.logger.error(f"AI 노이즈 제거 실패: {e}")
             return None
 
-    def _apply_traditional_denoising:
-
+    def _apply_traditional_denoising(self, image: np.ndarray) -> np.ndarray:
         """전통적 노이즈 제거"""
         try:
             # 비선형 확산 필터 또는 bilateral 필터 사용
-            if:
+            if SKIMAGE_AVAILABLE:
                 denoised = restoration.denoise_bilateral(
                     image, 
                     sigma_color=0.05, 
@@ -1615,13 +1544,11 @@ class PostProcessingStep:
                 denoised = cv2.bilateralFilter(image, 9, 75, 75)
                 return denoised
                 
-        except:
-                
+        except Exception as e:
             self.logger.error(f"전통적 노이즈 제거 실패: {e}")
             return image
 
-    def _apply_advanced_sharpening:
-
+    def _apply_advanced_sharpening(self, image: np.ndarray, strength: float = 0.7) -> np.ndarray:
         """고급 선명도 향상"""
         try:
             # 언샤프 마스킹
@@ -1644,13 +1571,11 @@ class PostProcessingStep:
             
             return np.clip(result, 0, 255).astype(np.uint8)
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"선명도 향상 실패: {e}")
             return image
 
-    def _apply_color_correction:
-
+    def _apply_color_correction(self, image: np.ndarray) -> np.ndarray:
         """색상 보정"""
         try:
             # LAB 색공간으로 변환
@@ -1672,13 +1597,11 @@ class PostProcessingStep:
             
             return corrected
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"색상 보정 실패: {e}")
             return image
 
-    def _adjust_white_balance:
-
+    def _adjust_white_balance(self, image: np.ndarray) -> np.ndarray:
         """화이트 밸런스 조정"""
         try:
             # Gray World 알고리즘
@@ -1706,13 +1629,11 @@ class PostProcessingStep:
             
             return np.clip(balanced, 0, 255).astype(np.uint8)
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"화이트 밸런스 조정 실패: {e}")
             return image
 
-    def _apply_contrast_enhancement:
-
+    def _apply_contrast_enhancement(self, image: np.ndarray) -> np.ndarray:
         """대비 향상"""
         try:
             # 적응형 히스토그램 평활화
@@ -1732,13 +1653,11 @@ class PostProcessingStep:
             
             return enhanced
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"대비 향상 실패: {e}")
             return image
 
-    def _apply_sigmoid_correction:
-
+    def _apply_sigmoid_correction(self, image: np.ndarray, gain: float = 1.0, cutoff: float = 0.5) -> np.ndarray:
         """시그모이드 곡선을 사용한 대비 조정"""
         try:
             # 0-1 범위로 정규화
@@ -1752,16 +1671,14 @@ class PostProcessingStep:
             
             return result
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"시그모이드 보정 실패: {e}")
             return image
 
-    def _detect_faces:
-
+    def _detect_faces(self, image: np.ndarray) -> List[Tuple[int, int, int, int]]:
         """얼굴 검출"""
         try:
-            if:
+            if not self.face_detector:
                 return []
             
             faces = []
@@ -1776,7 +1693,7 @@ class PostProcessingStep:
                 
                 for i in range(detections.shape[2]):
                     confidence = detections[0, 0, i, 2]
-                    if:
+                    if confidence > 0.5:
                         x1 = int(detections[0, 0, i, 3] * w)
                         y1 = int(detections[0, 0, i, 4] * h)
                         x2 = int(detections[0, 0, i, 5] * w)
@@ -1792,13 +1709,11 @@ class PostProcessingStep:
             
             return faces
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"얼굴 검출 실패: {e}")
             return []
 
-    def _enhance_face_regions:
-
+    def _enhance_face_regions(self, image: np.ndarray, faces: List[Tuple[int, int, int, int]]) -> np.ndarray:
         """얼굴 영역 향상"""
         try:
             enhanced = image.copy()
@@ -1807,8 +1722,7 @@ class PostProcessingStep:
                 # 얼굴 영역 추출
                 face_region = image[y:y+h, x:x+w]
                 
-                if:
-                
+                if face_region.size == 0:
                     continue
                 
                 # 얼굴 영역에 대해 부드러운 향상 적용
@@ -1826,13 +1740,11 @@ class PostProcessingStep:
             
             return enhanced
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"얼굴 영역 향상 실패: {e}")
             return image
 
-    def _apply_final_post_processing:
-
+    def _apply_final_post_processing(self, image: np.ndarray) -> np.ndarray:
         """최종 후처리"""
         try:
             # 1. 미세한 노이즈 제거
@@ -1840,8 +1752,8 @@ class PostProcessingStep:
             
             # 2. 약간의 선명화
             kernel = np.array([[-0.1, -0.1, -0.1],
-                                [-0.1,  1.8, -0.1],
-                                [-0.1, -0.1, -0.1]])
+                              [-0.1,  1.8, -0.1],
+                              [-0.1, -0.1, -0.1]])
             sharpened = cv2.filter2D(denoised, -1, kernel)
             
             # 3. 색상 보정
@@ -1849,13 +1761,11 @@ class PostProcessingStep:
             
             return final
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"최종 후처리 실패: {e}")
             return image
 
-    def _calculate_image_quality:
-
+    def _calculate_image_quality(self, image: np.ndarray) -> float:
         """이미지 품질 점수 계산"""
         try:
             # 여러 품질 지표의 조합
@@ -1888,19 +1798,16 @@ class PostProcessingStep:
             
             return quality_score
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"품질 계산 실패: {e}")
             return 0.5
 
-    def _resize_image_preserve_ratio:
-
+    def _resize_image_preserve_ratio(self, image: np.ndarray, max_height: int, max_width: int) -> np.ndarray:
         """비율을 유지하면서 이미지 크기 조정"""
         try:
             h, w = image.shape[:2]
             
-            if:
-            
+            if h <= max_height and w <= max_width:
                 return image
             
             # 비율 계산
@@ -1913,13 +1820,11 @@ class PostProcessingStep:
             
             return resized
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"이미지 크기 조정 실패: {e}")
             return image
 
-    def _generate_cache_key:
-
+    def _generate_cache_key(self, fitting_result: Dict[str, Any], enhancement_options: Optional[Dict[str, Any]]) -> str:
         """캐시 키 생성"""
         try:
             # 입력 이미지 해시
@@ -1940,16 +1845,14 @@ class PostProcessingStep:
             cache_key = f"{image_hash}_{options_hash}_{self.device}_{self.quality_level}"
             return cache_key
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"캐시 키 생성 실패: {e}")
             return f"fallback_{time.time()}_{self.device}"
 
-    def _cleanup_cache:
-
+    def _cleanup_cache(self):
         """캐시 정리 (LRU 방식)"""
         try:
-            if:
+            if len(self.enhancement_cache) <= self.post_processing_config.cache_size:
                 return
             
             # 가장 오래된 항목들 제거
@@ -1965,18 +1868,15 @@ class PostProcessingStep:
             
             self.logger.info(f"💾 캐시 정리 완료: {remove_count}개 항목 제거")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"캐시 정리 실패: {e}")
 
-    def _update_statistics:
-
+    def _update_statistics(self, result: PostProcessingResult, processing_time: float):
         """통계 업데이트"""
         try:
             self.processing_stats['total_processed'] += 1
             
-            if:
-            
+            if result.success:
                 self.processing_stats['successful_enhancements'] += 1
                 
                 # 평균 개선도 업데이트
@@ -1989,7 +1889,7 @@ class PostProcessingStep:
                 
                 # 방법별 사용 통계
                 for method in result.applied_methods:
-                    if:
+                    if method not in self.processing_stats['method_usage']:
                         self.processing_stats['method_usage'][method] = 0
                     self.processing_stats['method_usage'][method] += 1
             
@@ -2004,12 +1904,10 @@ class PostProcessingStep:
             # 결과에 처리 시간 설정
             result.processing_time = processing_time
             
-        except:
-            
+        except Exception as e:
             self.logger.warning(f"통계 업데이트 실패: {e}")
 
-    def _format_result:
-
+    def _format_result(self, result: PostProcessingResult) -> Dict[str, Any]:
         """결과를 표준 딕셔너리 형태로 포맷 + API 호환성"""
         try:
             # 🆕 API 호환성을 위한 결과 구조 (기존 필드 + 시각화 필드)
@@ -2090,8 +1988,7 @@ class PostProcessingStep:
             
             return formatted_result
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"결과 포맷팅 실패: {e}")
             return {
                 'success': False,
@@ -2143,7 +2040,7 @@ class PostProcessingStep:
                     "size": len(self.enhancement_cache),
                     "max_size": self.post_processing_config.cache_size,
                     "hit_rate": (self.processing_stats['cache_hits'] / 
-                                max(1, self.processing_stats['total_processed'])) * 100
+                               max(1, self.processing_stats['total_processed'])) * 100
                 },
                 "optimization": {
                     "m3_max_enabled": self.is_m3_max,
@@ -2159,7 +2056,7 @@ class PostProcessingStep:
                     "show_enhancement_details": self.post_processing_config.show_enhancement_details
                 }
             }
-        except:
+        except Exception as e:
             self.logger.error(f"단계 정보 조회 실패: {e}")
             return {
                 "step_name": "post_processing",
@@ -2167,14 +2064,13 @@ class PostProcessingStep:
                 "error": str(e)
             }
 
-    def get_statistics:
-
+    def get_statistics(self) -> Dict[str, Any]:
         """처리 통계 반환"""
         try:
             stats = self.processing_stats.copy()
             
             # 성공률 계산
-            if:
+            if stats['total_processed'] > 0:
                 stats['success_rate'] = stats['successful_enhancements'] / stats['total_processed']
             else:
                 stats['success_rate'] = 0.0
@@ -2202,8 +2098,7 @@ class PostProcessingStep:
             
             return stats
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"통계 조회 실패: {e}")
             return {'error': str(e)}
 
@@ -2217,34 +2112,32 @@ class PostProcessingStep:
             self.model_cache.clear()
             
             # 모델 메모리 해제
-            if:
+            if hasattr(self, 'sr_model') and self.sr_model:
                 if hasattr(self.sr_model, 'cpu'):
                     self.sr_model.cpu()
                 del self.sr_model
                 self.sr_model = None
             
-            if:
-            
+            if hasattr(self, 'denoise_model') and self.denoise_model:
                 if hasattr(self.denoise_model, 'cpu'):
                     self.denoise_model.cpu()
                 del self.denoise_model
                 self.denoise_model = None
             
-            if:
-            
+            if hasattr(self, 'face_detector') and self.face_detector:
                 del self.face_detector
                 self.face_detector = None
             
             # 스레드 풀 종료
-            if:
+            if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=True)
             
             # 메모리 정리
-            if:
+            if self.memory_manager:
                 await self.memory_manager.cleanup_memory()
             
             # PyTorch 캐시 정리
-            if:
+            if self.device == 'mps' and hasattr(torch.mps, 'empty_cache'):
                 try:
                     torch.mps.empty_cache()
                 except:
@@ -2261,15 +2154,13 @@ class PostProcessingStep:
             self.is_initialized = False
             self.logger.info("✅ 7단계 후처리 시스템 정리 완료")
             
-        except:
-            
+        except Exception as e:
             self.logger.error(f"정리 과정에서 오류 발생: {e}")
 
-    def __del__:
-
+    def __del__(self):
         """소멸자"""
         try:
-            if:
+            if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=False)
         except:
             pass
@@ -2296,12 +2187,11 @@ def create_post_processing_step(
     """
     try:
         return PostProcessingStep(device=device, config=config, **kwargs)
-    except:
+    except Exception as e:
         logger.error(f"PostProcessingStep 생성 실패: {e}")
         raise
 
-def create_m3_max_post_processing_step:
-
+def create_m3_max_post_processing_step(**kwargs) -> PostProcessingStep:
     """M3 Max 최적화된 후처리 스텝 생성"""
     m3_max_config = {
         'device': 'mps',
@@ -2357,8 +2247,7 @@ def create_production_post_processing_step(
     
     return PostProcessingStep(**production_config)
 
-def create_real_time_post_processing_step:
-
+def create_real_time_post_processing_step(**kwargs) -> PostProcessingStep:
     """실시간 처리용 후처리 스텝 생성"""
     real_time_config = {
         'processing_mode': 'real_time',
@@ -2400,7 +2289,7 @@ def enhance_image_quality(
         np.ndarray: 향상된 이미지
     """
     try:
-        if:
+        if methods is None:
             methods = ['sharpening', 'color_correction', 'contrast_enhancement']
         
         step = create_post_processing_step(
@@ -2430,8 +2319,7 @@ def enhance_image_quality(
             # 새 이벤트 루프 생성
             return asyncio.run(process_async())
             
-    except:
-            
+    except Exception as e:
         logger.error(f"이미지 품질 향상 실패: {e}")
         return image
 
@@ -2472,14 +2360,13 @@ def batch_enhance_images(
                 try:
                     enhanced_image = future.result()
                     enhanced_images.append(enhanced_image)
-                except:
+                except Exception as e:
                     logger.error(f"배치 처리 중 오류: {e}")
                     enhanced_images.append(None)
             
             return enhanced_images
             
-    except:
-            
+    except Exception as e:
         logger.error(f"배치 이미지 향상 실패: {e}")
         return images
 
@@ -2525,12 +2412,11 @@ logger.info(f"   - SciPy 사용 가능: {'✅' if SCIPY_AVAILABLE else '❌'}")
 # 자동 정리 등록
 import atexit
 
-def _cleanup_on_exit:
-
+def _cleanup_on_exit():
     """프로그램 종료 시 정리"""
     try:
         # 전역 인스턴스들 정리
-        if:
+        if torch.cuda.is_available():
             torch.cuda.empty_cache()
         elif torch.backends.mps.is_available():
             try:

@@ -9,7 +9,6 @@ backend/app/ai_pipeline/steps/step_01_human_parsing.py
 ✅ 기존 API 호환성 100% 유지
 ✅ 20개 영역 시각화 이미지 생성 기능
 ✅ 안전한 파라미터 처리 및 호환성 보장
-✅ 들여쓰기 및 공백 문제 완전 해결
 
 처리 순서:
 1. BaseStepMixin 완전 초기화로 logger 문제 해결
@@ -63,26 +62,27 @@ except ImportError as e:
     logging.error(f"BaseStepMixin 임포트 실패: {e}")
     BASE_STEP_MIXIN_AVAILABLE = False
     # 안전한 폴백 클래스
-    class BaseStepMixin:
+    
+    def _setup_model_precision(self, model):
+        """M3 Max 호환 정밀도 설정"""
+        try:
+            if self.device == "mps":
+                # M3 Max에서는 Float32가 안전
+                return model.float()
+            elif self.device == "cuda" and hasattr(model, 'half'):
+                return model.half()
+            else:
+                return model.float()
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
+            return model.float()
+
+class BaseStepMixin:
         def __init__(self, *args, **kwargs):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.device = "cpu"
             self.is_initialized = False
             self.model_interface = None
-
-        def _setup_model_precision(self, model):
-            """M3 Max 호환 정밀도 설정"""
-            try:
-                if self.device == "mps":
-                    # M3 Max에서는 Float32가 안전
-                    return model.float()
-                elif self.device == "cuda" and hasattr(model, 'half'):
-                    return model.half()
-                else:
-                    return model.float()
-            except Exception as e:
-                self.logger.warning(f"⚠️ 정밀도 설정 실패: {e}")
-                return model.float()
 
 # 메모리 관리 및 유틸리티
 try:
@@ -460,13 +460,13 @@ class HumanParsingStep(BaseStepMixin):
         
         # 안전한 폴백 메모리 매니저
         class SafeMemoryManager:
-            def __init__(self, device):
+            def __init__(self, device): 
                 self.device = device
             
-            async def get_usage_stats(self):
+            async def get_usage_stats(self): 
                 return {"memory_used": "N/A", "device": self.device}
             
-            async def cleanup(self):
+            async def cleanup(self): 
                 try:
                     gc.collect()
                     if self.device == 'mps' and MPS_AVAILABLE:
@@ -487,16 +487,16 @@ class HumanParsingStep(BaseStepMixin):
         
         # 안전한 폴백 컨버터
         class SafeDataConverter:
-            def convert(self, data):
+            def convert(self, data): 
                 return data
             
-            def to_tensor(self, data):
+            def to_tensor(self, data): 
                 try:
                     return torch.from_numpy(data) if isinstance(data, np.ndarray) else data
                 except Exception:
                     return data
             
-            def to_numpy(self, data):
+            def to_numpy(self, data): 
                 try:
                     return data.cpu().numpy() if torch.is_tensor(data) else data
                 except Exception:
@@ -744,7 +744,7 @@ class HumanParsingStep(BaseStepMixin):
             # FP16 변환 (M3 Max 최적화)
             if self.config.use_fp16 and self.device != 'cpu':
                 try:
-                    normalized = normalized.half()
+                    normalized = normalized.half() if self.device != "cpu" else self
                 except Exception as e:
                     self.logger.warning(f"⚠️ FP16 변환 실패: {e}")
             
@@ -1732,7 +1732,6 @@ async def create_human_parsing_step(
         return step
         
     except Exception as e:
-        logger = logging.getLogger(__name__)
         logger.error(f"❌ create_human_parsing_step 실패: {e}")
         # 폴백: 최소한의 Step 생성
         step = HumanParsingStep(device='cpu')
@@ -1756,7 +1755,6 @@ def create_human_parsing_step_sync(
             create_human_parsing_step(device, config, **kwargs)
         )
     except Exception as e:
-        logger = logging.getLogger(__name__)
         logger.error(f"❌ create_human_parsing_step_sync 실패: {e}")
         # 안전한 폴백
         return HumanParsingStep(device='cpu')
@@ -1870,4 +1868,3 @@ logger.info("✅ Step 01 Human Parsing 모듈 로드 완료 - 완전 수정된 �
 logger.info("🔗 BaseStepMixin 완전 연동으로 logger 속성 누락 문제 해결")
 logger.info("🔗 ModelLoader 인터페이스 완벽 연동으로 실제 AI 모델 작동")
 logger.info("🎨 20개 영역 시각화 이미지 생성 기능 포함")
-logger.info("🔧 들여쓰기 및 공백 문제 완전 해결")
