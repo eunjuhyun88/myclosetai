@@ -455,7 +455,26 @@ class MemoryManager:
                 "error": str(e),
                 "device": self.device
             }
-
+    async def _optimize_m3_max_memory(self):
+        """M3 Max 특화 메모리 최적화"""
+        try:
+            # 추가 M3 Max 최적화 로직
+            if hasattr(self, '_optimize_for_m3_max'):
+                await asyncio.get_event_loop().run_in_executor(
+                    None, self._optimize_for_m3_max
+                )
+            
+            # M3 Max MPS 캐시 정리
+            if TORCH_AVAILABLE and torch.backends.mps.is_available():
+                if hasattr(torch.mps, 'empty_cache'):
+                    torch.mps.empty_cache()
+            
+            return True
+        
+        except Exception as e:
+            self.logger.warning(f"⚠️ M3 Max 메모리 최적화 실패: {e}")
+            return False
+    
     def _aggressive_m3_cleanup(self):
         """공격적 M3 Max 메모리 정리"""
         try:

@@ -149,6 +149,7 @@ class QualityLevel(Enum):
     BALANCED = "balanced"
     HIGH = "high"
     ULTRA = "ultra"
+    MAXIMUM = "maximum"  # 🔥 이 줄 추가
 
 class ProcessingMode(Enum):
     """처리 모드"""
