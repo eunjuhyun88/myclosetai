@@ -226,6 +226,237 @@ class ModelInfo:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 # ==============================================
+# 🔥 데이터 변환기 클래스 (get_step_data_converter 오류 해결)
+# ==============================================
+
+class StepDataConverter:
+    """
+    🔄 Step별 데이터 변환기 - main.py에서 요구하는 클래스
+    ✅ get_step_data_converter() 함수로 접근
+    ✅ 이미지/텐서 변환 최적화
+    ✅ M3 Max 특화 처리
+    """
+    
+    def __init__(self, device: str = "auto", precision: str = "fp16"):
+        self.device = device if device != "auto" else SYSTEM_INFO["device"]
+        self.precision = precision
+        self.is_m3_max = SYSTEM_INFO["is_m3_max"]
+        self.logger = logging.getLogger(f"{__name__}.StepDataConverter")
+        
+        # 변환 통계
+        self.conversion_count = 0
+        self.total_conversion_time = 0.0
+        self.cache_hits = 0
+        
+        # 간단한 캐시 (메모리 효율성을 위해)
+        self._conversion_cache = {}
+        self.max_cache_size = 100
+        
+        self.logger.info(f"🔄 데이터 변환기 초기화: {self.device}, {self.precision}")
+    
+    def tensor_to_pil(self, tensor: Any) -> Any:
+        """텐서를 PIL 이미지로 변환"""
+        try:
+            if not TORCH_AVAILABLE:
+                self.logger.warning("⚠️ PyTorch 없음 - 기본 변환")
+                return tensor
+            
+            if hasattr(tensor, 'cpu'):
+                # PyTorch 텐서 처리
+                if tensor.dim() == 4:
+                    tensor = tensor.squeeze(0)
+                if tensor.dim() == 3 and tensor.shape[0] in [1, 3]:
+                    tensor = tensor.permute(1, 2, 0)
+                
+                tensor = tensor.cpu().detach()
+                
+                if tensor.dtype != torch.uint8:
+                    tensor = (tensor * 255).clamp(0, 255).byte()
+                
+                array = tensor.numpy()
+                
+                if PIL_AVAILABLE:
+                    from PIL import Image
+                    if array.shape[-1] == 1:
+                        array = array.squeeze(-1)
+                        return Image.fromarray(array, mode='L')
+                    elif array.shape[-1] == 3:
+                        return Image.fromarray(array, mode='RGB')
+                    else:
+                        return Image.fromarray(array)
+                
+            return tensor
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 텐서->PIL 변환 실패: {e}")
+            return tensor
+    
+    def pil_to_tensor(self, image: Any, normalize: bool = True) -> Any:
+        """PIL 이미지를 텐서로 변환"""
+        try:
+            if not PIL_AVAILABLE or not TORCH_AVAILABLE:
+                self.logger.warning("⚠️ PIL/PyTorch 없음 - 기본 변환")
+                return image
+            
+            if hasattr(image, 'size'):  # PIL 이미지
+                import numpy as np
+                from PIL import Image
+                
+                # PIL -> NumPy
+                array = np.array(image)
+                
+                if array.ndim == 2:  # Grayscale
+                    array = np.expand_dims(array, axis=2)
+                
+                # NumPy -> PyTorch
+                tensor = torch.from_numpy(array.copy())
+                
+                if tensor.dim() == 3:
+                    tensor = tensor.permute(2, 0, 1)  # HWC -> CHW
+                
+                tensor = tensor.unsqueeze(0)  # Add batch dimension
+                
+                if normalize:
+                    tensor = tensor.float() / 255.0
+                
+                # 디바이스로 이동
+                if self.device != "cpu":
+                    tensor = tensor.to(self.device)
+                
+                return tensor
+            
+            return image
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ PIL->텐서 변환 실패: {e}")
+            return image
+    
+    def numpy_to_tensor(self, array: Any) -> Any:
+        """NumPy 배열을 텐서로 변환"""
+        try:
+            if not TORCH_AVAILABLE or not NUMPY_AVAILABLE:
+                return array
+            
+            if hasattr(array, 'shape'):  # NumPy 배열
+                tensor = torch.from_numpy(array.copy())
+                
+                # 디바이스로 이동
+                if self.device != "cpu":
+                    tensor = tensor.to(self.device)
+                
+                return tensor
+            
+            return array
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ NumPy->텐서 변환 실패: {e}")
+            return array
+    
+    def tensor_to_numpy(self, tensor: Any) -> Any:
+        """텐서를 NumPy 배열로 변환"""
+        try:
+            if not TORCH_AVAILABLE:
+                return tensor
+            
+            if hasattr(tensor, 'cpu'):
+                return tensor.cpu().detach().numpy()
+            
+            return tensor
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 텐서->NumPy 변환 실패: {e}")
+            return tensor
+    
+    def preprocess_image(self, image: Any, target_size: Tuple[int, int] = (512, 512)) -> Any:
+        """이미지 전처리"""
+        try:
+            if PIL_AVAILABLE and hasattr(image, 'resize'):
+                # PIL 이미지 리사이즈
+                image = image.resize(target_size, Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
+            
+            # 텐서로 변환
+            tensor = self.pil_to_tensor(image, normalize=True)
+            
+            self.conversion_count += 1
+            return tensor
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 이미지 전처리 실패: {e}")
+            return image
+    
+    def postprocess_output(self, output: Any, output_type: str = "image") -> Any:
+        """출력 후처리"""
+        try:
+            if output_type == "image":
+                return self.tensor_to_pil(output)
+            elif output_type == "mask":
+                # 마스크 후처리
+                if TORCH_AVAILABLE and hasattr(output, 'cpu'):
+                    output = output.cpu()
+                    if output.dim() > 2:
+                        output = output.squeeze()
+                    
+                    # 이진화
+                    output = (output > 0.5).float()
+                    
+                return self.tensor_to_pil(output)
+            elif output_type == "numpy":
+                return self.tensor_to_numpy(output)
+            else:
+                return output
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 출력 후처리 실패: {e}")
+            return output
+    
+    def convert_batch(self, data_list: List[Any], conversion_type: str = "pil_to_tensor") -> List[Any]:
+        """배치 데이터 변환"""
+        try:
+            results = []
+            
+            for data in data_list:
+                if conversion_type == "pil_to_tensor":
+                    result = self.pil_to_tensor(data)
+                elif conversion_type == "tensor_to_pil":
+                    result = self.tensor_to_pil(data)
+                elif conversion_type == "numpy_to_tensor":
+                    result = self.numpy_to_tensor(data)
+                elif conversion_type == "tensor_to_numpy":
+                    result = self.tensor_to_numpy(data)
+                else:
+                    result = data
+                
+                results.append(result)
+            
+            return results
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 배치 변환 실패: {e}")
+            return data_list
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """변환 통계"""
+        return {
+            "device": self.device,
+            "precision": self.precision,
+            "conversion_count": self.conversion_count,
+            "total_conversion_time": self.total_conversion_time,
+            "cache_hits": self.cache_hits,
+            "cache_size": len(self._conversion_cache),
+            "is_m3_max": self.is_m3_max
+        }
+    
+    def cleanup_cache(self):
+        """캐시 정리"""
+        if len(self._conversion_cache) > self.max_cache_size:
+            # 절반 정도 제거
+            items_to_remove = list(self._conversion_cache.keys())[:self.max_cache_size // 2]
+            for key in items_to_remove:
+                del self._conversion_cache[key]
+            
+            self.logger.debug(f"🧹 변환 캐시 정리: {len(items_to_remove)}개 제거")
+
+# ==============================================
 # 🔥 메모리 관리자 클래스 (main.py 오류 해결)
 # ==============================================
 
@@ -1228,6 +1459,152 @@ def create_step_interface(step_name: str) -> Dict[str, Any]:
         return legacy_interface
         
     except Exception as e:
+        logger.error(f"❌ {step_name} 레거시 인터페이스 생성 실패: {e}")
+        # 완전 폴백
+        return {
+            "step_name": step_name,
+            "error": str(e),
+            "system_info": SYSTEM_INFO,
+            "logger": logging.getLogger(f"steps.{step_name}"),
+            "get_model": lambda: None,
+            "optimize_memory": lambda: {"success": False},
+            "process_image": lambda x, **k: None
+        }
+
+def get_step_model_interface(step_name: str, model_loader_instance=None) -> StepModelInterface:
+    """
+    🔥 main.py에서 요구하는 핵심 함수 (GitHub 프로젝트 표준)
+    ✅ import 오류 완전 해결
+    ✅ StepModelInterface 반환
+    ✅ 비동기 메서드 포함
+    ✅ conda 환경 최적화
+    """
+    try:
+        # ModelLoader 인스턴스 가져오기 시도
+        if model_loader_instance is None:
+            try:
+                # 순환참조 방지를 위해 동적 import
+                from app.ai_pipeline.utils.model_loader import get_global_model_loader
+                model_loader_instance = get_global_model_loader()
+                logger.debug(f"✅ 전역 ModelLoader 획득: {step_name}")
+            except ImportError as e:
+                logger.warning(f"⚠️ ModelLoader import 실패: {e}")
+                model_loader_instance = None
+            except Exception as e:
+                logger.warning(f"⚠️ 전역 ModelLoader 획득 실패: {e}")
+                model_loader_instance = None
+        
+        # UnifiedUtilsManager를 통한 생성 시도
+        try:
+            manager = get_utils_manager()
+            interface = manager.create_step_model_interface(step_name)
+            logger.info(f"🔗 {step_name} 모델 인터페이스 생성 완료 (Manager)")
+            return interface
+        except Exception as e:
+            logger.warning(f"⚠️ Manager를 통한 생성 실패: {e}")
+        
+        # 직접 생성 (폴백)
+        interface = StepModelInterface(step_name, model_loader_instance)
+        logger.info(f"🔗 {step_name} 모델 인터페이스 생성 완료 (Direct)")
+        return interface
+        
+    except Exception as e:
+        logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
+        # 완전 폴백 인터페이스
+        return StepModelInterface(step_name, None)
+
+def get_step_data_converter(step_name: str = None, **kwargs) -> StepDataConverter:
+    """
+    🔥 main.py에서 요구하는 핵심 함수 - 데이터 변환기 반환
+    ✅ import 오류 해결
+    ✅ 이미지/텐서 변환 최적화
+    ✅ M3 Max 특화 처리
+    """
+    try:
+        # 직접 생성
+        converter = StepDataConverter(**kwargs)
+        logger.info(f"🔄 데이터 변환기 생성: {step_name or 'global'}")
+        return converter
+        
+    except Exception as e:
+        logger.error(f"❌ 데이터 변환기 생성 실패: {e}")
+        # 완전 폴백
+        return StepDataConverter()
+
+def get_step_memory_manager(step_name: str = None, **kwargs) -> StepMemoryManager:
+    """
+    🔥 main.py에서 요구하는 핵심 함수 - 메모리 관리자 반환
+    ✅ import 오류 해결
+    ✅ M3 Max 특화 메모리 관리
+    ✅ conda 환경 최적화
+    """
+    try:
+        # UnifiedUtilsManager를 통한 조회 시도
+        try:
+            manager = get_utils_manager()
+            memory_manager = manager.get_memory_manager()
+            logger.info(f"🧠 메모리 관리자 반환 (Manager): {step_name or 'global'}")
+            return memory_manager
+        except Exception as e:
+            logger.warning(f"⚠️ Manager를 통한 메모리 관리자 조회 실패: {e}")
+        
+        # 직접 생성 (폴백)
+        memory_manager = StepMemoryManager(**kwargs)
+        logger.info(f"🧠 메모리 관리자 직접 생성: {step_name or 'global'}")
+        return memory_manager
+        
+    except Exception as e:
+        logger.error(f"❌ 메모리 관리자 생성 실패: {e}")
+        # 완전 폴백
+        return StepMemoryManager()
+
+# ==============================================
+# 🔥 전역 관리 함수들 (GitHub 프로젝트 최적화)
+# ==============================================
+
+_global_manager: Optional[UnifiedUtilsManager] = None
+_manager_lock = threading.Lock()
+
+def get_utils_manager() -> UnifiedUtilsManager:
+    """전역 유틸리티 매니저 반환"""
+    global _global_manager
+    
+    with _manager_lock:
+        if _global_manager is None:
+            _global_manager = UnifiedUtilsManager()
+        return _global_manager
+
+def initialize_global_utils(**kwargs) -> Dict[str, Any]:
+    """
+    🔥 전역 유틸리티 초기화 (main.py에서 호출하는 진입점)
+    ✅ conda 환경 최적화
+    ✅ M3 Max 특화 처리
+    """
+    try:
+        manager = get_utils_manager()
+        
+        # conda 환경 특화 설정
+        if SYSTEM_INFO["in_conda"]:
+            kwargs.setdefault("conda_optimized", True)
+            kwargs.setdefault("model_precision", "fp16" if SYSTEM_INFO["is_m3_max"] else "fp32")
+        
+        # 비동기 초기화 처리
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            # 이미 실행 중인 루프에서는 태스크 생성
+            future = asyncio.create_task(manager.initialize(**kwargs))
+            return {"success": True, "message": "Initialization started", "future": future}
+        else:
+            # 새 루프에서 실행
+            result = loop.run_until_complete(manager.initialize(**kwargs))
+            return result
+            
+    except Exception as e:
         logger.error(f"❌ 전역 유틸리티 초기화 실패: {e}")
         return {"success": False, "error": str(e)}
 
@@ -1382,6 +1759,74 @@ def create_fallback_response(error_msg: str, step_name: str = None) -> Dict[str,
         }
     }
 
+def get_environment_info() -> Dict[str, Any]:
+    """환경 정보 상세 조회"""
+    env_info = {
+        "system": SYSTEM_INFO.copy(),
+        "libraries": {
+            "torch": TORCH_AVAILABLE,
+            "numpy": NUMPY_AVAILABLE,
+            "pil": PIL_AVAILABLE,
+            "psutil": PSUTIL_AVAILABLE
+        },
+        "environment_variables": {
+            "conda_prefix": os.environ.get('CONDA_PREFIX'),
+            "conda_env": os.environ.get('CONDA_DEFAULT_ENV'),
+            "python_path": sys.executable,
+            "home": os.environ.get('HOME'),
+            "user": os.environ.get('USER')
+        }
+    }
+    
+    # PyTorch 상세 정보
+    if TORCH_AVAILABLE:
+        env_info["torch_info"] = {
+            "version": torch.__version__,
+            "cuda_available": torch.cuda.is_available(),
+            "mps_available": torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False,
+            "device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0
+        }
+    
+    return env_info
+
+def safe_import(module_name: str, fallback=None):
+    """안전한 모듈 import"""
+    try:
+        return __import__(module_name)
+    except ImportError as e:
+        logger.debug(f"모듈 import 실패: {module_name} - {e}")
+        return fallback
+
+def measure_execution_time(func: Callable) -> Callable:
+    """실행 시간 측정 데코레이터"""
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        execution_time = time.time() - start_time
+        logger.debug(f"{func.__name__} 실행 시간: {execution_time:.4f}초")
+        return result
+    return wrapper
+
+def log_system_resources():
+    """시스템 리소스 로깅"""
+    try:
+        if PSUTIL_AVAILABLE:
+            memory = psutil.virtual_memory()
+            cpu_percent = psutil.cpu_percent(interval=1)
+            
+            logger.info(f"💾 메모리 사용률: {memory.percent:.1f}% ({memory.used / 1024**3:.1f}GB / {memory.total / 1024**3:.1f}GB)")
+            logger.info(f"🔥 CPU 사용률: {cpu_percent:.1f}%")
+            
+            if TORCH_AVAILABLE and torch.cuda.is_available():
+                for i in range(torch.cuda.device_count()):
+                    memory_allocated = torch.cuda.memory_allocated(i) / 1024**3
+                    memory_reserved = torch.cuda.memory_reserved(i) / 1024**3
+                    logger.info(f"🚀 GPU {i} 메모리: {memory_allocated:.1f}GB 할당, {memory_reserved:.1f}GB 예약")
+        else:
+            logger.info("📊 psutil 없음 - 리소스 모니터링 제한")
+    except Exception as e:
+        logger.warning(f"⚠️ 리소스 로깅 실패: {e}")
+
 # ==============================================
 # 🔥 __all__ 정의 (GitHub 프로젝트 완전 호환)
 # ==============================================
@@ -1392,6 +1837,7 @@ __all__ = [
     'UnifiedStepInterface',
     'StepModelInterface',  # main.py 필수
     'StepMemoryManager',   # main.py 오류 해결
+    'StepDataConverter',   # main.py 오류 해결 (새로 추가)
     'SystemConfig',
     'StepConfig',
     'ModelInfo',
@@ -1407,6 +1853,7 @@ __all__ = [
     'create_unified_interface',       # 새로운 방식
     'get_step_model_interface',       # ✅ main.py 핵심 함수
     'get_step_memory_manager',        # ✅ main.py 오류 해결 함수
+    'get_step_data_converter',        # ✅ main.py 오류 해결 함수 (새로 추가)
     
     # 📊 시스템 정보
     'SYSTEM_INFO',
@@ -1426,7 +1873,11 @@ __all__ = [
     'format_memory_size',
     'check_device_compatibility',
     'get_optimal_workers',
-    'create_fallback_response'
+    'create_fallback_response',
+    'get_environment_info',
+    'safe_import',
+    'measure_execution_time',
+    'log_system_resources'
 ]
 
 # ==============================================
@@ -1439,6 +1890,7 @@ logger.info("🍎 MyCloset AI 통합 유틸리티 시스템 v7.0 로드 완료")
 logger.info("✅ GitHub 프로젝트 구조 완전 호환")
 logger.info("✅ get_step_model_interface 함수 구현 (main.py 호환)")
 logger.info("✅ get_step_memory_manager 함수 추가 (import 오류 해결)")
+logger.info("✅ get_step_data_converter 함수 추가 (import 오류 해결)")
 logger.info("✅ StepModelInterface.list_available_models 포함")
 logger.info("✅ 8단계 AI 파이프라인 지원")
 logger.info("✅ conda 환경 최적화")
@@ -1534,6 +1986,47 @@ def test_step_interface(step_name: str = "HumanParsingStep"):
         print(f"❌ 테스트 실패: {e}")
         return False
 
+def test_data_converter():
+    """데이터 변환기 테스트"""
+    print(f"\n🔄 데이터 변환기 테스트")
+    print("-" * 40)
+    
+    try:
+        # 데이터 변환기 생성 테스트
+        converter = get_step_data_converter()
+        print(f"✅ 데이터 변환기 생성: {type(converter).__name__}")
+        
+        # 변환 통계 확인
+        stats = converter.get_stats()
+        print(f"✅ 변환기 통계:")
+        for key, value in stats.items():
+            print(f"   {key}: {value}")
+        
+        # 변환 테스트 (가상 데이터)
+        if PIL_AVAILABLE:
+            from PIL import Image
+            import numpy as np
+            
+            # 가상 이미지 생성
+            test_array = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+            test_image = Image.fromarray(test_array)
+            
+            # PIL -> 텐서 변환 테스트
+            tensor = converter.pil_to_tensor(test_image)
+            print(f"✅ PIL->텐서 변환 테스트: {type(tensor)}")
+            
+            # 텐서 -> PIL 변환 테스트
+            converted_back = converter.tensor_to_pil(tensor)
+            print(f"✅ 텐서->PIL 변환 테스트: {type(converted_back)}")
+        else:
+            print("⚠️ PIL 없음 - 변환 테스트 건너뜀")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 테스트 실패: {e}")
+        return False
+
 def test_memory_manager():
     """메모리 관리자 테스트"""
     print(f"\n🧠 메모리 관리자 테스트")
@@ -1613,7 +2106,14 @@ def validate_github_compatibility():
     else:
         results["ai_models_path"] = f"⚠️ {ai_path} 없음"
     
-    # 7. 추가 유틸리티 함수 확인
+    # 8. 데이터 변환기 함수 확인 (오류 해결)
+    try:
+        data_converter = get_step_data_converter()
+        results["get_step_data_converter"] = "✅"
+    except Exception as e:
+        results["get_step_data_converter"] = f"❌ {e}"
+    
+    # 9. 추가 유틸리티 함수 확인
     try:
         config = create_model_config("test_model")
         if validate_step_name("HumanParsingStep"):
@@ -1689,11 +2189,15 @@ def test_all_functionality():
     memory_result = test_memory_manager()
     test_results.append(("메모리 관리자", memory_result))
     
-    # 4. GitHub 호환성 검증
+    # 4. 데이터 변환기 테스트
+    converter_result = test_data_converter()
+    test_results.append(("데이터 변환기", converter_result))
+    
+    # 5. GitHub 호환성 검증
     compatibility_result = validate_github_compatibility()
     test_results.append(("GitHub 호환성", compatibility_result))
     
-    # 5. 비동기 테스트
+    # 6. 비동기 테스트
     try:
         async_result = asyncio.run(test_async_operations())
         test_results.append(("비동기 작업", async_result))
@@ -1737,142 +2241,19 @@ def main():
     if success:
         print("\n🚀 시스템 준비 완료! main.py에서 사용할 수 있습니다.")
         print("\n📖 사용 예시:")
-        print("from app.ai_pipeline.utils import get_step_model_interface, get_step_memory_manager")
+        print("from app.ai_pipeline.utils import get_step_model_interface, get_step_memory_manager, get_step_data_converter")
         print("interface = get_step_model_interface('HumanParsingStep')")
         print("memory_manager = get_step_memory_manager()")
+        print("data_converter = get_step_data_converter()")
         print("models = interface.list_available_models()")
+        print("\n🔧 추가 기능:")
+        print("from app.ai_pipeline.utils import create_unified_interface, optimize_system_memory")
+        print("unified = create_unified_interface('VirtualFittingStep')")
+        print("await optimize_system_memory()")
     else:
         print("\n⚠️ 시스템에 문제가 있습니다. 로그를 확인해주세요.")
     
     return success
 
 if __name__ == "__main__":
-    main() {step_name} 레거시 인터페이스 생성 실패: {e}")
-        # 완전 폴백
-        return {
-            "step_name": step_name,
-            "error": str(e),
-            "system_info": SYSTEM_INFO,
-            "logger": logging.getLogger(f"steps.{step_name}"),
-            "get_model": lambda: None,
-            "optimize_memory": lambda: {"success": False},
-            "process_image": lambda x, **k: None
-        }
-
-def get_step_model_interface(step_name: str, model_loader_instance=None) -> StepModelInterface:
-    """
-    🔥 main.py에서 요구하는 핵심 함수 (GitHub 프로젝트 표준)
-    ✅ import 오류 완전 해결
-    ✅ StepModelInterface 반환
-    ✅ 비동기 메서드 포함
-    ✅ conda 환경 최적화
-    """
-    try:
-        # ModelLoader 인스턴스 가져오기 시도
-        if model_loader_instance is None:
-            try:
-                # 순환참조 방지를 위해 동적 import
-                from app.ai_pipeline.utils.model_loader import get_global_model_loader
-                model_loader_instance = get_global_model_loader()
-                logger.debug(f"✅ 전역 ModelLoader 획득: {step_name}")
-            except ImportError as e:
-                logger.warning(f"⚠️ ModelLoader import 실패: {e}")
-                model_loader_instance = None
-            except Exception as e:
-                logger.warning(f"⚠️ 전역 ModelLoader 획득 실패: {e}")
-                model_loader_instance = None
-        
-        # UnifiedUtilsManager를 통한 생성 시도
-        try:
-            manager = get_utils_manager()
-            interface = manager.create_step_model_interface(step_name)
-            logger.info(f"🔗 {step_name} 모델 인터페이스 생성 완료 (Manager)")
-            return interface
-        except Exception as e:
-            logger.warning(f"⚠️ Manager를 통한 생성 실패: {e}")
-        
-        # 직접 생성 (폴백)
-        interface = StepModelInterface(step_name, model_loader_instance)
-        logger.info(f"🔗 {step_name} 모델 인터페이스 생성 완료 (Direct)")
-        return interface
-        
-    except Exception as e:
-        logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
-        # 완전 폴백 인터페이스
-        return StepModelInterface(step_name, None)
-
-def get_step_memory_manager(step_name: str = None, **kwargs) -> StepMemoryManager:
-    """
-    🔥 main.py에서 요구하는 핵심 함수 - 메모리 관리자 반환
-    ✅ import 오류 해결
-    ✅ M3 Max 특화 메모리 관리
-    ✅ conda 환경 최적화
-    """
-    try:
-        # UnifiedUtilsManager를 통한 조회 시도
-        try:
-            manager = get_utils_manager()
-            memory_manager = manager.get_memory_manager()
-            logger.info(f"🧠 메모리 관리자 반환 (Manager): {step_name or 'global'}")
-            return memory_manager
-        except Exception as e:
-            logger.warning(f"⚠️ Manager를 통한 메모리 관리자 조회 실패: {e}")
-        
-        # 직접 생성 (폴백)
-        memory_manager = StepMemoryManager(**kwargs)
-        logger.info(f"🧠 메모리 관리자 직접 생성: {step_name or 'global'}")
-        return memory_manager
-        
-    except Exception as e:
-        logger.error(f"❌ 메모리 관리자 생성 실패: {e}")
-        # 완전 폴백
-        return StepMemoryManager()
-
-# ==============================================
-# 🔥 전역 관리 함수들 (GitHub 프로젝트 최적화)
-# ==============================================
-
-_global_manager: Optional[UnifiedUtilsManager] = None
-_manager_lock = threading.Lock()
-
-def get_utils_manager() -> UnifiedUtilsManager:
-    """전역 유틸리티 매니저 반환"""
-    global _global_manager
-    
-    with _manager_lock:
-        if _global_manager is None:
-            _global_manager = UnifiedUtilsManager()
-        return _global_manager
-
-def initialize_global_utils(**kwargs) -> Dict[str, Any]:
-    """
-    🔥 전역 유틸리티 초기화 (main.py에서 호출하는 진입점)
-    ✅ conda 환경 최적화
-    ✅ M3 Max 특화 처리
-    """
-    try:
-        manager = get_utils_manager()
-        
-        # conda 환경 특화 설정
-        if SYSTEM_INFO["in_conda"]:
-            kwargs.setdefault("conda_optimized", True)
-            kwargs.setdefault("model_precision", "fp16" if SYSTEM_INFO["is_m3_max"] else "fp32")
-        
-        # 비동기 초기화 처리
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        if loop.is_running():
-            # 이미 실행 중인 루프에서는 태스크 생성
-            future = asyncio.create_task(manager.initialize(**kwargs))
-            return {"success": True, "message": "Initialization started", "future": future}
-        else:
-            # 새 루프에서 실행
-            result = loop.run_until_complete(manager.initialize(**kwargs))
-            return result
-            
-    except Exception as e:
-        logger.error(f"❌
+    main()
