@@ -1,277 +1,212 @@
 #!/usr/bin/env python3
 """
-🔍 MyCloset AI - 완전 고도화된 AI 모델 체크포인트 검색 스크립트
-=================================================================
+🔥 완전한 AI 모델 체크포인트 검색 스크립트 - 수정된 버전
+=======================================================
 
-M3 Max 128GB 최적화, conda 환경 우선, 완전 자동화 지원
-
-특징:
-- 🛡️ 권한 안전성 (macOS/Linux/Windows 대응)
-- 🚀 병렬 처리 최적화 (16코어 활용)
-- 🧠 AI 기반 모델 분류 (8단계 + 프레임워크)
-- 📊 실시간 진행률 및 상세 분석
-- 🔄 스마트 중복 제거
-- 📁 자동 정리 및 이동 기능
-- ⚙️ conda 환경 우선 설정
-- 🎯 MyCloset AI 특화 최적화
+MyCloset AI 프로젝트에 특화된 완전한 모델 스캐너
+- 실제 프로젝트 구조에 맞춰 정확한 경로 탐지
+- conda 환경 우선 검색
+- MyCloset AI 8단계 자동 분류
+- 완전한 보고서 및 설정 파일 생성
 
 사용법:
-    python advanced_scanner.py                    # 표준 스캔
-    python advanced_scanner.py --deep            # 딥 스캔
-    python advanced_scanner.py --organize        # 스캔 + 자동 정리
-    python advanced_scanner.py --conda-first     # conda 환경 우선
-    python advanced_scanner.py --repair          # 손상된 모델 복구
+    python quick_scanner.py                    # 기본 스캔
+    python quick_scanner.py --verbose          # 상세 출력
+    python quick_scanner.py --organize         # 스캔 + 설정 생성
+    python quick_scanner.py --deep             # 딥 스캔
+    python quick_scanner.py --conda-first      # conda 우선
 """
 
 import os
 import sys
-import time
 import json
+import shutil
+import time
 import hashlib
-import argparse
 import subprocess
 import platform
-import threading
-import asyncio
-import sqlite3
-import shutil
-import glob
 from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional, Set, Union
-from dataclasses import dataclass, asdict, field
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Set, Tuple, Any
+from dataclasses import dataclass, asdict
+from datetime import datetime
 import re
-import mimetypes
-import pickle
-from collections import defaultdict, Counter
+import glob
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
-import warnings
-
-# 외부 라이브러리 (안전한 import)
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-
-try:
-    from tqdm import tqdm
-    HAS_TQDM = True
-except ImportError:
-    HAS_TQDM = False
-    class tqdm:
-        def __init__(self, iterable=None, total=None, desc="", **kwargs):
-            self.iterable = iterable or []
-            self.total = total or (len(iterable) if hasattr(iterable, '__len__') else 0)
-            self.desc = desc
-            self.current = 0
-            
-        def __iter__(self):
-            for item in self.iterable:
-                yield item
-                self.current += 1
-                self._update()
-            print()
-            
-        def update(self, n=1):
-            self.current += n
-            self._update()
-            
-        def _update(self):
-            if self.total > 0:
-                percent = (self.current / self.total) * 100
-                print(f"\r{self.desc}: {self.current}/{self.total} ({percent:.1f}%)", end='', flush=True)
-
-try:
-    import psutil
-    HAS_PSUTIL = True
-except ImportError:
-    HAS_PSUTIL = False
 
 # 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('model_scanner.log'),
-        logging.StreamHandler()
-    ]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ==============================================
-# 📊 고급 데이터 모델
-# ==============================================
-
-@dataclass
-class ModelMetadata:
-    """고급 모델 메타데이터"""
-    architecture: str = "unknown"
-    parameters: Optional[int] = None
-    precision: str = "unknown"
-    framework_version: str = "unknown"
-    training_framework: str = "unknown"
-    has_tokenizer: bool = False
-    has_config: bool = False
-    is_fine_tuned: bool = False
-    base_model: Optional[str] = None
-    license: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    
 @dataclass
 class ModelInfo:
-    """완전한 AI 모델 정보"""
-    # 기본 정보
+    """완전한 모델 정보"""
     name: str
     path: str
     absolute_path: str
-    size_bytes: int
     size_mb: float
     size_gb: float
-    
-    # 파일 정보
-    extension: str
-    mime_type: str
-    created_time: datetime
-    modified_time: datetime
-    access_time: datetime
-    checksum_md5: str
-    checksum_sha256: str
-    
-    # AI 모델 분류
     framework: str
     model_type: str
     step_candidate: str
     confidence: float
-    architecture: str
-    
-    # 위치 및 환경
+    is_valid: bool
     is_in_project: bool
     is_in_conda: bool
     conda_env_name: Optional[str]
-    environment_path: Optional[str]
     parent_directory: str
-    
-    # 상태 및 검증
-    is_valid: bool
-    is_complete: bool
-    is_corrupted: bool
-    validation_errors: List[str]
-    
-    # 관계성
+    created_time: str
+    modified_time: str
+    checksum: str
     companion_files: List[str]
-    related_models: List[str]
-    duplicate_of: Optional[str]
-    
-    # 고급 메타데이터
-    metadata: ModelMetadata
-    
-    # 사용량 정보
-    last_accessed: Optional[datetime] = None
-    access_count: int = 0
-    importance_score: float = 0.0
-    
-@dataclass
-class ScanConfig:
-    """스캔 설정"""
-    include_patterns: List[str] = field(default_factory=lambda: [
-        '*.pth', '*.pt', '*.bin', '*.safetensors', '*.ckpt', '*.checkpoint',
-        '*.h5', '*.pb', '*.onnx', '*.tflite', '*.pkl', '*.joblib',
-        '*.model', '*.weights', '*.npz', '*.npy'
-    ])
-    exclude_patterns: List[str] = field(default_factory=lambda: [
-        'node_modules', '__pycache__', '.git', '.cache/pip',
-        'trash', 'recycle', 'temp', 'tmp', '.DS_Store'
-    ])
-    min_size_mb: float = 0.1
-    max_size_gb: float = 100.0
-    max_depth: int = 10
-    follow_symlinks: bool = False
-    conda_priority: bool = True
-    deep_scan: bool = False
-    verify_integrity: bool = True
-    extract_metadata: bool = True
+    importance_score: float
+    extension: str
 
-@dataclass
+@dataclass 
 class ScanStatistics:
-    """완전한 스캔 통계"""
-    # 기본 통계
+    """스캔 통계"""
     total_files_scanned: int = 0
     models_found: int = 0
-    total_size_bytes: int = 0
     total_size_gb: float = 0.0
     scan_duration: float = 0.0
-    
-    # 위치 통계
-    locations_scanned: int = 0
     conda_models: int = 0
     project_models: int = 0
     system_models: int = 0
-    
-    # 품질 통계
     valid_models: int = 0
-    corrupted_models: int = 0
-    duplicate_groups: int = 0
-    unique_models: int = 0
+    framework_distribution: Dict[str, int] = None
+    step_distribution: Dict[str, int] = None
     
-    # 프레임워크 분포
-    framework_distribution: Dict[str, int] = field(default_factory=dict)
-    type_distribution: Dict[str, int] = field(default_factory=dict)
-    step_distribution: Dict[str, int] = field(default_factory=dict)
-    
-    # 성능 통계
-    errors_count: int = 0
-    warnings_count: int = 0
-    processing_speed_files_per_sec: float = 0.0
+    def __post_init__(self):
+        if self.framework_distribution is None:
+            self.framework_distribution = {}
+        if self.step_distribution is None:
+            self.step_distribution = {}
 
-# ==============================================
-# 🔍 완전 고도화된 AI 모델 스캐너
-# ==============================================
-
-class AdvancedModelScanner:
-    """완전 고도화된 AI 모델 및 체크포인트 스캐너"""
+class CompleteModelScanner:
+    """완전한 AI 모델 스캐너"""
     
-    def __init__(self, config: ScanConfig = None):
-        self.config = config or ScanConfig()
-        self.project_root = Path.cwd()
+    def __init__(self, verbose: bool = True, conda_first: bool = False, deep_scan: bool = False):
+        self.verbose = verbose
+        self.conda_first = conda_first
+        self.deep_scan = deep_scan
         self.scan_start_time = time.time()
         
-        # 스캔 결과 저장
+        # 현재 위치 및 프로젝트 구조 파악
+        self.current_dir = Path.cwd()
+        self.project_root = self._find_project_root()
+        self.ai_models_dir = self._find_ai_models_dir()
+        
+        # 결과 저장
         self.found_models: List[ModelInfo] = []
         self.scan_locations: Dict[str, List[str]] = {}
-        self.duplicates: Dict[str, List[ModelInfo]] = {}
         self.errors: List[str] = []
         self.warnings: List[str] = []
         
-        # 성능 최적화
-        self.cpu_count = os.cpu_count() or 4
-        self.max_workers = min(self.cpu_count, 16)  # M3 Max 최적화
-        
-        # conda 환경 정보
+        # conda 환경 탐지
         self.conda_environments = self._detect_conda_environments()
         self.current_conda_env = os.environ.get('CONDA_DEFAULT_ENV')
         
-        # 모델 분류 패턴 (고도화)
+        # 모델 분류 패턴 초기화
         self._init_classification_patterns()
         
-        # 검증 캐시
-        self.validation_cache = {}
-        self.metadata_cache = {}
+        logger.info(f"🚀 CompleteModelScanner 초기화 완료")
+        logger.info(f"📁 프로젝트 루트: {self.project_root}")
+        logger.info(f"🤖 AI 모델 디렉토리: {self.ai_models_dir}")
+        logger.info(f"🐍 conda 환경: {len(self.conda_environments)}개 발견")
         
-        # 데이터베이스 초기화
-        self._init_database()
+    def _find_project_root(self) -> Path:
+        """프로젝트 루트 정확히 찾기"""
+        current = self.current_dir
         
-        logger.info(f"🚀 AdvancedModelScanner 초기화 완료")
-        logger.info(f"💻 시스템: {platform.system()} {platform.machine()}")
-        logger.info(f"🐍 Python: {platform.python_version()}")
-        logger.info(f"🔧 워커: {self.max_workers}개")
-        logger.info(f"🐍 Conda 환경: {len(self.conda_environments)}개 발견")
+        # 현재 디렉토리가 mycloset-ai인 경우
+        if current.name == 'mycloset-ai':
+            return current
         
+        # backend 디렉토리에서 실행된 경우
+        if current.name == 'backend':
+            if (current.parent / 'frontend').exists():
+                return current.parent
+            return current
+        
+        # 부모 디렉토리들 검사
+        for parent in current.parents:
+            if parent.name == 'mycloset-ai':
+                return parent
+            # backend와 frontend가 같이 있는 디렉토리 찾기
+            if (parent / 'backend').exists() and (parent / 'frontend').exists():
+                return parent
+        
+        # 기본값으로 현재 디렉토리
+        return current
+    
+    def _find_ai_models_dir(self) -> Optional[Path]:
+        """AI 모델 디렉토리 찾기 (우선순위 기반)"""
+        candidates = [
+            # 1순위: backend 내부
+            self.project_root / "backend" / "ai_models",
+            self.current_dir / "ai_models",  # backend에서 실행 시
+            
+            # 2순위: 프로젝트 루트
+            self.project_root / "ai_models",
+            
+            # 3순위: 현재 위치 기준
+            self.current_dir / "backend" / "ai_models",
+            self.current_dir.parent / "backend" / "ai_models",
+            
+            # 4순위: 기타
+            self.project_root / "models",
+            self.project_root / "checkpoints"
+        ]
+        
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_dir():
+                # 내용이 있는지 확인
+                try:
+                    if any(candidate.iterdir()):
+                        return candidate
+                except PermissionError:
+                    continue
+        
+        return None
+    
+    def _detect_conda_environments(self) -> Dict[str, Path]:
+        """conda 환경 자동 탐지"""
+        environments = {}
+        
+        try:
+            # conda info로 환경 목록 가져오기
+            result = subprocess.run(
+                ['conda', 'env', 'list', '--json'],
+                capture_output=True, text=True, timeout=10
+            )
+            
+            if result.returncode == 0:
+                env_data = json.loads(result.stdout)
+                for env_path in env_data.get('envs', []):
+                    env_name = Path(env_path).name
+                    environments[env_name] = Path(env_path)
+                    
+        except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError):
+            # conda 명령어 실패 시 수동 탐지
+            conda_bases = [
+                Path.home() / "miniconda3" / "envs",
+                Path.home() / "anaconda3" / "envs", 
+                Path("/opt/anaconda3/envs"),
+                Path("/opt/miniconda3/envs")
+            ]
+            
+            for base in conda_bases:
+                if base.exists():
+                    for env_dir in base.iterdir():
+                        if env_dir.is_dir() and (env_dir / "bin" / "python").exists():
+                            environments[env_dir.name] = env_dir
+        
+        return environments
+    
     def _init_classification_patterns(self):
-        """AI 모델 분류 패턴 초기화 (고도화)"""
+        """AI 모델 분류 패턴 초기화"""
         
-        # 프레임워크 패턴 (확장)
+        # 프레임워크 패턴
         self.framework_patterns = {
             'pytorch': {
                 'extensions': ['.pth', '.pt', '.bin'],
@@ -297,15 +232,10 @@ class AdvancedModelScanner:
                 'extensions': ['.bin', '.safetensors'],
                 'magic_bytes': [],
                 'indicators': ['diffusion', 'unet', 'vae', 'scheduler']
-            },
-            'transformers': {
-                'extensions': ['.bin', '.safetensors'],
-                'magic_bytes': [],
-                'indicators': ['transformer', 'bert', 'gpt', 'clip']
             }
         }
         
-        # MyCloset AI 8단계 패턴 (더 정교함)
+        # MyCloset AI 8단계 패턴 (정교화)
         self.step_patterns = {
             'step_01_human_parsing': {
                 'patterns': [
@@ -381,237 +311,138 @@ class AdvancedModelScanner:
             }
         }
         
-        # 모델 아키텍처 패턴
-        self.architecture_patterns = {
-            'transformer': [r'transformer', r'bert', r'gpt', r'clip', r'vit'],
-            'cnn': [r'resnet', r'vgg', r'inception', r'mobilenet', r'efficientnet'],
-            'unet': [r'unet', r'u.*net', r'segmentation'],
-            'gan': [r'gan', r'generator', r'discriminator'],
-            'diffusion': [r'diffusion', r'ddpm', r'ddim', r'score'],
-            'autoencoder': [r'vae', r'autoencoder', r'encoder.*decoder'],
-            'detection': [r'yolo', r'rcnn', r'ssd', r'detection'],
-            'pose': [r'pose', r'keypoint', r'landmark']
+        # 모델 타입 패턴
+        self.model_type_patterns = {
+            'diffusion_model': [r'diffusion', r'stable.*diffusion', r'ootd', r'unet'],
+            'clip_model': [r'clip', r'vit.*patch', r'vision.*transformer'],
+            'pose_model': [r'pose', r'openpose', r'dwpose', r'keypoint'],
+            'segmentation_model': [r'segment', r'u2net', r'mask', r'sam'],
+            'parsing_model': [r'parsing', r'human.*parsing', r'atr', r'schp'],
+            'warping_model': [r'warp', r'tom', r'tps', r'flow'],
+            'checkpoint': [r'checkpoint', r'ckpt', r'epoch', r'step'],
+            'config_file': [r'config', r'setup', r'tokenizer']
         }
-
-    def _detect_conda_environments(self) -> Dict[str, Path]:
-        """conda 환경 자동 탐지"""
-        environments = {}
-        
-        try:
-            # conda info로 환경 목록 가져오기
-            result = subprocess.run(
-                ['conda', 'env', 'list', '--json'],
-                capture_output=True, text=True, timeout=10
-            )
-            
-            if result.returncode == 0:
-                env_data = json.loads(result.stdout)
-                for env_path in env_data.get('envs', []):
-                    env_name = Path(env_path).name
-                    environments[env_name] = Path(env_path)
-                    
-        except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError):
-            # conda 명령어 실패 시 수동 탐지
-            conda_bases = [
-                Path.home() / "miniconda3" / "envs",
-                Path.home() / "anaconda3" / "envs", 
-                Path("/opt/anaconda3/envs"),
-                Path("/opt/miniconda3/envs")
-            ]
-            
-            for base in conda_bases:
-                if base.exists():
-                    for env_dir in base.iterdir():
-                        if env_dir.is_dir() and (env_dir / "bin" / "python").exists():
-                            environments[env_dir.name] = env_dir
-        
-        logger.info(f"🐍 발견된 conda 환경: {list(environments.keys())}")
-        return environments
-
-    def _init_database(self):
-        """스캔 결과 데이터베이스 초기화"""
-        db_path = self.project_root / "model_scanner.db"
-        self.db_connection = sqlite3.connect(str(db_path), check_same_thread=False)
-        
-        # 테이블 생성
-        cursor = self.db_connection.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS model_scans (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scan_date TEXT,
-                model_path TEXT UNIQUE,
-                model_name TEXT,
-                size_gb REAL,
-                framework TEXT,
-                step_candidate TEXT,
-                confidence REAL,
-                checksum TEXT,
-                is_valid BOOLEAN,
-                metadata TEXT,
-                last_seen TEXT
-            )
-        ''')
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS scan_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scan_date TEXT,
-                total_models INTEGER,
-                total_size_gb REAL,
-                scan_duration REAL,
-                statistics TEXT
-            )
-        ''')
-        
-        self.db_connection.commit()
-
-    def scan_comprehensive_system(self, organize: bool = False) -> List[ModelInfo]:
-        """완전한 시스템 스캔 실행"""
-        logger.info("🚀 완전 고도화된 AI 모델 스캔 시작")
+    
+    def scan_complete_system(self) -> List[ModelInfo]:
+        """완전한 시스템 스캔"""
+        logger.info("🚀 완전한 AI 모델 시스템 스캔 시작")
         logger.info("=" * 80)
         
         scan_start = time.time()
         
-        # 1. 스캔 경로 최적화 생성
-        scan_paths = self._generate_optimized_scan_paths()
+        # 1. 스캔 경로 생성
+        scan_paths = self._generate_scan_paths()
         
         # 2. 병렬 스캔 실행
-        logger.info(f"🔍 {len(scan_paths)}개 위치에서 병렬 스캔 시작...")
-        all_files = self._parallel_file_discovery(scan_paths)
+        logger.info(f"🔍 {len(scan_paths)}개 위치에서 모델 검색...")
+        all_files = self._scan_all_paths(scan_paths)
         
         if not all_files:
             logger.warning("❌ AI 모델 파일을 찾을 수 없습니다.")
+            self._debug_scan_paths(scan_paths)
             return []
         
-        # 3. 모델 파일 분석
+        # 3. 모델 분석
         logger.info(f"🧠 {len(all_files):,}개 파일 AI 분석 중...")
-        self._analyze_models_advanced(all_files)
+        self._analyze_all_models(all_files)
         
-        # 4. 고급 후처리
+        # 4. 후처리
         self._post_process_results()
         
-        # 5. 자동 정리 (옵션)
-        if organize:
-            self._auto_organize_models()
-        
-        # 6. 결과 저장 및 출력
+        # 5. 결과 출력
         scan_duration = time.time() - scan_start
-        self._save_scan_results(scan_duration)
-        self._print_comprehensive_report(scan_duration)
+        self._print_complete_results(scan_duration)
         
         return self.found_models
-
-    def _generate_optimized_scan_paths(self) -> List[Path]:
-        """최적화된 스캔 경로 생성 (conda 우선)"""
+    
+    def _generate_scan_paths(self) -> List[Path]:
+        """스캔 경로 생성 (우선순위 기반)"""
         paths = []
         
-        # 1. conda 환경 우선 (가장 높은 우선순위)
-        if self.config.conda_priority:
+        # 1순위: conda 환경 (conda_first 옵션 시)
+        if self.conda_first:
             for env_name, env_path in self.conda_environments.items():
                 conda_paths = [
                     env_path / "lib" / "python3.11" / "site-packages",
-                    env_path / "lib" / "python3.10" / "site-packages", 
-                    env_path / "lib" / "python3.9" / "site-packages",
+                    env_path / "lib" / "python3.10" / "site-packages",
                     env_path / "share",
-                    env_path / "models",
-                    env_path / "checkpoints"
+                    env_path / "models"
                 ]
-                
-                for path in conda_paths:
-                    if self._is_accessible_path(path):
-                        paths.append(path)
+                paths.extend([p for p in conda_paths if self._is_accessible(p)])
         
-        # 2. 프로젝트 경로 (두 번째 우선순위)
+        # 2순위: 프로젝트 내부
         project_paths = [
-            self.project_root / "backend" / "ai_models",
-            self.project_root / "ai_models",
+            self.ai_models_dir,
             self.project_root / "models",
             self.project_root / "checkpoints",
             self.project_root / "weights"
         ]
+        paths.extend([p for p in project_paths if p and self._is_accessible(p)])
         
-        # 3. 사용자 경로
+        # 3순위: 사용자 디렉토리
         home = Path.home()
         user_paths = [
             home / "Downloads",
-            home / "Documents" / "AI_Models",
+            home / "Documents",
             home / "Desktop",
             home / ".cache" / "huggingface",
-            home / ".cache" / "torch", 
+            home / ".cache" / "torch",
             home / ".cache" / "diffusers",
-            home / ".cache" / "transformers",
-            home / ".local" / "lib",
-            home / ".local" / "share"
+            home / ".local" / "lib"
         ]
+        paths.extend([p for p in user_paths if self._is_accessible(p)])
         
-        # 4. 시스템 경로
-        system_paths = []
-        system = platform.system().lower()
+        # 4순위: 시스템 전체 (deep_scan 옵션 시)
+        if self.deep_scan:
+            system_paths = []
+            system = platform.system().lower()
+            
+            if system == "darwin":  # macOS
+                system_paths = [
+                    Path("/opt/homebrew/lib"),
+                    Path("/usr/local/lib"),
+                    Path("/opt")
+                ]
+            elif system == "linux":
+                system_paths = [
+                    Path("/opt"),
+                    Path("/usr/local/lib"),
+                    Path("/usr/share")
+                ]
+            
+            paths.extend([p for p in system_paths if self._is_accessible(p)])
         
-        if system == "darwin":  # macOS
-            system_paths = [
-                Path("/opt/homebrew/lib"),
-                Path("/usr/local/lib"),
-                Path("/opt"),
-                Path("/Applications") if self.config.deep_scan else None
-            ]
-        elif system == "linux":
-            system_paths = [
-                Path("/opt"),
-                Path("/usr/local/lib"),
-                Path("/usr/share"),
-                Path("/var/lib") if self.config.deep_scan else None
-            ]
-        else:  # Windows
-            system_paths = [
-                Path("C:/Program Files"),
-                home / "AppData"
-            ]
+        # conda 환경이 conda_first가 아닐 때 추가
+        if not self.conda_first:
+            for env_name, env_path in self.conda_environments.items():
+                conda_paths = [
+                    env_path / "lib" / "python3.11" / "site-packages",
+                    env_path / "lib" / "python3.10" / "site-packages"
+                ]
+                paths.extend([p for p in conda_paths if self._is_accessible(p)])
         
-        # 경로 통합 및 필터링
-        all_paths = project_paths + user_paths + [p for p in system_paths if p]
-        
-        if self.config.conda_priority:
-            all_paths = paths + all_paths  # conda 경로를 앞에
-        else:
-            all_paths = all_paths + paths
-        
-        # 접근 가능한 경로만 반환
-        final_paths = []
-        for path in all_paths:
-            if self._is_accessible_path(path):
-                final_paths.append(path)
-        
-        # 중복 제거 (부모-자식 관계 확인)
-        return self._remove_duplicate_paths(final_paths)
-
-    def _is_accessible_path(self, path: Path) -> bool:
-        """경로 접근 가능성 확인 (권한 안전성)"""
+        # 중복 제거
+        return self._remove_duplicate_paths(paths)
+    
+    def _is_accessible(self, path: Path) -> bool:
+        """경로 접근 가능성 확인"""
         try:
             if not path.exists():
                 return False
-            
-            # 읽기 권한 확인
             if not os.access(path, os.R_OK):
                 return False
             
-            # 보호된 시스템 경로 제외
+            # 보호된 경로 제외
             path_str = str(path).lower()
-            protected_patterns = [
-                '/system/', '/private/var/db', '/dev/', '/proc/',
-                'keychain', 'security', 'loginwindow'
-            ]
-            
-            return not any(pattern in path_str for pattern in protected_patterns)
+            protected = ['/system/', '/private/', '/dev/', '/proc/', 'keychain', 'security']
+            return not any(p in path_str for p in protected)
             
         except (PermissionError, OSError):
             return False
-
+    
     def _remove_duplicate_paths(self, paths: List[Path]) -> List[Path]:
-        """중복 경로 제거 (부모-자식 관계 고려)"""
+        """중복 경로 제거"""
         unique_paths = []
-        
-        # 경로 길이순 정렬 (짧은 것부터)
         sorted_paths = sorted(set(paths), key=lambda p: len(str(p)))
         
         for path in sorted_paths:
@@ -628,378 +459,225 @@ class AdvancedModelScanner:
                 unique_paths.append(path)
         
         return unique_paths
-
-    def _parallel_file_discovery(self, scan_paths: List[Path]) -> List[Path]:
-        """병렬 파일 발견"""
+    
+    def _scan_all_paths(self, scan_paths: List[Path]) -> List[Path]:
+        """모든 경로 스캔"""
         all_files = []
         
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # 각 경로별 스캔 작업 제출
-            future_to_path = {
-                executor.submit(self._scan_path_advanced, path): path
-                for path in scan_paths
-            }
+        for path in scan_paths:
+            if self.verbose:
+                logger.info(f"📂 스캔 중: {path}")
             
-            # 진행률 표시
-            if HAS_TQDM:
-                progress = tqdm(
-                    as_completed(future_to_path), 
-                    total=len(future_to_path),
-                    desc="경로 스캔"
-                )
-            else:
-                progress = as_completed(future_to_path)
-            
-            for future in progress:
-                path = future_to_path[future]
-                try:
-                    files = future.result(timeout=120)  # 2분 제한
-                    if files:
-                        all_files.extend(files)
-                        self.scan_locations[str(path)] = [str(f) for f in files]
-                        
-                        total_size_mb = sum(
-                            f.stat().st_size for f in files if f.exists()
-                        ) / (1024 * 1024)
-                        
-                        logger.info(f"✅ {path}: {len(files)}개 파일 ({total_size_mb:.1f}MB)")
-                        
-                except Exception as e:
-                    error_msg = f"스캔 실패 {path}: {e}"
-                    self.errors.append(error_msg)
-                    logger.warning(f"⚠️ {error_msg}")
+            files = self._scan_single_path(path)
+            if files:
+                all_files.extend(files)
+                self.scan_locations[str(path)] = [str(f) for f in files]
+                
+                total_size = sum(f.stat().st_size for f in files if f.exists()) / (1024**2)
+                if self.verbose:
+                    logger.info(f"  ✅ {len(files)}개 파일 발견 ({total_size:.1f}MB)")
         
         return all_files
-
-    def _scan_path_advanced(self, path: Path) -> List[Path]:
-        """고급 경로 스캔 (최적화)"""
+    
+    def _scan_single_path(self, path: Path) -> List[Path]:
+        """단일 경로 스캔"""
         found_files = []
         
         try:
-            if not self._is_accessible_path(path):
+            if not self._is_accessible(path):
                 return found_files
             
-            # 시스템별 최적화된 스캔
-            if platform.system() != "Windows" and shutil.which('find'):
-                found_files = self._unix_find_optimized(path)
-            else:
-                found_files = self._python_scan_optimized(path)
-                
-        except Exception as e:
-            logger.warning(f"경로 스캔 오류 {path}: {e}")
-        
-        return found_files
-
-    def _unix_find_optimized(self, path: Path) -> List[Path]:
-        """Unix find 명령어 최적화"""
-        found_files = []
-        
-        try:
-            # 패턴 기반 find 명령어 구성
-            patterns = []
-            for pattern in self.config.include_patterns:
-                patterns.extend(['-name', f"'{pattern}'"])
+            # 모델 확장자 검색
+            model_extensions = ['.pth', '.pt', '.bin', '.safetensors', '.ckpt', 
+                              '.h5', '.pb', '.onnx', '.pkl', '.model', '.weights']
             
-            if patterns:
-                patterns = patterns[:-1] + ['-o'] + patterns[-1:]  # OR 조건
-            
-            cmd = [
-                'find', str(path),
-                '-type', 'f',
-                '(', *patterns, ')',
-                '-size', f'+{int(self.config.min_size_mb)}M',
-                '-not', '-path', '*/.*',  # 숨김 폴더 제외
-                '-not', '-path', '*/__pycache__/*',
-                '-not', '-path', '*/node_modules/*',
-                '-maxdepth', str(self.config.max_depth)
-            ]
-            
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60, check=False
-            )
-            
-            if result.returncode == 0:
-                for line in result.stdout.strip().split('\n'):
-                    if line and not self._should_exclude_file(line):
-                        file_path = Path(line)
-                        if file_path.exists():
-                            found_files.append(file_path)
-                            
-        except subprocess.SubprocessError:
-            # find 실패 시 Python 방식으로 폴백
-            found_files = self._python_scan_optimized(path)
-            
-        return found_files
-
-    def _python_scan_optimized(self, path: Path) -> List[Path]:
-        """Python 기반 최적화 스캔"""
-        found_files = []
-        
-        try:
-            for pattern in self.config.include_patterns:
-                glob_pattern = f"**/{pattern}"
-                
+            for ext in model_extensions:
+                pattern = f"**/*{ext}"
                 for file_path in path.rglob(pattern):
                     if (file_path.is_file() and 
-                        not self._should_exclude_file(str(file_path)) and
-                        self._check_file_size(file_path)):
+                        self._is_model_file(file_path) and
+                        not self._should_skip_file(file_path)):
                         found_files.append(file_path)
                         
         except Exception as e:
-            logger.warning(f"Python 스캔 실패 {path}: {e}")
+            if self.verbose:
+                logger.warning(f"⚠️ 스캔 오류 {path}: {e}")
+            self.errors.append(f"스캔 실패 {path}: {e}")
         
         return found_files
-
-    def _should_exclude_file(self, file_path: str) -> bool:
-        """파일 제외 여부 판단"""
-        path_lower = file_path.lower()
-        
-        for pattern in self.config.exclude_patterns:
-            if pattern in path_lower:
-                return True
-        
-        return False
-
-    def _check_file_size(self, file_path: Path) -> bool:
-        """파일 크기 검사"""
+    
+    def _is_model_file(self, file_path: Path) -> bool:
+        """모델 파일 여부 확인"""
         try:
             size_bytes = file_path.stat().st_size
             size_mb = size_bytes / (1024 * 1024)
-            size_gb = size_mb / 1024
             
-            return (self.config.min_size_mb <= size_mb <= 
-                   self.config.max_size_gb * 1024)
+            # 크기 제한 (0.1MB ~ 50GB)
+            return 0.1 <= size_mb <= 50 * 1024
+            
         except OSError:
             return False
-
-    def _analyze_models_advanced(self, model_files: List[Path]):
-        """고급 모델 분석 (병렬 + AI 기반)"""
+    
+    def _should_skip_file(self, file_path: Path) -> bool:
+        """건너뛸 파일 여부"""
+        path_str = str(file_path).lower()
+        skip_patterns = [
+            'node_modules', '__pycache__', '.git', '.cache/pip',
+            'trash', 'recycle', 'temp', 'tmp', '.ds_store'
+        ]
+        return any(pattern in path_str for pattern in skip_patterns)
+    
+    def _analyze_all_models(self, model_files: List[Path]):
+        """모든 모델 분석"""
         
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # 분석 작업 제출
-            futures = [
-                executor.submit(self._analyze_single_model_advanced, file_path)
-                for file_path in model_files
-            ]
+        # 병렬 처리로 분석 속도 향상
+        with ThreadPoolExecutor(max_workers=min(len(model_files), 8)) as executor:
+            futures = [executor.submit(self._analyze_single_model, f) for f in model_files]
             
-            # 진행률 표시
-            if HAS_TQDM:
-                progress = tqdm(
-                    as_completed(futures),
-                    total=len(futures), 
-                    desc="AI 모델 분석"
-                )
-            else:
-                progress = as_completed(futures)
-            
-            for future in progress:
+            for future in as_completed(futures):
                 try:
                     model_info = future.result()
                     if model_info and model_info.is_valid:
                         self.found_models.append(model_info)
-                        
                 except Exception as e:
                     self.errors.append(f"모델 분석 실패: {e}")
-
-    def _analyze_single_model_advanced(self, file_path: Path) -> Optional[ModelInfo]:
-        """단일 모델 고급 분석"""
+    
+    def _analyze_single_model(self, file_path: Path) -> Optional[ModelInfo]:
+        """단일 모델 상세 분석"""
         try:
-            # 기본 파일 정보
+            # 파일 기본 정보
             stat_info = file_path.stat()
             size_bytes = stat_info.st_size
             size_mb = size_bytes / (1024 * 1024)
             size_gb = size_mb / 1024
             
-            # 체크섬 계산 (최적화)
-            checksums = self._calculate_checksums_optimized(file_path, size_mb)
+            # 체크섬 계산 (샘플링)
+            checksum = self._calculate_checksum(file_path, size_mb)
             
-            # 프레임워크 분류 (고도화)
-            framework = self._classify_framework_advanced(file_path)
+            # 프레임워크 분류
+            framework = self._classify_framework(file_path)
             
-            # 모델 타입 및 단계 분류
-            model_type = self._classify_model_type_advanced(file_path)
-            step_candidate, confidence = self._classify_step_advanced(file_path)
-            architecture = self._classify_architecture(file_path)
+            # 모델 타입 분류
+            model_type = self._classify_model_type(file_path)
+            
+            # Step 분류
+            step_candidate, confidence = self._classify_step(file_path)
             
             # 환경 정보
-            conda_info = self._check_conda_environment(file_path)
             is_in_project = self._is_in_project(file_path)
+            conda_info = self._check_conda_environment(file_path)
             
-            # 검증 및 메타데이터
-            validation_result = self._validate_model_advanced(file_path, framework)
-            metadata = self._extract_metadata_advanced(file_path, framework)
+            # 검증
+            is_valid = self._validate_model(file_path, framework)
             
-            # 관련 파일 탐지
+            # 동반 파일
             companion_files = self._find_companion_files(file_path)
             
-            # 중요도 점수 계산
-            importance_score = self._calculate_importance_score(
-                file_path, size_gb, framework, step_candidate, confidence
+            # 중요도 점수
+            importance_score = self._calculate_importance(
+                file_path, size_gb, framework, step_candidate, confidence, is_in_project
             )
             
             return ModelInfo(
-                # 기본 정보
                 name=file_path.name,
                 path=str(file_path),
                 absolute_path=str(file_path.absolute()),
-                size_bytes=size_bytes,
                 size_mb=size_mb,
                 size_gb=size_gb,
-                
-                # 파일 정보  
-                extension=file_path.suffix.lower(),
-                mime_type=mimetypes.guess_type(str(file_path))[0] or 'unknown',
-                created_time=datetime.fromtimestamp(stat_info.st_ctime),
-                modified_time=datetime.fromtimestamp(stat_info.st_mtime),
-                access_time=datetime.fromtimestamp(stat_info.st_atime),
-                checksum_md5=checksums['md5'],
-                checksum_sha256=checksums['sha256'],
-                
-                # AI 모델 분류
                 framework=framework,
                 model_type=model_type,
                 step_candidate=step_candidate,
                 confidence=confidence,
-                architecture=architecture,
-                
-                # 위치 및 환경
+                is_valid=is_valid,
                 is_in_project=is_in_project,
                 is_in_conda=conda_info['is_conda'],
                 conda_env_name=conda_info['env_name'],
-                environment_path=conda_info['env_path'],
                 parent_directory=file_path.parent.name,
-                
-                # 상태 및 검증
-                is_valid=validation_result['is_valid'],
-                is_complete=validation_result['is_complete'],
-                is_corrupted=validation_result['is_corrupted'],
-                validation_errors=validation_result['errors'],
-                
-                # 관계성
+                created_time=datetime.fromtimestamp(stat_info.st_ctime).isoformat(),
+                modified_time=datetime.fromtimestamp(stat_info.st_mtime).isoformat(),
+                checksum=checksum,
                 companion_files=companion_files,
-                related_models=[],  # 후처리에서 설정
-                duplicate_of=None,  # 후처리에서 설정
-                
-                # 고급 메타데이터
-                metadata=metadata,
-                importance_score=importance_score
+                importance_score=importance_score,
+                extension=file_path.suffix.lower()
             )
             
         except Exception as e:
-            logger.warning(f"모델 분석 실패 {file_path}: {e}")
+            if self.verbose:
+                logger.warning(f"모델 분석 실패 {file_path}: {e}")
             return None
-
-    def _calculate_checksums_optimized(self, file_path: Path, size_mb: float) -> Dict[str, str]:
-        """최적화된 체크섬 계산"""
-        checksums = {'md5': 'unknown', 'sha256': 'unknown'}
-        
+    
+    def _calculate_checksum(self, file_path: Path, size_mb: float) -> str:
+        """체크섬 계산 (샘플링 방식)"""
         try:
-            md5_hasher = hashlib.md5()
-            sha256_hasher = hashlib.sha256()
+            hasher = hashlib.md5()
             
             with open(file_path, 'rb') as f:
                 if size_mb > 100:  # 100MB 이상은 샘플링
-                    # 시작 부분
-                    chunk = f.read(1024 * 1024)  # 1MB
-                    if chunk:
-                        md5_hasher.update(chunk)
-                        sha256_hasher.update(chunk)
-                    
-                    # 중간 부분
+                    # 시작, 중간, 끝 부분만 해시
+                    chunks = [f.read(1024*1024)]  # 시작 1MB
                     try:
-                        f.seek(int(size_mb * 1024 * 512))  # 중간
-                        chunk = f.read(1024 * 1024)
-                        if chunk:
-                            md5_hasher.update(chunk)
-                            sha256_hasher.update(chunk)
+                        f.seek(int(size_mb * 1024 * 512))
+                        chunks.append(f.read(1024*1024))  # 중간 1MB
+                        f.seek(-1024*1024, 2)
+                        chunks.append(f.read(1024*1024))  # 끝 1MB
                     except:
                         pass
                     
-                    # 끝 부분
-                    try:
-                        f.seek(-1024 * 1024, 2)  # 끝에서 1MB
-                        chunk = f.read(1024 * 1024)
+                    for chunk in chunks:
                         if chunk:
-                            md5_hasher.update(chunk)
-                            sha256_hasher.update(chunk)
-                    except:
-                        pass
+                            hasher.update(chunk)
                 else:
                     # 작은 파일은 전체 해시
                     while True:
                         chunk = f.read(8192)
                         if not chunk:
                             break
-                        md5_hasher.update(chunk)
-                        sha256_hasher.update(chunk)
+                        hasher.update(chunk)
             
-            checksums['md5'] = md5_hasher.hexdigest()
-            checksums['sha256'] = sha256_hasher.hexdigest()[:32]  # 처음 32자만
+            return hasher.hexdigest()[:16]
             
-        except Exception as e:
-            logger.warning(f"체크섬 계산 실패 {file_path}: {e}")
-        
-        return checksums
-
-    def _classify_framework_advanced(self, file_path: Path) -> str:
-        """고급 프레임워크 분류"""
+        except Exception:
+            return "unknown"
+    
+    def _classify_framework(self, file_path: Path) -> str:
+        """프레임워크 분류"""
         extension = file_path.suffix.lower()
         path_str = str(file_path).lower()
         
-        # 확장자 기반 1차 분류
+        # 확장자 기반
         for framework, info in self.framework_patterns.items():
             if extension in info['extensions']:
-                # 추가 검증
+                # 추가 지시자 확인
                 if info['indicators']:
                     for indicator in info['indicators']:
                         if indicator in path_str:
                             return framework
                 return framework
         
-        # 매직 바이트 검증 (소규모 파일만)
-        try:
-            if file_path.stat().st_size < 100 * 1024 * 1024:  # 100MB 미만
-                with open(file_path, 'rb') as f:
-                    header = f.read(1024)
-                    
-                for framework, info in self.framework_patterns.items():
-                    for magic in info['magic_bytes']:
-                        if magic in header:
-                            return framework
-        except:
-            pass
+        # 바이너리 파일 세부 분류
+        if extension == '.bin':
+            if any(term in path_str for term in ['pytorch', 'torch', 'transformers']):
+                return 'pytorch'
+            elif 'tensorflow' in path_str:
+                return 'tensorflow'
+            else:
+                return 'binary'
         
         return 'unknown'
-
-    def _classify_model_type_advanced(self, file_path: Path) -> str:
-        """고급 모델 타입 분류"""
+    
+    def _classify_model_type(self, file_path: Path) -> str:
+        """모델 타입 분류"""
         path_str = str(file_path).lower()
         
-        # 디렉토리 구조 기반 분류
-        path_parts = [part.lower() for part in file_path.parts]
-        
-        type_indicators = {
-            'diffusion_model': ['diffusion', 'stable', 'ootd', 'unet'],
-            'clip_model': ['clip', 'vit', 'vision', 'transformer'],
-            'pose_model': ['pose', 'openpose', 'dwpose', 'keypoint'],
-            'segmentation_model': ['segment', 'u2net', 'mask', 'sam'],
-            'parsing_model': ['parsing', 'human', 'atr', 'schp', 'graphonomy'],
-            'warping_model': ['warp', 'tom', 'tps', 'flow', 'matching'],
-            'checkpoint': ['checkpoint', 'ckpt', 'epoch', 'step'],
-            'config_file': ['config', 'tokenizer', 'vocab']
-        }
-        
-        for model_type, indicators in type_indicators.items():
-            for indicator in indicators:
-                if any(indicator in part for part in path_parts):
-                    return model_type
-                if indicator in file_path.name.lower():
+        for model_type, patterns in self.model_type_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, path_str):
                     return model_type
         
         return 'unknown'
-
-    def _classify_step_advanced(self, file_path: Path) -> Tuple[str, float]:
-        """MyCloset AI 8단계 고급 분류"""
+    
+    def _classify_step(self, file_path: Path) -> Tuple[str, float]:
+        """MyCloset AI 8단계 분류"""
         path_str = str(file_path).lower()
         name_str = file_path.name.lower()
         parent_str = file_path.parent.name.lower()
@@ -1020,7 +698,6 @@ class AdvancedModelScanner:
                     elif re.search(pattern, parent_str):
                         confidence = max(confidence, 0.7)
                 except re.error:
-                    # 정규식 오류 시 문자열 검색
                     clean_pattern = pattern.replace(r'\.*', '').replace('.*', '')
                     if clean_pattern in path_str:
                         confidence = max(confidence, 0.6)
@@ -1040,236 +717,60 @@ class AdvancedModelScanner:
                 best_step = step_name
         
         return best_step, best_confidence
-
-    def _classify_architecture(self, file_path: Path) -> str:
-        """아키텍처 분류"""
-        path_str = str(file_path).lower()
-        
-        for arch_type, patterns in self.architecture_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, path_str):
-                    return arch_type
-        
-        return 'unknown'
-
+    
+    def _is_in_project(self, file_path: Path) -> bool:
+        """프로젝트 내부 여부"""
+        try:
+            return file_path.is_relative_to(self.project_root)
+        except ValueError:
+            return False
+    
     def _check_conda_environment(self, file_path: Path) -> Dict[str, Any]:
         """conda 환경 확인"""
-        result = {
-            'is_conda': False,
-            'env_name': None,
-            'env_path': None
-        }
+        result = {'is_conda': False, 'env_name': None}
         
         for env_name, env_path in self.conda_environments.items():
             try:
                 if file_path.is_relative_to(env_path):
                     result['is_conda'] = True
                     result['env_name'] = env_name
-                    result['env_path'] = str(env_path)
                     break
             except ValueError:
                 continue
         
         return result
-
-    def _is_in_project(self, file_path: Path) -> bool:
-        """프로젝트 내부 여부 확인"""
+    
+    def _validate_model(self, file_path: Path, framework: str) -> bool:
+        """모델 유효성 검사"""
         try:
-            return file_path.is_relative_to(self.project_root)
-        except ValueError:
-            return False
-
-    def _validate_model_advanced(self, file_path: Path, framework: str) -> Dict[str, Any]:
-        """고급 모델 검증"""
-        result = {
-            'is_valid': False,
-            'is_complete': False,
-            'is_corrupted': False,
-            'errors': []
-        }
-        
-        try:
-            # 기본 파일 검증
-            if not file_path.exists():
-                result['errors'].append("파일이 존재하지 않음")
-                return result
+            if file_path.stat().st_size < 1024:
+                return False
             
-            size = file_path.stat().st_size
-            if size == 0:
-                result['errors'].append("빈 파일")
-                return result
+            with open(file_path, 'rb') as f:
+                header = f.read(100)
             
-            # 프레임워크별 검증
-            if framework == 'pytorch':
-                result.update(self._validate_pytorch_model(file_path))
-            elif framework == 'safetensors':
-                result.update(self._validate_safetensors_model(file_path))
+            if framework == 'pytorch' and (b'PK' in header or b'\x80' in header):
+                return True
+            elif framework == 'safetensors' and b'{' in header:
+                return True
             elif framework == 'tensorflow':
-                result.update(self._validate_tensorflow_model(file_path))
+                return len(header) > 10
             elif framework == 'onnx':
-                result.update(self._validate_onnx_model(file_path))
+                return b'onnx' in header.lower() or len(header) > 50
             else:
-                result['is_valid'] = True
-                result['is_complete'] = True
-            
-        except Exception as e:
-            result['errors'].append(f"검증 실패: {e}")
-        
-        return result
-
-    def _validate_pytorch_model(self, file_path: Path) -> Dict[str, Any]:
-        """PyTorch 모델 검증"""
-        result = {'is_valid': False, 'is_complete': False, 'is_corrupted': False, 'errors': []}
-        
-        try:
-            with open(file_path, 'rb') as f:
-                header = f.read(1024)
-            
-            # PyTorch 매직 바이트 확인
-            if b'PK' in header or b'\x80' in header:
-                result['is_valid'] = True
-                result['is_complete'] = True
-            else:
-                result['errors'].append("PyTorch 형식이 아님")
+                return True
                 
-        except Exception as e:
-            result['errors'].append(f"PyTorch 검증 실패: {e}")
-            result['is_corrupted'] = True
-        
-        return result
-
-    def _validate_safetensors_model(self, file_path: Path) -> Dict[str, Any]:
-        """Safetensors 모델 검증"""
-        result = {'is_valid': False, 'is_complete': False, 'is_corrupted': False, 'errors': []}
-        
-        try:
-            with open(file_path, 'rb') as f:
-                header = f.read(1024).decode('utf-8', errors='ignore')
-            
-            if '{' in header and '"' in header:
-                result['is_valid'] = True
-                result['is_complete'] = True
-            else:
-                result['errors'].append("Safetensors 형식이 아님")
-                
-        except Exception as e:
-            result['errors'].append(f"Safetensors 검증 실패: {e}")
-            result['is_corrupted'] = True
-        
-        return result
-
-    def _validate_tensorflow_model(self, file_path: Path) -> Dict[str, Any]:
-        """TensorFlow 모델 검증"""
-        result = {'is_valid': False, 'is_complete': False, 'is_corrupted': False, 'errors': []}
-        
-        try:
-            extension = file_path.suffix.lower()
-            
-            with open(file_path, 'rb') as f:
-                header = f.read(100)
-            
-            if extension == '.h5' and header.startswith(b'\x89HDF'):
-                result['is_valid'] = True
-                result['is_complete'] = True
-            elif extension == '.pb' and len(header) > 10:
-                result['is_valid'] = True
-                result['is_complete'] = True
-            else:
-                result['errors'].append("TensorFlow 형식 확인 실패")
-                
-        except Exception as e:
-            result['errors'].append(f"TensorFlow 검증 실패: {e}")
-            result['is_corrupted'] = True
-        
-        return result
-
-    def _validate_onnx_model(self, file_path: Path) -> Dict[str, Any]:
-        """ONNX 모델 검증"""
-        result = {'is_valid': False, 'is_complete': False, 'is_corrupted': False, 'errors': []}
-        
-        try:
-            with open(file_path, 'rb') as f:
-                header = f.read(100)
-            
-            if b'onnx' in header.lower() or len(header) > 50:
-                result['is_valid'] = True
-                result['is_complete'] = True
-            else:
-                result['errors'].append("ONNX 형식이 아님")
-                
-        except Exception as e:
-            result['errors'].append(f"ONNX 검증 실패: {e}")
-            result['is_corrupted'] = True
-        
-        return result
-
-    def _extract_metadata_advanced(self, file_path: Path, framework: str) -> ModelMetadata:
-        """고급 메타데이터 추출"""
-        metadata = ModelMetadata()
-        
-        try:
-            # 동반 파일에서 메타데이터 추출
-            parent_dir = file_path.parent
-            
-            # config.json 확인
-            config_path = parent_dir / "config.json"
-            if config_path.exists():
-                metadata.has_config = True
-                try:
-                    with open(config_path, 'r', encoding='utf-8') as f:
-                        config_data = json.load(f)
-                    
-                    metadata.architecture = config_data.get('model_type', 'unknown')
-                    metadata.framework_version = config_data.get('transformers_version', 'unknown')
-                    
-                    if 'base_model' in config_data:
-                        metadata.base_model = config_data['base_model']
-                        metadata.is_fine_tuned = True
-                    
-                except:
-                    pass
-            
-            # tokenizer 확인
-            tokenizer_files = ['tokenizer.json', 'tokenizer_config.json', 'vocab.txt']
-            metadata.has_tokenizer = any((parent_dir / tf).exists() for tf in tokenizer_files)
-            
-            # 파일명에서 정보 추출
-            name_lower = file_path.name.lower()
-            
-            # 정밀도 추출
-            if 'fp16' in name_lower:
-                metadata.precision = 'fp16'
-            elif 'fp32' in name_lower:
-                metadata.precision = 'fp32'
-            elif 'int8' in name_lower:
-                metadata.precision = 'int8'
-            
-            # 태그 추출
-            tags = []
-            if 'fine' in name_lower and 'tuned' in name_lower:
-                tags.append('fine-tuned')
-            if 'checkpoint' in name_lower:
-                tags.append('checkpoint')
-            if 'epoch' in name_lower:
-                tags.append('training')
-            
-            metadata.tags = tags
-            
-        except Exception as e:
-            logger.warning(f"메타데이터 추출 실패 {file_path}: {e}")
-        
-        return metadata
-
+        except Exception:
+            return False
+    
     def _find_companion_files(self, file_path: Path) -> List[str]:
         """동반 파일 찾기"""
         companions = []
         parent_dir = file_path.parent
         
         companion_patterns = [
-            'config.json', 'config.yaml', 'model_config.json',
-            'tokenizer.json', 'tokenizer_config.json', 'vocab.txt',
-            'pytorch_model.bin', 'model.safetensors',
-            'scheduler_config.json', 'unet_config.json'
+            'config.json', 'config.yaml', 'tokenizer.json',
+            'model_config.json', 'pytorch_model.bin'
         ]
         
         for pattern in companion_patterns:
@@ -1278,297 +779,109 @@ class AdvancedModelScanner:
                 companions.append(str(companion_path))
         
         return companions
-
-    def _calculate_importance_score(
+    
+    def _calculate_importance(
         self, file_path: Path, size_gb: float, framework: str, 
-        step_candidate: str, confidence: float
+        step: str, confidence: float, is_in_project: bool
     ) -> float:
         """중요도 점수 계산"""
         score = 0.0
         
-        # 기본 점수 (크기 기반)
-        score += min(size_gb * 10, 50)  # 최대 50점
+        # 크기 점수 (최대 30점)
+        score += min(size_gb * 10, 30)
         
-        # 신뢰도 점수
-        score += confidence * 30  # 최대 30점
+        # 신뢰도 점수 (최대 25점)
+        score += confidence * 25
         
-        # 프레임워크 보너스
-        framework_bonus = {
-            'pytorch': 10, 'safetensors': 8, 'diffusers': 15,
-            'transformers': 12, 'onnx': 5
+        # 프레임워크 점수 (최대 15점)
+        framework_scores = {
+            'pytorch': 15, 'safetensors': 12, 'diffusers': 10,
+            'transformers': 8, 'tensorflow': 6, 'onnx': 4
         }
-        score += framework_bonus.get(framework, 0)
+        score += framework_scores.get(framework, 0)
         
-        # Step 보너스 (MyCloset AI 특화)
-        if step_candidate != 'unknown':
+        # Step 점수 (최대 20점)
+        if step != 'unknown':
             score += 20
         
-        # 프로젝트 내부 보너스
-        if self._is_in_project(file_path):
-            score += 15
-        
-        # conda 환경 보너스
-        if any(file_path.is_relative_to(env_path) 
-               for env_path in self.conda_environments.values()):
+        # 위치 점수 (최대 10점)
+        if is_in_project:
             score += 10
+        elif any(file_path.is_relative_to(env) for env in self.conda_environments.values()):
+            score += 5
         
-        return min(score, 100.0)  # 최대 100점
-
+        return min(score, 100.0)
+    
     def _post_process_results(self):
-        """고급 후처리"""
-        logger.info("🔄 결과 후처리 중...")
+        """결과 후처리"""
+        if not self.found_models:
+            return
         
-        # 1. 중복 탐지
-        self._detect_duplicates_advanced()
-        
-        # 2. 관련 모델 연결
-        self._link_related_models()
-        
-        # 3. 중요도 재계산
-        self._recalculate_importance()
-        
-        # 4. 데이터베이스 업데이트
-        self._update_database()
-
-    def _detect_duplicates_advanced(self):
-        """고급 중복 탐지"""
-        # MD5 기반 그룹화
-        md5_groups = defaultdict(list)
+        # 중복 탐지 (체크섬 기반)
+        checksum_groups = {}
         for model in self.found_models:
-            if model.checksum_md5 != 'unknown':
-                md5_groups[model.checksum_md5].append(model)
+            if model.checksum != "unknown":
+                if model.checksum not in checksum_groups:
+                    checksum_groups[model.checksum] = []
+                checksum_groups[model.checksum].append(model)
         
-        # 중복 그룹 처리
-        for checksum, models in md5_groups.items():
+        # 중복된 것들 표시
+        for checksum, models in checksum_groups.items():
             if len(models) > 1:
-                # 가장 중요한 모델을 원본으로 설정
+                # 가장 중요한 것을 원본으로 설정
                 primary = max(models, key=lambda m: m.importance_score)
-                
                 for model in models:
                     if model != primary:
-                        model.duplicate_of = primary.path
-                
-                self.duplicates[checksum] = models
-
-    def _link_related_models(self):
-        """관련 모델 연결"""
-        # 같은 디렉토리의 모델들 연결
-        dir_groups = defaultdict(list)
-        for model in self.found_models:
-            dir_groups[model.parent_directory].append(model)
+                        model.importance_score *= 0.8  # 중복 패널티
+    
+    def _debug_scan_paths(self, scan_paths: List[Path]):
+        """스캔 경로 디버그"""
+        logger.info("🔍 스캔 경로 디버그:")
         
-        for models in dir_groups.values():
-            if len(models) > 1:
-                for model in models:
-                    model.related_models = [
-                        m.path for m in models if m != model
-                    ]
-
-    def _recalculate_importance(self):
-        """중요도 재계산 (관계성 고려)"""
-        for model in self.found_models:
-            bonus = 0
+        for i, path in enumerate(scan_paths, 1):
+            exists = "✅" if path.exists() else "❌"
+            logger.info(f"  {i:2d}. {exists} {path}")
             
-            # 동반 파일 보너스
-            if model.companion_files:
-                bonus += len(model.companion_files) * 2
-            
-            # 관련 모델 보너스
-            if model.related_models:
-                bonus += len(model.related_models)
-            
-            # 최신성 보너스
-            days_old = (datetime.now() - model.modified_time).days
-            if days_old < 30:
-                bonus += 5
-            elif days_old < 90:
-                bonus += 3
-            
-            model.importance_score = min(model.importance_score + bonus, 100.0)
-
-    def _update_database(self):
-        """데이터베이스 업데이트"""
-        cursor = self.db_connection.cursor()
-        
-        for model in self.found_models:
-            cursor.execute('''
-                INSERT OR REPLACE INTO model_scans 
-                (scan_date, model_path, model_name, size_gb, framework, 
-                 step_candidate, confidence, checksum, is_valid, metadata, last_seen)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                datetime.now().isoformat(),
-                model.path,
-                model.name,
-                model.size_gb,
-                model.framework,
-                model.step_candidate,
-                model.confidence,
-                model.checksum_md5,
-                model.is_valid,
-                json.dumps(asdict(model.metadata)),
-                datetime.now().isoformat()
-            ))
-        
-        self.db_connection.commit()
-
-    def _auto_organize_models(self):
-        """자동 모델 정리"""
-        logger.info("📁 자동 모델 정리 시작...")
-        
-        # 대상 디렉토리 생성
-        organized_dir = self.project_root / "backend" / "ai_models" / "organized"
-        organized_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Step별 디렉토리 생성
-        for step_name in self.step_patterns.keys():
-            step_dir = organized_dir / step_name.replace('step_', '').replace('_', '-')
-            step_dir.mkdir(exist_ok=True)
-        
-        # 모델 이동 (신뢰도 높은 것만)
-        moved_count = 0
-        for model in self.found_models:
-            if (model.confidence > 0.7 and 
-                not model.is_in_project and 
-                model.step_candidate != 'unknown'):
-                
+            if path.exists():
                 try:
-                    step_name = model.step_candidate.replace('step_', '').replace('_', '-')
-                    target_dir = organized_dir / step_name
-                    target_path = target_dir / model.name
+                    items = list(path.iterdir())
+                    logger.info(f"      📁 {len(items)}개 항목")
                     
-                    if not target_path.exists():
-                        shutil.copy2(model.path, target_path)
-                        logger.info(f"✅ 이동: {model.name} → {step_name}")
-                        moved_count += 1
-                        
+                    # 모델 파일 직접 검색
+                    model_files = []
+                    for item in items[:5]:  # 처음 5개만 체크
+                        if item.is_file() and item.suffix.lower() in ['.pth', '.pt', '.bin']:
+                            model_files.append(item)
+                    
+                    if model_files:
+                        logger.info(f"      🤖 {len(model_files)}개 모델 파일 발견")
+                        for mf in model_files:
+                            size_mb = mf.stat().st_size / (1024*1024)
+                            logger.info(f"        - {mf.name} ({size_mb:.1f}MB)")
+                    
                 except Exception as e:
-                    logger.warning(f"⚠️ 이동 실패 {model.name}: {e}")
-        
-        logger.info(f"📦 {moved_count}개 모델 정리 완료")
-
-    def _save_scan_results(self, scan_duration: float):
-        """스캔 결과 저장"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 통계 계산
-        stats = self._calculate_statistics(scan_duration)
-        
-        # JSON 결과 저장
-        result_data = {
-            "scan_info": {
-                "timestamp": datetime.now().isoformat(),
-                "duration": scan_duration,
-                "system": platform.system(),
-                "machine": platform.machine(),
-                "python_version": platform.python_version(),
-                "conda_environments": list(self.conda_environments.keys()),
-                "current_conda_env": self.current_conda_env
-            },
-            "statistics": asdict(stats),
-            "models": [asdict(model) for model in self.found_models],
-            "duplicates": {
-                checksum: [asdict(model) for model in models]
-                for checksum, models in self.duplicates.items()
-            },
-            "scan_locations": self.scan_locations,
-            "errors": self.errors,
-            "warnings": self.warnings
-        }
-        
-        # 파일 저장
-        output_file = self.project_root / f"model_scan_complete_{timestamp}.json"
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result_data, f, indent=2, ensure_ascii=False, default=str)
-        
-        logger.info(f"💾 스캔 결과 저장: {output_file}")
-        
-        # 데이터베이스에 스캔 이력 저장
-        cursor = self.db_connection.cursor()
-        cursor.execute('''
-            INSERT INTO scan_history 
-            (scan_date, total_models, total_size_gb, scan_duration, statistics)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (
-            datetime.now().isoformat(),
-            len(self.found_models),
-            stats.total_size_gb,
-            scan_duration,
-            json.dumps(asdict(stats))
-        ))
-        self.db_connection.commit()
-
-    def _calculate_statistics(self, scan_duration: float) -> ScanStatistics:
-        """상세 통계 계산"""
-        stats = ScanStatistics()
-        
-        # 기본 통계
-        stats.total_files_scanned = sum(len(files) for files in self.scan_locations.values())
-        stats.models_found = len(self.found_models)
-        stats.total_size_bytes = sum(model.size_bytes for model in self.found_models)
-        stats.total_size_gb = stats.total_size_bytes / (1024**3)
-        stats.scan_duration = scan_duration
-        
-        # 위치 통계
-        stats.locations_scanned = len(self.scan_locations)
-        stats.conda_models = sum(1 for model in self.found_models if model.is_in_conda)
-        stats.project_models = sum(1 for model in self.found_models if model.is_in_project)
-        stats.system_models = stats.models_found - stats.conda_models - stats.project_models
-        
-        # 품질 통계
-        stats.valid_models = sum(1 for model in self.found_models if model.is_valid)
-        stats.corrupted_models = sum(1 for model in self.found_models if model.is_corrupted)
-        stats.duplicate_groups = len(self.duplicates)
-        stats.unique_models = stats.models_found - sum(
-            len(models) - 1 for models in self.duplicates.values()
-        )
-        
-        # 분포 통계
-        for model in self.found_models:
-            # 프레임워크 분포
-            fw = model.framework
-            stats.framework_distribution[fw] = stats.framework_distribution.get(fw, 0) + 1
-            
-            # 타입 분포
-            mt = model.model_type
-            stats.type_distribution[mt] = stats.type_distribution.get(mt, 0) + 1
-            
-            # Step 분포 (신뢰도 0.5+ 만)
-            if model.confidence >= 0.5:
-                step = model.step_candidate
-                stats.step_distribution[step] = stats.step_distribution.get(step, 0) + 1
-        
-        # 성능 통계
-        stats.errors_count = len(self.errors)
-        stats.warnings_count = len(self.warnings)
-        if scan_duration > 0:
-            stats.processing_speed_files_per_sec = stats.total_files_scanned / scan_duration
-        
-        return stats
-
-    def _print_comprehensive_report(self, scan_duration: float):
-        """완전한 스캔 보고서 출력"""
+                    logger.info(f"      ❌ 읽기 실패: {e}")
+    
+    def _print_complete_results(self, scan_duration: float):
+        """완전한 결과 출력"""
         stats = self._calculate_statistics(scan_duration)
         
         print("\n" + "=" * 100)
-        print("🎯 MyCloset AI - 완전 고도화된 AI 모델 스캔 결과")
+        print("🎯 MyCloset AI - 완전한 AI 모델 스캔 결과")
         print("=" * 100)
         
         # 기본 정보
-        print(f"🕐 스캔 시간: {scan_duration:.1f}초 ({stats.processing_speed_files_per_sec:.1f} 파일/초)")
+        print(f"🕐 스캔 시간: {scan_duration:.1f}초")
         print(f"💻 시스템: {platform.system()} {platform.machine()}")
-        print(f"🐍 Python: {platform.python_version()}")
-        print(f"🔧 워커: {self.max_workers}개 병렬 처리")
-        print(f"🐍 conda 환경: {self.current_conda_env or 'None'}")
+        print(f"🐍 현재 conda 환경: {self.current_conda_env or 'None'}")
         
         # 스캔 통계
         print(f"\n📊 스캔 통계:")
-        print(f"   📁 스캔 위치: {stats.locations_scanned}곳")
+        print(f"   📁 스캔 위치: {len(self.scan_locations)}곳")
         print(f"   📄 검사 파일: {stats.total_files_scanned:,}개")
         print(f"   🤖 발견 모델: {stats.models_found:,}개")
         print(f"   💾 총 용량: {stats.total_size_gb:.2f}GB")
         print(f"   ✅ 유효 모델: {stats.valid_models}개")
-        print(f"   ❌ 손상 모델: {stats.corrupted_models}개")
         
         if not self.found_models:
             print("\n❌ AI 모델을 찾을 수 없습니다.")
@@ -1578,26 +891,24 @@ class AdvancedModelScanner:
         # 위치별 분포
         print(f"\n📍 위치별 분포:")
         print(f"   🐍 conda 환경: {stats.conda_models}개")
-        print(f"   🏠 프로젝트 내부: {stats.project_models}개") 
+        print(f"   🏠 프로젝트 내부: {stats.project_models}개")
         print(f"   🌍 시스템 전체: {stats.system_models}개")
         
         # conda 환경별 상세
         if stats.conda_models > 0:
-            conda_dist = defaultdict(int)
+            conda_dist = {}
             for model in self.found_models:
                 if model.is_in_conda and model.conda_env_name:
-                    conda_dist[model.conda_env_name] += 1
+                    conda_dist[model.conda_env_name] = conda_dist.get(model.conda_env_name, 0) + 1
             
             print(f"   conda 환경별:")
             for env_name, count in sorted(conda_dist.items()):
-                env_size = sum(m.size_gb for m in self.found_models 
-                             if m.conda_env_name == env_name)
+                env_size = sum(m.size_gb for m in self.found_models if m.conda_env_name == env_name)
                 print(f"     - {env_name}: {count}개 ({env_size:.1f}GB)")
         
         # 프레임워크 분포
         print(f"\n🔧 프레임워크별 분포:")
-        for fw, count in sorted(stats.framework_distribution.items(), 
-                               key=lambda x: x[1], reverse=True):
+        for fw, count in sorted(stats.framework_distribution.items(), key=lambda x: x[1], reverse=True):
             fw_size = sum(m.size_gb for m in self.found_models if m.framework == fw)
             percentage = (count / stats.models_found) * 100
             print(f"   - {fw}: {count}개 ({fw_size:.2f}GB, {percentage:.1f}%)")
@@ -1608,7 +919,7 @@ class AdvancedModelScanner:
             step_names = {
                 'step_01_human_parsing': '1️⃣ Human Parsing',
                 'step_02_pose_estimation': '2️⃣ Pose Estimation',
-                'step_03_cloth_segmentation': '3️⃣ Cloth Segmentation', 
+                'step_03_cloth_segmentation': '3️⃣ Cloth Segmentation',
                 'step_04_geometric_matching': '4️⃣ Geometric Matching',
                 'step_05_cloth_warping': '5️⃣ Cloth Warping',
                 'step_06_virtual_fitting': '6️⃣ Virtual Fitting',
@@ -1616,39 +927,16 @@ class AdvancedModelScanner:
                 'step_08_quality_assessment': '8️⃣ Quality Assessment'
             }
             
-            total_classified = sum(stats.step_distribution.values())
             for step, count in sorted(stats.step_distribution.items()):
                 if count > 0:
                     display_name = step_names.get(step, step)
                     step_size = sum(m.size_gb for m in self.found_models 
                                   if m.step_candidate == step and m.confidence >= 0.5)
-                    percentage = (count / total_classified) * 100
-                    print(f"   {display_name}: {count}개 ({step_size:.1f}GB, {percentage:.1f}%)")
-        
-        # 중복 파일 정보
-        if self.duplicates:
-            duplicate_count = len(self.duplicates)
-            total_duplicates = sum(len(models) for models in self.duplicates.values())
-            waste_size = sum(
-                sum(m.size_gb for m in models[1:])  # 첫 번째 제외한 나머지
-                for models in self.duplicates.values()
-            )
-            print(f"\n🔄 중복 파일 분석:")
-            print(f"   중복 그룹: {duplicate_count}개")
-            print(f"   중복 파일: {total_duplicates - duplicate_count}개")
-            print(f"   절약 가능: {waste_size:.2f}GB")
-            
-            if duplicate_count <= 5:  # 5개 이하면 상세 표시
-                for i, (checksum, models) in enumerate(self.duplicates.items(), 1):
-                    print(f"   그룹 {i}: {len(models)}개 파일")
-                    for j, model in enumerate(models):
-                        marker = "🏆" if j == 0 else "📄"
-                        location = "conda" if model.is_in_conda else "project" if model.is_in_project else "system"
-                        print(f"     {marker} {model.name} ({location}, {model.size_gb:.1f}GB)")
+                    print(f"   {display_name}: {count}개 ({step_size:.1f}GB)")
         
         # 상위 중요 모델들
         print(f"\n🏆 중요도 상위 모델들:")
-        top_models = sorted(self.found_models, key=lambda x: x.importance_score, reverse=True)[:10]
+        top_models = sorted(self.found_models, key=lambda x: x.importance_score, reverse=True)[:15]
         
         for i, model in enumerate(top_models, 1):
             location_icon = "🐍" if model.is_in_conda else "🏠" if model.is_in_project else "🌍"
@@ -1665,7 +953,7 @@ class AdvancedModelScanner:
             print(f"      {location_icon} {model.conda_env_name or model.parent_directory} | "
                   f"{confidence_icon} {model.confidence:.2f} | ⭐ {model.importance_score:.1f}{step_info}")
         
-        # 문제 및 권장사항
+        # 권장사항
         print(f"\n💡 권장사항:")
         recommendations = []
         
@@ -1674,13 +962,6 @@ class AdvancedModelScanner:
         
         if stats.system_models > stats.project_models:
             recommendations.append(f"📦 시스템의 {stats.system_models}개 모델을 프로젝트로 통합 고려")
-        
-        if stats.duplicate_groups > 0:
-            waste_gb = sum(sum(m.size_gb for m in models[1:]) for models in self.duplicates.values())
-            recommendations.append(f"🗑️ 중복 파일 {stats.duplicate_groups}그룹 정리로 {waste_gb:.1f}GB 절약 가능")
-        
-        if stats.corrupted_models > 0:
-            recommendations.append(f"🔧 손상된 {stats.corrupted_models}개 모델 복구 또는 제거")
         
         large_models = [m for m in self.found_models if m.size_gb > 2.0]
         if large_models:
@@ -1705,462 +986,418 @@ class AdvancedModelScanner:
                     print(f"     - {error}")
                 if len(self.errors) > 3:
                     print(f"     ... 외 {len(self.errors) - 3}개")
-            
-            if self.warnings:
-                print(f"   ⚠️ 경고 {len(self.warnings)}개:")
-                for warning in self.warnings[:3]:
-                    print(f"     - {warning}")
-                if len(self.warnings) > 3:
-                    print(f"     ... 외 {len(self.warnings) - 3}개")
+    
+    def _calculate_statistics(self, scan_duration: float) -> ScanStatistics:
+        """통계 계산"""
+        stats = ScanStatistics()
         
-        # 다음 단계 안내
-        print(f"\n🚀 다음 단계:")
-        print("1. python advanced_scanner.py --organize     # 자동 모델 정리")
-        print("2. python advanced_scanner.py --repair       # 손상된 모델 복구")
-        print("3. 스캔 결과 JSON 파일 확인 및 활용")
-        print("4. 중복 파일 정리 및 공간 최적화")
-
+        # 기본 통계
+        stats.total_files_scanned = sum(len(files) for files in self.scan_locations.values())
+        stats.models_found = len(self.found_models)
+        stats.total_size_gb = sum(m.size_gb for m in self.found_models)
+        stats.scan_duration = scan_duration
+        
+        # 위치별 통계
+        stats.conda_models = sum(1 for m in self.found_models if m.is_in_conda)
+        stats.project_models = sum(1 for m in self.found_models if m.is_in_project)
+        stats.system_models = stats.models_found - stats.conda_models - stats.project_models
+        stats.valid_models = sum(1 for m in self.found_models if m.is_valid)
+        
+        # 분포 통계
+        for model in self.found_models:
+            # 프레임워크 분포
+            fw = model.framework
+            stats.framework_distribution[fw] = stats.framework_distribution.get(fw, 0) + 1
+            
+            # Step 분포 (신뢰도 0.5+ 만)
+            if model.confidence >= 0.5:
+                step = model.step_candidate
+                stats.step_distribution[step] = stats.step_distribution.get(step, 0) + 1
+        
+        return stats
+    
     def _print_suggestions(self):
-        """모델을 찾을 수 없을 때 제안사항"""
+        """제안사항 출력"""
         print("\n💡 AI 모델을 찾을 수 없습니다. 다음을 확인해보세요:")
+        
         print("\n🔍 검색 확장:")
-        print("   python advanced_scanner.py --deep                 # 전체 시스템 딥 스캔")
-        print("   python advanced_scanner.py --conda-first          # conda 환경 우선 스캔")
-        print("   python advanced_scanner.py --deep --organize      # 딥 스캔 + 자동 정리")
+        print("   python quick_scanner.py --deep                 # 전체 시스템 딥 스캔")
+        print("   python quick_scanner.py --conda-first          # conda 환경 우선 스캔")
+        print("   python quick_scanner.py --verbose              # 상세 진행 과정 출력")
         
-        print("\n📁 일반적인 AI 모델 위치:")
+        print("\n📁 예상 모델 위치:")
+        expected_locations = [
+            ("🏠 프로젝트", self.ai_models_dir),
+            ("📥 다운로드", Path.home() / "Downloads"),
+            ("💾 HuggingFace", Path.home() / ".cache" / "huggingface"),
+            ("🔥 PyTorch", Path.home() / ".cache" / "torch")
+        ]
+        
+        for desc, location in expected_locations:
+            exists = "✅" if location and location.exists() else "❌"
+            print(f"   {exists} {desc}: {location}")
+        
+        print("\n🐍 conda 환경별 확인:")
         for env_name, env_path in self.conda_environments.items():
-            print(f"   🐍 {env_name}: {env_path}/lib/python*/site-packages")
+            site_packages = env_path / "lib" / "python3.11" / "site-packages"
+            exists = "✅" if site_packages.exists() else "❌"
+            print(f"   {exists} {env_name}: {site_packages}")
         
-        print("   🏠 프로젝트: ./backend/ai_models/")
-        print("   📥 다운로드: ~/Downloads/")
-        print("   💾 캐시: ~/.cache/huggingface/, ~/.cache/torch/")
+        print("\n🔧 수동 확인 명령어:")
+        print(f"   find {self.project_root} -name '*.pth' -o -name '*.pt' -o -name '*.bin'")
+        print(f"   ls -la {self.ai_models_dir}/ 2>/dev/null")
+        print(f"   find ~ -name '*.pth' -size +1M 2>/dev/null | head -10")
+    
+    def generate_config_files(self, output_dir: str = "generated_configs") -> List[str]:
+        """설정 파일들 생성"""
+        if not self.found_models:
+            logger.warning("❌ 설정 파일을 생성할 모델이 없습니다.")
+            return []
         
-        print("\n⚙️ 설정 확인:")
-        print(f"   최소 크기: {self.config.min_size_mb}MB")
-        print(f"   최대 크기: {self.config.max_size_gb}GB")
-        print(f"   스캔 깊이: {self.config.max_depth}단계")
-
-    def repair_corrupted_models(self) -> int:
-        """손상된 모델 복구 시도"""
-        logger.info("🔧 손상된 모델 복구 시작...")
+        output_path = self.project_root / output_dir
+        output_path.mkdir(exist_ok=True)
         
-        corrupted_models = [m for m in self.found_models if m.is_corrupted]
-        if not corrupted_models:
-            logger.info("✅ 손상된 모델이 없습니다.")
-            return 0
+        generated_files = []
         
-        repaired_count = 0
+        # 1. JSON 결과 파일
+        json_file = self._generate_json_config(output_path)
+        generated_files.append(json_file)
         
-        for model in corrupted_models:
-            try:
-                # 백업 생성
-                backup_path = Path(model.path + '.backup')
-                if not backup_path.exists():
-                    shutil.copy2(model.path, backup_path)
-                
-                # 복구 시도 (프레임워크별)
-                if model.framework == 'pytorch':
-                    if self._repair_pytorch_model(Path(model.path)):
-                        repaired_count += 1
-                        logger.info(f"✅ 복구 성공: {model.name}")
-                elif model.framework == 'safetensors':
-                    if self._repair_safetensors_model(Path(model.path)):
-                        repaired_count += 1
-                        logger.info(f"✅ 복구 성공: {model.name}")
-                
-            except Exception as e:
-                logger.warning(f"⚠️ 복구 실패 {model.name}: {e}")
+        # 2. Python 설정 파일
+        python_file = self._generate_python_config(output_path)
+        generated_files.append(python_file)
         
-        logger.info(f"🎯 총 {repaired_count}/{len(corrupted_models)}개 모델 복구 완료")
-        return repaired_count
-
-    def _repair_pytorch_model(self, file_path: Path) -> bool:
-        """PyTorch 모델 복구"""
-        try:
-            # 간단한 헤더 복구 시도
-            with open(file_path, 'rb') as f:
-                data = f.read()
-            
-            # 매직 바이트 확인 및 복구
-            if not data.startswith(b'PK') and b'PK' in data:
-                # PK 헤더를 찾아서 앞으로 이동
-                pk_index = data.find(b'PK')
-                if pk_index > 0:
-                    repaired_data = data[pk_index:]
-                    
-                    with open(file_path, 'wb') as f:
-                        f.write(repaired_data)
-                    
-                    return True
-            
-        except Exception:
-            pass
+        # 3. conda 환경 설정
+        if any(m.is_in_conda for m in self.found_models):
+            conda_file = self._generate_conda_config(output_path)
+            generated_files.append(conda_file)
         
-        return False
-
-    def _repair_safetensors_model(self, file_path: Path) -> bool:
-        """Safetensors 모델 복구"""
-        try:
-            with open(file_path, 'rb') as f:
-                data = f.read()
-            
-            # JSON 헤더 찾기
-            if data.startswith(b'{'):
-                return True  # 이미 올바름
-            
-            json_start = data.find(b'{')
-            if json_start > 0:
-                repaired_data = data[json_start:]
-                
-                with open(file_path, 'wb') as f:
-                    f.write(repaired_data)
-                
-                return True
-            
-        except Exception:
-            pass
+        logger.info(f"📝 {len(generated_files)}개 설정 파일 생성 완료: {output_path}")
+        return generated_files
+    
+    def _generate_json_config(self, output_path: Path) -> str:
+        """JSON 설정 파일 생성"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_file = output_path / f"model_scan_result_{timestamp}.json"
         
-        return False
-
-    def generate_conda_config(self, output_file: str = None) -> str:
-        """conda 환경 우선 설정 파일 생성"""
-        if output_file is None:
-            output_file = "conda_model_config.py"
+        config_data = {
+            "scan_info": {
+                "timestamp": datetime.now().isoformat(),
+                "project_root": str(self.project_root),
+                "ai_models_dir": str(self.ai_models_dir),
+                "scan_duration": time.time() - self.scan_start_time,
+                "conda_environments": list(self.conda_environments.keys()),
+                "current_conda_env": self.current_conda_env
+            },
+            "statistics": asdict(self._calculate_statistics(time.time() - self.scan_start_time)),
+            "models": [asdict(model) for model in self.found_models],
+            "scan_locations": self.scan_locations,
+            "errors": self.errors,
+            "warnings": self.warnings
+        }
+        
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, indent=2, ensure_ascii=False, default=str)
+        
+        return str(json_file)
+    
+    def _generate_python_config(self, output_path: Path) -> str:
+        """Python 설정 파일 생성"""
+        python_file = output_path / "model_paths_config.py"
         
         config_content = f'''#!/usr/bin/env python3
 """
-🐍 MyCloset AI - Conda 환경 우선 모델 설정
-==========================================
-
-자동 생성됨: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-스캔된 모델: {len(self.found_models)}개
-conda 환경: {len(self.conda_environments)}개
-
-사용법:
-    from conda_model_config import get_model_path, get_conda_models
-    
-    # 특정 모델 경로 가져오기
-    clip_path = get_model_path("clip")
-    
-    # conda 환경의 모든 모델
-    conda_models = get_conda_models()
+MyCloset AI 모델 경로 설정 - 자동 생성됨
+생성 시간: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+발견된 모델: {len(self.found_models)}개
 """
 
-import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# ==============================================
-# 🐍 Conda 환경 정보
-# ==============================================
+# 프로젝트 루트
+PROJECT_ROOT = Path(__file__).parent.parent
+AI_MODELS_ROOT = PROJECT_ROOT / "ai_models"
 
-CONDA_ENVIRONMENTS = {{
-{self._format_conda_envs_for_config()}
-}}
+# 발견된 모델 경로들
+SCANNED_MODELS = {{
+'''
+        
+        for i, model in enumerate(self.found_models):
+            safe_name = model.name.replace('.', '_').replace('-', '_').replace(' ', '_')
+            config_content += f'''    "{safe_name}": {{
+        "name": "{model.name}",
+        "path": Path(r"{model.path}"),
+        "framework": "{model.framework}",
+        "step": "{model.step_candidate}",
+        "confidence": {model.confidence:.3f},
+        "size_mb": {model.size_mb:.1f},
+        "importance": {model.importance_score:.1f},
+        "is_in_project": {model.is_in_project},
+        "is_in_conda": {model.is_in_conda},
+        "conda_env": "{model.conda_env_name or ''}"
+    }},
+'''
+        
+        config_content += '''}}
 
-CURRENT_CONDA_ENV = "{self.current_conda_env or 'None'}"
+# Step별 모델 매핑 (신뢰도 50% 이상)
+STEP_MODELS = {
+'''
+        
+        # Step별 모델 그룹화
+        step_models = {}
+        for model in self.found_models:
+            if model.confidence >= 0.5:
+                step = model.step_candidate
+                if step not in step_models:
+                    step_models[step] = []
+                safe_name = model.name.replace('.', '_').replace('-', '_').replace(' ', '_')
+                step_models[step].append(safe_name)
+        
+        for step, models in step_models.items():
+            config_content += f'    "{step}": {models},\n'
+        
+        config_content += '''}
 
-# ==============================================
-# 🤖 발견된 모델 경로들
-# ==============================================
+# 프레임워크별 모델 매핑
+FRAMEWORK_MODELS = {
+'''
+        
+        framework_models = {}
+        for model in self.found_models:
+            fw = model.framework
+            if fw not in framework_models:
+                framework_models[fw] = []
+            safe_name = model.name.replace('.', '_').replace('-', '_').replace(' ', '_')
+            framework_models[fw].append(safe_name)
+        
+        for fw, models in framework_models.items():
+            config_content += f'    "{fw}": {models},\n'
+        
+        config_content += f'''}}
 
-MODEL_PATHS = {{
-{self._format_model_paths_for_config()}
-}}
-
-# MyCloset AI 8단계별 모델 매핑
-STEP_MODELS = {{
-{self._format_step_models_for_config()}
-}}
-
-# 프레임워크별 모델 그룹
-FRAMEWORK_MODELS = {{
-{self._format_framework_models_for_config()}
-}}
-
-# ==============================================
-# 🔧 유틸리티 함수들
-# ==============================================
-
-def get_model_path(model_name: str, prefer_conda: bool = True) -> Optional[str]:
-    """모델 경로 가져오기 (conda 우선)"""
-    candidates = []
-    
-    # 모델명으로 직접 검색
-    for key, path in MODEL_PATHS.items():
-        if model_name.lower() in key.lower():
-            candidates.append((key, path))
-    
-    if not candidates:
-        return None
-    
-    # conda 환경 우선 정렬
-    if prefer_conda:
-        conda_models = [c for c in candidates if any(env in c[1] for env in CONDA_ENVIRONMENTS.values())]
-        if conda_models:
-            return conda_models[0][1]
-    
-    return candidates[0][1]
-
-def get_conda_models() -> Dict[str, List[str]]:
-    """conda 환경별 모델 목록"""
-    result = {{}}
-    
-    for env_name, env_path in CONDA_ENVIRONMENTS.items():
-        env_models = []
-        for model_name, model_path in MODEL_PATHS.items():
-            if env_path in model_path:
-                env_models.append(model_path)
-        result[env_name] = env_models
-    
-    return result
-
-def get_step_model(step_number: int, prefer_conda: bool = True) -> Optional[str]:
-    """Step별 최적 모델 경로"""
-    step_key = f"step_{{step_number:02d}}"
-    
-    for key, models in STEP_MODELS.items():
-        if step_key in key and models:
-            if prefer_conda:
-                # conda 환경의 모델 우선
-                conda_models = [m for m in models if any(env in m for env in CONDA_ENVIRONMENTS.values())]
-                if conda_models:
-                    return conda_models[0]
-            return models[0]
-    
+def get_model_path(model_name: str) -> Optional[Path]:
+    """모델 경로 반환"""
+    for key, info in SCANNED_MODELS.items():
+        if model_name.lower() in key.lower() or model_name.lower() in info["name"].lower():
+            return info["path"]
     return None
+
+def get_step_models(step: str) -> List[str]:
+    """Step별 모델 목록"""
+    return STEP_MODELS.get(step, [])
 
 def get_framework_models(framework: str) -> List[str]:
     """프레임워크별 모델 목록"""
     return FRAMEWORK_MODELS.get(framework, [])
 
-def validate_model_availability() -> Dict[str, bool]:
-    """모델 가용성 검증"""
-    result = {{}}
+def get_best_model_for_step(step: str) -> Optional[str]:
+    """Step별 최고 중요도 모델"""
+    step_models = get_step_models(step)
+    if not step_models:
+        return None
     
-    for model_name, model_path in MODEL_PATHS.items():
-        result[model_name] = Path(model_path).exists()
+    best_model = None
+    best_score = 0
     
-    return result
-
-def get_model_info(model_path: str) -> Dict[str, any]:
-    """모델 상세 정보"""
-    path_obj = Path(model_path)
-    if not path_obj.exists():
-        return {{"error": "파일이 존재하지 않음"}}
+    for model_key in step_models:
+        if model_key in SCANNED_MODELS:
+            score = SCANNED_MODELS[model_key]["importance"]
+            if score > best_score:
+                best_score = score
+                best_model = model_key
     
-    stat_info = path_obj.stat()
-    return {{
-        "name": path_obj.name,
-        "size_mb": round(stat_info.st_size / (1024 * 1024), 2),
-        "modified": stat_info.st_mtime,
-        "is_conda": any(env in model_path for env in CONDA_ENVIRONMENTS.values()),
-        "framework": _detect_framework(path_obj)
-    }}
+    return best_model
 
-def _detect_framework(path: Path) -> str:
-    """프레임워크 감지"""
-    ext = path.suffix.lower()
-    if ext in ['.pth', '.pt']:
-        return 'pytorch'
-    elif ext == '.safetensors':
-        return 'safetensors'
-    elif ext in ['.pb', '.h5']:
-        return 'tensorflow'
-    elif ext == '.onnx':
-        return 'onnx'
-    return 'unknown'
+def list_available_models() -> Dict[str, dict]:
+    """사용 가능한 모델 목록"""
+    available = {{}}
+    for key, info in SCANNED_MODELS.items():
+        if info["path"].exists():
+            available[key] = info
+    return available
 
-# ==============================================
-# 🚀 Quick Start 예제
-# ==============================================
+def get_conda_models(env_name: str = None) -> List[str]:
+    """conda 환경별 모델 목록"""
+    conda_models = []
+    for key, info in SCANNED_MODELS.items():
+        if info["is_in_conda"]:
+            if env_name is None or info["conda_env"] == env_name:
+                conda_models.append(key)
+    return conda_models
 
 if __name__ == "__main__":
-    print("🐍 MyCloset AI Conda 모델 설정")
+    print("🤖 MyCloset AI 모델 설정")
     print("=" * 50)
     
-    print(f"conda 환경: {{len(CONDA_ENVIRONMENTS)}}개")
-    print(f"발견된 모델: {{len(MODEL_PATHS)}}개")
+    available = list_available_models()
+    print(f"사용 가능한 모델: {{len(available)}}개")
     
-    # conda 환경별 모델 수
-    conda_models = get_conda_models()
-    for env_name, models in conda_models.items():
-        print(f"  {{env_name}}: {{len(models)}}개 모델")
-    
-    # Step별 모델 확인
     print("\\nStep별 모델:")
-    for i in range(1, 9):
-        model_path = get_step_model(i)
-        if model_path:
-            print(f"  Step {{i:02d}}: {{Path(model_path).name}}")
-        else:
-            print(f"  Step {{i:02d}}: 없음")
+    for step, models in STEP_MODELS.items():
+        if models:
+            step_name = step.replace('step_', '').replace('_', ' ').title()
+            print(f"  {{step_name}}: {{len(models)}}개")
     
-    # 가용성 검증
-    availability = validate_model_availability()
-    available_count = sum(availability.values())
-    print(f"\\n가용 모델: {{available_count}}/{{len(MODEL_PATHS)}}개")
+    print("\\n프레임워크별 분포:")
+    for fw, models in FRAMEWORK_MODELS.items():
+        print(f"  {{fw}}: {{len(models)}}개")
 '''
         
-        config_path = self.project_root / output_file
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(python_file, 'w', encoding='utf-8') as f:
             f.write(config_content)
         
-        logger.info(f"📝 conda 설정 파일 생성: {config_path}")
-        return str(config_path)
+        return str(python_file)
+    
+    def _generate_conda_config(self, output_path: Path) -> str:
+        """conda 환경 설정 파일 생성"""
+        conda_file = output_path / "conda_model_config.py"
+        
+        conda_models = [m for m in self.found_models if m.is_in_conda]
+        
+        config_content = f'''#!/usr/bin/env python3
+"""
+MyCloset AI - conda 환경별 모델 설정
+생성 시간: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+conda 모델: {len(conda_models)}개
+"""
 
-    def _format_conda_envs_for_config(self) -> str:
-        """conda 환경 설정 형식"""
-        lines = []
+from pathlib import Path
+from typing import Dict, List
+
+# conda 환경 정보
+CONDA_ENVIRONMENTS = {{
+'''
+        
         for env_name, env_path in self.conda_environments.items():
-            lines.append(f'    "{env_name}": "{env_path}",')
-        return '\n'.join(lines)
+            config_content += f'    "{env_name}": Path(r"{env_path}"),\n'
+        
+        config_content += f'''}}
 
-    def _format_model_paths_for_config(self) -> str:
-        """모델 경로 설정 형식"""
-        lines = []
-        for model in sorted(self.found_models, key=lambda x: x.importance_score, reverse=True):
-            safe_name = model.name.replace('.', '_').replace('-', '_')
-            lines.append(f'    "{safe_name}": "{model.path}",')
-        return '\n'.join(lines)
+CURRENT_CONDA_ENV = "{self.current_conda_env or 'None'}"
 
-    def _format_step_models_for_config(self) -> str:
-        """Step별 모델 설정 형식"""
-        lines = []
-        step_models = defaultdict(list)
+# conda 환경별 모델 매핑
+CONDA_MODELS = {{
+'''
         
-        for model in self.found_models:
-            if model.confidence >= 0.5 and model.step_candidate != 'unknown':
-                step_models[model.step_candidate].append(model.path)
+        for env_name in self.conda_environments.keys():
+            env_models = [m for m in conda_models if m.conda_env_name == env_name]
+            if env_models:
+                config_content += f'    "{env_name}": [\n'
+                for model in env_models:
+                    config_content += f'        "{model.path}",\n'
+                config_content += f'    ],\n'
         
-        for step_name in sorted(step_models.keys()):
-            models = step_models[step_name]
-            models_str = ', '.join(f'"{path}"' for path in models)
-            lines.append(f'    "{step_name}": [{models_str}],')
-        
-        return '\n'.join(lines)
+        config_content += '''}
 
-    def _format_framework_models_for_config(self) -> str:
-        """프레임워크별 모델 설정 형식"""
-        lines = []
-        framework_models = defaultdict(list)
-        
-        for model in self.found_models:
-            framework_models[model.framework].append(model.path)
-        
-        for framework in sorted(framework_models.keys()):
-            models = framework_models[framework]
-            models_str = ', '.join(f'"{path}"' for path in models)
-            lines.append(f'    "{framework}": [{models_str}],')
-        
-        return '\n'.join(lines)
+def get_conda_model_paths(env_name: str) -> List[str]:
+    """conda 환경별 모델 경로 목록"""
+    return CONDA_MODELS.get(env_name, [])
 
-    def cleanup_and_close(self):
-        """리소스 정리 및 종료"""
-        if hasattr(self, 'db_connection'):
-            self.db_connection.close()
+def get_current_env_models() -> List[str]:
+    """현재 conda 환경의 모델들"""
+    if CURRENT_CONDA_ENV != "None":
+        return get_conda_model_paths(CURRENT_CONDA_ENV)
+    return []
 
-# ==============================================
-# 🚀 CLI 인터페이스 및 메인 함수
-# ==============================================
+def list_conda_environments() -> List[str]:
+    """conda 환경 목록"""
+    return list(CONDA_ENVIRONMENTS.keys())
+
+if __name__ == "__main__":
+    print("🐍 MyCloset AI conda 환경 모델 설정")
+    print("=" * 50)
+    
+    print(f"현재 환경: {CURRENT_CONDA_ENV}")
+    print(f"총 환경: {len(CONDA_ENVIRONMENTS)}개")
+    
+    for env_name in CONDA_ENVIRONMENTS.keys():
+        models = get_conda_model_paths(env_name)
+        print(f"  {env_name}: {len(models)}개 모델")
+'''
+        
+        with open(conda_file, 'w', encoding='utf-8') as f:
+            f.write(config_content)
+        
+        return str(conda_file)
 
 def main():
     """메인 함수"""
+    import argparse
+    
     parser = argparse.ArgumentParser(
-        description="완전 고도화된 AI 모델 체크포인트 검색 스크립트",
+        description="완전한 AI 모델 체크포인트 검색 스크립트",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-🎯 사용 예시:
-  python advanced_scanner.py                           # 표준 스캔
-  python advanced_scanner.py --deep                    # 딥 스캔
-  python advanced_scanner.py --conda-first             # conda 우선 스캔
-  python advanced_scanner.py --organize                # 스캔 + 자동 정리
-  python advanced_scanner.py --repair                  # 손상된 모델 복구
-  python advanced_scanner.py --deep --organize --repair # 완전 자동화
-
-🐍 conda 환경 최적화:
-  python advanced_scanner.py --conda-first --generate-config
+사용 예시:
+  python quick_scanner.py                           # 기본 스캔
+  python quick_scanner.py --verbose                 # 상세 출력
+  python quick_scanner.py --organize                # 스캔 + 설정 생성
+  python quick_scanner.py --deep                    # 딥 스캔
+  python quick_scanner.py --conda-first             # conda 우선
+  python quick_scanner.py --deep --organize         # 완전 스캔 + 설정
         """
     )
     
-    # 스캔 옵션
-    parser.add_argument('--deep', action='store_true', 
-                       help='전체 시스템 딥 스캔 (더 많은 위치 검색)')
-    parser.add_argument('--conda-first', action='store_true',
-                       help='conda 환경 우선 스캔')
-    parser.add_argument('--organize', action='store_true',
-                       help='스캔 후 자동 모델 정리')
-    parser.add_argument('--repair', action='store_true',
-                       help='손상된 모델 복구 시도')
-    
-    # 설정 옵션
-    parser.add_argument('--min-size', type=float, default=0.1,
-                       help='최소 파일 크기 (MB, 기본: 0.1)')
-    parser.add_argument('--max-size', type=float, default=100.0,
-                       help='최대 파일 크기 (GB, 기본: 100.0)')
-    parser.add_argument('--max-depth', type=int, default=10,
-                       help='최대 스캔 깊이 (기본: 10)')
-    parser.add_argument('--workers', type=int, default=None,
-                       help='병렬 워커 수 (기본: CPU 코어 수)')
-    
-    # 출력 옵션
-    parser.add_argument('--generate-config', action='store_true',
-                       help='conda 설정 파일 생성')
-    parser.add_argument('--quiet', action='store_true',
-                       help='조용한 모드 (최소 출력)')
-    parser.add_argument('--output', type=str,
-                       help='결과 저장 파일명')
+    parser.add_argument('--verbose', action='store_true', help='상세 출력')
+    parser.add_argument('--organize', action='store_true', help='스캔 후 설정 파일 생성')
+    parser.add_argument('--deep', action='store_true', help='전체 시스템 딥 스캔')
+    parser.add_argument('--conda-first', action='store_true', help='conda 환경 우선 스캔')
+    parser.add_argument('--output-dir', type=str, default='generated_configs', help='설정 파일 출력 디렉토리')
+    parser.add_argument('--min-size', type=float, default=0.1, help='최소 파일 크기 (MB)')
+    parser.add_argument('--max-size', type=float, default=50.0, help='최대 파일 크기 (GB)')
     
     args = parser.parse_args()
     
     try:
-        # 설정 구성
-        config = ScanConfig(
-            min_size_mb=args.min_size,
-            max_size_gb=args.max_size,
-            max_depth=args.max_depth,
-            conda_priority=args.conda_first,
-            deep_scan=args.deep,
-            verify_integrity=True,
-            extract_metadata=True
+        # 스캐너 초기화
+        scanner = CompleteModelScanner(
+            verbose=args.verbose,
+            conda_first=args.conda_first,
+            deep_scan=args.deep
         )
         
-        # 스캐너 초기화
-        scanner = AdvancedModelScanner(config)
+        # 완전한 시스템 스캔 실행
+        models = scanner.scan_complete_system()
         
-        if args.workers:
-            scanner.max_workers = min(args.workers, scanner.cpu_count)
-        
-        # 스캔 실행
-        models = scanner.scan_comprehensive_system(organize=args.organize)
-        
-        # 복구 작업 (옵션)
-        if args.repair and models:
-            repaired = scanner.repair_corrupted_models()
-            if repaired > 0:
-                logger.info(f"🔧 {repaired}개 모델 복구 완료")
-        
-        # conda 설정 생성 (옵션)
-        if args.generate_config and models:
-            config_file = scanner.generate_conda_config()
-            print(f"📝 conda 설정 파일 생성: {config_file}")
+        # 설정 파일 생성 (옵션)
+        if args.organize and models:
+            config_files = scanner.generate_config_files(args.output_dir)
+            print(f"\n📝 생성된 설정 파일:")
+            for config_file in config_files:
+                print(f"   ✅ {config_file}")
         
         # 완료 메시지
-        if not args.quiet:
-            print(f"\n✅ 스캔 완료!")
-            print(f"🤖 발견된 모델: {len(models)}개")
-            print(f"🐍 conda 모델: {sum(1 for m in models if m.is_in_conda)}개")
-            print(f"🏠 프로젝트 모델: {sum(1 for m in models if m.is_in_project)}개")
-            
-            if models:
-                total_size = sum(m.size_gb for m in models)
-                avg_importance = sum(m.importance_score for m in models) / len(models)
-                print(f"💾 총 용량: {total_size:.2f}GB")
-                print(f"⭐ 평균 중요도: {avg_importance:.1f}/100")
+        print(f"\n✅ 스캔 완료!")
+        print(f"🤖 발견된 모델: {len(models)}개")
         
-        # 정리
-        scanner.cleanup_and_close()
+        if models:
+            conda_models = sum(1 for m in models if m.is_in_conda)
+            project_models = sum(1 for m in models if m.is_in_project)
+            total_size = sum(m.size_gb for m in models)
+            avg_importance = sum(m.importance_score for m in models) / len(models)
+            
+            print(f"🐍 conda 모델: {conda_models}개")
+            print(f"🏠 프로젝트 모델: {project_models}개")
+            print(f"💾 총 용량: {total_size:.2f}GB")
+            print(f"⭐ 평균 중요도: {avg_importance:.1f}/100")
+            
+            # 다음 단계 안내
+            print(f"\n🚀 다음 단계:")
+            if args.organize:
+                print("1. generated_configs/ 폴더의 설정 파일들 확인")
+                print("2. model_paths_config.py를 프로젝트에 import")
+                print("3. get_model_path() 함수로 모델 경로 사용")
+            else:
+                print("1. python quick_scanner.py --organize  # 설정 파일 생성")
+                print("2. 중복 모델 정리 및 프로젝트 통합")
+                print("3. conda 환경 모델 연결")
+        else:
+            print("\n🔍 모델을 찾지 못했습니다. 다음을 시도해보세요:")
+            print("1. python quick_scanner.py --deep --verbose")
+            print("2. python quick_scanner.py --conda-first")
+            print("3. 실제 모델 다운로드 여부 확인")
         
         return 0 if models else 1
         
@@ -2169,7 +1406,7 @@ def main():
         return 1
     except Exception as e:
         print(f"\n❌ 오류 발생: {e}")
-        if not args.quiet:
+        if args.verbose:
             import traceback
             traceback.print_exc()
         return 1
