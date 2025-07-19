@@ -2287,7 +2287,7 @@ def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoa
         
         return _global_model_loader
 
-def initialize_global_model_loader(**kwargs) -> Dict[str, Any]:
+def initialize_global_model_loader(**kwargs) -> ModelLoader:  # 🔥 핵심: 반환 타입 변경
     """전역 ModelLoader 초기화"""
     try:
         loader = get_global_model_loader()
@@ -2296,9 +2296,9 @@ def initialize_global_model_loader(**kwargs) -> Dict[str, Any]:
         success = loader.initialize()
         
         if success:
-            return {"success": True, "message": "Initialization completed"}
+            return loader  # 🔥 핵심: 객체 직접 반환
         else:
-            return {"success": False, "error": "Initialization failed"}
+            raise Exception("ModelLoader initialization failed")
             
     except Exception as e:
         logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
