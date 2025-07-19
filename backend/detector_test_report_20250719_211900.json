@@ -1,0 +1,526 @@
+{
+  "test_info": {
+    "timestamp": "2025-07-19T21:19:00.065487",
+    "detector_version": "7.0",
+    "test_duration": 56.102822065353394
+  },
+  "system_info": {
+    "type": "mps",
+    "is_m3_max": true,
+    "torch_available": true,
+    "memory_total_gb": 128.0,
+    "memory_available_gb": 61.36021423339844,
+    "cpu_count": 16,
+    "optimization_hints": [
+      "use_mps_device",
+      "enable_memory_efficient_attention",
+      "use_fp16_precision",
+      "enable_compilation"
+    ],
+    "neural_engine_available": true
+  },
+  "scan_statistics": {
+    "total_files_scanned": 1767260,
+    "pytorch_files_found": 2160,
+    "valid_pytorch_models": 210,
+    "models_detected": 21,
+    "scan_duration": 26.94397521018982,
+    "last_scan_time": 1752927540.060837,
+    "errors_encountered": 0,
+    "cache_hits": 16,
+    "cache_misses": 0,
+    "pytorch_validation_errors": 51,
+    "performance_tests_run": 28,
+    "memory_tests_run": 0,
+    "architecture_analyses": 0,
+    "optimization_suggestions": 28,
+    "health_checks": 0,
+    "compatibility_tests": 28,
+    "m3_optimized_models": 28,
+    "total_model_size_gb": 0,
+    "average_confidence": 0,
+    "validation_success_rate": 0,
+    "memory_usage_start_gb": 62.93388366699219,
+    "memory_usage_end_gb": 62.63322448730469,
+    "memory_usage_delta_gb": -0.3006591796875,
+    "memory_peak_gb": 62.93388366699219
+  },
+  "detected_models": [
+    {
+      "name": "human_parsing_graphonomy",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+      "category": "human_parsing",
+      "step_name": "HumanParsingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "human_parsing_graphonomy_v2",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy_atr.pth",
+      "category": "human_parsing",
+      "step_name": "HumanParsingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "human_parsing_graphonomy_v3",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/graphonomy_atr.pth",
+      "category": "human_parsing",
+      "step_name": "HumanParsingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "cloth_segmentation_u2net",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/sam/sam_vit_b_01ec64.pth",
+      "category": "cloth_segmentation",
+      "step_name": "ClothSegmentationStep",
+      "file_size_mb": 357.668288230896,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 93735728,
+      "architecture": "transformer",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "cloth_segmentation_u2net_v2",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+      "category": "cloth_segmentation",
+      "step_name": "ClothSegmentationStep",
+      "file_size_mb": 167.8444299697876,
+      "confidence_score": 0.6000000000000001,
+      "pytorch_valid": false,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "cloth_segmentation_u2net_v3",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/model.pth",
+      "category": "cloth_segmentation",
+      "step_name": "ClothSegmentationStep",
+      "file_size_mb": 168.5317735671997,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 44075702,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v2",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 3278.892074584961,
+      "confidence_score": 0.6000000000000001,
+      "pytorch_valid": false,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v3",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 3278.892074584961,
+      "confidence_score": 0.6000000000000001,
+      "pytorch_valid": false,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v4",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/yolov8n-pose.pt",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 6.512632369995117,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v2",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/ai_models/checkpoints/step_02_pose_estimation/openpose_body.pth",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 29.24370002746582,
+      "confidence_score": 0.8,
+      "pytorch_valid": false,
+      "priority": "HIGH",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v3",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/openpose/ckpts/body_pose_model.pth",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 199.57313060760498,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 52311446,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v4",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_02_pose_estimation/body_pose_model.pth",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 199.57313060760498,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 52311446,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "human_parsing_graphonomy_v4",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy_atr.pth",
+      "category": "human_parsing",
+      "step_name": "HumanParsingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "human_parsing_graphonomy_v5",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "category": "human_parsing",
+      "step_name": "HumanParsingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "human_parsing_graphonomy_v6",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/graphonomy_atr.pth",
+      "category": "human_parsing",
+      "step_name": "HumanParsingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "cloth_segmentation_u2net_v4",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/sam/sam_vit_b_01ec64.pth",
+      "category": "cloth_segmentation",
+      "step_name": "ClothSegmentationStep",
+      "file_size_mb": 357.668288230896,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 93735728,
+      "architecture": "transformer",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "cloth_segmentation_u2net_v5",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+      "category": "cloth_segmentation",
+      "step_name": "ClothSegmentationStep",
+      "file_size_mb": 167.8444299697876,
+      "confidence_score": 0.6000000000000001,
+      "pytorch_valid": false,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "cloth_segmentation_u2net_v6",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/model.pth",
+      "category": "cloth_segmentation",
+      "step_name": "ClothSegmentationStep",
+      "file_size_mb": 168.5317735671997,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 44075702,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v5",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v6",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 3278.892074584961,
+      "confidence_score": 0.6000000000000001,
+      "pytorch_valid": false,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v7",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 3278.892074584961,
+      "confidence_score": 0.6000000000000001,
+      "pytorch_valid": false,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "virtual_fitting_ootdiffusion_v8",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "category": "virtual_fitting",
+      "step_name": "VirtualFittingStep",
+      "file_size_mb": 255.05565357208252,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 66837428,
+      "architecture": "resnet",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v5",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/openpose.pth",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 199.57313060760498,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 52311446,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v6",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/yolov8n-pose.pt",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 6.512632369995117,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 0,
+      "architecture": "unknown",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v7",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/openpose/ckpts/body_pose_model.pth",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 199.57313060760498,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 52311446,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    },
+    {
+      "name": "pose_estimation_openpose_v8",
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_02_pose_estimation/body_pose_model.pth",
+      "category": "pose_estimation",
+      "step_name": "PoseEstimationStep",
+      "file_size_mb": 199.57313060760498,
+      "confidence_score": 1.0,
+      "pytorch_valid": true,
+      "priority": "CRITICAL",
+      "parameter_count": 52311446,
+      "architecture": "cnn",
+      "device_compatibility": {
+        "cpu": true,
+        "mps": true,
+        "cuda": false
+      }
+    }
+  ]
+}
