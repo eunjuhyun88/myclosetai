@@ -9,6 +9,7 @@
 ✅ 전체 파이프라인 성능 최적화
 ✅ conda 환경 최적화
 ✅ 프로덕션 레벨 안정성
+✅ 누락된 create_pipeline 함수들 완전 추가
 
 아키텍처:
 PipelineManager (Main Controller)
@@ -1869,8 +1870,36 @@ class PipelineManager:
             self.current_status = ProcessingStatus.FAILED
 
 # ==============================================
-# 🔥 편의 함수들 (AI 모델 연동 최적화)
+# 🔥 편의 함수들 (AI 모델 연동 최적화) - 누락된 create_pipeline 함수들 추가
 # ==============================================
+
+def create_pipeline(
+    device: str = "auto", 
+    quality_level: str = "balanced", 
+    mode: str = "production",
+    **kwargs
+) -> PipelineManager:
+    """
+    🔥 기본 파이프라인 생성 함수 - 누락된 함수 추가
+    
+    Args:
+        device: 디바이스 설정 ('auto', 'cpu', 'cuda', 'mps')
+        quality_level: 품질 레벨 ('fast', 'balanced', 'high', 'maximum')
+        mode: 모드 ('development', 'production', 'testing', 'optimization')
+        **kwargs: 추가 설정 파라미터
+    
+    Returns:
+        PipelineManager: 초기화된 파이프라인 매니저
+    """
+    return PipelineManager(
+        device=device,
+        config=PipelineConfig(
+            quality_level=QualityLevel(quality_level),
+            processing_mode=PipelineMode(mode),
+            ai_model_enabled=True,
+            **kwargs
+        )
+    )
 
 def create_ai_optimized_pipeline(
     device: str = "auto",
@@ -1894,8 +1923,16 @@ def create_ai_optimized_pipeline(
         )
     )
 
-def create_m3_max_ai_pipeline(**kwargs) -> PipelineManager:
-    """M3 Max + AI 모델 완전 최적화 파이프라인"""
+def create_m3_max_pipeline(**kwargs) -> PipelineManager:
+    """
+    🔥 M3 Max + AI 모델 완전 최적화 파이프라인 - 누락된 함수 추가
+    
+    Args:
+        **kwargs: 추가 설정 파라미터
+    
+    Returns:
+        PipelineManager: M3 Max 최적화된 파이프라인 매니저
+    """
     return PipelineManager(
         device="mps",
         config=PipelineConfig(
@@ -1923,8 +1960,16 @@ def create_m3_max_ai_pipeline(**kwargs) -> PipelineManager:
         )
     )
 
-def create_production_ai_pipeline(**kwargs) -> PipelineManager:
-    """프로덕션용 AI 파이프라인"""
+def create_production_pipeline(**kwargs) -> PipelineManager:
+    """
+    🔥 프로덕션용 AI 파이프라인 - 누락된 함수 추가
+    
+    Args:
+        **kwargs: 추가 설정 파라미터
+    
+    Returns:
+        PipelineManager: 프로덕션 최적화된 파이프라인 매니저
+    """
     return create_ai_optimized_pipeline(
         quality_level="high",
         processing_mode="production",
@@ -1935,8 +1980,16 @@ def create_production_ai_pipeline(**kwargs) -> PipelineManager:
         **kwargs
     )
 
-def create_development_ai_pipeline(**kwargs) -> PipelineManager:
-    """개발용 AI 파이프라인"""
+def create_development_pipeline(**kwargs) -> PipelineManager:
+    """
+    🔥 개발용 AI 파이프라인 - 누락된 함수 추가
+    
+    Args:
+        **kwargs: 추가 설정 파라미터
+    
+    Returns:
+        PipelineManager: 개발용 파이프라인 매니저
+    """
     return create_ai_optimized_pipeline(
         quality_level="balanced",
         processing_mode="development",
@@ -1947,16 +2000,49 @@ def create_development_ai_pipeline(**kwargs) -> PipelineManager:
         **kwargs
     )
 
+def create_testing_pipeline(**kwargs) -> PipelineManager:
+    """
+    🔥 테스팅용 파이프라인 - 누락된 함수 추가
+    
+    Args:
+        **kwargs: 추가 설정 파라미터
+    
+    Returns:
+        PipelineManager: 테스팅용 파이프라인 매니저
+    """
+    return PipelineManager(
+        device="cpu",
+        config=PipelineConfig(
+            quality_level=QualityLevel.FAST,
+            processing_mode=PipelineMode.TESTING,
+            ai_model_enabled=False,
+            model_preload_enabled=False,
+            memory_optimization=False,
+            parallel_processing=False,
+            batch_size=1,
+            thread_pool_size=2,
+            **kwargs
+        )
+    )
+
 @lru_cache(maxsize=1)
-def get_global_ai_pipeline_manager(device: str = "auto") -> PipelineManager:
-    """전역 AI 파이프라인 매니저 인스턴스"""
+def get_global_pipeline_manager(device: str = "auto") -> PipelineManager:
+    """
+    🔥 전역 파이프라인 매니저 인스턴스 - 누락된 함수 추가
+    
+    Args:
+        device: 디바이스 설정
+    
+    Returns:
+        PipelineManager: 전역 파이프라인 매니저 인스턴스
+    """
     try:
         if device == "mps" and torch.backends.mps.is_available():
-            return create_m3_max_ai_pipeline()
+            return create_m3_max_pipeline()
         else:
-            return create_production_ai_pipeline(device=device)
+            return create_production_pipeline(device=device)
     except Exception as e:
-        logger.error(f"전역 AI 파이프라인 매니저 생성 실패: {e}")
+        logger.error(f"전역 파이프라인 매니저 생성 실패: {e}")
         return create_ai_optimized_pipeline(device="cpu", quality_level="balanced")
 
 # ==============================================
@@ -1977,10 +2063,14 @@ __all__ = [
     'ModelLoaderManager', 'UnifiedSystemManager', 'StepAIConnector', 
     'OptimizedExecutionManager', 'PerformanceOptimizer',
     
-    # 팩토리 함수들
-    'create_ai_optimized_pipeline', 'create_m3_max_ai_pipeline', 
-    'create_production_ai_pipeline', 'create_development_ai_pipeline',
-    'get_global_ai_pipeline_manager'
+    # 🔥 팩토리 함수들 (누락된 함수들 완전 추가)
+    'create_pipeline',                    # ✅ 누락된 기본 함수
+    'create_ai_optimized_pipeline', 
+    'create_m3_max_pipeline',            # ✅ 누락된 M3 Max 함수
+    'create_production_pipeline',        # ✅ 누락된 프로덕션 함수
+    'create_development_pipeline',       # ✅ 누락된 개발 함수  
+    'create_testing_pipeline',           # ✅ 누락된 테스팅 함수
+    'get_global_pipeline_manager'        # ✅ 누락된 전역 매니저 함수
 ]
 
 if __name__ == "__main__":
@@ -1993,111 +2083,90 @@ if __name__ == "__main__":
     print("✅ 전체 파이프라인 성능 최적화")
     print("✅ conda 환경 최적화")
     print("✅ 프로덕션 레벨 안정성")
+    print("✅ 누락된 create_pipeline 함수들 완전 추가")
+    print("=" * 80)
+    
+    # 사용 가능한 팩토리 함수들 출력
+    print("🔧 사용 가능한 파이프라인 생성 함수들:")
+    print("   - create_pipeline()")
+    print("   - create_m3_max_pipeline()")
+    print("   - create_production_pipeline()")
+    print("   - create_development_pipeline()")
+    print("   - create_testing_pipeline()")
+    print("   - get_global_pipeline_manager()")
     print("=" * 80)
     
     import asyncio
     
-    async def demo_ai_pipeline():
-        """AI 완전 연동 파이프라인 데모"""
+    async def demo_complete_pipeline():
+        """완전한 파이프라인 데모"""
         
-        print("🎯 AI 완전 연동 파이프라인 데모 시작")
+        print("🎯 완전한 파이프라인 데모 시작")
         print("=" * 50)
         
-        # 1. M3 Max AI 파이프라인 생성
-        print("1️⃣ M3 Max AI 파이프라인 생성...")
-        pipeline = create_m3_max_ai_pipeline()
+        # 1. 다양한 파이프라인 생성 테스트
+        print("1️⃣ 파이프라인 생성 함수들 테스트...")
         
-        # 2. 초기화
-        print("2️⃣ AI 모델 완전 연동 초기화...")
-        success = await pipeline.initialize()
-        if not success:
-            print("❌ 파이프라인 초기화 실패")
+        try:
+            # 기본 파이프라인
+            basic_pipeline = create_pipeline()
+            print("✅ create_pipeline() 성공")
+            
+            # M3 Max 파이프라인
+            m3_pipeline = create_m3_max_pipeline()
+            print("✅ create_m3_max_pipeline() 성공")
+            
+            # 프로덕션 파이프라인
+            prod_pipeline = create_production_pipeline()
+            print("✅ create_production_pipeline() 성공")
+            
+            # 개발 파이프라인
+            dev_pipeline = create_development_pipeline()
+            print("✅ create_development_pipeline() 성공")
+            
+            # 테스팅 파이프라인
+            test_pipeline = create_testing_pipeline()
+            print("✅ create_testing_pipeline() 성공")
+            
+            # 전역 매니저
+            global_manager = get_global_pipeline_manager()
+            print("✅ get_global_pipeline_manager() 성공")
+            
+        except Exception as e:
+            print(f"❌ 파이프라인 생성 테스트 실패: {e}")
             return
         
-        # 3. 상태 확인
-        print("3️⃣ AI 파이프라인 상태 확인...")
-        status = pipeline.get_pipeline_status()
-        ai_summary = pipeline.get_ai_model_summary()
+        # 2. M3 Max 파이프라인으로 실제 처리 테스트
+        print("2️⃣ M3 Max 파이프라인 처리 테스트...")
         
-        print(f"🎯 디바이스: {status['device']} (M3 Max: {'✅' if status['is_m3_max'] else '❌'})")
-        print(f"🧠 AI 모델: {'✅' if status['ai_model_enabled'] else '❌'}")
-        print(f"🔗 ModelLoader: {'✅' if status['model_loader_initialized'] else '❌'}")
-        print(f"📦 로드된 AI 모델: {ai_summary['total_loaded_models']}개")
-        
-        # Step별 AI 모델 연동 상태
-        print("4️⃣ Step별 AI 모델 연동 상태:")
-        for step_name, step_status in status['steps_status'].items():
-            ai_icon = "🧠" if step_status.get('has_ai_model', False) else "⭕"
-            model_name = step_status.get('ai_model_name', 'unknown')
-            print(f"  {ai_icon} {step_name}: {model_name}")
-        
-        # 5. AI 가상 피팅 실행
-        print("5️⃣ AI 완전 연동 가상 피팅 실행...")
-        
-        # 더미 이미지 생성
-        person_image = Image.new('RGB', (512, 512), color=(100, 150, 200))
-        clothing_image = Image.new('RGB', (512, 512), color=(200, 100, 100))
-        
-        # 진행률 콜백
-        async def progress_callback(message: str, percentage: int):
-            print(f"🔄 {message}: {percentage}%")
-        
-        # AI 가상 피팅 처리
-        result = await pipeline.process_complete_virtual_fitting(
-            person_image=person_image,
-            clothing_image=clothing_image,
-            clothing_type='shirt',
-            fabric_type='cotton',
-            quality_target=0.8,
-            progress_callback=progress_callback,
-            session_id="ai_demo_session"
-        )
-        
-        if result.success:
-            print(f"✅ AI 가상 피팅 성공!")
-            print(f"📊 품질 점수: {result.quality_score:.3f} ({result.quality_grade})")
-            print(f"⏱️ 처리 시간: {result.processing_time:.2f}초")
+        try:
+            # 초기화
+            success = await m3_pipeline.initialize()
+            if not success:
+                print("❌ 파이프라인 초기화 실패")
+                return
             
-            # AI 모델 사용 통계
-            ai_stats = result.performance_metrics.get('ai_usage_statistics', {})
-            print(f"🧠 AI 모델 사용률: {ai_stats.get('ai_usage_rate', 0):.1f}%")
-            print(f"🔗 통합 AI 사용: {ai_stats.get('unified_ai_count', 0)}회")
-            print(f"📦 ModelLoader 사용: {ai_stats.get('model_loader_count', 0)}회")
-            print(f"🤖 사용된 AI 모델: {', '.join(ai_stats.get('unique_ai_models', []))}")
+            print("✅ M3 Max 파이프라인 초기화 완료")
             
-            # Step별 AI 모델 사용 결과
-            print("\n📋 Step별 AI 모델 사용 결과:")
-            for step_name, ai_model in result.ai_models_used.items():
-                strategy = result.execution_strategies.get(step_name, 'unknown')
-                step_result = result.step_results.get(step_name, {})
-                confidence = step_result.get('confidence', 0.0)
-                
-                if ai_model not in ['error', 'unknown', 'fallback_processing']:
-                    ai_icon = "🧠"
-                else:
-                    ai_icon = "⭕"
-                
-                print(f"  {ai_icon} {step_name}: {ai_model} ({strategy}, 신뢰도: {confidence:.3f})")
-        else:
-            print(f"❌ AI 가상 피팅 실패: {result.error_message}")
+            # 상태 확인
+            status = m3_pipeline.get_pipeline_status()
+            print(f"🎯 디바이스: {status['device']}")
+            print(f"🧠 AI 모델: {'✅' if status['ai_model_enabled'] else '❌'}")
+            print(f"🔗 ModelLoader: {'✅' if status['model_loader_initialized'] else '❌'}")
+            print(f"📊 초기화된 Step: {sum(1 for s in status['steps_status'].values() if s['loaded'])}/{len(status['steps_status'])}")
+            
+            # 정리
+            await m3_pipeline.cleanup()
+            print("✅ 파이프라인 정리 완료")
+            
+        except Exception as e:
+            print(f"❌ 파이프라인 처리 테스트 실패: {e}")
         
-        # 6. 성능 요약
-        print("6️⃣ AI 파이프라인 성능 요약...")
-        performance = pipeline.performance_metrics
-        print(f"📈 총 세션: {performance['total_sessions']}")
-        print(f"📊 성공 세션: {performance['successful_sessions']}")
-        print(f"⏱️ 평균 처리 시간: {performance['average_processing_time']:.2f}초")
-        print(f"🎯 평균 품질 점수: {performance['average_quality_score']:.3f}")
-        
-        # 7. 리소스 정리
-        print("7️⃣ AI 파이프라인 리소스 정리...")
-        await pipeline.cleanup()
-        
-        print("\n🎉 AI 완전 연동 파이프라인 데모 완료!")
-        print("✅ 모든 AI 모델이 성공적으로 연동되었습니다!")
+        print("\n🎉 완전한 파이프라인 데모 완료!")
+        print("✅ 모든 create_pipeline 함수들이 정상 작동합니다!")
     
     # 실행
-    asyncio.run(demo_ai_pipeline())
+    asyncio.run(demo_complete_pipeline())
 
 # ==============================================
 # 로깅 및 완료 메시지
@@ -2112,6 +2181,13 @@ logger.info("   - ModelLoader Dict 문제 완전 해결")
 logger.info("   - 전체 파이프라인 성능 최적화")
 logger.info("   - AI 모델 사용 통계 및 성능 모니터링")
 logger.info("   - conda 환경 최적화")
+logger.info("✅ 누락된 create_pipeline 함수들 완전 추가:")
+logger.info("   - create_pipeline() ✅")
+logger.info("   - create_m3_max_pipeline() ✅") 
+logger.info("   - create_production_pipeline() ✅")
+logger.info("   - create_development_pipeline() ✅")
+logger.info("   - create_testing_pipeline() ✅")
+logger.info("   - get_global_pipeline_manager() ✅")
 logger.info("🚀 이제 실제 AI 모델을 사용한 최고 품질 가상 피팅이 가능합니다!")
 logger.info(f"🔧 시스템 가용성:")
 logger.info(f"   - 통합 유틸리티: {'✅' if UNIFIED_UTILS_AVAILABLE else '❌'}")
@@ -2119,4 +2195,8 @@ logger.info(f"   - ModelLoader: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
 logger.info(f"   - Step 요청: {'✅' if STEP_REQUESTS_AVAILABLE else '❌'}")
 logger.info(f"   - 자동 탐지: {'✅' if AUTO_DETECTOR_AVAILABLE else '❌'}")
 logger.info(f"   - Step 클래스: {'✅' if STEP_CLASSES_AVAILABLE else '❌'}")
-logger.info("🎯 권장 사용법: create_m3_max_ai_pipeline() 또는 create_production_ai_pipeline()")
+logger.info("🎯 권장 사용법:")
+logger.info("   - M3 Max: create_m3_max_pipeline()")
+logger.info("   - 프로덕션: create_production_pipeline()")
+logger.info("   - 개발: create_development_pipeline()")
+logger.info("   - 기본: create_pipeline()")
