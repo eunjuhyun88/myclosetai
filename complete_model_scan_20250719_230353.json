@@ -1,0 +1,26 @@
+{
+  "scan_info": {
+    "timestamp": "2025-07-19T23:03:53.335996",
+    "system": "Darwin",
+    "machine": "arm64",
+    "python_version": "3.11.13",
+    "project_root": "/Users/gimdudeul/MVP/mycloset-ai",
+    "safe_mode": true,
+    "scan_duration": 9.66176986694336
+  },
+  "statistics": {
+    "total_files_scanned": 0,
+    "models_found": 0,
+    "total_size_gb": 0,
+    "locations_scanned": 0,
+    "errors_count": 0,
+    "duplicates_found": 0,
+    "framework_distribution": {},
+    "type_distribution": {},
+    "step_distribution": {}
+  },
+  "models": [],
+  "scan_locations": {},
+  "duplicates": {},
+  "errors": []
+}
