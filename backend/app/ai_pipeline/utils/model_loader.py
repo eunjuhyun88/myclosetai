@@ -1686,6 +1686,8 @@ class StepModelInterface:
         
         # 🔥 logger 속성 안전하게 설정
         self.logger = logging.getLogger(f"StepInterface.{step_name}")
+
+        self.step_request_mapping = self._build_step_request_mapping()
         
         # 🔥 안전한 속성 추출 (callable 검증 포함)
         self.device = getattr(model_loader, 'device', 'mps')
@@ -1708,6 +1710,7 @@ class StepModelInterface:
         self.has_async_loader = self._safe_check_method(model_loader, 'load_model_async')
         self.has_sync_wrapper = self._safe_check_method(model_loader, '_load_model_sync_wrapper')
         
+        
         # 🔥 실제 모델 경로 설정
         try:
             self.model_paths = self._setup_model_paths()
@@ -1721,6 +1724,48 @@ class StepModelInterface:
         self.logger.info(f"🔗 {step_name} 인터페이스 초기화 완료 (SafeModelService 통합)")
         self.logger.info(f"🔧 Device: {self.device}, Cache Dir: {self.model_cache_dir}")
         self.logger.info(f"📦 추천 모델: {self.recommended_models}")
+    
+    def _build_step_request_mapping(self) -> Dict[str, str]:
+        """🔥 Step 요청명을 step_model_requests.py 정의명으로 매핑하는 테이블 구축"""
+        mapping = {
+            # HumanParsingStep 매핑
+            "human_parsing_graphonomy": "human_parsing_schp_atr",
+            "human_parsing_u2net": "human_parsing_schp_atr",
+            "human_parsing_densepose": "human_parsing_schp_atr",
+            
+            # PoseEstimationStep 매핑 (이미 일치하므로 그대로)
+            "pose_estimation_openpose": "pose_estimation_openpose",
+            "pose_estimation_yolov8": "pose_estimation_openpose",
+            
+            # ClothSegmentationStep 매핑 (이미 일치하므로 그대로)
+            "cloth_segmentation_u2net": "cloth_segmentation_u2net",
+            "cloth_segmentation_sam": "cloth_segmentation_u2net",
+            
+            # GeometricMatchingStep 매핑
+            "geometric_matching_base": "geometric_matching_gmm",
+            "tps_network": "geometric_matching_gmm",
+            
+            # ClothWarpingStep 매핑 (이미 일치하므로 그대로)
+            "cloth_warping_hrviton": "cloth_warping_hrviton",
+            "cloth_warping_tom": "cloth_warping_hrviton",
+            
+            # VirtualFittingStep 매핑 (이미 일치하므로 그대로)
+            "virtual_fitting_diffusion": "virtual_fitting_diffusion",
+            "ootdiffusion_pipeline": "virtual_fitting_diffusion",
+            
+            # PostProcessingStep 매핑
+            "super_resolution_model": "post_processing_enhancement",
+            "denoising_model": "post_processing_enhancement",
+            "enhancement_model": "post_processing_enhancement",
+            
+            # QualityAssessmentStep 매핑
+            "quality_assessment_lpips": "quality_assessment_combined",
+            "quality_assessment_clip": "quality_assessment_combined",
+            "quality_assessment_ssim": "quality_assessment_combined",
+        }
+        
+        self.logger.info(f"🔗 {self.step_name} 모델 매핑 테이블 구축 완료: {len(mapping)}개 매핑")
+        return mapping
     
     def _safe_check_method(self, obj: Any, method_name: str) -> bool:
         """메서드 존재 및 callable 여부 안전 확인"""
@@ -1832,43 +1877,55 @@ class StepModelInterface:
                 'models': ['clip']
             }
         }
-    
-    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """🔥 모델 로드 - Dict Callable 오류 완전 해결"""
-        try:
-            # 모델명 결정
-            if not model_name:
-                model_name = self.recommended_models[0] if self.recommended_models else "default_model"
-            
-            # 캐시 확인
-            if model_name in self.loaded_models:
-                self.access_count += 1
-                self.last_used = time.time()
-                self.logger.info(f"✅ 캐시된 모델 반환: {model_name}")
-                return self.loaded_models[model_name]
-            
-            # 🔥 SafeModelService를 통한 안전한 모델 로드
-            model = await self._safe_load_model_via_service(model_name)
-            
-            if model:
-                self.loaded_models[model_name] = model
-                self.access_count += 1
-                self.last_used = time.time()
-                self.logger.info(f"✅ 모델 로드 성공: {model_name}")
-                return model
-            else:
-                # 폴백 모델 생성
-                fallback = self._create_smart_fallback_model(model_name)
-                self.loaded_models[model_name] = fallback
-                self.logger.warning(f"⚠️ 폴백 모델 사용: {model_name}")
-                return fallback
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 로드 실패 {model_name}: {e}")
-            # 최종 폴백
+
+async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+    """🔥 모델 로드 - Dict Callable 오류 완전 해결"""
+    try:
+        # 모델명 결정
+        if not model_name:
+            model_name = self.recommended_models[0] if self.recommended_models else "default_model"
+        
+        # 🔥 핵심 추가: Step 요청명을 정의명으로 매핑
+        mapped_model_name = self._map_step_request_to_definition(model_name)
+        
+        # 캐시 확인 (원래 요청명으로)
+        if model_name in self.loaded_models:
+            self.access_count += 1
+            self.last_used = time.time()
+            self.logger.info(f"✅ 캐시된 모델 반환: {model_name}")
+            return self.loaded_models[model_name]
+        
+        # 🔥 SafeModelService를 통한 안전한 모델 로드 (매핑된 이름 사용)
+        model = await self._safe_load_model_via_service(mapped_model_name)
+        
+        if model:
+            self.loaded_models[model_name] = model  # 원래 요청명으로 캐시
+            self.access_count += 1
+            self.last_used = time.time()
+            self.logger.info(f"✅ 모델 로드 성공: {model_name} → {mapped_model_name}")
+            return model
+        else:
+            # 폴백 모델 생성
             fallback = self._create_smart_fallback_model(model_name)
             self.loaded_models[model_name] = fallback
+            self.logger.warning(f"⚠️ 폴백 모델 사용: {model_name}")
             return fallback
+            
+    except Exception as e:
+        self.logger.error(f"❌ 모델 로드 실패 {model_name}: {e}")
+        # 최종 폴백
+        fallback = self._create_smart_fallback_model(model_name)
+        self.loaded_models[model_name] = fallback
+        return fallback
+
+def _map_step_request_to_definition(self, step_request_name: str) -> str:
+    """Step 요청명을 step_model_requests.py 정의명으로 매핑"""
+    mapped_name = self.step_request_mapping.get(step_request_name, step_request_name)
+    
+    if mapped_name != step_request_name:
+        self.logger.debug(f"🔄 모델명 매핑: {step_request_name} → {mapped_name}")
+    
+    return mapped_name
     
     async def _safe_load_model_via_service(self, model_name: str) -> Optional[Any]:
         """🔥 SafeModelService를 통한 안전한 모델 로드"""
