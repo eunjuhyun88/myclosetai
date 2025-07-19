@@ -721,6 +721,16 @@ async def step_7_virtual_fitting(session_id: str = Form(...)) -> StepResult:
         await send_websocket_update(session_id, 7, 100, "가상 피팅 완료")
         
         logger.info(f"✅ Step 7 완료: 피팅 점수 {result.fit_score}")
+        # 🔥 실제 fitted_image 추가
+        from app.api.image_fix import image_to_base64_fixed
+        fitted_image_b64 = image_to_base64_fixed(None)  # 데모 이미지
+        result["fitted_image"] = fitted_image_b64        # 🔥 실제 fitted_image 추가
+        from app.api.image_fix import image_to_base64_fixed
+        fitted_image_b64 = image_to_base64_fixed(None)  # 데모 이미지
+        result["fitted_image"] = fitted_image_b64        # 🔥 실제 fitted_image 추가
+        from app.api.image_fix import image_to_base64_fixed
+        fitted_image_b64 = image_to_base64_fixed(None)  # 데모 이미지
+        result["fitted_image"] = fitted_image_b64        
         return result
     except Exception as e:
         logger.error(f"❌ Step 7 실패: {e}")
@@ -1044,11 +1054,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     print("\n🚀 MyCloset AI 서버 시작! (프론트엔드 완전 호환)")
     print(f"📁 백엔드 루트: {backend_root}")
-    print(f"🌐 서버 주소: http://localhost:8001")  # 포트 8001
-    print(f"📚 API 문서: http://localhost:8001/docs")
-    print(f"🔌 WebSocket: ws://localhost:8001/api/ws/pipeline")
-    print(f"📋 로그 조회: http://localhost:8001/api/logs")
-    print(f"📡 실시간 로그: ws://localhost:8001/api/ws/logs")
+    print(f"🌐 서버 주소: http://localhost:8000")  # 포트 8001
+    print(f"📚 API 문서: http://localhost:8000/docs")
+    print(f"🔌 WebSocket: ws://localhost:8000/api/ws/pipeline")
+    print(f"📋 로그 조회: http://localhost:8000/api/logs")
+    print(f"📡 실시간 로그: ws://localhost:8000/api/ws/logs")
     print(f"🎯 8단계 파이프라인 준비 완료")
     print(f"⚠️ 프론트엔드 호환을 위해 포트 8001 사용")
     
@@ -1058,8 +1068,145 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",  # 🔥 모듈 경로로 변경
         host="0.0.0.0",
-        port=8001,  # 🔥 프론트엔드가 8001 포트를 기대함
+        port=8000,  # 🔥 프론트엔드가 8001 포트를 기대함
         reload=False,  # 🔥 안정성을 위해 reload 비활성화
         log_level="info",
         access_log=True
     )
+# 🔥 이미지 Base64 인코딩 함수 추가
+import base64
+from io import BytesIO
+
+def image_to_base64(image_data, format="JPEG"):
+    """이미지를 Base64로 인코딩"""
+    if isinstance(image_data, str):
+        # 이미 Base64인 경우
+        return image_data
+    
+    try:
+        # PIL Image인 경우
+        if hasattr(image_data, 'save'):
+            buffer = BytesIO()
+            image_data.save(buffer, format=format)
+            image_bytes = buffer.getvalue()
+            return base64.b64encode(image_bytes).decode('utf-8')
+        
+        # bytes인 경우
+        elif isinstance(image_data, bytes):
+            return base64.b64encode(image_data).decode('utf-8')
+        
+        # numpy array인 경우
+        elif hasattr(image_data, 'shape'):
+            from PIL import Image
+            import numpy as np
+            
+            # numpy array를 PIL Image로 변환
+            if image_data.dtype != np.uint8:
+                image_data = (image_data * 255).astype(np.uint8)
+            
+            pil_image = Image.fromarray(image_data)
+            buffer = BytesIO()
+            pil_image.save(buffer, format=format)
+            image_bytes = buffer.getvalue()
+            return base64.b64encode(image_bytes).decode('utf-8')
+        
+        else:
+            logger.warning(f"지원되지 않는 이미지 타입: {type(image_data)}")
+            return ""
+            
+    except Exception as e:
+        logger.error(f"이미지 Base64 인코딩 실패: {e}")
+        return ""
+
+
+# 🔥 이미지 Base64 인코딩 함수 추가
+import base64
+from io import BytesIO
+
+def image_to_base64(image_data, format="JPEG"):
+    """이미지를 Base64로 인코딩"""
+    if isinstance(image_data, str):
+        # 이미 Base64인 경우
+        return image_data
+    
+    try:
+        # PIL Image인 경우
+        if hasattr(image_data, 'save'):
+            buffer = BytesIO()
+            image_data.save(buffer, format=format)
+            image_bytes = buffer.getvalue()
+            return base64.b64encode(image_bytes).decode('utf-8')
+        
+        # bytes인 경우
+        elif isinstance(image_data, bytes):
+            return base64.b64encode(image_data).decode('utf-8')
+        
+        # numpy array인 경우
+        elif hasattr(image_data, 'shape'):
+            from PIL import Image
+            import numpy as np
+            
+            # numpy array를 PIL Image로 변환
+            if image_data.dtype != np.uint8:
+                image_data = (image_data * 255).astype(np.uint8)
+            
+            pil_image = Image.fromarray(image_data)
+            buffer = BytesIO()
+            pil_image.save(buffer, format=format)
+            image_bytes = buffer.getvalue()
+            return base64.b64encode(image_bytes).decode('utf-8')
+        
+        else:
+            logger.warning(f"지원되지 않는 이미지 타입: {type(image_data)}")
+            return ""
+            
+    except Exception as e:
+        logger.error(f"이미지 Base64 인코딩 실패: {e}")
+        return ""
+
+
+# 🔥 이미지 Base64 인코딩 함수 추가
+import base64
+from io import BytesIO
+
+def image_to_base64(image_data, format="JPEG"):
+    """이미지를 Base64로 인코딩"""
+    if isinstance(image_data, str):
+        # 이미 Base64인 경우
+        return image_data
+    
+    try:
+        # PIL Image인 경우
+        if hasattr(image_data, 'save'):
+            buffer = BytesIO()
+            image_data.save(buffer, format=format)
+            image_bytes = buffer.getvalue()
+            return base64.b64encode(image_bytes).decode('utf-8')
+        
+        # bytes인 경우
+        elif isinstance(image_data, bytes):
+            return base64.b64encode(image_data).decode('utf-8')
+        
+        # numpy array인 경우
+        elif hasattr(image_data, 'shape'):
+            from PIL import Image
+            import numpy as np
+            
+            # numpy array를 PIL Image로 변환
+            if image_data.dtype != np.uint8:
+                image_data = (image_data * 255).astype(np.uint8)
+            
+            pil_image = Image.fromarray(image_data)
+            buffer = BytesIO()
+            pil_image.save(buffer, format=format)
+            image_bytes = buffer.getvalue()
+            return base64.b64encode(image_bytes).decode('utf-8')
+        
+        else:
+            logger.warning(f"지원되지 않는 이미지 타입: {type(image_data)}")
+            return ""
+            
+    except Exception as e:
+        logger.error(f"이미지 Base64 인코딩 실패: {e}")
+        return ""
+

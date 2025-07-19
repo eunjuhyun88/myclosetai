@@ -167,17 +167,6 @@ ANALYZED_MODELS = {
         "checkpoints": [{'name': 'pytorch_model.bin', 'path': 'clip-vit-base-patch32/pytorch_model.bin', 'size_mb': 577.2, 'type': '.bin'}],  # 상위 3개만
         "total_checkpoints": 1
     },
-    "stable-diffusion-v1-5": {
-        "name": "stable-diffusion-v1-5",
-        "type": "diffusion",
-        "step": "step_06_virtual_fitting",
-        "path": CHECKPOINTS_ROOT / "stable-diffusion-v1-5",
-        "ready": True,
-        "size_mb": 45070.6,
-        "priority": 1,
-        "checkpoints": [{'name': 'v1-5-pruned.ckpt', 'path': 'v1-5-pruned.ckpt', 'size_mb': 7346.9, 'type': '.ckpt'}, {'name': 'v1-5-pruned-emaonly.ckpt', 'path': 'v1-5-pruned-emaonly.ckpt', 'size_mb': 4067.8, 'type': '.ckpt'}, {'name': 'pytorch_model.fp16.bin', 'path': 'text_encoder/pytorch_model.fp16.bin', 'size_mb': 234.8, 'type': '.bin'}],  # 상위 3개만
-        "total_checkpoints": 11
-    },
     "step_01": {
         "name": "step_01",
         "type": "human_parsing",

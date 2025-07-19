@@ -19,13 +19,6 @@ DETECTED_MODELS = {
         "ready": True,
         "priority": 99
     },
-    "stable_diffusion": {
-        "name": "Stable Diffusion v1.5",
-        "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/stable-diffusion-v1-5"),
-        "type": "base_diffusion",
-        "ready": True,
-        "priority": 2
-    },
     "sam": {
         "name": "Segment Anything (SAM)",
         "path": Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/sam"),
