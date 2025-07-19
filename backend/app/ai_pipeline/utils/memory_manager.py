@@ -11,6 +11,7 @@
 ✅ main.py import 오류 완전 해결
 ✅ 프로덕션 레벨 안정성
 ✅ 비동기 처리 완전 개선
+✅ MemoryManagerAdapter optimize_memory 오류 해결
 ================================================================================
 Author: MyCloset AI Team
 Date: 2025-07-20
@@ -455,6 +456,51 @@ class MemoryManager:
                 "error": str(e),
                 "device": self.device
             }
+
+    async def optimize_memory(self) -> Dict[str, Any]:
+        """🔥 메모리 최적화 (VirtualFittingStep에서 필요한 메서드)"""
+        try:
+            start_time = time.time()
+            optimization_results = []
+            
+            # 1. 메모리 정리 수행
+            cleanup_result = self.cleanup_memory(aggressive=False)
+            optimization_results.append(f"메모리 정리: {cleanup_result.get('success', False)}")
+            
+            # 2. M3 Max 특화 최적화
+            if self.is_m3_max:
+                m3_result = await self._optimize_m3_max_memory()
+                optimization_results.append(f"M3 Max 최적화: {m3_result}")
+            
+            # 3. 캐시 최적화
+            cache_stats = self._optimize_cache_system()
+            optimization_results.append(f"캐시 최적화: {cache_stats}")
+            
+            # 4. 메모리 압박 상태 확인
+            pressure_info = self.check_memory_pressure()
+            optimization_results.append(f"메모리 압박: {pressure_info.get('status', 'unknown')}")
+            
+            optimization_time = time.time() - start_time
+            
+            return {
+                "success": True,
+                "message": "메모리 최적화 완료",
+                "optimization_time": optimization_time,
+                "optimization_results": optimization_results,
+                "device": self.device,
+                "m3_max_optimized": self.is_m3_max,
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 메모리 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "device": self.device,
+                "timestamp": time.time()
+            }
+
     async def _optimize_m3_max_memory(self):
         """M3 Max 특화 메모리 최적화"""
         try:
@@ -474,6 +520,31 @@ class MemoryManager:
         except Exception as e:
             self.logger.warning(f"⚠️ M3 Max 메모리 최적화 실패: {e}")
             return False
+
+    def _optimize_cache_system(self) -> str:
+        """캐시 시스템 최적화"""
+        try:
+            # 캐시 크기 체크
+            total_cache_size = 0
+            cache_counts = {}
+            
+            for cache_name in ['tensor_cache', 'image_cache', 'model_cache']:
+                if hasattr(self, cache_name):
+                    cache = getattr(self, cache_name)
+                    size = len(cache)
+                    total_cache_size += size
+                    cache_counts[cache_name] = size
+            
+            # 캐시가 너무 클 경우 정리
+            if total_cache_size > 100:  # 캐시 항목이 100개 이상
+                self._evict_low_priority_cache()
+                return f"캐시 정리됨 (이전: {total_cache_size}개)"
+            
+            return f"정상 ({total_cache_size}개 항목)"
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 캐시 최적화 실패: {e}")
+            return "최적화 실패"
     
     def _aggressive_m3_cleanup(self):
         """공격적 M3 Max 메모리 정리"""
@@ -729,6 +800,57 @@ class MemoryManager:
             pass
 
 # ==============================================
+# 🔥 MemoryManagerAdapter 클래스 (VirtualFittingStep용)
+# ==============================================
+
+class MemoryManagerAdapter:
+    """
+    🔥 MemoryManagerAdapter - VirtualFittingStep 호환성을 위한 어댑터
+    ✅ optimize_memory() 메서드 구현
+    ✅ 기존 MemoryManager 기능 위임
+    ✅ VirtualFittingStep 오류 완전 해결
+    """
+    
+    def __init__(self, base_manager: MemoryManager):
+        """어댑터 초기화"""
+        self._base_manager = base_manager
+        self.logger = logging.getLogger("MemoryManagerAdapter")
+        
+    async def optimize_memory(self) -> Dict[str, Any]:
+        """🔥 VirtualFittingStep에서 필요한 optimize_memory 메서드"""
+        try:
+            # 기본 메모리 관리자의 optimize_memory 호출
+            result = await self._base_manager.optimize_memory()
+            
+            self.logger.debug("✅ MemoryManagerAdapter 메모리 최적화 완료")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManagerAdapter 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "adapter": True,
+                "timestamp": time.time()
+            }
+    
+    async def cleanup(self):
+        """메모리 정리 (위임)"""
+        await self._base_manager.cleanup()
+    
+    def get_memory_stats(self) -> MemoryStats:
+        """메모리 통계 (위임)"""
+        return self._base_manager.get_memory_stats()
+    
+    def get_usage_stats(self) -> Dict[str, Any]:
+        """사용량 통계 (비동기 래퍼)"""
+        return self._base_manager.get_usage()
+    
+    def __getattr__(self, name):
+        """다른 모든 속성/메서드는 기본 관리자로 위임"""
+        return getattr(self._base_manager, name)
+
+# ==============================================
 # 🔥 GPUMemoryManager 클래스 (기존 이름 유지)
 # ==============================================
 
@@ -826,12 +948,13 @@ def get_global_memory_manager(**kwargs) -> MemoryManager:
     """전역 메모리 관리자 인스턴스 반환 (별칭)"""
     return get_memory_manager(**kwargs)
 
-def get_step_memory_manager(step_name: str, **kwargs) -> MemoryManager:
+def get_step_memory_manager(step_name: str, **kwargs) -> Union[MemoryManager, MemoryManagerAdapter]:
     """
     🔥 Step별 메모리 관리자 반환 (main.py에서 요구하는 핵심 함수)
     ✅ 기존 함수명 완전 유지
     ✅ __init__.py에서 export되는 핵심 함수
     ✅ import 오류 완전 해결
+    ✅ VirtualFittingStep용 MemoryManagerAdapter 지원
     """
     try:
         # Step별 특화 설정 (GitHub 8단계 파이프라인 기준)
@@ -857,17 +980,26 @@ def get_step_memory_manager(step_name: str, **kwargs) -> MemoryManager:
         final_kwargs.update(step_config)
         
         # 메모리 관리자 생성
-        manager = MemoryManager(**final_kwargs)
-        manager.step_name = step_name
-        manager.logger = logging.getLogger(f"memory.{step_name}")
+        base_manager = MemoryManager(**final_kwargs)
+        base_manager.step_name = step_name
+        base_manager.logger = logging.getLogger(f"memory.{step_name}")
         
-        logger.debug(f"📝 {step_name} 메모리 관리자 생성 완료")
-        return manager
+        # VirtualFittingStep인 경우 어댑터 반환
+        if step_name == "VirtualFittingStep":
+            adapter = MemoryManagerAdapter(base_manager)
+            logger.debug(f"📝 {step_name} MemoryManagerAdapter 생성 완료")
+            return adapter
+        else:
+            logger.debug(f"📝 {step_name} 메모리 관리자 생성 완료")
+            return base_manager
         
     except Exception as e:
         logger.warning(f"⚠️ {step_name} 메모리 관리자 생성 실패: {e}")
         # 폴백: 기본 메모리 관리자 반환
-        return MemoryManager(**kwargs)
+        base_manager = MemoryManager(**kwargs)
+        if step_name == "VirtualFittingStep":
+            return MemoryManagerAdapter(base_manager)
+        return base_manager
 
 def create_memory_manager(device: str = "auto", **kwargs) -> MemoryManager:
     """메모리 관리자 팩토리 함수"""
@@ -1071,6 +1203,7 @@ def memory_efficient(clear_before: bool = True, clear_after: bool = True):
 __all__ = [
     # 🔥 기존 클래스명 완전 유지
     'MemoryManager',
+    'MemoryManagerAdapter',      # ✅ VirtualFittingStep 호환용 추가
     'GPUMemoryManager',          # ✅ 현재 구조에서 사용
     'MemoryStats',
     'MemoryConfig',
@@ -1109,6 +1242,7 @@ if SYSTEM_INFO["in_conda"]:
     logger.info(f"🐍 conda 환경: {SYSTEM_INFO['conda_env']}")
 logger.debug("🔗 주요 함수: get_step_memory_manager, GPUMemoryManager")
 logger.debug("⚡ M3 Max + conda 환경 완전 최적화")
+logger.debug("🔧 MemoryManagerAdapter VirtualFittingStep 호환 완료")
 
 # M3 Max + conda 조합 확인
 if SYSTEM_INFO["is_m3_max"] and SYSTEM_INFO["in_conda"]:
