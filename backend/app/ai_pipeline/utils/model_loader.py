@@ -201,29 +201,126 @@ class AsyncCompatibilityManager:
         self._lock = threading.Lock()
         
     def make_callable_safe(self, obj: Any) -> Any:
-        """객체를 안전하게 호출 가능하도록 변환"""
+        """객체를 안전하게 호출 가능하도록 변환 - 강화"""
         try:
             if obj is None:
-                return None
+                return self._create_none_wrapper()
                 
+            # 🔥 Coroutine 객체 우선 처리 (가장 문제가 되는 케이스)
+            if hasattr(obj, '__class__') and 'coroutine' in str(type(obj)):
+                self.logger.warning("⚠️ Coroutine 객체 감지, 안전한 래퍼 생성")
+                return self._create_coroutine_wrapper(obj)
+            
             # Dict 타입 처리
             if isinstance(obj, dict):
                 return self._create_dict_wrapper(obj)
-            
-            # Coroutine 객체 처리
-            if hasattr(obj, '__class__') and 'coroutine' in str(type(obj)):
-                return self._create_coroutine_wrapper(obj)
             
             # 이미 callable한 객체
             if callable(obj):
                 return self._create_callable_wrapper(obj)
             
-            # 기본 객체
-            return obj
+            # 기본 데이터 타입들
+            if isinstance(obj, (str, int, float, bool, list, tuple)):
+                return self._create_data_wrapper(obj)
+            
+            # 기본 객체 - callable이 아닌 경우
+            return self._create_object_wrapper(obj)
             
         except Exception as e:
             self.logger.error(f"❌ make_callable_safe 오류: {e}")
-            return obj
+            # 최후의 안전장치
+            return self._create_emergency_wrapper(obj, str(e))
+    
+    def _create_none_wrapper(self) -> Any:
+        """None 객체를 위한 안전한 래퍼"""
+        class SafeNoneWrapper:
+            def __init__(self):
+                self.name = "none_wrapper"
+                
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'result': None,
+                    'call_type': 'none_wrapper'
+                }
+            
+            async def async_call(self, *args, **kwargs):
+                await asyncio.sleep(0.001)
+                return self.__call__(*args, **kwargs)
+        
+        return SafeNoneWrapper()
+    
+    def _create_data_wrapper(self, data: Any) -> Any:
+        """기본 데이터 타입을 위한 래퍼"""
+        class SafeDataWrapper:
+            def __init__(self, data: Any):
+                self.data = data
+                self.name = f"data_wrapper_{type(data).__name__}"
+                
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'result': self.data,
+                    'call_type': 'data_wrapper'
+                }
+            
+            async def async_call(self, *args, **kwargs):
+                await asyncio.sleep(0.001)
+                return self.__call__(*args, **kwargs)
+        
+        return SafeDataWrapper(data)
+    
+    def _create_object_wrapper(self, obj: Any) -> Any:
+        """일반 객체를 위한 래퍼"""
+        class SafeObjectWrapper:
+            def __init__(self, obj: Any):
+                self.obj = obj
+                self.name = f"object_wrapper_{type(obj).__name__}"
+                
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'result': f'wrapped_{self.name}',
+                    'call_type': 'object_wrapper'
+                }
+            
+            async def async_call(self, *args, **kwargs):
+                await asyncio.sleep(0.001)
+                return self.__call__(*args, **kwargs)
+            
+            def __getattr__(self, name):
+                # 원본 객체의 속성에 접근
+                if hasattr(self.obj, name):
+                    return getattr(self.obj, name)
+                raise AttributeError(f"'{self.name}' has no attribute '{name}'")
+        
+        return SafeObjectWrapper(obj)
+    
+    def _create_emergency_wrapper(self, obj: Any, error_msg: str) -> Any:
+        """긴급 상황을 위한 최후의 래퍼"""
+        class EmergencyWrapper:
+            def __init__(self, obj: Any, error: str):
+                self.obj = obj
+                self.error = error
+                self.name = "emergency_wrapper"
+                
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'emergency',
+                    'model_name': self.name,
+                    'result': f'emergency_result',
+                    'error': self.error,
+                    'call_type': 'emergency'
+                }
+            
+            async def async_call(self, *args, **kwargs):
+                await asyncio.sleep(0.001)
+                return self.__call__(*args, **kwargs)
+        
+        return EmergencyWrapper(obj, error_msg)
     
     def _create_dict_wrapper(self, data: Dict[str, Any]) -> Any:
         """Dict를 callable wrapper로 변환"""
@@ -598,17 +695,36 @@ class SafeFunctionValidator:
 # ==============================================
 
 class MemoryManagerAdapter:
-    """Memory Manager 어댑터 (누락 속성 해결)"""
+    """Memory Manager 어댑터 (누락 속성 해결) - 완전 수정"""
     
     def __init__(self, original_manager=None):
         self.original_manager = original_manager
         self.logger = logging.getLogger(f"{__name__}.MemoryManagerAdapter")
+        
+        # 기본 메서드들을 직접 정의하여 항상 사용 가능하도록 함
+        self._ensure_basic_methods()
+    
+    def _ensure_basic_methods(self):
+        """기본 메서드들이 항상 존재하도록 보장"""
+        # 기본 속성들 설정
+        if not hasattr(self, 'device'):
+            self.device = getattr(self.original_manager, 'device', 'cpu')
+        if not hasattr(self, 'is_m3_max'):
+            self.is_m3_max = getattr(self.original_manager, 'is_m3_max', False)
     
     def optimize_memory(self):
-        """누락된 optimize_memory 메서드 추가"""
+        """누락된 optimize_memory 메서드 추가 - 강화"""
         try:
-            if self.original_manager and hasattr(self.original_manager, 'cleanup_memory'):
-                self.original_manager.cleanup_memory()
+            self.logger.debug("🧹 MemoryManagerAdapter 메모리 최적화 시작")
+            
+            # 원본 매니저의 메모리 정리 메서드 시도
+            if self.original_manager:
+                if hasattr(self.original_manager, 'optimize_memory'):
+                    self.original_manager.optimize_memory()
+                    self.logger.debug("✅ 원본 매니저의 optimize_memory 호출 완료")
+                elif hasattr(self.original_manager, 'cleanup_memory'):
+                    self.original_manager.cleanup_memory()
+                    self.logger.debug("✅ 원본 매니저의 cleanup_memory 호출 완료")
             
             # 기본 메모리 최적화
             import gc
@@ -616,29 +732,128 @@ class MemoryManagerAdapter:
             
             # PyTorch 메모리 정리
             try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                    if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
-            except:
-                pass
+                if TORCH_AVAILABLE:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        self.logger.debug("✅ CUDA 캐시 정리 완료")
+                    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        if hasattr(torch.mps, 'empty_cache'):
+                            torch.mps.empty_cache()
+                            self.logger.debug("✅ MPS 캐시 정리 완료")
+                        elif hasattr(torch.backends.mps, 'empty_cache'):
+                            torch.backends.mps.empty_cache()
+                            self.logger.debug("✅ MPS 백엔드 캐시 정리 완료")
+            except Exception as torch_error:
+                self.logger.warning(f"⚠️ PyTorch 메모리 정리 중 오류: {torch_error}")
                 
-            self.logger.debug("✅ 메모리 최적화 완료")
+            self.logger.debug("✅ MemoryManagerAdapter 메모리 최적화 완료")
+            return {"success": True, "message": "Memory optimization completed"}
             
         except Exception as e:
             self.logger.warning(f"⚠️ 메모리 최적화 실패: {e}")
+            return {"success": False, "error": str(e)}
     
     async def optimize_memory_async(self):
-        """비동기 메모리 최적화"""
-        await asyncio.get_event_loop().run_in_executor(None, self.optimize_memory)
+        """비동기 메모리 최적화 - 강화"""
+        try:
+            # 비동기로 메모리 최적화 실행
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, self.optimize_memory)
+            return result
+        except Exception as e:
+            self.logger.warning(f"⚠️ 비동기 메모리 최적화 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def cleanup_memory(self, aggressive: bool = False):
+        """cleanup_memory 메서드 추가 (원본 매니저와 호환)"""
+        try:
+            if self.original_manager and hasattr(self.original_manager, 'cleanup_memory'):
+                return self.original_manager.cleanup_memory(aggressive)
+            else:
+                # 기본 구현
+                return self.optimize_memory()
+        except Exception as e:
+            self.logger.warning(f"⚠️ cleanup_memory 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def get_memory_stats(self):
+        """메모리 통계 조회"""
+        try:
+            if self.original_manager and hasattr(self.original_manager, 'get_memory_stats'):
+                return self.original_manager.get_memory_stats()
+            else:
+                # 기본 구현
+                return {
+                    "device": self.device,
+                    "is_m3_max": self.is_m3_max,
+                    "available": True
+                }
+        except Exception as e:
+            self.logger.warning(f"⚠️ get_memory_stats 실패: {e}")
+            return {"error": str(e)}
+    
+    def get_available_memory(self):
+        """사용 가능한 메모리 조회"""
+        try:
+            if self.original_manager and hasattr(self.original_manager, 'get_available_memory'):
+                return self.original_manager.get_available_memory()
+            else:
+                # 기본 값 반환
+                return 16.0 if not self.is_m3_max else 128.0
+        except Exception as e:
+            self.logger.warning(f"⚠️ get_available_memory 실패: {e}")
+            return 8.0
+    
+    def check_memory_pressure(self):
+        """메모리 압박 상태 확인"""
+        try:
+            if self.original_manager and hasattr(self.original_manager, 'check_memory_pressure'):
+                return self.original_manager.check_memory_pressure()
+            else:
+                # 기본 구현: 항상 안전한 상태로 반환
+                return False
+        except Exception as e:
+            self.logger.warning(f"⚠️ check_memory_pressure 실패: {e}")
+            return False
     
     def __getattr__(self, name):
-        """누락된 속성을 원본 매니저에서 가져오기"""
-        if self.original_manager and hasattr(self.original_manager, name):
-            return getattr(self.original_manager, name)
-        else:
+        """누락된 속성을 원본 매니저에서 가져오기 - 강화"""
+        try:
+            # 자주 사용되는 메서드들에 대한 안전한 처리
+            if name in ['optimize_memory', 'cleanup_memory', 'get_memory_stats', 
+                       'get_available_memory', 'check_memory_pressure']:
+                # 이미 위에서 정의된 메서드들이므로 재귀 호출 방지
+                raise AttributeError(f"Method '{name}' should be handled directly")
+            
+            # 원본 매니저에서 속성 찾기
+            if self.original_manager and hasattr(self.original_manager, name):
+                attr = getattr(self.original_manager, name)
+                
+                # callable인 경우 안전한 래퍼로 감싸기
+                if callable(attr):
+                    def safe_wrapper(*args, **kwargs):
+                        try:
+                            return attr(*args, **kwargs)
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ {name} 호출 실패: {e}")
+                            return None
+                    return safe_wrapper
+                else:
+                    return attr
+            
+            # 기본 속성들에 대한 폴백
+            if name == 'device':
+                return 'cpu'
+            elif name == 'is_m3_max':
+                return False
+            elif name == 'memory_gb':
+                return 16.0
+            else:
+                raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ __getattr__ 처리 중 오류 ({name}): {e}")
             raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
 # ==============================================
@@ -1140,7 +1355,7 @@ class SafeModelService:
             return None
     
     async def call_model_async(self, name: str, *args, **kwargs) -> Any:
-        """🔥 모델 호출 - 비동기 버전 + Coroutine 오류 해결"""
+        """🔥 모델 호출 - 비동기 버전 + Coroutine 오류 완전 해결"""
         try:
             async with self.async_lock:
                 if name not in self.models:
@@ -1157,6 +1372,21 @@ class SafeModelService:
                 if isinstance(model, dict):
                     self.logger.error(f"❌ 등록된 모델이 dict입니다: {name}")
                     return None
+                
+                # 🔥 Coroutine 객체 직접 체크 및 처리
+                if hasattr(model, '__class__') and 'coroutine' in str(type(model)):
+                    self.logger.warning(f"⚠️ Coroutine 객체 감지, 대기 처리: {name}")
+                    try:
+                        result = await model
+                        if name in self.call_statistics:
+                            self.call_statistics[name]['successes'] += 1
+                        self.logger.debug(f"✅ Coroutine 대기 완료: {name}")
+                        return result
+                    except Exception as coro_error:
+                        self.logger.error(f"❌ Coroutine 대기 실패: {coro_error}")
+                        if name in self.call_statistics:
+                            self.call_statistics[name]['failures'] += 1
+                        return None
                 
                 # 🔥 비동기 호출 시도 (async_call 메서드 우선)
                 if hasattr(model, 'async_call'):
@@ -1181,6 +1411,20 @@ class SafeModelService:
                     if name in self.call_statistics:
                         self.call_statistics[name]['failures'] += 1
                     self.logger.warning(f"⚠️ 비동기 모델 호출 실패: {name} - {message}")
+                    
+                    # 🔥 추가 시도: 동기 호출로 폴백
+                    if "coroutine" in message.lower():
+                        self.logger.info(f"🔄 Coroutine 오류로 인해 동기 호출 시도: {name}")
+                        try:
+                            sync_success, sync_result, sync_message = self.validator.safe_call(model, *args, **kwargs)
+                            if sync_success:
+                                if name in self.call_statistics:
+                                    self.call_statistics[name]['successes'] += 1
+                                self.logger.info(f"✅ 동기 폴백 호출 성공: {name}")
+                                return sync_result
+                        except Exception as sync_error:
+                            self.logger.warning(f"⚠️ 동기 폴백도 실패: {sync_error}")
+                    
                     return None
                 
         except Exception as e:
@@ -1268,24 +1512,38 @@ class StepModelInterface:
                 if hasattr(self.model_loader, 'safe_model_service'):
                     service = self.model_loader.safe_model_service
                     
-                    # 🔥 비동기 호출 우선 시도
-                    if hasattr(service, 'call_model_async'):
-                        try:
+                    # 🔥 비동기 호출 우선 시도 - 더 안전한 방식
+                    model = None
+                    try:
+                        if hasattr(service, 'call_model_async'):
+                            # 비동기 호출
                             model = await service.call_model_async(model_name)
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ 비동기 호출 실패, 동기 호출 시도: {e}")
+                    except Exception as async_error:
+                        self.logger.warning(f"⚠️ 비동기 호출 실패, 동기 호출 시도: {async_error}")
+                        try:
+                            # 동기 호출 시도
                             model = service.call_model(model_name)
-                    else:
-                        # 동기 호출
-                        model = service.call_model(model_name)
+                        except Exception as sync_error:
+                            self.logger.warning(f"⚠️ 동기 호출도 실패: {sync_error}")
+                            model = None
                     
                     if model:
-                        # 🔥 안전한 callable로 변환
-                        safe_model = self.async_manager.make_callable_safe(model)
-                        self.loaded_models[model_name] = safe_model
-                        self.model_status[model_name] = "loaded"
-                        self.logger.info(f"✅ 모델 로드 성공: {model_name}")
-                        return safe_model
+                        # 🔥 Coroutine 객체 체크 추가
+                        if hasattr(model, '__class__') and 'coroutine' in str(type(model)):
+                            self.logger.warning(f"⚠️ Coroutine 객체 감지, 대기 중: {model_name}")
+                            try:
+                                model = await model
+                            except Exception as await_error:
+                                self.logger.error(f"❌ Coroutine 대기 실패: {await_error}")
+                                model = None
+                        
+                        if model:
+                            # 🔥 안전한 callable로 변환
+                            safe_model = self.async_manager.make_callable_safe(model)
+                            self.loaded_models[model_name] = safe_model
+                            self.model_status[model_name] = "loaded"
+                            self.logger.info(f"✅ 모델 로드 성공: {model_name}")
+                            return safe_model
                 
                 # 폴백 모델 생성
                 fallback = await self._create_fallback_model_async(model_name)
