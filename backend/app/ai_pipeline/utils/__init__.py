@@ -189,7 +189,7 @@ def _detect_system_info() -> Dict[str, Any]:
         system_info["libraries"] = {
             "torch": TORCH_VERSION,
             "numpy": NUMPY_VERSION if NUMPY_AVAILABLE else "not_available",
-            "pillow": Image.VERSION if PIL_AVAILABLE else "not_available",
+            "pillow": PIL.__version__ if PIL_AVAILABLE else "not_available",
             "psutil": psutil.version_info if PSUTIL_AVAILABLE else "not_available"
         }
         
