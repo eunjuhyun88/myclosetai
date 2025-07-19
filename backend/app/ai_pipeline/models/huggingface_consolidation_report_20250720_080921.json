@@ -1,0 +1,50 @@
+{
+  "moved_models": [
+    {
+      "name": "clip_vit_large",
+      "step": "step_08_quality_assessment",
+      "size_gb": 6.385236842557788,
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--openai--clip-vit-large-patch14-336",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/downloads/clip_vit_large"
+    },
+    {
+      "name": "sam2_large",
+      "step": "step_03_cloth_segmentation",
+      "size_gb": 1.672580586746335,
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--facebook--sam2-hiera-large",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/downloads/sam2_large"
+    },
+    {
+      "name": "stable_diffusion_xl",
+      "step": "step_06_virtual_fitting",
+      "size_gb": 5.93510346673429,
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--stabilityai--stable-diffusion-xl-base-1.0",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/downloads/stable_diffusion_xl"
+    },
+    {
+      "name": "fashion_clip",
+      "step": "step_03_cloth_segmentation",
+      "size_gb": 3.395618759095669,
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--patrickjohncyh--fashion-clip",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/downloads/fashion_clip"
+    },
+    {
+      "name": "ootdiffusion",
+      "step": "step_06_virtual_fitting",
+      "size_gb": 29.549479834735394,
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/downloads/ootdiffusion"
+    },
+    {
+      "name": "idm_vton",
+      "step": "step_06_virtual_fitting",
+      "size_gb": 12.695829003117979,
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/downloads/idm_vton"
+    }
+  ],
+  "errors": [],
+  "total_size_moved": 59.633848492987454,
+  "start_time": "2025-07-20T08:09:03.910817",
+  "end_time": "2025-07-20T08:09:21.941301"
+}

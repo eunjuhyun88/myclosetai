@@ -1,208 +1,4 @@
-# ============================================================================
-# AI 모델 파일들 (용량이 큰 파일들 Git에서 제외)
-# ============================================================================
-# Node.js 관련
-node_modules/
-package-lock.json
-
-# Python 관련
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-ENV/
-*.egg-info/
-
-# macOS 및 시스템
-.DS_Store
-
-# 모델, 캐시, 로그 등
-*.ckpt
-*.safetensors
-*.pth
-*.pt
-*.h5
-*.log
-*.jsonl
-*.pickle
-*.joblib
-
-# 백업 및 분석 결과
-*.bak
-*.old
-*.tmp
-*.swp
-*.ipynb_checkpoints/
-backend/*_backup.*
-backend/*_cache.*
-backend/*_analysis.*
-
-# Git BFG 로그
-.bfg-report/
-
-# IDE 설정
-.vscode/
-.idea/
-*.iml
-
-# 기타
-frontend/package-lock.json
-*.json
-!package.json
-!tsconfig.json
-!vite.config.json
-!*.schema.json
-!*.config.json
-# .gitignore에 다음이 반드시 포함되어야 합니다:
-frontend/package-lock.json
-node_modules/
-*.log
-*.bak
-*.swp
-*.pyc
-__pycache__/
-bfg-report/
-# 백업 자동 생성 디렉토리
-backend/backup_essential_*/
-
-# 중간 산출물
-backend/model_optimization_report_*.txt
-backend/optimization_result_dryrun_*.json
-
-# 테스트 실행 파일
-backend/quick_execute_optimizer.py
-backend/test_imports.py
-
-# AI 모델 디렉토리 전체 제외
-ai_models/
-backend/ai_models/
-backend/models/
-
-# 하지만 설정 파일들은 포함
-!ai_models/model_config.yaml
-!ai_models/simple_config.yaml
-!ai_models/DOWNLOAD_GUIDE.md
-!ai_models/.gitkeep
-!backend/ai_models/model_config.yaml
-!backend/ai_models/simple_config.yaml
-!backend/ai_models/DOWNLOAD_GUIDE.md
-!backend/ai_models/.gitkeep
-
-# AI 모델 폴더들 (세부 경로)
-backend/ai_models/checkpoints/*
-!backend/ai_models/checkpoints/.gitkeep
-backend/ai_models/cache/*
-!backend/ai_models/cache/.gitkeep
-backend/ai_models/ootd_models/*
-!backend/ai_models/ootd_models/.gitkeep
-backend/ai_models/temp/*
-!backend/ai_models/temp/.gitkeep
-ai_models/checkpoints/*
-!ai_models/checkpoints/.gitkeep
-ai_models/cache/*
-!ai_models/cache/.gitkeep
-ai_models/ootd_models/*
-!ai_models/ootd_models/.gitkeep
-ai_models/temp/*
-!ai_models/temp/.gitkeep
-
-# 특정 모델 파일 확장자들 제외
-*.pth
-*.ckpt
-*.h5
-*.pb
-*.onnx
-*.tflite
-*.safetensors
-*.bin
-*.pt
-*.pkl
-*.pickle
-*.model
-*.weights
-
-# 개별 모델 파일들
-gen.pth
-mtviton.pth
-resnet50_features.pth
-
-# 모델 가중치 파일과 같은 이름의 설정은 제외
-*.config.json
-**/pytorch_model.bin
-**/diffusion_pytorch_model.bin
-**/diffusion_pytorch_model.safetensors
-
-# ============================================================================
-# 특정 AI 모델 디렉토리들 (현재 프로젝트 기준)
-# ============================================================================
-
-# OOTDiffusion 관련
-OOTDiffusion/
-ootdiffusion_hf/
-**/OOTDiffusion/
-**/ootdiffusion_hf/
-
-# VITON 관련
-VITON-HD/
-HR-VITON/
-**/VITON-HD/
-**/HR-VITON/
-
-# 기타 AI 모델들
-Graphonomy/
-Self-Correction-Human-Parsing/
-openpose/
-detectron2/
-**/Graphonomy/
-**/Self-Correction-Human-Parsing/
-**/openpose/
-**/detectron2/
-
-# Stable Diffusion 관련
-stable-diffusion-v1-5/
-**/stable-diffusion-v1-5/
-
-# SAM (Segment Anything Model)
-sam/
-**/sam/
-
-# CLIP 모델
-clip-vit-large-patch14/
-**/clip-vit-large-patch14/
-
-# oot_diffusion 생성 파일들
-backend/ai_models/oot_diffusion/outputs/
-backend/ai_models/oot_diffusion/logs/
-backend/ai_models/oot_diffusion/models/
-backend/ai_models/oot_diffusion/cache/
-backend/ai_models/oot_diffusion/__pycache__/
-backend/ai_models/oot_diffusion/*.egg-info/
-backend/ai_models/oot_diffusion/build/
-backend/ai_models/oot_diffusion/dist/
-
-# 대용량 Hugging Face 모델들
-backend/ai_models/oot_diffusion/models/*
-backend/ai_models/oot_diffusion/checkpoints/*
-
-# ============================================================================
-# Node.js 관련
-# ============================================================================
-frontend/node_modules/
-frontend/.next/
-frontend/build/
-frontend/dist/
-frontend/.vite/
-node_modules/
-frontend/package-lock.json
-package-lock.json
-*.lock
-
-# ============================================================================
-# Python 관련
-# ============================================================================
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -225,182 +21,93 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-*.pyc
-*.pyo
-*.pyd
 
-# 가상환경
+# Virtual Environments
 venv/
-backend/venv/
-backend/mycloset_env/
-mycloset_env/
 env/
 ENV/
 env.bak/
 venv.bak/
-.venv/
-venv*/
 
-# pyenv
-.python-version
+# Conda
+.conda/
 
-# ============================================================================
-# 환경 설정 파일들
-# ============================================================================
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-*.env
-backend/.env
-frontend/.env
-
-# ============================================================================
-# 캐시 및 로그 파일
-# ============================================================================
-.cache/
-*_cache.json
-*.log
-*.metadata
-logs/
-backend/logs/
-backend/logs/*.log
-cache/
-temp*/
-**/cache/
-**/.cache/
-
-# Hugging Face 캐시 제외
-cache/
-.cache/
-**/cache/
-**/.cache/
-
-# 체크포인트 디렉토리들
-checkpoints/
-**/checkpoints/
-!**/checkpoints/.gitkeep
-
-# 임시 모델 파일들
-temp/
-**/temp/
-!**/temp/.gitkeep
-
-# ============================================================================
-# 백업 파일
-# ============================================================================
-*.backup*
-*.bak
-*_backup_*
-*_backup.py
-*_backup.txt
-*_backup.yml
-environment_backup.yml
-requirements_backup.txt
-
-# ============================================================================
-# 업로드/결과 파일들
-# ============================================================================
-static/uploads/*
-static/results/*
-backend/static/uploads/*
-backend/static/results/*
-
-# 예외: .gitkeep 파일들은 유지
-!static/uploads/.gitkeep
-!static/results/.gitkeep
-!backend/static/uploads/.gitkeep
-!backend/static/results/.gitkeep
-!logs/.gitkeep
-
-# ============================================================================
-# 캐시 및 분석 파일
-# ============================================================================
-*_cache.json
-*_analysis_results.json
-checkpoint_analysis_results.json
-model_detection_cache.json
-project_analysis.json
-
-# ============================================================================
-# 시스템 파일
-# ============================================================================
-.DS_Store
-Thumbs.db
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# ============================================================================
-# 테스트 및 커버리지
-# ============================================================================
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-.ipynb_checkpoints
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# ============================================================================
-# 빌드 & 캐시
-# ============================================================================
-dist/
-build/
-.cache/
+# Logs
+logs/
+*.log
+*.pid
 
-# ============================================================================
-# Python 설치 파일
-# ============================================================================
-get-pip.py
-frontend/get-pip.py
-
-# ============================================================================
-# BFG 보고서 (임시 파일)
-# ============================================================================
-..bfg-report/
-
-# ============================================================================
-# 임시 아카이브 파일들
-# ============================================================================
-backend/temp_archive/
-temp_archive/
-
-# ============================================================================
-# 예외: 필요한 설정 파일들은 Git에 포함
-# ============================================================================
-
-# 설정 파일들은 포함
-!**/*.yaml
-!**/*.yml
-!**/*.json
-!**/*.md
-!**/*.txt
-!**/.gitkeep
-
-# 캐시 및 분석 파일들
-backend/model_detection_cache.json
-backend/checkpoint_analysis_results.json
-backend/project_analysis.json
-
-# .gitignore 예시
-node_modules/
+# AI Models (large files)
+ai_models/
+*.pth
+*.pt
 *.ckpt
 *.safetensors
-*.pt
-*.pth
+*.bin
 *.onnx
-*.pb
+*.pkl
 *.h5
-.DS_Store
-*.log
 
-# 백업 파일들
-backend/environment_backup.yml
-backend/requirements_backup.txt
-backend/app/models/schemas_backup/
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Package lock 파일
-frontend/package-lock.json
-frontend/package-lock.json
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Frontend build
+frontend/dist/
+frontend/build/
+frontend/.next/
+
+# Backend uploads and results
+backend/static/uploads/*
+backend/static/results/*
+!backend/static/uploads/.gitkeep
+!backend/static/results/.gitkeep
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+cache/
+.cache/
+*.cache
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Reports and backups
+reports/*.json
+backup_*/
+
+# MacOS specific
+.AppleDouble
+.LSOverride

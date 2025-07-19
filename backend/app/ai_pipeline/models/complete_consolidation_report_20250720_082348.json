@@ -1,0 +1,2221 @@
+{
+  "found_files": [],
+  "moved_files": [
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/checkpoints/step_07/codeformer.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/codeformer_03.pth",
+      "size_mb": 359.19,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/checkpoints/step_07/swinir_real_sr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/swinir_real_sr_01.pth",
+      "size_mb": 64.02,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/checkpoints/step_07/gfpgan_v1_4.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/gfpgan_v1_4_01.pth",
+      "size_mb": 332.48,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/checkpoints/step_07/real_esrgan_x4_v3.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/real_esrgan_x4_v3_01.pth",
+      "size_mb": 4.66,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/human_parsing/Graphonomy/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_12.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/sam/sam_vit_h_4b8939.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939_03.pth",
+      "size_mb": 2445.75,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/sam/sam_vit_b_01ec64.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/sam_vit_b_01ec64_01.pth",
+      "size_mb": 357.67,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_03_cloth_segmentation/sam_vit_h.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/sam_vit_h_01.pth",
+      "size_mb": 2445.75,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_03_cloth_segmentation/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_08.pth",
+      "size_mb": 0.0,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/schp_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/schp_atr_06.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_01.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/atr_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/atr_model_05.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/lip_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lip_model_05.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04/step_04_geometric_matching_base/geometric_matching_base.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_04_geometric_matching/geometric_matching_base_03.pth",
+      "size_mb": 18.73,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04/step_04_tps_network/tps_network.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_04_geometric_matching/tps_network_01.pth",
+      "size_mb": 2.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03/u2net_segmentation/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_09.pth",
+      "size_mb": 168.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/sam/sam_vit_h_4b8939.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939_04.pth",
+      "size_mb": 2445.75,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/openpose/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_22.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/openpose/hand_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/hand_pose_model_06.pth",
+      "size_mb": 140.52,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_23.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_24.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_13.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_16.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_10.pth",
+      "size_mb": 168.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/rvm/rvm_mobilenetv3_fp32.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/rvm_mobilenetv3_fp32_01.pth",
+      "size_mb": 0.0,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_25.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_14.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_17.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_26.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_15.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_18.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04_geometric_matching/gmm_final.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_04_geometric_matching/gmm_final_01.pth",
+      "size_mb": 4.1,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04_geometric_matching/lightweight_gmm.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_04_geometric_matching/lightweight_gmm_01.pth",
+      "size_mb": 4.1,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04_geometric_matching/tps_transformation_model/tps_network.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_04_geometric_matching/tps_network_03.pth",
+      "size_mb": 2.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_04_geometric_matching/geometric_matching_base/geometric_matching_base.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_04_geometric_matching/geometric_matching_base_04.pth",
+      "size_mb": 18.73,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/u2net/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_11.pth",
+      "size_mb": 168.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_02.pth",
+      "size_mb": 168.53,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_07_post_processing/RealESRGAN_x4plus.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/RealESRGAN_x4plus_05.pth",
+      "size_mb": 63.94,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/sk_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/sk_model_01.pth",
+      "size_mb": 16.38,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/upernet_global_small.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/upernet_global_small_01.pth",
+      "size_mb": 196.76,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/latest_net_G.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/latest_net_G_01.pth",
+      "size_mb": 303.52,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/sk_model2.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/sk_model2_01.pth",
+      "size_mb": 16.38,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/table5_pidinet.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/table5_pidinet_01.pth",
+      "size_mb": 2.74,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/netG.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/netG_01.pth",
+      "size_mb": 207.55,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_27.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/facenet.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/facenet_01.pth",
+      "size_mb": 146.6,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/250_16_swin_l_oneformer_ade20k_160k.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/250_16_swin_l_oneformer_ade20k_160k_01.pth",
+      "size_mb": 905.73,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/network-bsds500.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/network-bsds500_01.pth",
+      "size_mb": 56.14,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/clip_g.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/clip_g.pth",
+      "size_mb": 3519.15,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/hand_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/hand_pose_model_07.pth",
+      "size_mb": 140.52,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/ControlNetHED.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/ControlNetHED_01.pth",
+      "size_mb": 28.08,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/mlsd_large_512_fp32.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/mlsd_large_512_fp32_01.pth",
+      "size_mb": 6.05,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/150_16_swin_l_oneformer_coco_100ep.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/150_16_swin_l_oneformer_coco_100ep_01.pth",
+      "size_mb": 905.61,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/RealESRGAN_x4plus.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/RealESRGAN_x4plus_06.pth",
+      "size_mb": 63.94,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/ControlNetLama.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/ControlNetLama_01.pth",
+      "size_mb": 195.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/res101.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/res101_01.pth",
+      "size_mb": 506.17,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/erika.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/erika_01.pth",
+      "size_mb": 164.78,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01/schp_human_parsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_19.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_03.pth",
+      "size_mb": 168.53,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_12.pth",
+      "size_mb": 0.0,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/lightweight_parsing.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lightweight_parsing_01.pth",
+      "size_mb": 0.47,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy_lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_lip_05.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_20.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/graphonomy_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_atr_05.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_09.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_05_cloth_warping/tom_final.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_05_cloth_warping/tom_final_01.pth",
+      "size_mb": 3279.07,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_05_cloth_warping/lightweight_warping.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_05_cloth_warping/lightweight_warping_01.pth",
+      "size_mb": 0.09,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/resnet50_features/resnet50_features.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/resnet50_features_01.pth",
+      "size_mb": 97.79,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/vgg19_features/vgg19_features.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/vgg19_features_01.pth",
+      "size_mb": 548.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/groundingdino/groundingdino_swint_ogc.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/groundingdino_swint_ogc_01.pth",
+      "size_mb": 659.86,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/resnet50_backbone/resnet50_backbone.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/resnet50_backbone_01.pth",
+      "size_mb": 97.79,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_07_post_processing/codeformer.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/codeformer_04.pth",
+      "size_mb": 359.19,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_07_post_processing/basic_enhancer.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/basic_enhancer_01.pth",
+      "size_mb": 332.48,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_07_post_processing/RealESRGAN_x4plus.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/RealESRGAN_x4plus_07.pth",
+      "size_mb": 63.94,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_07_post_processing/GFPGANv1.4.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/GFPGANv1.4_01.pth",
+      "size_mb": 332.48,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_08_quality_assessment/lpips_alex.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/lpips_alex_01.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/support/deeplabv3_resnet50.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/deeplabv3_resnet50_01.pth",
+      "size_mb": 160.51,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/schp_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/schp_atr_07.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_10.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/atr_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/atr_model_06.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/lip_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lip_model_06.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/openpose/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_28.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/openpose/hand_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/hand_pose_model_08.pth",
+      "size_mb": 140.52,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_29.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_30.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_16.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_21.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_31.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_17.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_22.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/lightweight_parsing.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lightweight_parsing_05.pth",
+      "size_mb": 0.47,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/graphonomy_lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_lip_06.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/graphonomy.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_05.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_23.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/graphonomy_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_atr_06.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_11.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_02_pose_estimation/openpose.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/openpose_05.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/schp_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/schp_atr_08.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_12.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/atr_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/atr_model_07.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/lip_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lip_model_07.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/openpose/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_32.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/openpose/hand_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/hand_pose_model_09.pth",
+      "size_mb": 140.52,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_33.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_34.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_18.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_24.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_35.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_19.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_25.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/u2net/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_13.pth",
+      "size_mb": 168.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/lightweight_parsing.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lightweight_parsing_06.pth",
+      "size_mb": 0.47,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/graphonomy_lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_lip_07.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/graphonomy.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_06.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_26.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/graphonomy_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_atr_07.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_13.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_02_pose_estimation/openpose.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/openpose_06.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_01_human_parsing/schp_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/schp_atr_09.pth",
+      "size_mb": 254.5,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/schp_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/schp_atr_10.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_14.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/atr_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/atr_model_08.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/lip_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lip_model_08.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/openpose/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_36.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/openpose/hand_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/hand_pose_model_10.pth",
+      "size_mb": 140.52,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_37.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_38.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_20.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_27.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_39.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_21.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_28.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/u2net/u2net.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_14.pth",
+      "size_mb": 168.12,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/lightweight_parsing.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/lightweight_parsing_07.pth",
+      "size_mb": 0.47,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/graphonomy_lip.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_lip_08.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/graphonomy.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_07.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_29.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/graphonomy_atr.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/graphonomy_atr_08.pth",
+      "size_mb": 255.06,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/rng_state.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/rng_state_15.pth",
+      "size_mb": 0.01,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_02_pose_estimation/openpose.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/openpose_07.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_02_pose_estimation/body_pose_model.pth",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/body_pose_model_40.pth",
+      "size_mb": 199.57,
+      "extension": ".pth"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/clip-vit-base-patch32/clip_vit_base_patch32.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/clip_vit_base_patch32.pt",
+      "size_mb": 337.58,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_01.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_01.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/mobile_sam_01.pt",
+      "size_mb": 38.84,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/dpt_hybrid-midas-501f0c75.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/dpt_hybrid-midas-501f0c75_01.pt",
+      "size_mb": 469.93,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/ZoeD_M12_N.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/ZoeD_M12_N_01.pt",
+      "size_mb": 1376.54,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/scannet.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/scannet_01.pt",
+      "size_mb": 277.3,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_09.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_09.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/yolov8n-pose.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/yolov8n-pose_01.pt",
+      "size_mb": 6.51,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_10.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_10.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_03_cloth_segmentation/mobile_sam.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/mobile_sam_05.pt",
+      "size_mb": 38.84,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_11.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_11.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_02_pose_estimation/yolov8n-pose.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/yolov8n-pose_05.pt",
+      "size_mb": 6.51,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_12.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_12.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_03_cloth_segmentation/mobile_sam.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/mobile_sam_06.pt",
+      "size_mb": 38.84,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_13.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_13.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_02_pose_estimation/yolov8n-pose.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/yolov8n-pose_06.pt",
+      "size_mb": 6.51,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_14.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_14.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_03_cloth_segmentation/mobile_sam.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/mobile_sam_07.pt",
+      "size_mb": 38.84,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/optimizer.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/optimizer_15.pt",
+      "size_mb": 208.95,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/scheduler.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/scheduler_15.pt",
+      "size_mb": 0.0,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_02_pose_estimation/yolov8n-pose.pt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/yolov8n-pose_07.pt",
+      "size_mb": 6.51,
+      "extension": ".pt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/basic_models/CLIP/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/model_01.safetensors",
+      "size_mb": 577.12,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_01.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_01.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_43.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_44.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_45.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip-vit-large-patch14/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/model_01.safetensors",
+      "size_mb": 1631.3,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/grounding_dino/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/model_15.safetensors",
+      "size_mb": 657.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_46.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_47.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_48.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_49.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_50.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_51.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_52.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_53.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_01.safetensors",
+      "size_mb": 168.21,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_02.safetensors",
+      "size_mb": 168.21,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_09.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/clip-vit-base-patch32/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/model_05.safetensors",
+      "size_mb": 577.12,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/v1-5-pruned-emaonly_01.safetensors",
+      "size_mb": 4067.56,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/v1-5-pruned.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/v1-5-pruned_01.safetensors",
+      "size_mb": 7346.46,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/text_encoder/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/model_01.safetensors",
+      "size_mb": 469.46,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/model.fp16_01.safetensors",
+      "size_mb": 234.74,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_54.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.non_ema_01.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.fp16_01.safetensors",
+      "size_mb": 1639.49,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/safety_checker/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/model_04.safetensors",
+      "size_mb": 1159.65,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/model.fp16_04.safetensors",
+      "size_mb": 579.85,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_55.safetensors",
+      "size_mb": 319.14,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.fp16_03.safetensors",
+      "size_mb": 159.58,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_10.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_56.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_57.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_58.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_59.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_60.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_61.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_62.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_63.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_11.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_12.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_64.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_65.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_66.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_67.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_68.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_69.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_70.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_71.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_13.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_14.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_72.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_73.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_74.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_75.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_76.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_77.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_78.safetensors",
+      "size_mb": 3278.94,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_79.safetensors",
+      "size_mb": 3278.89,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/model.safetensors",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_15.safetensors",
+      "size_mb": 104.42,
+      "extension": ".safetensors"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x.pkl",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x_01.pkl",
+      "size_mb": 243.91,
+      "extension": ".pkl"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x.pkl",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x_05.pkl",
+      "size_mb": 243.91,
+      "extension": ".pkl"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x.pkl",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x_06.pkl",
+      "size_mb": 243.91,
+      "extension": ".pkl"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x.pkl",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/densepose_rcnn_R_50_FPN_s1x_07.pkl",
+      "size_mb": 243.91,
+      "extension": ".pkl"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_01.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_01.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_01.bin",
+      "size_mb": 3279.07,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_01.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_14.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip-vit-large-patch14/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/pytorch_model_01.bin",
+      "size_mb": 1631.42,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/grounding_dino/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/pytorch_model_01.bin",
+      "size_mb": 659.86,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_13.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_15.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip-vit-base-patch32/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/pytorch_model_10.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_14.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_16.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/pytorch_model_01.bin",
+      "size_mb": 168.39,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/shared_encoder/clip-vit-base-patch32/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/pytorch_model_11.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/pytorch_model_02.bin",
+      "size_mb": 168.39,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_09.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_09.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip_vit_base/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/pytorch_model_12.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/misc/pytorch_model_10.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/clip-vit-base-patch32/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/pytorch_model_13.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/auxiliary/clip_vit_base/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/pytorch_model_14.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/text_encoder/pytorch_model.fp16.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model.fp16_01.bin",
+      "size_mb": 234.78,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_15.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.non_ema_01.bin",
+      "size_mb": 3279.08,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.fp16_01.bin",
+      "size_mb": 1639.68,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/unet/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_17.bin",
+      "size_mb": 3279.07,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/safety_checker/pytorch_model.fp16.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model.fp16_03.bin",
+      "size_mb": 579.93,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/safety_checker/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_16.bin",
+      "size_mb": 1159.73,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.fp16_03.bin",
+      "size_mb": 159.65,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_18.bin",
+      "size_mb": 319.2,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_08_quality_assessment/clip_vit_b32.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/clip_vit_b32.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/support/vae_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/vae_model_01.bin",
+      "size_mb": 319.2,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/support/clip_vision_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/clip_vision_model_01.bin",
+      "size_mb": 577.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_10.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_10.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_17.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_19.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_18.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_20.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_11.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_11.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_12.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_12.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_19.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_21.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_20.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_22.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_13.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_13.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_14.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_14.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_21.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_23.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/pytorch_model_22.bin",
+      "size_mb": 469.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_24.bin",
+      "size_mb": 319.21,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/training_args.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/training_args_15.bin",
+      "size_mb": 0.0,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/pytorch_model.bin",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/pytorch_model_15.bin",
+      "size_mb": 104.5,
+      "extension": ".bin"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_03_cloth_segmentation/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_01.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/human_parsing/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_01.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_01.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_14.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/u2net.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_01.onnx",
+      "size_mb": 167.84,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_14.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_15.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_15.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/ootdiffusion_hf/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_16.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_01.onnx",
+      "size_mb": 167.99,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/onnx/model_fp16.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_fp16_01.onnx",
+      "size_mb": 84.13,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/cloth_segmentation/onnx/model_quantized.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_quantized_01.onnx",
+      "size_mb": 42.35,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_02.onnx",
+      "size_mb": 167.99,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/onnx/model_fp16.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_fp16_02.onnx",
+      "size_mb": 84.13,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/background_removal/onnx/model_quantized.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/model_quantized_02.onnx",
+      "size_mb": 42.35,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_01_human_parsing/segformer_b2_clothes/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_09.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_16.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_17.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/human_parsing/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_10.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_03_cloth_segmentation/u2net.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_05.onnx",
+      "size_mb": 167.84,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_17.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_18.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_18.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/ootdiffusion_hf/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_19.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_01_human_parsing/segformer_b2_clothes/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_11.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/human_parsing/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_12.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_03_cloth_segmentation/u2net.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_06.onnx",
+      "size_mb": 167.84,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_19.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_20.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_20.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/ootdiffusion_hf/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_21.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_01_human_parsing/segformer_b2_clothes/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_13.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_01_human_parsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_21.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/human_parsing/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_14.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_03_cloth_segmentation/u2net.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_03_cloth_segmentation/u2net_07.onnx",
+      "size_mb": 167.84,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_22.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_22.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/humanparsing/parsing_atr.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_atr_23.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/ootdiffusion_hf/checkpoints/humanparsing/parsing_lip.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/parsing_lip_23.onnx",
+      "size_mb": 254.5,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_01_human_parsing/segformer_b2_clothes/onnx/model.onnx",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_01_human_parsing/model_15.onnx",
+      "size_mb": 104.94,
+      "extension": ".onnx"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip-vit-large-patch14/tf_model.h5",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/tf_model_01.h5",
+      "size_mb": 1631.85,
+      "extension": ".h5"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/shared_encoder/clip-vit-base-patch32/tf_model.h5",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/tf_model_04.h5",
+      "size_mb": 577.5,
+      "extension": ".h5"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/clip_vit_base/tf_model.h5",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_08_quality_assessment/tf_model_05.h5",
+      "size_mb": 577.5,
+      "extension": ".h5"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/checkpoints/pose_estimation/mediapipe_pose_landmarker.mediapipe",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/mediapipe_pose_landmarker.mediapipe",
+      "size_mb": 29.24,
+      "extension": ".mediapipe"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/checkpoints/post_processing/swinir_real_sr.pytorch",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_07_post_processing/swinir_real_sr.pytorch",
+      "size_mb": 64.02,
+      "extension": ".pytorch"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/pose_estimation/lama.ckpt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/lama_01.ckpt",
+      "size_mb": 391.05,
+      "extension": ".ckpt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/v1-5-pruned.ckpt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/v1-5-pruned_01.ckpt",
+      "size_mb": 7346.92,
+      "extension": ".ckpt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/stable-diffusion-v1-5/v1-5-pruned-emaonly.ckpt",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_06_virtual_fitting/v1-5-pruned-emaonly_01.ckpt",
+      "size_mb": 4067.78,
+      "extension": ".ckpt"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_02_pose_estimation/pose_landmark_full.tflite",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/pose_landmark_full_01.tflite",
+      "size_mb": 8.96,
+      "extension": ".tflite"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232919/step_02_pose_estimation/pose_landmark_full.tflite",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/pose_landmark_full_05.tflite",
+      "size_mb": 8.96,
+      "extension": ".tflite"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232943/step_02_pose_estimation/pose_landmark_full.tflite",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/pose_landmark_full_06.tflite",
+      "size_mb": 8.96,
+      "extension": ".tflite"
+    },
+    {
+      "source": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/backup_essential_20250717_232130/step_02_pose_estimation/pose_landmark_full.tflite",
+      "target": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/models/checkpoints/step_02_pose_estimation/pose_landmark_full_07.tflite",
+      "size_mb": 8.96,
+      "extension": ".tflite"
+    }
+  ],
+  "errors": [
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/openpose/ckpts/body_pose_model.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/cache/models--ai-forever--Real-ESRGAN/.no_exist/8110204ebf8d25c031b66c26c2d1098aa831157e/RealESRGAN_x4plus.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--facebook--sam2-hiera-large/snapshots/eba9be237c463eb950e64b65c223ad55c878c2ac/sam2_hiera_large.pt",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b/sd_xl_offset_example-lora_1.0.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b/text_encoder/model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/462165984030d82259a11f4367a4eed129e94a7b/text_encoder/model.fp16.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--patrickjohncyh--fashion-clip/snapshots/7e3ba62ce16b379a1ab479346b66f192e76f51b7/model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/text_encoder_2/model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/text_encoder/model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/image_encoder/model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/densepose/model_final_162be9.pkl",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--openai--clip-vit-large-patch14-336/snapshots/ce19dc912ca5cd21c8a653c79e251e808ccabcd1/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--patrickjohncyh--fashion-clip/snapshots/7e3ba62ce16b379a1ab479346b66f192e76f51b7/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/temp/models--openai--clip-vit-base-patch32/snapshots/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/cache/models--openai--clip-vit-base-patch32/snapshots/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootd_hd_unet.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootd_dc_unet.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/clip-vit-base-patch32/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--patrickjohncyh--fashion-clip/snapshots/7e3ba62ce16b379a1ab479346b66f192e76f51b7/onnx/model.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/parsing_atr.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/parsing_lip.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/humanparsing/parsing_atr.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--yisol--IDM-VTON/snapshots/585a32e74aee241cbc0d0cc3ab21392ca58c916a/humanparsing/parsing_lip.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/huggingface_cache/models--openai--clip-vit-large-patch14-336/snapshots/ce19dc912ca5cd21c8a653c79e251e808ccabcd1/tf_model.h5",
+      "error": "복사 검증 실패"
+    }
+  ],
+  "stats_by_extension": {
+    ".bin": 66,
+    ".ckpt": 3,
+    ".h5": 4,
+    ".mediapipe": 1,
+    ".onnx": 45,
+    ".pkl": 5,
+    ".pt": 29,
+    ".pth": 146,
+    ".pytorch": 1,
+    ".safetensors": 72,
+    ".tflite": 4
+  },
+  "stats_by_step": {
+    "step_07_post_processing": 11,
+    "step_01_human_parsing": 135,
+    "step_03_cloth_segmentation": 31,
+    "step_04_geometric_matching": 6,
+    "step_02_pose_estimation": 56,
+    "misc": 10,
+    "step_05_cloth_warping": 2,
+    "step_08_quality_assessment": 14,
+    "step_06_virtual_fitting": 78
+  }
+}
