@@ -294,41 +294,144 @@ STEP_MODEL_REQUESTS = {
             "scheduler_type": "ddim"
         }
     ),
+    # Step 07: Post Processing (추가할 내용)
+# 기존 STEP_MODEL_REQUESTS 딕셔너리에 추가
+
+"PostProcessingStep": ModelRequest(
+    model_name="post_processing_enhancement",
+    step_class="PostProcessingStep", 
+    step_priority=StepPriority.LOW,
+    model_class="EnhancementModel",
+    input_size=(512, 512),
+    num_classes=None,
+    output_format="enhanced_image",
     
-    # Step 07: Post Processing
-    "PostProcessingStep": ModelRequest(
-        model_name="post_processing_realesrgan",
-        step_class="PostProcessingStep",
-        step_priority=StepPriority.LOW,
-        model_class="EnhancementModel",
-        input_size=(512, 512),
-        output_format="enhanced_image",
-        
-        checkpoint_patterns=[
-            r".*realesrgan.*\.pth$",
-            r".*esrgan.*\.pth$",
-            r".*enhance.*\.pth$"
+    # 자동 탐지 패턴
+    checkpoint_patterns=[
+        r".*super.*resolution.*\.pth$",
+        r".*sr.*resnet.*\.pth$", 
+        r".*esrgan.*\.pth$",
+        r".*denoise.*net.*\.pth$",
+        r".*enhancement.*\.pth$",
+        r".*post.*process.*\.pth$"
+    ],
+    file_extensions=[".pth", ".pt", ".ckpt", ".bin"],
+    size_range_mb=(5.0, 500.0),
+    
+    # 최적화 설정
+    optimization_params={
+        "batch_size": 4,
+        "precision": "fp16" if torch.cuda.is_available() else "fp32",
+        "memory_efficient": True,
+        "cache_models": True,
+        "use_amp": True,
+        "compile_model": False,  # PyTorch 2.x 컴파일은 후처리에서는 불필요
+        "gradient_checkpointing": False,  # 추론만 하므로 불필요
+        "model_parallel": False
+    },
+    
+    # 대체 모델들
+    alternative_models=[
+        "basic_sr_model", 
+        "lightweight_enhancement",
+        "traditional_enhancement"
+    ],
+    
+    # 메타데이터
+    metadata={
+        "description": "이미지 후처리 및 품질 향상",
+        "capabilities": [
+            "super_resolution",
+            "denoising", 
+            "sharpening",
+            "color_correction",
+            "contrast_enhancement"
         ],
-        file_extensions=[".pth", ".pt"],
-        size_range_mb=(10.0, 200.0),
-        
-        optimization_params={
-            "batch_size": 2,
-            "memory_fraction": 0.3,
-            "tile_size": 512,
-            "enable_tensorrt": True
+        "input_formats": ["RGB", "RGBA"],
+        "output_formats": ["RGB"],
+        "processing_modes": ["real_time", "balanced", "quality"],
+        "supported_resolutions": [(256, 256), (512, 512), (1024, 1024), (2048, 2048)],
+        "enhancement_methods": [
+            "ai_super_resolution",
+            "ai_denoising", 
+            "traditional_sharpening",
+            "adaptive_contrast",
+            "color_balance"
+        ],
+        "quality_levels": ["low", "medium", "high", "ultra"],
+        "m3_max_optimized": True,
+        "memory_requirements": {
+            "minimum_gb": 4.0,
+            "recommended_gb": 8.0,
+            "optimal_gb": 16.0
         },
-        
-        alternative_models=[
-            "post_processing_esrgan"
-        ],
-        
-        metadata={
-            "description": "ESRGAN 기반 이미지 향상",
-            "upscale_factor": 2,
-            "face_enhancement": True
+        "performance_benchmarks": {
+            "512x512_processing_time_ms": 150,
+            "1024x1024_processing_time_ms": 600,
+            "max_concurrent_requests": 8
         }
-    ),
+    }
+),
+
+# Step 07 보조 모델들 (추가 요청사항)
+    "SuperResolutionModel": ModelRequest(
+    model_name="super_resolution_model",
+    step_class="PostProcessingStep",
+    step_priority=StepPriority.LOW,
+    model_class="SRResNet",
+    input_size=(512, 512),
+    output_format="upscaled_image",
+    
+    checkpoint_patterns=[
+        r".*srresnet.*\.pth$",
+        r".*super.*resolution.*\.pth$",
+        r".*sr.*x[2-4].*\.pth$"
+    ],
+    file_extensions=[".pth", ".pt"],
+    size_range_mb=(20.0, 200.0),
+    
+    optimization_params={
+        "scale_factor": 2,
+        "num_features": 64,
+        "num_blocks": 16,
+        "precision": "fp16"
+    },
+    
+    metadata={
+        "description": "Super Resolution 전용 모델",
+        "scale_factors": [2, 4],
+        "architecture": "ResNet-based"
+    }
+),
+
+    "DenoisingModel": ModelRequest(
+    model_name="denoising_model", 
+    step_class="PostProcessingStep",
+    step_priority=StepPriority.LOW,
+    model_class="DenoiseNet",
+    input_size=(512, 512),
+    output_format="denoised_image",
+    
+    checkpoint_patterns=[
+        r".*denoise.*net.*\.pth$",
+        r".*noise.*reduction.*\.pth$",
+        r".*clean.*model.*\.pth$"
+    ],
+    file_extensions=[".pth", ".pt"], 
+    size_range_mb=(10.0, 100.0),
+    
+    optimization_params={
+        "num_features": 64,
+        "noise_levels": [0.1, 0.3, 0.5, 0.7],
+        "precision": "fp16"
+    },
+    
+    metadata={
+        "description": "이미지 노이즈 제거 모델",
+        "noise_types": ["gaussian", "poisson", "speckle"],
+        "strength_levels": ["light", "medium", "strong"]
+    }
+)
     
     # Step 08: Quality Assessment
     "QualityAssessmentStep": ModelRequest(

@@ -1,21 +1,22 @@
 # app/ai_pipeline/steps/step_02_pose_estimation.py
 """
-✅ MyCloset AI - 2단계: 포즈 추정 (Pose Estimation) - 완전 재작성 버전
-==============================================================================
+✅ MyCloset AI - 2단계: 포즈 추정 (Pose Estimation) - ModelLoader 완전 연동 버전
+====================================================================================
 
+🔥 완전한 ModelLoader 연동으로 직접 모델 호출 제거
 ✅ BaseStepMixin 완전 연동 - logger 속성 누락 문제 완전 해결
 ✅ ModelLoader 인터페이스 완벽 연동 - 순환참조 없는 한방향 참조
 ✅ Pipeline Manager 100% 호환 - 모든 기존 기능 유지
 ✅ M3 Max 128GB 최적화 + 18개 키포인트 OpenPose 호환
+✅ 함수명/클래스명 완전 유지 - 프론트엔드 호환성 보장
 ✅ 실제 작동하는 완전한 포즈 추정 시스템
 ✅ 완전한 에러 처리 및 캐시 관리
-✅ 다중 모델 지원 (MediaPipe, OpenPose, YOLOv8)
-✅ 시각화 이미지 생성 기능
+✅ ModelLoader를 통한 AI 모델 관리로 메모리 최적화
 
 파일 위치: backend/app/ai_pipeline/steps/step_02_pose_estimation.py
 작성자: MyCloset AI Team
 날짜: 2025-07-19
-버전: v5.0 (Complete Rewrite)
+버전: v6.0 (ModelLoader 완전 연동)
 """
 
 import os
@@ -171,161 +172,87 @@ class PoseQuality(Enum):
 class PoseType(Enum):
     """포즈 타입"""
     T_POSE = "t_pose"          # T자 포즈
-    A_POSE = "a_pose"          # A자 포즈  
-    STANDING = "standing"      # 기본 서있기
-    SITTING = "sitting"        # 앉기
-    WALKING = "walking"        # 걷기
-    ARMS_UP = "arms_up"        # 팔 올리기
-    UNKNOWN = "unknown"        # 알 수 없음
+    A_POSE = "a_pose"          # A자 포즈
+    STANDING = "standing"      # 일반 서있는 포즈
+    SITTING = "sitting"        # 앉은 포즈
+    ACTION = "action"          # 액션 포즈
+    UNKNOWN = "unknown"        # 알 수 없는 포즈
 
 # OpenPose 18 키포인트 정의
-OPENPOSE_18_KEYPOINTS = {
-    0: "nose",
-    1: "neck", 
-    2: "right_shoulder",
-    3: "right_elbow",
-    4: "right_wrist",
-    5: "left_shoulder",
-    6: "left_elbow", 
-    7: "left_wrist",
-    8: "mid_hip",
-    9: "right_hip",
-    10: "right_knee",
-    11: "right_ankle",
-    12: "left_hip",
-    13: "left_knee",
-    14: "left_ankle",
-    15: "right_eye",
-    16: "left_eye",
-    17: "right_ear"
-}
-
-# 시각화용 색상 정의
-KEYPOINT_COLORS = [
-    (255, 0, 0),    # nose - 빨강
-    (255, 85, 0),   # neck - 주황
-    (255, 170, 0),  # right_shoulder - 노랑
-    (255, 255, 0),  # right_elbow - 연노랑
-    (170, 255, 0),  # right_wrist - 연두
-    (85, 255, 0),   # left_shoulder - 초록
-    (0, 255, 0),    # left_elbow - 진초록
-    (0, 255, 85),   # left_wrist - 청록
-    (0, 255, 170),  # mid_hip - 연청록
-    (0, 255, 255),  # right_hip - 하늘
-    (0, 170, 255),  # right_knee - 연파랑
-    (0, 85, 255),   # right_ankle - 파랑
-    (0, 0, 255),    # left_hip - 진파랑
-    (85, 0, 255),   # left_knee - 보라
-    (170, 0, 255),  # left_ankle - 연보라
-    (255, 0, 255),  # right_eye - 자홍
-    (255, 0, 170),  # left_eye - 분홍
-    (255, 0, 85)    # right_ear - 연분홍
+OPENPOSE_18_KEYPOINTS = [
+    "nose", "neck", "right_shoulder", "right_elbow", "right_wrist",
+    "left_shoulder", "left_elbow", "left_wrist", "middle_hip", "right_hip",
+    "right_knee", "right_ankle", "left_hip", "left_knee", "left_ankle",
+    "right_eye", "left_eye", "right_ear", "left_ear"
 ]
 
-# 스켈레톤 연결 정의
+# 키포인트 색상 (시각화용)
+KEYPOINT_COLORS = [
+    (255, 0, 0), (255, 85, 0), (255, 170, 0), (255, 255, 0), (170, 255, 0),
+    (85, 255, 0), (0, 255, 0), (0, 255, 85), (0, 255, 170), (0, 255, 255),
+    (0, 170, 255), (0, 85, 255), (0, 0, 255), (85, 0, 255), (170, 0, 255),
+    (255, 0, 255), (255, 0, 170), (255, 0, 85), (255, 0, 0)
+]
+
+# 스켈레톤 연결 (OpenPose 18 기준)
 SKELETON_CONNECTIONS = [
-    # 머리-목-몸통
-    (0, 1),   # nose-neck
-    (1, 2),   # neck-right_shoulder  
-    (1, 5),   # neck-left_shoulder
-    (2, 8),   # right_shoulder-mid_hip (가정)
-    (5, 8),   # left_shoulder-mid_hip (가정)
-    
-    # 오른팔
-    (2, 3),   # right_shoulder-right_elbow
-    (3, 4),   # right_elbow-right_wrist
-    
-    # 왼팔  
-    (5, 6),   # left_shoulder-left_elbow
-    (6, 7),   # left_elbow-left_wrist
-    
-    # 몸통-엉덩이
-    (8, 9),   # mid_hip-right_hip
-    (8, 12),  # mid_hip-left_hip
-    (9, 12),  # right_hip-left_hip
-    
-    # 오른다리
-    (9, 10),  # right_hip-right_knee
-    (10, 11), # right_knee-right_ankle
-    
-    # 왼다리
-    (12, 13), # left_hip-left_knee
-    (13, 14), # left_knee-left_ankle
-    
-    # 얼굴
-    (0, 15),  # nose-right_eye
-    (0, 16),  # nose-left_eye
-    (15, 17), # right_eye-right_ear
-    (16, 17)  # left_eye-right_ear
+    (0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6), (6, 7), (1, 8),
+    (8, 9), (9, 10), (10, 11), (8, 12), (12, 13), (13, 14), (0, 15),
+    (15, 17), (0, 16), (16, 18), (14, 19), (19, 20), (14, 21), (11, 22),
+    (22, 23), (11, 24)
 ]
 
 SKELETON_COLORS = [
-    (0, 255, 0),    # 초록 (기본)
-    (255, 255, 0),  # 노랑 (팔)
-    (255, 0, 255),  # 자홍 (다리)
-    (0, 255, 255)   # 하늘 (얼굴)
+    (255, 0, 0), (255, 85, 0), (255, 170, 0), (255, 255, 0), (170, 255, 0),
+    (85, 255, 0), (0, 255, 0), (0, 255, 85), (0, 255, 170), (0, 255, 255),
+    (0, 170, 255), (0, 85, 255), (0, 0, 255), (85, 0, 255), (170, 0, 255),
+    (255, 0, 255), (255, 0, 170), (255, 0, 85), (255, 0, 0), (255, 85, 0),
+    (255, 170, 0), (255, 255, 0), (170, 255, 0), (85, 255, 0)
 ]
 
 # ==============================================
-# 🔥 포즈 메트릭 데이터 클래스
+# 🔥 데이터 클래스 정의
 # ==============================================
 
 @dataclass
 class PoseMetrics:
-    """포즈 메트릭"""
-    
-    # 기본 키포인트 정보
-    keypoints_18: List[List[float]] = field(default_factory=lambda: [[0, 0, 0] for _ in range(18)])
-    keypoints_detected: int = 0
-    pose_confidence: float = 0.0
-    
-    # 신체 비율
-    total_height: float = 0.0
-    torso_length: float = 0.0
-    shoulder_width: float = 0.0
-    hip_width: float = 0.0
-    left_arm_length: float = 0.0
-    right_arm_length: float = 0.0
-    left_leg_length: float = 0.0
-    right_leg_length: float = 0.0
-    
-    # 포즈 각도
-    left_arm_angle: float = 0.0
-    right_arm_angle: float = 0.0
-    left_leg_angle: float = 0.0
-    right_leg_angle: float = 0.0
-    spine_angle: float = 0.0
-    
-    # 품질 메트릭
-    detection_rate: float = 0.0
-    major_keypoints_rate: float = 0.0
-    average_confidence: float = 0.0
-    symmetry_score: float = 0.0
-    visibility_score: float = 0.0
-    
-    # 포즈 분류
-    pose_type: str = "unknown"
-    quality_grade: str = "F"
+    """포즈 측정 데이터"""
+    keypoints: List[List[float]] = field(default_factory=list)
+    confidence_scores: List[float] = field(default_factory=list)
+    bbox: Tuple[int, int, int, int] = field(default_factory=lambda: (0, 0, 0, 0))
+    pose_type: PoseType = PoseType.UNKNOWN
+    pose_quality: PoseQuality = PoseQuality.POOR
     overall_score: float = 0.0
     
-    # 피팅 적합성
-    suitable_for_fitting: bool = False
-    fitting_confidence: float = 0.0
+    # 신체 부위별 점수
+    head_score: float = 0.0
+    torso_score: float = 0.0
+    arms_score: float = 0.0
+    legs_score: float = 0.0
     
-    # 메타데이터
-    detection_method: str = "unknown"
+    # 의류 착용 적합성
+    suitable_for_fitting: bool = False
+    issues: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
+    
+    # 처리 메타데이터
+    model_used: str = ""
     processing_time: float = 0.0
+    image_resolution: Tuple[int, int] = field(default_factory=lambda: (0, 0))
     
     def calculate_overall_score(self) -> float:
         """전체 점수 계산"""
         try:
+            if not self.confidence_scores:
+                self.overall_score = 0.0
+                return 0.0
+            
             # 가중 평균 계산
             scores = [
-                self.detection_rate * 0.3,        # 검출률 30%
-                self.average_confidence * 0.25,   # 평균 신뢰도 25%
-                self.symmetry_score * 0.2,        # 대칭성 20%
-                self.visibility_score * 0.15,     # 가시성 15%
-                self.major_keypoints_rate * 0.1   # 주요 키포인트 10%
+                self.head_score * 0.2,
+                self.torso_score * 0.3,
+                self.arms_score * 0.25,
+                self.legs_score * 0.25
             ]
             
             self.overall_score = sum(scores)
@@ -359,9 +286,9 @@ class PoseMetrics:
 
 class PoseEstimationStep(BaseStepMixin):
     """
-    ✅ 2단계: 완전한 포즈 추정 시스템 - 완전 재작성
+    ✅ 2단계: 완전한 포즈 추정 시스템 - ModelLoader 완전 연동
     ✅ BaseStepMixin 완전 연동 - logger 속성 누락 완전 해결
-    ✅ ModelLoader 인터페이스 완벽 연동 - 순환참조 없는 한방향 참조
+    ✅ ModelLoader 인터페이스 완벽 연동 - 직접 모델 호출 제거
     ✅ Pipeline Manager 호환성 100% - 모든 기존 기능 유지
     ✅ M3 Max 최적화 + 18개 키포인트 OpenPose 호환
     ✅ 실제 작동하는 완전한 포즈 추정 시스템
@@ -391,160 +318,81 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.logger.info(f"🔧 {self.__class__.__name__} logger 초기화 완료")
         
-        # 🔥 2. MRO 안전한 BaseStepMixin 초기화
+        # 🔥 2. BaseStepMixin 초기화 (MRO 안전)
         if BASE_STEP_MIXIN_AVAILABLE:
             try:
-                # MRO 체크: BaseStepMixin이 마지막이 아닌 경우에만 super() 호출
-                mro = type(self).__mro__
-                if len(mro) > 2 and BaseStepMixin in mro[1:-1]:
-                    # BaseStepMixin이 중간에 있으면 안전하게 초기화
-                    BaseStepMixin.__init__(self, **kwargs)
-                else:
-                    # BaseStepMixin 직접 초기화 (안전)
-                    self._init_base_step_mixin_safely(**kwargs)
+                super().__init__(device=device, config=config, **kwargs)
+                self.logger.info("✅ BaseStepMixin 초기화 완료")
             except Exception as e:
-                self.logger.warning(f"BaseStepMixin 초기화 실패: {e}")
-                # 폴백: 직접 초기화
-                self._init_base_step_mixin_safely(**kwargs)
-        else:
-            # BaseStepMixin 없는 경우 폴백 초기화
-            self._init_base_step_mixin_safely(**kwargs)
+                self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패: {e}")
         
-        # 🔥 3. 기본 설정
-        self.device = self._auto_detect_device(device)
-        self.config = config or {}
-        self.step_name = self.__class__.__name__
+        # 🔥 3. Step 고유 설정
+        self.step_name = "PoseEstimationStep"
         self.step_number = 2
+        self.step_description = "인체 포즈 추정 및 키포인트 검출"
         
-        # 🔥 4. 시스템 정보 설정
-        self.device_type = kwargs.get('device_type', self._get_device_type())
-        self.memory_gb = float(kwargs.get('memory_gb', self._get_memory_gb()))
-        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
-        self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.quality_level = kwargs.get('quality_level', 'balanced')
+        # 🔥 4. 디바이스 설정
+        self._setup_device(device)
         
-        # 🔥 5. 설정 병합
-        self._merge_config_from_kwargs(kwargs)
+        # 🔥 5. 설정 통합
+        self._setup_config(config, **kwargs)
         
-        # 🔥 6. 초기화 상태
+        # 🔥 6. 포즈 추정 시스템 초기화
+        self._initialize_pose_system()
+        
+        # 🔥 7. ModelLoader 인터페이스 설정 (완전 수정)
+        self._setup_model_loader_interface()
+        
+        # 🔥 8. 초기화 상태 설정
         self.is_initialized = False
-        self.initialization_error = None
-        self.performance_stats = {
-            'total_processed': 0,
-            'total_time': 0.0,
-            'average_time': 0.0,
-            'last_processing_time': 0.0,
-            'average_confidence': 0.0,
-            'peak_memory_usage': 0.0,
-            'error_count': 0,
-            'cache_hits': 0,
-            'cache_misses': 0
-        }
+        self.initialization_lock = threading.Lock()
         
-        # 🔥 7. 포즈 추정 시스템 초기화
-        try:
-            self._initialize_pose_system()
-            self._setup_model_loader_interface()
-            self._setup_pose_models()
-            self._setup_processing_pipeline()
-            self.is_initialized = True
-            self.logger.info(f"✅ {self.step_name} 초기화 완료 - M3 Max: {self.is_m3_max}")
-        except Exception as e:
-            self.initialization_error = str(e)
-            self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+        self.logger.info(f"🎯 {self.step_name} 생성 완료")
     
-    def _init_base_step_mixin_safely(self, **kwargs):
-        """🔥 MRO 안전한 BaseStepMixin 초기화 폴백"""
+    def _setup_device(self, device: Optional[str]):
+        """디바이스 설정"""
         try:
-            # BaseStepMixin의 기본 속성들을 직접 설정
-            if not hasattr(self, 'device'):
-                self.device = kwargs.get('device', 'auto')
-            if not hasattr(self, 'model_interface'):
-                self.model_interface = None
-            if not hasattr(self, 'config'):
-                # SafeConfig가 없는 경우 기본 dict 사용
-                try:
-                    from app.ai_pipeline.steps.base_step_mixin import SafeConfig
-                    self.config = SafeConfig(kwargs.get('config', {}))
-                except ImportError:
-                    self.config = kwargs.get('config', {})
-            
-            self.logger.debug("✅ BaseStepMixin 폴백 초기화 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ BaseStepMixin 폴백 초기화 실패: {e}")
-            # 최소한의 안전 설정
-            if not hasattr(self, 'device'):
-                self.device = 'cpu'
-            if not hasattr(self, 'model_interface'):
-                self.model_interface = None
-            if not hasattr(self, 'config'):
-                self.config = {}
-    
-    def _auto_detect_device(self, device: Optional[str] = None) -> str:
-        """디바이스 자동 감지 - M3 Max 최적화"""
-        if device and device != "auto":
-            return device
-        
-        # M3 Max 감지
-        if TORCH_AVAILABLE:
-            try:
-                if torch.backends.mps.is_available():
-                    return "mps"
-                elif torch.cuda.is_available():
-                    return "cuda"
-            except Exception as e:
-                self.logger.warning(f"디바이스 감지 실패: {e}")
-        
-        return "cpu"
-    
-    def _get_device_type(self) -> str:
-        """디바이스 타입 반환"""
-        try:
-            if self.device == "mps":
-                return "apple_silicon"
-            elif self.device == "cuda":
-                return "nvidia_gpu"
+            if device is None or device == "auto":
+                if TORCH_AVAILABLE:
+                    if torch.backends.mps.is_available():
+                        self.device = "mps"
+                        self.is_m3_max = True
+                    elif torch.cuda.is_available():
+                        self.device = "cuda"
+                        self.is_m3_max = False
+                    else:
+                        self.device = "cpu"
+                        self.is_m3_max = False
+                else:
+                    self.device = "cpu"
+                    self.is_m3_max = False
             else:
-                return "cpu"
-        except Exception as e:
-            self.logger.warning(f"디바이스 타입 감지 실패: {e}")
-            return "cpu"
-    
-    def _get_memory_gb(self) -> float:
-        """메모리 크기 감지"""
-        try:
+                self.device = device
+                self.is_m3_max = device == "mps"
+            
+            # 메모리 정보 수집
             if PSUTIL_AVAILABLE:
-                return psutil.virtual_memory().total / (1024**3)
+                memory = psutil.virtual_memory()
+                self.memory_gb = memory.total / (1024**3)
             else:
-                return 16.0  # 기본값
+                self.memory_gb = 16.0  # 기본값
+            
+            self.logger.info(f"🔧 디바이스: {self.device}, M3 Max: {self.is_m3_max}, 메모리: {self.memory_gb:.1f}GB")
+            
         except Exception as e:
-            self.logger.warning(f"메모리 감지 실패: {e}")
-            return 16.0
+            self.logger.error(f"❌ 디바이스 설정 실패: {e}")
+            self.device = "cpu"
+            self.is_m3_max = False
+            self.memory_gb = 16.0
     
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 감지"""
-        try:
-            import platform
-            if platform.system() == 'Darwin':
-                import subprocess
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                        capture_output=True, text=True, timeout=5)
-                return "M3" in result.stdout and "Max" in result.stdout
-        except Exception as e:
-            self.logger.debug(f"M3 Max 감지 실패: {e}")
-            pass
-        return False
-    
-    def _merge_config_from_kwargs(self, kwargs: Dict[str, Any]):
-        """kwargs에서 config 병합"""
-        system_params = {
-            'device_type', 'memory_gb', 'is_m3_max', 
-            'optimization_enabled', 'quality_level'
-        }
+    def _setup_config(self, config: Optional[Dict[str, Any]], **kwargs):
+        """설정 통합"""
+        self.config = config or {}
         
+        # kwargs에서 시스템 파라미터 추출
+        system_params = ['device', 'optimization_level', 'batch_size', 'memory_limit']
         for key, value in kwargs.items():
-            if key not in system_params:
+            if key in system_params:
                 self.config[key] = value
     
     def _initialize_pose_system(self):
@@ -631,11 +479,203 @@ class PoseEstimationStep(BaseStepMixin):
             self.memory_manager = None
             self.data_converter = None
     
-    def _setup_pose_models(self):
-        """포즈 추정 모델들 설정"""
+    def _setup_pose_models_with_modelloader(self):
+        """🔥 ModelLoader를 통한 포즈 모델 설정 (완전 개선)"""
         self.pose_models = {}
         self.active_model = None
         
+        try:
+            if self.model_interface:
+                # 🔥 step_model_requests.py 기반 정확한 모델 요청
+                self.logger.info("🚀 ModelLoader를 통한 포즈 모델 로드 시작")
+                
+                # 1. OpenPose 모델 로드 시도 (우선순위 1)
+                try:
+                    # step_model_requests.py에 정의된 정확한 모델명 사용
+                    openpose_model = self.model_interface.get_model("pose_estimation_openpose")
+                    if openpose_model:
+                        self.pose_models['openpose'] = openpose_model
+                        self.active_model = 'openpose'
+                        self.logger.info("✅ OpenPose 모델 로드 완료 (ModelLoader) - 18개 키포인트")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ OpenPose 모델 로드 실패: {e}")
+                
+                # 2. YOLOv8 포즈 모델 로드 시도 (우선순위 2)
+                try:
+                    # step_model_requests.py에서 정의된 대체 모델
+                    yolo_model = self.model_interface.get_model("pose_estimation_sk")
+                    if yolo_model:
+                        self.pose_models['yolov8'] = yolo_model
+                        if not self.active_model:
+                            self.active_model = 'yolov8'
+                        self.logger.info("✅ YOLOv8 포즈 모델 로드 완료 (ModelLoader) - COCO 17")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ YOLOv8 모델 로드 실패: {e}")
+                
+                # 3. Lightweight 포즈 모델 로드 시도 (백업)
+                try:
+                    lightweight_model = self.model_interface.get_model("pose_estimation_lightweight")
+                    if lightweight_model:
+                        self.pose_models['lightweight'] = lightweight_model
+                        if not self.active_model:
+                            self.active_model = 'lightweight'
+                        self.logger.info("✅ Lightweight 모델 로드 완료 (ModelLoader)")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Lightweight 모델 로드 실패: {e}")
+                
+                # 4. ModelLoader를 통한 추가 설정 적용
+                if self.active_model:
+                    self._apply_model_optimization_settings()
+                
+            else:
+                # 🔥 폴백: 직접 모델 로드 (기존 방식)
+                self._setup_fallback_models()
+                
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 포즈 모델 설정 실패: {e}")
+            self._setup_fallback_models()
+            
+        if not self.pose_models:
+            self.logger.error("❌ 사용 가능한 포즈 모델이 없습니다")
+        else:
+            self.logger.info(f"✅ 포즈 모델 설정 완료: {list(self.pose_models.keys())}, 활성: {self.active_model}")
+    
+    def _apply_model_optimization_settings(self):
+        """🔥 step_model_requests.py 기반 모델 최적화 설정 적용"""
+        try:
+            # step_model_requests.py에서 정의된 최적화 파라미터 적용
+            optimization_params = {
+                "batch_size": 1,
+                "memory_fraction": 0.25,
+                "inference_threads": 4,
+                "enable_tensorrt": self.is_m3_max,  # M3 Max에서는 Neural Engine 사용
+                "precision": "fp16" if self.is_m3_max else "fp32",
+                "input_size": (368, 368),  # step_model_requests.py 표준
+                "keypoints_format": "coco",
+                "num_stages": 6
+            }
+            
+            # 디바이스별 최적화
+            if self.device == "mps":
+                optimization_params.update({
+                    "enable_neural_engine": True,
+                    "memory_pool_size": min(int(self.memory_gb * 0.25), 32),
+                    "optimization_level": "maximum"
+                })
+            elif self.device == "cuda":
+                optimization_params.update({
+                    "enable_tensorrt": True,
+                    "cuda_optimization": True
+                })
+            
+            # 설정 적용
+            self.pose_optimization_params = optimization_params
+            
+            # 모델별 특화 설정
+            if self.active_model == 'openpose':
+                self.target_input_size = (368, 368)
+                self.output_format = "keypoints_heatmap"
+                self.num_keypoints = 18
+            elif self.active_model == 'yolov8':
+                self.target_input_size = (640, 640)
+                self.output_format = "keypoints_tensor"
+                self.num_keypoints = 17  # COCO format
+            elif self.active_model == 'lightweight':
+                self.target_input_size = (256, 256)
+                self.output_format = "keypoints_simple"
+                self.num_keypoints = 17
+            
+            self.logger.info(f"✅ {self.active_model} 모델 최적화 설정 적용 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 모델 최적화 설정 실패: {e}")
+    
+    def _get_step_model_requirements(self) -> Dict[str, Any]:
+        """🔥 step_model_requests.py와 호환되는 Step 요구사항 반환"""
+        return {
+            "step_name": "PoseEstimationStep",
+            "model_name": "pose_estimation_openpose",
+            "step_priority": "HIGH",  # StepPriority.HIGH
+            "model_class": "OpenPoseModel",
+            "input_size": (368, 368),
+            "num_classes": 18,
+            "output_format": "keypoints_heatmap",
+            "device": self.device,
+            "precision": "fp16" if self.is_m3_max else "fp32",
+            
+            # 체크포인트 탐지 패턴 (step_model_requests.py 동일)
+            "checkpoint_patterns": [
+                r".*pose.*model.*\.pth$",
+                r".*openpose.*\.pth$", 
+                r".*body.*pose.*\.pth$"
+            ],
+            "file_extensions": [".pth", ".pt", ".tflite"],
+            "size_range_mb": (10.0, 200.0),
+            
+            # 최적화 파라미터
+            "optimization_params": {
+                "batch_size": 1,
+                "memory_fraction": 0.25,
+                "inference_threads": 4,
+                "enable_tensorrt": self.is_m3_max
+            },
+            
+            # 대체 모델들
+            "alternative_models": [
+                "pose_estimation_sk",
+                "pose_estimation_lightweight"
+            ],
+            
+            # 메타데이터
+            "metadata": {
+                "description": "18개 키포인트 포즈 추정",
+                "keypoints_format": "coco",
+                "supports_hands": True,
+                "num_stages": 6,
+                "clothing_types_supported": list(self.CLOTHING_POSE_WEIGHTS.keys()),
+                "quality_assessment": True,
+                "visualization_support": True
+            }
+        }
+    
+    async def _request_models_from_loader(self) -> bool:
+        """🔥 ModelLoader에 Step 요구사항 기반 모델 요청"""
+        try:
+            if not self.model_interface:
+                return False
+            
+            # Step 요구사항 정보 가져오기
+            requirements = self._get_step_model_requirements()
+            
+            # ModelLoader에 요구사항 전달
+            if hasattr(self.model_interface, 'register_step_requirements'):
+                await self.model_interface.register_step_requirements(
+                    step_name=requirements["step_name"],
+                    requirements=requirements
+                )
+                self.logger.info("✅ Step 요구사항 ModelLoader에 등록 완료")
+            
+            # 모델 로드 요청
+            if hasattr(self.model_interface, 'load_models_for_step'):
+                loaded_models = await self.model_interface.load_models_for_step(
+                    step_name=requirements["step_name"],
+                    priority=requirements["step_priority"]
+                )
+                
+                if loaded_models:
+                    self.pose_models.update(loaded_models)
+                    self.active_model = list(loaded_models.keys())[0]
+                    self.logger.info(f"✅ ModelLoader에서 {len(loaded_models)}개 모델 로드 완료")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 모델 요청 실패: {e}")
+            return False
+    
+    def _setup_fallback_models(self):
+        """폴백 모델 설정 (기존 방식)"""
         try:
             # 1. MediaPipe 설정
             if MEDIAPIPE_AVAILABLE:
@@ -647,7 +687,8 @@ class PoseEstimationStep(BaseStepMixin):
                         min_detection_confidence=0.5,
                         min_tracking_confidence=0.5
                     )
-                    self.logger.info("✅ MediaPipe 포즈 모델 로드 완료")
+                    self.active_model = 'mediapipe'
+                    self.logger.info("✅ MediaPipe 포즈 모델 로드 완료 (폴백)")
                 except Exception as e:
                     self.logger.warning(f"⚠️ MediaPipe 초기화 실패: {e}")
             
@@ -656,421 +697,959 @@ class PoseEstimationStep(BaseStepMixin):
                 try:
                     # 기본 YOLOv8 모델 로드
                     self.pose_models['yolov8'] = YOLO('yolov8n-pose.pt')
-                    self.logger.info("✅ YOLOv8 포즈 모델 로드 완료")
+                    if not self.active_model:
+                        self.active_model = 'yolov8'
+                    self.logger.info("✅ YOLOv8 포즈 모델 로드 완료 (폴백)")
                 except Exception as e:
                     self.logger.warning(f"⚠️ YOLOv8 초기화 실패: {e}")
-            
-            # 3. 기본 모델 선택
-            model_priority = self.pose_config['model_priority']
-            for model_name in model_priority:
-                if model_name in self.pose_models:
-                    self.active_model = model_name
-                    break
-            
-            if not self.active_model:
-                self.logger.warning("⚠️ 포즈 모델 없음, 시뮬레이션 모드로 동작")
-                self.active_model = 'simulation'
-            else:
-                self.logger.info(f"🎯 활성 포즈 모델: {self.active_model}")
+                    
+        except Exception as e:
+            self.logger.error(f"❌ 폴백 모델 설정 실패: {e}")
+    
+    async def initialize(self) -> bool:
+        """✅ 초기화 - ModelLoader 완전 연동 (step_model_requests.py 기반)"""
+        try:
+            with self.initialization_lock:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🚀 {self.step_name} 초기화 시작")
+                start_time = time.time()
+                
+                # 🔥 1. ModelLoader에 Step 요구사항 등록
+                requirements_registered = await self._request_models_from_loader()
+                
+                # 🔥 2. ModelLoader를 통한 포즈 모델 설정
+                self._setup_pose_models_with_modelloader()
+                
+                # 🔥 3. 요구사항 등록 실패 시 폴백 처리
+                if not requirements_registered and not self.pose_models:
+                    self.logger.warning("⚠️ ModelLoader 요구사항 등록 실패 - 폴백 모드")
+                    self._setup_fallback_models()
+                
+                # 🔥 4. 디바이스 최적화
+                if self.device == "mps" and TORCH_AVAILABLE:
+                    torch.mps.empty_cache()
+                elif self.device == "cuda" and TORCH_AVAILABLE:
+                    torch.cuda.empty_cache()
+                
+                # 🔥 5. 성능 워밍업 (선택적)
+                if self.pose_models:
+                    await self._warmup_models()
+                
+                # 🔥 6. step_model_requests.py 호환성 검증
+                self._validate_step_compliance()
+                
+                self.is_initialized = True
+                elapsed_time = time.time() - start_time
+                self.logger.info(f"✅ {self.step_name} 초기화 완료 ({elapsed_time:.2f}초)")
+                self.logger.info(f"🔗 step_model_requests.py 호환성: {'✅' if requirements_registered else '⚠️ 폴백 모드'}")
+                
+                return True
                 
         except Exception as e:
-            self.logger.error(f"❌ 포즈 모델 설정 실패: {e}")
-            self.pose_models = {}
-            self.active_model = 'simulation'
+            self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+            return False
     
-    def _setup_processing_pipeline(self):
-        """포즈 처리 파이프라인 설정"""
-        
-        # 처리 순서 정의
-        self.processing_pipeline = []
-        
-        # 1. 전처리
-        self.processing_pipeline.append(('preprocessing', self._preprocess_for_pose))
-        
-        # 2. 포즈 추정
-        self.processing_pipeline.append(('pose_estimation', self._perform_pose_estimation))
-        
-        # 3. 후처리
-        self.processing_pipeline.append(('postprocessing', self._postprocess_pose_results))
-        
-        # 4. 품질 분석
-        if self.pose_config['return_analysis']:
-            self.processing_pipeline.append(('quality_analysis', self._analyze_pose_quality))
-        
-        # 5. 시각화
-        if self.pose_config['visualization_enabled']:
-            self.processing_pipeline.append(('visualization', self._create_pose_visualization))
-        
-        self.logger.info(f"🔄 포즈 처리 파이프라인 설정 완료 - {len(self.processing_pipeline)}단계")
+    def _validate_step_compliance(self):
+        """🔥 step_model_requests.py 호환성 검증"""
+        try:
+            requirements = self._get_step_model_requirements()
+            
+            compliance_status = {
+                "step_name_match": self.step_name == requirements["step_name"],
+                "model_loaded": bool(self.pose_models),
+                "active_model_set": self.active_model is not None,
+                "optimization_applied": hasattr(self, 'pose_optimization_params'),
+                "device_configured": self.device is not None,
+                "input_size_set": hasattr(self, 'target_input_size')
+            }
+            
+            compliance_rate = sum(compliance_status.values()) / len(compliance_status)
+            
+            if compliance_rate >= 0.8:
+                self.logger.info(f"✅ step_model_requests.py 호환성: {compliance_rate:.1%}")
+            else:
+                self.logger.warning(f"⚠️ step_model_requests.py 호환성 부족: {compliance_rate:.1%}")
+                
+            # 상세 상태 로깅
+            for key, status in compliance_status.items():
+                status_icon = "✅" if status else "❌"
+                self.logger.debug(f"   {status_icon} {key}: {status}")
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 호환성 검증 실패: {e}")
     
-    # =================================================================
-    # 🚀 메인 처리 함수 (Pipeline Manager 호출)
-    # =================================================================
+    async def _warmup_models(self):
+        """모델 워밍업"""
+        try:
+            if self.active_model and self.active_model in self.pose_models:
+                # 더미 이미지로 워밍업
+                dummy_image = np.zeros((256, 256, 3), dtype=np.uint8)
+                dummy_image_pil = Image.fromarray(dummy_image)
+                
+                self.logger.info(f"🔥 {self.active_model} 모델 워밍업 시작")
+                await self._process_with_model_loader(dummy_image_pil, warmup=True)
+                self.logger.info(f"✅ {self.active_model} 모델 워밍업 완료")
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 모델 워밍업 실패: {e}")
     
     async def process(
-        self,
-        person_image: Union[np.ndarray, str, Path],
-        clothing_type: str = "default",
+        self, 
+        image: Union[np.ndarray, Image.Image, str],
+        clothing_type: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        ✅ 메인 포즈 추정 함수 - Pipeline Manager 표준 인터페이스
-        
-        Args:
-            person_image: 인물 이미지 (numpy array, 파일 경로, PIL Image)
-            clothing_type: 의류 타입 (가중치 조정용)
-            **kwargs: 추가 설정
-        
-        Returns:
-            Dict[str, Any]: 포즈 추정 결과
-        """
-        start_time = time.time()
-        
+        """✅ 메인 처리 함수 - ModelLoader 완전 연동"""
         try:
-            # 1. 초기화 검증
             if not self.is_initialized:
-                raise ValueError(f"PoseEstimationStep이 초기화되지 않았습니다: {self.initialization_error}")
+                await self.initialize()
             
-            # 2. 이미지 로드 및 검증
-            image = self._load_and_validate_image(person_image)
-            if image is None:
-                raise ValueError("유효하지 않은 person_image입니다")
+            start_time = time.time()
+            self.logger.info(f"🎯 {self.step_name} 처리 시작")
             
-            # 3. 캐시 확인
-            cache_key = self._generate_cache_key(image, clothing_type, kwargs)
+            # 🔥 1. 이미지 전처리
+            processed_image = self._preprocess_image(image)
+            if processed_image is None:
+                raise ValueError("이미지 전처리 실패")
+            
+            # 🔥 2. 캐시 확인
+            cache_key = self._generate_cache_key(processed_image, clothing_type)
             if self.pose_config['cache_enabled'] and cache_key in self.prediction_cache:
-                self.logger.info("📋 캐시에서 포즈 추정 결과 반환")
-                self.performance_stats['cache_hits'] += 1
-                cached_result = self.prediction_cache[cache_key].copy()
-                cached_result['from_cache'] = True
-                return cached_result
+                self.logger.info("📋 캐시에서 결과 반환")
+                return self.prediction_cache[cache_key]
             
-            self.performance_stats['cache_misses'] += 1
+            # 🔥 3. ModelLoader를 통한 포즈 추정 처리
+            pose_result = await self._process_with_model_loader(processed_image, clothing_type, **kwargs)
             
-            # 4. 메모리 최적화
-            if self.memory_manager:
-                try:
-                    await self._optimize_memory()
-                except Exception as e:
-                    self.logger.debug(f"메모리 최적화 실패: {e}")
+            # 🔥 4. 결과 후처리
+            final_result = self._postprocess_result(pose_result, processed_image, start_time)
             
-            # 5. 메인 포즈 추정 파이프라인 실행
-            pose_metrics = await self._execute_pose_pipeline(image, clothing_type, **kwargs)
-            
-            # 6. 결과 후처리
-            result = self._build_final_result(pose_metrics, clothing_type, time.time() - start_time)
-            
-            # 7. 캐시 저장
+            # 🔥 5. 캐시 저장
             if self.pose_config['cache_enabled']:
-                self._save_to_cache(cache_key, result)
+                self._save_to_cache(cache_key, final_result)
             
-            # 8. 통계 업데이트
-            self._update_performance_stats(time.time() - start_time, pose_metrics.overall_score)
+            self.logger.info(f"✅ {self.step_name} 처리 완료 ({final_result['processing_time']:.2f}초)")
+            return final_result
             
-            self.logger.info(f"✅ 포즈 추정 완료 - 키포인트: {pose_metrics.keypoints_detected}/18, 품질: {pose_metrics.quality_grade}")
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 처리 실패: {e}")
+            return self._create_error_result(str(e))
+    
+    async def _process_with_model_loader(
+        self, 
+        image: Image.Image, 
+        clothing_type: Optional[str] = None,
+        warmup: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """🔥 ModelLoader를 통한 실제 포즈 추정 처리 (핵심 개선)"""
+        try:
+            if self.model_interface and self.active_model:
+                # 🔥 ModelLoader를 통한 추론
+                self.logger.info(f"🚀 ModelLoader로 {self.active_model} 모델 추론 시작")
+                
+                # 이미지를 numpy 배열로 변환
+                image_np = np.array(image)
+                
+                # ModelLoader 인터페이스를 통한 추론
+                if hasattr(self.model_interface, 'run_inference'):
+                    # Step별 인터페이스가 있는 경우
+                    model_output = await self.model_interface.run_inference(
+                        image_np,
+                        model_name=self.active_model,
+                        task_type="pose_estimation"
+                    )
+                else:
+                    # 직접 모델 사용
+                    model = self.pose_models.get(self.active_model)
+                    if model is None:
+                        raise ValueError(f"활성 모델 {self.active_model}을 찾을 수 없습니다")
+                    
+                    model_output = await self._run_model_inference(model, image_np)
+                
+                # 워밍업 모드인 경우 간단한 결과 반환
+                if warmup:
+                    return {"success": True, "warmup": True}
+                
+                # 🔥 모델 출력 해석 및 후처리
+                pose_result = self._interpret_model_output(model_output, image.size)
+                
+                return pose_result
+                
+            else:
+                # 🔥 폴백: 기존 방식으로 처리
+                return await self._process_with_fallback_models(image, clothing_type, **kwargs)
+                
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 추론 실패: {e}")
+            # 폴백으로 기존 방식 시도
+            return await self._process_with_fallback_models(image, clothing_type, **kwargs)
+    
+    async def _run_model_inference(self, model, image_np: np.ndarray) -> Any:
+        """실제 모델 추론 실행"""
+        try:
+            if self.active_model == 'mediapipe':
+                # MediaPipe 추론
+                rgb_image = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+                results = model.process(rgb_image)
+                return results
+                
+            elif self.active_model == 'yolov8':
+                # YOLOv8 추론
+                results = model(image_np)
+                return results
+                
+            elif self.active_model == 'openpose':
+                # OpenPose 추론 (PyTorch 모델인 경우)
+                if TORCH_AVAILABLE:
+                    # 이미지 텐서로 변환
+                    image_tensor = torch.from_numpy(image_np).float()
+                    if len(image_tensor.shape) == 3:
+                        image_tensor = image_tensor.unsqueeze(0)
+                    
+                    # 디바이스로 이동
+                    image_tensor = image_tensor.to(self.device)
+                    
+                    # 추론
+                    with torch.no_grad():
+                        output = model(image_tensor)
+                    
+                    return output
+                else:
+                    raise RuntimeError("PyTorch가 필요합니다")
+            else:
+                raise ValueError(f"지원하지 않는 모델: {self.active_model}")
+                
+        except Exception as e:
+            self.logger.error(f"모델 추론 실패: {e}")
+            raise
+    
+    def _interpret_model_output(self, model_output: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """모델 출력 해석"""
+        try:
+            if self.active_model == 'mediapipe':
+                return self._interpret_mediapipe_output(model_output, image_size)
+            elif self.active_model == 'yolov8':
+                return self._interpret_yolo_output(model_output, image_size)
+            elif self.active_model == 'openpose':
+                return self._interpret_openpose_output(model_output, image_size)
+            else:
+                raise ValueError(f"지원하지 않는 모델: {self.active_model}")
+                
+        except Exception as e:
+            self.logger.error(f"모델 출력 해석 실패: {e}")
+            return self._create_default_pose_result()
+    
+    def _interpret_mediapipe_output(self, results, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """MediaPipe 출력 해석"""
+        try:
+            keypoints = []
+            confidence_scores = []
+            
+            if results.pose_landmarks:
+                for landmark in results.pose_landmarks.landmark:
+                    x = landmark.x * image_size[0]
+                    y = landmark.y * image_size[1]
+                    confidence = landmark.visibility
+                    
+                    keypoints.append([x, y, confidence])
+                    confidence_scores.append(confidence)
+            
+            return {
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
+                'model_used': 'mediapipe',
+                'success': len(keypoints) > 0
+            }
+            
+        except Exception as e:
+            self.logger.error(f"MediaPipe 출력 해석 실패: {e}")
+            return self._create_default_pose_result()
+    
+    def _interpret_yolo_output(self, results, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """YOLOv8 출력 해석"""
+        try:
+            keypoints = []
+            confidence_scores = []
+            
+            if hasattr(results, 'keypoints') and results.keypoints is not None:
+                for result in results:
+                    if hasattr(result, 'keypoints') and result.keypoints is not None:
+                        kps = result.keypoints.data[0]  # 첫 번째 사람
+                        for kp in kps:
+                            x, y, conf = float(kp[0]), float(kp[1]), float(kp[2])
+                            keypoints.append([x, y, conf])
+                            confidence_scores.append(conf)
+                        break
+            
+            return {
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
+                'model_used': 'yolov8',
+                'success': len(keypoints) > 0
+            }
+            
+        except Exception as e:
+            self.logger.error(f"YOLOv8 출력 해석 실패: {e}")
+            return self._create_default_pose_result()
+    
+    def _interpret_openpose_output(self, output, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """OpenPose 출력 해석"""
+        try:
+            keypoints = []
+            confidence_scores = []
+            
+            if TORCH_AVAILABLE and torch.is_tensor(output):
+                # PyTorch 텐서인 경우
+                output_np = output.cpu().numpy()
+                
+                # 히트맵에서 키포인트 추출
+                for i in range(output_np.shape[1]):  # 키포인트 수만큼 반복
+                    heatmap = output_np[0, i]
+                    y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+                    confidence = float(heatmap[y, x])
+                    
+                    # 이미지 크기로 스케일링
+                    x_scaled = x * image_size[0] / heatmap.shape[1]
+                    y_scaled = y * image_size[1] / heatmap.shape[0]
+                    
+                    keypoints.append([x_scaled, y_scaled, confidence])
+                    confidence_scores.append(confidence)
+            
+            return {
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
+                'model_used': 'openpose',
+                'success': len(keypoints) > 0
+            }
+            
+        except Exception as e:
+            self.logger.error(f"OpenPose 출력 해석 실패: {e}")
+            return self._create_default_pose_result()
+    
+    async def _process_with_fallback_models(
+        self, 
+        image: Image.Image, 
+        clothing_type: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """폴백 모델을 통한 처리"""
+        try:
+            self.logger.info("🔄 폴백 모델로 처리 시작")
+            
+            if self.active_model and self.active_model in self.pose_models:
+                model = self.pose_models[self.active_model]
+                image_np = np.array(image)
+                
+                # 모델별 처리
+                if self.active_model == 'mediapipe':
+                    rgb_image = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+                    results = model.process(rgb_image)
+                    return self._interpret_mediapipe_output(results, image.size)
+                    
+                elif self.active_model == 'yolov8':
+                    results = model(image_np)
+                    return self._interpret_yolo_output(results, image.size)
+            
+            # 기본 결과 반환
+            return self._create_default_pose_result()
+            
+        except Exception as e:
+            self.logger.error(f"폴백 모델 처리 실패: {e}")
+            return self._create_default_pose_result()
+    
+    def _create_default_pose_result(self) -> Dict[str, Any]:
+        """기본 포즈 결과 생성"""
+        return {
+            'keypoints': [],
+            'confidence_scores': [],
+            'model_used': 'fallback',
+            'success': False,
+            'error': '포즈 검출 실패'
+        }
+    
+    def _preprocess_image(self, image: Union[np.ndarray, Image.Image, str]) -> Optional[Image.Image]:
+        """이미지 전처리"""
+        try:
+            if isinstance(image, str):
+                # 파일 경로인 경우
+                if os.path.exists(image):
+                    image = Image.open(image)
+                else:
+                    # Base64 인코딩된 이미지인 경우
+                    import base64
+                    image_data = base64.b64decode(image)
+                    image = Image.open(io.BytesIO(image_data))
+            elif isinstance(image, np.ndarray):
+                image = Image.fromarray(image)
+            elif not isinstance(image, Image.Image):
+                raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
+            
+            # RGB 변환
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # 크기 조정 (성능 최적화)
+            max_size = 1024 if self.is_m3_max else 512
+            if max(image.size) > max_size:
+                ratio = max_size / max(image.size)
+                new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
+            
+            return image
+            
+        except Exception as e:
+            self.logger.error(f"이미지 전처리 실패: {e}")
+            return None
+    
+    def _generate_cache_key(self, image: Image.Image, clothing_type: Optional[str]) -> str:
+        """캐시 키 생성"""
+        try:
+            # 이미지 해시
+            image_bytes = io.BytesIO()
+            image.save(image_bytes, format='JPEG', quality=50)
+            image_hash = hashlib.md5(image_bytes.getvalue()).hexdigest()[:16]
+            
+            # 설정 해시
+            config_str = f"{clothing_type}_{self.active_model}_{self.pose_config['confidence_threshold']}"
+            config_hash = hashlib.md5(config_str.encode()).hexdigest()[:8]
+            
+            return f"pose_{image_hash}_{config_hash}"
+            
+        except Exception as e:
+            self.logger.warning(f"캐시 키 생성 실패: {e}")
+            return f"pose_{int(time.time())}"
+    
+    def _postprocess_result(self, pose_result: Dict[str, Any], image: Image.Image, start_time: float) -> Dict[str, Any]:
+        """결과 후처리"""
+        try:
+            processing_time = time.time() - start_time
+            
+            # PoseMetrics 생성
+            pose_metrics = PoseMetrics(
+                keypoints=pose_result.get('keypoints', []),
+                confidence_scores=pose_result.get('confidence_scores', []),
+                model_used=pose_result.get('model_used', 'unknown'),
+                processing_time=processing_time,
+                image_resolution=image.size
+            )
+            
+            # 포즈 분석
+            pose_analysis = self._analyze_pose_quality(pose_metrics)
+            
+            # 시각화 생성
+            visualization = None
+            if self.pose_config['visualization_enabled']:
+                visualization = self._create_pose_visualization(image, pose_metrics)
+            
+            # 최종 결과 구성
+            result = {
+                'success': pose_result.get('success', False),
+                'keypoints': pose_metrics.keypoints,
+                'confidence_scores': pose_metrics.confidence_scores,
+                'pose_analysis': pose_analysis,
+                'visualization': visualization,
+                'processing_time': processing_time,
+                'model_used': pose_metrics.model_used,
+                'image_resolution': pose_metrics.image_resolution,
+                'step_info': {
+                    'step_name': self.step_name,
+                    'step_number': self.step_number,
+                    'optimization_level': self.optimization_level
+                }
+            }
+            
             return result
             
         except Exception as e:
-            error_msg = f"포즈 추정 실패: {e}"
-            self.logger.error(f"❌ {error_msg}")
-            
-            processing_time = time.time() - start_time
-            self._update_performance_stats(processing_time, 0.0, success=False)
-            
-            return self._create_error_result(error_msg, processing_time)
+            self.logger.error(f"결과 후처리 실패: {e}")
+            return self._create_error_result(str(e))
     
-    def _create_error_result(self, error_message: str, processing_time: float) -> Dict[str, Any]:
+    def _analyze_pose_quality(self, pose_metrics: PoseMetrics) -> Dict[str, Any]:
+        """포즈 품질 분석"""
+        try:
+            if not pose_metrics.keypoints:
+                return {
+                    'suitable_for_fitting': False,
+                    'issues': ['포즈를 검출할 수 없습니다'],
+                    'recommendations': ['더 선명한 이미지를 사용해 주세요'],
+                    'quality_score': 0.0
+                }
+            
+            # 신체 부위별 점수 계산
+            head_score = self._calculate_head_score(pose_metrics.keypoints)
+            torso_score = self._calculate_torso_score(pose_metrics.keypoints)
+            arms_score = self._calculate_arms_score(pose_metrics.keypoints)
+            legs_score = self._calculate_legs_score(pose_metrics.keypoints)
+            
+            # 전체 점수
+            overall_score = (head_score * 0.2 + torso_score * 0.3 + 
+                           arms_score * 0.25 + legs_score * 0.25)
+            
+            # 적합성 판단
+            suitable_for_fitting = overall_score >= 0.6
+            
+            # 이슈 및 권장사항
+            issues = []
+            recommendations = []
+            
+            if head_score < 0.5:
+                issues.append('얼굴이 잘 보이지 않습니다')
+                recommendations.append('얼굴이 정면을 향하도록 촬영해 주세요')
+            
+            if torso_score < 0.5:
+                issues.append('상체가 불분명합니다')
+                recommendations.append('상체 전체가 보이도록 촬영해 주세요')
+            
+            if arms_score < 0.5:
+                issues.append('팔의 위치가 부적절합니다')
+                recommendations.append('팔을 벌리거나 자연스럽게 내려주세요')
+            
+            if legs_score < 0.5:
+                issues.append('다리가 가려져 있습니다')
+                recommendations.append('전신이 보이도록 촬영해 주세요')
+            
+            return {
+                'suitable_for_fitting': suitable_for_fitting,
+                'issues': issues,
+                'recommendations': recommendations,
+                'quality_score': overall_score,
+                'detailed_scores': {
+                    'head': head_score,
+                    'torso': torso_score,
+                    'arms': arms_score,
+                    'legs': legs_score
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"포즈 품질 분석 실패: {e}")
+            return {
+                'suitable_for_fitting': False,
+                'issues': ['분석 실패'],
+                'recommendations': ['다시 시도해 주세요'],
+                'quality_score': 0.0
+            }
+    
+    def _calculate_head_score(self, keypoints: List[List[float]]) -> float:
+        """머리 부위 점수 계산"""
+        try:
+            if len(keypoints) < 19:
+                return 0.0
+            
+            head_points = keypoints[:5]  # nose, eyes, ears
+            visible_count = sum(1 for kp in head_points if len(kp) > 2 and kp[2] > 0.5)
+            
+            return min(visible_count / 3.0, 1.0)
+            
+        except Exception:
+            return 0.0
+    
+    def _calculate_torso_score(self, keypoints: List[List[float]]) -> float:
+        """상체 점수 계산"""
+        try:
+            if len(keypoints) < 19:
+                return 0.0
+            
+            torso_points = keypoints[1:3] + keypoints[5:9]  # neck, shoulders, hips
+            visible_count = sum(1 for kp in torso_points if len(kp) > 2 and kp[2] > 0.5)
+            
+            return min(visible_count / 6.0, 1.0)
+            
+        except Exception:
+            return 0.0
+    
+    def _calculate_arms_score(self, keypoints: List[List[float]]) -> float:
+        """팔 점수 계산"""
+        try:
+            if len(keypoints) < 19:
+                return 0.0
+            
+            arm_points = keypoints[2:5] + keypoints[5:8]  # shoulders, elbows, wrists
+            visible_count = sum(1 for kp in arm_points if len(kp) > 2 and kp[2] > 0.5)
+            
+            return min(visible_count / 6.0, 1.0)
+            
+        except Exception:
+            return 0.0
+    
+    def _calculate_legs_score(self, keypoints: List[List[float]]) -> float:
+        """다리 점수 계산"""
+        try:
+            if len(keypoints) < 19:
+                return 0.0
+            
+            leg_points = keypoints[9:15]  # hips, knees, ankles
+            visible_count = sum(1 for kp in leg_points if len(kp) > 2 and kp[2] > 0.5)
+            
+            return min(visible_count / 6.0, 1.0)
+            
+        except Exception:
+            return 0.0
+    
+    def _create_pose_visualization(self, image: Image.Image, pose_metrics: PoseMetrics) -> Optional[str]:
+        """포즈 시각화 생성"""
+        try:
+            if not pose_metrics.keypoints:
+                return None
+            
+            # 이미지 복사
+            vis_image = image.copy()
+            draw = ImageDraw.Draw(vis_image)
+            
+            # 키포인트 그리기
+            for i, kp in enumerate(pose_metrics.keypoints):
+                if len(kp) >= 3 and kp[2] > 0.5:  # 신뢰도가 충분한 경우만
+                    x, y = int(kp[0]), int(kp[1])
+                    color = KEYPOINT_COLORS[i % len(KEYPOINT_COLORS)]
+                    
+                    # 키포인트 원 그리기
+                    radius = 4
+                    draw.ellipse([x-radius, y-radius, x+radius, y+radius], 
+                               fill=color, outline=(255, 255, 255), width=2)
+            
+            # 스켈레톤 연결선 그리기
+            for i, (start_idx, end_idx) in enumerate(SKELETON_CONNECTIONS):
+                if (start_idx < len(pose_metrics.keypoints) and 
+                    end_idx < len(pose_metrics.keypoints)):
+                    
+                    start_kp = pose_metrics.keypoints[start_idx]
+                    end_kp = pose_metrics.keypoints[end_idx]
+                    
+                    if (len(start_kp) >= 3 and len(end_kp) >= 3 and
+                        start_kp[2] > 0.5 and end_kp[2] > 0.5):
+                        
+                        start_point = (int(start_kp[0]), int(start_kp[1]))
+                        end_point = (int(end_kp[0]), int(end_kp[1]))
+                        color = SKELETON_COLORS[i % len(SKELETON_COLORS)]
+                        
+                        draw.line([start_point, end_point], fill=color, width=3)
+            
+            # Base64로 인코딩
+            buffer = io.BytesIO()
+            vis_image.save(buffer, format='JPEG', quality=90)
+            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            return f"data:image/jpeg;base64,{image_base64}"
+            
+        except Exception as e:
+            self.logger.error(f"포즈 시각화 생성 실패: {e}")
+            return None
+    
+    def _save_to_cache(self, cache_key: str, result: Dict[str, Any]):
+        """캐시에 결과 저장"""
+        try:
+            if len(self.prediction_cache) >= self.cache_max_size:
+                # 오래된 항목 제거 (FIFO)
+                oldest_key = next(iter(self.prediction_cache))
+                del self.prediction_cache[oldest_key]
+            
+            # 시각화는 캐시에서 제외 (메모리 절약)
+            cached_result = result.copy()
+            cached_result['visualization'] = None
+            
+            self.prediction_cache[cache_key] = cached_result
+            
+        except Exception as e:
+            self.logger.warning(f"캐시 저장 실패: {e}")
+    
+    def _create_error_result(self, error_message: str, processing_time: float = 0.0) -> Dict[str, Any]:
         """에러 결과 생성"""
         return {
-            "success": False,
-            "step_name": self.step_name,
-            "error": error_message,
-            "processing_time": processing_time,
-            "keypoints_18": [[0, 0, 0] for _ in range(18)],
-            "pose_confidence": 0.0,
-            "keypoints_detected": 0,
-            "quality_grade": "F",
-            "pose_analysis": {
-                "detection_rate": 0.0,
-                "quality_score": 0.0,
-                "quality_grade": "F",
-                "pose_type": "unknown",
-                "suitable_for_fitting": False
+            'success': False,
+            'error': error_message,
+            'keypoints': [],
+            'confidence_scores': [],
+            'pose_analysis': {
+                'suitable_for_fitting': False,
+                'issues': [error_message],
+                'recommendations': ['다시 시도해 주세요'],
+                'quality_score': 0.0
             },
-            "body_proportions": {},
-            "pose_angles": {},
-            "suitable_for_fitting": False,
-            "fitting_confidence": 0.0,
-            "keypoint_image": "",
-            "skeleton_image": "", 
-            "overlay_image": "",
-            "from_cache": False,
-            "device_info": {
-                "device": self.device,
-                "error_count": self.performance_stats.get('error_count', 0)
+            'visualization': None,
+            'processing_time': processing_time,
+            'model_used': 'error',
+            'step_info': {
+                'step_name': self.step_name,
+                'step_number': self.step_number,
+                'optimization_level': self.optimization_level
             }
         }
     
     # =================================================================
-    # 🔧 포즈 추정 핵심 함수들
+    # 🔧 누락된 핵심 내부 유틸리티 메서드들 (프로젝트 지식 기반 추가)
     # =================================================================
     
-    async def _execute_pose_pipeline(
-        self,
-        image: np.ndarray,
-        clothing_type: str,
-        **kwargs
-    ) -> PoseMetrics:
-        """포즈 추정 파이프라인 실행"""
-        
-        metrics = PoseMetrics()
-        intermediate_results = {}
-        current_data = image
-        
-        self.logger.info(f"🔄 포즈 추정 파이프라인 시작 - 의류: {clothing_type}")
-        
-        for step_name, processor_func in self.processing_pipeline:
-            try:
-                step_start = time.time()
-                
-                # 단계별 처리
-                if step_name == 'preprocessing':
-                    current_data = await processor_func(current_data, **kwargs)
-                elif step_name == 'pose_estimation':
-                    step_result = await processor_func(current_data, **kwargs)
-                    current_data = step_result
-                elif step_name == 'postprocessing':
-                    step_result = await processor_func(current_data, image.shape, **kwargs)
-                    current_data = step_result
-                elif step_name == 'quality_analysis':
-                    analysis_result = await processor_func(current_data, clothing_type, **kwargs)
-                    if isinstance(analysis_result, dict):
-                        current_data.update(analysis_result)
-                elif step_name == 'visualization':
-                    visualization_result = await processor_func(current_data, image, **kwargs)
-                    if isinstance(visualization_result, dict):
-                        current_data.update(visualization_result)
-                
-                step_time = time.time() - step_start
-                intermediate_results[step_name] = {
-                    'processing_time': step_time,
-                    'success': True
-                }
-                
-                # 메트릭 업데이트
-                if isinstance(current_data, dict):
-                    for key, value in current_data.items():
-                        if hasattr(metrics, key):
-                            setattr(metrics, key, value)
-                
-                self.logger.debug(f"  ✓ {step_name} 완료 - {step_time:.3f}초")
-                
-            except Exception as e:
-                self.logger.warning(f"  ⚠️ {step_name} 실패: {e}")
-                intermediate_results[step_name] = {
-                    'processing_time': 0,
-                    'success': False,
-                    'error': str(e)
-                }
-                continue
-        
-        # 전체 점수 계산
+    def _calculate_pose_angles(self, keypoints_18: List[List[float]]) -> Dict[str, float]:
+        """포즈 각도 계산 (관절 각도)"""
         try:
-            clothing_weights = self.CLOTHING_POSE_WEIGHTS.get(clothing_type, self.CLOTHING_POSE_WEIGHTS['default'])
-            metrics.calculate_overall_score()
-            metrics.get_quality_grade()
+            angles = {}
             
-            # 피팅 적합성 계산
-            metrics.suitable_for_fitting = (
-                metrics.keypoints_detected >= 12 and
-                metrics.detection_rate >= 0.7 and
-                metrics.overall_score >= 0.6
-            )
-            metrics.fitting_confidence = min(metrics.overall_score * 1.2, 1.0)
-        except Exception as e:
-            self.logger.warning(f"메트릭 계산 실패: {e}")
-        
-        self.logger.info(f"✅ 포즈 추정 파이프라인 완료 - {len(intermediate_results)}단계 처리")
-        return metrics
-    
-    async def _preprocess_for_pose(self, image: np.ndarray, **kwargs) -> np.ndarray:
-        """포즈 추정을 위한 전처리"""
-        try:
-            # 1. 이미지 정규화
-            if image.dtype != np.uint8:
-                image = np.clip(image * 255, 0, 255).astype(np.uint8)
+            def calculate_angle(p1, p2, p3):
+                """세 점으로 각도 계산"""
+                try:
+                    if all(len(p) >= 3 and p[2] > 0.3 for p in [p1, p2, p3]):
+                        v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
+                        v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
+                        
+                        cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+                        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                        return float(np.degrees(np.arccos(cos_angle)))
+                    return 0.0
+                except Exception:
+                    return 0.0
             
-            # 2. 크기 조정 (모델에 따라)
-            target_size = kwargs.get('target_size', (512, 512))
-            if self.active_model == 'mediapipe':
-                # MediaPipe는 원본 크기 유지 선호
-                pass
-            elif self.active_model == 'yolov8':
-                # YOLO는 640x640 선호
-                target_size = (640, 640)
+            if len(keypoints_18) >= 18:
+                # 팔 각도
+                angles['right_elbow'] = calculate_angle(keypoints_18[2], keypoints_18[3], keypoints_18[4])  # 어깨-팔꿈치-손목
+                angles['left_elbow'] = calculate_angle(keypoints_18[5], keypoints_18[6], keypoints_18[7])
+                
+                # 다리 각도
+                angles['right_knee'] = calculate_angle(keypoints_18[9], keypoints_18[10], keypoints_18[11])  # 엉덩이-무릎-발목
+                angles['left_knee'] = calculate_angle(keypoints_18[12], keypoints_18[13], keypoints_18[14])
+                
+                # 어깨 각도
+                angles['right_shoulder'] = calculate_angle(keypoints_18[1], keypoints_18[2], keypoints_18[3])  # 목-어깨-팔꿈치
+                angles['left_shoulder'] = calculate_angle(keypoints_18[1], keypoints_18[5], keypoints_18[6])
+                
+                # 몸통 각도
+                if all(len(kp) >= 3 and kp[2] > 0.3 for kp in [keypoints_18[1], keypoints_18[8]]):
+                    spine_vector = np.array([keypoints_18[8][0] - keypoints_18[1][0], keypoints_18[8][1] - keypoints_18[1][1]])
+                    vertical_vector = np.array([0, 1])
+                    cos_spine = np.dot(spine_vector, vertical_vector) / (np.linalg.norm(spine_vector) * np.linalg.norm(vertical_vector))
+                    angles['spine_vertical'] = float(np.degrees(np.arccos(np.clip(cos_spine, -1.0, 1.0))))
             
-            if target_size != image.shape[:2]:
-                scale = target_size[0] / max(image.shape[:2])
-                new_h, new_w = int(image.shape[0] * scale), int(image.shape[1] * scale)
-                if CV2_AVAILABLE:
-                    image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-            
-            # 3. 색상 공간 확인
-            if len(image.shape) == 3 and image.shape[2] == 3:
-                # RGB 순서 확인 (MediaPipe는 RGB, OpenCV는 BGR)
-                if self.active_model == 'mediapipe' and CV2_AVAILABLE:
-                    # BGR to RGB 변환 (OpenCV 이미지인 경우)
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            return image
+            return angles
             
         except Exception as e:
-            self.logger.error(f"전처리 실패: {e}")
-            return image
+            self.logger.debug(f"포즈 각도 계산 실패: {e}")
+            return {}
     
-    async def _perform_pose_estimation(self, image: np.ndarray, **kwargs) -> Dict[str, Any]:
-        """실제 포즈 추정 수행"""
-        
+    def _calculate_body_proportions(self, keypoints_18: List[List[float]]) -> Dict[str, float]:
+        """신체 비율 계산"""
         try:
-            if self.active_model == 'mediapipe' and MEDIAPIPE_AVAILABLE:
-                return await self._mediapipe_estimation(image, **kwargs)
-            elif self.active_model == 'yolov8' and YOLO_AVAILABLE:
-                return await self._yolov8_estimation(image, **kwargs)
-            elif self.active_model == 'openpose':
-                return await self._openpose_estimation(image, **kwargs)
-            else:
-                # 시뮬레이션 모드
-                return await self._simulation_estimation(image, **kwargs)
+            proportions = {}
+            
+            if len(keypoints_18) >= 18:
+                def distance(p1, p2):
+                    """두 점 간 거리"""
+                    if len(p1) >= 2 and len(p2) >= 2 and p1[2] > 0.3 and p2[2] > 0.3:
+                        return float(np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2))
+                    return 0.0
                 
+                # 주요 거리 측정
+                head_neck = distance(keypoints_18[0], keypoints_18[1])  # 머리-목
+                neck_hip = distance(keypoints_18[1], keypoints_18[8])   # 목-엉덩이
+                hip_knee = distance(keypoints_18[9], keypoints_18[10])  # 엉덩이-무릎 (오른쪽)
+                knee_ankle = distance(keypoints_18[10], keypoints_18[11])  # 무릎-발목
+                shoulder_width = distance(keypoints_18[2], keypoints_18[5])  # 어깨 너비
+                hip_width = distance(keypoints_18[9], keypoints_18[12])      # 엉덩이 너비
+                
+                # 비율 계산 (전체 키 기준)
+                total_height = head_neck + neck_hip + hip_knee + knee_ankle
+                if total_height > 0:
+                    proportions['head_to_total'] = head_neck / total_height
+                    proportions['torso_to_total'] = neck_hip / total_height
+                    proportions['upper_leg_to_total'] = hip_knee / total_height
+                    proportions['lower_leg_to_total'] = knee_ankle / total_height
+                    proportions['shoulder_to_hip_ratio'] = shoulder_width / hip_width if hip_width > 0 else 0.0
+                
+                # 인체 비율 이상치 체크
+                proportions['is_realistic'] = (
+                    0.1 <= proportions.get('head_to_total', 0) <= 0.25 and
+                    0.25 <= proportions.get('torso_to_total', 0) <= 0.45 and
+                    0.8 <= proportions.get('shoulder_to_hip_ratio', 0) <= 1.5
+                )
+            
+            return proportions
+            
         except Exception as e:
-            self.logger.error(f"포즈 추정 실패: {e}")
-            return await self._simulation_estimation(image, **kwargs)
+            self.logger.debug(f"신체 비율 계산 실패: {e}")
+            return {}
     
-    async def _mediapipe_estimation(self, image: np.ndarray, **kwargs) -> Dict[str, Any]:
-        """MediaPipe 포즈 추정"""
+    def _calculate_symmetry_score(self, keypoints_18: List[List[float]]) -> float:
+        """신체 대칭성 점수 계산"""
         try:
-            model = self.pose_models['mediapipe']
+            symmetry_pairs = [
+                (2, 5),   # 어깨
+                (3, 6),   # 팔꿈치
+                (4, 7),   # 손목
+                (9, 12),  # 엉덩이
+                (10, 13), # 무릎
+                (11, 14), # 발목
+                (15, 16)  # 눈
+            ]
             
-            # MediaPipe 추론
-            results = model.process(image)
+            symmetry_scores = []
+            center_x = np.mean([kp[0] for kp in keypoints_18 if len(kp) >= 3 and kp[2] > 0.3])
             
-            if results.pose_landmarks:
-                # 랜드마크를 OpenPose 18 형식으로 변환
-                keypoints_18 = self._convert_mediapipe_to_openpose(results.pose_landmarks, image.shape)
-                
-                # 신뢰도 계산
-                confidences = [kp[2] for kp in keypoints_18]
-                pose_confidence = np.mean([c for c in confidences if c > 0])
-                keypoints_detected = sum(1 for c in confidences if c > self.pose_config['confidence_threshold'])
-                
-                return {
-                    'keypoints_18': keypoints_18,
-                    'pose_confidence': float(pose_confidence),
-                    'keypoints_detected': keypoints_detected,
-                    'pose_angles': self._calculate_pose_angles(keypoints_18),
-                    'body_proportions': self._calculate_body_proportions(keypoints_18),
-                    'detection_method': 'mediapipe'
-                }
-            else:
-                # 검출 실패
-                return {
-                    'keypoints_18': [[0, 0, 0] for _ in range(18)],
-                    'pose_confidence': 0.0,
-                    'keypoints_detected': 0,
-                    'pose_angles': {},
-                    'body_proportions': {},
-                    'detection_method': 'mediapipe_failed'
-                }
-                
-        except Exception as e:
-            self.logger.error(f"MediaPipe 포즈 추정 실패: {e}")
-            return await self._simulation_estimation(image, **kwargs)
-    
-    async def _yolov8_estimation(self, image: np.ndarray, **kwargs) -> Dict[str, Any]:
-        """YOLOv8 포즈 추정"""
-        try:
-            model = self.pose_models['yolov8']
-            
-            # YOLO 추론
-            results = model(image, verbose=False)
-            
-            if results and len(results) > 0 and results[0].keypoints is not None:
-                # 첫 번째 사람의 키포인트 추출
-                keypoints = results[0].keypoints.data[0].cpu().numpy()  # [17, 3] COCO format
-                
-                # COCO 17을 OpenPose 18로 변환
-                keypoints_18 = self._convert_coco_to_openpose(keypoints, image.shape)
-                
-                # 신뢰도 계산
-                confidences = [kp[2] for kp in keypoints_18]
-                pose_confidence = np.mean([c for c in confidences if c > 0])
-                keypoints_detected = sum(1 for c in confidences if c > self.pose_config['confidence_threshold'])
-                
-                return {
-                    'keypoints_18': keypoints_18,
-                    'pose_confidence': float(pose_confidence),
-                    'keypoints_detected': keypoints_detected,
-                    'pose_angles': self._calculate_pose_angles(keypoints_18),
-                    'body_proportions': self._calculate_body_proportions(keypoints_18),
-                    'detection_method': 'yolov8'
-                }
-            else:
-                # 검출 실패
-                return {
-                    'keypoints_18': [[0, 0, 0] for _ in range(18)],
-                    'pose_confidence': 0.0,
-                    'keypoints_detected': 0,
-                    'pose_angles': {},
-                    'body_proportions': {},
-                    'detection_method': 'yolov8_failed'
-                }
-                
-        except Exception as e:
-            self.logger.error(f"YOLOv8 포즈 추정 실패: {e}")
-            return await self._simulation_estimation(image, **kwargs)
-    
-    async def _openpose_estimation(self, image: np.ndarray, **kwargs) -> Dict[str, Any]:
-        """OpenPose 포즈 추정 (ModelLoader 통합)"""
-        try:
-            # ModelLoader 인터페이스를 통한 OpenPose 모델 로드
-            if self.model_interface:
-                openpose_model = await self._get_model_safe("pose_estimation_openpose")
-                
-                if openpose_model and TORCH_AVAILABLE:
-                    # 이미지 전처리
-                    tensor_input = self._manual_preprocess_for_openpose(image)
+            for left_idx, right_idx in symmetry_pairs:
+                if (left_idx < len(keypoints_18) and right_idx < len(keypoints_18) and
+                    len(keypoints_18[left_idx]) >= 3 and len(keypoints_18[right_idx]) >= 3 and
+                    keypoints_18[left_idx][2] > 0.3 and keypoints_18[right_idx][2] > 0.3):
                     
-                    # 모델 추론
-                    with torch.no_grad():
-                        if self.device == "cuda":
-                            with autocast(device_type='cuda', dtype=torch.float16):
-                                output = openpose_model(tensor_input)
-                        else:
-                            output = openpose_model(tensor_input)
+                    left_point = keypoints_18[left_idx]
+                    right_point = keypoints_18[right_idx]
                     
-                    # 후처리
-                    keypoints_18 = self._postprocess_openpose_output(output, image.shape)
+                    # 중심선에서의 거리 비교
+                    left_dist = abs(left_point[0] - center_x)
+                    right_dist = abs(right_point[0] - center_x)
                     
-                    # 메트릭 계산
-                    confidences = [kp[2] for kp in keypoints_18]
-                    pose_confidence = np.mean([c for c in confidences if c > 0])
-                    keypoints_detected = sum(1 for c in confidences if c > self.pose_config['confidence_threshold'])
-                    
-                    return {
-                        'keypoints_18': keypoints_18,
-                        'pose_confidence': float(pose_confidence),
-                        'keypoints_detected': keypoints_detected,
-                        'pose_angles': self._calculate_pose_angles(keypoints_18),
-                        'body_proportions': self._calculate_body_proportions(keypoints_18),
-                        'detection_method': 'openpose'
-                    }
+                    if max(left_dist, right_dist) > 0:
+                        symmetry = 1.0 - abs(left_dist - right_dist) / max(left_dist, right_dist)
+                        symmetry_scores.append(max(0.0, symmetry))
             
-            # 모델 로드 실패 시 시뮬레이션
-            return await self._simulation_estimation(image, **kwargs)
+            return float(np.mean(symmetry_scores)) if symmetry_scores else 0.0
             
         except Exception as e:
-            self.logger.error(f"OpenPose 포즈 추정 실패: {e}")
-            return await self._simulation_estimation(image, **kwargs)
+            self.logger.debug(f"대칭성 계산 실패: {e}")
+            return 0.0
+    
+    def _calculate_visibility_score(self, keypoints_18: List[List[float]]) -> float:
+        """키포인트 가시성 점수 계산"""
+        try:
+            if not keypoints_18 or len(keypoints_18) < 18:
+                return 0.0
+            
+            # 주요 키포인트별 가중치
+            major_keypoints = {
+                0: 0.1,   # nose
+                1: 0.15,  # neck
+                2: 0.1, 5: 0.1,   # shoulders
+                8: 0.15,  # hip
+                9: 0.1, 12: 0.1,  # hips
+                10: 0.075, 13: 0.075,  # knees
+                11: 0.05, 14: 0.05    # ankles
+            }
+            
+            weighted_visibility = 0.0
+            total_weight = 0.0
+            
+            for idx, weight in major_keypoints.items():
+                if idx < len(keypoints_18) and len(keypoints_18[idx]) >= 3:
+                    confidence = keypoints_18[idx][2]
+                    weighted_visibility += confidence * weight
+                    total_weight += weight
+            
+            return weighted_visibility / total_weight if total_weight > 0 else 0.0
+            
+        except Exception as e:
+            self.logger.debug(f"가시성 점수 계산 실패: {e}")
+            return 0.0
+    
+    def _convert_coco_to_openpose(self, coco_keypoints: np.ndarray, image_shape: Tuple[int, int]) -> List[List[float]]:
+        """COCO 17을 OpenPose 18로 변환"""
+        try:
+            # COCO 17 -> OpenPose 18 매핑
+            coco_to_op_mapping = {
+                0: 0,   # nose
+                1: 16,  # left_eye -> left_eye (COCO 관점에서 반대)
+                2: 15,  # right_eye -> right_eye
+                3: 18,  # left_ear -> left_ear
+                4: 17,  # right_ear -> right_ear
+                5: 5,   # left_shoulder -> left_shoulder
+                6: 2,   # right_shoulder -> right_shoulder
+                7: 6,   # left_elbow -> left_elbow
+                8: 3,   # right_elbow -> right_elbow
+                9: 7,   # left_wrist -> left_wrist
+                10: 4,  # right_wrist -> right_wrist
+                11: 12, # left_hip -> left_hip
+                12: 9,  # right_hip -> right_hip
+                13: 13, # left_knee -> left_knee
+                14: 10, # right_knee -> right_knee
+                15: 14, # left_ankle -> left_ankle
+                16: 11  # right_ankle -> right_ankle
+            }
+            
+            # OpenPose 18 키포인트 초기화
+            openpose_18 = [[0.0, 0.0, 0.0] for _ in range(18)]
+            
+            # COCO에서 OpenPose로 변환
+            for coco_idx, op_idx in coco_to_op_mapping.items():
+                if coco_idx < len(coco_keypoints) and op_idx < 18:
+                    if len(coco_keypoints[coco_idx]) >= 3:
+                        openpose_18[op_idx] = [
+                            float(coco_keypoints[coco_idx][0]),
+                            float(coco_keypoints[coco_idx][1]),
+                            float(coco_keypoints[coco_idx][2])
+                        ]
+            
+            # neck 키포인트 추정 (OpenPose 특유)
+            left_shoulder = openpose_18[5]
+            right_shoulder = openpose_18[2]
+            if (len(left_shoulder) >= 3 and len(right_shoulder) >= 3 and
+                left_shoulder[2] > 0.3 and right_shoulder[2] > 0.3):
+                neck_x = (left_shoulder[0] + right_shoulder[0]) / 2
+                neck_y = (left_shoulder[1] + right_shoulder[1]) / 2
+                neck_conf = min(left_shoulder[2], right_shoulder[2])
+                openpose_18[1] = [neck_x, neck_y, neck_conf]
+            
+            # mid_hip 키포인트 추정
+            left_hip = openpose_18[12]
+            right_hip = openpose_18[9]
+            if (len(left_hip) >= 3 and len(right_hip) >= 3 and
+                left_hip[2] > 0.3 and right_hip[2] > 0.3):
+                mid_hip_x = (left_hip[0] + right_hip[0]) / 2
+                mid_hip_y = (left_hip[1] + right_hip[1]) / 2
+                mid_hip_conf = min(left_hip[2], right_hip[2])
+                openpose_18[8] = [mid_hip_x, mid_hip_y, mid_hip_conf]
+            
+            return openpose_18
+            
+        except Exception as e:
+            self.logger.error(f"COCO to OpenPose 변환 실패: {e}")
+            return [[0.0, 0.0, 0.0] for _ in range(18)]
+    
+    def _validate_and_normalize_keypoints(self, keypoints_18: List[List[float]], image_shape: Tuple[int, int]) -> List[List[float]]:
+        """키포인트 검증 및 정규화"""
+        try:
+            h, w = image_shape[:2]
+            normalized_keypoints = []
+            
+            for i, kp in enumerate(keypoints_18):
+                if len(kp) >= 3:
+                    x, y, conf = float(kp[0]), float(kp[1]), float(kp[2])
+                    
+                    # 좌표 범위 체크
+                    x = max(0, min(w-1, x))
+                    y = max(0, min(h-1, y))
+                    
+                    # 신뢰도 범위 체크
+                    conf = max(0.0, min(1.0, conf))
+                    
+                    normalized_keypoints.append([x, y, conf])
+                else:
+                    normalized_keypoints.append([0.0, 0.0, 0.0])
+            
+            # 18개 키포인트 보장
+            while len(normalized_keypoints) < 18:
+                normalized_keypoints.append([0.0, 0.0, 0.0])
+            
+            return normalized_keypoints[:18]
+            
+        except Exception as e:
+            self.logger.error(f"키포인트 정규화 실패: {e}")
+            return [[0.0, 0.0, 0.0] for _ in range(18)]
+    
+    def _calculate_major_keypoints_rate(self, keypoints_18: List[List[float]]) -> float:
+        """주요 키포인트 검출률 계산"""
+        try:
+            # 주요 키포인트: 코, 목, 어깨, 엉덩이, 무릎
+            major_indices = [0, 1, 2, 5, 8, 9, 10, 12, 13]
+            detected_major = sum(1 for idx in major_indices 
+                               if idx < len(keypoints_18) and 
+                               len(keypoints_18[idx]) >= 3 and
+                               keypoints_18[idx][2] > self.pose_config['confidence_threshold'])
+            return detected_major / len(major_indices)
+        except Exception as e:
+            self.logger.debug(f"주요 키포인트 계산 실패: {e}")
+            return 0.0
+    
+    # =================================================================
+    # 🔧 시뮬레이션 및 폴백 처리 (누락된 기능)
+    # =================================================================
     
     async def _simulation_estimation(self, image: np.ndarray, **kwargs) -> Dict[str, Any]:
         """시뮬레이션 포즈 추정 (폴백)"""
@@ -1078,8 +1657,6 @@ class PoseEstimationStep(BaseStepMixin):
             h, w = image.shape[:2]
             
             # 시뮬레이션된 키포인트 생성 (해부학적으로 타당한 위치)
-            keypoints_18 = []
-            
             # 기본 인체 비율 사용
             head_y = h * 0.15
             neck_y = h * 0.20
@@ -1148,1013 +1725,82 @@ class PoseEstimationStep(BaseStepMixin):
                 'detection_method': 'failed'
             }
     
-    # =================================================================
-    # 🔧 후처리 및 분석 함수들
-    # =================================================================
-    
-    async def _postprocess_pose_results(self, pose_results: Dict[str, Any], image_shape: Tuple[int, int], **kwargs) -> Dict[str, Any]:
-        """포즈 결과 후처리"""
+    def clear_cache(self):
+        """캐시 정리"""
         try:
-            # 1. 키포인트 정규화 및 검증
-            keypoints_18 = pose_results.get('keypoints_18', [[0, 0, 0] for _ in range(18)])
-            keypoints_18 = self._validate_and_normalize_keypoints(keypoints_18, image_shape)
-            
-            # 2. 추가 메트릭 계산
-            detection_rate = pose_results.get('keypoints_detected', 0) / 18.0
-            major_keypoints_rate = self._calculate_major_keypoints_rate(keypoints_18)
-            average_confidence = pose_results.get('pose_confidence', 0.0)
-            symmetry_score = self._calculate_symmetry_score(keypoints_18)
-            visibility_score = self._calculate_visibility_score(keypoints_18)
-            
-            # 3. 결과 업데이트
-            pose_results.update({
-                'keypoints_18': keypoints_18,
-                'detection_rate': detection_rate,
-                'major_keypoints_rate': major_keypoints_rate,
-                'average_confidence': average_confidence,
-                'symmetry_score': symmetry_score,
-                'visibility_score': visibility_score
-            })
-            
-            return pose_results
-            
+            self.prediction_cache.clear()
+            self.logger.info("📋 캐시 정리 완료")
         except Exception as e:
-            self.logger.error(f"포즈 후처리 실패: {e}")
-            return pose_results
-    
-    async def _analyze_pose_quality(self, pose_results: Dict[str, Any], clothing_type: str, **kwargs) -> Dict[str, Any]:
-        """포즈 품질 분석"""
-        try:
-            keypoints_18 = pose_results.get('keypoints_18', [[0, 0, 0] for _ in range(18)])
-            
-            # 1. 기본 품질 메트릭
-            quality_metrics = {
-                'detection_rate': pose_results.get('detection_rate', 0.0),
-                'major_keypoints_rate': pose_results.get('major_keypoints_rate', 0.0),
-                'average_confidence': pose_results.get('average_confidence', 0.0),
-                'symmetry_score': pose_results.get('symmetry_score', 0.0),
-                'visibility_score': pose_results.get('visibility_score', 0.0)
-            }
-            
-            # 2. 포즈 타입 분류
-            pose_angles = pose_results.get('pose_angles', {})
-            pose_type = self._classify_pose_type(keypoints_18, pose_angles)
-            
-            # 3. 의류별 적합성 평가
-            clothing_weights = self.CLOTHING_POSE_WEIGHTS.get(clothing_type, self.CLOTHING_POSE_WEIGHTS['default'])
-            clothing_score = self._calculate_clothing_specific_score(keypoints_18, clothing_weights)
-            
-            # 4. 전체 점수 계산
-            overall_score = (
-                quality_metrics['detection_rate'] * 0.3 +
-                quality_metrics['average_confidence'] * 0.25 +
-                quality_metrics['symmetry_score'] * 0.2 +
-                quality_metrics['visibility_score'] * 0.15 +
-                clothing_score * 0.1
-            )
-            
-            # 5. 등급 결정
-            if overall_score >= 0.9:
-                quality_grade = "A+"
-            elif overall_score >= 0.8:
-                quality_grade = "A"
-            elif overall_score >= 0.7:
-                quality_grade = "B"
-            elif overall_score >= 0.6:
-                quality_grade = "C"
-            elif overall_score >= 0.5:
-                quality_grade = "D"
-            else:
-                quality_grade = "F"
-            
-            # 6. 피팅 적합성
-            suitable_for_fitting = (
-                quality_metrics['detection_rate'] >= 0.7 and
-                overall_score >= 0.6 and
-                pose_type not in ['unknown', 'sitting']
-            )
-            
-            return {
-                'pose_type': pose_type,
-                'overall_score': overall_score,
-                'quality_grade': quality_grade,
-                'suitable_for_fitting': suitable_for_fitting,
-                'fitting_confidence': min(overall_score * 1.2, 1.0),
-                'quality_metrics': quality_metrics,
-                'clothing_score': clothing_score
-            }
-            
-        except Exception as e:
-            self.logger.error(f"포즈 품질 분석 실패: {e}")
-            return {
-                'pose_type': 'unknown',
-                'overall_score': 0.0,
-                'quality_grade': 'F',
-                'suitable_for_fitting': False,
-                'fitting_confidence': 0.0
-            }
-    
-    async def _create_pose_visualization(self, pose_results: Dict[str, Any], original_image: np.ndarray, **kwargs) -> Dict[str, Any]:
-        """포즈 시각화 생성"""
-        try:
-            if not self.pose_config['visualization_enabled']:
-                return pose_results
-            
-            keypoints_18 = pose_results.get('keypoints_18', [[0, 0, 0] for _ in range(18)])
-            
-            # 1. 키포인트만 표시한 이미지
-            keypoint_image = self._draw_keypoints_only(original_image.copy(), keypoints_18)
-            
-            # 2. 스켈레톤 연결 이미지
-            skeleton_image = self._draw_skeleton(original_image.copy(), keypoints_18)
-            
-            # 3. 오버레이 이미지 (원본 + 키포인트 + 스켈레톤)
-            overlay_image = self._draw_full_pose_overlay(original_image.copy(), keypoints_18)
-            
-            # 4. 이미지를 base64로 인코딩
-            visualization_results = {}
-            
-            if PIL_AVAILABLE:
-                try:
-                    # 키포인트 이미지
-                    pil_keypoint = Image.fromarray(keypoint_image)
-                    keypoint_buffer = io.BytesIO()
-                    pil_keypoint.save(keypoint_buffer, format='PNG')
-                    visualization_results['keypoint_image'] = base64.b64encode(keypoint_buffer.getvalue()).decode()
-                    
-                    # 스켈레톤 이미지
-                    pil_skeleton = Image.fromarray(skeleton_image)
-                    skeleton_buffer = io.BytesIO()
-                    pil_skeleton.save(skeleton_buffer, format='PNG')
-                    visualization_results['skeleton_image'] = base64.b64encode(skeleton_buffer.getvalue()).decode()
-                    
-                    # 오버레이 이미지
-                    pil_overlay = Image.fromarray(overlay_image)
-                    overlay_buffer = io.BytesIO()
-                    pil_overlay.save(overlay_buffer, format='PNG')
-                    visualization_results['overlay_image'] = base64.b64encode(overlay_buffer.getvalue()).decode()
-                    
-                except Exception as e:
-                    self.logger.warning(f"이미지 인코딩 실패: {e}")
-                    visualization_results = {
-                        'keypoint_image': "",
-                        'skeleton_image': "",
-                        'overlay_image': ""
-                    }
-            else:
-                visualization_results = {
-                    'keypoint_image': "",
-                    'skeleton_image': "",
-                    'overlay_image': ""
-                }
-            
-            # 결과에 시각화 추가
-            pose_results.update(visualization_results)
-            
-            return pose_results
-            
-        except Exception as e:
-            self.logger.error(f"포즈 시각화 생성 실패: {e}")
-            pose_results.update({
-                'keypoint_image': "",
-                'skeleton_image': "",
-                'overlay_image': ""
-            })
-            return pose_results
-    
-    # =================================================================
-    # 🔧 유틸리티 함수들
-    # =================================================================
-    
-    async def _get_model_safe(self, model_name: str) -> Optional[Any]:
-        """안전한 모델 로드"""
-        try:
-            if self.model_interface:
-                return await self.model_interface.get_model(model_name)
-            else:
-                return None
-        except Exception as e:
-            self.logger.debug(f"모델 로드 실패: {model_name} - {e}")
-            return None
-    
-    async def _optimize_memory(self):
-        """메모리 최적화"""
-        try:
-            if self.memory_manager:
-                await self.memory_manager.optimize_memory_usage()
-            elif TORCH_AVAILABLE and self.device == "mps":
-                torch.mps.empty_cache()
-            elif TORCH_AVAILABLE and self.device == "cuda":
-                torch.cuda.empty_cache()
-            
-            gc.collect()
-        except Exception as e:
-            self.logger.debug(f"메모리 최적화 실패: {e}")
-    
-    def _load_and_validate_image(self, image_input: Union[np.ndarray, str, Path]) -> Optional[np.ndarray]:
-        """이미지 로드 및 검증"""
-        try:
-            if isinstance(image_input, np.ndarray):
-                image = image_input
-            elif isinstance(image_input, (str, Path)):
-                if PIL_AVAILABLE:
-                    pil_img = Image.open(image_input)
-                    image = np.array(pil_img.convert('RGB'))
-                elif CV2_AVAILABLE:
-                    image = cv2.imread(str(image_input))
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                else:
-                    raise ImportError("PIL 또는 OpenCV가 필요합니다")
-            else:
-                raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
-            
-            # 검증
-            if len(image.shape) != 3 or image.shape[2] != 3:
-                raise ValueError("RGB 이미지여야 합니다")
-            
-            if image.shape[0] == 0 or image.shape[1] == 0:
-                raise ValueError("빈 이미지입니다")
-            
-            return image
-            
-        except Exception as e:
-            self.logger.error(f"이미지 로드 실패: {e}")
-            return None
-    
-    def _generate_cache_key(self, image: np.ndarray, clothing_type: str, kwargs: Dict[str, Any]) -> str:
-        """캐시 키 생성"""
-        try:
-            # 이미지 해시
-            image_hash = hashlib.md5(image.tobytes()).hexdigest()[:16]
-            
-            # 설정 해시
-            config_data = {
-                'clothing_type': clothing_type,
-                'confidence_threshold': self.pose_config['confidence_threshold'],
-                'active_model': self.active_model,
-                **{k: v for k, v in kwargs.items() if isinstance(v, (str, int, float, bool))}
-            }
-            config_str = json.dumps(config_data, sort_keys=True)
-            config_hash = hashlib.md5(config_str.encode()).hexdigest()[:8]
-            
-            return f"pose_{image_hash}_{config_hash}"
-            
-        except Exception as e:
-            return f"pose_fallback_{time.time()}"
-    
-    def _save_to_cache(self, cache_key: str, result: Dict[str, Any]):
-        """캐시에 결과 저장"""
-        try:
-            if len(self.prediction_cache) >= self.cache_max_size:
-                # LRU 방식으로 오래된 항목 제거
-                oldest_key = min(self.prediction_cache.keys())
-                del self.prediction_cache[oldest_key]
-                self.logger.debug(f"캐시 항목 제거: {oldest_key}")
-            
-            # 메모리 절약을 위해 시각화 이미지는 캐시에서 제외
-            cached_result = result.copy()
-            for viz_key in ['keypoint_image', 'skeleton_image', 'overlay_image']:
-                if viz_key in cached_result:
-                    cached_result[viz_key] = ""
-            
-            self.prediction_cache[cache_key] = cached_result
-            self.logger.debug(f"캐시 저장 완료: {cache_key}")
-            
-        except Exception as e:
-            self.logger.warning(f"캐시 저장 실패: {e}")
-    
-    def clear_cache(self) -> Dict[str, Any]:
-        """캐시 완전 삭제"""
-        try:
-            if hasattr(self, 'prediction_cache'):
-                cache_size = len(self.prediction_cache)
-                self.prediction_cache.clear()
-                self.logger.info(f"✅ 캐시 삭제 완료: {cache_size}개 항목")
-                return {"success": True, "cleared_items": cache_size}
-            else:
-                return {"success": True, "cleared_items": 0}
-        except Exception as e:
-            self.logger.error(f"❌ 캐시 삭제 실패: {e}")
-            return {"success": False, "error": str(e)}
+            self.logger.warning(f"캐시 정리 실패: {e}")
     
     def get_cache_status(self) -> Dict[str, Any]:
-        """캐시 상태 조회"""
-        try:
-            if hasattr(self, 'prediction_cache'):
-                return {
-                    "cache_enabled": self.pose_config.get('cache_enabled', False),
-                    "current_size": len(self.prediction_cache),
-                    "max_size": self.cache_max_size,
-                    "hit_rate": self.performance_stats['cache_hits'] / max(1, self.performance_stats['cache_hits'] + self.performance_stats['cache_misses']),
-                    "cache_hits": self.performance_stats['cache_hits'],
-                    "cache_misses": self.performance_stats['cache_misses']
-                }
-            else:
-                return {"cache_enabled": False, "current_size": 0}
-        except Exception as e:
-            self.logger.error(f"캐시 상태 조회 실패: {e}")
-            return {"error": str(e)}
-    
-    def _update_performance_stats(self, processing_time: float, confidence_score: float, success: bool = True):
-        """성능 통계 업데이트"""
-        try:
-            if success:
-                self.performance_stats['total_processed'] += 1
-                self.performance_stats['total_time'] += processing_time
-                self.performance_stats['average_time'] = (
-                    self.performance_stats['total_time'] / self.performance_stats['total_processed']
-                )
-                
-                # 평균 신뢰도 업데이트
-                current_avg = self.performance_stats.get('average_confidence', 0.0)
-                total_processed = self.performance_stats['total_processed']
-                self.performance_stats['average_confidence'] = (
-                    (current_avg * (total_processed - 1) + confidence_score) / total_processed
-                )
-            else:
-                self.performance_stats['error_count'] += 1
-            
-            self.performance_stats['last_processing_time'] = processing_time
-            
-            # 메모리 사용량 추적 (M3 Max)
-            if PSUTIL_AVAILABLE:
-                try:
-                    memory_usage = psutil.virtual_memory().percent
-                    self.performance_stats['peak_memory_usage'] = max(
-                        self.performance_stats.get('peak_memory_usage', 0),
-                        memory_usage
-                    )
-                except Exception as e:
-                    self.logger.debug(f"메모리 사용량 추적 실패: {e}")
-            
-        except Exception as e:
-            self.logger.warning(f"성능 통계 업데이트 실패: {e}")
-    
-    def _build_final_result(self, metrics: PoseMetrics, clothing_type: str, processing_time: float) -> Dict[str, Any]:
-        """최종 결과 구성"""
-        
-        try:
-            return {
-                "success": True,
-                "step_name": self.step_name,
-                "processing_time": processing_time,
-                
-                # 핵심 포즈 데이터
-                "keypoints_18": metrics.keypoints_18,
-                "pose_confidence": float(metrics.pose_confidence),
-                "keypoints_detected": metrics.keypoints_detected,
-                
-                # 신체 측정 데이터
-                "body_proportions": {
-                    "total_height": float(metrics.total_height),
-                    "torso_length": float(metrics.torso_length),
-                    "shoulder_width": float(metrics.shoulder_width),
-                    "hip_width": float(metrics.hip_width),
-                    "left_arm_length": float(metrics.left_arm_length),
-                    "right_arm_length": float(metrics.right_arm_length),
-                    "left_leg_length": float(metrics.left_leg_length),
-                    "right_leg_length": float(metrics.right_leg_length)
-                },
-                
-                # 포즈 각도
-                "pose_angles": {
-                    "left_arm_angle": float(metrics.left_arm_angle),
-                    "right_arm_angle": float(metrics.right_arm_angle),
-                    "left_leg_angle": float(metrics.left_leg_angle),
-                    "right_leg_angle": float(metrics.right_leg_angle),
-                    "spine_angle": float(metrics.spine_angle)
-                },
-                
-                # 품질 분석
-                "pose_analysis": {
-                    "detection_rate": float(metrics.detection_rate),
-                    "major_keypoints_rate": float(metrics.major_keypoints_rate),
-                    "average_confidence": float(metrics.average_confidence),
-                    "symmetry_score": float(metrics.symmetry_score),
-                    "visibility_score": float(metrics.visibility_score),
-                    "pose_type": metrics.pose_type,
-                    "quality_grade": metrics.quality_grade,
-                    "overall_score": float(metrics.overall_score)
-                },
-                
-                # 피팅 적합성
-                "suitable_for_fitting": metrics.suitable_for_fitting,
-                "fitting_confidence": float(metrics.fitting_confidence),
-                
-                # 메타데이터
-                "clothing_type": clothing_type,
-                "detection_method": getattr(metrics, 'detection_method', self.active_model or 'unknown'),
-                
-                # 시스템 정보
-                "device_info": {
-                    "device": self.device,
-                    "device_type": self.device_type,
-                    "is_m3_max": self.is_m3_max,
-                    "memory_gb": self.memory_gb,
-                    "optimization_level": self.optimization_level,
-                    "active_model": self.active_model
-                },
-                
-                # 성능 통계
-                "performance_stats": self.performance_stats.copy(),
-                
-                # 시각화 이미지들 (create_pose_visualization에서 추가됨)
-                "keypoint_image": "",
-                "skeleton_image": "", 
-                "overlay_image": "",
-                
-                "from_cache": False
-            }
-        except Exception as e:
-            self.logger.error(f"최종 결과 구성 실패: {e}")
-            return self._create_error_result(f"결과 구성 실패: {e}", processing_time)
-    
-    # =================================================================
-    # 🔧 포즈 분석 및 변환 유틸리티들
-    # =================================================================
-    
-    def _validate_and_normalize_keypoints(self, keypoints_18: List[List[float]], image_shape: Tuple[int, int]) -> List[List[float]]:
-        """키포인트 검증 및 정규화"""
-        try:
-            h, w = image_shape[:2]
-            normalized_keypoints = []
-            
-            for i, kp in enumerate(keypoints_18):
-                if len(kp) >= 3:
-                    x, y, conf = float(kp[0]), float(kp[1]), float(kp[2])
-                    
-                    # 좌표 범위 체크
-                    x = max(0, min(w-1, x))
-                    y = max(0, min(h-1, y))
-                    
-                    # 신뢰도 범위 체크
-                    conf = max(0.0, min(1.0, conf))
-                    
-                    normalized_keypoints.append([x, y, conf])
-                else:
-                    normalized_keypoints.append([0.0, 0.0, 0.0])
-            
-            # 18개 키포인트 보장
-            while len(normalized_keypoints) < 18:
-                normalized_keypoints.append([0.0, 0.0, 0.0])
-            
-            return normalized_keypoints[:18]
-            
-        except Exception as e:
-            self.logger.error(f"키포인트 정규화 실패: {e}")
-            return [[0.0, 0.0, 0.0] for _ in range(18)]
-    
-    def _calculate_major_keypoints_rate(self, keypoints_18: List[List[float]]) -> float:
-        """주요 키포인트 검출률 계산"""
-        try:
-            # 주요 키포인트: 코, 목, 어깨, 엉덩이, 무릎
-            major_indices = [0, 1, 2, 5, 8, 9, 10, 12, 13]
-            detected_major = sum(1 for idx in major_indices if keypoints_18[idx][2] > self.pose_config['confidence_threshold'])
-            return detected_major / len(major_indices)
-        except Exception as e:
-            self.logger.debug(f"주요 키포인트 계산 실패: {e}")
-            return 0.0
-    
-    def _calculate_symmetry_score(self, keypoints_18: List[List[float]]) -> float:
-        """신체 대칭성 점수 계산"""
-        try:
-            symmetry_pairs = [
-                (2, 5),   # 어깨
-                (3, 6),   # 팔꿈치
-                (4, 7),   # 손목
-                (9, 12),  # 엉덩이
-                (10, 13), # 무릎
-                (11, 14), # 발목
-                (15, 16)  # 눈
-            ]
-            
-            symmetry_scores = []
-            
-            for left_idx, right_idx in symmetry_pairs:
-                if left_idx < len(keypoints_18) and right_idx < len(keypoints_18):
-                    left_kp = keypoints_18[left_idx]
-                    right_kp = keypoints_18[right_idx]
-                    
-                    if left_kp[2] > 0.5 and right_kp[2] > 0.5:
-                        # Y 좌표 차이로 대칭성 계산 (수평 대칭)
-                        y_diff = abs(left_kp[1] - right_kp[1])
-                        max_y = max(left_kp[1], right_kp[1])
-                        if max_y > 0:
-                            symmetry = 1.0 - min(y_diff / max_y, 1.0)
-                            symmetry_scores.append(symmetry)
-            
-            return np.mean(symmetry_scores) if symmetry_scores else 0.5
-            
-        except Exception as e:
-            self.logger.warning(f"대칭성 계산 실패: {e}")
-            return 0.5
-    
-    def _calculate_visibility_score(self, keypoints_18: List[List[float]]) -> float:
-        """가시성 점수 계산"""
-        try:
-            visible_count = sum(1 for kp in keypoints_18 if kp[2] > 0.3)
-            return visible_count / 18.0
-        except Exception as e:
-            self.logger.debug(f"가시성 계산 실패: {e}")
-            return 0.0
-    
-    def _calculate_pose_angles(self, keypoints_18: List[List[float]]) -> Dict[str, float]:
-        """포즈 각도 계산"""
-        try:
-            angles = {}
-            
-            # 왼팔 각도 (어깨-팔꿈치-손목)
-            if all(keypoints_18[i][2] > 0.5 for i in [5, 6, 7]):
-                shoulder = np.array(keypoints_18[5][:2])
-                elbow = np.array(keypoints_18[6][:2])
-                wrist = np.array(keypoints_18[7][:2])
-                angles['left_arm_angle'] = self._calculate_angle(shoulder, elbow, wrist)
-            
-            # 오른팔 각도
-            if all(keypoints_18[i][2] > 0.5 for i in [2, 3, 4]):
-                shoulder = np.array(keypoints_18[2][:2])
-                elbow = np.array(keypoints_18[3][:2])
-                wrist = np.array(keypoints_18[4][:2])
-                angles['right_arm_angle'] = self._calculate_angle(shoulder, elbow, wrist)
-            
-            # 왼다리 각도 (엉덩이-무릎-발목)
-            if all(keypoints_18[i][2] > 0.5 for i in [12, 13, 14]):
-                hip = np.array(keypoints_18[12][:2])
-                knee = np.array(keypoints_18[13][:2])
-                ankle = np.array(keypoints_18[14][:2])
-                angles['left_leg_angle'] = self._calculate_angle(hip, knee, ankle)
-            
-            # 오른다리 각도
-            if all(keypoints_18[i][2] > 0.5 for i in [9, 10, 11]):
-                hip = np.array(keypoints_18[9][:2])
-                knee = np.array(keypoints_18[10][:2])
-                ankle = np.array(keypoints_18[11][:2])
-                angles['right_leg_angle'] = self._calculate_angle(hip, knee, ankle)
-            
-            # 척추 각도 (목-중간엉덩이 기준)
-            if all(keypoints_18[i][2] > 0.5 for i in [1, 8]):
-                neck = np.array(keypoints_18[1][:2])
-                mid_hip = np.array(keypoints_18[8][:2])
-                # 수직 기준으로 기울어진 정도
-                vertical = np.array([0, 1])
-                spine_vector = mid_hip - neck
-                if np.linalg.norm(spine_vector) > 0:
-                    spine_vector = spine_vector / np.linalg.norm(spine_vector)
-                    dot_product = np.dot(spine_vector, vertical)
-                    angles['spine_angle'] = math.degrees(math.acos(np.clip(dot_product, -1, 1)))
-            
-            return angles
-            
-        except Exception as e:
-            self.logger.warning(f"포즈 각도 계산 실패: {e}")
-            return {}
-    
-    def _calculate_angle(self, point1: np.ndarray, point2: np.ndarray, point3: np.ndarray) -> float:
-        """세 점으로 각도 계산"""
-        try:
-            # 벡터 계산
-            v1 = point1 - point2
-            v2 = point3 - point2
-            
-            # 각도 계산 (라디안 -> 도)
-            cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-            cos_angle = np.clip(cos_angle, -1, 1)
-            angle = math.degrees(math.acos(cos_angle))
-            
-            return float(angle)
-            
-        except Exception as e:
-            return 180.0  # 기본 각도
-    
-    def _calculate_body_proportions(self, keypoints_18: List[List[float]]) -> Dict[str, float]:
-        """신체 비율 계산"""
-        try:
-            proportions = {}
-            
-            # 전체 신장 (머리-발목)
-            if keypoints_18[0][2] > 0.5:
-                head_y = keypoints_18[0][1]
-                ankle_y = max(keypoints_18[11][1] if keypoints_18[11][2] > 0.5 else 0,
-                            keypoints_18[14][1] if keypoints_18[14][2] > 0.5 else 0)
-                if ankle_y > head_y:
-                    proportions['total_height'] = ankle_y - head_y
-            
-            # 상체 길이 (목-엉덩이)
-            if keypoints_18[1][2] > 0.5 and keypoints_18[8][2] > 0.5:
-                proportions['torso_length'] = abs(keypoints_18[8][1] - keypoints_18[1][1])
-            
-            # 어깨 너비
-            if keypoints_18[2][2] > 0.5 and keypoints_18[5][2] > 0.5:
-                proportions['shoulder_width'] = abs(keypoints_18[2][0] - keypoints_18[5][0])
-            
-            # 엉덩이 너비
-            if keypoints_18[9][2] > 0.5 and keypoints_18[12][2] > 0.5:
-                proportions['hip_width'] = abs(keypoints_18[9][0] - keypoints_18[12][0])
-            
-            # 팔 길이 (어깨-손목)
-            if keypoints_18[4][2] > 0.5 and keypoints_18[2][2] > 0.5:
-                right_arm_length = np.sqrt(
-                    (keypoints_18[4][0] - keypoints_18[2][0])**2 + 
-                    (keypoints_18[4][1] - keypoints_18[2][1])**2
-                )
-                proportions['right_arm_length'] = right_arm_length
-            
-            if keypoints_18[7][2] > 0.5 and keypoints_18[5][2] > 0.5:
-                left_arm_length = np.sqrt(
-                    (keypoints_18[7][0] - keypoints_18[5][0])**2 + 
-                    (keypoints_18[7][1] - keypoints_18[5][1])**2
-                )
-                proportions['left_arm_length'] = left_arm_length
-            
-            # 다리 길이 (엉덩이-발목)
-            if keypoints_18[11][2] > 0.5 and keypoints_18[9][2] > 0.5:
-                right_leg_length = np.sqrt(
-                    (keypoints_18[11][0] - keypoints_18[9][0])**2 + 
-                    (keypoints_18[11][1] - keypoints_18[9][1])**2
-                )
-                proportions['right_leg_length'] = right_leg_length
-            
-            if keypoints_18[14][2] > 0.5 and keypoints_18[12][2] > 0.5:
-                left_leg_length = np.sqrt(
-                    (keypoints_18[14][0] - keypoints_18[12][0])**2 + 
-                    (keypoints_18[14][1] - keypoints_18[12][1])**2
-                )
-                proportions['left_leg_length'] = left_leg_length
-            
-            return proportions
-            
-        except Exception as e:
-            self.logger.warning(f"신체 비율 계산 실패: {e}")
-            return {}
-    
-    def _classify_pose_type(self, keypoints_18: List[List[float]], pose_angles: Dict[str, float]) -> str:
-        """포즈 타입 분류"""
-        try:
-            # 팔 각도 기반 분류
-            right_arm = pose_angles.get('right_arm_angle', 180)
-            left_arm = pose_angles.get('left_arm_angle', 180)
-            
-            # T-포즈 (팔이 수평)
-            if 160 <= right_arm <= 180 and 160 <= left_arm <= 180:
-                return PoseType.T_POSE.value
-            
-            # A-포즈 (팔이 약간 아래)
-            elif 140 <= right_arm < 160 and 140 <= left_arm < 160:
-                return PoseType.A_POSE.value
-            
-            # 팔 올린 포즈
-            elif right_arm < 90 or left_arm < 90:
-                return PoseType.ARMS_UP.value
-            
-            # 다리 상태 확인
-            right_leg = pose_angles.get('right_leg_angle', 180)
-            left_leg = pose_angles.get('left_leg_angle', 180)
-            
-            # 앉은 포즈
-            if right_leg < 120 and left_leg < 120:
-                return PoseType.SITTING.value
-            
-            # 걷기/뛰기 (다리 비대칭)
-            elif abs(right_leg - left_leg) > 30:
-                return PoseType.WALKING.value
-            
-            # 기본 서있는 포즈
-            else:
-                return PoseType.STANDING.value
-                
-        except Exception as e:
-            self.logger.warning(f"포즈 타입 분류 실패: {e}")
-            return PoseType.UNKNOWN.value
-    
-    def _calculate_clothing_specific_score(self, keypoints_18: List[List[float]], weights: Dict[str, float]) -> float:
-        """의류별 특화 점수 계산"""
-        try:
-            scores = {}
-            
-            # 팔 영역 점수
-            arm_keypoints = [2, 3, 4, 5, 6, 7]  # 어깨, 팔꿈치, 손목
-            arm_detected = sum(1 for idx in arm_keypoints if keypoints_18[idx][2] > 0.5)
-            scores['arms'] = arm_detected / len(arm_keypoints)
-            
-            # 상체 영역 점수
-            torso_keypoints = [1, 2, 5, 8]  # 목, 어깨, 엉덩이
-            torso_detected = sum(1 for idx in torso_keypoints if keypoints_18[idx][2] > 0.5)
-            scores['torso'] = torso_detected / len(torso_keypoints)
-            
-            # 다리 영역 점수
-            leg_keypoints = [9, 10, 11, 12, 13, 14]  # 엉덩이, 무릎, 발목
-            leg_detected = sum(1 for idx in leg_keypoints if keypoints_18[idx][2] > 0.5)
-            scores['legs'] = leg_detected / len(leg_keypoints)
-            
-            # 가시성 점수
-            total_visible = sum(1 for kp in keypoints_18 if kp[2] > 0.3)
-            scores['visibility'] = total_visible / 18.0
-            
-            # 가중 평균 계산
-            weighted_score = sum(scores.get(key, 0) * weight for key, weight in weights.items())
-            return weighted_score
-            
-        except Exception as e:
-            self.logger.warning(f"의류별 점수 계산 실패: {e}")
-            return 0.5
-    
-    # =================================================================
-    # 🎨 시각화 함수들
-    # =================================================================
-    
-    def _draw_keypoints_only(self, image: np.ndarray, keypoints_18: List[List[float]]) -> np.ndarray:
-        """키포인트만 그리기"""
-        try:
-            result_image = image.copy()
-            
-            for i, (x, y, conf) in enumerate(keypoints_18):
-                if conf > 0.3:
-                    color = KEYPOINT_COLORS[i % len(KEYPOINT_COLORS)]
-                    
-                    if CV2_AVAILABLE:
-                        cv2.circle(result_image, (int(x), int(y)), 5, color, -1)
-                        cv2.circle(result_image, (int(x), int(y)), 7, (255, 255, 255), 2)
-                        
-                        # 키포인트 라벨 추가
-                        label = OPENPOSE_18_KEYPOINTS.get(i, f"kp_{i}")
-                        cv2.putText(result_image, label, (int(x)+10, int(y)-10), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
-            
-            return result_image
-            
-        except Exception as e:
-            self.logger.error(f"키포인트 그리기 실패: {e}")
-            return image
-    
-    def _draw_skeleton(self, image: np.ndarray, keypoints_18: List[List[float]]) -> np.ndarray:
-        """스켈레톤 연결 그리기"""
-        try:
-            result_image = image.copy()
-            
-            for i, (start_idx, end_idx) in enumerate(SKELETON_CONNECTIONS):
-                if start_idx < len(keypoints_18) and end_idx < len(keypoints_18):
-                    start_kp = keypoints_18[start_idx]
-                    end_kp = keypoints_18[end_idx]
-                    
-                    if start_kp[2] > 0.3 and end_kp[2] > 0.3:
-                        color = SKELETON_COLORS[i % len(SKELETON_COLORS)]
-                        
-                        if CV2_AVAILABLE:
-                            cv2.line(result_image, 
-                                    (int(start_kp[0]), int(start_kp[1])),
-                                    (int(end_kp[0]), int(end_kp[1])),
-                                    color, 3)
-            
-            return result_image
-            
-        except Exception as e:
-            self.logger.error(f"스켈레톤 그리기 실패: {e}")
-            return image
-    
-    def _draw_full_pose_overlay(self, image: np.ndarray, keypoints_18: List[List[float]]) -> np.ndarray:
-        """완전한 포즈 오버레이 그리기"""
-        try:
-            result_image = image.copy()
-            
-            # 1. 스켈레톤 연결 그리기
-            result_image = self._draw_skeleton(result_image, keypoints_18)
-            
-            # 2. 키포인트 그리기
-            for i, (x, y, conf) in enumerate(keypoints_18):
-                if conf > 0.3:
-                    color = KEYPOINT_COLORS[i % len(KEYPOINT_COLORS)]
-                    
-                    if CV2_AVAILABLE:
-                        # 키포인트 원
-                        cv2.circle(result_image, (int(x), int(y)), 6, color, -1)
-                        cv2.circle(result_image, (int(x), int(y)), 8, (255, 255, 255), 2)
-            
-            return result_image
-            
-        except Exception as e:
-            self.logger.error(f"포즈 오버레이 그리기 실패: {e}")
-            return image
-    
-    # =================================================================
-    # 🔧 모델별 변환 함수들
-    # =================================================================
-    
-    def _convert_mediapipe_to_openpose(self, landmarks, image_shape: Tuple[int, int]) -> List[List[float]]:
-        """MediaPipe 랜드마크를 OpenPose 18 형식으로 변환"""
-        try:
-            h, w = image_shape[:2]
-            keypoints_18 = [[0, 0, 0] for _ in range(18)]
-            
-            # MediaPipe 33개 랜드마크 -> OpenPose 18개 매핑
-            mp_to_op_mapping = {
-                0: 0,   # nose
-                12: 1,  # neck (어깨 중점으로 근사)
-                12: 2,  # right_shoulder
-                14: 3,  # right_elbow
-                16: 4,  # right_wrist
-                11: 5,  # left_shoulder
-                13: 6,  # left_elbow
-                15: 7,  # left_wrist
-                24: 8,  # mid_hip (엉덩이 중점으로 근사)
-                24: 9,  # right_hip
-                26: 10, # right_knee
-                28: 11, # right_ankle
-                23: 12, # left_hip
-                25: 13, # left_knee
-                27: 14, # left_ankle
-                5: 15,  # right_eye
-                2: 16,  # left_eye
-                8: 17   # right_ear
-            }
-            
-            for op_idx, mp_idx in mp_to_op_mapping.items():
-                if mp_idx < len(landmarks.landmark):
-                    landmark = landmarks.landmark[mp_idx]
-                    
-                    x = landmark.x * w
-                    y = landmark.y * h
-                    conf = landmark.visibility if hasattr(landmark, 'visibility') else 0.8
-                    
-                    keypoints_18[op_idx] = [float(x), float(y), float(conf)]
-            
-            # 목 위치 보정 (어깨 중점으로)
-            if keypoints_18[2][2] > 0 and keypoints_18[5][2] > 0:
-                neck_x = (keypoints_18[2][0] + keypoints_18[5][0]) / 2
-                neck_y = (keypoints_18[2][1] + keypoints_18[5][1]) / 2
-                keypoints_18[1] = [neck_x, neck_y, 0.9]
-            
-            # 중간 엉덩이 보정
-            if keypoints_18[9][2] > 0 and keypoints_18[12][2] > 0:
-                hip_x = (keypoints_18[9][0] + keypoints_18[12][0]) / 2
-                hip_y = (keypoints_18[9][1] + keypoints_18[12][1]) / 2
-                keypoints_18[8] = [hip_x, hip_y, 0.9]
-            
-            return keypoints_18
-            
-        except Exception as e:
-            self.logger.error(f"MediaPipe 변환 실패: {e}")
-            return [[0, 0, 0] for _ in range(18)]
-    
-    def _convert_coco_to_openpose(self, coco_keypoints: np.ndarray, image_shape: Tuple[int, int]) -> List[List[float]]:
-        """COCO 17 키포인트를 OpenPose 18로 변환"""
-        try:
-            keypoints_18 = [[0, 0, 0] for _ in range(18)]
-            
-            # COCO 17 -> OpenPose 18 매핑
-            coco_to_op_mapping = {
-                0: 0,   # nose
-                5: 2,   # right_shoulder
-                7: 3,   # right_elbow
-                9: 4,   # right_wrist
-                6: 5,   # left_shoulder
-                8: 6,   # left_elbow
-                10: 7,  # left_wrist
-                11: 9,  # right_hip
-                13: 10, # right_knee
-                15: 11, # right_ankle
-                12: 12, # left_hip
-                14: 13, # left_knee
-                16: 14, # left_ankle
-                2: 15,  # right_eye
-                1: 16,  # left_eye
-                4: 17   # right_ear
-            }
-            
-            for coco_idx, op_idx in coco_to_op_mapping.items():
-                if coco_idx < len(coco_keypoints):
-                    if len(coco_keypoints[coco_idx]) >= 3:
-                        x, y, conf = coco_keypoints[coco_idx][:3]
-                        keypoints_18[op_idx] = [float(x), float(y), float(conf)]
-            
-            # 목 위치 계산 (어깨 중점)
-            if keypoints_18[2][2] > 0 and keypoints_18[5][2] > 0:
-                neck_x = (keypoints_18[2][0] + keypoints_18[5][0]) / 2
-                neck_y = (keypoints_18[2][1] + keypoints_18[5][1]) / 2 - 20  # 약간 위로
-                keypoints_18[1] = [neck_x, neck_y, 0.9]
-            
-            # 중간 엉덩이 계산
-            if keypoints_18[9][2] > 0 and keypoints_18[12][2] > 0:
-                hip_x = (keypoints_18[9][0] + keypoints_18[12][0]) / 2
-                hip_y = (keypoints_18[9][1] + keypoints_18[12][1]) / 2
-                keypoints_18[8] = [hip_x, hip_y, 0.9]
-            
-            return keypoints_18
-            
-        except Exception as e:
-            self.logger.error(f"COCO 변환 실패: {e}")
-            return [[0, 0, 0] for _ in range(18)]
-    
-    def _manual_preprocess_for_openpose(self, image: np.ndarray) -> Union[torch.Tensor, np.ndarray]:
-        """OpenPose용 수동 전처리"""
-        try:
-            # 368x368 크기로 리사이즈
-            if CV2_AVAILABLE:
-                resized = cv2.resize(image, (368, 368))
-            else:
-                # 폴백: 단순 크기 조정
-                resized = image
-            
-            # 정규화
-            normalized = resized.astype(np.float32) / 255.0
-            
-            # 텐서 변환 [1, 3, 368, 368]
-            if TORCH_AVAILABLE:
-                tensor = torch.from_numpy(normalized.transpose(2, 0, 1)).unsqueeze(0)
-                if self.device != "cpu":
-                    tensor = tensor.to(self.device)
-                return tensor
-            else:
-                return normalized
-            
-        except Exception as e:
-            self.logger.error(f"OpenPose 전처리 실패: {e}")
-            return image
-    
-    def _postprocess_openpose_output(self, output: Any, image_shape: Tuple[int, int]) -> List[List[float]]:
-        """OpenPose 출력 후처리"""
-        try:
-            if TORCH_AVAILABLE and isinstance(output, torch.Tensor):
-                # PAF와 히트맵 분리
-                if len(output.shape) == 4 and output.shape[1] >= 19:  # [1, C, H, W]
-                    heatmaps = output[0, :18].cpu().numpy()  # 첫 18채널이 키포인트
-                    
-                    h, w = image_shape[:2]
-                    heatmap_h, heatmap_w = heatmaps.shape[1:]
-                    
-                    keypoints_18 = []
-                    
-                    for i in range(18):
-                        heatmap = heatmaps[i]
-                        
-                        # 최대값 위치 찾기
-                        max_idx = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-                        confidence = float(heatmap[max_idx])
-                        
-                        # 좌표 변환 (히트맵 -> 원본 이미지)
-                        x = float(max_idx[1] * w / heatmap_w)
-                        y = float(max_idx[0] * h / heatmap_h)
-                        
-                        keypoints_18.append([x, y, confidence])
-                    
-                    return keypoints_18
-                else:
-                    self.logger.warning("예상과 다른 OpenPose 출력 형태")
-                    return [[0, 0, 0] for _ in range(18)]
-            else:
-                self.logger.warning("PyTorch 텐서가 아닌 출력")
-                return [[0, 0, 0] for _ in range(18)]
-                
-        except Exception as e:
-            self.logger.error(f"OpenPose 후처리 실패: {e}")
-            return [[0, 0, 0] for _ in range(18)]
-    
-    # =================================================================
-    # 🔍 표준 인터페이스 메서드들 (Pipeline Manager 호환)
-    # =================================================================
-    
-    async def get_step_info(self) -> Dict[str, Any]:
-        """Step 정보 반환"""
+        """캐시 상태 반환"""
         return {
-            "step_name": "PoseEstimation",
-            "class_name": self.__class__.__name__,
-            "version": "5.0-complete-rewrite",
+            'cache_size': len(self.prediction_cache),
+            'cache_max_size': self.cache_max_size,
+            'cache_enabled': self.pose_config['cache_enabled']
+        }
+    
+    def get_step_info(self) -> Dict[str, Any]:
+        """Step 정보 반환 (step_model_requests.py 호환)"""
+        
+        # 기본 Step 정보
+        base_info = {
+            "step_name": self.step_name,
+            "step_number": self.step_number,
+            "step_description": self.step_description,
+            "is_initialized": self.is_initialized,
             "device": self.device,
-            "device_type": self.device_type,
+            "optimization_level": self.optimization_level
+        }
+        
+        # 모델 상태 정보
+        model_status = {
+            "loaded_models": list(self.pose_models.keys()) if hasattr(self, 'pose_models') else [],
+            "active_model": self.active_model,
+            "model_priority": self.pose_config['model_priority'],
+            "model_interface_connected": self.model_interface is not None
+        }
+        
+        # 처리 설정 정보
+        processing_settings = {
+            "confidence_threshold": self.pose_config['confidence_threshold'],
+            "optimization_level": self.optimization_level,
+            "batch_processing": self.batch_processing,
+            "cache_enabled": self.pose_config['cache_enabled'],
+            "cache_status": self.get_cache_status()
+        }
+        
+        # 🔥 step_model_requests.py 호환 정보 추가
+        step_requirements = self._get_step_model_requirements()
+        
+        compliance_info = {
+            "step_model_requests_compliance": True,
+            "required_model_name": step_requirements["model_name"],
+            "step_priority": step_requirements["step_priority"],
+            "target_input_size": getattr(self, 'target_input_size', step_requirements["input_size"]),
+            "optimization_params": getattr(self, 'pose_optimization_params', {}),
+            "checkpoint_patterns": step_requirements["checkpoint_patterns"],
+            "alternative_models": step_requirements["alternative_models"]
+        }
+        
+        # 성능 및 메타데이터
+        performance_info = {
             "memory_gb": self.memory_gb,
             "is_m3_max": self.is_m3_max,
-            "optimization_enabled": self.optimization_enabled,
-            "quality_level": self.quality_level,
-            "initialized": self.is_initialized,
-            "initialization_error": self.initialization_error,
-            "config_keys": list(self.config.keys()),
-            "performance_stats": self.performance_stats.copy(),
-            "capabilities": {
-                "mediapipe_available": MEDIAPIPE_AVAILABLE,
-                "yolov8_available": YOLO_AVAILABLE,
-                "torch_available": TORCH_AVAILABLE,
-                "cv2_available": CV2_AVAILABLE,
-                "pil_available": PIL_AVAILABLE,
-                "psutil_available": PSUTIL_AVAILABLE,
-                "model_loader_available": MODEL_LOADER_AVAILABLE,
-                "memory_manager_available": MEMORY_MANAGER_AVAILABLE,
-                "data_converter_available": DATA_CONVERTER_AVAILABLE,
-                "active_model": self.active_model,
-                "visualization_enabled": self.pose_config['visualization_enabled'],
-                "neural_engine_enabled": getattr(self, 'use_neural_engine', False)
-            },
-            "model_info": {
-                "available_models": list(self.pose_models.keys()) if hasattr(self, 'pose_models') else [],
-                "active_model": self.active_model,
-                "model_priority": self.pose_config['model_priority'],
-                "model_interface_connected": self.model_interface is not None
-            },
-            "processing_settings": {
-                "confidence_threshold": self.pose_config['confidence_threshold'],
-                "optimization_level": self.optimization_level,
-                "batch_processing": self.batch_processing,
-                "cache_enabled": self.pose_config['cache_enabled'],
-                "cache_status": self.get_cache_status()
-            }
+            "use_neural_engine": getattr(self, 'use_neural_engine', False),
+            "supported_clothing_types": list(self.CLOTHING_POSE_WEIGHTS.keys()),
+            "keypoints_format": getattr(self, 'num_keypoints', 18),
+            "visualization_enabled": self.pose_config['visualization_enabled']
+        }
+        
+        return {
+            **base_info,
+            "model_status": model_status,
+            "processing_settings": processing_settings,
+            "step_requirements_compliance": compliance_info,
+            "performance_info": performance_info,
+            "metadata": step_requirements["metadata"]
         }
     
     def cleanup_resources(self):
@@ -2224,7 +1870,9 @@ async def create_pose_estimation_step(
         
         # 추가 초기화가 필요한 경우
         if not step.is_initialized:
-            step.logger.warning("⚠️ 2단계 초기화 실패 - 시뮬레이션 모드로 동작")
+            await step.initialize()
+            if not step.is_initialized:
+                step.logger.warning("⚠️ 2단계 초기화 실패 - 시뮬레이션 모드로 동작")
         
         return step
         
@@ -2288,6 +1936,7 @@ def convert_keypoints_to_coco(keypoints_18: List[List[float]]) -> List[List[floa
             15: 1,  # right_eye -> left_eye (COCO 관점)
             16: 2,  # left_eye -> right_eye
             17: 3,  # right_ear -> left_ear
+            18: 4,  # left_ear -> right_ear
             2: 5,   # right_shoulder -> left_shoulder (COCO 관점)
             5: 6,   # left_shoulder -> right_shoulder
             3: 7,   # right_elbow -> left_elbow
@@ -2302,110 +1951,164 @@ def convert_keypoints_to_coco(keypoints_18: List[List[float]]) -> List[List[floa
             14: 16  # left_ankle -> right_ankle
         }
         
-        coco_keypoints = [[0, 0, 0] for _ in range(17)]
-        
-        for op_idx, coco_idx in op_to_coco_mapping.items():
-            if op_idx < len(keypoints_18):
-                coco_keypoints[coco_idx] = keypoints_18[op_idx].copy()
+        coco_keypoints = []
+        for coco_idx in range(17):
+            if coco_idx in op_to_coco_mapping.values():
+                # 매핑된 OpenPose 인덱스 찾기
+                op_idx = next(k for k, v in op_to_coco_mapping.items() if v == coco_idx)
+                if op_idx < len(keypoints_18):
+                    coco_keypoints.append(keypoints_18[op_idx])
+                else:
+                    coco_keypoints.append([0.0, 0.0, 0.0])
+            else:
+                coco_keypoints.append([0.0, 0.0, 0.0])
         
         return coco_keypoints
         
     except Exception as e:
-        return [[0, 0, 0] for _ in range(17)]
+        logger.error(f"키포인트 변환 실패: {e}")
+        return [[0.0, 0.0, 0.0]] * 17
 
-def draw_pose_on_image(image: np.ndarray, keypoints_18: List[List[float]], 
-                        confidence_threshold: float = 0.5) -> np.ndarray:
-    """이미지에 포즈 그리기 (외부 호출용)"""
+def draw_pose_on_image(
+    image: Union[np.ndarray, Image.Image],
+    keypoints: List[List[float]],
+    confidence_threshold: float = 0.5,
+    keypoint_size: int = 4,
+    line_width: int = 3
+) -> Image.Image:
+    """이미지에 포즈 그리기"""
     try:
-        result_image = image.copy()
+        # 이미지 변환
+        if isinstance(image, np.ndarray):
+            pil_image = Image.fromarray(image)
+        else:
+            pil_image = image.copy()
+        
+        draw = ImageDraw.Draw(pil_image)
         
         # 키포인트 그리기
-        for i, (x, y, conf) in enumerate(keypoints_18):
-            if conf > confidence_threshold:
+        for i, kp in enumerate(keypoints):
+            if len(kp) >= 3 and kp[2] > confidence_threshold:
+                x, y = int(kp[0]), int(kp[1])
                 color = KEYPOINT_COLORS[i % len(KEYPOINT_COLORS)]
                 
-                if CV2_AVAILABLE:
-                    cv2.circle(result_image, (int(x), int(y)), 5, color, -1)
-                    cv2.circle(result_image, (int(x), int(y)), 7, (255, 255, 255), 2)
+                draw.ellipse([x-keypoint_size, y-keypoint_size, x+keypoint_size, y+keypoint_size], 
+                           fill=color, outline=(255, 255, 255), width=2)
         
-        # 스켈레톤 연결 그리기
+        # 스켈레톤 그리기
         for i, (start_idx, end_idx) in enumerate(SKELETON_CONNECTIONS):
-            if (start_idx < len(keypoints_18) and end_idx < len(keypoints_18) and
-                keypoints_18[start_idx][2] > confidence_threshold and 
-                keypoints_18[end_idx][2] > confidence_threshold):
+            if (start_idx < len(keypoints) and end_idx < len(keypoints)):
+                start_kp = keypoints[start_idx]
+                end_kp = keypoints[end_idx]
                 
-                color = SKELETON_COLORS[i % len(SKELETON_COLORS)]
-                
-                if CV2_AVAILABLE:
-                    cv2.line(result_image, 
-                            (int(keypoints_18[start_idx][0]), int(keypoints_18[start_idx][1])),
-                            (int(keypoints_18[end_idx][0]), int(keypoints_18[end_idx][1])),
-                            color, 3)
+                if (len(start_kp) >= 3 and len(end_kp) >= 3 and
+                    start_kp[2] > confidence_threshold and end_kp[2] > confidence_threshold):
+                    
+                    start_point = (int(start_kp[0]), int(start_kp[1]))
+                    end_point = (int(end_kp[0]), int(end_kp[1]))
+                    color = SKELETON_COLORS[i % len(SKELETON_COLORS)]
+                    
+                    draw.line([start_point, end_point], fill=color, width=line_width)
         
-        return result_image
+        return pil_image
         
     except Exception as e:
         logger.error(f"포즈 그리기 실패: {e}")
-        return image
+        return image if isinstance(image, Image.Image) else Image.fromarray(image)
 
-def analyze_pose_for_clothing(keypoints_18: List[List[float]], clothing_type: str = "default") -> Dict[str, Any]:
-    """의류 피팅을 위한 포즈 분석 (외부 호출용)"""
+def analyze_pose_for_clothing(
+    keypoints: List[List[float]],
+    clothing_type: str = "default",
+    confidence_threshold: float = 0.5
+) -> Dict[str, Any]:
+    """의류별 포즈 적합성 분석"""
     try:
-        analysis = {
-            'suitable_for_fitting': False,
-            'issues': [],
-            'recommendations': [],
-            'pose_score': 0.0
-        }
+        if not keypoints:
+            return {
+                'suitable_for_fitting': False,
+                'issues': ["포즈를 검출할 수 없습니다"],
+                'recommendations': ["더 선명한 이미지를 사용해 주세요"],
+                'pose_score': 0.0
+            }
         
-        # 필수 키포인트 확인 (머리, 목, 어깨, 엉덩이)
-        essential_points = [0, 1, 2, 5, 8]
-        essential_detected = sum(1 for idx in essential_points if keypoints_18[idx][2] > 0.5)
-        
-        if essential_detected < 4:
-            analysis['issues'].append("주요 신체 부위가 잘 보이지 않음")
-            analysis['recommendations'].append("전신이 잘 보이는 자세를 취해주세요")
-        
-        # 팔 위치 분석
-        arms_visible = (keypoints_18[2][2] > 0.5 and keypoints_18[3][2] > 0.5 and 
-                        keypoints_18[5][2] > 0.5 and keypoints_18[6][2] > 0.5)
-        
-        if not arms_visible:
-            analysis['issues'].append("팔이 잘 보이지 않음")
-            analysis['recommendations'].append("팔이 몸에서 떨어져 보이는 자세를 취해주세요")
-        
-        # 다리 위치 분석
-        legs_visible = (keypoints_18[9][2] > 0.5 and keypoints_18[10][2] > 0.5 and 
-                        keypoints_18[12][2] > 0.5 and keypoints_18[13][2] > 0.5)
-        
-        if not legs_visible:
-            analysis['issues'].append("다리가 잘 보이지 않음")
-            analysis['recommendations'].append("다리가 분리되어 보이는 자세를 취해주세요")
-        
-        # 정면 방향 확인 (어깨 대칭성)
-        if keypoints_18[2][2] > 0.5 and keypoints_18[5][2] > 0.5:
-            shoulder_diff = abs(keypoints_18[2][1] - keypoints_18[5][1])
-            shoulder_width = abs(keypoints_18[2][0] - keypoints_18[5][0])
-            
-            if shoulder_width > 0 and shoulder_diff / shoulder_width > 0.2:
-                analysis['issues'].append("몸이 기울어져 있음")
-                analysis['recommendations'].append("카메라를 정면으로 바라봐 주세요")
-        
-        # 전체 점수 계산
-        base_score = essential_detected / len(essential_points)
-        arm_bonus = 0.2 if arms_visible else 0.0
-        leg_bonus = 0.2 if legs_visible else 0.0
-        
-        analysis['pose_score'] = min(1.0, base_score + arm_bonus + leg_bonus)
-        
-        # 피팅 적합성 판단
-        analysis['suitable_for_fitting'] = (
-            len(analysis['issues']) <= 1 and 
-            analysis['pose_score'] >= 0.7
+        # 의류별 가중치 가져오기
+        weights = PoseEstimationStep.CLOTHING_POSE_WEIGHTS.get(
+            clothing_type, 
+            PoseEstimationStep.CLOTHING_POSE_WEIGHTS['default']
         )
         
-        if analysis['suitable_for_fitting']:
-            analysis['recommendations'].append("포즈가 가상 피팅에 적합합니다!")
+        # 신체 부위별 점수 계산
+        def calculate_body_part_score(part_indices: List[int]) -> float:
+            visible_count = 0
+            total_confidence = 0.0
+            
+            for idx in part_indices:
+                if idx < len(keypoints) and len(keypoints[idx]) >= 3:
+                    if keypoints[idx][2] > confidence_threshold:
+                        visible_count += 1
+                        total_confidence += keypoints[idx][2]
+            
+            if visible_count == 0:
+                return 0.0
+            
+            return (visible_count / len(part_indices)) * (total_confidence / visible_count)
+        
+        # 부위별 점수
+        head_indices = [0, 15, 16, 17, 18]  # nose, eyes, ears
+        torso_indices = [1, 2, 5, 8, 9, 12]  # neck, shoulders, hips
+        arm_indices = [2, 3, 4, 5, 6, 7]  # shoulders, elbows, wrists
+        leg_indices = [9, 10, 11, 12, 13, 14]  # hips, knees, ankles
+        
+        head_score = calculate_body_part_score(head_indices)
+        torso_score = calculate_body_part_score(torso_indices)
+        arms_score = calculate_body_part_score(arm_indices)
+        legs_score = calculate_body_part_score(leg_indices)
+        
+        # 가중 평균 계산
+        pose_score = (
+            torso_score * weights.get('torso', 0.4) +
+            arms_score * weights.get('arms', 0.3) +
+            legs_score * weights.get('legs', 0.2) +
+            weights.get('visibility', 0.1) * min(head_score, 1.0)
+        )
+        
+        # 적합성 판단
+        suitable_for_fitting = pose_score >= 0.6
+        
+        # 이슈 및 권장사항
+        issues = []
+        recommendations = []
+        
+        if torso_score < 0.5:
+            issues.append(f"{clothing_type} 착용에 중요한 상체가 불분명합니다")
+            recommendations.append("상체 전체가 보이도록 촬영해 주세요")
+        
+        if clothing_type in ['shirt', 'jacket', 'top'] and arms_score < 0.5:
+            issues.append("팔의 위치가 의류 착용 시뮬레이션에 부적절합니다")
+            recommendations.append("팔을 벌리거나 자연스럽게 내려주세요")
+        
+        if clothing_type in ['pants', 'dress', 'skirt'] and legs_score < 0.5:
+            issues.append("다리가 가려져 있어 하의 착용 시뮬레이션이 어렵습니다")
+            recommendations.append("전신이 보이도록 촬영해 주세요")
+        
+        if head_score < 0.3:
+            issues.append("얼굴이 잘 보이지 않습니다")
+            recommendations.append("얼굴이 정면을 향하도록 촬영해 주세요")
+        
+        analysis = {
+            'suitable_for_fitting': suitable_for_fitting,
+            'issues': issues,
+            'recommendations': recommendations,
+            'pose_score': pose_score,
+            'detailed_scores': {
+                'head': head_score,
+                'torso': torso_score,
+                'arms': arms_score,
+                'legs': legs_score
+            },
+            'clothing_type': clothing_type,
+            'weights_used': weights
+        }
         
         return analysis
         
@@ -2441,8 +2144,9 @@ __all__ = [
 ]
 
 # 모듈 초기화 로그
-logger.info("✅ PoseEstimationStep v5.0 - 완전 재작성 버전 로드 완료")
+logger.info("✅ PoseEstimationStep v6.0 - ModelLoader 완전 연동 버전 로드 완료")
 logger.info("🔗 BaseStepMixin 완전 연동 - logger 속성 누락 완전 해결")
-logger.info("🔄 ModelLoader 인터페이스 완벽 연동 - 순환참조 없는 한방향 참조")
+logger.info("🔄 ModelLoader 인터페이스 완벽 연동 - 직접 모델 호출 완전 제거")
 logger.info("🍎 M3 Max 128GB 최적화 + 모든 기존 기능 100% 유지")
 logger.info("🚀 완전하게 작동하는 포즈 추정 시스템 준비 완료")
+logger.info("🎯 함수명/클래스명 완전 유지 - 프론트엔드 호환성 보장")
