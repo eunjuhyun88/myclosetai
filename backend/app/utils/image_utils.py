@@ -1,6 +1,7 @@
 """
-backend/app/utils/image_utils.py - 완전 모듈화된 이미지 처리 유틸리티
+backend/app/utils/image_utils.py - 완전 통합된 이미지 처리 유틸리티
 
+✅ Document 1 + Document 2 통합 버전
 ✅ preprocess_image 함수 포함 (누락된 함수 해결)
 ✅ 모든 기존 함수들 100% 호환성 유지
 ✅ M3 Max 최적화 지원
@@ -9,6 +10,7 @@ backend/app/utils/image_utils.py - 완전 모듈화된 이미지 처리 유틸�
 ✅ 고품질 이미지 처리
 ✅ 단계별 시각화 완전 구현
 ✅ 에러 처리 및 로깅
+✅ 중복 제거 및 최적화
 """
 
 import os
@@ -54,7 +56,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# 🎨 시각화 색상 및 설정
+# 🎨 시각화 색상 및 설정 (Document 1 기반)
 # =============================================================================
 
 # 인체 파싱용 색상 맵 (20개 부위)
@@ -199,7 +201,7 @@ class HardwareDetector:
             }
 
 # =============================================================================
-# 🎨 폰트 관리자
+# 🎨 폰트 관리자 (Document 2의 개선된 버전)
 # =============================================================================
 
 class FontManager:
@@ -248,7 +250,7 @@ class FontManager:
         return self._font_cache.get(font_key, ImageFont.load_default())
 
 # =============================================================================
-# 🔧 이미지 전처리 유틸리티
+# 🔧 이미지 전처리 유틸리티 (Document 1 기반)
 # =============================================================================
 
 class ImagePreprocessor:
@@ -266,9 +268,9 @@ class ImagePreprocessor:
         to_tensor: bool = False,
         mean: Tuple[float, float, float] = (0.485, 0.456, 0.406),
         std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
-    ) -> Union[np.ndarray, torch.Tensor]:
+    ) -> Union[np.ndarray, 'torch.Tensor']:
         """
-        🔥 누락된 preprocess_image 함수 - 완전 구현
+        🔥 preprocess_image 함수 - 완전 구현 (Document 1 + Document 2 통합)
         
         Args:
             image: 입력 이미지 (numpy, PIL, 또는 파일 경로)
@@ -321,6 +323,7 @@ class ImagePreprocessor:
             
             # 7. 텐서 변환 (옵션)
             if to_tensor and TORCH_AVAILABLE:
+                import torch
                 # (H, W, C) -> (C, H, W) 변환
                 image_tensor = torch.from_numpy(image_array).permute(2, 0, 1)
                 # 배치 차원 추가: (C, H, W) -> (1, C, H, W)
@@ -341,7 +344,7 @@ class ImagePreprocessor:
     
     def postprocess_image(
         self, 
-        processed_image: Union[np.ndarray, torch.Tensor],
+        processed_image: Union[np.ndarray, 'torch.Tensor'],
         denormalize: bool = True,
         mean: Tuple[float, float, float] = (0.485, 0.456, 0.406),
         std: Tuple[float, float, float] = (0.229, 0.224, 0.225)
@@ -360,7 +363,7 @@ class ImagePreprocessor:
         """
         try:
             # 1. 텐서인 경우 numpy로 변환
-            if TORCH_AVAILABLE and isinstance(processed_image, torch.Tensor):
+            if TORCH_AVAILABLE and hasattr(processed_image, 'is_cuda'):
                 # GPU에서 CPU로 이동
                 if processed_image.is_cuda or str(processed_image.device) == 'mps':
                     processed_image = processed_image.cpu()
@@ -393,7 +396,7 @@ class ImagePreprocessor:
             raise
 
 # =============================================================================
-# 🔧 기본 이미지 유틸리티 함수들
+# 🔧 기본 이미지 유틸리티 함수들 (Document 1 + Document 2 통합)
 # =============================================================================
 
 class BasicImageUtils:
@@ -406,7 +409,7 @@ class BasicImageUtils:
         maintain_ratio: bool = True,
         resample: int = Image.Resampling.LANCZOS
     ) -> Image.Image:
-        """이미지 크기 조정 (기존 함수와 완전 호환)"""
+        """이미지 크기 조정 (Document 1 + Document 2 통합)"""
         try:
             if maintain_ratio:
                 # 비율 유지하며 리사이즈
@@ -427,15 +430,19 @@ class BasicImageUtils:
     
     @staticmethod
     def enhance_image_quality(image: Image.Image) -> Image.Image:
-        """이미지 품질 향상 (기존 함수와 호환)"""
+        """이미지 품질 향상 (Document 2 기반 개선)"""
         try:
             # 선명도 향상
             enhancer = ImageEnhance.Sharpness(image)
             image = enhancer.enhance(1.1)
             
+            # 색상 향상 (Document 2 추가)
+            enhancer = ImageEnhance.Color(image)
+            image = enhancer.enhance(1.05)
+            
             # 대비 향상
             enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.05)
+            image = enhancer.enhance(1.02)
             
             return image
             
@@ -472,7 +479,7 @@ class BasicImageUtils:
             return False
 
 # =============================================================================
-# 🎨 Base64 변환 유틸리티
+# 🎨 Base64 변환 유틸리티 (Document 1 + Document 2 통합)
 # =============================================================================
 
 class Base64Utils:
@@ -484,7 +491,7 @@ class Base64Utils:
         format: str = "JPEG", 
         quality: int = 90
     ) -> str:
-        """NumPy 배열을 Base64로 변환"""
+        """NumPy 배열을 Base64로 변환 (Document 2 개선 버전)"""
         try:
             # 데이터 타입 정규화
             if image_array.dtype != np.uint8:
@@ -573,7 +580,7 @@ class Base64Utils:
             raise
 
 # =============================================================================
-# 🎨 시각화 엔진
+# 🎨 시각화 엔진 (Document 1 기반, Document 2 개선사항 적용)
 # =============================================================================
 
 class VisualizationEngine:
@@ -593,7 +600,7 @@ class VisualizationEngine:
         show_overlay: bool = True,
         overlay_opacity: float = 0.6
     ) -> Dict[str, str]:
-        """인체 파싱 결과 시각화 생성"""
+        """인체 파싱 결과 시각화 생성 (Document 1 기반)"""
         try:
             visualizations = {}
             
@@ -639,7 +646,7 @@ class VisualizationEngine:
         show_skeleton: bool = True,
         show_confidence: bool = True
     ) -> Dict[str, str]:
-        """포즈 추정 결과 시각화 생성"""
+        """포즈 추정 결과 시각화 생성 (Document 1 기반)"""
         try:
             visualizations = {}
             
@@ -682,7 +689,7 @@ class VisualizationEngine:
         fit_score: float = None,
         confidence: float = None
     ) -> Dict[str, str]:
-        """가상 피팅 결과 시각화 생성"""
+        """가상 피팅 결과 시각화 생성 (Document 1 기반)"""
         try:
             visualizations = {}
             
@@ -705,7 +712,7 @@ class VisualizationEngine:
             self.logger.error(f"❌ 가상 피팅 시각화 실패: {e}")
             return {}
     
-    # 내부 도우미 메서드들
+    # 내부 도우미 메서드들 (Document 1 기반)
     def _create_colored_parsing_map(self, parsing_map: np.ndarray) -> np.ndarray:
         """컬러 파싱 맵 생성"""
         height, width = parsing_map.shape
@@ -742,7 +749,7 @@ class VisualizationEngine:
             return base_image
     
     def _create_parsing_legend(self, detected_parts: List[int]) -> np.ndarray:
-        """파싱 범례 생성"""
+        """파싱 범례 생성 (Document 1 기반)"""
         try:
             # 범례 크기 계산
             item_height = 35
@@ -787,7 +794,7 @@ class VisualizationEngine:
     
     def _draw_pose_keypoints(self, image: np.ndarray, keypoints: np.ndarray, 
                            confidence_scores: np.ndarray = None, show_confidence: bool = True) -> np.ndarray:
-        """포즈 키포인트 그리기"""
+        """포즈 키포인트 그리기 (Document 1 기반)"""
         try:
             image_pil = Image.fromarray(image)
             draw = ImageDraw.Draw(image_pil)
@@ -820,7 +827,7 @@ class VisualizationEngine:
     
     def _draw_pose_skeleton(self, image: np.ndarray, keypoints: np.ndarray, 
                           confidence_scores: np.ndarray = None) -> np.ndarray:
-        """포즈 스켈레톤 그리기"""
+        """포즈 스켈레톤 그리기 (Document 1 기반)"""
         try:
             image_pil = Image.fromarray(image)
             draw = ImageDraw.Draw(image_pil)
@@ -854,7 +861,7 @@ class VisualizationEngine:
             return image
     
     def _create_comparison_grid(self, images: List[np.ndarray], titles: List[str] = None) -> np.ndarray:
-        """비교 그리드 이미지 생성"""
+        """비교 그리드 이미지 생성 (Document 1 기반)"""
         try:
             if not images:
                 return np.zeros((400, 400, 3), dtype=np.uint8)
@@ -953,7 +960,7 @@ class VisualizationEngine:
             return images[0] if images else np.zeros((400, 400, 3), dtype=np.uint8)
     
     def _create_before_after_comparison(self, before: np.ndarray, after: np.ndarray, score: float = None) -> np.ndarray:
-        """Before/After 비교 이미지 생성"""
+        """Before/After 비교 이미지 생성 (Document 1 기반)"""
         try:
             # 크기 통일
             target_height = 400
@@ -992,7 +999,7 @@ class VisualizationEngine:
             return before
     
     def _create_fitting_process_flow(self, person: np.ndarray, clothing: np.ndarray, result: np.ndarray) -> np.ndarray:
-        """피팅 프로세스 플로우 생성"""
+        """피팅 프로세스 플로우 생성 (Document 1 기반)"""
         try:
             # 크기 통일
             target_size = 300
@@ -1066,7 +1073,7 @@ class VisualizationEngine:
             return np.ones((300, 400, 3), dtype=np.uint8) * 240
 
 # =============================================================================
-# 🔧 통합 이미지 프로세서 클래스
+# 🔧 통합 이미지 프로세서 클래스 (Document 1 + Document 2 통합)
 # =============================================================================
 
 class ImageProcessor:
@@ -1136,6 +1143,21 @@ class ImageProcessor:
     def create_virtual_fitting_visualization(self, **kwargs) -> Dict[str, str]:
         return self.visualization_engine.create_virtual_fitting_visualization(**kwargs)
     
+    # Document 2의 추가 메서드들
+    def enhance_image(self, image: Image.Image, factor: float = 1.1) -> Image.Image:
+        """이미지 향상 (Document 2 기반)"""
+        try:
+            enhancer = ImageEnhance.Sharpness(image)
+            enhanced = enhancer.enhance(factor)
+            return enhanced
+        except Exception as e:
+            self.logger.error(f"이미지 향상 실패: {e}")
+            return image
+    
+    def get_font(self, font_name: str = "arial", size: int = 14) -> ImageFont.ImageFont:
+        """폰트 반환"""
+        return self.font_manager.get_font(font_name, size)
+    
     # 추가 유틸리티 함수들
     def save_temp_image(self, image: Union[Image.Image, np.ndarray], prefix: str = "temp", suffix: str = ".jpg", directory: Optional[str] = None) -> str:
         """임시 이미지 파일 저장"""
@@ -1166,20 +1188,6 @@ class ImageProcessor:
         except Exception as e:
             self.logger.error(f"임시 이미지 저장 실패: {e}")
             raise
-    
-    def get_font(self, font_name: str = "arial", size: int = 14) -> ImageFont.ImageFont:
-        """폰트 반환"""
-        return self.font_manager.get_font(font_name, size)
-    
-    def enhance_image(self, image: Image.Image, factor: float = 1.1) -> Image.Image:
-        """이미지 향상 (기존 함수와 호환)"""
-        try:
-            enhancer = ImageEnhance.Sharpness(image)
-            enhanced = enhancer.enhance(factor)
-            return enhanced
-        except Exception as e:
-            self.logger.error(f"이미지 향상 실패: {e}")
-            return image
 
 # =============================================================================
 # 🔧 전역 함수들 (기존 코드와의 완전 호환성)
@@ -1197,7 +1205,7 @@ def get_image_processor() -> ImageProcessor:
 
 # 기존 함수들과의 완전 호환성을 위한 전역 함수들
 def preprocess_image(image, target_size=(512, 512), normalize=True, to_tensor=False, **kwargs):
-    """🔥 누락된 preprocess_image 함수 - 전역 버전"""
+    """🔥 누락된 preprocess_image 함수 - 전역 버전 (완전 해결)"""
     return get_image_processor().preprocess_image(image, target_size, normalize, to_tensor, **kwargs)
 
 def postprocess_image(processed_image, denormalize=True, **kwargs):
@@ -1634,7 +1642,8 @@ def initialize_image_utils():
         # 임시 디렉토리 정리
         cleanup_temp_images()
         
-        logger.info("🎨 완전 모듈화된 이미지 처리 유틸리티 초기화 완료")
+        logger.info("🎨 완전 통합된 이미지 처리 유틸리티 초기화 완료")
+        logger.info("✅ Document 1 + Document 2 통합 완료")
         logger.info("✅ 기존 함수 100% 호환성 유지")
         logger.info("✅ preprocess_image 함수 추가됨")
         logger.info("✅ 단계별 시각화 완전 구현")
@@ -1656,9 +1665,9 @@ if __name__ != "__main__":
 # 🎯 모듈 정보 및 버전
 # =============================================================================
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 __author__ = "MyCloset AI Team"
-__description__ = "완전 모듈화된 이미지 처리 유틸리티 - M3 Max 최적화 지원"
+__description__ = "완전 통합된 이미지 처리 유틸리티 - Document 1 + Document 2 통합 버전"
 
 # 사용 가능한 기능 목록
 __all__ = [
@@ -1694,6 +1703,60 @@ __all__ = [
     'get_image_processor', 'initialize_image_utils'
 ]
 
-logger.info(f"📦 이미지 유틸리티 모듈 v{__version__} 로드 완료")
+logger.info(f"📦 통합 이미지 유틸리티 모듈 v{__version__} 로드 완료")
 logger.info(f"🔧 사용 가능한 함수: {len(__all__)}개")
 logger.info("💡 사용법: from app.utils.image_utils import preprocess_image, get_image_processor")
+logger.info("🔥 주요 기능:")
+logger.info("   ✅ preprocess_image - AI 모델용 이미지 전처리")
+logger.info("   ✅ postprocess_image - 결과 이미지 후처리") 
+logger.info("   ✅ create_step_visualization - 단계별 시각화")
+logger.info("   ✅ numpy_to_base64 - Base64 변환")
+logger.info("   ✅ M3 Max 하드웨어 최적화")
+logger.info("   ✅ 완전한 matplotlib/PIL 시각화")
+logger.info("🎉 Document 1 + Document 2 완전 통합 완료!")
+
+# =============================================================================
+# 📋 사용 예시 (주석으로)
+# =============================================================================
+
+"""
+🎯 사용 예시:
+
+# 1. 기본 이미지 전처리 (누락된 함수 해결!)
+from app.utils.image_utils import preprocess_image, postprocess_image
+
+# 이미지 전처리 (AI 모델용)
+processed = preprocess_image('path/to/image.jpg', target_size=(512, 512), normalize=True, to_tensor=True)
+
+# 결과 후처리 (표시용)
+result_img = postprocess_image(processed_tensor, denormalize=True)
+
+# 2. 시각화 생성
+from app.utils.image_utils import create_step_visualization
+
+visualizations = create_step_visualization(
+    step_id=3, 
+    original_image=original_img,
+    parsing_map=parsing_result,
+    detected_parts=[1, 5, 9, 13]
+)
+
+# 3. Base64 변환
+from app.utils.image_utils import numpy_to_base64, base64_to_numpy
+
+base64_str = numpy_to_base64(image_array, format="JPEG", quality=95)
+image_array = base64_to_numpy(base64_str)
+
+# 4. 통합 프로세서 사용
+from app.utils.image_utils import get_image_processor
+
+processor = get_image_processor()
+enhanced = processor.enhance_image(image, factor=1.2)
+resized = processor.resize_image(image, (512, 512))
+
+# 5. 고급 처리
+from app.utils.image_utils import apply_clahe_enhancement, detect_dominant_colors
+
+enhanced = apply_clahe_enhancement(image, clip_limit=2.0)
+colors = detect_dominant_colors(image, k=5)
+"""
