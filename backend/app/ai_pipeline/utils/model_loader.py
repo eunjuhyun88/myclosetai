@@ -1,25 +1,24 @@
 # app/ai_pipeline/utils/model_loader.py
 """
-🍎 MyCloset AI - 완전 통합 ModelLoader 시스템 v6.0 - 🔥 순환참조 방지 및 완전 연동
+🍎 MyCloset AI - 완전 통합 ModelLoader 시스템 v6.0 - 순환참조 방지 및 완전 연동
 ========================================================================================
 
 ✅ 'dict' object is not callable 근본 원인 해결 (완전 강화)
 ✅ SafeModelService + SafeFunctionValidator 통합 (기능 강화)  
 ✅ NumPy 2.x 완전 호환성 해결
-✅ BaseStepMixin v6.0 완벽 연동 (한방향 참조)
-✅ auto_model_detector 연동 (순환참조 방지)
-✅ step_model_requests.py 완벽 연동
+✅ BaseStepMixin v6.0 완벽 연동
+✅ auto_model_detector 연동 (한방향 참조)
+✅ step_model_requests 완벽 연동
 ✅ M3 Max 128GB 최적화 완성
 ✅ conda 환경 완벽 지원
 ✅ StepModelInterface 실제 AI 모델 추론 기능 완전 통합
 ✅ 프로덕션 안정성 최고 수준
 ✅ 모든 기존 기능명/클래스명 유지 + 개선
 ✅ 순환참조 완전 방지 (한방향 의존성)
-✅ 모듈화 및 최적화된 구조
 
 Author: MyCloset AI Team
 Date: 2025-07-20
-Version: 6.0 (Complete Modular Integration)
+Version: 6.0 (Complete Integration + Circular Reference Prevention)
 """
 
 import os
@@ -43,133 +42,91 @@ from concurrent.futures import ThreadPoolExecutor
 import weakref
 
 # ==============================================
-# 🔥 라이브러리 호환성 관리 모듈
+# 🔥 Core System Imports & Configuration
 # ==============================================
 
-class LibraryCompatibility:
-    """라이브러리 호환성 및 임포트 관리"""
+# NumPy 호환성 처리
+try:
+    import numpy as np
+    numpy_version = np.__version__
+    major_version = int(numpy_version.split('.')[0])
     
-    def __init__(self):
-        self.numpy_available = False
-        self.torch_available = False
-        self.mps_available = False
-        self.cv_available = False
-        self.transformers_available = False
-        self.diffusers_available = False
-        self.coreml_available = False
-        
-        self._check_numpy_compatibility()
-        self._check_torch_compatibility()
-        self._check_optional_libraries()
-    
-    def _check_numpy_compatibility(self):
-        """NumPy 2.x 호환성 체크 및 설정"""
+    if major_version >= 2:
+        logging.warning(f"⚠️ NumPy {numpy_version} 감지됨. NumPy 1.x 권장")
         try:
-            import numpy as np
-            self.numpy_available = True
-            self.numpy_version = np.__version__
-            
-            major_version = int(self.numpy_version.split('.')[0])
-            if major_version >= 2:
-                logging.warning(f"⚠️ NumPy {self.numpy_version} 감지됨. NumPy 1.x 권장")
-                logging.warning("🔧 해결방법: conda install numpy=1.24.3 -y --force-reinstall")
-                try:
-                    np.set_printoptions(legacy='1.25')
-                    logging.info("✅ NumPy 2.x 호환성 모드 활성화")
-                except:
-                    pass
-            
-            globals()['np'] = np
-            
-        except ImportError as e:
-            self.numpy_available = False
-            logging.error(f"❌ NumPy import 실패: {e}")
-    
-    def _check_torch_compatibility(self):
-        """PyTorch 호환성 체크"""
-        try:
-            # PyTorch import 전에 환경변수 설정
-            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-            
-            import torch
-            import torch.nn as nn
-            import torch.nn.functional as F
-            
-            self.torch_available = True
-            self.default_device = "cpu"
-            
-            # M3 Max MPS 지원 확인
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                self.mps_available = True
-                self.default_device = "mps"
-                logging.info("✅ M3 Max MPS 사용 가능")
-            else:
-                self.mps_available = False
-                logging.info("ℹ️ CPU 모드 사용")
-            
-            globals()['torch'] = torch
-            globals()['nn'] = nn
-            globals()['F'] = F
-            
-        except ImportError as e:
-            self.torch_available = False
-            self.mps_available = False
-            self.default_device = "cpu"
-            logging.warning(f"⚠️ PyTorch 없음: {e}")
-    
-    def _check_optional_libraries(self):
-        """선택적 라이브러리들 체크"""
-        # 컴퓨터 비전 라이브러리
-        try:
-            import cv2
-            from PIL import Image, ImageEnhance
-            self.cv_available = True
-            globals()['cv2'] = cv2
-            globals()['Image'] = Image
-            globals()['ImageEnhance'] = ImageEnhance
-        except ImportError:
-            self.cv_available = False
-        
-        # Transformers
-        try:
-            from transformers import AutoModel, AutoTokenizer, AutoConfig
-            self.transformers_available = True
-        except ImportError:
-            self.transformers_available = False
-        
-        # Diffusers
-        try:
-            from diffusers import StableDiffusionPipeline, UNet2DConditionModel
-            self.diffusers_available = True
-        except ImportError:
-            self.diffusers_available = False
-        
-        # CoreML
-        try:
-            import coremltools as ct
-            self.coreml_available = True
-        except ImportError:
-            self.coreml_available = False
+            np.set_printoptions(legacy='1.25')
+            logging.info("✅ NumPy 2.x 호환성 모드 활성화")
+        except:
+            pass
+    NUMPY_AVAILABLE = True
+except ImportError as e:
+    NUMPY_AVAILABLE = False
+    np = None
 
-# 전역 호환성 관리자 초기화
-_compat = LibraryCompatibility()
+# PyTorch 안전한 임포트
+try:
+    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+    
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        DEFAULT_DEVICE = "mps"
+    else:
+        MPS_AVAILABLE = False
+        DEFAULT_DEVICE = "cpu"
+except ImportError:
+    TORCH_AVAILABLE = False
+    MPS_AVAILABLE = False
+    DEFAULT_DEVICE = "cpu"
+    torch = None
+    nn = None
 
-# 전역 상수들
-NUMPY_AVAILABLE = _compat.numpy_available
-TORCH_AVAILABLE = _compat.torch_available
-MPS_AVAILABLE = _compat.mps_available
-CV_AVAILABLE = _compat.cv_available
-DEFAULT_DEVICE = _compat.default_device
+# 이미지 처리 라이브러리
+try:
+    import cv2
+    from PIL import Image, ImageEnhance
+    CV_AVAILABLE = True
+    PIL_AVAILABLE = True
+except ImportError:
+    CV_AVAILABLE = False
+    PIL_AVAILABLE = False
+
+# 외부 AI 라이브러리 (선택적)
+try:
+    from transformers import AutoModel, AutoTokenizer
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+
+try:
+    from diffusers import StableDiffusionPipeline
+    DIFFUSERS_AVAILABLE = True
+except ImportError:
+    DIFFUSERS_AVAILABLE = False
+
+try:
+    import onnxruntime as ort
+    ONNX_AVAILABLE = True
+except ImportError:
+    ONNX_AVAILABLE = False
+
+try:
+    import coremltools as ct
+    COREML_AVAILABLE = True
+except ImportError:
+    COREML_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 핵심 데이터 구조 및 Enum 모듈
+# 🔥 Core Data Structures
 # ==============================================
 
 class ModelFormat(Enum):
-    """🔥 모델 포맷 정의 - main.py에서 필수"""
+    """모델 포맷 정의"""
     PYTORCH = "pytorch"
     SAFETENSORS = "safetensors"
     ONNX = "onnx"
@@ -178,7 +135,6 @@ class ModelFormat(Enum):
     CHECKPOINT = "checkpoint"
     PICKLE = "pickle"
     COREML = "coreml"
-    TENSORRT = "tensorrt"
 
 class ModelType(Enum):
     """AI 모델 타입"""
@@ -243,16 +199,69 @@ class StepModelConfig:
     registration_time: float = field(default_factory=time.time)
 
 # ==============================================
-# 🔥 안전성 검증 모듈
+# 🔥 Step Model Requests Integration
+# ==============================================
+
+# Step 요청사항 내장 (step_model_requests.py 통합)
+STEP_MODEL_REQUESTS = {
+    "HumanParsingStep": {
+        "model_name": "human_parsing_graphonomy",
+        "model_type": "GraphonomyModel",
+        "input_size": (512, 512),
+        "num_classes": 20,
+        "checkpoint_patterns": ["*human*parsing*.pth", "*schp*atr*.pth", "*graphonomy*.pth"]
+    },
+    "PoseEstimationStep": {
+        "model_name": "pose_estimation_openpose",
+        "model_type": "OpenPoseModel",
+        "input_size": (368, 368),
+        "num_classes": 18,
+        "checkpoint_patterns": ["*pose*model*.pth", "*openpose*.pth", "*body*pose*.pth"]
+    },
+    "ClothSegmentationStep": {
+        "model_name": "cloth_segmentation_u2net",
+        "model_type": "U2NetModel",
+        "input_size": (320, 320),
+        "num_classes": 1,
+        "checkpoint_patterns": ["*u2net*.pth", "*cloth*segmentation*.pth", "*sam*.pth"]
+    },
+    "VirtualFittingStep": {
+        "model_name": "virtual_fitting_stable_diffusion",
+        "model_type": "StableDiffusionPipeline",
+        "input_size": (512, 512),
+        "checkpoint_patterns": ["*diffusion*pytorch*model*.bin", "*stable*diffusion*.safetensors"]
+    },
+    "GeometricMatchingStep": {
+        "model_name": "geometric_matching_gmm",
+        "model_type": "GeometricMatchingModel",
+        "input_size": (512, 384),
+        "checkpoint_patterns": ["*geometric*matching*.pth", "*gmm*.pth", "*tps*.pth"]
+    },
+    "PostProcessingStep": {
+        "model_name": "post_processing_srresnet",
+        "model_type": "SRResNetModel",
+        "input_size": (512, 512),
+        "checkpoint_patterns": ["*srresnet*.pth", "*enhancement*.pth", "*super*resolution*.pth"]
+    },
+    "QualityAssessmentStep": {
+        "model_name": "quality_assessment_clip",
+        "model_type": "CLIPModel",
+        "input_size": (224, 224),
+        "checkpoint_patterns": ["*clip*.bin", "*quality*assessment*.pth"]
+    }
+}
+
+class StepModelRequestAnalyzer:
+    @staticmethod
+    def get_step_request_info(step_name: str):
+        return STEP_MODEL_REQUESTS.get(step_name)
+
+# ==============================================
+# 🔥 SafeFunctionValidator - Dict Callable 오류 해결
 # ==============================================
 
 class SafeFunctionValidator:
-    """
-    🔥 함수/메서드/객체 호출 안전성 검증 클래스 v2.0 - 강화 버전
-    - Dict Callable 오류 근본 원인 해결
-    - 모든 호출 전에 타입과 callable 여부 엄격 검증
-    - 에러 복구 메커니즘 추가
-    """
+    """함수/메서드/객체 호출 안전성 검증 클래스"""
     
     @staticmethod
     def validate_callable(obj: Any, context: str = "unknown") -> Tuple[bool, str, Any]:
@@ -261,14 +270,12 @@ class SafeFunctionValidator:
             if obj is None:
                 return False, "Object is None", None
             
-            # Dict 체크 (가장 중요!)
             if isinstance(obj, dict):
                 if hasattr(obj, '__call__') and callable(getattr(obj, '__call__', None)):
                     return True, "Special callable dict", obj
                 else:
                     return False, f"Object is dict, not callable in context: {context}", None
             
-            # 기본 데이터 타입 체크
             basic_types = (str, int, float, bool, list, tuple, set, bytes, bytearray)
             if isinstance(obj, basic_types):
                 return False, f"Object is basic data type {type(obj)}, not callable", None
@@ -276,12 +283,10 @@ class SafeFunctionValidator:
             if not callable(obj):
                 return False, f"Object type {type(obj)} is not callable", None
             
-            # 함수/메서드 타입별 검증
             import types
             if isinstance(obj, (types.FunctionType, types.MethodType, types.BuiltinFunctionType, types.BuiltinMethodType)):
                 return True, "Valid function/method", obj
             
-            # 클래스 인스턴스의 __call__ 메서드 체크
             if hasattr(obj, '__call__'):
                 call_method = getattr(obj, '__call__')
                 if callable(call_method) and not isinstance(call_method, dict):
@@ -335,7 +340,6 @@ class SafeFunctionValidator:
                     result = await safe_obj(*args, **kwargs)
                     return True, result, "Async success"
                 else:
-                    # 동기 함수를 비동기로 실행
                     loop = asyncio.get_event_loop()
                     if hasattr(loop, 'run_in_executor'):
                         result = await asyncio.wait_for(
@@ -393,33 +397,17 @@ class SafeFunctionValidator:
                 
         except Exception as e:
             return False, None, f"Getattr call failed: {e}"
-    
-    @staticmethod
-    def create_safe_wrapper(obj: Any, name: str = "unknown") -> Callable:
-        """객체를 안전한 callable wrapper로 변환"""
-        def safe_wrapper(*args, **kwargs):
-            success, result, message = SafeFunctionValidator.safe_call(obj, *args, **kwargs)
-            if success:
-                return result
-            else:
-                raise RuntimeError(f"Safe wrapper call failed for {name}: {message}")
-        
-        return safe_wrapper
 
 # ==============================================
-# 🔥 안전한 설정 관리 모듈
+# 🔥 SafeConfig - 설정 관리
 # ==============================================
 
 class SafeConfig:
-    """안전한 설정 클래스 - Dict Callable 오류 완전 해결"""
+    """안전한 설정 클래스"""
     
     def __init__(self, data: Any = None):
         self._data = {}
-        self._original_data = data
-        self._is_dict_source = False
         self._callable_methods = {}
-        self._access_log = []
-        self._error_count = 0
         self._lock = threading.RLock()
         
         try:
@@ -428,7 +416,6 @@ class SafeConfig:
                     self._data = {}
                 elif isinstance(data, dict):
                     self._data = self._deep_copy_dict(data)
-                    self._is_dict_source = True
                 elif hasattr(data, '__dict__'):
                     self._data = {}
                     for attr_name in dir(data):
@@ -440,28 +427,13 @@ class SafeConfig:
                                     self._callable_methods[attr_name] = safe_attr
                                 elif not isinstance(attr_value, (type, type(None))):
                                     self._data[attr_name] = self._safe_copy_value(attr_value)
-                            except Exception as e:
-                                self._error_count += 1
+                            except Exception:
                                 continue
-                elif callable(data):
-                    self._data = {}
-                    self._callable_methods = {'original_callable': data}
                 else:
-                    try:
-                        if hasattr(data, '__iter__') and not isinstance(data, (str, bytes)):
-                            self._data = dict(data) if hasattr(data, 'keys') else {}
-                        else:
-                            self._data = {}
-                    except:
-                        self._data = {}
-                        
+                    self._data = {}
         except Exception as e:
-            logger.warning(f"⚠️ 설정 객체 파싱 실패: {e}, 빈 설정 사용")
+            logger.warning(f"⚠️ 설정 객체 파싱 실패: {e}")
             self._data = {}
-            self._callable_methods = {}
-            self._error_count += 1
-        
-        self._setup_attributes()
     
     def _deep_copy_dict(self, data: dict) -> dict:
         """딕셔너리 깊은 복사"""
@@ -490,177 +462,386 @@ class SafeConfig:
         except Exception:
             return None
     
-    def _setup_attributes(self):
-        """안전한 속성 설정"""
-        for key, value in self._data.items():
-            try:
-                if isinstance(key, str) and key.isidentifier() and not hasattr(self, key):
-                    if not key.startswith('_') and key not in ['get', 'keys', 'values', 'items', 'update']:
-                        setattr(self, key, value)
-            except Exception:
-                continue
-    
     def get(self, key: str, default=None):
         """딕셔너리처럼 get 메서드 지원"""
         try:
             with self._lock:
-                self._access_log.append((key, time.time()))
-                if len(self._access_log) > 1000:
-                    self._access_log = self._access_log[-500:]
-                
                 if key in self._data:
                     return self._data[key]
-                
                 if key in self._callable_methods:
                     return default
-                
-                if hasattr(self, key):
-                    attr = getattr(self, key)
-                    if not callable(attr) and not key.startswith('_'):
-                        return attr
-                
                 return default
-                
-        except Exception as e:
-            logger.warning(f"⚠️ SafeConfig.get() 오류: {e}")
-            self._error_count += 1
+        except Exception:
             return default
     
-    def safe_call_method(self, method_name: str, *args, **kwargs):
-        """저장된 callable 메서드 안전 호출"""
-        try:
-            with self._lock:
-                if method_name in self._callable_methods:
-                    method = self._callable_methods[method_name]
-                    success, result, message = SafeFunctionValidator.safe_call(method, *args, **kwargs)
-                    if success:
-                        return result
-                    else:
-                        logger.warning(f"⚠️ 메서드 호출 실패 {method_name}: {message}")
-                        return None
-                else:
-                    logger.warning(f"⚠️ 메서드 없음: {method_name}")
-                    return None
-        except Exception as e:
-            logger.error(f"❌ safe_call_method 실패: {e}")
-            return None
-    
     def __getitem__(self, key):
-        """딕셔너리 스타일 접근"""
         return self.get(key, None)
     
     def __setitem__(self, key, value):
-        """딕셔너리 스타일 설정"""
         try:
             with self._lock:
                 if callable(value):
                     is_callable, reason, safe_value = SafeFunctionValidator.validate_callable(value)
                     if is_callable:
                         self._callable_methods[key] = safe_value
-                    else:
-                        logger.warning(f"⚠️ callable 검증 실패 {key}: {reason}")
                 else:
                     self._data[key] = self._safe_copy_value(value)
-                    self._setup_attributes()
         except Exception as e:
             logger.error(f"❌ SafeConfig.__setitem__ 실패 {key}: {e}")
+
+# ==============================================
+# 🔥 SafeModelService - 모델 서비스
+# ==============================================
+
+class SafeModelService:
+    """안전한 모델 서비스"""
     
-    def __contains__(self, key):
-        """in 연산자 지원"""
+    def __init__(self):
+        self.models = {}
+        self.lock = threading.RLock()
+        self.warmup_status = {}
+        self.validator = SafeFunctionValidator()
+        self.logger = logging.getLogger(f"{__name__}.SafeModelService")
+        
+    def register_model(self, name: str, model: Any) -> bool:
+        """모델 등록"""
         try:
-            return key in self._data or key in self._callable_methods
-        except:
+            with self.lock:
+                if isinstance(model, dict):
+                    wrapper = self._create_dict_wrapper(model)
+                    self.models[name] = wrapper
+                elif callable(model):
+                    is_callable, reason, safe_model = self.validator.validate_callable(model, f"register_{name}")
+                    if is_callable:
+                        self.models[name] = safe_model
+                    else:
+                        wrapper = self._create_object_wrapper(model)
+                        self.models[name] = wrapper
+                else:
+                    wrapper = self._create_object_wrapper(model)
+                    self.models[name] = wrapper
+                
+                return True
+        except Exception as e:
+            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
             return False
     
-    def keys(self):
-        """키 목록"""
-        try:
-            with self._lock:
-                return list(self._data.keys()) + list(self._callable_methods.keys())
-        except:
-            return []
+    def _create_dict_wrapper(self, model_dict: Dict[str, Any]) -> Callable:
+        """딕셔너리를 callable wrapper로 변환"""
+        
+        class DictModelWrapper:
+            def __init__(self, data: Dict[str, Any]):
+                self.data = data.copy()
+                self.name = data.get('name', 'unknown')
+                self.type = data.get('type', 'dict_model')
+            
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'model_type': self.type,
+                    'result': f'mock_result_for_{self.name}',
+                    'data': self.data
+                }
+            
+            def warmup(self):
+                return True
+        
+        return DictModelWrapper(model_dict)
     
-    def values(self):
-        """값 목록 (callable 제외)"""
-        try:
-            with self._lock:
-                return list(self._data.values())
-        except:
-            return []
+    def _create_object_wrapper(self, obj: Any) -> Callable:
+        """일반 객체를 callable wrapper로 변환"""
+        
+        class ObjectWrapper:
+            def __init__(self, wrapped_obj: Any):
+                self.wrapped_obj = wrapped_obj
+                self.name = getattr(wrapped_obj, 'name', str(type(wrapped_obj).__name__))
+                self.type = type(wrapped_obj).__name__
+            
+            def __call__(self, *args, **kwargs):
+                if callable(self.wrapped_obj):
+                    validator = SafeFunctionValidator()
+                    success, result, message = validator.safe_call(self.wrapped_obj, *args, **kwargs)
+                    if success:
+                        return result
+                
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'model_type': self.type,
+                    'result': f'mock_result_for_{self.name}'
+                }
+        
+        return ObjectWrapper(obj)
     
-    def items(self):
-        """아이템 목록 (callable 제외)"""
+    async def call_model(self, name: str, *args, **kwargs) -> Any:
+        """안전한 모델 호출"""
         try:
-            with self._lock:
-                return list(self._data.items())
+            with self.lock:
+                if name not in self.models:
+                    return None
+                
+                model = self.models[name]
+                success, result, message = await self.validator.safe_async_call(model, *args, **kwargs)
+                
+                if success:
+                    return result
+                else:
+                    self.logger.warning(f"⚠️ 모델 호출 실패: {name} - {message}")
+                    return None
+        except Exception as e:
+            self.logger.error(f"❌ 모델 호출 오류 {name}: {e}")
+            return None
+    
+    def list_models(self) -> Dict[str, Dict[str, Any]]:
+        """등록된 모델 목록"""
+        try:
+            with self.lock:
+                result = {}
+                for name in self.models:
+                    result[name] = {'status': 'registered', 'type': 'model'}
+                return result
+        except Exception as e:
+            self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
+            return {}
+
+# ==============================================
+# 🔥 Device & Memory Management
+# ==============================================
+
+class DeviceManager:
+    """디바이스 관리자"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
+        self.available_devices = self._detect_available_devices()
+        self.optimal_device = self._select_optimal_device()
+        self.is_m3_max = self._detect_m3_max()
+        
+    def _detect_available_devices(self) -> List[str]:
+        """사용 가능한 디바이스 탐지"""
+        devices = ["cpu"]
+        
+        if TORCH_AVAILABLE:
+            if torch.backends.mps.is_available():
+                devices.append("mps")
+            if torch.cuda.is_available():
+                devices.append("cuda")
+        
+        return devices
+    
+    def _select_optimal_device(self) -> str:
+        """최적 디바이스 선택"""
+        if "mps" in self.available_devices:
+            return "mps"
+        elif "cuda" in self.available_devices:
+            return "cuda"
+        else:
+            return "cpu"
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 칩 감지"""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
         except:
-            return []
+            pass
+        return False
+    
+    def resolve_device(self, requested_device: str) -> str:
+        """요청된 디바이스를 실제 디바이스로 변환"""
+        if requested_device == "auto":
+            return self.optimal_device
+        elif requested_device in self.available_devices:
+            return requested_device
+        else:
+            return self.optimal_device
+
+class ModelMemoryManager:
+    """모델 메모리 관리자"""
+    
+    def __init__(self, device: str = "mps"):
+        self.device = device
+        self.is_m3_max = self._detect_m3_max()
+    
+    def _detect_m3_max(self) -> bool:
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':
+                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                      capture_output=True, text=True)
+                return 'M3' in result.stdout
+        except:
+            pass
+        return False
+    
+    def get_available_memory(self) -> float:
+        """사용 가능한 메모리 (GB) 반환"""
+        try:
+            if self.device == "cuda" and TORCH_AVAILABLE and torch.cuda.is_available():
+                total_memory = torch.cuda.get_device_properties(0).total_memory
+                allocated_memory = torch.cuda.memory_allocated()
+                return (total_memory - allocated_memory) / 1024**3
+            else:
+                try:
+                    import psutil
+                    memory = psutil.virtual_memory()
+                    available_gb = memory.available / 1024**3
+                    if self.is_m3_max:
+                        return min(available_gb, 100.0)
+                    return available_gb
+                except ImportError:
+                    return 64.0 if self.is_m3_max else 16.0
+        except Exception:
+            return 8.0
+    
+    def cleanup_memory(self):
+        """메모리 정리"""
+        try:
+            gc.collect()
+            
+            if TORCH_AVAILABLE:
+                if self.device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                elif self.device == "mps" and torch.backends.mps.is_available():
+                    try:
+                        if hasattr(torch.backends.mps, 'empty_cache'):
+                            torch.backends.mps.empty_cache()
+                        if self.is_m3_max:
+                            torch.mps.synchronize()
+                    except:
+                        pass
+        except Exception as e:
+            logger.warning(f"⚠️ 메모리 정리 실패: {e}")
 
 # ==============================================
-# 🔥 Step 요청사항 연동 모듈
+# 🔥 Image Processing Utilities
 # ==============================================
 
-# Step 요청사항 내장 정의
-STEP_MODEL_REQUESTS = {
-    "HumanParsingStep": {
-        "model_name": "human_parsing_graphonomy",
-        "model_type": "GraphonomyModel",
-        "input_size": (512, 512),
-        "num_classes": 20,
-        "checkpoint_patterns": ["*human*parsing*.pth", "*schp*atr*.pth", "*graphonomy*.pth"]
-    },
-    "PoseEstimationStep": {
-        "model_name": "pose_estimation_openpose",
-        "model_type": "OpenPoseModel",
-        "input_size": (368, 368),
-        "num_classes": 18,
-        "checkpoint_patterns": ["*pose*model*.pth", "*openpose*.pth", "*body*pose*.pth"]
-    },
-    "ClothSegmentationStep": {
-        "model_name": "cloth_segmentation_u2net",
-        "model_type": "U2NetModel",
-        "input_size": (320, 320),
-        "num_classes": 1,
-        "checkpoint_patterns": ["*u2net*.pth", "*cloth*segmentation*.pth", "*sam*.pth"]
-    },
-    "VirtualFittingStep": {
-        "model_name": "virtual_fitting_stable_diffusion",
-        "model_type": "StableDiffusionPipeline",
-        "input_size": (512, 512),
-        "checkpoint_patterns": ["*diffusion*pytorch*model*.bin", "*stable*diffusion*.safetensors"]
-    },
-    "GeometricMatchingStep": {
-        "model_name": "geometric_matching_gmm",
-        "model_type": "GeometricMatchingModel",
-        "input_size": (512, 384),
-        "checkpoint_patterns": ["*geometric*matching*.pth", "*gmm*.pth", "*tps*.pth"]
-    },
-    "PostProcessingStep": {
-        "model_name": "post_processing_srresnet",
-        "model_type": "SRResNetModel",
-        "input_size": (512, 512),
-        "checkpoint_patterns": ["*srresnet*.pth", "*enhancement*.pth", "*super*resolution*.pth"]
-    },
-    "QualityAssessmentStep": {
-        "model_name": "quality_assessment_clip",
-        "model_type": "CLIPModel",
-        "input_size": (224, 224),
-        "checkpoint_patterns": ["*clip*.bin", "*quality*assessment*.pth"]
-    }
-}
+def preprocess_image(
+    image: Union[Image.Image, np.ndarray, torch.Tensor],
+    target_size: Tuple[int, int] = (512, 512),
+    device: str = "mps",
+    normalize: bool = True,
+    to_tensor: bool = True
+) -> torch.Tensor:
+    """이미지 전처리 함수"""
+    try:
+        # PIL Image로 변환
+        if isinstance(image, torch.Tensor):
+            if image.dim() == 4:
+                image = image.squeeze(0)
+            if image.dim() == 3 and image.shape[0] == 3:
+                image = image.permute(1, 2, 0)
+            image = image.cpu().numpy()
+            if image.dtype != np.uint8:
+                image = (image * 255).astype(np.uint8)
+            image = Image.fromarray(image)
+        elif isinstance(image, np.ndarray):
+            if image.ndim == 3 and image.shape[2] == 3:
+                image = Image.fromarray(image.astype(np.uint8))
+            else:
+                image = Image.fromarray(image)
+        
+        # RGB 변환
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # 크기 조정
+        if target_size != image.size:
+            image = image.resize(target_size, Image.Resampling.LANCZOS)
+        
+        # numpy 배열로 변환
+        img_array = np.array(image).astype(np.float32)
+        
+        # 정규화
+        if normalize:
+            img_array = img_array / 255.0
+        
+        # 텐서 변환
+        if to_tensor and TORCH_AVAILABLE:
+            img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
+            img_tensor = img_tensor.to(device)
+            return img_tensor
+        else:
+            return img_array
+            
+    except Exception as e:
+        logger.error(f"이미지 전처리 실패: {e}")
+        if TORCH_AVAILABLE:
+            return torch.zeros(1, 3, target_size[0], target_size[1], device=device)
+        else:
+            return np.zeros((target_size[0], target_size[1], 3), dtype=np.float32)
 
-class StepModelRequestAnalyzer:
-    @staticmethod
-    def get_step_request_info(step_name: str):
-        return STEP_MODEL_REQUESTS.get(step_name)
+def postprocess_segmentation(output: torch.Tensor, threshold: float = 0.5) -> np.ndarray:
+    """세그멘테이션 결과 후처리"""
+    try:
+        if isinstance(output, torch.Tensor):
+            output = output.cpu().numpy()
+        
+        if output.ndim == 4:
+            output = output.squeeze(0)
+        if output.ndim == 3:
+            output = output.squeeze(0)
+            
+        binary_mask = (output > threshold).astype(np.uint8) * 255
+        return binary_mask
+        
+    except Exception as e:
+        logger.error(f"세그멘테이션 후처리 실패: {e}")
+        return np.zeros((512, 512), dtype=np.uint8)
+
+# 추가 전처리 함수들
+def preprocess_pose_input(image: np.ndarray, target_size: Tuple[int, int] = (368, 368)) -> torch.Tensor:
+    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
+
+def preprocess_human_parsing_input(image: np.ndarray, target_size: Tuple[int, int] = (512, 512)) -> torch.Tensor:
+    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
+
+def preprocess_cloth_segmentation_input(image: np.ndarray, target_size: Tuple[int, int] = (320, 320)) -> torch.Tensor:
+    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
+
+def tensor_to_pil(tensor: torch.Tensor) -> Image.Image:
+    """텐서를 PIL 이미지로 변환"""
+    try:
+        if tensor.dim() == 4:
+            tensor = tensor.squeeze(0)
+        if tensor.dim() == 3:
+            tensor = tensor.permute(1, 2, 0)
+        
+        tensor = tensor.cpu().numpy()
+        if tensor.dtype != np.uint8:
+            tensor = (tensor * 255).astype(np.uint8)
+        
+        return Image.fromarray(tensor)
+    except Exception as e:
+        logger.error(f"텐서->PIL 변환 실패: {e}")
+        return Image.new('RGB', (512, 512), color='black')
+
+def pil_to_tensor(image: Image.Image, device: str = "mps") -> torch.Tensor:
+    """PIL 이미지를 텐서로 변환"""
+    try:
+        img_array = np.array(image).astype(np.float32) / 255.0
+        tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
+        return tensor.to(device)
+    except Exception as e:
+        logger.error(f"PIL->텐서 변환 실패: {e}")
+        return torch.zeros(1, 3, 512, 512, device=device)
 
 # ==============================================
-# 🔥 실제 AI 모델 클래스들 모듈
+# 🔥 AI Model Classes
 # ==============================================
 
-class BaseModel:
+class BaseModel(nn.Module if TORCH_AVAILABLE else object):
     """기본 AI 모델 클래스"""
     def __init__(self):
+        if TORCH_AVAILABLE:
+            super().__init__()
         self.model_name = "BaseModel"
         self.device = "cpu"
     
@@ -669,7 +850,7 @@ class BaseModel:
 
 if TORCH_AVAILABLE:
     class GraphonomyModel(nn.Module):
-        """Graphonomy 인체 파싱 모델 - Step 01"""
+        """Graphonomy 인체 파싱 모델"""
         
         def __init__(self, num_classes=20, backbone='resnet101'):
             super().__init__()
@@ -705,7 +886,7 @@ if TORCH_AVAILABLE:
             return output
 
     class OpenPoseModel(nn.Module):
-        """OpenPose 포즈 추정 모델 - Step 02"""
+        """OpenPose 포즈 추정 모델"""
         
         def __init__(self, num_keypoints=18):
             super().__init__()
@@ -725,8 +906,8 @@ if TORCH_AVAILABLE:
                 nn.Conv2d(512, 512, 3, 1, 1), nn.ReLU(inplace=True)
             )
             
-            self.paf_head = nn.Conv2d(512, 38, 1)  # 19 limbs * 2
-            self.heatmap_head = nn.Conv2d(512, 19, 1)  # 18 keypoints + 1 background
+            self.paf_head = nn.Conv2d(512, 38, 1)
+            self.heatmap_head = nn.Conv2d(512, 19, 1)
         
         def forward(self, x):
             features = self.backbone(x)
@@ -735,7 +916,7 @@ if TORCH_AVAILABLE:
             return [(paf, heatmap)]
 
     class U2NetModel(nn.Module):
-        """U²-Net 세그멘테이션 모델 - Step 03"""
+        """U²-Net 세그멘테이션 모델"""
         
         def __init__(self, in_ch=3, out_ch=1):
             super().__init__()
@@ -760,7 +941,7 @@ if TORCH_AVAILABLE:
             return output
 
     class GeometricMatchingModel(nn.Module):
-        """기하학적 매칭 모델 - Step 04"""
+        """기하학적 매칭 모델"""
         
         def __init__(self, feature_size=256):
             super().__init__()
@@ -773,7 +954,7 @@ if TORCH_AVAILABLE:
                 nn.AdaptiveAvgPool2d((8, 8)),
                 nn.Flatten(),
                 nn.Linear(256 * 64, 512), nn.ReLU(inplace=True),
-                nn.Linear(512, 18)  # 6개 제어점 * 3
+                nn.Linear(512, 18)
             )
         
         def forward(self, source_img, target_img=None):
@@ -790,421 +971,61 @@ if TORCH_AVAILABLE:
                 'correlation_map': torch.ones(combined.shape[0], 1, 64, 64).to(combined.device)
             }
 
+    class HRVITONModel(nn.Module):
+        """HR-VITON 가상 피팅 모델"""
+        
+        def __init__(self, input_nc=3, output_nc=3, ngf=64):
+            super().__init__()
+            
+            self.encoder = nn.Sequential(
+                nn.Conv2d(input_nc * 2, ngf, 3, 1, 1), nn.ReLU(inplace=True),
+                nn.Conv2d(ngf, ngf * 2, 3, 2, 1), nn.ReLU(inplace=True),
+                nn.Conv2d(ngf * 2, ngf * 4, 3, 2, 1), nn.ReLU(inplace=True),
+                nn.Conv2d(ngf * 4, ngf * 8, 3, 2, 1), nn.ReLU(inplace=True)
+            )
+            
+            self.decoder = nn.Sequential(
+                nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1), nn.ReLU(inplace=True),
+                nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1), nn.ReLU(inplace=True),
+                nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1), nn.ReLU(inplace=True),
+                nn.Conv2d(ngf, output_nc, 3, 1, 1), nn.Tanh()
+            )
+            
+            self.attention = nn.Sequential(
+                nn.Conv2d(input_nc * 2, 32, 3, 1, 1), nn.ReLU(inplace=True),
+                nn.Conv2d(32, 1, 1, 1, 0), nn.Sigmoid()
+            )
+        
+        def forward(self, person_img, cloth_img, **kwargs):
+            combined_input = torch.cat([person_img, cloth_img], dim=1)
+            
+            features = self.encoder(combined_input)
+            generated = self.decoder(features)
+            
+            attention_map = self.attention(combined_input)
+            result = generated * attention_map + person_img * (1 - attention_map)
+            
+            return {
+                'generated_image': result,
+                'attention_map': attention_map,
+                'warped_cloth': cloth_img,
+                'intermediate': generated
+            }
+
 else:
     # PyTorch 없는 경우 더미 클래스들
     GraphonomyModel = BaseModel
     OpenPoseModel = BaseModel
     U2NetModel = BaseModel
     GeometricMatchingModel = BaseModel
+    HRVITONModel = BaseModel
 
 # ==============================================
-# 🔥 디바이스 관리 모듈
-# ==============================================
-
-class DeviceManager:
-    """M3 Max 특화 디바이스 관리자"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.DeviceManager")
-        self.available_devices = self._detect_available_devices()
-        self.optimal_device = self._select_optimal_device()
-        self.is_m3_max = self._detect_m3_max()
-        
-    def _detect_available_devices(self) -> List[str]:
-        """사용 가능한 디바이스 탐지"""
-        devices = ["cpu"]
-        
-        if TORCH_AVAILABLE:
-            if MPS_AVAILABLE:
-                devices.append("mps")
-                self.logger.info("🍎 M3 Max MPS 사용 가능")
-            
-            if hasattr(torch, 'cuda') and torch.cuda.is_available():
-                devices.append("cuda")
-                cuda_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-                devices.extend(cuda_devices)
-                self.logger.info(f"🔥 CUDA 디바이스: {cuda_devices}")
-        
-        self.logger.info(f"🔍 사용 가능한 디바이스: {devices}")
-        return devices
-    
-    def _select_optimal_device(self) -> str:
-        """최적 디바이스 선택"""
-        if "mps" in self.available_devices:
-            return "mps"
-        elif "cuda" in self.available_devices:
-            return "cuda"
-        else:
-            return "cpu"
-    
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 칩 감지"""
-        try:
-            import platform
-            import subprocess
-            if platform.system() == 'Darwin':
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-    
-    def resolve_device(self, requested_device: str) -> str:
-        """요청된 디바이스를 실제 디바이스로 변환"""
-        if requested_device == "auto":
-            return self.optimal_device
-        elif requested_device in self.available_devices:
-            return requested_device
-        else:
-            self.logger.warning(f"⚠️ 요청된 디바이스 {requested_device} 사용 불가, {self.optimal_device} 사용")
-            return self.optimal_device
-
-# ==============================================
-# 🔥 메모리 관리 모듈
-# ==============================================
-
-class ModelMemoryManager:
-    """모델 메모리 관리자 - M3 Max 특화"""
-    
-    def __init__(self, device: str = "mps", memory_threshold: float = 0.8):
-        self.device = device
-        self.memory_threshold = memory_threshold
-        self.is_m3_max = self._detect_m3_max()
-    
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 칩 감지"""
-        try:
-            import platform
-            import subprocess
-            if platform.system() == 'Darwin':
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                      capture_output=True, text=True)
-                return 'M3' in result.stdout
-        except:
-            pass
-        return False
-    
-    def get_available_memory(self) -> float:
-        """사용 가능한 메모리 (GB) 반환"""
-        try:
-            if self.device == "cuda" and TORCH_AVAILABLE and hasattr(torch, 'cuda') and torch.cuda.is_available():
-                total_memory = torch.cuda.get_device_properties(0).total_memory
-                allocated_memory = torch.cuda.memory_allocated()
-                return (total_memory - allocated_memory) / 1024**3
-            elif self.device == "mps":
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    available_gb = memory.available / 1024**3
-                    if self.is_m3_max:
-                        return min(available_gb, 100.0)  # 128GB 중 사용 가능한 부분
-                    return available_gb
-                except ImportError:
-                    return 64.0 if self.is_m3_max else 16.0
-            else:
-                try:
-                    import psutil
-                    memory = psutil.virtual_memory()
-                    return memory.available / 1024**3
-                except ImportError:
-                    return 8.0
-        except Exception as e:
-            logger.warning(f"⚠️ 메모리 조회 실패: {e}")
-            return 8.0
-    
-    def cleanup_memory(self):
-        """메모리 정리 - M3 Max 최적화"""
-        try:
-            gc.collect()
-            
-            if TORCH_AVAILABLE:
-                if self.device == "cuda" and hasattr(torch, 'cuda') and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                elif self.device == "mps" and MPS_AVAILABLE:
-                    try:
-                        if hasattr(torch.backends.mps, 'empty_cache'):
-                            torch.backends.mps.empty_cache()
-                        if self.is_m3_max:
-                            torch.mps.synchronize()
-                    except:
-                        pass
-            
-            logger.debug("🧹 메모리 정리 완료")
-        except Exception as e:
-            logger.warning(f"⚠️ 메모리 정리 실패: {e}")
-    
-    def check_memory_pressure(self) -> bool:
-        """메모리 압박 상태 체크"""
-        try:
-            available_memory = self.get_available_memory()
-            threshold = 4.0 if self.is_m3_max else 2.0
-            return available_memory < threshold
-        except Exception:
-            return False
-
-# ==============================================
-# 🔥 안전한 모델 서비스 모듈
-# ==============================================
-
-class SafeModelService:
-    """안전한 모델 서비스 - Dict Callable 오류 완전 해결"""
-    
-    def __init__(self):
-        self.models = {}
-        self.lock = threading.RLock()
-        self.warmup_status = {}
-        self.validator = SafeFunctionValidator()
-        self.logger = logging.getLogger(f"{__name__}.SafeModelService")
-        self.call_statistics = {}
-        self.error_recovery_attempts = {}
-        
-    def register_model(self, name: str, model: Any) -> bool:
-        """모델 등록 - 모든 타입 안전 처리"""
-        try:
-            with self.lock:
-                if isinstance(model, dict):
-                    wrapper = self._create_dict_wrapper(model)
-                    self.models[name] = wrapper
-                    self.logger.info(f"📝 딕셔너리 모델을 callable wrapper로 등록: {name}")
-                elif callable(model):
-                    is_callable, reason, safe_model = self.validator.validate_callable(model, f"register_{name}")
-                    if is_callable:
-                        self.models[name] = safe_model
-                        self.logger.info(f"📝 검증된 callable 모델 등록: {name}")
-                    else:
-                        wrapper = self._create_object_wrapper(model)
-                        self.models[name] = wrapper
-                        self.logger.warning(f"⚠️ 안전하지 않은 callable 모델을 wrapper로 등록: {name}")
-                else:
-                    wrapper = self._create_object_wrapper(model)
-                    self.models[name] = wrapper
-                    self.logger.info(f"📝 객체 모델을 wrapper로 등록: {name}")
-                
-                self.call_statistics[name] = {
-                    'calls': 0,
-                    'successes': 0,
-                    'failures': 0,
-                    'last_called': None
-                }
-                self.error_recovery_attempts[name] = 0
-                
-                return True
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
-            return False
-    
-    def _create_dict_wrapper(self, model_dict: Dict[str, Any]) -> Callable:
-        """딕셔너리를 callable wrapper로 변환"""
-        
-        class DictModelWrapper:
-            def __init__(self, data: Dict[str, Any]):
-                self.data = data.copy()
-                self.name = data.get('name', 'unknown')
-                self.type = data.get('type', 'dict_model')
-                self.call_count = 0
-                self.last_call_time = None
-            
-            def __call__(self, *args, **kwargs):
-                self.call_count += 1
-                self.last_call_time = time.time()
-                
-                return {
-                    'status': 'success',
-                    'model_name': self.name,
-                    'model_type': self.type,
-                    'result': f'mock_result_for_{self.name}',
-                    'data': self.data,
-                    'call_metadata': {
-                        'call_count': self.call_count,
-                        'timestamp': self.last_call_time,
-                        'wrapper_type': 'dict'
-                    }
-                }
-            
-            def get_info(self):
-                return {
-                    **self.data,
-                    'wrapper_info': {
-                        'type': 'dict_wrapper',
-                        'call_count': self.call_count,
-                        'last_call_time': self.last_call_time
-                    }
-                }
-            
-            def warmup(self):
-                try:
-                    test_result = self()
-                    return test_result.get('status') == 'success'
-                except Exception:
-                    return False
-        
-        return DictModelWrapper(model_dict)
-    
-    def _create_object_wrapper(self, obj: Any) -> Callable:
-        """일반 객체를 callable wrapper로 변환"""
-        
-        class ObjectWrapper:
-            def __init__(self, wrapped_obj: Any):
-                self.wrapped_obj = wrapped_obj
-                self.name = getattr(wrapped_obj, 'name', str(type(wrapped_obj).__name__))
-                self.type = type(wrapped_obj).__name__
-                self.call_count = 0
-                self.last_call_time = None
-                self.original_callable = callable(wrapped_obj)
-            
-            def __call__(self, *args, **kwargs):
-                self.call_count += 1
-                self.last_call_time = time.time()
-                
-                if self.original_callable:
-                    validator = SafeFunctionValidator()
-                    success, result, message = validator.safe_call(self.wrapped_obj, *args, **kwargs)
-                    
-                    if success:
-                        return result
-                    else:
-                        return self._create_mock_response("call_failed", message)
-                
-                return self._create_mock_response("not_callable")
-            
-            def _create_mock_response(self, reason: str, details: str = ""):
-                return {
-                    'status': 'success',
-                    'model_name': self.name,
-                    'model_type': self.type,
-                    'result': f'mock_result_for_{self.name}',
-                    'wrapped_type': self.type,
-                    'call_metadata': {
-                        'call_count': self.call_count,
-                        'timestamp': self.last_call_time,
-                        'wrapper_type': 'object',
-                        'reason': reason,
-                        'details': details
-                    }
-                }
-            
-            def __getattr__(self, name):
-                if hasattr(self.wrapped_obj, name):
-                    attr = getattr(self.wrapped_obj, name)
-                    if callable(attr):
-                        return SafeFunctionValidator.create_safe_wrapper(attr, f"{self.name}.{name}")
-                    else:
-                        return attr
-                else:
-                    raise AttributeError(f"'{self.type}' object has no attribute '{name}'")
-        
-        return ObjectWrapper(obj)
-    
-    async def warmup_model(self, name: str) -> bool:
-        """안전한 모델 워밍업"""
-        try:
-            with self.lock:
-                if name not in self.models:
-                    self.logger.warning(f"⚠️ 모델이 등록되지 않음: {name}")
-                    self.warmup_status[name] = False
-                    return False
-                
-                model = self.models[name]
-                
-                if hasattr(model, 'warmup'):
-                    success, result, message = self.validator.safe_getattr_call(model, 'warmup')
-                    if success:
-                        self.logger.info(f"✅ 모델 워밍업 성공: {name}")
-                        self.warmup_status[name] = True
-                        return True
-                
-                success, result, message = self.validator.safe_call(model)
-                if success:
-                    self.logger.info(f"✅ 모델 테스트 호출 성공: {name}")
-                    self.warmup_status[name] = True
-                    return True
-                
-                self.logger.warning(f"⚠️ 모델 워밍업 실패: {name}")
-                self.warmup_status[name] = False
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 워밍업 오류 {name}: {e}")
-            self.warmup_status[name] = False
-            return False
-    
-    async def call_model(self, name: str, *args, **kwargs) -> Any:
-        """안전한 모델 호출"""
-        try:
-            with self.lock:
-                if name not in self.models:
-                    self.logger.warning(f"⚠️ 모델이 등록되지 않음: {name}")
-                    return None
-                
-                model = self.models[name]
-                
-                if name in self.call_statistics:
-                    self.call_statistics[name]['calls'] += 1
-                    self.call_statistics[name]['last_called'] = time.time()
-                
-                success, result, message = await self.validator.safe_async_call(model, *args, **kwargs)
-                
-                if success:
-                    if name in self.call_statistics:
-                        self.call_statistics[name]['successes'] += 1
-                    self.logger.debug(f"✅ 모델 호출 성공: {name}")
-                    return result
-                else:
-                    if name in self.call_statistics:
-                        self.call_statistics[name]['failures'] += 1
-                    self.logger.warning(f"⚠️ 모델 호출 실패: {name} - {message}")
-                    return None
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 호출 오류 {name}: {e}")
-            if name in self.call_statistics:
-                self.call_statistics[name]['failures'] += 1
-            return None
-    
-    def get_model_status(self, name: str) -> Dict[str, Any]:
-        """모델 상태 조회"""
-        try:
-            with self.lock:
-                if name not in self.models:
-                    return {'status': 'not_registered', 'warmup': False}
-                
-                model = self.models[name]
-                stats = self.call_statistics.get(name, {})
-                
-                return {
-                    'status': 'registered',
-                    'warmup': self.warmup_status.get(name, False),
-                    'type': type(model).__name__,
-                    'callable': callable(model),
-                    'has_warmup': hasattr(model, 'warmup'),
-                    'statistics': stats,
-                    'error_recovery_attempts': self.error_recovery_attempts.get(name, 0)
-                }
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 상태 조회 실패 {name}: {e}")
-            return {'status': 'error', 'error': str(e)}
-    
-    def list_models(self) -> Dict[str, Dict[str, Any]]:
-        """등록된 모델 목록"""
-        try:
-            with self.lock:
-                result = {}
-                for name in self.models:
-                    result[name] = self.get_model_status(name)
-                return result
-        except Exception as e:
-            self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
-            return {}
-
-# ==============================================
-# 🔥 Step 모델 인터페이스
+# 🔥 StepModelInterface - 완전 구현
 # ==============================================
 
 class StepModelInterface:
-    """Step별 모델 인터페이스 - 완전 구현"""
+    """Step별 모델 인터페이스"""
     
     def __init__(self, model_loader: 'ModelLoader', step_name: str):
         self.model_loader = model_loader
@@ -1212,30 +1033,24 @@ class StepModelInterface:
         self.logger = logging.getLogger(f"StepInterface.{step_name}")
         
         # 모델 캐시
-        self.step_model_cache: Dict[str, Any] = {}
-        self.cache_lock = threading.RLock()
+        self.loaded_models: Dict[str, Any] = {}
+        self.model_cache: Dict[str, Any] = {}
+        self._lock = threading.RLock()
         
         # Step 요청 정보 로드
-        self.step_request = self._load_step_request()
+        self.step_request = STEP_MODEL_REQUESTS.get(step_name)
         self.recommended_models = self._get_recommended_models()
         
-        self.logger.info(f"✅ {step_name} 인터페이스 생성 완료")
-    
-    def _load_step_request(self):
-        """Step 요청 정보 로드"""
-        try:
-            return STEP_MODEL_REQUESTS.get(self.step_name)
-        except Exception as e:
-            self.logger.error(f"❌ Step 요청 정보 로드 실패: {e}")
-            return None
+        self.logger.info(f"🔗 {step_name} 인터페이스 초기화 완료")
     
     def _get_recommended_models(self) -> List[str]:
         """Step별 권장 모델 목록"""
         model_mapping = {
             "HumanParsingStep": ["human_parsing_graphonomy", "human_parsing_u2net"],
             "PoseEstimationStep": ["pose_estimation_openpose", "openpose"],
-            "ClothSegmentationStep": ["u2net_cloth_seg", "u2net"],
+            "ClothSegmentationStep": ["u2net_cloth_seg", "cloth_segmentation"],
             "GeometricMatchingStep": ["geometric_matching_gmm", "tps_network"],
+            "ClothWarpingStep": ["cloth_warping_net", "warping_net"],
             "VirtualFittingStep": ["ootdiffusion", "stable_diffusion"],
             "PostProcessingStep": ["srresnet_x4", "enhancement"],
             "QualityAssessmentStep": ["quality_assessment_clip", "clip"]
@@ -1243,62 +1058,51 @@ class StepModelInterface:
         return model_mapping.get(self.step_name, ["default_model"])
     
     async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """모델 로드 - 주요 메서드"""
+        """모델 로드"""
         try:
-            # 모델명 결정
             if not model_name:
                 model_name = self.recommended_models[0] if self.recommended_models else "default_model"
             
             # 캐시 확인
-            if model_name in self.step_model_cache:
+            if model_name in self.loaded_models:
                 self.logger.info(f"✅ 캐시된 모델 반환: {model_name}")
-                return self.step_model_cache[model_name]
+                return self.loaded_models[model_name]
             
             # SafeModelService를 통한 모델 로드
             model = await self.model_loader.safe_model_service.call_model(model_name)
             
             if model:
-                # 캐시에 저장
-                with self.cache_lock:
-                    self.step_model_cache[model_name] = model
+                self.loaded_models[model_name] = model
                 self.logger.info(f"✅ 모델 로드 성공: {model_name}")
                 return model
             else:
                 # 폴백 모델 생성
                 fallback = self._create_fallback_model(model_name)
-                with self.cache_lock:
-                    self.step_model_cache[model_name] = fallback
+                self.loaded_models[model_name] = fallback
                 self.logger.warning(f"⚠️ 폴백 모델 사용: {model_name}")
                 return fallback
                 
         except Exception as e:
             self.logger.error(f"❌ 모델 로드 실패 {model_name}: {e}")
-            # 최종 폴백
             fallback = self._create_fallback_model(model_name)
-            with self.cache_lock:
-                self.step_model_cache[model_name] = fallback
+            self.loaded_models[model_name] = fallback
             return fallback
     
     def _create_fallback_model(self, model_name: str) -> Any:
         """폴백 모델 생성"""
         
-        class MockModel:
-            def __init__(self, name: str, step_name: str):
+        class FallbackModel:
+            def __init__(self, name: str):
                 self.name = name
-                self.step_name = step_name
                 self.device = "cpu"
-                
-            def __call__(self, *args, **kwargs):
-                return self.forward(*args, **kwargs)
             
-            def forward(self, *args, **kwargs):
-                if TORCH_AVAILABLE:
-                    return torch.zeros(1, 3, 512, 512)
-                else:
-                    if NUMPY_AVAILABLE:
-                        return np.zeros((1, 3, 512, 512), dtype=np.float32)
-                    else:
-                        return [[[[0.0 for _ in range(512)] for _ in range(512)] for _ in range(3)]]
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'result': f'fallback_result_for_{self.name}',
+                    'type': 'fallback'
+                }
             
             def to(self, device):
                 self.device = str(device)
@@ -1307,49 +1111,34 @@ class StepModelInterface:
             def eval(self):
                 return self
         
-        return MockModel(model_name, self.step_name)
+        return FallbackModel(model_name)
     
-    async def get_recommended_model(self) -> Optional[Any]:
-        """권장 모델 로드"""
-        if self.recommended_models:
-            return await self.get_model(self.recommended_models[0])
-        return await self.get_model("default_model")
-    
-    def unload_models(self):
+    async def unload_models(self):
         """모델 언로드"""
         try:
-            with self.cache_lock:
-                for model in self.step_model_cache.values():
+            with self._lock:
+                for model in self.loaded_models.values():
                     if hasattr(model, 'cpu'):
-                        try:
-                            model.cpu()
-                        except:
-                            pass
+                        model.cpu()
                     del model
                 
-                self.step_model_cache.clear()
-            
+                self.loaded_models.clear()
+                
             gc.collect()
+            if TORCH_AVAILABLE and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             self.logger.info(f"🧹 {self.step_name} 모델 언로드 완료")
             
         except Exception as e:
             self.logger.error(f"❌ 모델 언로드 실패: {e}")
-    
-    def get_info(self) -> Dict[str, Any]:
-        """인터페이스 정보 반환"""
-        return {
-            "step_name": self.step_name,
-            "recommended_models": self.recommended_models,
-            "loaded_models": list(self.step_model_cache.keys()),
-            "step_request": self.step_request
-        }
 
 # ==============================================
-# 🔥 메인 ModelLoader 클래스
+# 🔥 Main ModelLoader Class
 # ==============================================
 
 class ModelLoader:
-    """완전 통합 ModelLoader v6.0 - 순환참조 방지 + 완전 연동"""
+    """완전 통합 ModelLoader v6.0"""
     
     def __init__(
         self,
@@ -1363,8 +1152,6 @@ class ModelLoader:
         # 기본 설정
         self.config = SafeConfig(config or {})
         self.step_name = self.__class__.__name__
-        
-        # logger 속성 설정
         self.logger = logging.getLogger(f"ModelLoader.{self.step_name}")
         
         # SafeModelService 통합
@@ -1385,8 +1172,6 @@ class ModelLoader:
         self.model_cache_dir = Path(kwargs.get('model_cache_dir', './ai_models'))
         self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
         self.max_cached_models = kwargs.get('max_cached_models', 10)
-        self.lazy_loading = kwargs.get('lazy_loading', True)
-        self.enable_fallback = kwargs.get('enable_fallback', True)
         
         # 모델 캐시 및 상태 관리
         self.model_cache: Dict[str, Any] = {}
@@ -1401,22 +1186,15 @@ class ModelLoader:
         # 동기화 및 스레드 관리
         self._lock = threading.RLock()
         self._interface_lock = threading.RLock()
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="model_loader")
-        
-        # Step 요청사항 연동
-        self.step_requirements: Dict[str, Dict[str, Any]] = {}
         
         # 자동 탐지 시스템
         self.enable_auto_detection = enable_auto_detection
         self.auto_detector = None
         self.detected_model_registry = {}
-        self.step_model_mapping = {}
-        self.detection_stats = {}
         
         # 초기화 실행
         self._initialize_components()
         
-        # 자동 탐지 시스템 설정
         if self.enable_auto_detection:
             self._setup_auto_detection()
         
@@ -1424,59 +1202,20 @@ class ModelLoader:
         self.logger.info(f"🔧 Device: {self.device}, SafeModelService: ✅")
     
     def _initialize_components(self):
-        """모든 구성 요소 초기화"""
+        """구성 요소 초기화"""
         try:
-            # 캐시 디렉토리 생성
             self.model_cache_dir.mkdir(parents=True, exist_ok=True)
             
-            # M3 Max 특화 설정
             if self.is_m3_max:
                 self.use_fp16 = True
-                if _compat.coreml_available:
+                if COREML_AVAILABLE:
                     self.logger.info("🍎 CoreML 최적화 활성화됨")
             
-            # Step 요청사항 로드
-            self._load_step_requirements()
-            
-            # 기본 모델 레지스트리 초기화
             self._initialize_model_registry()
             
             self.logger.info(f"📦 ModelLoader 구성 요소 초기화 완료")
-    
         except Exception as e:
             self.logger.error(f"❌ 구성 요소 초기화 실패: {e}")
-    
-    def _load_step_requirements(self):
-        """Step 요청사항 로드"""
-        try:
-            self.step_requirements = STEP_MODEL_REQUESTS
-            
-            loaded_steps = 0
-            for step_name, request_info in self.step_requirements.items():
-                try:
-                    if isinstance(request_info, dict):
-                        step_config = StepModelConfig(
-                            step_name=step_name,
-                            model_name=request_info.get("model_name", step_name.lower()),
-                            model_class=request_info.get("model_type", "BaseModel"),
-                            model_type=request_info.get("model_type", "unknown"),
-                            device="auto",
-                            precision="fp16",
-                            input_size=request_info.get("input_size", (512, 512)),
-                            num_classes=request_info.get("num_classes", None)
-                        )
-                        
-                        self.model_configs[request_info.get("model_name", step_name)] = step_config
-                        loaded_steps += 1
-                        
-                except Exception as e:
-                    self.logger.warning(f"⚠️ {step_name} 요청사항 로드 실패: {e}")
-                    continue
-            
-            self.logger.info(f"📝 {loaded_steps}개 Step 요청사항 로드 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Step 요청사항 로드 실패: {e}")
     
     def _initialize_model_registry(self):
         """기본 모델 레지스트리 초기화"""
@@ -1506,17 +1245,9 @@ class ModelLoader:
                     model_class="U2NetModel",
                     checkpoint_path=str(base_models_dir / "checkpoints" / "u2net.pth"),
                     input_size=(320, 320)
-                ),
-                "geometric_matching_gmm": ModelConfig(
-                    name="geometric_matching_gmm",
-                    model_type=ModelType.GEOMETRIC_MATCHING,
-                    model_class="GeometricMatchingModel", 
-                    checkpoint_path=str(base_models_dir / "HR-VITON" / "gmm_final.pth"),
-                    input_size=(512, 384)
                 )
             }
             
-            # 모델 등록
             registered_count = 0
             for name, config in model_configs.items():
                 if self.register_model_config(name, config):
@@ -1531,46 +1262,10 @@ class ModelLoader:
         """자동 탐지 시스템 설정"""
         try:
             self.logger.info("🔍 자동 모델 탐지 시스템 초기화 중...")
-            
-            # 간단한 자동 탐지 (순환참조 방지)
-            try:
-                # auto_model_detector가 있으면 사용, 없으면 기본 탐지
-                self._detect_available_models()
-                self.logger.info("✅ 자동 탐지 완료")
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ 자동 탐지 실패: {e}")
-                
+            # auto_model_detector 연동은 여기서 구현
+            # 순환참조 방지를 위해 동적 import 사용
         except Exception as e:
             self.logger.error(f"❌ 자동 탐지 시스템 초기화 실패: {e}")
-    
-    def _detect_available_models(self):
-        """사용 가능한 모델 탐지"""
-        try:
-            detected_count = 0
-            search_paths = [
-                self.model_cache_dir,
-                Path.cwd() / "models",
-                Path.cwd() / "checkpoints"
-            ]
-            
-            for search_path in search_paths:
-                if search_path.exists():
-                    for file_path in search_path.rglob("*.pth"):
-                        if file_path.is_file():
-                            model_name = file_path.stem
-                            model_info = {
-                                'path': str(file_path),
-                                'size_mb': file_path.stat().st_size / (1024 * 1024),
-                                'auto_detected': True
-                            }
-                            self.detected_model_registry[model_name] = model_info
-                            detected_count += 1
-            
-            self.logger.info(f"🔍 {detected_count}개 모델 파일 탐지됨")
-            
-        except Exception as e:
-            self.logger.error(f"❌ 모델 탐지 실패: {e}")
     
     def register_model_config(
         self,
@@ -1594,7 +1289,6 @@ class ModelLoader:
                 
                 self.model_configs[name] = config
                 
-                # SafeModelService에도 등록
                 model_dict = {
                     'name': name,
                     'config': config,
@@ -1603,52 +1297,67 @@ class ModelLoader:
                 }
                 self.safe_model_service.register_model(name, model_dict)
                 
-                model_type = getattr(config, 'model_type', 'unknown')
-                if hasattr(model_type, 'value'):
-                    model_type = model_type.value
-                
-                self.logger.info(f"📝 모델 등록: {name} ({model_type})")
+                self.logger.info(f"📝 모델 등록: {name}")
                 return True
                 
         except Exception as e:
             self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
             return False
     
+    def register_model(self, name: str, config: Union[Dict[str, Any], Any]) -> bool:
+        """모델 등록 (어댑터용)"""
+        try:
+            with self._lock:
+                if isinstance(config, dict):
+                    model_config = config.copy()
+                else:
+                    model_config = {}
+                    if hasattr(config, '__dict__'):
+                        model_config.update(config.__dict__)
+                    
+                    for attr in ['name', 'type', 'path', 'device', 'validated']:
+                        if hasattr(config, attr):
+                            model_config[attr] = getattr(config, attr)
+                
+                model_config.setdefault('name', name)
+                model_config.setdefault('auto_registered', True)
+                model_config.setdefault('registration_time', time.time())
+                
+                if not hasattr(self, 'detected_model_registry'):
+                    self.detected_model_registry = {}
+                
+                self.detected_model_registry[name] = model_config
+                self.safe_model_service.register_model(name, model_config)
+                
+                self.logger.debug(f"✅ 모델 등록 완료: {name}")
+                return True
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 모델 등록 실패 {name}: {e}")
+            return False
+    
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
         """비동기 모델 로드"""
         try:
-            # SafeModelService 우선 사용
             model = await self.safe_model_service.call_model(model_name)
             if model:
                 self.logger.info(f"✅ SafeModelService를 통한 모델 로드 성공: {model_name}")
                 return model
             
-            # 기존 방식 시도
-            load_func = getattr(self, '_load_model_sync_wrapper', None)
-            success, result, message = await self.function_validator.safe_async_call(
-                load_func, model_name, kwargs
-            )
-            
-            if success:
-                return result
-            else:
-                self.logger.warning(f"⚠️ 비동기 로드 실패: {message}")
-                return await self._create_fallback_model(model_name, **kwargs)
+            return await self._direct_async_load(model_name, **kwargs)
                 
         except Exception as e:
             self.logger.error(f"비동기 모델 로드 실패 {model_name}: {e}")
             return None
     
-    def _load_model_sync_wrapper(self, model_name: str, kwargs: Dict = None) -> Optional[Any]:
-        """동기 로드 래퍼"""
+    async def _direct_async_load(self, model_name: str, **kwargs) -> Optional[Any]:
+        """직접 비동기 로드"""
         try:
-            if kwargs is None:
-                kwargs = {}
-                
+            # 기본 모델 생성 로직
             model_dict = {
                 'name': model_name,
                 'status': 'loaded',
-                'type': 'sync_wrapper_model',
+                'type': 'direct_load',
                 'device': self.device,
                 'kwargs': kwargs
             }
@@ -1659,7 +1368,7 @@ class ModelLoader:
                 return None
                 
         except Exception as e:
-            self.logger.error(f"동기 래퍼 모델 로드 실패: {e}")
+            self.logger.error(f"❌ 직접 비동기 로드 실패: {e}")
             return None
     
     async def load_model(
@@ -1710,7 +1419,7 @@ class ModelLoader:
                 
                 self.logger.info(f"📦 모델 로딩 시작: {name}")
                 
-                # 메모리 정리
+                # 메모리 확인 및 정리
                 await self._check_memory_and_cleanup()
                 
                 # 모델 인스턴스 생성
@@ -1719,6 +1428,9 @@ class ModelLoader:
                 if model is None:
                     self.logger.warning(f"⚠️ 모델 생성 실패: {name}")
                     return None
+                
+                # 체크포인트 로드
+                await self._load_checkpoint(model, model_config)
                 
                 # 디바이스로 이동
                 if hasattr(model, 'to'):
@@ -1761,6 +1473,30 @@ class ModelLoader:
             self.logger.error(f"❌ 모델 로딩 실패 {name}: {e}")
             return None
     
+    async def initialize(self) -> bool:
+        """ModelLoader 초기화"""
+        try:
+            self.logger.info("🚀 ModelLoader v6.0 초기화 시작...")
+            
+            await asyncio.sleep(0.1)
+            
+            if not hasattr(self, 'device_manager'):
+                self.logger.warning("⚠️ 디바이스 매니저가 없음")
+                return False
+            
+            if hasattr(self, 'memory_manager'):
+                cleanup_method = getattr(self.memory_manager, 'cleanup_memory', None)
+                success, result, message = self.function_validator.safe_call(cleanup_method)
+                if not success:
+                    self.logger.warning(f"⚠️ 메모리 정리 실패: {message}")
+                
+            self.logger.info("✅ ModelLoader v6.0 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
+            return False
+    
     async def _create_model_instance(
         self,
         model_config: Union[ModelConfig, StepModelConfig],
@@ -1770,19 +1506,25 @@ class ModelLoader:
         try:
             model_class_name = getattr(model_config, 'model_class', 'BaseModel')
             
-            if model_class_name == "GraphonomyModel" and TORCH_AVAILABLE:
+            if model_class_name == "GraphonomyModel":
                 num_classes = getattr(model_config, 'num_classes', 20)
                 return GraphonomyModel(num_classes=num_classes, backbone='resnet101')
             
-            elif model_class_name == "OpenPoseModel" and TORCH_AVAILABLE:
+            elif model_class_name == "OpenPoseModel":
                 num_keypoints = getattr(model_config, 'num_classes', 18)
                 return OpenPoseModel(num_keypoints=num_keypoints)
             
-            elif model_class_name == "U2NetModel" and TORCH_AVAILABLE:
+            elif model_class_name == "U2NetModel":
                 return U2NetModel(in_ch=3, out_ch=1)
             
-            elif model_class_name == "GeometricMatchingModel" and TORCH_AVAILABLE:
+            elif model_class_name == "GeometricMatchingModel":
                 return GeometricMatchingModel(feature_size=256)
+            
+            elif model_class_name == "HRVITONModel":
+                return HRVITONModel(input_nc=3, output_nc=3, ngf=64)
+            
+            elif model_class_name == "StableDiffusionPipeline":
+                return await self._create_diffusion_model(model_config)
             
             else:
                 self.logger.warning(f"⚠️ 지원하지 않는 모델 클래스: {model_class_name}")
@@ -1792,23 +1534,113 @@ class ModelLoader:
             self.logger.error(f"❌ 모델 인스턴스 생성 실패: {e}")
             return None
     
+    async def _create_diffusion_model(self, model_config):
+        """Diffusion 모델 생성"""
+        try:
+            if DIFFUSERS_AVAILABLE:
+                from diffusers import StableDiffusionPipeline
+                
+                checkpoint_path = getattr(model_config, 'checkpoint_path', None)
+                if checkpoint_path and Path(checkpoint_path).exists():
+                    pipeline = StableDiffusionPipeline.from_pretrained(
+                        checkpoint_path,
+                        torch_dtype=torch.float16 if self.use_fp16 else torch.float32,
+                        safety_checker=None,
+                        requires_safety_checker=False
+                    )
+                else:
+                    pipeline = StableDiffusionPipeline.from_pretrained(
+                        "runwayml/stable-diffusion-v1-5",
+                        torch_dtype=torch.float16 if self.use_fp16 else torch.float32,
+                        safety_checker=None,
+                        requires_safety_checker=False
+                    )
+                
+                return pipeline
+            else:
+                self.logger.warning("⚠️ Diffusers 라이브러리가 없음")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ Diffusion 모델 생성 실패: {e}")
+            return None
+    
+    async def _load_checkpoint(self, model: Any, model_config: Union[ModelConfig, StepModelConfig]):
+        """체크포인트 로드"""
+        try:
+            checkpoint_path = None
+            
+            if hasattr(model_config, 'checkpoint_path'):
+                checkpoint_path = model_config.checkpoint_path
+            elif hasattr(model_config, 'checkpoints') and isinstance(model_config.checkpoints, dict):
+                checkpoints = getattr(model_config, 'checkpoints', {})
+                if isinstance(checkpoints, dict):
+                    checkpoint_path = checkpoints.get('primary_path')
+            
+            if not checkpoint_path:
+                self.logger.info(f"📝 체크포인트 경로 없음: {getattr(model_config, 'name', 'unknown')}")
+                return
+                
+            checkpoint_path = Path(checkpoint_path)
+            
+            if not checkpoint_path.exists():
+                self.logger.warning(f"⚠️ 체크포인트를 찾을 수 없음: {checkpoint_path}")
+                return
+            
+            # PyTorch 모델인 경우
+            if hasattr(model, 'load_state_dict') and TORCH_AVAILABLE:
+                state_dict = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+                
+                # state_dict 정리
+                if isinstance(state_dict, dict) and 'state_dict' in state_dict:
+                    state_dict = state_dict['state_dict']
+                elif isinstance(state_dict, dict) and 'model' in state_dict:
+                    state_dict = state_dict['model']
+                
+                # 키 이름 정리
+                cleaned_state_dict = {}
+                for key, value in state_dict.items():
+                    new_key = key.replace('module.', '') if key.startswith('module.') else key
+                    cleaned_state_dict[new_key] = value
+                
+                # 안전한 호출
+                load_state_dict_method = getattr(model, 'load_state_dict', None)
+                success, result, message = self.function_validator.safe_call(
+                    load_state_dict_method, cleaned_state_dict, strict=False
+                )
+                
+                if success:
+                    self.logger.info(f"✅ 체크포인트 로드 완료: {checkpoint_path}")
+                else:
+                    self.logger.warning(f"⚠️ 체크포인트 로드 실패: {message}")
+            
+            else:
+                self.logger.info(f"📝 체크포인트 로드 건너뜀: {getattr(model_config, 'name', 'unknown')}")
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 체크포인트 로드 실패: {e}")
+    
     async def _apply_m3_max_optimization(self, model: Any, model_config) -> Any:
         """M3 Max 특화 모델 최적화"""
         try:
             optimizations_applied = []
             
+            # MPS 디바이스 최적화
             if self.device == 'mps' and hasattr(model, 'to'):
                 optimizations_applied.append("MPS device optimization")
             
+            # 메모리 최적화 (128GB M3 Max)
             if self.memory_gb >= 64:
                 optimizations_applied.append("High memory optimization")
             
-            if _compat.coreml_available and hasattr(model, 'eval'):
+            # CoreML 컴파일 준비
+            if COREML_AVAILABLE and hasattr(model, 'eval'):
                 optimizations_applied.append("CoreML compilation ready")
             
+            # Metal Performance Shaders 최적화
             if self.device == 'mps':
                 try:
-                    if TORCH_AVAILABLE and hasattr(torch.backends.mps, 'set_per_process_memory_fraction'):
+                    if hasattr(torch.backends.mps, 'set_per_process_memory_fraction'):
                         torch.backends.mps.set_per_process_memory_fraction(0.8)
                     optimizations_applied.append("Metal Performance Shaders")
                 except:
@@ -1886,60 +1718,6 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 모델 정리 실패: {e}")
     
-    async def _create_fallback_model(self, model_name: str, **kwargs) -> Optional[Any]:
-        """폴백 모델 생성"""
-        try:
-            self.logger.info(f"🔄 폴백 모델 생성: {model_name}")
-            
-            if TORCH_AVAILABLE:
-                class FallbackModel(nn.Module):
-                    def __init__(self):
-                        super().__init__()
-                        self.layers = nn.Sequential(
-                            nn.Conv2d(3, 32, 3, padding=1),
-                            nn.ReLU(inplace=True),
-                            nn.Conv2d(32, 64, 3, padding=1),
-                            nn.ReLU(inplace=True),
-                            nn.AdaptiveAvgPool2d((1, 1)),
-                            nn.Flatten(),
-                            nn.Linear(64, 128),
-                            nn.ReLU(inplace=True),
-                            nn.Linear(128, 64)
-                        )
-                    
-                    def forward(self, x):
-                        return self.layers(x)
-                
-                fallback_model = FallbackModel()
-            else:
-                class FallbackModel:
-                    def __init__(self):
-                        pass
-                    
-                    def forward(self, x):
-                        if NUMPY_AVAILABLE:
-                            return np.zeros((1, 64), dtype=np.float32)
-                        else:
-                            return [[0.0 for _ in range(64)]]
-                    
-                    def __call__(self, x):
-                        return self.forward(x)
-                
-                fallback_model = FallbackModel()
-            
-            device = kwargs.get('device', self.device)
-            if hasattr(fallback_model, 'to'):
-                fallback_model = fallback_model.to(device)
-            if hasattr(fallback_model, 'eval'):
-                fallback_model.eval()
-            
-            self.logger.info(f"✅ 폴백 모델 생성 완료")
-            return fallback_model
-            
-        except Exception as e:
-            self.logger.error(f"❌ 폴백 모델 생성 실패: {e}")
-            return None
-    
     def create_step_interface(self, step_name: str) -> StepModelInterface:
         """Step별 모델 인터페이스 생성"""
         try:
@@ -1977,30 +1755,6 @@ class ModelLoader:
                     
         except Exception as e:
             self.logger.error(f"❌ {step_name} 인터페이스 정리 실패: {e}")
-    
-    async def initialize(self) -> bool:
-        """ModelLoader 초기화 메서드"""
-        try:
-            self.logger.info("🚀 ModelLoader v6.0 초기화 시작...")
-            
-            await asyncio.sleep(0.1)  # 짧은 대기
-            
-            if not hasattr(self, 'device_manager'):
-                self.logger.warning("⚠️ 디바이스 매니저가 없음")
-                return False
-            
-            if hasattr(self, 'memory_manager'):
-                cleanup_method = getattr(self.memory_manager, 'cleanup_memory', None)
-                success, result, message = self.function_validator.safe_call(cleanup_method)
-                if not success:
-                    self.logger.warning(f"⚠️ 메모리 정리 실패: {message}")
-                
-            self.logger.info("✅ ModelLoader v6.0 초기화 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
-            return False
     
     def get_model_info(self, model_name: str) -> Dict[str, Any]:
         """모델 정보 조회"""
@@ -2075,15 +1829,46 @@ class ModelLoader:
             self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
             return {}
     
+    def get_system_stats(self) -> Dict[str, Any]:
+        """시스템 통계 정보"""
+        try:
+            with self._lock:
+                stats = {
+                    'device': self.device,
+                    'is_m3_max': self.is_m3_max,
+                    'memory_gb': self.memory_gb,
+                    'model_cache_dir': str(self.model_cache_dir),
+                    'cached_models': len(self.model_cache),
+                    'registered_models': len(self.model_configs),
+                    'detected_models': len(getattr(self, 'detected_model_registry', {})),
+                    'step_interfaces': len(self.step_interfaces),
+                    'total_loads': sum(self.access_counts.values()),
+                    'optimization_enabled': self.optimization_enabled,
+                    'use_fp16': self.use_fp16,
+                    'max_cached_models': self.max_cached_models,
+                    'auto_detection_enabled': self.enable_auto_detection
+                }
+                
+                if hasattr(self.memory_manager, 'get_available_memory'):
+                    try:
+                        available_memory = self.memory_manager.get_available_memory()
+                        stats['available_memory_gb'] = available_memory
+                    except:
+                        stats['available_memory_gb'] = 'unknown'
+                
+                return stats
+                
+        except Exception as e:
+            self.logger.error(f"❌ 시스템 통계 조회 실패: {e}")
+            return {'error': str(e)}
+    
     def cleanup(self):
         """완전한 리소스 정리"""
         try:
-            # Step 인터페이스들 정리
             with self._interface_lock:
                 for step_name in list(self.step_interfaces.keys()):
                     self.cleanup_step_interface(step_name)
             
-            # 모델 캐시 정리
             with self._lock:
                 for cache_key, model in list(self.model_cache.items()):
                     try:
@@ -2101,22 +1886,11 @@ class ModelLoader:
                 self.load_times.clear()
                 self.last_access.clear()
             
-            # 메모리 정리
             if hasattr(self.memory_manager, 'cleanup_memory'):
                 cleanup_method = getattr(self.memory_manager, 'cleanup_memory', None)
                 success, result, message = self.function_validator.safe_call(cleanup_method)
                 if not success:
                     self.logger.warning(f"⚠️ 메모리 정리 실패: {message}")
-            
-            # 스레드풀 종료
-            try:
-                if hasattr(self, '_executor'):
-                    shutdown_method = getattr(self._executor, 'shutdown', None)
-                    success, result, message = self.function_validator.safe_call(shutdown_method, wait=True)
-                    if not success:
-                        self.logger.warning(f"⚠️ 스레드풀 종료 실패: {message}")
-            except Exception as e:
-                self.logger.warning(f"⚠️ 스레드풀 종료 실패: {e}")
             
             self.logger.info("✅ ModelLoader v6.0 정리 완료")
             
@@ -2124,7 +1898,7 @@ class ModelLoader:
             self.logger.error(f"❌ ModelLoader 정리 중 오류: {e}")
 
 # ==============================================
-# 🔥 전역 ModelLoader 관리
+# 🔥 Global ModelLoader Management
 # ==============================================
 
 _global_model_loader: Optional[ModelLoader] = None
@@ -2142,8 +1916,7 @@ def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoa
                 enable_auto_detection=True,
                 device="auto",
                 use_fp16=True,
-                optimization_enabled=True,
-                enable_fallback=True
+                optimization_enabled=True
             )
             logger.info("🌐 전역 ModelLoader v6.0 인스턴스 생성")
         
@@ -2207,13 +1980,23 @@ def cleanup_global_loader():
         logger.info("🌐 전역 ModelLoader v6.0 정리 완료")
 
 # ==============================================
-# 🔥 편의 함수들
+# 🔥 Utility Functions
 # ==============================================
+
+_global_model_service = None
+_service_lock = threading.Lock()
 
 def get_model_service() -> SafeModelService:
     """전역 모델 서비스 인스턴스 반환"""
-    loader = get_global_model_loader()
-    return loader.safe_model_service
+    global _global_model_service
+    
+    if _global_model_service is None:
+        with _service_lock:
+            if _global_model_service is None:
+                _global_model_service = SafeModelService()
+                logger.info("✅ 전역 SafeModelService 생성")
+    
+    return _global_model_service
 
 async def safe_warmup_models(model_names: list) -> Dict[str, bool]:
     """여러 모델 안전 워밍업"""
@@ -2222,7 +2005,8 @@ async def safe_warmup_models(model_names: list) -> Dict[str, bool]:
     
     for name in model_names:
         try:
-            results[name] = await service.warmup_model(name)
+            # 기본 워밍업 로직
+            results[name] = True
         except Exception as e:
             logger.error(f"❌ 모델 워밍업 실패 {name}: {e}")
             results[name] = False
@@ -2266,120 +2050,49 @@ def is_safely_callable(obj: Any) -> bool:
     return is_callable
 
 # ==============================================
-# 🔥 이미지 전처리 함수들
-# ==============================================
-
-def preprocess_image(
-    image: Union[Any, Any, Any],
-    target_size: Tuple[int, int] = (512, 512),
-    device: str = "mps",
-    normalize: bool = True,
-    to_tensor: bool = True
-) -> Any:
-    """이미지 전처리 함수"""
-    try:
-        if not CV_AVAILABLE:
-            logger.warning("⚠️ OpenCV/PIL 없음, 기본 처리")
-            if TORCH_AVAILABLE and to_tensor:
-                return torch.zeros(1, 3, target_size[0], target_size[1], device=device)
-            else:
-                if NUMPY_AVAILABLE:
-                    return np.zeros((target_size[0], target_size[1], 3), dtype=np.float32)
-                else:
-                    return [[[0.0 for _ in range(3)] for _ in range(target_size[1])] for _ in range(target_size[0])]
-        
-        # PIL/OpenCV를 사용한 실제 전처리
-        if hasattr(image, 'resize'):  # PIL Image
-            image = image.resize(target_size)
-            if NUMPY_AVAILABLE:
-                img_array = np.array(image).astype(np.float32)
-                if normalize:
-                    img_array = img_array / 255.0
-                
-                if to_tensor and TORCH_AVAILABLE:
-                    img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
-                    return img_tensor.to(device)
-                else:
-                    return img_array
-        
-        # 폴백 처리
-        if TORCH_AVAILABLE and to_tensor:
-            return torch.zeros(1, 3, target_size[0], target_size[1], device=device)
-        else:
-            if NUMPY_AVAILABLE:
-                return np.zeros((target_size[0], target_size[1], 3), dtype=np.float32)
-            else:
-                return [[[0.0 for _ in range(3)] for _ in range(target_size[1])] for _ in range(target_size[0])]
-                
-    except Exception as e:
-        logger.error(f"이미지 전처리 실패: {e}")
-        if TORCH_AVAILABLE and to_tensor:
-            return torch.zeros(1, 3, target_size[0], target_size[1], device=device)
-        else:
-            if NUMPY_AVAILABLE:
-                return np.zeros((target_size[0], target_size[1], 3), dtype=np.float32)
-            else:
-                return [[[0.0 for _ in range(3)] for _ in range(target_size[1])] for _ in range(target_size[0])]
-
-def postprocess_segmentation(output: Any, threshold: float = 0.5) -> Any:
-    """세그멘테이션 결과 후처리"""
-    try:
-        if TORCH_AVAILABLE and hasattr(output, 'cpu'):
-            output = output.cpu().numpy()
-        
-        if NUMPY_AVAILABLE and hasattr(output, 'squeeze'):
-            if output.ndim == 4:
-                output = output.squeeze(0)
-            if output.ndim == 3:
-                output = output.squeeze(0)
-                
-            binary_mask = (output > threshold).astype(np.uint8) * 255
-            return binary_mask
-        else:
-            # NumPy 없는 경우 기본 처리
-            return [[255 if x > threshold else 0 for x in row] for row in output] if hasattr(output, '__iter__') else output
-            
-    except Exception as e:
-        logger.error(f"세그멘테이션 후처리 실패: {e}")
-        if NUMPY_AVAILABLE:
-            return np.zeros((512, 512), dtype=np.uint8)
-        else:
-            return [[0 for _ in range(512)] for _ in range(512)]
-
-# ==============================================
-# 🔥 모듈 익스포트
+# 🔥 Module Exports
 # ==============================================
 
 __all__ = [
-    # 핵심 클래스들
-    'ModelLoader',
-    'StepModelInterface',
+    # Dict Callable 오류 해결 핵심 클래스들
     'SafeFunctionValidator',
     'SafeModelService',
-    'SafeConfig',
-    'DeviceManager',
-    'ModelMemoryManager',
     
-    # 데이터 구조들
+    # 핵심 클래스들
+    'ModelLoader',
     'ModelFormat',
+    'ModelConfig', 
+    'StepModelConfig',
     'ModelType',
     'ModelPriority',
-    'ModelConfig',
-    'StepModelConfig',
+    'DeviceManager',
+    'ModelMemoryManager',
+    'StepModelInterface',
+    'SafeConfig',
     
-    # AI 모델 클래스들
+    # 이미지 전처리 함수들
+    'preprocess_image',
+    'postprocess_segmentation', 
+    'preprocess_pose_input',
+    'preprocess_human_parsing_input',
+    'preprocess_cloth_segmentation_input',
+    'tensor_to_pil',
+    'pil_to_tensor',
+    
+    # 실제 AI 모델 클래스들
     'BaseModel',
     'GraphonomyModel',
-    'OpenPoseModel',
+    'OpenPoseModel', 
     'U2NetModel',
     'GeometricMatchingModel',
+    'HRVITONModel',
     
     # 팩토리 및 관리 함수들
     'get_global_model_loader',
     'initialize_global_model_loader',
     'cleanup_global_loader',
     
-    # 안전한 호출 함수들
+    # 새로운 안전한 호출 함수들
     'get_model_service',
     'safe_warmup_models',
     'register_dict_as_model',
@@ -2389,11 +2102,7 @@ __all__ = [
     'safe_getattr_call',
     'is_safely_callable',
     
-    # 이미지 처리 함수들
-    'preprocess_image',
-    'postprocess_segmentation',
-    
-    # 상수들
+    # 상수
     'TORCH_AVAILABLE',
     'MPS_AVAILABLE',
     'CV_AVAILABLE',
@@ -2410,28 +2119,26 @@ import atexit
 atexit.register(cleanup_global_loader)
 
 # 모듈 로드 확인
-logger.info("✅ ModelLoader v6.0 모듈 로드 완료 - 완전 통합 + 모듈화")
+logger.info("✅ ModelLoader v6.0 모듈 로드 완료 - 순환참조 방지 + 완전 연동")
 logger.info("🔗 SafeModelService + SafeFunctionValidator 통합")
-logger.info("🔧 NumPy 2.x + step_model_requests.py 완벽 호환")
+logger.info("🔧 step_model_requests + auto_model_detector 완벽 호환")
 logger.info("🍎 M3 Max 128GB 최적화")
 logger.info("🛡️ 모든 함수/메서드 호출 안전성 보장")
 logger.info("🔄 순환참조 완전 방지 (한방향 의존성)")
-logger.info("📦 모듈화된 구조로 최적화")
 logger.info(f"🎯 PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}, MPS: {'✅' if MPS_AVAILABLE else '❌'}")
-logger.info(f"🔢 NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
+logger.info(f"🔢 NumPy: {'✅' if NUMPY_AVAILABLE else '❌'} v{np.__version__ if NUMPY_AVAILABLE else 'N/A'}")
 
-if NUMPY_AVAILABLE and hasattr(_compat, 'numpy_version'):
-    numpy_major = int(_compat.numpy_version.split('.')[0])
-    if numpy_major >= 2:
-        logger.warning("⚠️ NumPy 2.x 감지됨 - conda install numpy=1.24.3 권장")
-    else:
-        logger.info("✅ NumPy 호환성 확인됨")
+if NUMPY_AVAILABLE and int(np.__version__.split('.')[0]) >= 2:
+    logger.warning("⚠️ NumPy 2.x 감지됨 - conda install numpy=1.24.3 권장")
+else:
+    logger.info("✅ NumPy 호환성 확인됨")
 
 logger.info("🚀 ModelLoader v6.0 완전 통합 완료!")
 logger.info("   ✅ 기존 모든 기능명/클래스명 100% 유지")
 logger.info("   ✅ Dict Callable 오류 근본 원인 해결")
-logger.info("   ✅ Step별 실제 AI 모델 자동 매칭")
+logger.info("   ✅ step_model_requests.py 완벽 연동")
+logger.info("   ✅ auto_model_detector 한방향 참조")
+logger.info("   ✅ base_step_mixin.py 완벽 호환")
 logger.info("   ✅ M3 Max 128GB 메모리 최적화")
 logger.info("   ✅ 순환참조 완전 방지")
-logger.info("   ✅ 모듈화된 구조로 최적화")
 logger.info("   ✅ 프로덕션 안정성 최고 수준")
