@@ -1919,8 +1919,21 @@ class VirtualFittingStep:
             await self._load_auxiliary_models()
             
             # 메모리 최적화
-            await self.memory_manager.optimize_memory()
-            
+            # 🔥 안전한 메모리 최적화 호출
+            try:
+                if hasattr(self.memory_manager, 'optimize_memory'):
+                    await self.memory_manager.optimize_memory()
+                    self.logger.info("[VirtualFittingStep] ✅ 메모리 최적화 완료")
+                elif hasattr(self.memory_manager, 'cleanup_memory'):
+                    self.memory_manager.cleanup_memory()
+                    self.logger.info("[VirtualFittingStep] ✅ 메모리 정리 완료 (폴백)")
+                else:
+                    self.logger.warning("[VirtualFittingStep] ⚠️ 메모리 관리 메서드 없음 - 건너뜀")
+            except AttributeError as e:
+                self.logger.warning(f"[VirtualFittingStep] ⚠️ 메모리 최적화 건너뜀: {e}")
+            except Exception as e:
+                self.logger.error(f"[VirtualFittingStep] ❌ 메모리 최적화 실패: {e}")
+                        
             # M3 Max 추가 최적화
             if self.is_m3_max:
                 await self._apply_m3_max_optimizations()
