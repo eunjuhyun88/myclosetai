@@ -1,7 +1,10 @@
-# app/ai_pipeline/utils/data_converter.py
+# backend/app/ai_pipeline/utils/data_converter.py
 """
-🍎 MyCloset AI - 완전 최적화 데이터 변환기
+🍎 MyCloset AI - 완전 최적화 데이터 변환기 (완전 안전한 임포트 버전)
 ================================================================================
+✅ AttributeError: 'NoneType' object has no attribute 'Tensor' 완전 해결
+✅ 모든 타입 힌팅을 문자열 기반으로 안전하게 변경
+✅ PyTorch 임포트 실패 시 안전한 폴백 메커니즘
 ✅ 현재 프로젝트 구조 100% 최적화
 ✅ 기존 함수명/클래스명 완전 유지 (DataConverter, ImageProcessor)
 ✅ ModelLoader 시스템과 완벽 연동
@@ -13,53 +16,93 @@
 ================================================================================
 Author: MyCloset AI Team
 Date: 2025-07-20
-Version: 7.0 (Complete Project Optimization)
+Version: 7.1 (Safe Import Fix)
 """
 
 import io
 import logging
 import time
 import base64
-from typing import Dict, Any, Optional, Union, List, Tuple
+from typing import Dict, Any, Optional, Union, List, Tuple, TYPE_CHECKING
 from pathlib import Path
 import asyncio
 from functools import wraps
 
-# NumPy 선택적 임포트
+# 🔥 TYPE_CHECKING을 사용하여 안전한 타입 힌팅
+if TYPE_CHECKING:
+    # 타입 힌팅용 임포트 (런타임에는 실행되지 않음)
+    import torch
+    import numpy as np
+    from PIL import Image
+
+# NumPy 안전한 임포트
 try:
     import numpy as np
     NUMPY_AVAILABLE = True
+    NUMPY_VERSION = np.__version__
+    
+    # NumPy 2.x 호환성 처리
+    major_version = int(np.__version__.split('.')[0])
+    if major_version >= 2:
+        try:
+            np.set_printoptions(legacy='1.25')
+            logging.info("✅ NumPy 2.x 호환성 모드 활성화")
+        except:
+            pass
 except ImportError:
     NUMPY_AVAILABLE = False
     np = None
+    NUMPY_VERSION = "not_available"
 
-# PIL import
+# PIL 안전한 임포트
 try:
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     PIL_AVAILABLE = True
+    PIL_VERSION = getattr(Image, '__version__', 'unknown')
 except ImportError:
     PIL_AVAILABLE = False
     Image = None
+    PIL_VERSION = "not_available"
 
-# OpenCV import
+# OpenCV 안전한 임포트
 try:
     import cv2
     CV2_AVAILABLE = True
+    CV2_VERSION = cv2.__version__
 except ImportError:
     CV2_AVAILABLE = False
     cv2 = None
+    CV2_VERSION = "not_available"
 
-# PyTorch import
+# PyTorch 완전 안전한 임포트
 try:
+    # MPS 환경변수 설정 (M3 Max 최적화)
+    import os
+    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+    
     import torch
     import torchvision.transforms as transforms
     import torchvision.transforms.functional as TF
     TORCH_AVAILABLE = True
+    TORCH_VERSION = torch.__version__
+    
+    # MPS 지원 확인
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        DEFAULT_DEVICE = "mps"
+    else:
+        MPS_AVAILABLE = False
+        DEFAULT_DEVICE = "cpu"
+        
 except ImportError:
     TORCH_AVAILABLE = False
+    MPS_AVAILABLE = False
     torch = None
     transforms = None
     TF = None
+    DEFAULT_DEVICE = "cpu"
+    TORCH_VERSION = "not_available"
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +126,7 @@ class ImageFormat:
     BASE64 = "base64"
 
 # ==============================================
-# 🔥 핵심 데이터 변환기 클래스들
+# 🔥 핵심 데이터 변환기 클래스들 (안전한 타입 힌팅)
 # ==============================================
 
 class DataConverter:
@@ -92,6 +135,7 @@ class DataConverter:
     ✅ 현재 구조와 완벽 호환
     ✅ M3 Max 최적화 이미지/텐서 변환
     ✅ 순환참조 없는 안전한 구조
+    ✅ 안전한 타입 힌팅 (문자열 기반)
     """
     
     def __init__(
@@ -139,6 +183,7 @@ class DataConverter:
         self._initialize_components()
 
         self.logger.info(f"🎯 DataConverter 초기화 - 디바이스: {self.device}")
+        self.logger.info(f"📚 라이브러리 상태: PyTorch={TORCH_AVAILABLE}, PIL={PIL_AVAILABLE}, NumPy={NUMPY_AVAILABLE}")
 
     def _auto_detect_device(self, preferred_device: Optional[str]) -> str:
         """💡 지능적 디바이스 자동 감지"""
@@ -149,13 +194,14 @@ class DataConverter:
             return 'cpu'
 
         try:
-            if torch.backends.mps.is_available():
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 return 'mps'  # M3 Max 우선
             elif torch.cuda.is_available():
                 return 'cuda'  # NVIDIA GPU
             else:
                 return 'cpu'  # 폴백
-        except:
+        except Exception as e:
+            self.logger.warning(f"디바이스 감지 실패: {e}")
             return 'cpu'
 
     def _detect_m3_max(self) -> bool:
@@ -169,8 +215,8 @@ class DataConverter:
                                       capture_output=True, text=True, timeout=5)
                 chip_info = result.stdout.strip()
                 return 'M3' in chip_info and 'Max' in chip_info
-        except:
-            pass
+        except Exception as e:
+            self.logger.debug(f"M3 Max 감지 실패: {e}")
         return False
 
     def _initialize_components(self):
@@ -201,15 +247,19 @@ class DataConverter:
         """변환 파이프라인 초기화"""
         self.transforms = {}
         
-        if TORCH_AVAILABLE:
+        if not TORCH_AVAILABLE:
+            self.logger.warning("⚠️ PyTorch 없음 - 변환 파이프라인 제한")
+            return
+        
+        try:
             # 보간 방법 매핑
             interpolation_map = {
-                'bilinear': transforms.InterpolationMode.BILINEAR if hasattr(transforms, 'InterpolationMode') else 'bilinear',
-                'nearest': transforms.InterpolationMode.NEAREST if hasattr(transforms, 'InterpolationMode') else 'nearest',
-                'bicubic': transforms.InterpolationMode.BICUBIC if hasattr(transforms, 'InterpolationMode') else 'bicubic'
+                'bilinear': transforms.InterpolationMode.BILINEAR if hasattr(transforms, 'InterpolationMode') else 2,
+                'nearest': transforms.InterpolationMode.NEAREST if hasattr(transforms, 'InterpolationMode') else 0,
+                'bicubic': transforms.InterpolationMode.BICUBIC if hasattr(transforms, 'InterpolationMode') else 3
             }
             
-            interpolation_mode = interpolation_map.get(self.interpolation, 'bilinear')
+            interpolation_mode = interpolation_map.get(self.interpolation, 2)
             
             # 기본 변환 파이프라인
             self.transforms['default'] = transforms.Compose([
@@ -237,6 +287,9 @@ class DataConverter:
                                     interpolation=interpolation_mode),
                     transforms.ToTensor()
                 ])
+                
+        except Exception as e:
+            self.logger.error(f"❌ 변환 파이프라인 초기화 실패: {e}")
 
     def _apply_m3_max_optimizations(self):
         """M3 Max 특화 최적화 적용"""
@@ -253,7 +306,7 @@ class DataConverter:
             optimizations.append("Quality-first processing mode")
             
             # 3. MPS 백엔드 최적화
-            if TORCH_AVAILABLE and torch.backends.mps.is_available():
+            if TORCH_AVAILABLE and MPS_AVAILABLE:
                 optimizations.append("MPS backend acceleration")
             
             # 4. 배치 처리 최적화
@@ -269,17 +322,17 @@ class DataConverter:
             self.logger.warning(f"⚠️ M3 Max 최적화 실패: {e}")
 
     # ============================================
-    # 🔥 핵심 변환 메서드들 (완전 구현)
+    # 🔥 핵심 변환 메서드들 (안전한 타입 힌팅)
     # ============================================
 
     def image_to_tensor(
         self,
-        image: Union[Image.Image, np.ndarray, str, bytes],
+        image: Union["Image.Image", "np.ndarray", str, bytes],
         size: Optional[Tuple[int, int]] = None,
         normalize: bool = False,
         **kwargs
-    ) -> Optional[torch.Tensor]:
-        """이미지를 텐서로 변환"""
+    ) -> Optional["torch.Tensor"]:
+        """이미지를 텐서로 변환 (안전한 타입 힌팅)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 설치되지 않음")
             return None
@@ -339,11 +392,11 @@ class DataConverter:
 
     def tensor_to_image(
         self,
-        tensor: torch.Tensor,
+        tensor: "torch.Tensor",
         denormalize: bool = False,
         format: str = "PIL"
-    ) -> Optional[Union[Image.Image, np.ndarray]]:
-        """텐서를 이미지로 변환"""
+    ) -> Optional[Union["Image.Image", "np.ndarray"]]:
+        """텐서를 이미지로 변환 (안전한 타입 힌팅)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 설치되지 않음")
             return None
@@ -412,7 +465,7 @@ class DataConverter:
             self._conversion_stats["error_count"] += 1
             return None
 
-    def tensor_to_numpy(self, tensor: torch.Tensor) -> Optional[np.ndarray]:
+    def tensor_to_numpy(self, tensor: "torch.Tensor") -> Optional["np.ndarray"]:
         """텐서를 numpy 배열로 변환 (기존 메서드명 유지)"""
         if not TORCH_AVAILABLE or not NUMPY_AVAILABLE:
             self.logger.error("❌ PyTorch 또는 NumPy가 설치되지 않음")
@@ -443,18 +496,19 @@ class DataConverter:
             self.logger.error(f"❌ 텐서→numpy 변환 실패: {e}")
             return None
 
-    def _to_pil_image(self, image_input: Union[Image.Image, np.ndarray, str, bytes]) -> Optional[Image.Image]:
+    def _to_pil_image(self, image_input: Union["Image.Image", "np.ndarray", str, bytes]) -> Optional["Image.Image"]:
         """다양한 입력을 PIL 이미지로 변환"""
         try:
             if not PIL_AVAILABLE:
+                self.logger.error("❌ PIL이 설치되지 않음")
                 return None
                 
             # 이미 PIL 이미지인 경우
-            if isinstance(image_input, Image.Image):
+            if hasattr(image_input, 'convert'):  # PIL Image 객체 체크
                 return image_input.convert('RGB')
             
             # NumPy 배열인 경우
-            elif isinstance(image_input, np.ndarray) and NUMPY_AVAILABLE:
+            elif NUMPY_AVAILABLE and hasattr(image_input, 'ndim'):  # numpy array 체크
                 if image_input.ndim == 3:
                     return Image.fromarray(image_input.astype(np.uint8)).convert('RGB')
                 elif image_input.ndim == 2:
@@ -485,7 +539,7 @@ class DataConverter:
             self.logger.error(f"❌ PIL 이미지 변환 실패: {e}")
             return None
 
-    def _denormalize_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+    def _denormalize_tensor(self, tensor: "torch.Tensor") -> "torch.Tensor":
         """정규화된 텐서를 역정규화"""
         try:
             if TORCH_AVAILABLE:
@@ -505,7 +559,7 @@ class DataConverter:
 
     def batch_convert_images(
         self,
-        images: List[Union[Image.Image, np.ndarray, str]],
+        images: List[Union["Image.Image", "np.ndarray", str]],
         target_format: str = "tensor",
         **kwargs
     ) -> List[Optional[Any]]:
@@ -601,14 +655,14 @@ class DataConverter:
 
     def resize_image(
         self,
-        image: Union[Image.Image, np.ndarray],
+        image: Union["Image.Image", "np.ndarray"],
         size: Tuple[int, int],
         method: str = "bilinear",
         preserve_aspect_ratio: bool = False
-    ) -> Optional[Union[Image.Image, np.ndarray]]:
+    ) -> Optional[Union["Image.Image", "np.ndarray"]]:
         """이미지 크기 조정"""
         try:
-            if isinstance(image, np.ndarray) and NUMPY_AVAILABLE:
+            if NUMPY_AVAILABLE and hasattr(image, 'ndim'):  # numpy array 체크
                 if CV2_AVAILABLE:
                     # OpenCV 사용
                     if method == "bilinear":
@@ -631,7 +685,7 @@ class DataConverter:
                         pil_image = Image.fromarray(image)
                         return self.resize_image(pil_image, size, method, preserve_aspect_ratio)
                     
-            elif PIL_AVAILABLE and isinstance(image, Image.Image):
+            elif PIL_AVAILABLE and hasattr(image, 'resize'):  # PIL Image 체크
                 # PIL 사용
                 if preserve_aspect_ratio:
                     size = self._calculate_aspect_ratio_size(image.size, size)
@@ -679,10 +733,10 @@ class DataConverter:
 
     def normalize_image(
         self,
-        image: Union[Image.Image, np.ndarray, torch.Tensor],
+        image: Union["Image.Image", "np.ndarray", "torch.Tensor"],
         mean: Optional[List[float]] = None,
         std: Optional[List[float]] = None
-    ) -> Optional[torch.Tensor]:
+    ) -> Optional["torch.Tensor"]:
         """이미지 정규화"""
         try:
             # 기본값 설정
@@ -690,7 +744,7 @@ class DataConverter:
             std = std or self.normalize_std
             
             # 텐서로 변환
-            if isinstance(image, torch.Tensor):
+            if TORCH_AVAILABLE and hasattr(image, 'dim'):  # torch.Tensor 체크
                 tensor = image
             else:
                 tensor = self.image_to_tensor(image, normalize=False)
@@ -717,7 +771,7 @@ class DataConverter:
 
     def image_to_base64(
         self,
-        image: Union[Image.Image, np.ndarray],
+        image: Union["Image.Image", "np.ndarray"],
         format: str = "PNG",
         quality: int = 95
     ) -> Optional[str]:
@@ -748,7 +802,7 @@ class DataConverter:
             self.logger.error(f"❌ Base64 변환 실패: {e}")
             return None
 
-    def preprocess_for_step(self, image: Union[Image.Image, np.ndarray], step_name: str) -> Optional[torch.Tensor]:
+    def preprocess_for_step(self, image: Union["Image.Image", "np.ndarray"], step_name: str) -> Optional["torch.Tensor"]:
         """Step별 특화 전처리"""
         try:
             # Step별 전처리 설정
@@ -809,13 +863,13 @@ class DataConverter:
             # 라이브러리 가용성 확인
             available_libs = []
             if PIL_AVAILABLE:
-                available_libs.append("PIL")
+                available_libs.append(f"PIL ({PIL_VERSION})")
             if CV2_AVAILABLE:
-                available_libs.append("OpenCV")
+                available_libs.append(f"OpenCV ({CV2_VERSION})")
             if TORCH_AVAILABLE:
-                available_libs.append("PyTorch")
+                available_libs.append(f"PyTorch ({TORCH_VERSION})")
             if NUMPY_AVAILABLE:
-                available_libs.append("NumPy")
+                available_libs.append(f"NumPy ({NUMPY_VERSION})")
             
             self.logger.info(f"📚 사용 가능한 라이브러리: {', '.join(available_libs)}")
             
@@ -860,6 +914,17 @@ class DataConverter:
             # 변환 파이프라인 정리
             if hasattr(self, 'transforms'):
                 self.transforms.clear()
+            
+            # PyTorch 메모리 정리
+            if TORCH_AVAILABLE:
+                if MPS_AVAILABLE:
+                    try:
+                        if hasattr(torch.mps, 'empty_cache'):
+                            torch.mps.empty_cache()
+                    except Exception:
+                        pass
+                elif torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             self.logger.info("✅ 데이터 변환기 리소스 정리 완료")
             
@@ -911,7 +976,7 @@ class ImageProcessor(DataConverter):
                 return None
             
             # 크기 조정
-            resized_image = pil_image.resize(size, Image.BILINEAR)
+            resized_image = pil_image.resize(size, getattr(Image, 'BILINEAR', 2))
             
             # 목표 포맷으로 변환
             if format.lower() == "tensor":
@@ -935,10 +1000,13 @@ _global_image_processor: Optional[ImageProcessor] = None
 
 def create_data_converter(
     default_size: Tuple[int, int] = (512, 512),
-    device: str = "mps",
+    device: str = "auto",
     **kwargs
 ) -> DataConverter:
     """데이터 변환기 생성 (하위 호환)"""
+    if device == "auto":
+        device = DEFAULT_DEVICE
+        
     return DataConverter(
         device=device,
         default_size=default_size,
@@ -970,22 +1038,22 @@ def get_image_processor(**kwargs) -> ImageProcessor:
     return _global_image_processor
 
 # 빠른 변환 함수들 (편의성)
-def quick_image_to_tensor(image: Union[Image.Image, np.ndarray], size: Tuple[int, int] = (512, 512)) -> Optional[torch.Tensor]:
+def quick_image_to_tensor(image: Union["Image.Image", "np.ndarray"], size: Tuple[int, int] = (512, 512)) -> Optional["torch.Tensor"]:
     """빠른 이미지→텐서 변환"""
     converter = get_global_data_converter()
     return converter.image_to_tensor(image, size=size)
 
-def quick_tensor_to_image(tensor: torch.Tensor) -> Optional[Image.Image]:
+def quick_tensor_to_image(tensor: "torch.Tensor") -> Optional["Image.Image"]:
     """빠른 텐서→이미지 변환"""
     converter = get_global_data_converter()
     return converter.tensor_to_image(tensor)
 
-def quick_tensor_to_numpy(tensor: torch.Tensor) -> Optional[np.ndarray]:
+def quick_tensor_to_numpy(tensor: "torch.Tensor") -> Optional["np.ndarray"]:
     """빠른 텐서→numpy 변환 (기존 함수명 유지)"""
     converter = get_global_data_converter()
     return converter.tensor_to_numpy(tensor)
 
-def preprocess_image_for_step(image: Union[Image.Image, np.ndarray], step_name: str) -> Optional[torch.Tensor]:
+def preprocess_image_for_step(image: Union["Image.Image", "np.ndarray"], step_name: str) -> Optional["torch.Tensor"]:
     """Step별 이미지 전처리"""
     converter = get_global_data_converter()
     return converter.preprocess_for_step(image, step_name)
@@ -1034,6 +1102,22 @@ def get_optimal_image_size(step_name: str) -> Tuple[int, int]:
     }
     return step_sizes.get(step_name, (512, 512))
 
+# 시스템 상태 확인
+def get_system_status() -> Dict[str, Any]:
+    """시스템 상태 확인"""
+    return {
+        "torch_available": TORCH_AVAILABLE,
+        "torch_version": TORCH_VERSION,
+        "mps_available": MPS_AVAILABLE,
+        "pil_available": PIL_AVAILABLE,
+        "pil_version": PIL_VERSION,
+        "numpy_available": NUMPY_AVAILABLE,
+        "numpy_version": NUMPY_VERSION,
+        "cv2_available": CV2_AVAILABLE,
+        "cv2_version": CV2_VERSION,
+        "default_device": DEFAULT_DEVICE
+    }
+
 # 모듈 익스포트 (기존 구조 완전 유지)
 __all__ = [
     # 🔥 기존 클래스명 완전 유지
@@ -1053,12 +1137,19 @@ __all__ = [
     'preprocess_image_for_step',
     'batch_convert_images',
     'convert_image_format',
-    'get_optimal_image_size'
+    'get_optimal_image_size',
+    'get_system_status'
 ]
 
 # 모듈 로드 확인
-logger.info("✅ 완전 최적화된 DataConverter 모듈 로드 완료")
+logger.info("✅ 완전 최적화된 DataConverter 모듈 로드 완료 (안전한 임포트 버전)")
 logger.info("🔧 기존 함수명/클래스명 100% 유지 (DataConverter, ImageProcessor)")
 logger.info("🍎 M3 Max 이미지/텐서 변환 최적화 완전 구현")
 logger.info("🔗 현재 프로젝트 구조 100% 호환")
 logger.info("⚡ conda 환경 완벽 지원")
+logger.info("🛡️ AttributeError: 'NoneType' object has no attribute 'Tensor' 완전 해결")
+
+# 시스템 상태 로깅
+status = get_system_status()
+logger.info(f"📊 시스템 상태: PyTorch={status['torch_available']}, PIL={status['pil_available']}, NumPy={status['numpy_available']}")
+logger.info(f"🎯 기본 디바이스: {status['default_device']}")
