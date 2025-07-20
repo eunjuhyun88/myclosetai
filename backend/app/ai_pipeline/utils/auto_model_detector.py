@@ -3600,3 +3600,6 @@ else:
     logger.warning("⚠️ PyTorch 없음 - conda install pytorch 권장")
 
 logger.info("🎉 준비 완료: 494개 모델 중 400+개 탐지 가능!")
+
+# 전역 인스턴스
+auto_detector = ImprovedAutoModelDetector()
