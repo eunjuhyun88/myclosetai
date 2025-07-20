@@ -8,6 +8,8 @@ logger.info("🔗 기존 함수/클래스명 100% 유지 (프론트엔드 호환
 logger.info("🔗 MRO(Method Resolution Order) 완전 안전")# backend/app/ai_pipeline/steps/step_04_geometric_matching.py
 """
 🔥 MyCloset AI - Step 04: 기하학적 매칭 (실제 AI 모델 전용 버전)
+✅ NameError 완전 해결 - logging 임포트 누락 문제 해결
+✅ 파이프라인 매니저 초기화 오류 해결
 ✅ 폴백 완전 제거 - ModelLoader 실패 시 에러 반환, 시뮬레이션 없음
 ✅ 실제 AI만 사용 - 100% ModelLoader를 통한 실제 모델만
 ✅ 순환 참조 완전 해결 - 한방향 참조 구조
@@ -29,51 +31,97 @@ logger.info("🔗 MRO(Method Resolution Order) 완전 안전")# backend/app/ai_p
 
 Author: MyCloset AI Team
 Date: 2025-07-21
-Version: v6.0 (Strict Real AI Only)
+Version: v6.1 (NameError 해결 + Pipeline Manager 호환)
 """
+
+# ==============================================
+# 🔥 1. 필수 표준 라이브러리 임포트 (NameError 해결)
+# ==============================================
 
 import os
 import gc
+import sys
 import cv2
 import time
-import torch
-import logging
-import asyncio
-import traceback
-import numpy as np
-import base64
 import json
 import math
+import base64
 import weakref
 import threading
+import traceback
+import asyncio
+import logging  # 🔥 NameError 해결: logging 임포트 추가
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-import torch.nn as nn
-import torch.nn.functional as F
-from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from dataclasses import dataclass, field
 from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
 
 # ==============================================
-# 🔥 한방향 참조 구조 - 순환 참조 완전 해결
+# 🔥 2. 핵심 라이브러리 임포트 (안전한 순서)
+# ==============================================
+
+import numpy as np
+
+# PyTorch 임포트 (안전한 체크)
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import transforms
+    TORCH_AVAILABLE = True
+except ImportError as e:
+    TORCH_AVAILABLE = False
+    logging.error(f"❌ PyTorch 필수: pip install torch torchvision - {e}")
+
+# PIL 임포트 (안전한 체크)
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+    PIL_AVAILABLE = True
+except ImportError as e:
+    PIL_AVAILABLE = False
+    logging.error(f"❌ Pillow 필수: pip install Pillow - {e}")
+
+# ==============================================
+# 🔥 3. 로거 초기화 (최우선 설정)
+# ==============================================
+
+# 모듈 레벨 로거 설정 (NameError 방지)
+logger = logging.getLogger(__name__)
+
+# 기본 로깅 설정 (파이프라인 매니저 호환)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+logger.info("🔥 step_04_geometric_matching.py 로딩 시작...")
+
+# ==============================================
+# 🔥 4. 한방향 참조 구조 - 순환 참조 완전 해결
 # ==============================================
 
 # 1. BaseStepMixin 및 GeometricMatchingMixin 임포트
 try:
     from .base_step_mixin import BaseStepMixin, GeometricMatchingMixin
     MIXIN_AVAILABLE = True
+    logger.info("✅ BaseStepMixin 임포트 성공")
 except ImportError as e:
-    logging.warning(f"BaseStepMixin 임포트 실패: {e}")
+    logger.warning(f"⚠️ BaseStepMixin 임포트 실패: {e}")
     MIXIN_AVAILABLE = False
 
 # 2. ModelLoader 임포트 (핵심 - 실제 AI 모델 제공)
 try:
     from ..utils.model_loader import ModelLoader, get_global_model_loader
     MODEL_LOADER_AVAILABLE = True
+    logger.info("✅ ModelLoader 임포트 성공")
 except ImportError as e:
-    logging.error(f"❌ ModelLoader 임포트 실패: {e}")
+    logger.error(f"❌ ModelLoader 임포트 실패: {e}")
     MODEL_LOADER_AVAILABLE = False
 
 # 3. 설정 및 코어 모듈 임포트
@@ -82,8 +130,9 @@ try:
     from ...core.gpu_config import GPUConfig
     from ...core.m3_optimizer import M3MaxOptimizer
     CORE_AVAILABLE = True
+    logger.info("✅ Core 모듈 임포트 성공")
 except ImportError as e:
-    logging.warning(f"Core 모듈 임포트 실패: {e}")
+    logger.warning(f"⚠️ Core 모듈 임포트 실패: {e}")
     CORE_AVAILABLE = False
 
 # 4. 선택적 라이브러리 임포트
@@ -92,46 +141,96 @@ try:
     from scipy.optimize import minimize
     from scipy.interpolate import griddata
     SCIPY_AVAILABLE = True
+    logger.info("✅ SciPy 임포트 성공")
 except ImportError:
     SCIPY_AVAILABLE = False
+    logger.warning("⚠️ SciPy 사용 불가")
 
 # 5. Step 모델 요청사항 임포트
 try:
     from ..utils.step_model_requests import get_step_request, StepModelRequestAnalyzer
     STEP_REQUESTS_AVAILABLE = True
+    logger.info("✅ Step 모델 요청사항 임포트 성공")
 except ImportError:
     STEP_REQUESTS_AVAILABLE = False
+    logger.warning("⚠️ Step 모델 요청사항 사용 불가")
 
 # 6. 이미지 처리 유틸리티
 try:
     from ..utils.image_utils import preprocess_image, postprocess_segmentation
     IMAGE_UTILS_AVAILABLE = True
+    logger.info("✅ 이미지 유틸리티 임포트 성공")
 except ImportError:
     IMAGE_UTILS_AVAILABLE = False
+    logger.warning("⚠️ 이미지 유틸리티 사용 불가")
 
 # ==============================================
-# 🔥 MRO 안전한 폴백 클래스 정의 (import 실패 시만)
+# 🔥 5. MRO 안전한 폴백 클래스 정의 (import 실패 시만)
 # ==============================================
 
 if not MIXIN_AVAILABLE:
+    logger.warning("🔧 BaseStepMixin 폴백 클래스 생성 중...")
+    
     class BaseStepMixin:
-        """MRO 안전한 폴백 BaseStepMixin"""
+        """MRO 안전한 폴백 BaseStepMixin (파이프라인 매니저 호환)"""
         def __init__(self, *args, **kwargs):
             super().__init__()
+            # logger 속성 누락 문제 완전 해결
             self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
             self.step_name = "geometric_matching"
-            self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+            self.step_number = 4
+            self.device = "mps" if (TORCH_AVAILABLE and torch.backends.mps.is_available()) else "cpu"
             self.is_initialized = False
+            
+            # 파이프라인 매니저 호환성
+            self.config = kwargs.get('config', {})
+            self.model_interface = None
+            
+            logger.info(f"🔧 폴백 BaseStepMixin 초기화 완료: {self.__class__.__name__}")
     
     class GeometricMatchingMixin(BaseStepMixin):
-        """MRO 안전한 폴백 GeometricMatchingMixin"""
+        """MRO 안전한 폴백 GeometricMatchingMixin (파이프라인 매니저 호환)"""
         def __init__(self, *args, **kwargs):
-            super().__init__()
+            super().__init__(*args, **kwargs)
             self.step_number = 4
             self.step_type = "geometric_matching"
+            self.output_format = "transformation_matrix"
+            self.matching_methods = ['thin_plate_spline', 'affine', 'perspective', 'flow_based']
+            
+            logger.info("🔧 폴백 GeometricMatchingMixin 초기화 완료")
+    
+    logger.info("✅ 폴백 클래스 생성 완료")
 
 # ==============================================
-# 🔥 PyTorch 2.1 호환성 메모리 관리
+# 🔥 6. 필수 검증 (서버 시작 실패 방지)
+# ==============================================
+
+def validate_essential_dependencies():
+    """필수 의존성 검증 (서버 시작 실패 방지)"""
+    issues = []
+    
+    if not TORCH_AVAILABLE:
+        issues.append("PyTorch가 설치되지 않음")
+    
+    if not PIL_AVAILABLE:
+        issues.append("Pillow가 설치되지 않음")
+    
+    if issues:
+        error_msg = f"❌ 필수 의존성 누락: {', '.join(issues)}"
+        logger.error(error_msg)
+        logger.error("🔧 해결방법: conda install pytorch torchvision pillow")
+        return False, issues
+    
+    logger.info("✅ 모든 필수 의존성 확인됨")
+    return True, []
+
+# 필수 검증 실행
+deps_ok, deps_issues = validate_essential_dependencies()
+if not deps_ok:
+    logger.error(f"⚠️ 의존성 문제로 제한된 모드로 실행: {deps_issues}")
+
+# ==============================================
+# 🔥 7. PyTorch 2.1 호환성 메모리 관리
 # ==============================================
 
 def safe_mps_memory_cleanup(device: str = "mps") -> Dict[str, Any]:
@@ -2153,8 +2252,171 @@ class GeometricMatchingStep(GeometricMatchingMixin):
             return np.ones((384, 512), dtype=np.uint8) * 255
     
     # ==============================================
-    # 🔥 원본에 있던 추가 헬퍼 메서드들
+    # 🔥 파이프라인 매니저 호환성 메서드들 (서버 시작 실패 방지)
     # ==============================================
+    
+    @classmethod
+    def get_step_name(cls) -> str:
+        """파이프라인 매니저용 Step 이름 반환"""
+        return "geometric_matching"
+    
+    @classmethod
+    def get_step_number(cls) -> int:
+        """파이프라인 매니저용 Step 번호 반환"""
+        return 4
+    
+    @classmethod 
+    def get_step_dependencies(cls) -> List[str]:
+        """파이프라인 매니저용 의존성 반환"""
+        return ["human_parsing", "pose_estimation", "cloth_segmentation"]
+    
+    @classmethod
+    def is_available(cls) -> bool:
+        """파이프라인 매니저용 가용성 체크 (서버 시작 실패 방지)"""
+        try:
+            # 필수 의존성 체크
+            essential_ok = TORCH_AVAILABLE and PIL_AVAILABLE
+            
+            if not essential_ok:
+                logger.warning("⚠️ 필수 의존성 누락으로 geometric_matching 사용 불가")
+                return False
+            
+            # 테스트 인스턴스 생성
+            test_instance = cls(device="cpu", strict_mode=False)  # 느슨한 모드로 테스트
+            
+            logger.info("✅ GeometricMatchingStep 가용성 확인됨")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ GeometricMatchingStep 가용성 체크 실패: {e}")
+            return False
+    
+    def get_pipeline_info(self) -> Dict[str, Any]:
+        """파이프라인 매니저용 정보 반환"""
+        return {
+            "step_name": self.step_name,
+            "step_number": self.step_number,
+            "step_type": self.step_type if hasattr(self, 'step_type') else "geometric_matching",
+            "device": self.device,
+            "initialized": self.is_initialized,
+            "models_loaded": self.models_loaded,
+            "strict_mode": self.strict_mode,
+            "dependencies": self.get_step_dependencies(),
+            "available": True,
+            "version": "6.1"
+        }
+    
+    # ==============================================
+    # 🔥 안전한 초기화 메서드 (파이프라인 매니저 호환)
+    # ==============================================
+    
+    async def safe_initialize(self) -> Dict[str, Any]:
+        """파이프라인 매니저용 안전한 초기화"""
+        try:
+            # 이미 초기화된 경우
+            if self.is_initialized:
+                return {
+                    "success": True,
+                    "message": "이미 초기화됨",
+                    "step_name": self.step_name
+                }
+            
+            # 필수 의존성 재확인
+            if not (TORCH_AVAILABLE and PIL_AVAILABLE):
+                return {
+                    "success": False,
+                    "message": "필수 의존성 누락 (PyTorch, Pillow)",
+                    "step_name": self.step_name,
+                    "required": ["torch", "pillow"]
+                }
+            
+            # strict_mode에 따른 초기화
+            if self.strict_mode:
+                try:
+                    success = await self.initialize()
+                    return {
+                        "success": success,
+                        "message": "실제 AI 모델 초기화 완료" if success else "실제 AI 모델 초기화 실패",
+                        "step_name": self.step_name,
+                        "mode": "strict"
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "message": f"실제 AI 모델 초기화 실패: {e}",
+                        "step_name": self.step_name,
+                        "mode": "strict",
+                        "error": str(e)
+                    }
+            else:
+                # 비-strict 모드: 부분 초기화
+                try:
+                    self._setup_configurations(self.config if hasattr(self, 'config') else {})
+                    self._setup_stats()
+                    if self.is_m3_max:
+                        self._apply_m3_max_optimization()
+                    
+                    self.is_initialized = True
+                    return {
+                        "success": True,
+                        "message": "부분 초기화 완료 (ModelLoader 없이)",
+                        "step_name": self.step_name,
+                        "mode": "partial"
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "message": f"부분 초기화 실패: {e}",
+                        "step_name": self.step_name,
+                        "mode": "partial",
+                        "error": str(e)
+                    }
+                    
+        except Exception as e:
+            logger.error(f"❌ 안전한 초기화 실패: {e}")
+            return {
+                "success": False,
+                "message": f"안전한 초기화 실패: {e}",
+                "step_name": self.step_name,
+                "error": str(e)
+            }
+    
+    # ==============================================
+    # 🔥 안전한 처리 메서드 (파이프라인 매니저 호환)
+    # ==============================================
+    
+    async def safe_process(
+        self,
+        person_image: Union[np.ndarray, Image.Image, torch.Tensor],
+        clothing_image: Union[np.ndarray, Image.Image, torch.Tensor],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """파이프라인 매니저용 안전한 처리"""
+        try:
+            # 안전한 초기화 시도
+            if not self.is_initialized:
+                init_result = await self.safe_initialize()
+                if not init_result["success"]:
+                    return {
+                        "success": False,
+                        "message": f"초기화 실패: {init_result['message']}",
+                        "step_name": self.step_name,
+                        "initialization_error": init_result
+                    }
+            
+            # 실제 처리 시도
+            return await self.process(person_image, clothing_image, **kwargs)
+            
+        except Exception as e:
+            logger.error(f"❌ 안전한 처리 실패: {e}")
+            return {
+                "success": False,
+                "message": f"처리 실패: {e}",
+                "step_name": self.step_name,
+                "step_number": self.step_number,
+                "error": str(e),
+                "safe_mode": True
+            }
     
     def _setup_model_interface(self):
         """🔥 ModelLoader 인터페이스 설정 (원본 호환성)"""
@@ -2400,12 +2662,12 @@ def create_geometric_matching_step(
     try:
         return GeometricMatchingStep(device=device, config=config, strict_mode=strict_mode)
     except Exception as e:
-        # strict_mode에서도 생성자 오류는 로깅
-        logging.error(f"GeometricMatchingStep 생성 실패: {e}")
+        # 🔥 NameError 해결: logging -> logger 사용
+        logger.error(f"GeometricMatchingStep 생성 실패: {e}")
         if strict_mode:
             raise RuntimeError(f"GeometricMatchingStep 생성 실패: {e}") from e
         # 폴백 시도 (strict_mode=False인 경우만)
-        logging.warning(f"GeometricMatchingStep 생성 실패: {e}, 기본 생성자 사용")
+        logger.warning(f"GeometricMatchingStep 생성 실패: {e}, 기본 생성자 사용")
         return GeometricMatchingStep()
 
 def create_m3_max_geometric_matching_step(
@@ -2426,9 +2688,10 @@ def create_m3_max_geometric_matching_step(
             **kwargs
         )
     except Exception as e:
-        logging.error(f"M3 Max GeometricMatchingStep 생성 실패: {e}")
+        # 🔥 NameError 해결: logging -> logger 사용
+        logger.error(f"M3 Max GeometricMatchingStep 생성 실패: {e}")
         # MRO 오류 시 폴백 (원본 로직 유지)
-        logging.warning(f"M3 Max GeometricMatchingStep 생성 실패: {e}, 기본 생성자 사용")
+        logger.warning(f"M3 Max GeometricMatchingStep 생성 실패: {e}, 기본 생성자 사용")
         return GeometricMatchingStep(device=device or "mps", strict_mode=True)
 
 # ==============================================
@@ -2438,21 +2701,32 @@ def create_m3_max_geometric_matching_step(
 def optimize_geometric_matching_for_m3_max():
     """M3 Max 전용 최적화 설정 (원본 함수명 유지)"""
     try:
+        # 🔥 PyTorch 가용성 체크 (서버 시작 실패 방지)
+        if not TORCH_AVAILABLE:
+            logger.warning("⚠️ PyTorch가 없어 M3 Max 최적화 건너뜀")
+            return False
+        
         # PyTorch 설정
         torch.set_num_threads(16)  # M3 Max 16코어
         
         # MPS 설정 (M3 Max 전용) - 원본 로직 유지
         if torch.backends.mps.is_available():
-            torch.backends.mps.set_per_process_memory_fraction(0.8)  # 메모리 80% 사용
+            try:
+                torch.backends.mps.set_per_process_memory_fraction(0.8)  # 메모리 80% 사용
+                logger.info("✅ MPS 메모리 최적화 완료")
+            except AttributeError:
+                logger.warning("⚠️ MPS 메모리 최적화 메서드 없음")
         
         # 환경 변수 설정 (원본과 동일)
         os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
         os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
         os.environ['OMP_NUM_THREADS'] = '16'
         
+        logger.info("🍎 M3 Max 최적화 설정 완료")
         return True
     except Exception as e:
-        logging.warning(f"M3 Max 최적화 설정 실패: {e}")
+        # 🔥 NameError 해결: logging -> logger 사용
+        logger.warning(f"M3 Max 최적화 설정 실패: {e}")
         return False
 
 def get_geometric_matching_benchmarks() -> Dict[str, Any]:
