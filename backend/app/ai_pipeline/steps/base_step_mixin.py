@@ -857,52 +857,171 @@ class BaseStepMixin:
             self.di_container = None
             self.di_available = False
     
-    def _inject_dependencies(self):
-        """의존성 주입 실행"""
-        try:
-            injection_results = []
-            
-            # ModelLoader 주입
-            if DIHelper.inject_model_loader(self):
-                injection_results.append("ModelLoader")
-            
-            # MemoryManager 주입 (폴백 포함)
+    # BaseStepMixin v10.0의 _inject_dependencies 메서드 교체용 코드
+"""
+🔥 BaseStepMixin v10.0 DI 메서드 업데이트
+========================================
+
+기존 _inject_dependencies 메서드를 이 코드로 교체하세요.
+새로운 DI Container v2.0과 완벽 호환됩니다.
+"""
+
+def _inject_dependencies(self):
+    """의존성 주입 실행 - DI Container v2.0 완벽 호환"""
+    try:
+        # DI Container v2.0 사용
+        injection_results = DIHelper.inject_all_dependencies(self)
+        
+        # 주입 결과 로깅
+        successful_deps = [dep for dep, success in injection_results.items() if success]
+        failed_deps = [dep for dep, success in injection_results.items() if not success]
+        
+        if successful_deps:
+            self.logger.info(f"✅ 의존성 주입 완료: {', '.join(successful_deps)}")
+        
+        if failed_deps:
+            self.logger.warning(f"⚠️ 의존성 주입 실패: {', '.join(failed_deps)} - 폴백 모드")
+        
+        # Step Interface 생성 시도 (ModelLoader가 있는 경우)
+        if hasattr(self, 'model_loader') and self.model_loader:
             try:
-                if self.di_available and self.di_container:
-                    memory_manager = self.di_container.get('IMemoryManager')
-                    if memory_manager:
-                        self.memory_manager = memory_manager
-                        injection_results.append("MemoryManager")
+                step_interface = self.model_loader.create_step_interface(self.step_name)
+                if step_interface:
+                    self.step_interface = step_interface
+                    self.logger.info("✅ Step Interface 생성 성공")
                 else:
-                    # 폴백: 내장 메모리 최적화 사용
-                    self.memory_manager = None
-            except:
-                self.memory_manager = None
-            
-            # DataConverter 주입 (폴백 포함)
+                    self.step_interface = None
+                    self.logger.debug("⚠️ Step Interface 생성 실패 (None 반환)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Step Interface 생성 실패: {e}")
+                self.step_interface = None
+        else:
+            self.step_interface = None
+            self.logger.debug("⚠️ ModelLoader 없음 - Step Interface 생성 건너뜀")
+        
+        # DI 상태 설정
+        success_count = sum(1 for success in injection_results.values() if success)
+        self.di_available = success_count > 0
+        
+        # 연동 상태 최종 로깅
+        if self.di_available:
+            self.logger.info(f"🔗 DI 시스템 연동 성공 ({success_count}/{len(injection_results)}개)")
+        else:
+            self.logger.warning("⚠️ DI 시스템 연동 실패 - 모든 의존성이 폴백 모드로 동작")
+        
+        return injection_results
+        
+    except Exception as e:
+        self.logger.error(f"❌ 의존성 주입 실패: {e}")
+        # 폴백: 모든 의존성을 None으로 설정
+        self.model_loader = None
+        self.memory_manager = None
+        self.data_converter = None
+        self.checkpoint_manager = None
+        self.performance_monitor = None
+        self.warmup_system = None
+        self.step_interface = None
+        self.di_available = False
+        
+        return {
+            'model_loader': False,
+            'memory_manager': False,
+            'data_converter': False,
+            'checkpoint_manager': False,
+            'performance_monitor': False,
+            'warmup_system': False
+        }
+
+# 추가로 BaseStepMixin v10.0에 추가할 DI 상태 확인 메서드
+def get_di_status(self) -> Dict[str, Any]:
+    """DI 상태 확인 메서드 - BaseStepMixin v10.0에 추가"""
+    try:
+        return DIHelper.check_di_status(self)
+    except Exception as e:
+        self.logger.error(f"❌ DI 상태 확인 실패: {e}")
+        return {
+            'di_available': False,
+            'container_available': False,
+            'dependencies': {},
+            'error': str(e)
+        }
+
+def reinject_dependencies(self) -> Dict[str, bool]:
+    """의존성 재주입 메서드 - BaseStepMixin v10.0에 추가"""
+    try:
+        self.logger.info(f"🔄 {self.step_name} 의존성 재주입 시작...")
+        return self._inject_dependencies()
+    except Exception as e:
+        self.logger.error(f"❌ 의존성 재주입 실패: {e}")
+        return {key: False for key in ['model_loader', 'memory_manager', 'data_converter', 'checkpoint_manager', 'performance_monitor', 'warmup_system']}
+
+def setup_di_fallbacks(self):
+    """DI 폴백 설정 메서드 - BaseStepMixin v10.0에 추가"""
+    try:
+        # 메모리 최적화 폴백 (내장 StepMemoryOptimizer 사용)
+        if not hasattr(self, 'memory_manager') or self.memory_manager is None:
             try:
-                if self.di_available and self.di_container:
-                    data_converter = self.di_container.get('IDataConverter')
-                    if data_converter:
-                        self.data_converter = data_converter
-                        injection_results.append("DataConverter")
-                else:
-                    self.data_converter = None
-            except:
-                self.data_converter = None
-            
-            if injection_results:
-                self.logger.info(f"✅ 의존성 주입 완료: {', '.join(injection_results)}")
-            else:
-                self.logger.warning("⚠️ 의존성 주입 없음 - 폴백 모드로 동작")
+                self.memory_optimizer = StepMemoryOptimizer(self.device)
+                self.logger.debug("✅ 내장 메모리 최적화 시스템 활성화")
+            except Exception as e:
+                self.logger.debug(f"⚠️ 내장 메모리 최적화 활성화 실패: {e}")
+        
+        # 체크포인트 관리 폴백 (전역 CheckpointManager 사용)
+        if not hasattr(self, 'checkpoint_manager') or self.checkpoint_manager is None:
+            try:
+                if BaseStepMixin._global_checkpoint_manager is None:
+                    BaseStepMixin._global_checkpoint_manager = CheckpointManager()
+                    BaseStepMixin._global_checkpoint_manager.scan_checkpoints()
                 
-        except Exception as e:
-            self.logger.error(f"❌ 의존성 주입 실패: {e}")
-            # 폴백: None 설정
-            self.model_loader = None
-            self.memory_manager = None
-            self.data_converter = None
-    
+                self.checkpoint_manager = BaseStepMixin._global_checkpoint_manager
+                self.logger.debug("✅ 전역 체크포인트 관리자 활성화")
+            except Exception as e:
+                self.logger.debug(f"⚠️ 전역 체크포인트 관리자 활성화 실패: {e}")
+        
+        # 성능 모니터 폴백
+        if not hasattr(self, 'performance_monitor') or self.performance_monitor is None:
+            try:
+                self.performance_monitor = PerformanceMonitor(self)
+                self.logger.debug("✅ 내장 성능 모니터 활성화")
+            except Exception as e:
+                self.logger.debug(f"⚠️ 내장 성능 모니터 활성화 실패: {e}")
+        
+        # 워밍업 시스템 폴백
+        if not hasattr(self, 'warmup_system') or self.warmup_system is None:
+            try:
+                self.warmup_system = WarmupSystem(self)
+                self.logger.debug("✅ 내장 워밍업 시스템 활성화")
+            except Exception as e:
+                self.logger.debug(f"⚠️ 내장 워밍업 시스템 활성화 실패: {e}")
+                
+        self.logger.info("✅ DI 폴백 시스템 설정 완료")
+        
+    except Exception as e:
+        self.logger.error(f"❌ DI 폴백 설정 실패: {e}")
+
+# BaseStepMixin v10.0의 get_status() 메서드에 추가할 DI 정보
+def get_di_info_for_status(self) -> Dict[str, Any]:
+    """get_status() 메서드에 포함할 DI 정보"""
+    try:
+        di_status = self.get_di_status()
+        return {
+            'di_available': self.di_available,
+            'di_container_connected': di_status.get('container_available', False),
+            'dependencies_status': di_status.get('dependencies', {}),
+            'registered_services_count': len(di_status.get('registered_services', [])),
+            'step_interface_available': hasattr(self, 'step_interface') and self.step_interface is not None
+        }
+    except Exception as e:
+        return {
+            'di_available': False,
+            'di_container_connected': False,
+            'dependencies_status': {},
+            'registered_services_count': 0,
+            'step_interface_available': False,
+            'error': str(e)
+        }
+
+
     def _setup_basic_attributes(self, kwargs: Dict[str, Any]):
         """기본 속성 설정 (기존 기능 유지)"""
         try:
