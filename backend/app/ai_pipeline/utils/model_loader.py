@@ -1,7 +1,3 @@
-
-•
-Formatting may be inconsistent from source
-
 # app/ai_pipeline/utils/model_loader.py
 """
 🍎 MyCloset AI - 완전 비동기 호환 ModelLoader 시스템 v8.2 - 🔥 모든 오류 완전 해결
