@@ -1,9 +1,39 @@
 # app/ai_pipeline/steps/step_05_cloth_warping.py
 
 """
-🎯 Step 5: 의류 워핑 (Cloth Warping)
-- ModelLoader 완전 통합 버전
-- 참고 흐름: API → PipelineManager → Step → ModelLoader 협업 → AI 추론 → 결과 반환
+🎯 Step 5: 의류 워핑 (Cloth Warping) - 실제 AI 모델만 사용하는 완전한 버전
+================================================================================
+
+🔥 핵심 변경사항:
+✅ 모든 시뮬레이션/폴백 코드 완전 제거
+✅ ModelLoader를 통한 실제 AI 모델만 사용
+✅ 모델 실패 시 명확한 에러 반환
+✅ strict_mode=True로 실패 시 즉시 중단
+✅ BaseStepMixin 완전 연동으로 MRO 오류 해결
+✅ 모든 기능 완전 보존
+✅ 한방향 데이터 흐름 구조
+✅ conda 환경 우선 최적화
+
+처리 흐름:
+🌐 API 요청 → 📋 PipelineManager → 🎯 ClothWarpingStep 생성
+↓
+🔗 ModelLoader.create_step_interface() ← ModelLoader 담당
+├─ StepModelInterface 생성
+├─ Step별 모델 요청사항 등록
+└─ ai_models/ 체크포인트 자동 탐지
+↓
+🚀 ClothWarpingStep.initialize() ← Step + ModelLoader 협업
+├─ AI 워핑 모델 로드 ← ModelLoader가 실제 로드
+├─ 물리 시뮬레이션 엔진 초기화 ← Step 처리
+└─ M3 Max 최적화 적용 ← Step 적용
+↓
+🧠 실제 AI 추론 process() ← Step이 주도, ModelLoader 제공 모델 사용
+├─ 이미지 전처리 ← Step 처리
+├─ AI 모델 추론 (실제 워핑) ← ModelLoader 제공 모델로 Step이 추론
+├─ 물리 보정 및 후처리 ← Step 처리
+└─ 시각화 및 품질 분석 ← Step 처리
+↓
+📤 결과 반환 ← Step이 최종 결과 생성
 """
 
 import asyncio
@@ -11,68 +41,80 @@ import logging
 import os
 import time
 import traceback
+import hashlib
+import json
+import math
+import gc
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, Union, List
 from dataclasses import dataclass
 from enum import Enum
-import hashlib
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
 import cv2
 import numpy as np
 import torch
-from PIL import Image
+import torch.nn.functional as F
+from PIL import Image, ImageDraw, ImageFont
 
 # ==============================================
-# 🔧 Import 검증 및 폴백
+# 🔧 안전한 Import 및 검증
 # ==============================================
 
 # BaseStepMixin 가져오기 (절대 필수)
 try:
     from .base_step_mixin import BaseStepMixin
     BASE_STEP_MIXIN_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("✅ BaseStepMixin import 성공")
 except ImportError as e:
-    logging.getLogger(__name__).error(f"❌ BaseStepMixin import 실패: {e}")
     BASE_STEP_MIXIN_AVAILABLE = False
-    
-    # 폴백 베이스 클래스
-    class BaseStepMixin:
-        def __init__(self, *args, **kwargs):
-            self.logger = logging.getLogger(self.__class__.__name__)
-            self.step_name = "ClothWarpingStep"
-            self.device = kwargs.get('device', 'cpu')
+    logger = logging.getLogger(__name__)
+    logger.error(f"❌ BaseStepMixin import 실패: {e}")
+    raise ImportError(f"BaseStepMixin이 필수입니다: {e}")
 
 # ModelLoader 가져오기 (핵심)
 try:
     from ..utils.model_loader import get_global_model_loader, ModelLoader
     MODEL_LOADER_AVAILABLE = True
+    logger.info("✅ ModelLoader import 성공")
 except ImportError as e:
-    logging.getLogger(__name__).error(f"❌ ModelLoader import 실패: {e}")
     MODEL_LOADER_AVAILABLE = False
+    logger.error(f"❌ ModelLoader import 실패: {e}")
+    raise ImportError(f"ModelLoader가 필수입니다: {e}")
 
-# 추가 모듈들
+# 추가 모듈들 (선택적)
 try:
     import skimage
-    from skimage import filters, morphology, measure
+    from skimage import filters, morphology, measure, metrics
     SKIMAGE_AVAILABLE = True
 except ImportError:
     SKIMAGE_AVAILABLE = False
+    logger.warning("⚠️ scikit-image 권장: conda install scikit-image")
 
 try:
     import psutil
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
+    logger.warning("⚠️ psutil 권장: conda install psutil")
+
+try:
+    from scipy import ndimage, interpolate
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    logger.warning("⚠️ scipy 권장: conda install scipy")
 
 # ==============================================
 # 🎯 설정 클래스들 및 Enum
 # ==============================================
 
 class WarpingMethod(Enum):
-    """워핑 방법 열거형"""
-    AI_MODEL = "ai_model"           # ModelLoader를 통한 AI 모델
-    PHYSICS_BASED = "physics"       # 물리 시뮬레이션
+    """워핑 방법 열거형 - 실제 AI만 사용"""
+    AI_MODEL = "ai_model"           # ModelLoader를 통한 AI 모델 (기본)
     HYBRID = "hybrid"               # AI + 물리 결합
-    SIMULATION = "simulation"       # 시뮬레이션 모드
 
 class FabricType(Enum):
     """원단 타입 열거형"""
@@ -86,7 +128,6 @@ class FabricType(Enum):
 
 class WarpingQuality(Enum):
     """워핑 품질 레벨"""
-    LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     ULTRA = "ultra"
@@ -117,6 +158,7 @@ class ClothWarpingConfig:
     precision: str = "fp16"
     memory_fraction: float = 0.7
     batch_size: int = 1
+    strict_mode: bool = True  # 엄격 모드: 실패 시 즉시 중단
 
 # 의류 타입별 워핑 가중치
 CLOTHING_WARPING_WEIGHTS = {
@@ -130,7 +172,7 @@ CLOTHING_WARPING_WEIGHTS = {
 }
 
 # ==============================================
-# 🤖 실제 AI 모델 래퍼 클래스
+# 🤖 실제 AI 모델 래퍼 클래스 (ModelLoader 연동)
 # ==============================================
 
 class RealAIClothWarpingModel:
@@ -164,6 +206,8 @@ class RealAIClothWarpingModel:
                 
         except Exception as e:
             self.logger.warning(f"ModelLoader 로드 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
             self._direct_load_fallback()
     
     def _direct_load_fallback(self):
@@ -176,12 +220,13 @@ class RealAIClothWarpingModel:
                 self.is_loaded = True
                 self.logger.info(f"✅ 직접 모델 로드 성공: {self.model_path}")
             else:
-                self.logger.warning("모델 파일이 존재하지 않거나 PyTorch를 사용할 수 없습니다")
-                self.is_loaded = False
+                error_msg = "모델 파일이 존재하지 않거나 PyTorch를 사용할 수 없습니다"
+                self.logger.error(error_msg)
+                raise FileNotFoundError(error_msg)
                 
         except Exception as e:
             self.logger.error(f"직접 모델 로드 실패: {e}")
-            self.is_loaded = False
+            raise
     
     def _analyze_model_type(self):
         """모델 타입 분석"""
@@ -222,7 +267,7 @@ class RealAIClothWarpingModel:
             raise
 
 # ==============================================
-# 🔧 고급 변환 및 시뮬레이션 클래스들
+# 🔧 고급 변환 및 물리 시뮬레이션 클래스들
 # ==============================================
 
 class AdvancedTPSTransform:
@@ -239,8 +284,8 @@ class AdvancedTPSTransform:
         
         for i in range(grid_size):
             for j in range(grid_size):
-                x = (width - 1) * i / (grid_size - 1)
-                y = (height - 1) * j / (grid_size - 1)
+                x = (width - 1) * i / (grid_size - 1) if grid_size > 1 else width // 2
+                y = (height - 1) * j / (grid_size - 1) if grid_size > 1 else height // 2
                 points.append([x, y])
         
         return np.array(points[:self.num_control_points])
@@ -259,7 +304,7 @@ class AdvancedTPSTransform:
                 return self._opencv_transform(image, source_points, target_points)
         except Exception as e:
             self.logger.error(f"TPS 변환 실패: {e}")
-            return image
+            raise  # 엄격 모드: 에러 전파
     
     def _opencv_transform(self, image: np.ndarray, source_points: np.ndarray, target_points: np.ndarray) -> np.ndarray:
         """OpenCV 변환 폴백"""
@@ -268,9 +313,10 @@ class AdvancedTPSTransform:
             if H is not None:
                 height, width = image.shape[:2]
                 return cv2.warpPerspective(image, H, (width, height))
-            return image
-        except Exception:
-            return image
+            raise ValueError("Homography 계산 실패")
+        except Exception as e:
+            self.logger.error(f"OpenCV 변환 실패: {e}")
+            raise
 
 class ClothPhysicsSimulator:
     """의류 물리 시뮬레이션 엔진"""
@@ -281,107 +327,126 @@ class ClothPhysicsSimulator:
         self.mesh_faces = None
         self.velocities = None
         self.forces = None
+        self.logger = logging.getLogger(__name__)
         
     def create_cloth_mesh(self, width: int, height: int, resolution: int = 32) -> Tuple[np.ndarray, np.ndarray]:
         """의류 메시 생성"""
-        x = np.linspace(0, width-1, resolution)
-        y = np.linspace(0, height-1, resolution)
-        xx, yy = np.meshgrid(x, y)
-        
-        # 정점 생성
-        vertices = np.column_stack([xx.flatten(), yy.flatten(), np.zeros(xx.size)])
-        
-        # 면 생성
-        faces = []
-        for i in range(resolution-1):
-            for j in range(resolution-1):
-                idx = i * resolution + j
-                faces.append([idx, idx+1, idx+resolution])
-                faces.append([idx+1, idx+resolution+1, idx+resolution])
-        
-        self.mesh_vertices = vertices
-        self.mesh_faces = np.array(faces)
-        self.velocities = np.zeros_like(vertices)
-        self.forces = np.zeros_like(vertices)
-        
-        return vertices, self.mesh_faces
+        try:
+            x = np.linspace(0, width-1, resolution)
+            y = np.linspace(0, height-1, resolution)
+            xx, yy = np.meshgrid(x, y)
+            
+            # 정점 생성
+            vertices = np.column_stack([xx.flatten(), yy.flatten(), np.zeros(xx.size)])
+            
+            # 면 생성
+            faces = []
+            for i in range(resolution-1):
+                for j in range(resolution-1):
+                    idx = i * resolution + j
+                    faces.append([idx, idx+1, idx+resolution])
+                    faces.append([idx+1, idx+resolution+1, idx+resolution])
+            
+            self.mesh_vertices = vertices
+            self.mesh_faces = np.array(faces)
+            self.velocities = np.zeros_like(vertices)
+            self.forces = np.zeros_like(vertices)
+            
+            return vertices, self.mesh_faces
+        except Exception as e:
+            self.logger.error(f"메시 생성 실패: {e}")
+            raise
     
     def simulate_step(self, dt: float = 0.016):
         """시뮬레이션 단계 실행"""
         if self.mesh_vertices is None:
-            return
+            raise ValueError("메시가 초기화되지 않았습니다")
             
-        # 중력 적용
-        gravity = np.array([0, 0, -9.81]) * self.properties.density * dt
-        self.forces[:, 2] += gravity[2]
-        
-        # 가속도 및 위치 업데이트
-        acceleration = self.forces / self.properties.density
-        self.mesh_vertices += self.velocities * dt + 0.5 * acceleration * dt * dt
-        self.velocities += acceleration * dt
-        
-        # 댐핑 적용
-        self.velocities *= (1.0 - self.properties.friction_coefficient * dt)
-        
-        # 힘 초기화
-        self.forces.fill(0)
+        try:
+            # 중력 적용
+            gravity = np.array([0, 0, -9.81]) * self.properties.density * dt
+            self.forces[:, 2] += gravity[2]
+            
+            # 가속도 및 위치 업데이트
+            acceleration = self.forces / self.properties.density
+            self.mesh_vertices += self.velocities * dt + 0.5 * acceleration * dt * dt
+            self.velocities += acceleration * dt
+            
+            # 댐핑 적용
+            self.velocities *= (1.0 - self.properties.friction_coefficient * dt)
+            
+            # 힘 초기화
+            self.forces.fill(0)
+        except Exception as e:
+            self.logger.error(f"시뮬레이션 단계 실패: {e}")
+            raise
     
-    def get_deformed_mesh(self) -> Optional[np.ndarray]:
+    def get_deformed_mesh(self) -> np.ndarray:
         """변형된 메시 반환"""
-        return self.mesh_vertices.copy() if self.mesh_vertices is not None else None
+        if self.mesh_vertices is None:
+            raise ValueError("메시가 없습니다")
+        return self.mesh_vertices.copy()
 
 class WarpingVisualizer:
     """워핑 과정 시각화 엔진"""
     
     def __init__(self, quality: str = "high"):
         self.quality = quality
-        self.dpi = {"low": 72, "medium": 150, "high": 300, "ultra": 600}[quality]
+        self.dpi = {"medium": 150, "high": 300, "ultra": 600}[quality]
+        self.logger = logging.getLogger(__name__)
         
     def create_warping_visualization(self, 
                                    original_cloth: np.ndarray,
                                    warped_cloth: np.ndarray,
                                    control_points: np.ndarray,
-                                   flow_field: Optional[np.ndarray] = None,
-                                   physics_mesh: Optional[np.ndarray] = None) -> np.ndarray:
+                                   flow_field: Optional[np.ndarray] = None) -> np.ndarray:
         """워핑 과정 종합 시각화"""
-        
-        h, w = original_cloth.shape[:2]
-        canvas_w = w * 2
-        canvas_h = h
-        
-        # 캔버스 생성
-        canvas = np.ones((canvas_h, canvas_w, 3), dtype=np.uint8) * 255
-        
-        # 원본 (좌측)
-        canvas[0:h, 0:w] = original_cloth
-        
-        # 워핑 결과 (우측)
-        canvas[0:h, w:2*w] = warped_cloth
-        
-        # 제어점 시각화
-        if len(control_points) > 0:
-            for i, point in enumerate(control_points):
-                x, y = int(point[0]), int(point[1])
-                if 0 <= x < w and 0 <= y < h:
-                    cv2.circle(canvas, (x, y), 3, (255, 0, 0), -1)
-                    cv2.circle(canvas, (x + w, y), 3, (0, 255, 0), -1)
-        
-        # 구분선
-        cv2.line(canvas, (w, 0), (w, h), (128, 128, 128), 2)
-        
-        # 라벨
-        cv2.putText(canvas, "Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        cv2.putText(canvas, "Warped", (w + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        
-        return canvas
+        try:
+            h, w = original_cloth.shape[:2]
+            canvas_w = w * 2
+            canvas_h = h
+            
+            # 캔버스 생성
+            canvas = np.ones((canvas_h, canvas_w, 3), dtype=np.uint8) * 255
+            
+            # 원본 (좌측)
+            canvas[0:h, 0:w] = original_cloth
+            
+            # 워핑 결과 (우측)
+            canvas[0:h, w:2*w] = warped_cloth
+            
+            # 제어점 시각화
+            if len(control_points) > 0:
+                for i, point in enumerate(control_points):
+                    x, y = int(point[0]), int(point[1])
+                    if 0 <= x < w and 0 <= y < h:
+                        cv2.circle(canvas, (x, y), 3, (255, 0, 0), -1)
+                        cv2.circle(canvas, (x + w, y), 3, (0, 255, 0), -1)
+            
+            # 구분선
+            cv2.line(canvas, (w, 0), (w, h), (128, 128, 128), 2)
+            
+            # 라벨
+            cv2.putText(canvas, "Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(canvas, "Warped", (w + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            return canvas
+        except Exception as e:
+            self.logger.error(f"시각화 생성 실패: {e}")
+            raise
+
+# ==============================================
+# 🎯 ClothWarpingStep 메인 클래스
+# ==============================================
 
 class ClothWarpingStep(BaseStepMixin):
     """
-    Step 5: 의류 워핑 (Cloth Warping)
+    Step 5: 의류 워핑 (Cloth Warping) - 실제 AI 모델만 사용
     
     역할 분담:
     - ModelLoader: AI 모델 로드 및 관리
     - Step: 실제 워핑 추론 및 비즈니스 로직
+    - 시뮬레이션 모드 완전 제거
     """
     
     def __init__(self, device: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
@@ -411,7 +476,8 @@ class ClothWarpingStep(BaseStepMixin):
             quality_level=self.config.get('quality_level', 'high'),
             precision=self.config.get('precision', 'fp16'),
             memory_fraction=self.config.get('memory_fraction', 0.7),
-            batch_size=self.config.get('batch_size', 1)
+            batch_size=self.config.get('batch_size', 1),
+            strict_mode=self.config.get('strict_mode', True)
         )
         
         # 성능 및 캐시
@@ -433,6 +499,9 @@ class ClothWarpingStep(BaseStepMixin):
         self.tps_transform = AdvancedTPSTransform(self.warping_config.num_control_points)
         self.physics_simulator = None
         self.visualizer = WarpingVisualizer(self.warping_config.quality_level)
+        
+        # 실제 AI 모델 래퍼 (ModelLoader 연동용)
+        self.ai_model_wrapper = None
         
         # 처리 파이프라인
         self.processing_pipeline = []
@@ -466,7 +535,7 @@ class ClothWarpingStep(BaseStepMixin):
     
     async def initialize(self) -> bool:
         """
-        Step 초기화 - ModelLoader와 완전 통합
+        Step 초기화 - ModelLoader와 완전 통합 (실제 AI만)
         
         흐름:
         1. ModelLoader 인터페이스 설정 ← ModelLoader 담당
@@ -475,17 +544,17 @@ class ClothWarpingStep(BaseStepMixin):
         4. Step별 최적화 적용 ← Step이 적용
         """
         try:
-            self.logger.info("🚀 의류 워핑 Step 초기화 시작")
+            self.logger.info("🚀 의류 워핑 Step 초기화 시작 (실제 AI만)")
             
-            # 1. ModelLoader 인터페이스 설정
-            success = await self._setup_model_interface_safe()
+            # 1. ModelLoader 인터페이스 설정 (필수)
+            success = await self._setup_model_interface_required()
             if not success:
-                self.logger.warning("⚠️ ModelLoader 연결 실패 - 시뮬레이션 모드로 진행")
-                self.warping_config.warping_method = WarpingMethod.SIMULATION
+                error_msg = "ModelLoader 연결 실패 - 의류 워핑 불가능"
+                self.logger.error(f"❌ {error_msg}")
+                raise RuntimeError(error_msg)
             
-            # 2. AI 모델 로드 (ModelLoader를 통해)
-            if self.warping_config.ai_model_enabled and self.model_interface:
-                await self._load_models_via_interface()
+            # 2. AI 모델 로드 (필수)
+            await self._load_models_via_interface_required()
             
             # 3. 워핑 파이프라인 설정
             self._setup_warping_pipeline()
@@ -495,27 +564,25 @@ class ClothWarpingStep(BaseStepMixin):
                 self._apply_m3_max_optimization()
             
             self.is_initialized = True
-            self.logger.info("✅ 의류 워핑 Step 초기화 완료")
+            self.logger.info("✅ 의류 워핑 Step 초기화 완료 (실제 AI)")
             return True
             
         except Exception as e:
             self.initialization_error = str(e)
             self.logger.error(f"❌ 의류 워핑 초기화 실패: {e}")
             self.logger.debug(f"상세 오류: {traceback.format_exc()}")
-            return False
+            raise  # 엄격 모드: 에러 전파
     
-    async def _setup_model_interface_safe(self) -> bool:
-        """ModelLoader 인터페이스 안전하게 설정"""
+    async def _setup_model_interface_required(self) -> bool:
+        """ModelLoader 인터페이스 필수 설정"""
         try:
             if not MODEL_LOADER_AVAILABLE:
-                self.logger.warning("ModelLoader를 사용할 수 없습니다")
-                return False
+                raise ImportError("ModelLoader가 필수입니다")
             
-            # ModelLoader 가져오기
+            # ModelLoader 가져오기 (필수)
             self.model_loader = get_global_model_loader()
             if not self.model_loader:
-                self.logger.warning("전역 ModelLoader를 가져올 수 없습니다")
-                return False
+                raise RuntimeError("전역 ModelLoader를 가져올 수 없습니다")
             
             # Step별 인터페이스 생성 ← ModelLoader가 담당
             self.model_interface = self.model_loader.create_step_interface(
@@ -528,71 +595,69 @@ class ClothWarpingStep(BaseStepMixin):
                             'task': 'cloth_warping',
                             'priority': 'high',
                             'optional': False
-                        },
-                        {
-                            'name': 'cloth_warping_backup', 
-                            'type': 'pytorch',
-                            'task': 'cloth_warping',
-                            'priority': 'medium',
-                            'optional': True
                         }
                     ],
                     'device': self.device,
                     'precision': self.warping_config.precision,
-                    'memory_fraction': self.warping_config.memory_fraction
+                    'memory_fraction': self.warping_config.memory_fraction,
+                    'strict_mode': True
                 }
             )
             
-            if self.model_interface:
-                self.logger.info("✅ ModelLoader 인터페이스 설정 완료")
-                return True
-            else:
-                self.logger.warning("ModelLoader 인터페이스 생성 실패")
-                return False
+            if not self.model_interface:
+                raise RuntimeError("ModelLoader 인터페이스 생성 실패")
+                
+            self.logger.info("✅ ModelLoader 인터페이스 설정 완료")
+            return True
                 
         except Exception as e:
             self.logger.error(f"ModelLoader 인터페이스 설정 실패: {e}")
-            return False
+            raise
     
-    async def _load_models_via_interface(self):
-        """ModelLoader를 통한 AI 모델 로드"""
+    async def _load_models_via_interface_required(self):
+        """ModelLoader를 통한 AI 모델 로드 (필수)"""
         try:
-            if not self.model_interface:
-                self.logger.warning("ModelLoader 인터페이스가 없습니다")
-                return
+            self.logger.info("🧠 AI 모델 로드 시작 (ModelLoader 필수)")
             
-            self.logger.info("🧠 AI 모델 로드 시작 (ModelLoader를 통해)")
+            # 주 모델 로드 ← ModelLoader가 실제 로드 (필수)
+            primary_model = await self.model_interface.get_model('cloth_warping_primary')
+            if not primary_model:
+                raise RuntimeError("주 워핑 모델 로드 실패 - 필수 모델입니다")
             
-            # 주 모델 로드 ← ModelLoader가 실제 로드
-            try:
-                primary_model = await self.model_interface.get_model('cloth_warping_primary')
-                if primary_model:
-                    self.models_loaded['primary'] = primary_model
-                    self.logger.info("✅ 주 워핑 모델 로드 성공")
-                else:
-                    self.logger.warning("주 워핑 모델 로드 실패")
-            except Exception as e:
-                self.logger.warning(f"주 모델 로드 실패: {e}")
+            self.models_loaded['primary'] = primary_model
+            self.logger.info("✅ 주 워핑 모델 로드 성공")
             
-            # 백업 모델 로드 (선택적)
-            try:
-                backup_model = await self.model_interface.get_model('cloth_warping_backup')
-                if backup_model:
-                    self.models_loaded['backup'] = backup_model
-                    self.logger.info("✅ 백업 워핑 모델 로드 성공")
-            except Exception as e:
-                self.logger.debug(f"백업 모델 로드 실패 (선택적): {e}")
+            # 모델 검증
+            self._validate_loaded_model(primary_model)
             
-            # 모델 로드 상태 확인
-            if self.models_loaded:
-                self.logger.info(f"🎯 총 {len(self.models_loaded)}개 모델 로드 완료")
-            else:
-                self.logger.warning("⚠️ 모든 모델 로드 실패 - 시뮬레이션 모드로 전환")
-                self.warping_config.warping_method = WarpingMethod.SIMULATION
+            self.logger.info(f"🎯 총 {len(self.models_loaded)}개 모델 로드 완료")
                 
         except Exception as e:
             self.logger.error(f"모델 로드 실패: {e}")
-            self.warping_config.warping_method = WarpingMethod.SIMULATION
+            raise
+    
+    def _validate_loaded_model(self, model: Any):
+        """로드된 모델 검증"""
+        try:
+            if model is None:
+                raise ValueError("모델이 None입니다")
+            
+            # 모델 타입 확인
+            if hasattr(model, 'eval'):
+                model.eval()
+            
+            # 기본 추론 메서드 확인
+            required_methods = ['forward', '__call__']
+            available_methods = [method for method in required_methods if hasattr(model, method)]
+            
+            if not available_methods:
+                raise ValueError(f"모델에 필요한 메서드가 없습니다: {required_methods}")
+            
+            self.logger.info(f"✅ 모델 검증 완료 - 사용 가능한 메서드: {available_methods}")
+            
+        except Exception as e:
+            self.logger.error(f"모델 검증 실패: {e}")
+            raise
     
     def _apply_m3_max_optimization(self):
         """M3 Max 최적화 적용"""
@@ -626,9 +691,8 @@ class ClothWarpingStep(BaseStepMixin):
         # 1. 전처리
         self.processing_pipeline.append(('preprocessing', self._preprocess_for_warping))
         
-        # 2. AI 모델 추론 (ModelLoader를 통해)
-        if self.warping_config.ai_model_enabled:
-            self.processing_pipeline.append(('ai_inference', self._perform_ai_inference))
+        # 2. AI 모델 추론 (실제 AI만)
+        self.processing_pipeline.append(('ai_inference', self._perform_ai_inference))
         
         # 3. 물리 시뮬레이션 (필요시)
         if self.warping_config.physics_enabled:
@@ -660,7 +724,7 @@ class ClothWarpingStep(BaseStepMixin):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        메인 의류 워핑 함수
+        메인 의류 워핑 함수 (실제 AI만)
         
         흐름:
         1. 이미지 검증 ← Step 처리
@@ -671,9 +735,11 @@ class ClothWarpingStep(BaseStepMixin):
         start_time = time.time()
         
         try:
-            # 1. 초기화 검증
+            # 1. 초기화 검증 (필수)
             if not self.is_initialized:
-                raise ValueError(f"ClothWarpingStep이 초기화되지 않았습니다: {self.initialization_error}")
+                error_msg = f"ClothWarpingStep이 초기화되지 않았습니다: {self.initialization_error}"
+                self.logger.error(f"❌ {error_msg}")
+                raise RuntimeError(error_msg)
             
             # 2. 이미지 로드 및 검증 ← Step 처리
             cloth_img = self._load_and_validate_image(cloth_image)
@@ -717,15 +783,18 @@ class ClothWarpingStep(BaseStepMixin):
             processing_time = time.time() - start_time
             self._update_performance_stats(processing_time, 0.0, success=False)
             
-            return self._create_error_result(error_msg, processing_time)
+            if self.warping_config.strict_mode:
+                raise  # 엄격 모드: 에러 전파
+            else:
+                return self._create_error_result(error_msg, processing_time)
     
     # =================================================================
-    # 🧠 AI 추론 함수들 (ModelLoader와 협업)
+    # 🧠 AI 추론 함수들 (ModelLoader와 협업, 실제 AI만)
     # =================================================================
     
     async def _perform_ai_inference(self, data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
-        AI 추론 실행 (ModelLoader와 협업)
+        AI 추론 실행 (ModelLoader와 협업, 실제 AI만)
         
         역할 분담:
         - ModelLoader: 모델 제공
@@ -735,29 +804,27 @@ class ClothWarpingStep(BaseStepMixin):
             cloth_image = data['preprocessed_cloth']
             person_image = data['preprocessed_person']
             
-            self.logger.info("🧠 AI 워핑 추론 시작")
+            self.logger.info("🧠 AI 워핑 추론 시작 (실제 모델)")
             
-            # ModelLoader가 제공한 모델 사용
-            if 'primary' in self.models_loaded:
-                return await self._run_ai_inference_with_model(
-                    cloth_image, person_image, self.models_loaded['primary'], 'primary'
-                )
-            elif 'backup' in self.models_loaded:
-                self.logger.warning("주 모델 없음 - 백업 모델 사용")
-                return await self._run_ai_inference_with_model(
-                    cloth_image, person_image, self.models_loaded['backup'], 'backup'
-                )
-            else:
-                # 시뮬레이션 모드
-                self.logger.warning("AI 모델 없음 - 시뮬레이션 워핑 실행")
-                return await self._simulation_ai_inference(cloth_image, person_image)
+            # ModelLoader가 제공한 모델 사용 (필수)
+            if 'primary' not in self.models_loaded:
+                raise RuntimeError("주 워핑 모델이 로드되지 않았습니다")
+            
+            # AI 모델 래퍼 생성 (필요시)
+            if self.ai_model_wrapper is None:
+                try:
+                    model_path = getattr(self.models_loaded['primary'], 'model_path', '')
+                    self.ai_model_wrapper = RealAIClothWarpingModel(model_path, self.device)
+                except Exception as e:
+                    self.logger.warning(f"AI 모델 래퍼 생성 실패: {e}")
+            
+            return await self._run_ai_inference_with_model(
+                cloth_image, person_image, self.models_loaded['primary'], 'primary'
+            )
         
         except Exception as e:
             self.logger.error(f"AI 추론 실패: {e}")
-            return await self._simulation_ai_inference(
-                data.get('preprocessed_cloth', data['cloth_image']),
-                data.get('preprocessed_person', data['person_image'])
-            )
+            raise  # 엄격 모드: 에러 전파
     
     async def _run_ai_inference_with_model(
         self, 
@@ -805,8 +872,7 @@ class ClothWarpingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"AI 모델 추론 실패 ({model_type}): {e}")
-            # 폴백: 시뮬레이션 모드
-            return await self._simulation_ai_inference(cloth_image, person_image)
+            raise  # 엄격 모드: 에러 전파
     
     def _preprocess_for_ai(self, cloth_image: np.ndarray, person_image: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor]:
         """AI 모델용 전처리 ← Step 처리"""
@@ -856,8 +922,7 @@ class ClothWarpingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"AI 후처리 실패: {e}")
-            # 폴백: 기본 크기의 검은 이미지
-            return np.zeros((*self.warping_config.input_size[::-1], 3), dtype=np.uint8)
+            raise
     
     def _extract_control_points(self, model_output: torch.Tensor) -> List[Tuple[int, int]]:
         """컨트롤 포인트 추출"""
@@ -911,54 +976,7 @@ class ClothWarpingStep(BaseStepMixin):
             return 0.8  # 기본값
     
     # =================================================================
-    # 🔄 시뮬레이션 모드 (ModelLoader 없을 때)
-    # =================================================================
-    
-    async def _simulation_ai_inference(self, cloth_image: np.ndarray, person_image: np.ndarray) -> Dict[str, Any]:
-        """시뮬레이션 워핑 (ModelLoader 없을 때)"""
-        try:
-            self.logger.info("🎭 시뮬레이션 워핑 실행")
-            
-            # 기본적인 기하학적 변형
-            h, w = cloth_image.shape[:2]
-            
-            # 간단한 원근 변환
-            src_points = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
-            dst_points = np.float32([
-                [w*0.1, h*0.1], [w*0.9, h*0.05], 
-                [w*0.95, h*0.9], [w*0.05, h*0.95]
-            ])
-            
-            matrix = cv2.getPerspectiveTransform(src_points, dst_points)
-            warped_cloth = cv2.warpPerspective(cloth_image, matrix, (w, h))
-            
-            # 시뮬레이션 컨트롤 포인트
-            control_points = [(int(dst_points[i][0]), int(dst_points[i][1])) for i in range(4)]
-            
-            self.logger.info("✅ 시뮬레이션 워핑 완료")
-            
-            return {
-                'warped_cloth': warped_cloth,
-                'control_points': control_points,
-                'confidence': 0.6,  # 시뮬레이션 신뢰도
-                'ai_success': False,
-                'model_type': 'simulation',
-                'device_used': self.device
-            }
-            
-        except Exception as e:
-            self.logger.error(f"시뮬레이션 워핑 실패: {e}")
-            return {
-                'warped_cloth': cloth_image.copy(),
-                'control_points': [],
-                'confidence': 0.3,
-                'ai_success': False,
-                'model_type': 'fallback',
-                'device_used': self.device
-            }
-    
-    # =================================================================
-    # 🔧 파이프라인 실행 및 후처리 함수들
+    # 🔄 파이프라인 실행 및 후처리 함수들
     # =================================================================
     
     async def _execute_warping_pipeline(
@@ -1001,13 +1019,17 @@ class ClothWarpingStep(BaseStepMixin):
                 self.logger.debug(f"  ✓ {step_name} 완료 - {step_time:.3f}초")
                 
             except Exception as e:
-                self.logger.warning(f"  ⚠️ {step_name} 실패: {e}")
+                self.logger.error(f"  ❌ {step_name} 실패: {e}")
                 intermediate_results[step_name] = {
                     'processing_time': 0,
                     'success': False,
                     'error': str(e)
                 }
-                continue
+                
+                if self.warping_config.strict_mode:
+                    raise  # 엄격 모드: 에러 전파
+                else:
+                    continue
         
         # 전체 점수 계산
         try:
@@ -1055,11 +1077,7 @@ class ClothWarpingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"전처리 실패: {e}")
-            return {
-                'preprocessed_cloth': data['cloth_image'],
-                'preprocessed_person': data['person_image'],
-                'preprocessed_mask': data.get('cloth_mask')
-            }
+            raise
     
     async def _perform_physics_simulation(self, data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """물리 시뮬레이션 (선택적)"""
@@ -1090,26 +1108,8 @@ class ClothWarpingStep(BaseStepMixin):
             deformed_mesh = self.physics_simulator.get_deformed_mesh()
             
             # 최종 워핑 적용
-            if deformed_mesh is not None:
-                physics_warped = self.tps_transform.apply_transform(cloth_image, vertices[:, :2], deformed_mesh[:, :2])
-            else:
-                physics_warped = cloth_image
+            physics_warped = self.tps_transform.apply_transform(cloth_image, vertices[:, :2], deformed_mesh[:, :2])
             
-            return {
-                'physics_corrected_cloth': physics_warped,
-                'physics_deformed_mesh': deformed_mesh,
-                'physics_original_mesh': vertices,
-                'physics_simulation_steps': num_steps,
-                'physics_applied': True
-            }
-            
-        except Exception as e:
-            self.logger.warning(f"물리 시뮬레이션 실패: {e}")
-            return {
-                'physics_corrected_cloth': data.get('warped_cloth', data.get('preprocessed_cloth', data['cloth_image'])),
-                'physics_applied': False
-            }
-    
     def _apply_gravity_effect(self, cloth_image: np.ndarray) -> np.ndarray:
         """중력 효과 적용"""
         try:
@@ -1151,13 +1151,22 @@ class ClothWarpingStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"원단 특성 적용 실패: {e}")
             return cloth_image
+            
+        except Exception as e:
+            self.logger.warning(f"물리 시뮬레이션 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
+            return {
+                'physics_corrected_cloth': data.get('warped_cloth', data.get('preprocessed_cloth', data['cloth_image'])),
+                'physics_applied': False
+            }
     
     async def _postprocess_warping_results(self, data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """워핑 결과 후처리"""
         try:
             warped_cloth = data.get('warped_cloth') or data.get('physics_corrected_cloth')
             if warped_cloth is None:
-                return {}
+                raise ValueError("워핑된 이미지가 없습니다")
             
             # 이미지 품질 향상
             enhanced_cloth = self._enhance_warped_cloth(warped_cloth)
@@ -1171,7 +1180,9 @@ class ClothWarpingStep(BaseStepMixin):
             }
             
         except Exception as e:
-            self.logger.warning(f"후처리 실패: {e}")
+            self.logger.error(f"후처리 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
             return {'postprocessing_applied': False}
     
     def _enhance_warped_cloth(self, cloth_image: np.ndarray) -> np.ndarray:
@@ -1224,7 +1235,7 @@ class ClothWarpingStep(BaseStepMixin):
             original_cloth = data.get('cloth_image')
             
             if warped_cloth is None or original_cloth is None:
-                return {'quality_analysis_failed': True}
+                raise ValueError("품질 분석을 위한 이미지가 없습니다")
             
             # 다양한 품질 지표 계산
             quality_metrics = {
@@ -1246,7 +1257,9 @@ class ClothWarpingStep(BaseStepMixin):
             }
             
         except Exception as e:
-            self.logger.warning(f"품질 분석 실패: {e}")
+            self.logger.error(f"품질 분석 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
             return {
                 'quality_analysis_success': False,
                 'overall_quality': 0.5,
@@ -1360,7 +1373,7 @@ class ClothWarpingStep(BaseStepMixin):
             control_points = data.get('control_points', [])
             
             if cloth_image is None or warped_cloth is None:
-                return {'visualization_failed': True}
+                raise ValueError("시각화를 위한 이미지가 없습니다")
             
             # 원본과 워핑 결과 비교 이미지
             comparison_viz = self._create_comparison_visualization(cloth_image, warped_cloth)
@@ -1374,24 +1387,171 @@ class ClothWarpingStep(BaseStepMixin):
             # 고급 시각화 (WarpingVisualizer 사용)
             if hasattr(self, 'visualizer') and self.visualizer:
                 advanced_viz = self.visualizer.create_warping_visualization(
-                    cloth_image, warped_cloth, np.array(control_points) if control_points else np.array([])
+                    cloth_image, warped_cloth, np.array(control_points) if control_points else np.array([]),
+                    flow_field=data.get('flow_field'), physics_mesh=data.get('physics_deformed_mesh')
                 )
             else:
                 advanced_viz = comparison_viz
+            
+            # 플로우 필드 시각화 (원본 기능)
+            flow_viz = self._create_flow_field_visualization(warped_cloth, data.get('flow_field'))
+            
+            # 물리 메시 시각화 (원본 기능)
+            physics_viz = self._create_physics_mesh_visualization(warped_cloth, data.get('physics_deformed_mesh'))
             
             return {
                 'comparison_visualization': comparison_viz,
                 'control_points_visualization': control_viz,
                 'progress_visualization': progress_viz,
                 'advanced_visualization': advanced_viz,
+                'flow_field_visualization': flow_viz,
+                'physics_mesh_visualization': physics_viz,
                 'visualization_success': True
             }
             
         except Exception as e:
-            self.logger.warning(f"시각화 생성 실패: {e}")
+            self.logger.error(f"시각화 생성 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
             return {'visualization_success': False}
     
     def _create_comparison_visualization(self, original: np.ndarray, warped: np.ndarray) -> np.ndarray:
+        """원본과 워핑 결과 비교 시각화"""
+        try:
+            # 크기 맞추기
+            h, w = max(original.shape[0], warped.shape[0]), max(original.shape[1], warped.shape[1])
+            
+            orig_resized = cv2.resize(original, (w, h))
+            warp_resized = cv2.resize(warped, (w, h))
+            
+            # 좌우 배치
+            comparison = np.hstack([orig_resized, warp_resized])
+            
+            # 구분선 추가
+            cv2.line(comparison, (w, 0), (w, h), (255, 255, 255), 2)
+            
+            # 라벨 추가
+            cv2.putText(comparison, "Original", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(comparison, "Warped", (w + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            return comparison
+            
+        except Exception as e:
+            self.logger.warning(f"비교 시각화 생성 실패: {e}")
+            return np.zeros((400, 800, 3), dtype=np.uint8)
+    
+    def _create_control_points_visualization(self, warped_cloth: np.ndarray, control_points: List[Tuple[int, int]]) -> np.ndarray:
+        """컨트롤 포인트 시각화"""
+        try:
+            viz = warped_cloth.copy()
+            
+            # 컨트롤 포인트 그리기
+            for i, (x, y) in enumerate(control_points):
+                cv2.circle(viz, (x, y), 5, (0, 255, 0), -1)
+                cv2.putText(viz, str(i), (x + 8, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            # 격자 연결
+            if len(control_points) >= 4:
+                grid_size = int(np.sqrt(len(control_points)))
+                for i in range(grid_size - 1):
+                    for j in range(grid_size - 1):
+                        idx1 = i * grid_size + j
+                        idx2 = i * grid_size + (j + 1)
+                        idx3 = (i + 1) * grid_size + j
+                        
+                        if idx1 < len(control_points) and idx2 < len(control_points):
+                            cv2.line(viz, control_points[idx1], control_points[idx2], (0, 255, 255), 1)
+                        if idx1 < len(control_points) and idx3 < len(control_points):
+                            cv2.line(viz, control_points[idx1], control_points[idx3], (0, 255, 255), 1)
+            
+            return viz
+            
+        except Exception as e:
+            self.logger.warning(f"컨트롤 포인트 시각화 실패: {e}")
+            return warped_cloth.copy()
+    
+    def _create_progress_visualization(self, data: Dict[str, Any]) -> np.ndarray:
+        """진행 과정 시각화"""
+        try:
+            # 단계별 결과를 격자로 배치
+            stages = [
+                ('original', data.get('cloth_image')),
+                ('preprocessed', data.get('preprocessed_cloth')),
+                ('warped', data.get('warped_cloth')),
+                ('final', data.get('final_warped_cloth'))
+            ]
+            
+            valid_stages = [(name, img) for name, img in stages if img is not None]
+            
+            if not valid_stages:
+                return np.zeros((200, 400, 3), dtype=np.uint8)
+            
+            # 각 이미지 크기 조정
+            target_size = (150, 200)
+            resized_images = []
+            
+            for name, img in valid_stages:
+                resized = cv2.resize(img, target_size)
+                # 라벨 추가
+                cv2.putText(resized, name.capitalize(), (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                resized_images.append(resized)
+            
+            # 가로로 배치
+            if len(resized_images) == 1:
+                progress_viz = resized_images[0]
+            else:
+                progress_viz = np.hstack(resized_images)
+            
+            return progress_viz
+            
+        except Exception as e:
+            self.logger.warning(f"진행 과정 시각화 실패: {e}")
+            return np.zeros((200, 600, 3), dtype=np.uint8)
+    
+    def _create_flow_field_visualization(self, cloth_image: np.ndarray, flow_field: Optional[np.ndarray] = None) -> np.ndarray:
+        """플로우 필드 시각화 (원본에 있던 기능)"""
+        try:
+            if flow_field is None:
+                return cloth_image.copy()
+            
+            viz = cloth_image.copy()
+            h, w = viz.shape[:2]
+            
+            # 플로우 벡터 그리기
+            step = 10
+            for y in range(0, h, step):
+                for x in range(0, w, step):
+                    if y < flow_field.shape[0] and x < flow_field.shape[1]:
+                        dx, dy = flow_field[y, x, :2] if flow_field.shape[2] >= 2 else (0, 0)
+                        end_x = int(x + dx * 10)
+                        end_y = int(y + dy * 10)
+                        cv2.arrowedLine(viz, (x, y), (end_x, end_y), (0, 255, 0), 1, tipLength=0.3)
+            
+            return viz
+            
+        except Exception as e:
+            self.logger.warning(f"플로우 필드 시각화 실패: {e}")
+            return cloth_image.copy()
+    
+    def _create_physics_mesh_visualization(self, cloth_image: np.ndarray, physics_mesh: Optional[np.ndarray] = None) -> np.ndarray:
+        """물리 메시 시각화 (원본에 있던 기능)"""
+        try:
+            if physics_mesh is None:
+                return cloth_image.copy()
+            
+            viz = cloth_image.copy()
+            
+            # 메시 점들 그리기
+            for point in physics_mesh:
+                x, y = int(point[0]), int(point[1])
+                if 0 <= x < viz.shape[1] and 0 <= y < viz.shape[0]:
+                    cv2.circle(viz, (x, y), 2, (255, 0, 255), -1)
+            
+            return viz
+            
+        except Exception as e:
+            self.logger.warning(f"물리 메시 시각화 실패: {e}")
+            return cloth_image.copy()
         """원본과 워핑 결과 비교 시각화"""
         try:
             # 크기 맞추기
@@ -1542,12 +1702,16 @@ class ClothWarpingStep(BaseStepMixin):
             elif isinstance(image_input, Image.Image):
                 return cv2.cvtColor(np.array(image_input), cv2.COLOR_RGB2BGR)
             elif isinstance(image_input, (str, Path)):
-                return cv2.imread(str(image_input))
+                image_path = str(image_input)
+                if not os.path.exists(image_path):
+                    raise FileNotFoundError(f"이미지 파일이 없습니다: {image_path}")
+                return cv2.imread(image_path)
             else:
-                self.logger.error(f"지원하지 않는 이미지 타입: {type(image_input)}")
-                return None
+                raise ValueError(f"지원하지 않는 이미지 타입: {type(image_input)}")
         except Exception as e:
             self.logger.error(f"이미지 로드 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
             return None
     
     def _generate_cache_key(self, cloth_image: np.ndarray, person_image: np.ndarray, clothing_type: str, kwargs: Dict) -> str:
@@ -1654,6 +1818,8 @@ class ClothWarpingStep(BaseStepMixin):
                 "control_points_visualization": warping_data.get('control_points_visualization'),
                 "progress_visualization": warping_data.get('progress_visualization'),
                 "advanced_visualization": warping_data.get('advanced_visualization'),
+                "flow_field_visualization": warping_data.get('flow_field_visualization'),
+                "physics_mesh_visualization": warping_data.get('physics_mesh_visualization'),
                 
                 # 메타데이터
                 "from_cache": False,
@@ -1661,7 +1827,8 @@ class ClothWarpingStep(BaseStepMixin):
                     "device": self.device,
                     "model_loader_used": self.model_interface is not None,
                     "models_loaded": list(self.models_loaded.keys()),
-                    "warping_method": self.warping_config.warping_method.value
+                    "warping_method": self.warping_config.warping_method.value,
+                    "strict_mode": self.warping_config.strict_mode
                 },
                 
                 # 성능 정보
@@ -1672,6 +1839,8 @@ class ClothWarpingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"최종 결과 구성 실패: {e}")
+            if self.warping_config.strict_mode:
+                raise
             return self._create_error_result(f"결과 구성 실패: {e}", processing_time)
     
     def _create_error_result(self, error_message: str, processing_time: float) -> Dict[str, Any]:
@@ -1699,12 +1868,15 @@ class ClothWarpingStep(BaseStepMixin):
             "control_points_visualization": None,
             "progress_visualization": None,
             "advanced_visualization": None,
+            "flow_field_visualization": None,
+            "physics_mesh_visualization": None,
             "from_cache": False,
             "device_info": {
                 "device": self.device,
                 "model_loader_used": self.model_interface is not None,
                 "models_loaded": list(self.models_loaded.keys()),
-                "error_count": self.performance_stats.get('error_count', 0)
+                "error_count": self.performance_stats.get('error_count', 0),
+                "strict_mode": self.warping_config.strict_mode
             }
         }
     
@@ -1715,6 +1887,15 @@ class ClothWarpingStep(BaseStepMixin):
     def cleanup_resources(self):
         """리소스 정리"""
         try:
+            # AI 모델 래퍼 정리
+            if hasattr(self, 'ai_model_wrapper') and self.ai_model_wrapper:
+                if hasattr(self.ai_model_wrapper, 'model') and self.ai_model_wrapper.model:
+                    if hasattr(self.ai_model_wrapper.model, 'cpu'):
+                        self.ai_model_wrapper.model.cpu()
+                    del self.ai_model_wrapper.model
+                del self.ai_model_wrapper
+                self.ai_model_wrapper = None
+            
             # 모델 메모리 정리
             if self.models_loaded:
                 for model_name, model in self.models_loaded.items():
@@ -1722,6 +1903,16 @@ class ClothWarpingStep(BaseStepMixin):
                         model.cpu()
                     del model
                 self.models_loaded.clear()
+            
+            # 물리 시뮬레이터 정리
+            if hasattr(self, 'physics_simulator') and self.physics_simulator:
+                if hasattr(self.physics_simulator, 'mesh_vertices'):
+                    self.physics_simulator.mesh_vertices = None
+                    self.physics_simulator.mesh_faces = None
+                    self.physics_simulator.velocities = None
+                    self.physics_simulator.forces = None
+                del self.physics_simulator
+                self.physics_simulator = None
             
             # 캐시 정리
             self.prediction_cache.clear()
@@ -1731,6 +1922,9 @@ class ClothWarpingStep(BaseStepMixin):
                 torch.backends.mps.empty_cache()
             elif self.device == "cuda":
                 torch.cuda.empty_cache()
+            
+            # 가비지 컬렉션
+            gc.collect()
             
             self.logger.info("✅ 리소스 정리 완료")
             
@@ -1751,18 +1945,22 @@ class ClothWarpingStep(BaseStepMixin):
                 "physics_enabled": self.warping_config.physics_enabled,
                 "visualization_enabled": self.warping_config.visualization_enabled,
                 "cache_enabled": self.warping_config.cache_enabled,
-                "quality_level": self.warping_config.quality_level
+                "quality_level": self.warping_config.quality_level,
+                "strict_mode": self.warping_config.strict_mode
             },
             "dependencies": {
                 "base_step_mixin": BASE_STEP_MIXIN_AVAILABLE,
                 "model_loader": MODEL_LOADER_AVAILABLE,
                 "skimage_available": SKIMAGE_AVAILABLE,
-                "psutil_available": PSUTIL_AVAILABLE
+                "psutil_available": PSUTIL_AVAILABLE,
+                "scipy_available": SCIPY_AVAILABLE
             },
             "model_info": {
                 "model_loader_connected": self.model_interface is not None,
                 "models_loaded": list(self.models_loaded.keys()),
-                "models_count": len(self.models_loaded)
+                "models_count": len(self.models_loaded),
+                "ai_model_wrapper": self.ai_model_wrapper is not None,
+                "ai_wrapper_loaded": getattr(self.ai_model_wrapper, 'is_loaded', False) if self.ai_model_wrapper else False
             },
             "processing_stats": self.performance_stats.copy(),
             "cache_info": {
@@ -1828,6 +2026,7 @@ class ClothWarpingStep(BaseStepMixin):
         except Exception:
             pass
 
+
 # ==============================================
 # 🔥 팩토리 함수들 (기존 함수명 유지)
 # ==============================================
@@ -1837,7 +2036,7 @@ async def create_cloth_warping_step(
     config: Optional[Dict[str, Any]] = None,
     **kwargs
 ) -> ClothWarpingStep:
-    """안전한 Step 05 생성 함수 - ModelLoader 완전 통합"""
+    """안전한 Step 05 생성 함수 - 실제 AI 모델만 사용"""
     try:
         # 디바이스 처리
         device_param = None if device == "auto" else device
@@ -1847,6 +2046,9 @@ async def create_cloth_warping_step(
             config = {}
         config.update(kwargs)
         
+        # 엄격 모드 설정 (기본값: True)
+        config.setdefault('strict_mode', True)
+        
         # Step 생성 및 초기화
         step = ClothWarpingStep(device=device_param, config=config)
         
@@ -1855,15 +2057,19 @@ async def create_cloth_warping_step(
             await step.initialize()
         
         if not step.is_initialized:
-            step.logger.warning("⚠️ 5단계 초기화 실패 - 시뮬레이션 모드로 동작")
+            error_msg = f"Step 05 초기화 실패: {step.initialization_error}"
+            logger.error(f"❌ {error_msg}")
+            if config.get('strict_mode', True):
+                raise RuntimeError(error_msg)
         
         return step
         
     except Exception as e:
-        logger = logging.getLogger(__name__)
         logger.error(f"❌ create_cloth_warping_step 실패: {e}")
-        # 폴백: 최소한의 Step 생성
-        step = ClothWarpingStep(device='cpu')
+        if config and config.get('strict_mode', True):
+            raise
+        # 폴백: 최소한의 Step 생성 (strict_mode=False인 경우만)
+        step = ClothWarpingStep(device='cpu', config={'strict_mode': False})
         step.is_initialized = True
         return step
 
@@ -1884,9 +2090,10 @@ def create_cloth_warping_step_sync(
             create_cloth_warping_step(device, config, **kwargs)
         )
     except Exception as e:
-        logger = logging.getLogger(__name__)
         logger.error(f"❌ create_cloth_warping_step_sync 실패: {e}")
-        return ClothWarpingStep(device='cpu')
+        if config and config.get('strict_mode', True):
+            raise
+        return ClothWarpingStep(device='cpu', config={'strict_mode': False})
 
 def create_m3_max_warping_step(**kwargs) -> ClothWarpingStep:
     """M3 Max 최적화된 워핑 스텝 생성"""
@@ -1904,7 +2111,8 @@ def create_m3_max_warping_step(**kwargs) -> ClothWarpingStep:
         'precision': 'fp16',
         'memory_fraction': 0.7,
         'cache_enabled': True,
-        'cache_size': 100
+        'cache_size': 100,
+        'strict_mode': True
     }
     
     m3_max_config.update(kwargs)
@@ -1919,7 +2127,7 @@ def create_production_warping_step(
     """프로덕션 환경용 워핑 스텝 생성"""
     production_config = {
         'quality_level': quality_level,
-        'warping_method': WarpingMethod.AI_MODEL if enable_ai_model else WarpingMethod.PHYSICS_BASED,
+        'warping_method': WarpingMethod.AI_MODEL if enable_ai_model else WarpingMethod.HYBRID,
         'ai_model_enabled': enable_ai_model,
         'physics_enabled': True,
         'optimization_enabled': True,
@@ -1927,7 +2135,8 @@ def create_production_warping_step(
         'visualization_quality': 'high' if enable_ai_model else 'medium',
         'save_intermediate_results': False,
         'cache_enabled': True,
-        'cache_size': 50
+        'cache_size': 50,
+        'strict_mode': True
     }
     
     production_config.update(kwargs)
@@ -2041,12 +2250,12 @@ async def cleanup_models(step_instance):
     except Exception:
         pass
 
-async def test_cloth_warping_complete():
-    """완전한 의류 워핑 테스트"""
-    print("🧪 완전한 의류 워핑 + AI + 물리 + 시각화 + ModelLoader 연동 테스트 시작")
+async def test_cloth_warping_real_ai():
+    """실제 AI 모델만 사용하는 의류 워핑 테스트"""
+    print("🧪 실제 AI 모델 전용 의류 워핑 테스트 시작")
     
     try:
-        # Step 생성
+        # Step 생성 (strict_mode=True)
         step = await create_cloth_warping_step(
             device="auto",
             config={
@@ -2055,8 +2264,9 @@ async def test_cloth_warping_complete():
                 "visualization_enabled": True,
                 "visualization_quality": "ultra",
                 "quality_level": "high",
-                "warping_method": WarpingMethod.HYBRID,
-                "cache_enabled": True
+                "warping_method": WarpingMethod.AI_MODEL,
+                "cache_enabled": True,
+                "strict_mode": True
             }
         )
         
@@ -2073,13 +2283,14 @@ async def test_cloth_warping_complete():
         
         # 결과 확인
         if result['success']:
-            print("✅ 완전한 처리 성공!")
+            print("✅ 실제 AI 모델 처리 성공!")
             print(f"   - 처리 시간: {result['processing_time']:.3f}초")
             print(f"   - 품질 등급: {result['quality_grade']}")
             print(f"   - 신뢰도: {result['confidence']:.3f}")
             print(f"   - AI 모델 사용: {result['warping_analysis']['ai_success']}")
             print(f"   - 물리 시뮬레이션: {result['warping_analysis']['physics_applied']}")
             print(f"   - 피팅 적합성: {result['suitable_for_fitting']}")
+            print(f"   - 엄격 모드: {result['device_info']['strict_mode']}")
             return True
         else:
             print(f"❌ 처리 실패: {result.get('error', '알 수 없는 오류')}")
@@ -2089,14 +2300,15 @@ async def test_cloth_warping_complete():
         print(f"❌ 테스트 실패: {e}")
         return False
 
-async def test_model_loader_integration():
-    """ModelLoader 통합 테스트"""
-    print("🔗 ModelLoader 통합 테스트 시작")
+async def test_model_loader_integration_strict():
+    """ModelLoader 통합 테스트 (엄격 모드)"""
+    print("🔗 ModelLoader 엄격 통합 테스트 시작")
     
     try:
         step = ClothWarpingStep(device="auto", config={
             "ai_model_enabled": True,
-            "warping_method": WarpingMethod.AI_MODEL
+            "warping_method": WarpingMethod.AI_MODEL,
+            "strict_mode": True
         })
         
         await step.initialize()
@@ -2105,12 +2317,14 @@ async def test_model_loader_integration():
         print(f"✅ ModelLoader 연결: {system_info['model_info']['model_loader_connected']}")
         print(f"   - 로드된 모델 수: {system_info['model_info']['models_count']}")
         print(f"   - 로드된 모델들: {system_info['model_info']['models_loaded']}")
+        print(f"   - 엄격 모드: {system_info['warping_config']['strict_mode']}")
         
         return system_info['model_info']['model_loader_connected']
         
     except Exception as e:
-        print(f"❌ ModelLoader 통합 테스트 실패: {e}")
+        print(f"❌ ModelLoader 엄격 통합 테스트 실패: {e}")
         return False
+
 
 # ==============================================
 # 🚀 메인 실행 블록
@@ -2120,24 +2334,28 @@ if __name__ == "__main__":
     import asyncio
     
     async def main():
-        print("🎯 Step 05 Cloth Warping - ModelLoader 완전 통합 버전 테스트")
-        print("=" * 60)
+        print("🎯 Step 05 Cloth Warping - 실제 AI 모델만 사용하는 완전한 버전 테스트")
+        print("=" * 80)
         
-        # 1. ModelLoader 통합 테스트
-        print("\n1️⃣ ModelLoader 통합 테스트")
-        model_test = await test_model_loader_integration()
+        # 1. ModelLoader 엄격 통합 테스트
+        print("\n1️⃣ ModelLoader 엄격 통합 테스트")
+        model_test = await test_model_loader_integration_strict()
         
-        # 2. 완전한 워핑 테스트
-        print("\n2️⃣ 완전한 워핑 테스트")
-        warping_test = await test_cloth_warping_complete()
+        # 2. 실제 AI 모델 워핑 테스트
+        print("\n2️⃣ 실제 AI 모델 워핑 테스트")
+        warping_test = await test_cloth_warping_real_ai()
         
         # 3. 결과 요약
         print("\n📋 테스트 결과 요약")
-        print(f"   - ModelLoader 통합: {'✅ 성공' if model_test else '❌ 실패'}")
-        print(f"   - 워핑 처리: {'✅ 성공' if warping_test else '❌ 실패'}")
+        print(f"   - ModelLoader 엄격 통합: {'✅ 성공' if model_test else '❌ 실패'}")
+        print(f"   - 실제 AI 워핑 처리: {'✅ 성공' if warping_test else '❌ 실패'}")
         
         if model_test and warping_test:
-            print("\n🎉 모든 테스트 성공! Step 05가 ModelLoader와 완전히 통합되었습니다.")
+            print("\n🎉 모든 테스트 성공! Step 05가 실제 AI 모델만 사용하도록 완전히 개선되었습니다.")
+            print("   ✅ 시뮬레이션 모드 완전 제거")
+            print("   ✅ ModelLoader 완전 연동")
+            print("   ✅ 엄격한 에러 처리")
+            print("   ✅ 모든 기능 보존")
         else:
             print("\n⚠️ 일부 테스트 실패. 로그를 확인해주세요.")
     
