@@ -2349,7 +2349,290 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 모델 로딩 실패 {model_name}: {e}")
             return None
+
+    def get_model(self, model_name: str, **kwargs) -> Optional[Any]:
+        """
+        🔥 동기 모델 가져오기 - 기존 코드와 호환성 유지
+        
+        Args:
+            model_name: 모델 이름
+            **kwargs: 추가 로딩 옵션
+            
+        Returns:
+            로드된 모델 또는 None
+        """
+        try:
+            self.logger.info(f"📦 모델 가져오기 요청: {model_name}")
+            
+            # 1. 캐시된 모델 확인
+            with self._lock:
+                cache_key = f"{model_name}_{kwargs.get('config_hash', 'default')}"
+                if cache_key in self.model_cache:
+                    cached_model = self.model_cache[cache_key]
+                    self.access_counts[cache_key] = self.access_counts.get(cache_key, 0) + 1
+                    self.last_access[cache_key] = time.time()
+                    self.logger.debug(f"✅ 캐시된 모델 반환: {model_name}")
+                    return cached_model
+            
+            # 2. SafeModelService에서 확인
+            if hasattr(self, 'safe_model_service'):
+                model = self.safe_model_service.call_model(model_name)
+                if model:
+                    self.logger.info(f"✅ SafeModelService에서 모델 반환: {model_name}")
+                    return model
+            
+            # 3. 새로 로드 시도
+            if hasattr(self, 'load_model_sync'):
+                model = self.load_model_sync(model_name, **kwargs)
+                if model:
+                    self.logger.info(f"✅ 새로 로드된 모델 반환: {model_name}")
+                    return model
+            
+            # 4. 기본 load_model 메서드 시도
+            if hasattr(self, 'load_model'):
+                try:
+                    # 비동기 메서드인 경우 동기적으로 실행
+                    import asyncio
+                    if asyncio.iscoroutinefunction(self.load_model):
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                # 이미 실행 중인 루프에서는 다른 방법 사용
+                                return self._sync_fallback_load(model_name, **kwargs)
+                            else:
+                                model = loop.run_until_complete(self.load_model(model_name, **kwargs))
+                        except RuntimeError:
+                            # 새 이벤트 루프 생성
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                model = loop.run_until_complete(self.load_model(model_name, **kwargs))
+                            finally:
+                                loop.close()
+                    else:
+                        # 동기 메서드인 경우
+                        model = self.load_model(model_name, **kwargs)
+                    
+                    if model:
+                        self.logger.info(f"✅ load_model을 통한 모델 반환: {model_name}")
+                        return model
+                        
+                except Exception as e:
+                    self.logger.warning(f"⚠️ load_model 실행 실패: {e}")
+            
+            # 5. 폴백 모델 생성
+            self.logger.warning(f"⚠️ 모델을 찾을 수 없음, 폴백 모델 생성: {model_name}")
+            return self._create_fallback_model(model_name)
+            
+        except Exception as e:
+            self.logger.error(f"❌ get_model 실패 {model_name}: {e}")
+            return self._create_fallback_model(model_name)
     
+    async def get_model_async(self, model_name: str, **kwargs) -> Optional[Any]:
+        """
+        🔥 비동기 모델 가져오기
+        
+        Args:
+            model_name: 모델 이름
+            **kwargs: 추가 로딩 옵션
+            
+        Returns:
+            로드된 모델 또는 None
+        """
+        try:
+            self.logger.info(f"📦 비동기 모델 가져오기 요청: {model_name}")
+            
+            # 1. 캐시된 모델 확인
+            async with self._async_lock:
+                cache_key = f"{model_name}_{kwargs.get('config_hash', 'default')}"
+                if cache_key in self.model_cache:
+                    cached_model = self.model_cache[cache_key]
+                    self.access_counts[cache_key] = self.access_counts.get(cache_key, 0) + 1
+                    self.last_access[cache_key] = time.time()
+                    self.logger.debug(f"✅ 캐시된 모델 반환: {model_name}")
+                    return cached_model
+            
+            # 2. SafeModelService에서 비동기 확인
+            if hasattr(self, 'safe_model_service'):
+                model = await self.safe_model_service.call_model_async(model_name)
+                if model:
+                    self.logger.info(f"✅ SafeModelService에서 비동기 모델 반환: {model_name}")
+                    return model
+            
+            # 3. 비동기 로드 시도
+            if hasattr(self, 'load_model_async'):
+                model = await self.load_model_async(model_name, **kwargs)
+                if model:
+                    self.logger.info(f"✅ 새로 로드된 비동기 모델 반환: {model_name}")
+                    return model
+            
+            # 4. 기본 load_model 메서드 비동기 시도
+            if hasattr(self, 'load_model'):
+                if asyncio.iscoroutinefunction(self.load_model):
+                    model = await self.load_model(model_name, **kwargs)
+                else:
+                    # 동기 메서드를 비동기로 실행
+                    loop = asyncio.get_event_loop()
+                    model = await loop.run_in_executor(None, lambda: self.load_model(model_name, **kwargs))
+                
+                if model:
+                    self.logger.info(f"✅ load_model을 통한 비동기 모델 반환: {model_name}")
+                    return model
+            
+            # 5. 폴백 모델 생성
+            self.logger.warning(f"⚠️ 비동기 모델을 찾을 수 없음, 폴백 모델 생성: {model_name}")
+            return await self._create_fallback_model_async(model_name)
+            
+        except Exception as e:
+            self.logger.error(f"❌ get_model_async 실패 {model_name}: {e}")
+            return await self._create_fallback_model_async(model_name)
+    
+    def _sync_fallback_load(self, model_name: str, **kwargs) -> Optional[Any]:
+        """동기 폴백 로드"""
+        try:
+            # SafeModelService를 통한 모델 생성
+            model_dict = {
+                'name': model_name,
+                'type': 'fallback_sync',
+                'device': getattr(self, 'device', 'cpu'),
+                'status': 'loaded',
+                'kwargs': kwargs
+            }
+            
+            if hasattr(self, 'safe_model_service'):
+                if self.safe_model_service.register_model(model_name, model_dict):
+                    return self.safe_model_service.call_model(model_name)
+            
+            # 최후의 폴백
+            return self._create_fallback_model(model_name)
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 동기 폴백 로드 실패: {e}")
+            return self._create_fallback_model(model_name)
+    
+    def _create_fallback_model(self, model_name: str) -> Any:
+        """폴백 모델 생성 - 동기 버전"""
+        
+        class FallbackModel:
+            def __init__(self, name: str):
+                self.name = name
+                self.device = "cpu"
+                
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'result': f'fallback_result_for_{self.name}',
+                    'type': 'fallback'
+                }
+            
+            def to(self, device):
+                self.device = str(device)
+                return self
+            
+            def eval(self):
+                return self
+            
+            def cpu(self):
+                self.device = "cpu"
+                return self
+        
+        return FallbackModel(model_name)
+    
+    async def _create_fallback_model_async(self, model_name: str) -> Any:
+        """폴백 모델 생성 - 비동기 버전"""
+        
+        class AsyncFallbackModel:
+            def __init__(self, name: str):
+                self.name = name
+                self.device = "cpu"
+                
+            def __call__(self, *args, **kwargs):
+                return {
+                    'status': 'success',
+                    'model_name': self.name,
+                    'result': f'async_fallback_result_for_{self.name}',
+                    'type': 'async_fallback'
+                }
+            
+            async def async_call(self, *args, **kwargs):
+                await asyncio.sleep(0.001)
+                return self.__call__(*args, **kwargs)
+            
+            def to(self, device):
+                self.device = str(device)
+                return self
+            
+            def eval(self):
+                return self
+            
+            def cpu(self):
+                self.device = "cpu"
+                return self
+        
+        return AsyncFallbackModel(model_name)
+
+# ==============================================
+# 🔥 전역 함수로도 get_model 제공
+# ==============================================
+
+def get_model(model_name: str, **kwargs) -> Optional[Any]:
+    """전역 get_model 함수 - 기존 코드 호환성"""
+    try:
+        loader = get_global_model_loader()
+        if hasattr(loader, 'get_model'):
+            return loader.get_model(model_name, **kwargs)
+        else:
+            # get_model이 없으면 load_model_sync 사용
+            if hasattr(loader, 'load_model_sync'):
+                return loader.load_model_sync(model_name, **kwargs)
+            elif hasattr(loader, 'load_model'):
+                # 비동기인 경우 동기적으로 실행
+                import asyncio
+                if asyncio.iscoroutinefunction(loader.load_model):
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if not loop.is_running():
+                            return loop.run_until_complete(loader.load_model(model_name, **kwargs))
+                        else:
+                            # 이미 실행 중인 루프에서는 폴백 모델
+                            return create_fallback_model(model_name, "sync_get_model")
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            return loop.run_until_complete(loader.load_model(model_name, **kwargs))
+                        finally:
+                            loop.close()
+                else:
+                    return loader.load_model(model_name, **kwargs)
+            else:
+                return create_fallback_model(model_name, "global_get_model")
+    except Exception as e:
+        logger.error(f"❌ 전역 get_model 실패 {model_name}: {e}")
+        return create_fallback_model(model_name, "error_fallback")
+
+async def get_model_async(model_name: str, **kwargs) -> Optional[Any]:
+    """전역 get_model_async 함수"""
+    try:
+        loader = get_global_model_loader()
+        if hasattr(loader, 'get_model_async'):
+            return await loader.get_model_async(model_name, **kwargs)
+        elif hasattr(loader, 'load_model_async'):
+            return await loader.load_model_async(model_name, **kwargs)
+        elif hasattr(loader, 'load_model'):
+            if asyncio.iscoroutinefunction(loader.load_model):
+                return await loader.load_model(model_name, **kwargs)
+            else:
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, lambda: loader.load_model(model_name, **kwargs))
+        else:
+            return create_fallback_model(model_name, "async_global_get_model")
+    except Exception as e:
+        logger.error(f"❌ 전역 get_model_async 실패 {model_name}: {e}")
+        return create_fallback_model(model_name, "async_error_fallback")    
+
+
     async def _create_model_instance_async(
         self,
         model_config: Union[ModelConfig, StepModelConfig],

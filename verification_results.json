@@ -1,20 +1,20 @@
 {
-  "verification_time": 3.59,
+  "verification_time": 0.69,
   "environment": {
-    "python_version": "3.10.11",
-    "conda_env": "base",
-    "conda_prefix": "",
-    "in_conda": false,
+    "python_version": "3.10.18",
+    "conda_env": "mycloset-ai",
+    "conda_prefix": "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai",
+    "in_conda": true,
     "memory_total_gb": 128.0,
-    "memory_available_gb": 74.6,
+    "memory_available_gb": 74.3,
     "is_m3_max": true
   },
   "dependencies": {
-    "pil_version": "10.0.1",
+    "pil_version": "10.1.0",
     "pil_issue": true,
-    "numpy_version": "2.2.6",
-    "numpy_compatible": false,
-    "torch_version": "2.1.0",
+    "numpy_version": "1.24.3",
+    "numpy_compatible": true,
+    "torch_version": "2.5.1",
     "mps_available": true,
     "mps_built": true
   },
@@ -41,13 +41,9 @@
   },
   "issues": {
     "memory_manager_optimize_method": true,
-    "pil_version_usage": [
-      "app/ai_pipeline/utils/__init__.py"
-    ]
+    "pil_version_usage": []
   },
-  "fixes_applied": [
-    "PIL.Image.VERSION 수정: app/ai_pipeline/utils/__init__.py"
-  ],
+  "fixes_applied": [],
   "conda_fix_script": "/Users/gimdudeul/MVP/mycloset-ai/fix_conda_env.sh",
   "summary": {
     "status": "healthy",
@@ -57,8 +53,7 @@
       "OOTDiffusion model not found"
     ],
     "recommendations": [
-      "Enable M3 Max 128GB optimization",
-      "Downgrade NumPy to 1.x for compatibility"
+      "Enable M3 Max 128GB optimization"
     ]
   }
 }

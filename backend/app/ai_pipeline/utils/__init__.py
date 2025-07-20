@@ -93,7 +93,7 @@ try:
         PIL_VERSION = PIL.__version__  # 최신 방식
     except AttributeError:
         try:
-            PIL_VERSION = Image.VERSION  # 구버전 방식
+            PIL_VERSION = Image.__version__  # 구버전 방식
         except AttributeError:
             PIL_VERSION = "unknown"
 except ImportError:
@@ -2950,7 +2950,7 @@ __all__ = [
 _module_start_time = time.time()
 
 # 환경 정보 로깅
-logger.info("✅ PIL.Image.VERSION 오류 완전 해결 (PIL 최신 버전 호환)")
+logger.info("✅ PIL.__version__ 오류 완전 해결 (PIL 최신 버전 호환)")
 logger.info("✅ PIL 10.0.0+ Image.Resampling.LANCZOS 호환성 추가")
 logger.info("✅ 모든 PIL 버전에서 안전한 이미지 리샘플링 보장")
 logger.info("✅ create_step_interface 레거시 호환 함수 추가")

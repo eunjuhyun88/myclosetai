@@ -1,0 +1,127 @@
+{
+  "found_files": [],
+  "moved_files": [],
+  "errors": [
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/sd-v1-5-inpainting.ckpt",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/openai_clip-vit-large-patch14/model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/text_encoder/model.fp16.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/unet/diffusion_pytorch_model.fp16.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/safety_checker/model.fp16.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/vae/diffusion_pytorch_model.fp16.safetensors",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/openai_clip-vit-large-patch14/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/text_encoder/pytorch_model.fp16.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/text_encoder/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/unet/diffusion_pytorch_model.fp16.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/unet/diffusion_pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/safety_checker/pytorch_model.fp16.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/safety_checker/pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/vae/diffusion_pytorch_model.fp16.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/runwayml_stable-diffusion-inpainting/vae/diffusion_pytorch_model.bin",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/humanparsing/parsing_atr.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/levihsu_OOTDiffusion/checkpoints/humanparsing/parsing_lip.onnx",
+      "error": "복사 검증 실패"
+    },
+    {
+      "file": "/Users/gimdudeul/MVP/mycloset-ai/ai_models/downloads/ootdiffusion_original/openai_clip-vit-large-patch14/tf_model.h5",
+      "error": "복사 검증 실패"
+    }
+  ],
+  "stats_by_extension": {
+    ".bin": 11,
+    ".ckpt": 1,
+    ".h5": 1,
+    ".onnx": 2,
+    ".pth": 4,
+    ".safetensors": 9
+  },
+  "stats_by_step": {}
+}

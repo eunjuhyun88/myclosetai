@@ -1,13 +1,13 @@
 #!/bin/bash
-# MyCloset AI - Conda 환경 수정 스크립트 (Python 3.10.11)
+# MyCloset AI - Conda 환경 수정 스크립트 (Python 3.10.18)
 
 echo "🔧 MyCloset AI Conda 환경 수정"
-echo "현재 환경: base"
-echo "Python: 3.10.11"
+echo "현재 환경: mycloset-ai"
+echo "Python: 3.10.18"
 echo ""
 
 # 현재 환경 활성화
-conda activate base
+conda activate mycloset-ai
 
 # NumPy 호환성 해결 (Python 3.12 버전)
 echo "🔢 NumPy 호환성 수정 중..."
