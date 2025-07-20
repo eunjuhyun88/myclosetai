@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =============================================================================
-# MyCloset AI - Step별 모델 경로 완전 통합 스크립트 (macOS 호환)
+# MyCloset AI - Step별 모델 경로 완전 통합 스크립트
 # 기존 중복 모델들을 번호를 달아 보존하면서 Step별로 체계적 정리
 # =============================================================================
 
@@ -28,7 +28,7 @@ PROJECT_ROOT=$(pwd)
 AI_MODELS_ROOT="$PROJECT_ROOT/ai_models"
 BACKEND_AI_MODELS="$PROJECT_ROOT/backend/ai_models"
 
-log_header "MyCloset AI - Step별 모델 경로 완전 통합 (macOS 호환)"
+log_header "MyCloset AI - Step별 모델 경로 완전 통합"
 log_info "프로젝트 루트: $PROJECT_ROOT"
 log_info "타겟 디렉토리: $AI_MODELS_ROOT"
 echo ""
@@ -151,7 +151,7 @@ detect_model_files() {
     \) 2>/dev/null
 }
 
-# Step별 패턴 매칭 함수 (macOS 호환 버전)
+# Step별 패턴 매칭 함수
 classify_model_by_step() {
     local file_path="$1"
     local file_name=$(basename "$file_path")
@@ -159,52 +159,52 @@ classify_model_by_step() {
     local path_lower=$(echo "$file_path" | tr '[:upper:]' '[:lower:]')
     
     # Step 01: Human Parsing
-    if echo "$file_lower" | grep -E "(human|parsing|schp|atr|graphonomy|densepose)" >/dev/null || \
-       echo "$path_lower" | grep -E "(human.*parsing|step.*01|parsing)" >/dev/null; then
+    if [[ "$file_lower" =~ (human|parsing|schp|atr|graphonomy|densepose) ]] || \
+       [[ "$path_lower" =~ (human.*parsing|step.*01|parsing) ]]; then
         echo "step_01_human_parsing"
         
     # Step 02: Pose Estimation  
-    elif echo "$file_lower" | grep -E "(pose|openpose|body|keypoint|mediapipe|hrnet)" >/dev/null || \
-         echo "$path_lower" | grep -E "(pose.*estimation|step.*02|openpose)" >/dev/null; then
+    elif [[ "$file_lower" =~ (pose|openpose|body|keypoint|mediapipe|hrnet) ]] || \
+         [[ "$path_lower" =~ (pose.*estimation|step.*02|openpose) ]]; then
         echo "step_02_pose_estimation"
         
     # Step 03: Cloth Segmentation
-    elif echo "$file_lower" | grep -E "(u2net|segmentation|cloth.*seg|mask|rembg|sam)" >/dev/null || \
-         echo "$path_lower" | grep -E "(cloth.*segmentation|step.*03|u2net)" >/dev/null; then
+    elif [[ "$file_lower" =~ (u2net|segmentation|cloth.*seg|mask|rembg|sam) ]] || \
+         [[ "$path_lower" =~ (cloth.*segmentation|step.*03|u2net) ]]; then
         echo "step_03_cloth_segmentation"
         
     # Step 04: Geometric Matching
-    elif echo "$file_lower" | grep -E "(geometric|matching|gmm|tps)" >/dev/null || \
-         echo "$path_lower" | grep -E "(geometric.*matching|step.*04)" >/dev/null; then
+    elif [[ "$file_lower" =~ (geometric|matching|gmm|tps) ]] || \
+         [[ "$path_lower" =~ (geometric.*matching|step.*04) ]]; then
         echo "step_04_geometric_matching"
         
     # Step 05: Cloth Warping
-    elif echo "$file_lower" | grep -E "(warping|warp|tom|cloth.*warp)" >/dev/null || \
-         echo "$path_lower" | grep -E "(cloth.*warping|step.*05)" >/dev/null; then
+    elif [[ "$file_lower" =~ (warping|warp|tom|cloth.*warp) ]] || \
+         [[ "$path_lower" =~ (cloth.*warping|step.*05) ]]; then
         echo "step_05_cloth_warping"
         
     # Step 06: Virtual Fitting
-    elif echo "$file_lower" | grep -E "(diffusion|ootd|viton|stable|unet|vae)" >/dev/null || \
-         echo "$path_lower" | grep -E "(virtual.*fitting|step.*06|ootdiffusion|stable.*diffusion)" >/dev/null; then
+    elif [[ "$file_lower" =~ (diffusion|ootd|viton|stable|unet|vae) ]] || \
+         [[ "$path_lower" =~ (virtual.*fitting|step.*06|ootdiffusion|stable.*diffusion) ]]; then
         echo "step_06_virtual_fitting"
         
     # Step 07: Post Processing
-    elif echo "$file_lower" | grep -E "(super|resolution|esrgan|sr|denoise|enhance|gfpgan|codeformer|swinir)" >/dev/null || \
-         echo "$path_lower" | grep -E "(post.*processing|step.*07|super.*resolution)" >/dev/null; then
+    elif [[ "$file_lower" =~ (super|resolution|esrgan|sr|denoise|enhance|gfpgan|codeformer|swinir) ]] || \
+         [[ "$path_lower" =~ (post.*processing|step.*07|super.*resolution) ]]; then
         echo "step_07_post_processing"
         
     # Step 08: Quality Assessment
-    elif echo "$file_lower" | grep -E "(quality|assessment|clip|similarity)" >/dev/null || \
-         echo "$path_lower" | grep -E "(quality.*assessment|step.*08)" >/dev/null; then
+    elif [[ "$file_lower" =~ (quality|assessment|clip|similarity) ]] || \
+         [[ "$path_lower" =~ (quality.*assessment|step.*08) ]]; then
         echo "step_08_quality_assessment"
         
     # Auxiliary Models
-    elif echo "$file_lower" | grep -E "(clip|text.*encoder|feature.*extract)" >/dev/null || \
-         echo "$path_lower" | grep -E "(auxiliary|clip)" >/dev/null; then
+    elif [[ "$file_lower" =~ (clip|text.*encoder|feature.*extract) ]] || \
+         [[ "$path_lower" =~ (auxiliary|clip) ]]; then
         echo "auxiliary_models"
         
     # HuggingFace Cache
-    elif echo "$path_lower" | grep -E "(huggingface|transformers|diffusers|models--)" >/dev/null; then
+    elif [[ "$path_lower" =~ (huggingface|transformers|diffusers|models--) ]]; then
         echo "huggingface_cache"
         
     else
@@ -212,34 +212,23 @@ classify_model_by_step() {
     fi
 }
 
-# 탐지 결과를 임시 파일들로 저장 (연관 배열 대신)
-TEMP_DIR=$(mktemp -d)
-DETECTED_FILES_LIST="$TEMP_DIR/detected_files.txt"
-STEP_COUNTS_FILE="$TEMP_DIR/step_counts.txt"
+# 모든 소스에서 모델 파일 탐지
+declare -A DETECTED_FILES
+declare -A STEP_COUNTS
 
 log_step "소스별 모델 파일 탐지 진행 중..."
-
-# Step 카운터 초기화
-for step in "${STEP_DIRS[@]}"; do
-    echo "$step:0" >> "$STEP_COUNTS_FILE"
-done
 
 for source_dir in "${AI_MODEL_DIRS[@]}"; do
     if [ -d "$source_dir" ]; then
         log_info "탐지 중: $source_dir"
         
-        detect_model_files "$source_dir" | while IFS= read -r file_path; do
+        while IFS= read -r -d '' file_path; do
             if [ -f "$file_path" ]; then
                 step=$(classify_model_by_step "$file_path")
-                echo "$file_path|$step" >> "$DETECTED_FILES_LIST"
-                
-                # Step 카운트 증가
-                current_count=$(grep "^$step:" "$STEP_COUNTS_FILE" | cut -d: -f2)
-                new_count=$((current_count + 1))
-                sed -i '' "s/^$step:.*/$step:$new_count/" "$STEP_COUNTS_FILE" 2>/dev/null || \
-                sed -i "s/^$step:.*/$step:$new_count/" "$STEP_COUNTS_FILE" 2>/dev/null
+                DETECTED_FILES["$file_path"]="$step"
+                STEP_COUNTS["$step"]=$((${STEP_COUNTS["$step"]:-0} + 1))
             fi
-        done
+        done < <(detect_model_files "$source_dir" | tr '\n' '\0')
     fi
 done
 
@@ -248,64 +237,61 @@ echo ""
 log_success "모델 파일 탐지 완료"
 echo "📊 Step별 탐지된 모델 수:"
 
-while IFS=: read -r step count; do
-    if [ "$count" -gt 0 ]; then
+for step in "${STEP_DIRS[@]}"; do
+    count=${STEP_COUNTS["$step"]:-0}
+    if [ $count -gt 0 ]; then
         echo "  ✅ $step: $count개"
     else
         echo "  ⚪ $step: 0개"
     fi
-done < "$STEP_COUNTS_FILE"
+done
 
 # 4. 중복 체크 및 이동 계획 수립
 log_header "Step 4: 중복 체크 및 이동 계획 수립"
 
 log_step "중복 파일 체크 및 번호 할당 중..."
 
-MOVE_PLAN_FILE="$TEMP_DIR/move_plan.txt"
-FILE_REGISTRY_DIR="$TEMP_DIR/registry"
-mkdir -p "$FILE_REGISTRY_DIR"
+declare -A FILE_REGISTRY
+declare -A MOVE_PLAN
 
 # 파일 이름 기반 중복 체크
-while IFS='|' read -r file_path step; do
-    if [ -f "$file_path" ]; then
-        file_name=$(basename "$file_path")
-        target_dir="$AI_MODELS_ROOT/$step"
-        registry_file="$FILE_REGISTRY_DIR/${step}_${file_name}.count"
+for file_path in "${!DETECTED_FILES[@]}"; do
+    step="${DETECTED_FILES[$file_path]}"
+    file_name=$(basename "$file_path")
+    file_size=$(stat -f%z "$file_path" 2>/dev/null || stat -c%s "$file_path" 2>/dev/null || echo "0")
+    
+    # 고유 키 생성 (파일명 + 크기)
+    unique_key="${file_name}_${file_size}"
+    
+    target_dir="$AI_MODELS_ROOT/$step"
+    
+    if [[ -v FILE_REGISTRY["$step:$file_name"] ]]; then
+        # 중복 파일 발견 - 번호 할당
+        existing_count=${FILE_REGISTRY["$step:$file_name"]}
+        new_count=$((existing_count + 1))
+        FILE_REGISTRY["$step:$file_name"]=$new_count
         
-        if [ -f "$registry_file" ]; then
-            # 중복 파일 발견 - 번호 할당
-            existing_count=$(cat "$registry_file")
-            new_count=$((existing_count + 1))
-            echo "$new_count" > "$registry_file"
-            
-            # 확장자 분리
-            file_base="${file_name%.*}"
-            file_ext="${file_name##*.}"
-            
-            new_file_name="${file_base}_${new_count}.${file_ext}"
-            target_path="$target_dir/$new_file_name"
-            
-            log_warning "중복 발견: $file_name → $new_file_name"
-        else
-            # 처음 발견된 파일
-            echo "1" > "$registry_file"
-            target_path="$target_dir/$file_name"
-        fi
+        # 확장자 분리
+        file_base="${file_name%.*}"
+        file_ext="${file_name##*.}"
         
-        echo "$file_path|$target_path" >> "$MOVE_PLAN_FILE"
+        new_file_name="${file_base}_${new_count}.${file_ext}"
+        target_path="$target_dir/$new_file_name"
+        
+        log_warning "중복 발견: $file_name → $new_file_name"
+    else
+        # 처음 발견된 파일
+        FILE_REGISTRY["$step:$file_name"]=1
+        target_path="$target_dir/$file_name"
     fi
-done < "$DETECTED_FILES_LIST"
+    
+    MOVE_PLAN["$file_path"]="$target_path"
+done
 
 # 5. 실제 파일 이동 실행
 log_header "Step 5: 실제 파일 이동 실행"
 
-total_moves=$(wc -l < "$MOVE_PLAN_FILE" 2>/dev/null || echo 0)
-if [ "$total_moves" -eq 0 ]; then
-    log_warning "이동할 파일이 없습니다."
-    exit 0
-fi
-
-log_warning "총 $total_moves개 파일을 이동합니다. 실제 파일 이동을 실행하시겠습니까? (y/N)"
+log_warning "실제 파일 이동을 실행하시겠습니까? (y/N)"
 read -r confirm
 
 if [[ ! $confirm =~ ^[Yy]$ ]]; then
@@ -313,13 +299,12 @@ if [[ ! $confirm =~ ^[Yy]$ ]]; then
     
     echo ""
     echo "📋 이동 계획 (미실행):"
-    while IFS='|' read -r source_path target_path; do
+    for source_path in "${!MOVE_PLAN[@]}"; do
+        target_path="${MOVE_PLAN[$source_path]}"
         file_size=$(du -h "$source_path" 2>/dev/null | cut -f1 || echo "N/A")
         echo "  📁 $source_path → $target_path ($file_size)"
-    done < "$MOVE_PLAN_FILE"
+    done
     
-    # 임시 파일 정리
-    rm -rf "$TEMP_DIR"
     exit 0
 fi
 
@@ -328,7 +313,8 @@ log_step "파일 이동 실행 중..."
 moved_count=0
 error_count=0
 
-while IFS='|' read -r source_path target_path; do
+for source_path in "${!MOVE_PLAN[@]}"; do
+    target_path="${MOVE_PLAN[$source_path]}"
     target_dir=$(dirname "$target_path")
     
     # 타겟 디렉토리 생성 확인
@@ -337,13 +323,13 @@ while IFS='|' read -r source_path target_path; do
     # 파일 이동 (복사 후 원본 유지)
     if cp "$source_path" "$target_path" 2>/dev/null; then
         file_size=$(du -h "$target_path" 2>/dev/null | cut -f1 || echo "N/A")
-        log_info "✅ $(basename "$source_path") → $target_path ($file_size)"
+        log_info "✅ $source_path → $target_path ($file_size)"
         moved_count=$((moved_count + 1))
     else
         log_error "❌ 이동 실패: $source_path → $target_path"
         error_count=$((error_count + 1))
     fi
-done < "$MOVE_PLAN_FILE"
+done
 
 # 6. 결과 요약 및 검증
 log_header "Step 6: 결과 요약 및 검증"
@@ -363,7 +349,7 @@ for step_dir in "${STEP_DIRS[@]}"; do
         count=$(find "$target_dir" -type f \( -name "*.pth" -o -name "*.pt" -o -name "*.bin" -o -name "*.safetensors" \) 2>/dev/null | wc -l)
         size=$(du -sh "$target_dir" 2>/dev/null | cut -f1 || echo "0B")
         
-        if [ "$count" -gt 0 ]; then
+        if [ $count -gt 0 ]; then
             echo "  ✅ $step_dir: $count개 파일, $size"
         else
             echo "  ⚪ $step_dir: 비어있음"
@@ -376,11 +362,8 @@ log_header "Step 7: 최신 경로 설정 파일 생성"
 
 log_step "통합된 경로 설정 파일 생성 중..."
 
-# backend/app/core 디렉토리 생성 확인
-mkdir -p "$PROJECT_ROOT/backend/app/core"
-
 # Python 설정 파일 생성
-cat > "$PROJECT_ROOT/backend/app/core/unified_model_paths.py" << EOF
+cat > "$PROJECT_ROOT/backend/app/core/unified_model_paths.py" << 'EOF'
 # app/core/unified_model_paths.py
 """
 MyCloset AI - 통합된 Step별 모델 경로 설정
@@ -453,8 +436,7 @@ log_step "통합 결과 검증 중..."
 # Python으로 검증 실행
 python3 << 'EOF'
 import sys
-import os
-sys.path.append(os.path.join(os.getcwd(), "backend", "app"))
+sys.path.append("backend/app")
 
 try:
     from core.unified_model_paths import STEP_MODEL_PATHS, get_all_model_files
@@ -476,12 +458,8 @@ try:
     
 except Exception as e:
     print(f"❌ 검증 실패: {e}")
-    import traceback
-    traceback.print_exc()
+    sys.exit(1)
 EOF
-
-# 임시 파일 정리
-rm -rf "$TEMP_DIR"
 
 echo ""
 log_header "🎉 AI 모델 Step별 경로 통합 완료!"
@@ -509,7 +487,7 @@ echo "  └── experimental_models/       (분류되지 않은 모델들)"
 echo ""
 echo "🚀 다음 단계:"
 echo "1. backend/app/core/unified_model_paths.py 경로 설정 확인"
-echo "2. 각 Step에서 통합된 경로 사용하도록 코드 업데이트"  
+echo "2. 각 Step에서 통합된 경로 사용하도록 코드 업데이트"
 echo "3. ModelLoader에서 새 경로 구조 연동"
 echo "4. 테스트 실행 및 검증"
 

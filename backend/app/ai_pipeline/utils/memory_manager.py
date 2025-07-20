@@ -274,6 +274,131 @@ class MemoryManager:
             self.tensor_cache = {}
             self.is_initialized = True
 
+    def optimize_startup(self, aggressive: bool = False) -> Dict[str, Any]:
+        """
+        🚀 시스템 시작 시 메모리 최적화 (main.py에서 필요한 메서드)
+        ✅ main.py startup 오류 완전 해결
+        """
+        try:
+            start_time = time.time()
+            startup_results = []
+            
+            self.logger.info("🚀 시스템 시작 메모리 최적화 시작")
+            
+            # 1. 기본 메모리 최적화 실행
+            if hasattr(self, 'optimize_memory'):
+                try:
+                    optimize_result = self.optimize_memory()
+                    if optimize_result.get('success', False):
+                        startup_results.append("기본 메모리 최적화 완료")
+                    else:
+                        startup_results.append("기본 메모리 최적화 실패")
+                except Exception as e:
+                    startup_results.append(f"기본 메모리 최적화 오류: {e}")
+            
+            # 2. 시스템 시작 특화 최적화
+            try:
+                # Python 가비지 컬렉션 강화
+                collected = 0
+                for gen in range(3):
+                    collected += gc.collect()
+                startup_results.append(f"시작 시 가비지 컬렉션: {collected}개 객체")
+                
+                # M3 Max 특화 시작 최적화
+                if self.is_m3_max:
+                    self._optimize_m3_max_startup()
+                    startup_results.append("M3 Max 시작 최적화 완료")
+                
+                # conda 환경 특화 설정
+                if SYSTEM_INFO.get("in_conda", False):
+                    setup_conda_memory_optimization()
+                    startup_results.append("conda 환경 최적화 완료")
+                
+            except Exception as e:
+                startup_results.append(f"시작 특화 최적화 실패: {e}")
+            
+            # 3. 메모리 상태 체크
+            try:
+                stats = self.get_memory_stats()
+                available_ratio = stats.cpu_available_gb / max(1.0, stats.cpu_total_gb)
+                startup_results.append(f"메모리 가용률: {available_ratio:.1%}")
+            except Exception as e:
+                startup_results.append(f"메모리 상태 확인 실패: {e}")
+            
+            startup_time = time.time() - start_time
+            
+            self.logger.info(f"✅ 시스템 시작 메모리 최적화 완료 ({startup_time:.2f}초)")
+            
+            return {
+                "success": True,
+                "message": "시스템 시작 메모리 최적화 완료",
+                "startup_time": startup_time,
+                "startup_results": startup_results,
+                "device": self.device,
+                "is_m3_max": self.is_m3_max,
+                "conda_optimized": SYSTEM_INFO.get("in_conda", False),
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 시스템 시작 메모리 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "시스템 시작 메모리 최적화 실패",
+                "device": self.device,
+                "timestamp": time.time()
+            }
+    
+    def _optimize_m3_max_startup(self):
+        """M3 Max 시작 시 특화 최적화"""
+        try:
+            if not self.is_m3_max:
+                return
+            
+            # M3 Max 시작 시 환경 변수 설정
+            startup_env = {
+                'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.0',
+                'PYTORCH_MPS_LOW_WATERMARK_RATIO': '0.0',
+                'PYTORCH_ENABLE_MPS_FALLBACK': '1',
+                'METAL_PERFORMANCE_SHADERS_ENABLED': '1'
+            }
+            
+            os.environ.update(startup_env)
+            
+            # PyTorch MPS 사전 워밍업
+            if TORCH_AVAILABLE and torch.backends.mps.is_available():
+                try:
+                    # MPS 캐시 사전 정리
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    
+                    # 스레드 수 최적화
+                    torch.set_num_threads(min(16, SYSTEM_INFO["cpu_count"]))
+                    
+                except Exception as e:
+                    self.logger.warning(f"⚠️ M3 Max MPS 워밍업 실패: {e}")
+            
+            self.logger.debug("🍎 M3 Max 시작 최적화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ M3 Max 시작 최적화 실패: {e}")
+
+    async def optimize_startup_async(self, aggressive: bool = False) -> Dict[str, Any]:
+        """비동기 시스템 시작 메모리 최적화"""
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self.optimize_startup, aggressive)
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 시작 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "async": True,
+                "timestamp": time.time()
+            }
+
+
     def _optimize_for_m3_max(self):
         """🍎 M3 Max Neural Engine + conda 최적화"""
         try:
@@ -844,6 +969,142 @@ class MemoryManagerAdapter:
             self.memory_gb = 16
             self.logger = logging.getLogger("MemoryManagerAdapter")
 
+    def optimize_startup(self, aggressive: bool = False) -> Dict[str, Any]:
+        """
+        🚀 MemoryManagerAdapter용 optimize_startup (완전 구현)
+        ✅ VirtualFittingStep 호환성 보장
+        """
+        try:
+            # 기본 매니저의 optimize_startup 시도
+            if hasattr(self._base_manager, 'optimize_startup'):
+                try:
+                    result = self._base_manager.optimize_startup(aggressive)
+                    result["adapter"] = True
+                    return result
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 기본 매니저 optimize_startup 실패: {e}")
+            
+            # 폴백: optimize_memory 사용
+            if hasattr(self, 'optimize_memory'):
+                try:
+                    result = self.optimize_memory(aggressive)
+                    result.update({
+                        "adapter": True,
+                        "fallback_mode": "optimize_memory",
+                        "message": "startup 최적화를 optimize_memory로 대체"
+                    })
+                    return result
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 폴백 optimize_memory 실패: {e}")
+            
+            # 최종 폴백: 기본 시작 최적화
+            return self._basic_startup_optimization(aggressive)
+            
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManagerAdapter optimize_startup 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "adapter": True,
+                "timestamp": time.time()
+            }
+    
+    def _basic_startup_optimization(self, aggressive: bool = False) -> Dict[str, Any]:
+        """기본 시작 최적화 (최종 폴백)"""
+        try:
+            startup_results = []
+            
+            # 기본 가비지 컬렉션
+            collected = gc.collect()
+            startup_results.append(f"기본 GC: {collected}개 객체")
+            
+            # PyTorch 메모리 정리 (가능한 경우)
+            if TORCH_AVAILABLE:
+                try:
+                    if hasattr(torch.mps, 'empty_cache') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                        startup_results.append("MPS 캐시 정리")
+                    elif hasattr(torch.cuda, 'empty_cache') and torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        startup_results.append("CUDA 캐시 정리")
+                except Exception as e:
+                    startup_results.append(f"GPU 캐시 정리 실패: {e}")
+            
+            return {
+                "success": True,
+                "message": "기본 시작 최적화 완료",
+                "startup_results": startup_results,
+                "adapter": True,
+                "fallback": True,
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "adapter": True,
+                "fallback": True,
+                "timestamp": time.time()
+            }
+
+    async def optimize_startup_async(self, aggressive: bool = False) -> Dict[str, Any]:
+        """비동기 시작 최적화"""
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self.optimize_startup, aggressive)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "adapter": True,
+                "async": True,
+                "timestamp": time.time()
+            }
+
+
+class GPUMemoryManager:
+    # ... 기존 코드 ...
+    
+    def optimize_startup(self, aggressive: bool = False) -> Dict[str, Any]:
+        """GPU 메모리 관리자 시작 최적화 (기존 호환성 유지)"""
+        try:
+            # 부모 클래스의 optimize_startup 호출
+            result = super().optimize_startup(aggressive)
+            
+            # GPU 특화 시작 최적화 추가
+            gpu_startup_results = []
+            
+            # GPU 메모리 사전 정리
+            try:
+                self.clear_cache()
+                gpu_startup_results.append("GPU 캐시 사전 정리 완료")
+            except Exception as e:
+                gpu_startup_results.append(f"GPU 캐시 정리 실패: {e}")
+            
+            # GPU 메모리 사용량 체크
+            try:
+                usage = self.check_memory_usage()
+                if usage.get('memory_limit_gb', 0) > 0:
+                    gpu_startup_results.append(f"GPU 메모리 한계: {usage['memory_limit_gb']:.1f}GB")
+            except Exception as e:
+                gpu_startup_results.append(f"GPU 메모리 체크 실패: {e}")
+            
+            # 결과 병합
+            result["gpu_startup_results"] = gpu_startup_results
+            result["gpu_manager"] = True
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ GPU 메모리 관리자 시작 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "gpu_manager": True,
+                "timestamp": time.time()
+            }
+
     async def optimize_memory(self, aggressive: bool = False, **kwargs) -> Dict[str, Any]:
         """
         🔥 VirtualFittingStep에서 필요한 핵심 optimize_memory 메서드
@@ -1183,6 +1444,45 @@ class GPUMemoryManager(MemoryManager):
             self.logger.warning(f"⚠️ GPU 캐시 정리 실패: {e}")
             return {"success": False, "error": str(e)}
 
+    def optimize_startup(self, aggressive: bool = False) -> Dict[str, Any]:
+        """GPU 메모리 관리자 시작 최적화 (기존 호환성 유지)"""
+        try:
+            # 부모 클래스의 optimize_startup 호출
+            result = super().optimize_startup(aggressive)
+            
+            # GPU 특화 시작 최적화 추가
+            gpu_startup_results = []
+            
+            # GPU 메모리 사전 정리
+            try:
+                self.clear_cache()
+                gpu_startup_results.append("GPU 캐시 사전 정리 완료")
+            except Exception as e:
+                gpu_startup_results.append(f"GPU 캐시 정리 실패: {e}")
+            
+            # GPU 메모리 사용량 체크
+            try:
+                usage = self.check_memory_usage()
+                if usage.get('memory_limit_gb', 0) > 0:
+                    gpu_startup_results.append(f"GPU 메모리 한계: {usage['memory_limit_gb']:.1f}GB")
+            except Exception as e:
+                gpu_startup_results.append(f"GPU 메모리 체크 실패: {e}")
+            
+            # 결과 병합
+            result["gpu_startup_results"] = gpu_startup_results
+            result["gpu_manager"] = True
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ GPU 메모리 관리자 시작 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "gpu_manager": True,
+                "timestamp": time.time()
+            }
+
     def check_memory_usage(self):
         """메모리 사용량 확인 (기존 메서드명 유지)"""
         try:
@@ -1407,6 +1707,54 @@ def optimize_memory_usage(device: str = None, aggressive: bool = False) -> Dict[
             "error": str(e),
             "device": device or "unknown"
         }
+# ==============================================
+# 🔥 새로운 팩토리 함수 업데이트 (여기에 추가!) ← 이 위치에 추가
+# ==============================================
+
+def create_startup_optimized_memory_manager(
+    device: str = "auto",
+    aggressive_startup: bool = False,
+    **kwargs
+) -> MemoryManager:
+    """시작 최적화된 메모리 관리자 생성"""
+    try:
+        manager = MemoryManager(device=device, **kwargs)
+        
+        # 시작 시 즉시 최적화 실행
+        startup_result = manager.optimize_startup(aggressive=aggressive_startup)
+        
+        if startup_result.get("success", False):
+            logger.info("✅ 시작 최적화된 메모리 관리자 준비 완료")
+        else:
+            logger.warning("⚠️ 시작 최적화 일부 실패, 기본 모드로 계속")
+        
+        return manager
+        
+    except Exception as e:
+        logger.warning(f"⚠️ 시작 최적화 메모리 관리자 생성 실패: {e}")
+        # 폴백: 기본 메모리 관리자 반환
+        return MemoryManager(device="cpu")
+
+def fix_main_py_startup_error():
+    """main.py 시작 오류 임시 수정 함수"""
+    try:
+        # 전역 메모리 관리자에 optimize_startup 메서드 확실히 존재하는지 확인
+        manager = get_memory_manager()
+        
+        if not hasattr(manager, 'optimize_startup'):
+            # 메서드가 없으면 동적으로 추가
+            def temp_optimize_startup(aggressive=False):
+                logger.warning("⚠️ 임시 optimize_startup 메서드 사용 (main.py 오류 회피)")
+                return manager.optimize_memory(aggressive=aggressive)
+            
+            setattr(manager, 'optimize_startup', temp_optimize_startup)
+            logger.info("✅ 임시 optimize_startup 메서드 추가 완료")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ main.py 시작 오류 수정 실패: {e}")
+        return False
 
 # ==============================================
 # 🔥 편의 함수들
@@ -1748,7 +2096,11 @@ __all__ = [
     'PSUTIL_AVAILABLE',
     'NUMPY_AVAILABLE'
 ]
-
+# __all__ 업데이트 (여기에 추가!) ← 이 위치에 추가
+__all__.extend([
+    'create_startup_optimized_memory_manager',
+    'fix_main_py_startup_error'
+])
 # ==============================================
 # 🔥 모듈 로드 완료 (GitHub 프로젝트 최적화)
 # ==============================================

@@ -111,33 +111,3 @@ backup_*/
 # MacOS specific
 .AppleDouble
 .LSOverride
-
-# 정리된 디렉토리들
-backups/
-logs/
-reports/
-temp/
-cache/
-
-# AI 모델 파일들
-backend/ai_models/individual_models/
-*.pth
-*.bin
-*.safetensors
-*.ckpt
-*.h5
-
-# 시스템 파일들
-.DS_Store
-Thumbs.db
-*.pyc
-__pycache__/
-
-# 로그 파일들
-*.log
-pipeline.log
-
-# 백업 파일들
-*.backup*
-*.bak
-*~
