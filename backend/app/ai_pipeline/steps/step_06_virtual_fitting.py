@@ -618,9 +618,12 @@ class ModelProviderAdapter:
                     model_path,
                     torch_dtype=torch.float32,  # M3 Max 안정성
                     use_safetensors=True,
-                    local_files_only=True  # 로컬 파일만 사용
+                    local_files_only=True,  # 로컬 파일만 사용
+                    use_auth_token=False,   # 인증 토큰 사용 안함
+                    trust_remote_code=False,  # 원격 코드 실행 안함
+                    force_download=False,   # 강제 다운로드 안함
+                    resume_download=False   # 재시작 다운로드 안함
                 )
-                
                 # 디바이스 설정
                 device = "mps" if torch.backends.mps.is_available() else "cpu"
                 unet = unet.to(device)
