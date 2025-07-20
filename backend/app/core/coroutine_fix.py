@@ -42,26 +42,6 @@ class CoroutineFixer:
         return sync_wrapper
     
     @staticmethod
-    def fix_step_class(step_class: Any) -> Any:
-        """
-        Step 클래스의 모든 async 메서드를 동기 메서드로 변환
-        """
-        if not hasattr(step_class, '__dict__'):
-            return step_class
-        
-        for attr_name in dir(step_class):
-            if attr_name.startswith('_'):
-                continue
-                
-            attr = getattr(step_class, attr_name, None)
-            if attr and asyncio.iscoroutinefunction(attr):
-                logger.info(f"🔧 {step_class.__name__}.{attr_name} -> 동기 버전으로 변환")
-                sync_version = CoroutineFixer.fix_coroutine_call(attr)
-                setattr(step_class, attr_name, sync_version)
-        
-        return step_class
-    
-    @staticmethod
     def patch_base_step_mixin():
         """
         BaseStepMixin의 워밍업 관련 메서드들을 안전하게 패치
@@ -117,50 +97,6 @@ def apply_coroutine_fixes():
     if CoroutineFixer.patch_base_step_mixin():
         logger.info("✅ BaseStepMixin 패치 완료")
     
-    # 2. Step 클래스들 패치
-    step_modules = [
-        'backend.app.ai_pipeline.steps.step_01_human_parsing',
-        'backend.app.ai_pipeline.steps.step_02_pose_estimation', 
-        'backend.app.ai_pipeline.steps.step_03_cloth_segmentation',
-        'backend.app.ai_pipeline.steps.step_04_geometric_matching',
-        'backend.app.ai_pipeline.steps.step_05_cloth_warping',
-        'backend.app.ai_pipeline.steps.step_06_virtual_fitting',
-        'backend.app.ai_pipeline.steps.step_07_post_processing',
-        'backend.app.ai_pipeline.steps.step_08_quality_assessment'
-    ]
-    
-    fixed_count = 0
-    for module_name in step_modules:
-        try:
-            module = __import__(module_name, fromlist=[''])
-            
-            # 모듈의 모든 클래스 확인
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (inspect.isclass(attr) and 
-                    attr_name.endswith('Step') and 
-                    hasattr(attr, '__init__')):
-                    
-                    CoroutineFixer.fix_step_class(attr)
-                    fixed_count += 1
-                    logger.info(f"✅ {attr_name} 클래스 패치 완료")
-                    
-        except ImportError:
-            logger.debug(f"모듈 import 실패: {module_name}")
-        except Exception as e:
-            logger.warning(f"모듈 패치 실패 {module_name}: {e}")
-    
-    logger.info(f"🎉 Coroutine 수정 완료: {fixed_count}개 클래스 패치됨")
-    return fixed_count > 0
-
-# 자동 적용
-if __name__ == "__main__":
-    apply_coroutine_fixes()
-
-# 모듈 import 시 자동 실행
-try:
-    apply_coroutine_fixes()
-except Exception as e:
-    logger.error(f"자동 Coroutine 수정 실패: {e}")
+    return True
 
 __all__ = ['CoroutineFixer', 'apply_coroutine_fixes']
