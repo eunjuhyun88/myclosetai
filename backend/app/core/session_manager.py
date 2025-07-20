@@ -619,6 +619,14 @@ def get_session_manager() -> SessionManager:
     
     return _session_manager_instance
 
+# cleanup_session_manager 함수 추가
+async def cleanup_session_manager():
+    await cleanup_global_session_manager()
+
+    if 'cleanup_session_manager' not in __all__:
+        __all__.append('cleanup_session_manager')
+    print("✅ cleanup_session_manager 함수 추가 완료")
+
 async def cleanup_global_session_manager():
     """전역 세션 매니저 정리 (서버 종료 시)"""
     global _session_manager_instance

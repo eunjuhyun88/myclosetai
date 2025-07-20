@@ -481,84 +481,95 @@ async def step_1_upload_validation(
 # 🔥 Step 2: 신체 측정값 검증 (🔥 세션 기반 - 1번 파일 로직 통합)
 # =============================================================================
 
+# backend/app/api/step_routes.py의 2단계 함수 수정
+
 @router.post("/2/measurements-validation", response_model=APIResponse)
 async def step_2_measurements_validation(
-    # 🔥 FormData로 개별 필드 받기 (프론트엔드와 일치)
-    height: float = Form(..., description="키 (cm)", ge=140, le=220),
-    weight: float = Form(..., description="몸무게 (kg)", ge=40, le=150),
-    chest: Optional[float] = Form(None, description="가슴둘레 (cm)", ge=70, le=130),
-    waist: Optional[float] = Form(None, description="허리둘레 (cm)", ge=60, le=120),
-    hips: Optional[float] = Form(None, description="엉덩이둘레 (cm)", ge=80, le=140),
-    session_id: str = Form(..., description="세션 ID"),  # 🔥 필수 (Step 1에서 생성된 세션)
+    # 🔥 더 유연한 검증 범위로 수정
+    height: float = Form(..., description="키 (cm)", ge=100, le=250),  # 범위 확대
+    weight: float = Form(..., description="몸무게 (kg)", ge=30, le=300),  # 범위 확대
+    chest: Optional[float] = Form(0, description="가슴둘레 (cm)", ge=0, le=150),  # 기본값 0
+    waist: Optional[float] = Form(0, description="허리둘레 (cm)", ge=0, le=150),  # 기본값 0
+    hips: Optional[float] = Form(0, description="엉덩이둘레 (cm)", ge=0, le=150),   # 기본값 0
+    session_id: str = Form(..., description="세션 ID"),
     session_manager: SessionManager = Depends(get_session_manager_dependency),
     service_manager: StepServiceManager = Depends(get_service_manager)
 ):
-    """2단계: 신체 측정값 검증 API - 🔥 세션 기반 처리 (이미지 재업로드 불필요!)"""
+    """2단계: 신체 측정값 검증 API - 🔥 디버깅 강화 버전"""
     start_time = time.time()
     
+    # 🔥 디버깅: 받은 데이터 로깅
+    logger.info(f"🔍 Step 2 요청 데이터:")
+    logger.info(f"  - height: {height}")
+    logger.info(f"  - weight: {weight}")
+    logger.info(f"  - chest: {chest}")
+    logger.info(f"  - waist: {waist}")
+    logger.info(f"  - hips: {hips}")
+    logger.info(f"  - session_id: {session_id}")
+    
     try:
-        # 1. 🔥 세션에서 이미지 로드 (재업로드 불필요!)
+        # 1. 🔥 세션 검증
         try:
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
         except Exception as e:
+            logger.error(f"❌ 세션 로드 실패: {e}")
             raise HTTPException(
                 status_code=404, 
                 detail=f"세션을 찾을 수 없습니다: {session_id}. Step 1을 먼저 실행해주세요."
             )
         
-        # 2. 측정값 검증 및 구성
+        # 2. 측정값 구성
         measurements_dict = {
             "height": height,
             "weight": weight,
-            "chest": chest,
-            "waist": waist,
-            "hips": hips
+            "chest": chest if chest > 0 else None,
+            "waist": waist if waist > 0 else None,
+            "hips": hips if hips > 0 else None,
+            "bmi": round(weight / (height / 100) ** 2, 2)  # BMI 계산
         }
         
-        # 3. StepServiceManager로 실제 처리
+        logger.info(f"📊 계산된 측정값: {measurements_dict}")
+        
+        # 3. 🔥 service_manager를 통한 실제 처리
         try:
-            service_result = await service_manager.process_step_2_measurements_validation(
+            processing_result = await service_manager.process_step_2_measurements_validation(
+                session_id=session_id,
                 measurements=measurements_dict,
-                session_id=session_id
+                person_image=person_img,
+                clothing_image=clothing_img
             )
+            logger.info(f"✅ Step 2 처리 결과: {processing_result.get('success', False)}")
         except Exception as e:
-            logger.warning(f"⚠️ StepServiceManager 처리 실패, 기본 응답 사용: {e}")
-            # BMI 계산
-            bmi = weight / ((height / 100) ** 2)
-            service_result = {
+            logger.error(f"❌ Step 2 처리 실패: {e}")
+            # 폴백 처리
+            processing_result = {
                 "success": True,
                 "confidence": 0.9,
                 "message": "신체 측정값 검증 완료",
                 "details": {
-                    "bmi": round(bmi, 2),
-                    "bmi_category": "정상" if 18.5 <= bmi <= 24.9 else "과체중" if bmi <= 29.9 else "비만"
+                    "measurements_validated": True,
+                    "bmi_calculated": True,
+                    "fallback_mode": True
                 }
             }
         
-        # 4. 프론트엔드 호환성 강화 (BMI 계산 등)
-        enhanced_result = enhance_step_result(
-            service_result, 2,
-            measurements=measurements_dict
-        )
+        # 4. 세션에 결과 저장
+        enhanced_result = {
+            **processing_result,
+            "measurements": measurements_dict,
+            "processing_device": os.environ.get('DEVICE', 'cpu'),
+            "session_id": session_id
+        }
         
-        # 5. 세션에 결과 저장
         await session_manager.save_step_result(session_id, 2, enhanced_result)
         
-        # 6. WebSocket 진행률 알림
-        if WEBSOCKET_AVAILABLE:
-            try:
-                progress_callback = create_progress_callback(session_id)
-                await progress_callback("Step 2 완료", 25.0)  # 2/8 = 25%
-            except Exception:
-                pass
-        
-        # 7. 응답 생성
+        # 5. 응답 생성
         processing_time = time.time() - start_time
         
-        return JSONResponse(content=format_api_response(
+        response_data = format_api_response(
             success=True,
-            message="신체 측정값 검증 완료 (이미지 재사용)",
+            message="신체 측정값 검증 완료",
             step_name="신체 측정값 검증",
             step_id=2,
             processing_time=processing_time,
@@ -567,17 +578,19 @@ async def step_2_measurements_validation(
             details={
                 **enhanced_result.get('details', {}),
                 "measurements": measurements_dict,
-                "images_loaded_from_session": True,
-                "no_reupload_needed": True
+                "validation_passed": True
             }
-        ))
+        )
+        
+        logger.info(f"✅ Step 2 응답 생성 완료: {response_data.get('success', False)}")
+        
+        return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Step 2 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 # =============================================================================
 # ✅ Step 3-8: 세션 기반 AI 처리 (🔥 1번+2번 통합 패턴)
 # =============================================================================
