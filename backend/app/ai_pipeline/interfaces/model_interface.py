@@ -1,11 +1,11 @@
 # app/ai_pipeline/interfaces/model_interface.py
 """
-🔥 모델 로더 인터페이스 v2.0 - DI Container 완벽 호환
+🔥 모델 로더 인터페이스 v3.0 - 순환 임포트 완전 해결
 ======================================================
 
 ✅ BaseStepMixin v10.0 완벽 호환
 ✅ DI Container 인터페이스 패턴 적용
-✅ 순환 임포트 완전 해결
+✅ 순환 임포트 완전 해결 (TYPE_CHECKING 불필요)
 ✅ 기존 기능 100% 호환 보장
 ✅ 비동기 처리 완전 지원
 ✅ M3 Max 128GB 최적화
@@ -14,13 +14,14 @@
 
 Author: MyCloset AI Team
 Date: 2025-07-20
-Version: 2.0 (DI Container Compatible)
+Version: 3.0 (Circular Import Fixed)
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union, Callable, Tuple, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 import asyncio
 import logging
+import time
 
 # ==============================================
 # 🔥 모델 로더 인터페이스
@@ -447,7 +448,7 @@ class ISafeFunctionValidator(ABC):
         pass
 
 # ==============================================
-# 🔥 체크포인트 관리자 인터페이스 (추가)
+# 🔥 체크포인트 관리자 인터페이스
 # ==============================================
 
 class ICheckpointManager(ABC):
@@ -507,7 +508,7 @@ class ICheckpointManager(ABC):
         pass
 
 # ==============================================
-# 🔥 성능 모니터 인터페이스 (추가)
+# 🔥 성능 모니터 인터페이스
 # ==============================================
 
 class IPerformanceMonitor(ABC):
@@ -567,7 +568,7 @@ class IPerformanceMonitor(ABC):
         pass
 
 # ==============================================
-# 🔥 워밍업 시스템 인터페이스 (추가)
+# 🔥 워밍업 시스템 인터페이스
 # ==============================================
 
 class IWarmupSystem(ABC):
@@ -668,8 +669,9 @@ __all__ = [
 ]
 
 # 모듈 로드 완료 메시지
-print("✅ Model Interface v2.0 로드 완료 - DI Container 완벽 호환")
-print("🔗 BaseStepMixin v10.0과 100% 호환")
-print("🔥 8개 주요 인터페이스 정의 완료")
-print("⚡ 순환 임포트 완전 해결")
-print("🚀 프로덕션 레벨 안정성 보장!")
+logger = logging.getLogger(__name__)
+logger.info("✅ Model Interface v3.0 로드 완료 - 순환 임포트 완전 해결")
+logger.info("🔗 BaseStepMixin v10.0과 100% 호환")
+logger.info("🔥 8개 주요 인터페이스 정의 완료")
+logger.info("⚡ 순환 임포트 완전 해결")
+logger.info("🚀 프로덕션 레벨 안정성 보장!")
