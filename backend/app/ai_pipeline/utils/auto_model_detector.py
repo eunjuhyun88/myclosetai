@@ -1787,7 +1787,7 @@ class RealWorldModelDetector:
     def detect_all_models(
         self,
         force_rescan: bool = True,
-        min_confidence: float = 0.02,  # 극도로 완화된 임계값
+        min_confidence: float = 0.2,  # 극도로 완화된 임계값
         categories_filter: Optional[List[ModelCategory]] = None,
         enable_detailed_analysis: bool = False,
         max_models_per_category: Optional[int] = None,
@@ -3244,7 +3244,7 @@ def quick_real_model_detection(**kwargs) -> Dict[str, DetectedModel]:
         
         return detector.detect_all_models(
             force_rescan=True,
-            min_confidence=0.02,  # 극도로 완화된 임계값
+            min_confidence=0.2,  # 극도로 완화된 임계값
             enable_detailed_analysis=False,
             prioritize_backend_models=True
         )
@@ -3266,7 +3266,7 @@ def comprehensive_model_detection(**kwargs) -> Dict[str, DetectedModel]:
         
         return detector.detect_all_models(
             force_rescan=True,
-            min_confidence=0.02,
+            min_confidence=0.2,
             enable_detailed_analysis=True,
             prioritize_backend_models=True
         )
