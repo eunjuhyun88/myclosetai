@@ -306,6 +306,7 @@ class DeviceManager:
     """디바이스 관리자 - conda/M3 Max 최적화"""
     
     def __init__(self):
+        
         self.logger = logging.getLogger(f"{__name__}.DeviceManager")
         self.available_devices = self._detect_available_devices()
         self.optimal_device = self._select_optimal_device()
