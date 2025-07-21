@@ -897,7 +897,11 @@ class PipelineAPIClient {
       };
 
       if (options.body instanceof FormData) {
-        delete requestOptions.headers!['Content-Type'];
+        // FormData일 때는 Content-Type을 자동으로 설정되도록 제거
+        if (requestOptions.headers && 'Content-Type' in requestOptions.headers) {
+          const headers = requestOptions.headers as Record<string, string>;
+          delete headers['Content-Type'];
+        }
       }
 
       if (this.config.enableDebug) {
