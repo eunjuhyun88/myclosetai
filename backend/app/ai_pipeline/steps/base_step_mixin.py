@@ -164,10 +164,20 @@ def safe_async_wrapper(func):
 class SafeConfig:
     """안전한 설정 관리자"""
     
-    def __init__(self, config_data: Optional[Dict[str, Any]] = None):
+    def __init__(self, config_data: Optional[Dict[str, Any]] = None, **kwargs):  # ✅ **kwargs 추가
         self._data = config_data or {}
         self._lock = threading.RLock()
         
+        # 기본 설정값들 (kwargs에서 가져오기)
+        self.strict_mode = kwargs.get('strict_mode', True)
+        self.fallback_enabled = kwargs.get('fallback_enabled', False)
+        self.real_ai_only = kwargs.get('real_ai_only', True)
+        self.confidence_threshold = kwargs.get('confidence_threshold', 0.8)
+        self.visualization_enabled = kwargs.get('visualization_enabled', True)
+        self.return_analysis = kwargs.get('return_analysis', True)
+        self.cache_enabled = kwargs.get('cache_enabled', True)
+        self.detailed_analysis = kwargs.get('detailed_analysis', True)
+       
         # 설정 검증 및 속성 자동 설정
         with self._lock:
             for key, value in self._data.items():

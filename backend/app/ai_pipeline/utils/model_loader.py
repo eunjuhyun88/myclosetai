@@ -311,10 +311,14 @@ class DeviceManager:
         self.available_devices = self._detect_available_devices()
         self.optimal_device = self._select_optimal_device()
         self.is_m3_max = IS_M3_MAX
-        self.conda_env = CONDA_ENV
-        self.is_conda = 'CONDA_DEFAULT_ENV' in os.environ  # 추가 필요
+        
+        # 🔥 conda 환경 정보 정리 (중복 제거)
         self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
-        self.is_conda = 'CONDA_DEFAULT_ENV' in os.environ or 'CONDA_PREFIX' in os.environ
+        self.is_conda = bool(os.environ.get('CONDA_DEFAULT_ENV')) or bool(os.environ.get('CONDA_PREFIX'))
+        
+        # 🔥 추가 속성들
+        self.conda_prefix = os.environ.get('CONDA_PREFIX')
+        self.env_name = self.conda_env if self.conda_env != 'mycloset-ai' else None
         
     def _detect_available_devices(self) -> List[str]:
         """사용 가능한 디바이스 탐지 - conda 환경 고려"""
