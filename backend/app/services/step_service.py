@@ -1442,7 +1442,11 @@ __all__ = [
     
     # 스키마
     "BodyMeasurements",
-    "ServiceBodyMeasurements"
+    "ServiceBodyMeasurements",
+    
+    # 호환성 별칭들 (중요!)
+    "PipelineService",  # ✅ 누락된 중요 별칭
+    "StepServiceManager"  # ✅ 중요 별칭
 ]
 
 # ==============================================
@@ -2051,13 +2055,10 @@ def convert_image_to_base64(image) -> str:
 # 스키마 별칭
 ServiceBodyMeasurements = BodyMeasurements  # 기존 호환성 별칭
 
-# ==============================================
-# 🔥 호환성을 위한 별칭들
-# ==============================================
-
-# 기존 이름 별칭들
+# 호환성을 위한 별칭들
 StepServiceManager = UnifiedStepServiceManager  # 기존 이름 별칭
 PipelineManagerService = PipelineManagerService  # 이미 정의됨
+PipelineService = UnifiedStepServiceManager  # ✅ 누락된 중요 별칭 추가!
 
 # ==============================================
 # 🔥 모듈 로드 완료 메시지

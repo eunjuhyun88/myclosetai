@@ -1,3 +1,26 @@
+#!/bin/bash
+# apply_gpu_config.sh - GPU Config 파일 교체 스크립트
+
+echo "🔧 MyCloset AI GPU Config 파일 업데이트 시작..."
+
+# 현재 디렉토리 확인
+if [ ! -d "backend/app/core" ]; then
+    echo "❌ backend/app/core 디렉토리가 없습니다."
+    echo "   mycloset-ai 프로젝트 루트에서 실행해주세요."
+    exit 1
+fi
+
+# 기존 파일 백업
+BACKUP_FILE="backend/app/core/gpu_config.py.backup.$(date +%Y%m%d_%H%M%S)"
+if [ -f "backend/app/core/gpu_config.py" ]; then
+    echo "📋 기존 파일 백업 중..."
+    cp backend/app/core/gpu_config.py "$BACKUP_FILE"
+    echo "   백업 완료: $BACKUP_FILE"
+fi
+
+# 새 파일 생성
+echo "🛠 새 GPU Config 파일 생성 중..."
+cat > backend/app/core/gpu_config.py << 'EOF'
 """
 🍎 MyCloset AI - 완전한 GPU 설정 매니저 (우리 구조 100% 최적화)
 =================================================================================
@@ -236,7 +259,6 @@ class HardwareDetector:
         self._lock = threading.Lock()
         
         # 기본 시스템 정보
-        self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'base')
         self.system_info = self._get_system_info()
         self.is_m3_max = self._detect_m3_max()
         self.memory_gb = self._get_system_memory()
@@ -1018,3 +1040,41 @@ __all__ = [
     'get_device_capabilities', 'safe_mps_empty_cache',
     'OptimizationLevel', 'DeviceType'
 ]
+EOF
+
+echo "✅ 새 GPU Config 파일 생성 완료"
+
+# 파일 권한 설정
+chmod 644 backend/app/core/gpu_config.py
+
+# 검증 테스트
+echo "🧪 GPU Config 파일 검증 중..."
+cd backend
+python -c "
+try:
+    from app.core.gpu_config import GPUConfig, get_device, safe_mps_empty_cache
+    print('✅ GPU Config import 성공')
+    print(f'   디바이스: {get_device()}')
+    
+    # safe_mps_empty_cache 테스트
+    result = safe_mps_empty_cache()
+    print(f'   MPS 캐시 정리: {result[\"method\"]}')
+    
+    # DeviceManager conda_env 속성 테스트
+    from app.core.gpu_config import DeviceManager
+    dm = DeviceManager()
+    print(f'   conda_env 속성: {hasattr(dm, \"conda_env\")}')
+    
+except Exception as e:
+    print(f'❌ GPU Config 검증 실패: {e}')
+"
+
+echo ""
+echo "🎉 GPU Config 파일 교체 완료!"
+echo ""
+echo "📋 다음 단계:"
+echo "1. 서버 재시작: python app/main.py"
+echo "2. 로그에서 'conda_env' 오류가 사라졌는지 확인"
+echo "3. MPS 메모리 정리 기능 정상 작동 확인"
+echo ""
+echo "📄 백업 파일: $BACKUP_FILE"

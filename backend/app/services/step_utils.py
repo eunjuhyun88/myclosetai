@@ -287,6 +287,7 @@ class StepErrorHandler:
                 "original_error": str(error),
                 "recovery_suggested": False
             }
+        
     
     def get_error_summary(self) -> Dict[str, Any]:
         """에러 요약"""
@@ -393,6 +394,36 @@ def get_error_handler() -> StepErrorHandler:
     
     return _global_error_handler
 
+def handle_error(self, error: Exception, context: Dict[str, Any] = None) -> Dict[str, Any]:
+    """에러 처리 메서드 (누락된 메서드 추가)"""
+    try:
+        import traceback
+        from datetime import datetime
+        
+        context = context or {}
+        error_info = {
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "timestamp": datetime.now().isoformat(),
+            "context": context,
+            "traceback": traceback.format_exc() if hasattr(traceback, 'format_exc') else None
+        }
+        
+        # 로깅
+        if hasattr(self, 'logger'):
+            self.logger.error(f"❌ 에러 처리: {error_info['error_type']}: {error_info['error_message']}")
+        
+        return error_info
+        
+    except Exception as e:
+        # 최후의 폴백
+        return {
+            "error_type": "ErrorHandlerFailure",
+            "error_message": f"에러 핸들러 자체 실패: {str(e)}",
+            "original_error": str(error),
+            "timestamp": datetime.now().isoformat() if 'datetime' in locals() else "unknown",
+            "context": context
+        }
 # ==============================================
 # 🔥 세션 관리 헬퍼 (통합 버전)
 # ==============================================

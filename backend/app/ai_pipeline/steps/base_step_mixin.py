@@ -1080,7 +1080,7 @@ class BaseStepMixin:
                 self._setup_performance_monitoring()
                 
                 # ModelLoader 인터페이스 (DI 기반) - 🔥 비동기 처리 해결
-                self._setup_model_interface()
+                self._setup_model_interface_safe()
                 
                 # 체크포인트 탐지 및 연동
                 self._setup_checkpoint_detection()
@@ -1497,7 +1497,64 @@ class BaseStepMixin:
             self.logger.error(f"❌ 성능 모니터링 설정 실패: {e}")
             self.performance_monitor = None
     
+    def _setup_model_interface_safe(self):
+        """ModelLoader 인터페이스 설정 (동기 안전) - 🔥 coroutine 경고 완전 해결"""
+        try:
+            self.logger.info(f"🔗 {self.step_name} ModelLoader 인터페이스 설정 중...")
+            
+            # Step 인터페이스 생성 (ModelLoader가 있는 경우)
+            if hasattr(self, 'model_loader') and self.model_loader:
+                try:
+                    if hasattr(self.model_loader, 'create_step_interface'):
+                        # 🔥 비동기 함수인지 확인하고 적절히 처리
+                        create_method = self.model_loader.create_step_interface
+                        
+                        if asyncio.iscoroutinefunction(create_method):
+                            # 비동기 함수인 경우 - 동기 초기화에서는 처리하지 않음
+                            self.logger.warning("⚠️ create_step_interface가 비동기 함수임 - 나중에 비동기로 처리 필요")
+                            self.step_interface = None
+                            self._pending_async_setup = True  # 나중에 비동기 설정 필요 표시
+                        else:
+                            # 동기 함수인 경우 직접 호출
+                            self.step_interface = create_method(self.step_name)
+                            self._pending_async_setup = False
+                            self.logger.info("✅ Step 인터페이스 생성 성공")
+                    else:
+                        self.step_interface = None
+                        self._pending_async_setup = False
+                        self.logger.warning("⚠️ ModelLoader에 create_step_interface 메서드 없음")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Step 인터페이스 생성 실패: {e}")
+                    self.step_interface = None
+                    self._pending_async_setup = False
+            else:
+                self.step_interface = None
+                self._pending_async_setup = False
+            
+            # 모델 관련 속성 초기화
+            self._ai_model = None
+            self._ai_model_name = None
+            self.loaded_models = {}
+            self.model_cache = {}
+            
+            # 연동 상태 로깅
+            loader_status = "✅ 연결됨" if hasattr(self, 'model_loader') and self.model_loader else "❌ 연결 실패"
+            interface_status = "✅ 연결됨" if self.step_interface else "❌ 연결 실패"
+            
+            self.logger.info(f"🔗 ModelLoader 연동 결과:")
+            self.logger.info(f"   - ModelLoader: {loader_status}")
+            self.logger.info(f"   - Step Interface: {interface_status}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 인터페이스 설정 실패: {e}")
+            self.step_interface = None
+            self._pending_async_setup = False
+    
     def _setup_model_interface(self):
+        """ModelLoader 인터페이스 설정 (기존 호환성) - 🔥 비동기 처리 해결"""
+        # 🔥 서브클래스에서 비동기로 오버라이드할 수 있는 메서드
+        # 하지만 기본 구현은 동기 안전 버전 호출
+        self._setup_model_interface_safe()
         """ModelLoader 인터페이스 설정 (DI 기반) - 🔥 비동기 처리 해결"""
         try:
             self.logger.info(f"🔗 {self.step_name} ModelLoader 인터페이스 설정 중...")
@@ -1577,6 +1634,20 @@ class BaseStepMixin:
             
         except Exception as e:
             self.logger.error(f"❌ ModelLoader 인터페이스 비동기 설정 실패: {e}")
+            return False
+    
+    def has_pending_async_setup(self) -> bool:
+        """비동기 설정이 대기 중인지 확인"""
+        return getattr(self, '_pending_async_setup', False)
+    
+    async def complete_async_setup(self) -> bool:
+        """대기 중인 비동기 설정 완료"""
+        try:
+            if self.has_pending_async_setup():
+                return await self._setup_model_interface_async()
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 설정 완료 실패: {e}")
             return False
     
     def _setup_checkpoint_detection(self):
