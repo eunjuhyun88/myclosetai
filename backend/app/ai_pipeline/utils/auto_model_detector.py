@@ -2970,7 +2970,199 @@ class AdvancedModelLoaderAdapter:
                 "usage_analytics": True
             }
         }
+# backend/app/ai_pipeline/utils/auto_model_detector_missing_functions.py
+"""
+auto_model_detector에 누락된 함수들 추가
+ModelLoader와의 호환성 확보
+"""
 
+import logging
+from typing import Dict, Any, Optional, List
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# ==============================================
+# 🔥 누락된 함수들 구현
+# ==============================================
+
+def quick_model_detection(**kwargs) -> Dict[str, Any]:
+    """빠른 모델 탐지 - ModelLoader에서 사용"""
+    try:
+        # auto_model_detector에서 RealWorldModelDetector 임포트
+        from .auto_model_detector import create_real_world_detector
+        
+        detector = create_real_world_detector(
+            enable_pytorch_validation=kwargs.get('enable_pytorch_validation', False),
+            enable_detailed_analysis=kwargs.get('enable_detailed_analysis', False),
+            **kwargs
+        )
+        
+        # 빠른 탐지 실행
+        detected_models = detector.detect_all_models(
+            force_rescan=False,
+            min_confidence=kwargs.get('min_confidence', 0.5),
+            enable_detailed_analysis=False,
+            prioritize_backend_models=kwargs.get('prioritize_backend_models', True)
+        )
+        
+        # Step 필터링 (옵션)
+        step_filter = kwargs.get('step_filter')
+        if step_filter:
+            filtered_models = {}
+            for name, model in detected_models.items():
+                if hasattr(model, 'step_name') and model.step_name == step_filter:
+                    filtered_models[name] = model
+            return filtered_models
+        
+        return detected_models
+        
+    except Exception as e:
+        logger.error(f"❌ 빠른 모델 탐지 실패: {e}")
+        return {}
+
+def comprehensive_model_detection(**kwargs) -> Dict[str, Any]:
+    """포괄적인 모델 탐지 - 모든 기능 활성화"""
+    try:
+        from .auto_model_detector import create_real_world_detector
+        
+        detector = create_real_world_detector(
+            enable_pytorch_validation=True,
+            enable_detailed_analysis=True,
+            enable_performance_profiling=kwargs.get('enable_performance_profiling', True),
+            enable_memory_monitoring=kwargs.get('enable_memory_monitoring', True),
+            **kwargs
+        )
+        
+        return detector.detect_all_models(
+            force_rescan=True,
+            min_confidence=kwargs.get('min_confidence', 0.1),
+            enable_detailed_analysis=True,
+            prioritize_backend_models=kwargs.get('prioritize_backend_models', True)
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ 포괄적인 모델 탐지 실패: {e}")
+        return {}
+
+def generate_advanced_model_loader_config(detector=None) -> Dict[str, Any]:
+    """고급 ModelLoader 설정 생성"""
+    try:
+        if detector is None:
+            from .auto_model_detector import create_real_world_detector
+            detector = create_real_world_detector()
+            detector.detect_all_models()
+        
+        from .auto_model_detector import AdvancedModelLoaderAdapter
+        adapter = AdvancedModelLoaderAdapter(detector)
+        return adapter.generate_comprehensive_config(detector.detected_models)
+        
+    except Exception as e:
+        logger.error(f"❌ 고급 설정 생성 실패: {e}")
+        return {"error": str(e)}
+
+def create_real_world_detector(**kwargs):
+    """RealWorldModelDetector 생성 - 설정 통합"""
+    try:
+        from .auto_model_detector import RealWorldModelDetector
+        
+        # 기본 설정
+        default_config = {
+            'enable_pytorch_validation': kwargs.get('enable_pytorch_validation', False),
+            'enable_detailed_analysis': kwargs.get('enable_detailed_analysis', False),
+            'enable_performance_profiling': kwargs.get('enable_performance_profiling', False),
+            'enable_memory_monitoring': kwargs.get('enable_memory_monitoring', False),
+            'device': kwargs.get('device', 'auto'),
+            'memory_threshold': kwargs.get('memory_threshold', 0.8)
+        }
+        
+        # 추가 설정 병합
+        config = {**default_config, **kwargs}
+        
+        return RealWorldModelDetector(**config)
+        
+    except Exception as e:
+        logger.error(f"❌ RealWorldModelDetector 생성 실패: {e}")
+        # 폴백 클래스 반환
+        return _create_fallback_detector()
+
+def _create_fallback_detector():
+    """폴백 탐지기 생성"""
+    class FallbackDetector:
+        def __init__(self):
+            self.detected_models = {}
+            self.device_info = {"device": "cpu", "available": True}
+            
+        def detect_all_models(self, **kwargs):
+            return {}
+        
+        def get_models_summary(self):
+            return {"total_models": 0, "error": "Fallback detector"}
+    
+    return FallbackDetector()
+
+# ==============================================
+# 🔥 호환성 함수들
+# ==============================================
+
+def validate_detector_availability() -> bool:
+    """auto_model_detector 사용 가능성 확인"""
+    try:
+        from .auto_model_detector import RealWorldModelDetector
+        return True
+    except ImportError:
+        return False
+
+def get_detector_status() -> Dict[str, Any]:
+    """탐지기 상태 정보"""
+    return {
+        "available": validate_detector_availability(),
+        "functions": [
+            "quick_model_detection",
+            "comprehensive_model_detection", 
+            "generate_advanced_model_loader_config",
+            "create_real_world_detector"
+        ],
+        "fallback_ready": True
+    }
+
+# ==============================================
+# 🔥 모듈 레벨에서 함수들을 auto_model_detector에 추가
+# ==============================================
+
+def patch_auto_model_detector():
+    """auto_model_detector 모듈에 누락된 함수들 추가"""
+    try:
+        import sys
+        auto_detector_module = sys.modules.get('app.ai_pipeline.utils.auto_model_detector')
+        
+        if auto_detector_module:
+            # 누락된 함수들 추가
+            if not hasattr(auto_detector_module, 'quick_model_detection'):
+                auto_detector_module.quick_model_detection = quick_model_detection
+                logger.info("✅ quick_model_detection 함수 추가")
+            
+            if not hasattr(auto_detector_module, 'comprehensive_model_detection'):
+                auto_detector_module.comprehensive_model_detection = comprehensive_model_detection
+                logger.info("✅ comprehensive_model_detection 함수 추가")
+            
+            if not hasattr(auto_detector_module, 'generate_advanced_model_loader_config'):
+                auto_detector_module.generate_advanced_model_loader_config = generate_advanced_model_loader_config
+                logger.info("✅ generate_advanced_model_loader_config 함수 추가")
+            
+            if not hasattr(auto_detector_module, 'create_real_world_detector'):
+                auto_detector_module.create_real_world_detector = create_real_world_detector
+                logger.info("✅ create_real_world_detector 함수 추가")
+            
+            logger.info("🔧 auto_model_detector 패치 완료")
+            return True
+    except Exception as e:
+        logger.error(f"❌ auto_model_detector 패치 실패: {e}")
+        return False
+
+# 자동 패치 실행
+if __name__ != "__main__":
+    patch_auto_model_detector()
 # ==============================================
 # 🔥 RealModelLoaderConfigGenerator (호환성)
 # ==============================================
