@@ -311,6 +311,9 @@ class DeviceManager:
         self.optimal_device = self._select_optimal_device()
         self.is_m3_max = IS_M3_MAX
         self.conda_env = CONDA_ENV
+        self.is_conda = 'CONDA_DEFAULT_ENV' in os.environ  # 추가 필요
+        self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
+        self.is_conda = 'CONDA_DEFAULT_ENV' in os.environ or 'CONDA_PREFIX' in os.environ
         
     def _detect_available_devices(self) -> List[str]:
         """사용 가능한 디바이스 탐지 - conda 환경 고려"""
@@ -513,8 +516,274 @@ class SafeFunctionValidator:
             return False, None, f"Async call failed: {e}"
 
 # ==============================================
-# 🔥 체크포인트 자동 탐지 및 로딩 클래스
+# 🔥 안전한 모델 서비스 클래스 (ModelLoader에 통합)
 # ==============================================
+
+class SafeModelService:
+    """안전한 모델 서비스"""
+    
+    def __init__(self):
+        self.models = {}
+        self.lock = threading.RLock()
+        self.async_lock = asyncio.Lock()
+        self.validator = SafeFunctionValidator()
+        self.logger = logging.getLogger(f"{__name__}.SafeModelService")
+        self.call_statistics = {}
+        
+    def register_model(self, name: str, model: Any) -> bool:
+        """모델 등록"""
+        try:
+            with self.lock:
+                self.models[name] = model
+                self.call_statistics[name] = {
+                    'calls': 0,
+                    'successes': 0,
+                    'failures': 0,
+                    'last_called': None
+                }
+                self.logger.info(f"📝 모델 등록: {name}")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
+            return False
+    
+    def call_model(self, name: str, *args, **kwargs) -> Any:
+        """모델 호출 - 동기 버전"""
+        try:
+            with self.lock:
+                if name not in self.models:
+                    self.logger.warning(f"⚠️ 모델이 등록되지 않음: {name}")
+                    return None
+                
+                model = self.models[name]
+                
+                if name in self.call_statistics:
+                    self.call_statistics[name]['calls'] += 1
+                    self.call_statistics[name]['last_called'] = time.time()
+                
+                success, result, message = self.validator.safe_call(model, *args, **kwargs)
+                
+                if success:
+                    if name in self.call_statistics:
+                        self.call_statistics[name]['successes'] += 1
+                    return result
+                else:
+                    if name in self.call_statistics:
+                        self.call_statistics[name]['failures'] += 1
+                    return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ 모델 호출 오류 {name}: {e}")
+            return None
+    
+    def list_models(self) -> Dict[str, Dict[str, Any]]:
+        """등록된 모델 목록"""
+        try:
+            with self.lock:
+                result = {}
+                for name in self.models:
+                    result[name] = {
+                        'status': 'registered', 
+                        'type': 'model',
+                        'statistics': self.call_statistics.get(name, {})
+                    }
+                return result
+        except Exception as e:
+            self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
+            return {}
+
+# ==============================================
+# 🔥 이미지 처리 함수들 (ModelLoader에 통합)
+# ==============================================
+
+def preprocess_image(image, target_size=(512, 512), **kwargs):
+    """이미지 전처리"""
+    try:
+        if isinstance(image, str):
+            from PIL import Image
+            image = Image.open(image)
+        
+        if hasattr(image, 'resize'):
+            image = image.resize(target_size)
+        
+        if TORCH_AVAILABLE:
+            import torchvision.transforms as transforms
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                                   std=[0.229, 0.224, 0.225])
+            ])
+            if hasattr(image, 'convert'):
+                image = image.convert('RGB')
+            return transform(image)
+        
+        return image
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 전처리 실패: {e}")
+        return image
+
+def postprocess_segmentation(output, threshold=0.5):
+    """세그멘테이션 후처리"""
+    try:
+        if TORCH_AVAILABLE and hasattr(output, 'cpu'):
+            output = output.cpu().numpy()
+        
+        if hasattr(output, 'squeeze'):
+            output = output.squeeze()
+        
+        if threshold is not None:
+            output = (output > threshold).astype(float)
+        
+        return output
+    except Exception as e:
+        logger.error(f"❌ 세그멘테이션 후처리 실패: {e}")
+        return output
+
+def tensor_to_pil(tensor):
+    """텐서를 PIL 이미지로 변환"""
+    try:
+        if TORCH_AVAILABLE and hasattr(tensor, 'cpu'):
+            tensor = tensor.cpu()
+        
+        if hasattr(tensor, 'numpy'):
+            arr = tensor.numpy()
+        else:
+            arr = tensor
+        
+        if len(arr.shape) == 3 and arr.shape[0] in [1, 3]:
+            arr = arr.transpose(1, 2, 0)
+        
+        if arr.max() <= 1.0:
+            arr = (arr * 255).astype('uint8')
+        
+        from PIL import Image
+        return Image.fromarray(arr)
+    except Exception as e:
+        logger.error(f"❌ 텐서 변환 실패: {e}")
+        return tensor
+
+def pil_to_tensor(image, device="cpu"):
+    """PIL 이미지를 텐서로 변환"""
+    try:
+        if TORCH_AVAILABLE:
+            import torchvision.transforms as transforms
+            transform = transforms.ToTensor()
+            tensor = transform(image)
+            if device != "cpu":
+                tensor = tensor.to(device)
+            return tensor
+        return image
+    except Exception as e:
+        logger.error(f"❌ PIL 변환 실패: {e}")
+        return image
+
+# 추가 이미지 처리 함수들
+def resize_image(image, target_size):
+    """이미지 리사이즈"""
+    try:
+        if hasattr(image, 'resize'):
+            return image.resize(target_size)
+        return image
+    except:
+        return image
+
+def normalize_image(image):
+    """이미지 정규화"""
+    try:
+        if TORCH_AVAILABLE and hasattr(image, 'float'):
+            return image.float() / 255.0
+        return image
+    except:
+        return image
+
+def denormalize_image(image):
+    """이미지 비정규화"""
+    try:
+        if TORCH_AVAILABLE and hasattr(image, 'clamp'):
+            return (image.clamp(0, 1) * 255).byte()
+        return image
+    except:
+        return image
+
+def create_batch(images):
+    """이미지 배치 생성"""
+    try:
+        if TORCH_AVAILABLE:
+            return torch.stack(images)
+        return images
+    except:
+        return images
+
+def image_to_base64(image):
+    """이미지를 base64로 변환"""
+    try:
+        import base64
+        from io import BytesIO
+        
+        if hasattr(image, 'save'):
+            buffer = BytesIO()
+            image.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            return img_str
+        return None
+    except:
+        return None
+
+def base64_to_image(base64_str):
+    """base64를 이미지로 변환"""
+    try:
+        import base64
+        from io import BytesIO
+        from PIL import Image
+        
+        image_data = base64.b64decode(base64_str)
+        image = Image.open(BytesIO(image_data))
+        return image
+    except:
+        return None
+
+def cleanup_image_memory():
+    """이미지 메모리 정리"""
+    try:
+        gc.collect()
+        if TORCH_AVAILABLE and MPS_AVAILABLE:
+            try:
+                if hasattr(torch.mps, 'empty_cache'):
+                    torch.mps.empty_cache()
+                elif hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+            except:
+                pass
+    except:
+        pass
+
+def validate_image_format(image):
+    """이미지 포맷 검증"""
+    try:
+        if hasattr(image, 'mode'):
+            return image.mode in ['RGB', 'RGBA', 'L']
+        return True
+    except:
+        return False
+
+# 추가 전처리 함수들 (Step별 특화)
+def preprocess_pose_input(image, **kwargs):
+    """포즈 추정용 이미지 전처리"""
+    return preprocess_image(image, target_size=(368, 368), **kwargs)
+
+def preprocess_human_parsing_input(image, **kwargs):
+    """인체 파싱용 이미지 전처리"""
+    return preprocess_image(image, target_size=(512, 512), **kwargs)
+
+def preprocess_cloth_segmentation_input(image, **kwargs):
+    """의류 분할용 이미지 전처리"""
+    return preprocess_image(image, target_size=(320, 320), **kwargs)
+
+def preprocess_virtual_fitting_input(image, **kwargs):
+    """가상 피팅용 이미지 전처리"""
+    return preprocess_image(image, target_size=(512, 512), **kwargs)
 
 class AutoModelDetectorIntegration:
     """auto_model_detector 통합 클래스"""

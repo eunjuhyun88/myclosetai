@@ -296,7 +296,89 @@ class StepErrorHandler:
                 "error_types": dict(self.error_counts),
                 "most_common_error": max(self.error_counts.items(), key=lambda x: x[1]) if self.error_counts else None
             }
+# backend/app/services/step_utils.py 또는 관련 파일에 추가
 
+def safe_mps_empty_cache():
+    """M3 Max MPS 캐시 안전 정리"""
+    try:
+        import torch
+        import gc
+        
+        # 일반 가비지 컬렉션
+        gc.collect()
+        
+        # M3 Max MPS 캐시 정리 시도
+        if hasattr(torch, 'mps') and torch.mps.is_available():
+            try:
+                # PyTorch 2.1+ 방식
+                if hasattr(torch.mps, 'empty_cache'):
+                    torch.mps.empty_cache()
+                    return {"success": True, "method": "torch.mps.empty_cache"}
+                
+                # PyTorch 2.0 방식
+                elif hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+                    return {"success": True, "method": "torch.backends.mps.empty_cache"}
+                
+                # 동기화만 수행
+                elif hasattr(torch.mps, 'synchronize'):
+                    torch.mps.synchronize()
+                    return {"success": True, "method": "torch.mps.synchronize"}
+                
+            except (AttributeError, RuntimeError) as e:
+                # MPS 캐시 정리 실패 시 일반 정리만
+                return {"success": True, "method": "gc_only", "warning": str(e)}
+        
+        # CUDA 사용 시
+        elif hasattr(torch, 'cuda') and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            return {"success": True, "method": "cuda_empty_cache"}
+        
+        # CPU만 사용 시
+        return {"success": True, "method": "gc_only"}
+        
+    except Exception as e:
+        # 모든 실패 시 기본 가비지 컬렉션만
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc", "error": str(e)}
+
+# MemoryHelper 클래스 수정
+class MemoryHelper:
+    @staticmethod
+    def optimize_memory():
+        """메모리 최적화 - conda 환경 고려"""
+        try:
+            result = safe_mps_empty_cache()
+            if result["success"]:
+                return result
+            else:
+                raise MemoryError(f"메모리 최적화 실패: {result.get('error', 'Unknown')}")
+        except Exception as e:
+            # 폴백: 기본 가비지 컬렉션
+            import gc
+            gc.collect()
+            return {"success": True, "method": "fallback", "warning": str(e)}
+
+# StepErrorHandler 클래스에 추가
+class StepErrorHandler:
+    @staticmethod
+    def handle_memory_error(error):
+        """메모리 오류 처리"""
+        try:
+            # 안전한 메모리 정리
+            result = safe_mps_empty_cache()
+            return {
+                "handled": True,
+                "method": result.get("method", "unknown"),
+                "original_error": str(error)
+            }
+        except Exception as e:
+            return {
+                "handled": False,
+                "error": str(e),
+                "original_error": str(error)
+            }
 # 전역 에러 핸들러
 _global_error_handler: Optional[StepErrorHandler] = None
 _error_handler_lock = threading.RLock()

@@ -3807,3 +3807,25 @@ __all__ = ['ModelLoader', 'get_global_model_loader', 'ModelConfig', 'ModelType']
 
 # 전역 인스턴스
 auto_detector = RealWorldModelDetector()
+
+# ==============================================
+# 🔧 MyCloset AI 정리된 모델 경로 (2025-07-21 업데이트)
+# ==============================================
+
+# 정리된 모델 경로들 추가
+ORGANIZED_MODEL_PATHS = [
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_01_human_parsing"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_02_pose_estimation"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_03_cloth_segmentation"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_04_geometric_matching"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_05_cloth_warping"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_06_virtual_fitting"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_07_post_processing"),
+    str(Path(__file__).parent.parent.parent.parent / "ai_models/organized/step_08_quality_assessment"),
+]
+
+# 기존 경로에 정리된 경로 추가
+if 'ENHANCED_SEARCH_PATHS' in globals():
+    ENHANCED_SEARCH_PATHS.extend(ORGANIZED_MODEL_PATHS)
+else:
+    ENHANCED_SEARCH_PATHS = ORGANIZED_MODEL_PATHS

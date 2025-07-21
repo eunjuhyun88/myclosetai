@@ -21,6 +21,7 @@ Author: MyCloset AI Team
 Date: 2025-07-21  
 Version: 2.0 (Complete Unified Interface)
 """
+import os  # ✅ 누락된 import 추가
 
 import logging
 import asyncio

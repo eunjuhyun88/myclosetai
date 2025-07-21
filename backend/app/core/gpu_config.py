@@ -1151,7 +1151,7 @@ class GPUConfig:
                         except (AttributeError, RuntimeError, TypeError) as e:
                             logger.debug(f"torch.backends.mps.empty_cache() 실패: {e}")
                             methods_used.append(f"mps_backends_empty_cache_failed_{type(e).__name__}")
-                
+                            pass
                 if not mps_cleaned:
                     methods_used.append("mps_cleanup_unavailable")
             
