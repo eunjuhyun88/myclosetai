@@ -66,6 +66,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 
+
+# 각 파일에 추가할 개선된 코드
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
+
 # 선택적 AI 라이브러리들
 try:
     import rembg
@@ -780,7 +791,7 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # MPS 캐시 정리
             if torch.backends.mps.is_available():
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
             
             self.logger.info("✅ M3 Max 워밍업 완료")
             
@@ -1996,7 +2007,7 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # GPU 메모리 정리
             if self.device == "mps" and torch.backends.mps.is_available():
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
             elif self.device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             

@@ -549,7 +549,7 @@ async def cleanup_pipeline_system():
                 if torch.backends.mps.is_available():
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                     except:
                         pass
                 elif torch.cuda.is_available():

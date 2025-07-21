@@ -455,7 +455,7 @@ class AIVirtualTryOnPipeline:
             if self.device == "cuda":
                 torch.cuda.empty_cache()
             elif self.device == "mps":
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
         gc.collect()
 
     def get_status(self) -> Dict[str, Any]:
@@ -499,7 +499,7 @@ class AIVirtualTryOnPipeline:
             if self.device == "cuda":
                 torch.cuda.empty_cache()
             elif self.device == "mps":
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
         gc.collect()
         
         self.logger.info("✅ AI Pipeline 리소스 정리 완료")

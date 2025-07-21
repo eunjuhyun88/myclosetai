@@ -653,7 +653,7 @@ class StepMemoryManager:
                     elif self.device == "mps" and torch.backends.mps.is_available():
                         try:
                             if hasattr(torch.mps, 'empty_cache'):
-                                torch.mps.empty_cache()
+                                safe_mps_empty_cache()
                             if self.is_m3_max and hasattr(torch.mps, 'synchronize'):
                                 torch.mps.synchronize()
                             cleanup_stats["gpu_cache_cleared"] = True
@@ -1464,7 +1464,7 @@ class UnifiedUtilsManager:
                 elif device == "mps" and torch.backends.mps.is_available():
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                         if SYSTEM_INFO["is_m3_max"] and hasattr(torch.mps, 'synchronize'):
                             torch.mps.synchronize()
                     except Exception as e:
@@ -2569,7 +2569,7 @@ def _create_fallback_memory_manager(step_name: str = None, **kwargs):
                 if self.device == "mps" and torch.backends.mps.is_available():
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                     except Exception:
                         pass
                 elif self.device == "cuda" and torch.cuda.is_available():
@@ -3082,7 +3082,7 @@ def cleanup_on_exit():
             elif device == "mps" and torch.backends.mps.is_available():
                 try:
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                     logger.info("🗑️ MPS 메모리 정리 완료")
                 except Exception as e:
                     logger.debug(f"MPS 정리 실패: {e}")

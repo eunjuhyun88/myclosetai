@@ -920,7 +920,7 @@ class DataConverter:
                 if MPS_AVAILABLE:
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                     except Exception:
                         pass
                 elif torch.cuda.is_available():

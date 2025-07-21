@@ -31,6 +31,20 @@ from functools import wraps, lru_cache
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
+# 각 파일에 추가할 개선된 코드
+
+import time
+import threading
+
+
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    # 폴백 함수
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
 # ==============================================
 # 🔥 조건부 임포트 (순환참조 방지)
 # ==============================================
@@ -407,7 +421,7 @@ class MemoryManager:
             # M3 Max MPS 캐시 정리
             if TORCH_AVAILABLE and torch.backends.mps.is_available():
                 if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
             
             return True
         
@@ -436,7 +450,7 @@ class MemoryManager:
                 try:
                     # MPS 캐시 사전 정리
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                     
                     # 스레드 수 최적화
                     torch.set_num_threads(min(16, SYSTEM_INFO["cpu_count"]))
@@ -463,7 +477,7 @@ class MemoryManager:
                 try:
                     # MPS 메모리 정리
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                         optimizations.append("MPS cache clearing")
                     
                     # M3 Max 환경 변수 설정
@@ -594,7 +608,7 @@ class MemoryManager:
                     if self.device == "mps" and torch.backends.mps.is_available():
                         # M3 Max MPS 메모리 정리
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                         
                         # MPS 동기화
                         if hasattr(torch.mps, 'synchronize'):
@@ -720,7 +734,7 @@ class MemoryManager:
             
             # PyTorch MPS 캐시 정리
             if TORCH_AVAILABLE and hasattr(torch.mps, 'empty_cache'):
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
             
             self.logger.debug("🍎 공격적 M3 Max 메모리 정리 완료")
             
@@ -1055,7 +1069,7 @@ class MemoryManagerAdapter:
             if TORCH_AVAILABLE:
                 try:
                     if hasattr(torch.mps, 'empty_cache') and torch.backends.mps.is_available():
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                         startup_results.append("MPS 캐시 정리")
                     elif hasattr(torch.cuda, 'empty_cache') and torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -1193,7 +1207,7 @@ class MemoryManagerAdapter:
                 try:
                     if self.device == "mps" and torch.backends.mps.is_available():
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                             optimizations.append("MPS 캐시 정리")
                     elif self.device == "cuda" and torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -1223,7 +1237,7 @@ class MemoryManagerAdapter:
             # MPS 특화 정리
             if TORCH_AVAILABLE and torch.backends.mps.is_available():
                 if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 optimizations.append("M3 Max MPS 캐시 정리")
             
             # 메모리 압박 완화
@@ -1356,7 +1370,7 @@ class GPUMemoryManager(MemoryManager):
             if TORCH_AVAILABLE:
                 if self.device == "mps" and torch.backends.mps.is_available():
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 elif self.device == "cuda" and torch.cuda.is_available():
                     torch.cuda.empty_cache()
             

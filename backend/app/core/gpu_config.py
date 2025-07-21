@@ -7,7 +7,7 @@
 ✅ GPUConfig 클래스 완전 구현 (import 오류 해결)
 ✅ M3 Max 128GB 메모리 최적화
 ✅ PyTorch 2.6+ MPS 호환성 완전 해결
-✅ torch.mps.empty_cache() 오류 완전 수정
+✅ safe_mps_empty_cache() 오류 완전 수정
 ✅ Float16/32 호환성 문제 해결
 ✅ Conda 환경 완벽 지원
 ✅ 8단계 파이프라인 최적화
@@ -46,7 +46,201 @@ from concurrent.futures import ThreadPoolExecutor
 # =============================================================================
 # 🔧 조건부 임포트 (안전한 처리)
 # =============================================================================
+# 각 파일에 추가할 개선된 코드
 
+import time
+import threading
+
+# backend/app/core/gpu_config.py 파일에 추가
+# 기존 import 섹션 이후, 클래스 정의 전에 이 코드를 넣으세요
+
+# =============================================================================
+# 🔥 safe_mps_empty_cache 함수 (순환참조 없는 직접 구현)
+# =============================================================================
+
+# 글로벌 변수들
+_last_mps_call_time = 0
+_mps_call_lock = threading.Lock()
+_min_call_interval = 1.0  # 1초
+
+def safe_mps_empty_cache() -> dict:
+    """
+    안전한 MPS 메모리 정리 (순환참조 없는 직접 구현)
+    """
+    global _last_mps_call_time
+    
+    with _mps_call_lock:
+        current_time = time.time()
+        
+        # 1초 내 중복 호출 방지
+        if current_time - _last_mps_call_time < _min_call_interval:
+            return {
+                "success": True, 
+                "method": "throttled", 
+                "message": "호출 제한 (1초 내 중복 호출 방지)"
+            }
+        
+        _last_mps_call_time = current_time
+    
+    # 실제 메모리 정리 로직 (외부 import 없이)
+    try:
+        if not TORCH_AVAILABLE:
+            gc.collect()
+            return {
+                "success": True, 
+                "method": "gc_fallback", 
+                "message": "PyTorch 없음 - 가비지 컬렉션"
+            }
+        
+        # MPS 메모리 정리 시도 (5단계)
+        
+        # 방법 1: torch.mps.empty_cache()
+        if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
+            try:
+                if callable(getattr(torch.mps, 'empty_cache', None)):
+                    torch.mps.empty_cache()
+                    gc.collect()
+                    return {
+                        "success": True, 
+                        "method": "torch_mps_empty_cache", 
+                        "message": "MPS 메모리 정리 완료"
+                    }
+            except (AttributeError, RuntimeError, TypeError):
+                pass
+        
+        # 방법 2: torch.mps.synchronize()
+        if hasattr(torch, 'mps') and hasattr(torch.mps, 'synchronize'):
+            try:
+                if callable(getattr(torch.mps, 'synchronize', None)):
+                    torch.mps.synchronize()
+                    gc.collect()
+                    return {
+                        "success": True, 
+                        "method": "torch_mps_synchronize", 
+                        "message": "MPS 동기화 완료"
+                    }
+            except (AttributeError, RuntimeError, TypeError):
+                pass
+        
+        # 방법 3: torch.backends.mps.empty_cache()
+        if hasattr(torch.backends, 'mps') and hasattr(torch.backends.mps, 'empty_cache'):
+            try:
+                if callable(getattr(torch.backends.mps, 'empty_cache', None)):
+                    torch.backends.mps.empty_cache()
+                    gc.collect()
+                    return {
+                        "success": True, 
+                        "method": "torch_backends_mps_empty_cache", 
+                        "message": "MPS 백엔드 정리 완료"
+                    }
+            except (AttributeError, RuntimeError, TypeError):
+                pass
+        
+        # 방법 4: CUDA (해당하는 경우)
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+                gc.collect()
+                return {
+                    "success": True, 
+                    "method": "cuda_empty_cache", 
+                    "message": "CUDA 메모리 정리 완료"
+                }
+            except Exception:
+                pass
+        
+        # 방법 5: 최종 폴백
+        collected = gc.collect()
+        return {
+            "success": True, 
+            "method": "gc_final", 
+            "message": f"가비지 컬렉션 완료 ({collected}개 정리)"
+        }
+        
+    except Exception as e:
+        # 최후의 수단
+        try:
+            gc.collect()
+            return {
+                "success": True, 
+                "method": "emergency_gc", 
+                "message": "비상 가비지 컬렉션"
+            }
+        except:
+            return {
+                "success": False, 
+                "method": "total_failure", 
+                "error": str(e)[:100]
+            }
+# 기존 파일 맨 위 import 섹션 이후에 추가:
+
+
+# =============================================================================
+# 기존 GPUConfig 클래스의 cleanup_memory 메서드 수정
+# =============================================================================
+
+# GPUConfig 클래스 내부의 cleanup_memory 메서드를 다음과 같이 수정:
+
+def cleanup_memory(self, aggressive: bool = False) -> Dict[str, Any]:
+    """메모리 정리 (PyTorch 2.6+ 완전 호환) - safe_mps_empty_cache 사용"""
+    try:
+        start_time = time.time()
+        methods_used = []
+        
+        # 기본 Python 가비지 컬렉션
+        collected = gc.collect()
+        if collected > 0:
+            methods_used.append(f"gc_collected_{collected}")
+        
+        if not TORCH_AVAILABLE:
+            return {
+                "success": True,
+                "device": self.device,
+                "methods": methods_used,
+                "duration": time.time() - start_time,
+                "pytorch_available": False
+            }
+        
+        # 🔥 안전한 MPS/CUDA 메모리 정리
+        if self.device in ["mps", "cuda"]:
+            cleanup_result = safe_mps_empty_cache()
+            if cleanup_result["success"]:
+                methods_used.append(cleanup_result["method"])
+            else:
+                methods_used.append(f"cleanup_failed_{cleanup_result.get('method', 'unknown')}")
+        
+        # Aggressive 모드
+        if aggressive:
+            for _ in range(3):
+                gc.collect()
+            methods_used.append("aggressive_gc")
+            
+            # 추가 MPS 정리 (aggressive 모드)
+            if self.device in ["mps", "cuda"]:
+                additional_cleanup = safe_mps_empty_cache()
+                if additional_cleanup["success"]:
+                    methods_used.append(f"aggressive_{additional_cleanup['method']}")
+        
+        return {
+            "success": True,
+            "device": self.device,
+            "methods": methods_used,
+            "duration": round(time.time() - start_time, 3),
+            "pytorch_available": True,
+            "aggressive": aggressive,
+            "timestamp": time.time()
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)[:200],
+            "device": self.device,
+            "duration": time.time() - start_time if 'start_time' in locals() else 0,
+            "pytorch_available": TORCH_AVAILABLE,
+            "timestamp": time.time()
+        }
+    
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -921,36 +1115,42 @@ class GPUConfig:
             
             # PyTorch 디바이스별 메모리 정리
             if self.device == "mps":
-                # MPS 메모리 정리 (버전 호환성 처리)
+                # 🔥 MPS 메모리 정리 (완전 안전한 버전)
                 mps_cleaned = False
                 
-                # torch.mps.empty_cache() (최신 버전)
+                # 방법 1: safe_mps_empty_cache() (callable 검증 추가)
                 if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
                     try:
-                        torch.mps.empty_cache()
-                        methods_used.append("mps_empty_cache")
-                        mps_cleaned = True
-                    except Exception as e:
-                        logger.debug(f"torch.mps.empty_cache() 실패: {e}")
+                        if callable(getattr(torch.mps, 'empty_cache', None)):
+                            safe_mps_empty_cache()
+                            methods_used.append("mps_empty_cache")
+                            mps_cleaned = True
+                    except (AttributeError, RuntimeError, TypeError) as e:
+                        logger.debug(f"safe_mps_empty_cache() 실패: {e}")
+                        methods_used.append(f"mps_empty_cache_failed_{type(e).__name__}")
                 
-                # torch.mps.synchronize() (대안)
+                # 방법 2: torch.mps.synchronize() (대안)
                 if not mps_cleaned and hasattr(torch, 'mps') and hasattr(torch.mps, 'synchronize'):
                     try:
-                        torch.mps.synchronize()
-                        methods_used.append("mps_synchronize")
-                        mps_cleaned = True
-                    except Exception as e:
+                        if callable(getattr(torch.mps, 'synchronize', None)):
+                            torch.mps.synchronize()
+                            methods_used.append("mps_synchronize")
+                            mps_cleaned = True
+                    except (AttributeError, RuntimeError, TypeError) as e:
                         logger.debug(f"torch.mps.synchronize() 실패: {e}")
+                        methods_used.append(f"mps_synchronize_failed_{type(e).__name__}")
                 
-                # torch.backends.mps.empty_cache() (이전 버전)
+                # 방법 3: torch.backends.mps.empty_cache() (이전 버전)
                 if not mps_cleaned and hasattr(torch.backends, 'mps'):
                     if hasattr(torch.backends.mps, 'empty_cache'):
                         try:
-                            torch.backends.mps.empty_cache()
-                            methods_used.append("mps_backends_empty_cache")
-                            mps_cleaned = True
-                        except Exception as e:
+                            if callable(getattr(torch.backends.mps, 'empty_cache', None)):
+                                torch.backends.mps.empty_cache()
+                                methods_used.append("mps_backends_empty_cache")
+                                mps_cleaned = True
+                        except (AttributeError, RuntimeError, TypeError) as e:
                             logger.debug(f"torch.backends.mps.empty_cache() 실패: {e}")
+                            methods_used.append(f"mps_backends_empty_cache_failed_{type(e).__name__}")
                 
                 if not mps_cleaned:
                     methods_used.append("mps_cleanup_unavailable")
@@ -1003,7 +1203,6 @@ class GPUConfig:
                 "pytorch_available": TORCH_AVAILABLE,
                 "timestamp": time.time()
             }
-    
     def setup_memory_optimization(self):
         """메모리 최적화 설정"""
         try:

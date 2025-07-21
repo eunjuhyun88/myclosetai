@@ -45,6 +45,14 @@ import cv2
 import base64
 from io import BytesIO
 
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
 # ==============================================
 # 🔥 1. TYPE_CHECKING으로 순환 참조 완전 방지
 # ==============================================
@@ -394,7 +402,7 @@ def safe_memory_cleanup(device: str) -> Dict[str, Any]:
         
         if device == "mps" and torch.backends.mps.is_available():
             if hasattr(torch.mps, 'empty_cache'):
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
                 result.update({"success": True, "method": "torch.mps.empty_cache"})
             elif hasattr(torch.mps, 'synchronize'):
                 torch.mps.synchronize()

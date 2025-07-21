@@ -52,7 +52,16 @@ import subprocess
 import psutil
 from datetime import datetime
 from enum import Enum
+# 각 파일에 추가할 개선된 코드
 
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    # 폴백 함수
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
 # ==============================================
 # 🔥 2. TYPE_CHECKING으로 순환 임포트 완전 방지
 # ==============================================
@@ -798,7 +807,7 @@ class StepMemoryOptimizer:
                 elif self.device == "mps" and MPS_AVAILABLE:
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                         elif hasattr(torch.backends.mps, 'empty_cache'):
                             torch.backends.mps.empty_cache()
                         results.append("MPS 캐시 정리")
@@ -2071,7 +2080,7 @@ class BaseStepMixin:
                 if getattr(self, 'device', 'cpu') == "mps" and MPS_AVAILABLE:
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                         elif hasattr(torch.backends.mps, 'empty_cache'):
                             torch.backends.mps.empty_cache()
                     except AttributeError:

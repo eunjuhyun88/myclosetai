@@ -31,7 +31,7 @@ class ModelManager:
             # Metal Performance Shaders 최적화 (버전 호환성 체크)
             if hasattr(torch.backends.mps, 'empty_cache'):
                 if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 elif hasattr(torch.mps, 'synchronize'):
                         torch.mps.synchronize()
                 logger.info("✅ MPS 캐시 정리 완료")
@@ -162,7 +162,7 @@ class ModelManager:
                 if self.device == "mps":
                     if hasattr(torch.backends.mps, 'empty_cache'):
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                     elif hasattr(torch.mps, 'synchronize'):
                             torch.mps.synchronize()
                 elif self.device == "cuda":
@@ -305,7 +305,7 @@ class ModelManager:
         if self.device == "mps":
             if hasattr(torch.backends.mps, 'empty_cache'):
                 if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 elif hasattr(torch.mps, 'synchronize'):
                         torch.mps.synchronize()
         elif self.device == "cuda":

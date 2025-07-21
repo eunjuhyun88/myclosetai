@@ -383,7 +383,7 @@ class UnifiedMemoryHelper:
             if TORCH_AVAILABLE:
                 if device == "mps":
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 elif device == "cuda":
                     torch.cuda.empty_cache()
             

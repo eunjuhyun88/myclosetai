@@ -48,6 +48,16 @@ from collections import defaultdict, deque
 import pickle
 import yaml
 
+
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
+
 # ==============================================
 # 🔥 안전한 의존성 import (오류 방지)
 # ==============================================
@@ -65,7 +75,7 @@ def safe_import_torch():
             # MPS 캐시 정리 - 모든 경우 대응
             try:
                 if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 elif hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
             except (AttributeError, RuntimeError) as e:
@@ -1309,7 +1319,7 @@ class AdvancedPyTorchValidator:
         try:
             if TORCH_AVAILABLE and DEVICE_TYPE == "mps":
                 if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 elif hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
             elif TORCH_AVAILABLE and torch.cuda.is_available():
@@ -1787,7 +1797,7 @@ class RealWorldModelDetector:
     def detect_all_models(
         self,
         force_rescan: bool = True,
-        min_confidence: float = 0.2,  # 극도로 완화된 임계값
+        min_confidence: float = 0.1,  # 극도로 완화된 임계값
         categories_filter: Optional[List[ModelCategory]] = None,
         enable_detailed_analysis: bool = False,
         max_models_per_category: Optional[int] = None,
@@ -2435,7 +2445,7 @@ class RealWorldModelDetector:
                     
                     # 안전한 캐시 정리
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 except Exception:
                     device_info["mps_functional"] = False
             
@@ -3244,7 +3254,7 @@ def quick_real_model_detection(**kwargs) -> Dict[str, DetectedModel]:
         
         return detector.detect_all_models(
             force_rescan=True,
-            min_confidence=0.2,  # 극도로 완화된 임계값
+            min_confidence=0.1,  # 극도로 완화된 임계값
             enable_detailed_analysis=False,
             prioritize_backend_models=True
         )
@@ -3266,7 +3276,7 @@ def comprehensive_model_detection(**kwargs) -> Dict[str, DetectedModel]:
         
         return detector.detect_all_models(
             force_rescan=True,
-            min_confidence=0.2,
+            min_confidence=0.1,
             enable_detailed_analysis=True,
             prioritize_backend_models=True
         )

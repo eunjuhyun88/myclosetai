@@ -40,6 +40,16 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 
+
+# 각 파일에 추가할 개선된 코드
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
 # 필수 라이브러리
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageDraw, ImageFont
@@ -1205,7 +1215,7 @@ class MemoryManager:
                     import torch
                     if self.device == "mps" and torch.backends.mps.is_available():
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                     elif self.device == "cuda" and torch.cuda.is_available():
                         torch.cuda.empty_cache()
                 except Exception:
@@ -1291,7 +1301,7 @@ class MemoryManager:
                 try:
                     import torch
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 except:
                     pass
             elif self.device == "cuda":

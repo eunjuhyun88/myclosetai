@@ -460,7 +460,7 @@ class M3MaxOptimizedPipelineManager:
             if self.device == 'mps' and torch.backends.mps.is_available():
                 # MPS 메모리 최적화
                 if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 
                 # MPS 메모리 최적화 설정
                 if hasattr(torch.mps, 'set_per_process_memory_fraction'):
@@ -1295,7 +1295,7 @@ class M3MaxOptimizedPipelineManager:
                 import torch
                 if self.device == 'mps' and torch.backends.mps.is_available():
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 elif self.device == 'cuda' and torch.cuda.is_available():
                     torch.cuda.empty_cache()
                 

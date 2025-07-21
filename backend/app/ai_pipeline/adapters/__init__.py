@@ -360,7 +360,7 @@ class MemoryManagerAdapter(IMemoryManager):
                 import torch
                 if torch.backends.mps.is_available():
                     if hasattr(torch.mps, 'empty_cache'):
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                     elif hasattr(torch.backends.mps, 'empty_cache'):
                         torch.backends.mps.empty_cache()
                 elif torch.cuda.is_available():

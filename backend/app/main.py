@@ -1672,7 +1672,7 @@ async def lifespan(app: FastAPI):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             elif torch.backends.mps.is_available():
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
         except Exception:
             pass
         

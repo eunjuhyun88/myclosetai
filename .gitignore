@@ -141,3 +141,11 @@ pipeline.log
 *.backup*
 *.bak
 *~
+
+# 🧹 정리 스크립트 추가
+*.old
+*.orig
+*.pyo
+*.pyd
+cleanup.log
+mycloset_backup_*.tar.gz

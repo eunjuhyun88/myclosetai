@@ -99,7 +99,7 @@ def optimize_device_memory(device: str):
     """디바이스별 메모리 최적화"""
     try:
         if device == "mps":
-            torch.mps.empty_cache()
+            safe_mps_empty_cache()
         elif device == "cuda":
             torch.cuda.empty_cache()
         else:

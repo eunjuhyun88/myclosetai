@@ -35,6 +35,16 @@ from enum import Enum
 from io import BytesIO
 import weakref
 
+
+# 각 파일에 추가할 개선된 코드
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
 # 핵심 라이브러리
 import numpy as np
 import cv2
@@ -520,7 +530,7 @@ class PostProcessingStep(BaseStepMixin):
                     torch.cuda.empty_cache()
                 elif torch.backends.mps.is_available():
                     try:
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                     except Exception:
                         pass
             
@@ -876,7 +886,7 @@ class PostProcessingStep(BaseStepMixin):
             if self.device == 'mps':
                 try:
                     if torch.backends.mps.is_available():
-                        torch.mps.empty_cache()
+                        safe_mps_empty_cache()
                 except Exception:
                     pass
             
@@ -2142,7 +2152,7 @@ class PostProcessingStep(BaseStepMixin):
             # PyTorch 캐시 정리
             if self.device == 'mps':
                 try:
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 except Exception:
                     pass
             elif self.device == 'cuda':
@@ -2399,7 +2409,7 @@ def _cleanup_on_exit():
             torch.cuda.empty_cache()
         elif torch.backends.mps.is_available():
             try:
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
             except Exception:
                 pass
         gc.collect()

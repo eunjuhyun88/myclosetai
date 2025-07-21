@@ -149,7 +149,7 @@ class CheckpointModelLoader:
         self.loaded_models.clear()
         
         if self.device == "mps" and torch.backends.mps.is_available():
-            torch.mps.empty_cache()
+            safe_mps_empty_cache()
         elif self.device == "cuda" and torch.cuda.is_available():
             torch.cuda.empty_cache()
         

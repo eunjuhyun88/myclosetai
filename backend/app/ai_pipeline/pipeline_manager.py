@@ -379,7 +379,7 @@ class MemoryManagerAdapter:
                 if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                     try:
                         if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                             optimization_results.append("MPS 캐시 정리 완료")
                     except Exception as mps_error:
                         optimization_results.append(f"MPS 캐시 정리 실패: {mps_error}")

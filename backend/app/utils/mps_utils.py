@@ -36,13 +36,13 @@ class MPSMemoryManager:
         
         try:
             if self.supports_empty_cache:
-                torch.mps.empty_cache()
+                safe_mps_empty_cache()
                 result.update({
                     "success": True,
                     "method": "mps_empty_cache",
-                    "message": "torch.mps.empty_cache() 실행 완료"
+                    "message": "safe_mps_empty_cache() 실행 완료"
                 })
-                logger.info("✅ torch.mps.empty_cache() 실행 완료")
+                logger.info("✅ safe_mps_empty_cache() 실행 완료")
                 
             elif self.supports_synchronize:
                 torch.mps.synchronize()

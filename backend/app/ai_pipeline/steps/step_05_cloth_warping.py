@@ -46,6 +46,16 @@ from PIL import Image
 # 🔧 Import 검증 및 필수 라이브러리
 # ==============================================
 
+# 각 파일에 추가할 개선된 코드
+
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
 # BaseStepMixin 가져오기 (필수)
 try:
     from .base_step_mixin import BaseStepMixin

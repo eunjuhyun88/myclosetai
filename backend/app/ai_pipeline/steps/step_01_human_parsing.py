@@ -36,6 +36,20 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from io import BytesIO
 
+
+# 각 파일에 추가할 개선된 코드
+
+import time
+import threading
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
+
 import numpy as np
 import torch
 import torch.nn.functional as F

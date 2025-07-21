@@ -23,6 +23,16 @@ import threading
 import weakref
 from functools import lru_cache
 
+# 각 파일에 추가할 개선된 코드
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
+
 # 조건부 import (안전한 처리)
 try:
     import psutil
@@ -184,10 +194,10 @@ class GPUMemoryManager:
                 try:
                     mps_cleaned = False
                     
-                    # 방법 1: torch.mps.empty_cache() (PyTorch 2.1+)
+                    # 방법 1: safe_mps_empty_cache() (PyTorch 2.1+)
                     if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
                         try:
-                            torch.mps.empty_cache()
+                            safe_mps_empty_cache()
                             result["method"] = "mps_empty_cache_v2"
                             mps_cleaned = True
                         except Exception:

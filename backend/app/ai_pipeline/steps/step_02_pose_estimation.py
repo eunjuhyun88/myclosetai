@@ -80,6 +80,17 @@ except ImportError:
     PSUTIL_VERSION = "Not Available"
     print("⚠️ psutil 권장: conda install psutil -c conda-forge")
 
+
+# 각 파일에 추가할 개선된 코드
+try:
+    from app.core.gpu_config import safe_mps_empty_cache
+except ImportError:
+    def safe_mps_empty_cache():
+        import gc
+        gc.collect()
+        return {"success": True, "method": "fallback_gc"}
+
+
 # ==============================================
 # 🔥 한방향 참조 구조 - 순환참조 완전 방지
 # ==============================================
@@ -736,7 +747,7 @@ class PoseEstimationStep(BaseStepMixin):
         try:
             if TORCH_AVAILABLE:
                 if self.device == "mps":
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 elif self.device == "cuda":
                     torch.cuda.empty_cache()
             
@@ -2045,7 +2056,7 @@ class PoseEstimationStep(BaseStepMixin):
             # 메모리 정리
             if TORCH_AVAILABLE:
                 if self.device == "mps":
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                 elif self.device == "cuda":
                     torch.cuda.empty_cache()
             

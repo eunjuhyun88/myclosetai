@@ -1619,7 +1619,7 @@ def optimize_memory_usage():
                 logger.debug("🧹 CUDA 메모리 정리 완료")
             elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 try:
-                    torch.mps.empty_cache()
+                    safe_mps_empty_cache()
                     logger.debug("🧹 MPS 메모리 정리 완료")
                 except AttributeError:
                     pass
