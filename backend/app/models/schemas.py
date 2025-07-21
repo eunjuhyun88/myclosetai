@@ -1,4 +1,4 @@
-# app/models/schemas.py
+# backend/app/models/schemas.py
 """
 🔥 MyCloset AI 스키마 시스템 v6.2 - 완전 오류 수정 버전
 =======================================================
@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Union, Tuple
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass
 
 # Pydantic v2 imports
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -84,58 +83,97 @@ class BaseConfigModel(BaseModel):
     """기본 설정 모델 - 모든 오류 방지 설정"""
     model_config = ConfigDict(
         str_strip_whitespace=True,
+        validate_default=True,
         validate_assignment=True,
+        extra="forbid",  # Extra inputs forbidden 방지
         use_enum_values=True,
-        extra='allow',  # 🔥 forbidden 오류 방지
-        frozen=False,
-        protected_namespaces=(),
-        arbitrary_types_allowed=True,  # 🔥 추가: 임의 타입 허용
-        validate_default=True,  # 🔥 추가: 기본값 검증
-        ser_json_timedelta='iso8601',  # 🔥 추가: 시간 직렬화
-        ser_json_bytes='base64'  # 🔥 추가: 바이트 직렬화
+        arbitrary_types_allowed=False,
+        frozen=False
     )
 
 # =====================================================================================
-# 🔥 핵심 데이터 모델들 (완전 안전한 버전)
+# 🔥 신체 측정값 모델 (완전 안전한 validation)
 # =====================================================================================
 
 class BodyMeasurements(BaseConfigModel):
-    """신체 측정값 (프론트엔드 UserMeasurements와 100% 호환)"""
-    # 필수 필드 - 타입 강화
-    height: Union[float, int] = Field(..., ge=140, le=220, description="키 (cm)")
-    weight: Union[float, int] = Field(..., ge=40, le=150, description="몸무게 (kg)")
+    """
+    🔥 신체 측정값 - 완전 안전한 validation
+    ✅ 모든 숫자 필드 타입 안전성 강화
+    ✅ 범위 검증 강화
+    ✅ BMI 자동 계산
+    """
+    # 필수 필드들 - Union 타입으로 안전성 강화
+    height: Union[float, int] = Field(
+        ..., 
+        ge=100, le=250, 
+        description="키 (cm)"
+    )
+    weight: Union[float, int] = Field(
+        ..., 
+        ge=30, le=300, 
+        description="몸무게 (kg)"
+    )
     
-    # 선택적 필드 - 타입 강화
-    chest: Optional[Union[float, int]] = Field(None, ge=70, le=130, description="가슴둘레 (cm)")
-    waist: Optional[Union[float, int]] = Field(None, ge=60, le=120, description="허리둘레 (cm)")
-    hips: Optional[Union[float, int]] = Field(None, ge=80, le=140, description="엉덩이둘레 (cm)")
-    age: Optional[int] = Field(None, ge=10, le=100, description="나이")
-    gender: Optional[str] = Field(None, description="성별")
+    # 선택적 필드들 - None 허용 + 안전한 범위
+    chest: Optional[Union[float, int]] = Field(
+        default=None, 
+        ge=0, le=150, 
+        description="가슴둘레 (cm)"
+    )
+    waist: Optional[Union[float, int]] = Field(
+        default=None, 
+        ge=0, le=150, 
+        description="허리둘레 (cm)"
+    )
+    hips: Optional[Union[float, int]] = Field(
+        default=None, 
+        ge=0, le=150, 
+        description="엉덩이둘레 (cm)"
+    )
     
-    # 🔥 숫자 필드 검증 강화
+    # 추가 정보
+    age: Optional[int] = Field(default=None, ge=10, le=100, description="나이")
+    gender: Optional[str] = Field(default=None, description="성별")
+    
     @field_validator('height', 'weight', 'chest', 'waist', 'hips', mode='before')
     @classmethod
     def validate_numeric_fields(cls, v):
         """숫자 필드 안전 검증"""
         if v is None:
-            return None
+            return v
         try:
-            # 문자열 숫자 처리
+            # 문자열인 경우 숫자로 변환 시도
             if isinstance(v, str):
-                if v.strip() == "":
+                v = v.strip()
+                if v == '' or v.lower() in ['none', 'null']:
                     return None
-                v = float(v.replace(',', ''))
-            # 숫자 타입 처리
-            return float(v) if v is not None else None
-        except (ValueError, TypeError, AttributeError):
-            return None
+                v = float(v)
+            
+            # 숫자 타입 확인
+            if not isinstance(v, (int, float)):
+                raise ValueError(f"숫자가 아닌 값: {v}")
+            
+            # NaN, inf 체크
+            if isinstance(v, float):
+                if not (v == v):  # NaN 체크
+                    raise ValueError("NaN 값은 허용되지 않습니다")
+                if v in [float('inf'), float('-inf')]:
+                    raise ValueError("무한대 값은 허용되지 않습니다")
+            
+            return float(v)
+            
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"유효하지 않은 숫자 값: {v} ({str(e)})")
     
     @property
     def bmi(self) -> float:
-        """BMI 계산"""
+        """BMI 계산 (안전한 버전)"""
         try:
-            return round(float(self.weight) / ((float(self.height) / 100) ** 2), 2)
-        except (ValueError, ZeroDivisionError, TypeError):
+            if self.height <= 0 or self.weight <= 0:
+                return 0.0
+            height_m = self.height / 100.0
+            return round(self.weight / (height_m ** 2), 2)
+        except Exception:
             return 0.0
     
     @property
@@ -164,6 +202,10 @@ class BodyMeasurements(BaseConfigModel):
         except Exception as e:
             logger.warning(f"BodyMeasurements.to_dict() 실패: {e}")
             return {"height": self.height, "weight": self.weight}
+
+# =====================================================================================
+# 🔥 표준 API 응답 모델 (프론트엔드 완전 호환)
+# =====================================================================================
 
 class StandardAPIResponse(BaseConfigModel):
     """표준 API 응답 (프론트엔드 StepResult와 100% 호환)"""
@@ -195,487 +237,318 @@ class StandardAPIResponse(BaseConfigModel):
     
     # 성능 메트릭
     memory_usage_mb: Optional[Union[float, int]] = Field(default=None, ge=0, description="메모리 사용량 (MB)")
-    gpu_usage_percent: Optional[Union[float, int]] = Field(default=None, ge=0, le=100, description="GPU 사용률 (%)")
+    ai_processed: Optional[bool] = Field(default=None, description="AI 처리 여부")
+    model_used: Optional[str] = Field(default=None, description="사용된 AI 모델")
     
-    # 🔥 숫자 필드 검증 강화
-    @field_validator('processing_time', 'confidence', 'fit_score', 'memory_usage_mb', 'gpu_usage_percent', mode='before')
+    @field_validator('processing_time', 'confidence', 'fit_score', 'memory_usage_mb', mode='before')
     @classmethod
-    def validate_numeric_fields(cls, v):
-        """숫자 필드 안전 검증"""
+    def validate_numeric_response_fields(cls, v):
+        """응답 숫자 필드 안전 검증"""
         if v is None:
-            return None
+            return v
         try:
             if isinstance(v, str):
-                if v.strip() == "":
+                v = v.strip()
+                if v == '' or v.lower() in ['none', 'null']:
                     return None
-                v = float(v.replace(',', ''))
-            return float(v) if v is not None else None
-        except (ValueError, TypeError, AttributeError):
-            return None
+                v = float(v)
+            
+            if not isinstance(v, (int, float)):
+                return 0.0
+            
+            # NaN, inf 체크
+            if isinstance(v, float):
+                if not (v == v):  # NaN 체크
+                    return 0.0
+                if v in [float('inf'), float('-inf')]:
+                    return 0.0
+            
+            return float(v)
+            
+        except (ValueError, TypeError):
+            return 0.0
 
 # =====================================================================================
-# 🔥 AI 모델 관련 스키마들 - 완전 오류 수정
+# 🔥 AI 모델 요청 스키마 (완전 안전한 input_size 처리)
 # =====================================================================================
 
 class ModelRequest(BaseConfigModel):
-    """🔥 완전 수정된 ModelRequest - 모든 validation 오류 완전 해결"""
-    # 기본 정보 - 타입 안전성 강화
-    model_name: str = Field(..., min_length=1, description="모델 이름")
-    step_class: str = Field(..., min_length=1, description="Step 클래스명")
-    step_priority: str = Field(default="high", description="Step 우선순위")
-    model_class: str = Field(..., min_length=1, description="모델 클래스명")
+    """AI 모델 요청 - input_size validation 완전 해결"""
+    model_name: str = Field(..., description="모델 이름")
+    step_class: str = Field(..., description="Step 클래스명")
+    step_priority: str = Field(default="high", description="우선순위")
+    model_class: str = Field(default="BaseModel", description="모델 클래스")
     
-    # 🔥 핵심 수정: input_size 완전 안전하게 처리 - 가장 관대한 검증
-    input_size: Tuple[int, int] = Field(default=(512, 512), description="입력 이미지 크기 (width, height)")
-    num_classes: Optional[int] = Field(default=None, ge=1, description="클래스 수")
+    # 🔥 input_size 완전 안전 처리 - 모든 케이스 대응
+    input_size: Union[
+        Tuple[int, int],           # (512, 512) - 가장 일반적
+        List[int],                 # [512, 512] - 리스트 형태
+        int,                       # 512 - 단일 숫자 (정사각형)
+        str,                       # "512x512" - 문자열 형태
+        None                       # None - 기본값 사용
+    ] = Field(default=None, description="입력 크기")
+    
     output_format: str = Field(default="tensor", description="출력 형식")
+    num_classes: Optional[int] = Field(default=None, ge=1, le=1000, description="클래스 수")
+    device: DeviceTypeEnum = Field(default=DeviceTypeEnum.AUTO, description="디바이스")
+    batch_size: int = Field(default=1, ge=1, le=32, description="배치 크기")
     
-    # 디바이스 설정
-    device: str = Field(default="mps", description="처리 디바이스")
-    precision: str = Field(default="fp16", description="정밀도")
-    
-    # 체크포인트 탐지 정보
-    checkpoint_patterns: List[str] = Field(default_factory=list, description="체크포인트 패턴")
-    file_extensions: List[str] = Field(default_factory=list, description="파일 확장자")
-    size_range_mb: Tuple[float, float] = Field(default=(1.0, 10000.0), description="파일 크기 범위")
-    
-    # 최적화 설정
-    optimization_params: Dict[str, Any] = Field(default_factory=dict, description="최적화 파라미터")
-    alternative_models: List[str] = Field(default_factory=list, description="대체 모델 목록")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="메타데이터")
+    # 추가 설정들
+    checkpoint_patterns: Optional[List[str]] = Field(default=None, description="체크포인트 패턴")
+    file_extensions: Optional[List[str]] = Field(default=None, description="파일 확장자")
+    size_range_mb: Optional[Tuple[float, float]] = Field(default=None, description="파일 크기 범위 (MB)")
     
     @field_validator('input_size', mode='before')
     @classmethod
     def validate_input_size(cls, v):
-        """🔥 완전 안전한 input_size 검증 - 모든 케이스 대응"""
+        """🔥 input_size 완전 안전 검증 - 모든 validation 오류 해결"""
+        if v is None:
+            return (512, 512)  # 기본값
+        
         try:
-            # None이면 기본값
-            if v is None:
+            # 1. 튜플인 경우 (가장 일반적)
+            if isinstance(v, tuple):
+                if len(v) == 2 and all(isinstance(x, int) and x > 0 for x in v):
+                    return v
+                elif len(v) == 1:
+                    return (v[0], v[0])
+                else:
+                    return (512, 512)
+            
+            # 2. 리스트인 경우
+            elif isinstance(v, list):
+                if len(v) == 2 and all(isinstance(x, int) and x > 0 for x in v):
+                    return tuple(v)
+                elif len(v) == 1:
+                    return (v[0], v[0])
+                else:
+                    return (512, 512)
+            
+            # 3. 단일 정수인 경우
+            elif isinstance(v, int):
+                if v > 0:
+                    return (v, v)
+                else:
+                    return (512, 512)
+            
+            # 4. 문자열인 경우 (예: "512x512", "512")
+            elif isinstance(v, str):
+                v = v.strip()
+                if 'x' in v.lower():
+                    parts = v.lower().split('x')
+                    if len(parts) == 2:
+                        try:
+                            w, h = int(parts[0]), int(parts[1])
+                            if w > 0 and h > 0:
+                                return (w, h)
+                        except ValueError:
+                            pass
+                else:
+                    try:
+                        size = int(v)
+                        if size > 0:
+                            return (size, size)
+                    except ValueError:
+                        pass
                 return (512, 512)
             
-            # 이미 올바른 튜플이면 그대로 사용
-            if isinstance(v, tuple) and len(v) == 2:
-                try:
-                    w, h = int(v[0]), int(v[1])
-                    # 범위 제한: 최소 64, 최대 2048
-                    w = max(64, min(2048, w))
-                    h = max(64, min(2048, h))
-                    return (w, h)
-                except (ValueError, TypeError):
-                    return (512, 512)
-            
-            # 리스트 형태 처리
-            if isinstance(v, list) and len(v) >= 2:
-                try:
-                    w, h = int(v[0]), int(v[1])
-                    w = max(64, min(2048, w))
-                    h = max(64, min(2048, h))
-                    return (w, h)
-                except (ValueError, TypeError, IndexError):
-                    return (512, 512)
-            
-            # 숫자 하나면 정사각형으로 변환
-            if isinstance(v, (int, float)):
-                try:
-                    size = int(v)
-                    size = max(64, min(2048, size))
-                    return (size, size)
-                except (ValueError, TypeError):
-                    return (512, 512)
-            
-            # 문자열 숫자 처리
+            # 5. 기타 모든 경우
+            else:
+                return (512, 512)
+                
+        except Exception as e:
+            logger.warning(f"input_size validation 실패: {v}, 오류: {e}")
+            return (512, 512)
+    
+    @field_validator('batch_size', mode='before')
+    @classmethod
+    def validate_batch_size(cls, v):
+        """배치 크기 안전 검증"""
+        try:
             if isinstance(v, str):
-                try:
-                    # 쉼표로 분리된 경우 처리
-                    if ',' in v:
-                        parts = v.split(',')
-                        if len(parts) >= 2:
-                            w = int(float(parts[0].strip()))
-                            h = int(float(parts[1].strip()))
-                            w = max(64, min(2048, w))
-                            h = max(64, min(2048, h))
-                            return (w, h)
-                    
-                    # 단일 숫자 문자열
-                    if v.strip().replace('.', '').isdigit():
-                        size = int(float(v.strip()))
-                        size = max(64, min(2048, size))
-                        return (size, size)
-                        
-                except (ValueError, TypeError, AttributeError):
-                    pass
-            
-            # 딕셔너리 형태 처리
-            if isinstance(v, dict):
-                try:
-                    w = v.get('width', v.get('w', v.get('0', 512)))
-                    h = v.get('height', v.get('h', v.get('1', 512)))
-                    w = max(64, min(2048, int(w)))
-                    h = max(64, min(2048, int(h)))
-                    return (w, h)
-                except (ValueError, TypeError, KeyError):
-                    return (512, 512)
-            
-            # 기타 모든 경우 기본값
-            return (512, 512)
-            
-        except Exception as e:
-            # 모든 예외는 기본값으로 처리
-            logger.debug(f"input_size validation 예외 (기본값 사용): {e}")
-            return (512, 512)
-    
-    @field_validator('size_range_mb', mode='before')
-    @classmethod
-    def validate_size_range(cls, v):
-        """size_range_mb 검증"""
-        try:
-            if v is None:
-                return (1.0, 10000.0)
-            if isinstance(v, (tuple, list)) and len(v) >= 2:
-                min_size = max(0.1, float(v[0]))
-                max_size = max(min_size, float(v[1]))
-                return (min_size, max_size)
-            return (1.0, 10000.0)
+                v = int(v.strip())
+            if isinstance(v, (int, float)) and v >= 1:
+                return min(int(v), 32)  # 최대 32로 제한
+            return 1
         except:
-            return (1.0, 10000.0)
-    
-    @model_validator(mode='after')
-    def validate_model_consistency(self):
-        """모델 일관성 검증"""
-        try:
-            # input_size 재검증
-            if not isinstance(self.input_size, tuple) or len(self.input_size) != 2:
-                self.input_size = (512, 512)
-            
-            # 기본값 설정
-            if not self.checkpoint_patterns:
-                self.checkpoint_patterns = [f"*{self.model_name.lower()}*.pth", f"*{self.model_name.lower()}*.pt"]
-            
-            if not self.file_extensions:
-                self.file_extensions = [".pth", ".pt", ".pkl", ".bin", ".safetensors"]
-            
-            return self
-        except Exception as e:
-            logger.warning(f"ModelRequest 검증 오류: {e}")
-            return self
-
-class DetectedModelFile(BaseConfigModel):
-    """탐지된 모델 파일 정보"""
-    file_path: str = Field(..., description="파일 경로")
-    file_name: str = Field(..., description="파일명")
-    file_size_mb: Union[float, int] = Field(..., ge=0, description="파일 크기 (MB)")
-    category: str = Field(..., description="모델 카테고리")
-    format: str = Field(..., description="모델 포맷")
-    confidence_score: Union[float, int] = Field(..., ge=0.0, le=1.0, description="탐지 신뢰도")
-    step_assignment: str = Field(..., description="할당된 Step")
-    priority: int = Field(..., ge=1, le=4, description="우선순위")
-    
-    # 추가 정보
-    pytorch_valid: bool = Field(default=False, description="PyTorch 호환성")
-    parameter_count: int = Field(default=0, ge=0, description="파라미터 수")
-    architecture_info: Dict[str, Any] = Field(default_factory=dict, description="아키텍처 정보")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="메타데이터")
-    last_modified: Union[float, int] = Field(default=0.0, description="마지막 수정 시간")
-    checksum: str = Field(default="", description="파일 체크섬")
-    
-    # 🔥 숫자 필드 검증
-    @field_validator('file_size_mb', 'confidence_score', 'last_modified', mode='before')
-    @classmethod
-    def validate_numeric_fields(cls, v):
-        """숫자 필드 안전 검증"""
-        if v is None:
-            return 0.0
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 0.0
+            return 1
 
 # =====================================================================================
-# 🔥 세션 관리 스키마들 (완전 안전한 버전)
+# 🔥 세션 관리 스키마들
 # =====================================================================================
 
 class SessionInfo(BaseConfigModel):
     """세션 정보"""
-    session_id: str = Field(..., min_length=1, description="세션 ID")
+    session_id: str = Field(..., description="세션 ID")
     created_at: datetime = Field(default_factory=datetime.now, description="생성 시간")
-    last_accessed: datetime = Field(default_factory=datetime.now, description="마지막 접근 시간")
-    total_steps: int = Field(default=8, ge=1, le=8, description="전체 단계 수")
+    last_accessed: datetime = Field(default_factory=datetime.now, description="마지막 접근")
+    status: ProcessingStatusEnum = Field(default=ProcessingStatusEnum.INITIALIZED, description="상태")
     completed_steps: List[int] = Field(default_factory=list, description="완료된 단계들")
-    
-    @property
-    def progress_percent(self) -> float:
-        """진행률 (0-100)"""
-        try:
-            return len(self.completed_steps) / self.total_steps * 100
-        except ZeroDivisionError:
-            return 0.0
-    
-    @property
-    def is_completed(self) -> bool:
-        """완료 여부"""
-        try:
-            return len(self.completed_steps) >= self.total_steps
-        except:
-            return False
+    total_steps: int = Field(default=8, description="전체 단계 수")
 
 class ImageMetadata(BaseConfigModel):
     """이미지 메타데이터"""
-    path: str = Field(..., description="파일 경로")
-    size: Tuple[int, int] = Field(..., description="이미지 크기 (width, height)")
-    format: str = Field(..., description="이미지 형식")
-    file_size_bytes: int = Field(..., ge=0, description="파일 크기 (바이트)")
-    quality: int = Field(default=95, ge=1, le=100, description="이미지 품질")
-    
-    @field_validator('size', mode='before')
-    @classmethod
-    def validate_size(cls, v):
-        """이미지 크기 검증"""
-        try:
-            if isinstance(v, (tuple, list)) and len(v) >= 2:
-                w, h = int(v[0]), int(v[1])
-                return (max(1, w), max(1, h))
-            return (512, 512)
-        except:
-            return (512, 512)
+    filename: str = Field(..., description="파일명")
+    size_bytes: int = Field(..., ge=0, description="파일 크기 (바이트)")
+    width: int = Field(..., ge=1, description="이미지 너비")
+    height: int = Field(..., ge=1, description="이미지 높이")
+    format: str = Field(..., description="이미지 포맷")
+    uploaded_at: datetime = Field(default_factory=datetime.now, description="업로드 시간")
 
 class SessionData(BaseConfigModel):
     """세션 데이터"""
     session_info: SessionInfo = Field(..., description="세션 정보")
-    measurements: BodyMeasurements = Field(..., description="신체 측정값")
-    person_image: ImageMetadata = Field(..., description="사용자 이미지 정보")
-    clothing_image: ImageMetadata = Field(..., description="의류 이미지 정보")
-    step_results: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="단계별 결과")
+    person_image_meta: Optional[ImageMetadata] = Field(default=None, description="사용자 이미지 메타데이터")
+    clothing_image_meta: Optional[ImageMetadata] = Field(default=None, description="의류 이미지 메타데이터")
+    measurements: Optional[BodyMeasurements] = Field(default=None, description="신체 측정값")
+    step_results: Dict[int, Any] = Field(default_factory=dict, description="단계별 결과")
 
 # =====================================================================================
-# 🔥 8단계 파이프라인 스키마들 (완전 안전한 버전)
+# 🔥 8단계 파이프라인 스키마들
 # =====================================================================================
 
 class ProcessingOptions(BaseConfigModel):
-    """AI 처리 옵션"""
-    quality_level: str = Field(default="high", description="품질 레벨")
-    device: str = Field(default="auto", description="처리 디바이스")
-    enable_visualization: bool = Field(default=True, description="시각화 활성화")
+    """처리 옵션"""
+    quality_level: QualityLevelEnum = Field(default=QualityLevelEnum.BALANCED, description="품질 레벨")
+    device: DeviceTypeEnum = Field(default=DeviceTypeEnum.AUTO, description="처리 디바이스")
+    batch_size: int = Field(default=1, ge=1, le=16, description="배치 크기")
+    enable_optimization: bool = Field(default=True, description="최적화 활성화")
     save_intermediate: bool = Field(default=False, description="중간 결과 저장")
-    batch_size: int = Field(default=1, ge=1, le=8, description="배치 크기")
-    max_resolution: int = Field(default=1024, ge=256, le=2048, description="최대 해상도")
-    
-    # M3 Max 최적화 설정
-    enable_mps: bool = Field(default=True, description="MPS 사용 여부")
-    memory_optimization: bool = Field(default=True, description="메모리 최적화")
-    parallel_processing: bool = Field(default=True, description="병렬 처리")
-    use_fp16: bool = Field(default=True, description="FP16 사용")
-    neural_engine: bool = Field(default=True, description="Neural Engine 사용")
+    timeout_seconds: int = Field(default=300, ge=30, le=1800, description="타임아웃 (초)")
 
 class StepRequest(BaseConfigModel):
     """단계별 요청"""
-    session_id: str = Field(..., min_length=1, description="세션 ID")
-    step_id: int = Field(..., ge=1, le=8, description="단계 ID (1-8)")
+    step_id: int = Field(..., ge=1, le=8, description="단계 ID")
+    session_id: str = Field(..., description="세션 ID")
     options: Optional[ProcessingOptions] = Field(default=None, description="처리 옵션")
-    custom_params: Optional[Dict[str, Any]] = Field(default=None, description="커스텀 파라미터")
+    parameters: Optional[Dict[str, Any]] = Field(default=None, description="추가 파라미터")
 
 class StepResult(BaseConfigModel):
-    """단계별 결과"""
-    step_id: str = Field(..., description="단계 ID")
-    step_name: str = Field(..., description="단계 이름")
+    """단계별 결과 (StandardAPIResponse 기반)"""
+    # StandardAPIResponse의 모든 필드 상속
     success: bool = Field(..., description="성공 여부")
-    processing_time: Union[float, int] = Field(..., ge=0, description="처리 시간 (초)")
-    confidence: Optional[Union[float, int]] = Field(default=None, ge=0, le=1, description="신뢰도")
-    device_used: str = Field(default="mps", description="사용된 디바이스")
+    message: str = Field(default="", description="응답 메시지")
+    processing_time: Union[float, int] = Field(default=0.0, ge=0, description="처리 시간")
+    confidence: Union[float, int] = Field(default=0.0, ge=0.0, le=1.0, description="신뢰도")
+    session_id: str = Field(..., description="세션 ID")
+    step_id: int = Field(..., ge=1, le=8, description="단계 ID")
+    step_name: str = Field(..., description="단계 이름")
     
-    # 결과 데이터
-    result_data: Optional[Dict[str, Any]] = Field(default=None, description="단계 결과 데이터")
-    quality_score: Optional[Union[float, int]] = Field(default=None, ge=0, le=1, description="품질 점수")
+    # 추가 필드들
+    result_data: Optional[Dict[str, Any]] = Field(default=None, description="결과 데이터")
+    next_step_id: Optional[int] = Field(default=None, description="다음 단계 ID")
     
-    # 에러 정보
-    error_message: Optional[str] = Field(default=None, description="오류 메시지")
-    error_type: Optional[str] = Field(default=None, description="오류 타입")
-    
-    # 메타데이터
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="메타데이터")
-    intermediate_files: List[str] = Field(default_factory=list, description="중간 파일 경로")
-    memory_used: Optional[Union[float, int]] = Field(default=None, description="메모리 사용량 (GB)")
-    
-    # 🔥 숫자 필드 검증
-    @field_validator('processing_time', 'confidence', 'quality_score', 'memory_used', mode='before')
+    @field_validator('processing_time', 'confidence', mode='before')
     @classmethod
-    def validate_numeric_fields(cls, v):
-        """숫자 필드 안전 검증"""
+    def validate_step_numeric_fields(cls, v):
+        """StepResult 숫자 필드 검증"""
         if v is None:
-            return None
+            return 0.0
         try:
-            return float(v)
-        except (ValueError, TypeError):
-            return None
-
-# =====================================================================================
-# 🔥 완전한 파이프라인 요청/응답 모델 (완전 안전한 버전)
-# =====================================================================================
+            if isinstance(v, str):
+                v = float(v.strip())
+            if isinstance(v, (int, float)) and v >= 0:
+                return float(v)
+            return 0.0
+        except:
+            return 0.0
 
 class VirtualTryOnRequest(BaseConfigModel):
     """가상 피팅 요청"""
-    # 측정값 및 기본 정보
-    measurements: BodyMeasurements = Field(..., description="신체 측정값")
-    clothing_type: str = Field(default="shirt", description="의류 타입")
-    fabric_type: str = Field(default="cotton", description="원단 타입")
-    
-    # 이미지 데이터 (둘 중 하나는 필수)
-    person_image_data: Optional[str] = Field(default=None, description="사용자 이미지 (Base64)")
-    clothing_image_data: Optional[str] = Field(default=None, description="의류 이미지 (Base64)")
-    person_image_url: Optional[str] = Field(default=None, description="사용자 이미지 URL")
-    clothing_image_url: Optional[str] = Field(default=None, description="의류 이미지 URL")
-    
-    # 처리 옵션
+    person_image: str = Field(..., description="사용자 이미지 (Base64 또는 파일명)")
+    clothing_image: str = Field(..., description="의류 이미지 (Base64 또는 파일명)")
+    clothing_type: ClothingTypeEnum = Field(default=ClothingTypeEnum.SHIRT, description="의류 타입")
+    measurements: Optional[BodyMeasurements] = Field(default=None, description="신체 측정값")
     options: Optional[ProcessingOptions] = Field(default=None, description="처리 옵션")
     session_id: Optional[str] = Field(default=None, description="기존 세션 ID")
-    
-    @model_validator(mode='after')
-    def validate_images(self):
-        """이미지 데이터 검증"""
-        has_person = bool(self.person_image_data or self.person_image_url)
-        has_clothing = bool(self.clothing_image_data or self.clothing_image_url)
-        
-        if not (has_person or has_clothing):
-            # 최소한 하나의 이미지는 있어야 함 (경고만)
-            logger.warning("VirtualTryOnRequest: 이미지 데이터가 없습니다")
-        
-        return self
 
 class VirtualTryOnResponse(BaseConfigModel):
-    """가상 피팅 응답 (프론트엔드 완전 호환)"""
-    # 기본 응답 필드들
+    """가상 피팅 응답"""
     success: bool = Field(..., description="성공 여부")
-    message: str = Field(..., description="응답 메시지")
-    processing_time: Union[float, int] = Field(..., ge=0, description="전체 처리 시간 (초)")
-    confidence: Union[float, int] = Field(..., ge=0, le=1, description="전체 신뢰도")
+    message: str = Field(default="", description="응답 메시지")
     session_id: str = Field(..., description="세션 ID")
+    processing_time: Union[float, int] = Field(default=0.0, ge=0, description="총 처리 시간")
     
-    # 결과 이미지 (핵심)
-    fitted_image: Optional[str] = Field(default=None, description="가상 피팅 결과 (Base64)")
-    fit_score: Union[float, int] = Field(default=0.0, ge=0, le=1, description="맞춤 점수")
+    # 결과 이미지들
+    fitted_image: Optional[str] = Field(default=None, description="최종 피팅 이미지 (Base64)")
+    intermediate_images: Optional[Dict[str, str]] = Field(default=None, description="중간 결과 이미지들")
     
-    # 분석 결과들
-    measurements: Dict[str, Any] = Field(..., description="신체 분석 결과")
-    clothing_analysis: Dict[str, Any] = Field(..., description="의류 분석 결과")
-    recommendations: List[str] = Field(default_factory=list, description="AI 추천사항")
+    # 품질 메트릭
+    fit_score: Union[float, int] = Field(default=0.0, ge=0.0, le=1.0, description="피팅 점수")
+    quality_metrics: Optional[Dict[str, Union[float, int]]] = Field(default=None, description="품질 메트릭")
     
-    # 단계별 처리 정보
-    step_processing_times: Dict[str, Union[float, int]] = Field(default_factory=dict, description="단계별 처리 시간")
-    step_confidences: Dict[str, Union[float, int]] = Field(default_factory=dict, description="단계별 신뢰도")
+    # AI 분석 결과
+    measurements_analysis: Optional[BodyMeasurements] = Field(default=None, description="측정값 분석")
+    clothing_analysis: Optional[Dict[str, Any]] = Field(default=None, description="의류 분석")
+    recommendations: Optional[List[str]] = Field(default=None, description="AI 추천사항")
     
-    # 시스템 정보
-    device_used: str = Field(default="auto", description="사용된 디바이스")
-    memory_peak_mb: Optional[Union[float, int]] = Field(default=None, description="최대 메모리 사용량 (MB)")
-    
-    # 에러 정보
-    error: Optional[str] = Field(default=None, description="에러 메시지")
-    error_type: Optional[str] = Field(default=None, description="에러 타입")
-    
-    # 🔥 숫자 필드 검증
-    @field_validator('processing_time', 'confidence', 'fit_score', 'memory_peak_mb', mode='before')
-    @classmethod
-    def validate_numeric_fields(cls, v):
-        """숫자 필드 안전 검증"""
-        if v is None:
-            return 0.0 if v != 'memory_peak_mb' else None
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 0.0 if v != 'memory_peak_mb' else None
+    # 단계별 결과
+    step_results: Optional[List[StepResult]] = Field(default=None, description="단계별 상세 결과")
+    failed_steps: Optional[List[int]] = Field(default=None, description="실패한 단계들")
 
 # =====================================================================================
-# 🔥 시스템 상태 & 헬스체크 스키마들 (완전 안전한 버전)
+# 🔥 시스템 상태 스키마들
 # =====================================================================================
 
 class SystemHealth(BaseConfigModel):
     """시스템 건강 상태"""
-    overall_status: str = Field(..., description="전체 상태")
-    pipeline_initialized: bool = Field(..., description="파이프라인 초기화 상태")
-    device_available: bool = Field(..., description="디바이스 사용 가능 여부")
-    memory_usage: Dict[str, str] = Field(default_factory=dict, description="메모리 사용량")
+    status: str = Field(default="healthy", description="전체 상태")
+    timestamp: datetime = Field(default_factory=datetime.now, description="체크 시간")
+    uptime_seconds: Union[float, int] = Field(default=0.0, ge=0, description="가동 시간")
+    
+    # 서비스 상태
+    api_server: bool = Field(default=True, description="API 서버 상태")
+    ai_pipeline: bool = Field(default=True, description="AI 파이프라인 상태")
+    session_manager: bool = Field(default=True, description="세션 관리자 상태")
+    
+    # 시스템 리소스
+    memory_usage_percent: Union[float, int] = Field(default=0.0, ge=0, le=100, description="메모리 사용률")
+    cpu_usage_percent: Union[float, int] = Field(default=0.0, ge=0, le=100, description="CPU 사용률")
+    disk_usage_percent: Union[float, int] = Field(default=0.0, ge=0, le=100, description="디스크 사용률")
+    
+    # AI 시스템 상태
+    loaded_models: int = Field(default=0, ge=0, description="로드된 모델 수")
     active_sessions: int = Field(default=0, ge=0, description="활성 세션 수")
-    error_rate: Union[float, int] = Field(default=0.0, ge=0.0, le=1.0, description="오류율")
-    uptime: Union[float, int] = Field(..., ge=0, description="가동 시간 (초)")
-    pipeline_ready: bool = Field(..., description="AI 파이프라인 준비 상태")
-    
-    # M3 Max 전용 상태
-    mps_available: bool = Field(default=False, description="MPS 사용 가능 여부")
-    neural_engine_available: bool = Field(default=False, description="Neural Engine 사용 가능 여부")
-    memory_pressure: str = Field(default="normal", description="메모리 압박 상태")
-    gpu_temperature: Optional[Union[float, int]] = Field(default=None, description="GPU 온도")
-    
-    # 🔥 숫자 필드 검증
-    @field_validator('error_rate', 'uptime', 'gpu_temperature', mode='before')
-    @classmethod
-    def validate_numeric_fields(cls, v):
-        """숫자 필드 안전 검증"""
-        if v is None:
-            return None
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 0.0
+    total_requests: int = Field(default=0, ge=0, description="총 요청 수")
+    error_rate_percent: Union[float, int] = Field(default=0.0, ge=0, le=100, description="오류율")
 
 class HealthCheckResponse(BaseConfigModel):
     """헬스체크 응답"""
-    status: str = Field(default="healthy", description="서비스 상태")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
-    version: str = Field(default="6.2.0-complete-fix", description="API 버전")
-    device: str = Field(default="auto", description="사용 중인 디바이스")
-    active_sessions: int = Field(default=0, ge=0, description="활성 세션 수")
-    features: Dict[str, bool] = Field(default_factory=lambda: {
-        "session_management": True,
-        "8_step_pipeline": True,
-        "frontend_compatible": True,
-        "m3_max_optimized": True,
-        "real_time_visualization": True,
-        "step_model_requests": True,
-        "model_loader_integration": True,
-        "websocket_support": True,
-        "complete_validation_fix": True
-    })
+    health: SystemHealth = Field(..., description="시스템 건강 상태")
+    services: Dict[str, bool] = Field(default_factory=dict, description="서비스별 상태")
+    version_info: Dict[str, str] = Field(default_factory=dict, description="버전 정보")
+    device_info: Dict[str, Any] = Field(default_factory=dict, description="디바이스 정보")
 
 # =====================================================================================
-# 🔥 WebSocket & 실시간 통신 스키마들 (완전 안전한 버전)
+# 🔥 WebSocket 관련 스키마들
 # =====================================================================================
 
 class WebSocketMessage(BaseConfigModel):
     """WebSocket 메시지"""
-    message_type: str = Field(..., description="메시지 타입")
-    timestamp: Union[float, int] = Field(default_factory=time.time, description="타임스탬프")
+    type: str = Field(..., description="메시지 타입")
     session_id: Optional[str] = Field(default=None, description="세션 ID")
+    timestamp: datetime = Field(default_factory=datetime.now, description="메시지 시간")
     data: Optional[Dict[str, Any]] = Field(default=None, description="메시지 데이터")
 
 class ProgressUpdate(BaseConfigModel):
-    """진행 상황 업데이트"""
-    stage: str = Field(..., description="현재 단계")
-    percentage: Union[float, int] = Field(..., ge=0.0, le=100.0, description="진행률")
-    message: Optional[str] = Field(default=None, description="상태 메시지")
-    estimated_remaining: Optional[Union[float, int]] = Field(default=None, description="예상 남은 시간")
-    device: str = Field(default="M3 Max", description="처리 디바이스")
-    
-    # 🔥 숫자 필드 검증
-    @field_validator('percentage', 'estimated_remaining', mode='before')
-    @classmethod
-    def validate_numeric_fields(cls, v):
-        """숫자 필드 안전 검증"""
-        if v is None:
-            return None
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 0.0
+    """진행률 업데이트"""
+    step_id: int = Field(..., ge=1, le=8, description="현재 단계")
+    step_name: str = Field(..., description="단계 이름")
+    progress_percent: Union[float, int] = Field(..., ge=0, le=100, description="진행률 (%)")
+    status: ProcessingStatusEnum = Field(..., description="처리 상태")
+    message: str = Field(default="", description="상태 메시지")
+    estimated_time_remaining: Optional[Union[float, int]] = Field(default=None, ge=0, description="예상 남은 시간 (초)")
 
 # =====================================================================================
-# 🔥 에러 처리 스키마들 (완전 안전한 버전)
+# 🔥 에러 처리 스키마들
 # =====================================================================================
 
 class ErrorDetail(BaseConfigModel):
     """에러 상세 정보"""
-    error_code: str = Field(..., description="오류 코드")
-    error_message: str = Field(..., description="오류 메시지")
-    error_type: str = Field(..., description="오류 타입")
-    step_number: Optional[int] = Field(default=None, ge=1, le=8, description="오류 발생 단계")
-    suggestions: List[str] = Field(default_factory=list, description="해결 제안")
+    code: str = Field(..., description="오류 코드")
+    message: str = Field(..., description="오류 메시지")
+    details: Optional[str] = Field(default=None, description="상세 설명")
+    suggestion: Optional[str] = Field(default=None, description="해결 제안")
     retry_after: Optional[int] = Field(default=None, ge=0, description="재시도 권장 시간 (초)")
     technical_details: Optional[Dict[str, Any]] = Field(default=None, description="기술적 세부사항")
 
@@ -688,8 +561,107 @@ class ErrorResponse(BaseConfigModel):
     device_info: str = Field(default="M3 Max", description="디바이스 정보")
 
 # =====================================================================================
-# 🔥 Step Model Requests 데이터 - 완전 안전한 버전
+# 🔥 검출된 모델 파일 스키마
 # =====================================================================================
+
+class DetectedModelFile(BaseConfigModel):
+    """검출된 모델 파일"""
+    file_path: str = Field(..., description="파일 경로")
+    file_name: str = Field(..., description="파일명")
+    size_mb: Union[float, int] = Field(..., ge=0, description="파일 크기 (MB)")
+    last_modified: datetime = Field(..., description="마지막 수정 시간")
+    step_class: Optional[str] = Field(default=None, description="해당 Step 클래스")
+    confidence: Union[float, int] = Field(default=0.0, ge=0, le=1, description="매칭 신뢰도")
+    
+    @field_validator('size_mb', 'confidence', mode='before')
+    @classmethod
+    def validate_model_file_numeric(cls, v):
+        """모델 파일 숫자 필드 검증"""
+        try:
+            if isinstance(v, str):
+                v = float(v.strip())
+            if isinstance(v, (int, float)) and v >= 0:
+                return float(v)
+            return 0.0
+        except:
+            return 0.0
+
+# =====================================================================================
+# 🔥 유틸리티 함수들 (완전 안전한 버전)
+# =====================================================================================
+
+def create_standard_response(
+    success: bool,
+    message: str = "",
+    processing_time: Union[float, int] = 0.0,
+    confidence: Union[float, int] = 0.0,
+    session_id: Optional[str] = None,
+    **kwargs
+) -> StandardAPIResponse:
+    """표준 응답 생성 (완전 안전한 버전)"""
+    try:
+        # 숫자 필드 안전 처리
+        processing_time = max(0.0, float(processing_time)) if processing_time is not None else 0.0
+        confidence = max(0.0, min(1.0, float(confidence))) if confidence is not None else 0.0
+        
+        return StandardAPIResponse(
+            success=success,
+            message=message,
+            processing_time=processing_time,
+            confidence=confidence,
+            session_id=session_id,
+            **kwargs
+        )
+    except Exception as e:
+        logger.error(f"❌ create_standard_response 실패: {e}")
+        # 최소한의 안전한 응답 반환
+        return StandardAPIResponse(
+            success=False,
+            message=f"응답 생성 실패: {str(e)}",
+            processing_time=0.0,
+            confidence=0.0,
+            session_id=session_id
+        )
+
+def create_error_response(
+    error_message: str,
+    error_code: str = "INTERNAL_ERROR",
+    session_id: Optional[str] = None,
+    **kwargs
+) -> ErrorResponse:
+    """에러 응답 생성"""
+    try:
+        error_detail = ErrorDetail(
+            code=error_code,
+            message=error_message,
+            **kwargs
+        )
+        
+        return ErrorResponse(
+            error=error_detail,
+            session_id=session_id
+        )
+    except Exception as e:
+        logger.error(f"❌ create_error_response 실패: {e}")
+        # 최소한의 에러 응답
+        fallback_error = ErrorDetail(
+            code="CRITICAL_ERROR",
+            message=f"에러 응답 생성 실패: {str(e)}"
+        )
+        return ErrorResponse(error=fallback_error, session_id=session_id)
+
+def create_processing_steps() -> List[Dict[str, Any]]:
+    """8단계 처리 단계 정보 생성"""
+    return [
+        {"id": 1, "name": "이미지 업로드 검증", "description": "업로드된 이미지의 유효성 검사"},
+        {"id": 2, "name": "신체 측정값 검증", "description": "입력된 신체 측정값 유효성 검사"},
+        {"id": 3, "name": "인간 파싱", "description": "사용자 이미지에서 인체 부위 분할"},
+        {"id": 4, "name": "포즈 추정", "description": "사용자의 자세 및 키포인트 감지"},
+        {"id": 5, "name": "의류 분석", "description": "의류 이미지 분할 및 특성 분석"},
+        {"id": 6, "name": "기하학적 매칭", "description": "인체와 의류 간의 기하학적 정합"},
+        {"id": 7, "name": "가상 피팅", "description": "AI 기반 가상 착용 처리"},
+        {"id": 8, "name": "결과 분석", "description": "피팅 결과 품질 평가 및 최적화"}
+    ]
 
 def create_safe_model_request(
     model_name: str,
@@ -728,6 +700,10 @@ def create_safe_model_request(
             input_size=(512, 512)
         )
 
+# =====================================================================================
+# 🔥 Step Model Requests 데이터 (안전한 생성)
+# =====================================================================================
+
 # Step별 모델 요청 정보 - 완전 안전한 생성
 STEP_MODEL_REQUESTS = {
     "HumanParsingStep": create_safe_model_request(
@@ -740,7 +716,7 @@ STEP_MODEL_REQUESTS = {
         output_format="segmentation_mask",
         checkpoint_patterns=[
             r".*human.*parsing.*\.pth$",
-            r".*schp.*atr.*\.pth$",
+            r".*schp.*atr.*\.pth$", 
             r".*graphonomy.*\.pth$"
         ],
         file_extensions=[".pth", ".pt", ".pkl"],
@@ -759,378 +735,182 @@ STEP_MODEL_REQUESTS = {
             r".*pose.*model.*\.pth$",
             r".*openpose.*\.pth$",
             r".*body.*pose.*\.pth$"
-        ]
+        ],
+        file_extensions=[".pth", ".caffemodel"],
+        size_range_mb=(100.0, 800.0)
     ),
     
     "ClothSegmentationStep": create_safe_model_request(
         model_name="cloth_segmentation_u2net",
-        step_class="ClothSegmentationStep",
+        step_class="ClothSegmentationStep", 
         step_priority="high",
         model_class="U2NetModel",
         input_size=(320, 320),
-        num_classes=1,
+        num_classes=2,
         output_format="binary_mask",
         checkpoint_patterns=[
+            r".*cloth.*seg.*\.pth$",
             r".*u2net.*\.pth$",
-            r".*cloth.*segmentation.*\.pth$",
-            r".*sam.*\.pth$"
-        ]
+            r".*clothing.*mask.*\.pth$"
+        ],
+        file_extensions=[".pth", ".pt"],
+        size_range_mb=(10.0, 200.0)
     ),
     
     "GeometricMatchingStep": create_safe_model_request(
-        model_name="geometric_matching_gmm",
+        model_name="geometric_matching_tps",
         step_class="GeometricMatchingStep",
-        step_priority="medium",
-        model_class="GeometricMatchingModel",
-        input_size=(512, 384),
-        output_format="transformation_matrix",
+        step_priority="critical",
+        model_class="TPSModel",
+        input_size=(256, 192),
+        output_format="warped_image",
         checkpoint_patterns=[
-            r".*geometric.*matching.*\.pth$",
-            r".*gmm.*\.pth$",
-            r".*tps.*\.pth$"
-        ]
+            r".*geo.*match.*\.pth$",
+            r".*tps.*\.pth$",
+            r".*geometric.*\.pth$"
+        ],
+        file_extensions=[".pth", ".pt"],
+        size_range_mb=(20.0, 400.0)
     ),
     
     "ClothWarpingStep": create_safe_model_request(
-        model_name="cloth_warping_tom",
+        model_name="cloth_warping_flow",
         step_class="ClothWarpingStep",
-        step_priority="medium",
-        model_class="HRVITONModel",
+        step_priority="high",
+        model_class="FlowNetModel",
         input_size=(512, 384),
         output_format="warped_cloth",
         checkpoint_patterns=[
-            r".*cloth.*warping.*\.pth$",
-            r".*tom.*\.pth$",
-            r".*hr.*viton.*\.pth$"
-        ]
+            r".*warp.*\.pth$",
+            r".*flow.*net.*\.pth$",
+            r".*cloth.*flow.*\.pth$"
+        ],
+        file_extensions=[".pth", ".pt"],
+        size_range_mb=(50.0, 600.0)
     ),
     
     "VirtualFittingStep": create_safe_model_request(
-        model_name="virtual_fitting_stable_diffusion",
+        model_name="virtual_fitting_hrviton",
         step_class="VirtualFittingStep",
         step_priority="critical",
-        model_class="StableDiffusionPipeline",
-        input_size=(512, 512),
-        output_format="rgb_image",
+        model_class="HRVITONModel",
+        input_size=(512, 384),
+        output_format="fitted_image",
         checkpoint_patterns=[
-            r".*diffusion.*pytorch.*model.*\.bin$",
-            r".*stable.*diffusion.*\.safetensors$"
-        ]
+            r".*hr.*viton.*\.pth$",
+            r".*virtual.*fit.*\.pth$",
+            r".*gen.*\.pth$"
+        ],
+        file_extensions=[".pth", ".pt", ".ckpt"],
+        size_range_mb=(100.0, 2000.0)
     ),
     
     "PostProcessingStep": create_safe_model_request(
-        model_name="post_processing_realesrgan",
+        model_name="post_processing_enhancement",
         step_class="PostProcessingStep",
-        step_priority="low",
+        step_priority="medium",
         model_class="EnhancementModel",
         input_size=(512, 512),
         output_format="enhanced_image",
         checkpoint_patterns=[
-            r".*srresnet.*\.pth$",
-            r".*enhancement.*\.pth$",
-            r".*super.*resolution.*\.pth$"
-        ]
+            r".*enhance.*\.pth$",
+            r".*post.*process.*\.pth$",
+            r".*refinement.*\.pth$"
+        ],
+        file_extensions=[".pth", ".pt"],
+        size_range_mb=(10.0, 300.0)
     ),
     
     "QualityAssessmentStep": create_safe_model_request(
-        model_name="quality_assessment_clip",
+        model_name="quality_assessment_metric",
         step_class="QualityAssessmentStep",
         step_priority="low",
-        model_class="CLIPModel",
-        input_size=(512, 512),  # 🔥 안전한 크기로 설정
+        model_class="QualityMetricModel",
+        input_size=(256, 256),
         output_format="quality_scores",
         checkpoint_patterns=[
-            r".*clip.*\.bin$",
-            r".*quality.*assessment.*\.pth$"
-        ]
+            r".*quality.*\.pth$",
+            r".*assess.*\.pth$",
+            r".*metric.*\.pth$"
+        ],
+        file_extensions=[".pth", ".pt"],
+        size_range_mb=(5.0, 100.0)
     )
 }
 
-# =====================================================================================
-# 🔥 유틸리티 함수들 (완전 안전한 버전)
-# =====================================================================================
-
-def create_standard_response(
-    success: bool,
-    message: str,
-    step_id: Optional[int] = None,
-    step_name: Optional[str] = None,
-    processing_time: Union[float, int] = 0.0,
-    confidence: Union[float, int] = 0.0,
-    session_id: Optional[str] = None,
-    **kwargs
-) -> StandardAPIResponse:
-    """표준 API 응답 생성"""
-    try:
-        return StandardAPIResponse(
-            success=success,
-            message=message,
-            step_id=step_id,
-            step_name=step_name,
-            processing_time=float(processing_time) if processing_time else 0.0,
-            confidence=float(confidence) if confidence else 0.0,
-            session_id=session_id,
-            **kwargs
-        )
-    except Exception as e:
-        logger.error(f"create_standard_response 실패: {e}")
-        # 최소한의 안전한 응답 반환
-        return StandardAPIResponse(
-            success=success,
-            message=str(message) if message else "응답 생성",
-            processing_time=0.0,
-            confidence=0.0
-        )
-
-def create_error_response(
-    error_message: str,
-    error_type: str = "ProcessingError",
-    error_code: str = "E001",
-    session_id: Optional[str] = None,
-    step_number: Optional[int] = None
-) -> ErrorResponse:
-    """에러 응답 생성"""
-    try:
-        return ErrorResponse(
-            error=ErrorDetail(
-                error_code=error_code,
-                error_message=error_message,
-                error_type=error_type,
-                step_number=step_number
-            ),
-            session_id=session_id
-        )
-    except Exception as e:
-        logger.error(f"create_error_response 실패: {e}")
-        # 최소한의 안전한 에러 응답
-        return ErrorResponse(
-            error=ErrorDetail(
-                error_code="E999",
-                error_message=str(error_message),
-                error_type="UnknownError"
-            )
-        )
-
-def get_step_request(step_name: str) -> Optional[ModelRequest]:
-    """Step별 모델 요청 정보 반환"""
-    try:
-        return STEP_MODEL_REQUESTS.get(step_name)
-    except Exception as e:
-        logger.error(f"get_step_request 실패: {e}")
-        return None
+def get_step_request(step_class: str) -> Optional[ModelRequest]:
+    """특정 Step의 모델 요청 정보 반환"""
+    return STEP_MODEL_REQUESTS.get(step_class)
 
 def get_all_step_requests() -> Dict[str, ModelRequest]:
-    """모든 Step 요청 정보 반환"""
-    try:
-        return STEP_MODEL_REQUESTS.copy()
-    except Exception as e:
-        logger.error(f"get_all_step_requests 실패: {e}")
-        return {}
+    """모든 Step의 모델 요청 정보 반환"""
+    return STEP_MODEL_REQUESTS.copy()
 
-def create_processing_steps() -> List[Dict[str, Any]]:
-    """프론트엔드용 처리 단계 생성"""
-    try:
-        return [
-            {
-                "id": "upload_validation",
-                "name": "이미지 업로드 검증",
-                "description": "이미지를 업로드하고 M3 Max 최적화 검증을 수행합니다",
-                "status": "pending"
-            },
-            {
-                "id": "measurements_validation", 
-                "name": "신체 측정값 검증",
-                "description": "신체 측정값 검증 및 BMI 계산을 수행합니다",
-                "status": "pending"
-            },
-            {
-                "id": "human_parsing",
-                "name": "인체 분석",
-                "description": "M3 Max Neural Engine을 활용한 고정밀 인체 분석",
-                "status": "pending"
-            },
-            {
-                "id": "pose_estimation",
-                "name": "포즈 추정",
-                "description": "MPS 최적화된 실시간 포즈 분석",
-                "status": "pending"
-            },
-            {
-                "id": "cloth_segmentation",
-                "name": "의류 분석",
-                "description": "고해상도 의류 세그멘테이션 및 배경 제거",
-                "status": "pending"
-            },
-            {
-                "id": "geometric_matching",
-                "name": "기하학적 매칭",
-                "description": "M3 Max 병렬 처리를 활용한 정밀 매칭",
-                "status": "pending"
-            },
-            {
-                "id": "cloth_warping",
-                "name": "의류 변형",
-                "description": "Metal Performance Shaders를 활용한 물리 시뮬레이션",
-                "status": "pending"
-            },
-            {
-                "id": "virtual_fitting",
-                "name": "가상 피팅",
-                "description": "128GB 메모리를 활용한 고품질 피팅 생성",
-                "status": "pending"
-            },
-            {
-                "id": "post_processing",
-                "name": "품질 향상",
-                "description": "AI 기반 이미지 품질 향상 및 최적화",
-                "status": "pending"
-            },
-            {
-                "id": "quality_assessment",
-                "name": "품질 평가",
-                "description": "다중 메트릭 기반 종합 품질 평가 및 점수 산출",
-                "status": "pending"
-            }
-        ]
-    except Exception as e:
-        logger.error(f"create_processing_steps 실패: {e}")
-        return []
+# =====================================================================================
+# 🔥 검증 함수
+# =====================================================================================
 
 def validate_all_schemas() -> bool:
-    """🔥 모든 스키마 완전 검증"""
+    """모든 스키마 클래스 검증"""
     try:
-        success_count = 0
-        total_tests = 0
+        # 기본 테스트 데이터
+        test_data = {
+            "height": 170.5,
+            "weight": 65.0,
+            "chest": 90.0,
+            "waist": 70.0,
+            "hips": 95.0
+        }
         
-        # 🔥 1. BodyMeasurements 테스트
-        total_tests += 1
-        try:
-            test_measurements = BodyMeasurements(height=170.0, weight=65.0)
-            assert test_measurements.bmi > 0
-            assert test_measurements.body_type in ["slim", "standard", "robust", "heavy"]
-            success_count += 1
-            logger.info("✅ BodyMeasurements 테스트 성공")
-        except Exception as e:
-            logger.error(f"❌ BodyMeasurements 테스트 실패: {e}")
+        # BodyMeasurements 테스트
+        body_measurements = BodyMeasurements(**test_data)
+        assert body_measurements.bmi > 0
         
-        # 🔥 2. ModelRequest 다양한 input_size 테스트
-        input_size_test_cases = [
-            ((512, 512), "정상 튜플"),
-            (512, "단일 숫자"),
-            ([640, 480], "리스트"),
-            ("1024", "문자열 숫자"),
-            ("800,600", "쉼표 분리 문자열"),
-            ({"width": 768, "height": 768}, "딕셔너리"),
-            (None, "None 값"),
-            ((0, 0), "0 크기"),
-            ((-100, -100), "음수"),
-            ((5000, 5000), "너무 큰 값"),
-            ("invalid", "잘못된 문자열"),
-            ([], "빈 리스트"),
-            ({"wrong": "format"}, "잘못된 딕셔너리")
+        # StandardAPIResponse 테스트
+        api_response = StandardAPIResponse(
+            success=True,
+            message="테스트 성공",
+            processing_time=1.5,
+            confidence=0.95
+        )
+        assert api_response.success
+        
+        # ModelRequest 테스트 (다양한 input_size 케이스)
+        test_cases = [
+            (512, 512),      # 튜플
+            [256, 256],      # 리스트
+            384,             # 단일 정수
+            "512x384",       # 문자열
+            None             # None
         ]
         
-        for test_input, description in input_size_test_cases:
-            total_tests += 1
-            try:
-                test_model_request = ModelRequest(
-                    model_name="test_model",
-                    step_class="TestStep",
-                    model_class="TestModel",
-                    input_size=test_input
-                )
-                # 검증: input_size는 항상 valid tuple이어야 함
-                assert isinstance(test_model_request.input_size, tuple)
-                assert len(test_model_request.input_size) == 2
-                assert test_model_request.input_size[0] >= 64
-                assert test_model_request.input_size[1] >= 64
-                assert test_model_request.input_size[0] <= 2048
-                assert test_model_request.input_size[1] <= 2048
-                success_count += 1
-                logger.info(f"✅ ModelRequest {description}: {test_input} -> {test_model_request.input_size}")
-            except Exception as e:
-                logger.warning(f"⚠️ ModelRequest {description} 테스트 실패: {e}")
-        
-        # 🔥 3. VirtualTryOnRequest 테스트
-        total_tests += 1
-        try:
-            test_request = VirtualTryOnRequest(
-                measurements=BodyMeasurements(height=170.0, weight=65.0),
-                clothing_type="shirt",
-                person_image_data="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAAA...",
-                clothing_image_data="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAAA..."
+        for input_size in test_cases:
+            model_request = create_safe_model_request(
+                model_name="test_model",
+                step_class="TestStep",
+                input_size=input_size
             )
-            success_count += 1
-            logger.info("✅ VirtualTryOnRequest 테스트 성공")
-        except Exception as e:
-            logger.error(f"❌ VirtualTryOnRequest 테스트 실패: {e}")
+            assert isinstance(model_request.input_size, tuple)
+            assert len(model_request.input_size) == 2
+            assert all(isinstance(x, int) and x > 0 for x in model_request.input_size)
         
-        # 🔥 4. StandardAPIResponse 테스트
-        total_tests += 1
-        try:
-            test_response = create_standard_response(
-                success=True,
-                message="테스트 성공",
-                processing_time="1.5",  # 문자열 숫자 테스트
-                confidence="0.95"  # 문자열 숫자 테스트
-            )
-            assert test_response.processing_time == 1.5
-            assert test_response.confidence == 0.95
-            success_count += 1
-            logger.info("✅ StandardAPIResponse 테스트 성공")
-        except Exception as e:
-            logger.error(f"❌ StandardAPIResponse 테스트 실패: {e}")
+        # VirtualTryOnRequest 테스트
+        tryon_request = VirtualTryOnRequest(
+            person_image="test_person.jpg",
+            clothing_image="test_clothing.jpg",
+            measurements=body_measurements
+        )
+        assert tryon_request.clothing_type == ClothingTypeEnum.SHIRT
         
-        # 🔥 5. Step Model Requests 전체 테스트
-        total_tests += 1
-        try:
-            step_success = 0
-            for step_name, request in STEP_MODEL_REQUESTS.items():
-                assert isinstance(request.input_size, tuple)
-                assert len(request.input_size) == 2
-                assert request.input_size[0] >= 64
-                assert request.input_size[1] >= 64
-                step_success += 1
-            
-            if step_success == len(STEP_MODEL_REQUESTS):
-                success_count += 1
-                logger.info(f"✅ Step Model Requests 테스트 성공: {step_success}개")
-            else:
-                logger.warning(f"⚠️ Step Model Requests 부분 성공: {step_success}/{len(STEP_MODEL_REQUESTS)}")
-        except Exception as e:
-            logger.error(f"❌ Step Model Requests 테스트 실패: {e}")
-        
-        # 🔥 6. 에러 처리 테스트
-        total_tests += 1
-        try:
-            test_error = create_error_response(
-                error_message="테스트 에러",
-                error_type="TestError",
-                error_code="TEST001"
-            )
-            assert test_error.error.error_message == "테스트 에러"
-            success_count += 1
-            logger.info("✅ 에러 처리 테스트 성공")
-        except Exception as e:
-            logger.error(f"❌ 에러 처리 테스트 실패: {e}")
-        
-        # 최종 결과
-        success_rate = success_count / total_tests if total_tests > 0 else 0
-        logger.info(f"🎯 스키마 검증 결과: {success_count}/{total_tests} 성공 ({success_rate:.1%})")
-        
-        if success_rate >= 0.8:  # 80% 이상 성공하면 전체 성공으로 간주
-            logger.info("✅ 모든 스키마 검증 성공!")
-            return True
-        else:
-            logger.warning(f"⚠️ 스키마 검증 부분 성공: {success_rate:.1%}")
-            return False
+        logger.info("✅ 모든 스키마 검증 성공")
+        return True
         
     except Exception as e:
-        logger.error(f"❌ 스키마 검증 중 치명적 오류: {e}")
+        logger.error(f"❌ 스키마 검증 실패: {e}")
         return False
 
 # =====================================================================================
-# 🔥 EXPORT
+# 🔥 Export
 # =====================================================================================
 
 __all__ = [

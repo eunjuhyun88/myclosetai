@@ -292,10 +292,10 @@ class APIClient {
 
       const result: StepResult = await response.json();
       
-      // 세션 ID 업데이트 (1단계에서 반환됨)
-      if (stepId === 1 && result.details?.session_id) {
-        this.setSessionId(result.details.session_id);
-      }
+    // 세션 ID 업데이트 (1단계에서 반환됨)
+    if (stepId === 1 && result.session_id) {  // ✅ 수정됨
+      this.setSessionId(result.session_id);
+    }
 
       console.log(`✅ Step ${stepId} 완료:`, result);
       return result;
@@ -908,6 +908,7 @@ const processStep2 = useCallback(async () => {
     setProgress(0);
   }
 }, [measurements, apiClient, goToNextStep, stepResults]);
+
   // 유효성 검사 함수들
   const canProceedToNext = useCallback(() => {
     switch (currentStep) {

@@ -19,6 +19,26 @@ from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
+# backend/app/core/config.py 상단에 추가
+import sys
+
+# DeviceManager 클래스 수정
+class DeviceManager:
+    def __init__(self):
+        self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
+        self.device = self._detect_device()
+    
+    def _detect_device(self):
+        try:
+            import torch
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                return 'mps'
+            elif torch.cuda.is_available():
+                return 'cuda'
+            return 'cpu'
+        except:
+            return 'cpu'
+        
 # ===============================================================
 # 🚨 SafeConfigMixin - get 메서드 문제 완전 해결
 # ===============================================================
