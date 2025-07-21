@@ -3601,5 +3601,7 @@ else:
 
 logger.info("🎉 준비 완료: 494개 모델 중 400+개 탐지 가능!")
 
+__all__ = ['ModelLoader', 'get_global_model_loader', 'ModelConfig', 'ModelType']
+
 # 전역 인스턴스
-auto_detector = ImprovedAutoModelDetector()
+auto_detector = RealWorldModelDetector()
