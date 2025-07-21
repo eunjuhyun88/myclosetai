@@ -44,7 +44,85 @@ except ImportError:
         import gc
         gc.collect()
         return {"success": True, "method": "fallback_gc"}
+# 안전한 OpenCV import (모든 Step 파일 상단에 추가)
+import os
+import logging
 
+# OpenCV 안전 import (M3 Max + conda 환경 고려)
+OPENCV_AVAILABLE = False
+try:
+    # 환경 변수 설정 (iconv 오류 해결)
+    os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '0'  # OpenEXR 비활성화
+    os.environ['OPENCV_IO_ENABLE_JASPER'] = '0'   # Jasper 비활성화
+    
+    import cv2
+    OPENCV_AVAILABLE = True
+    logging.getLogger(__name__).info(f"✅ OpenCV {cv2.__version__} 로드 성공")
+    
+except ImportError as e:
+    logging.getLogger(__name__).warning(f"⚠️ OpenCV import 실패: {e}")
+    logging.getLogger(__name__).warning("💡 해결 방법: conda install opencv -c conda-forge")
+    
+    # OpenCV 폴백 클래스
+    class OpenCVFallback:
+        def __init__(self):
+            self.INTER_LINEAR = 1
+            self.INTER_CUBIC = 2
+            self.COLOR_BGR2RGB = 4
+            self.COLOR_RGB2BGR = 3
+        
+        def resize(self, img, size, interpolation=1):
+            try:
+                from PIL import Image
+                if hasattr(img, 'shape'):  # numpy array
+                    pil_img = Image.fromarray(img)
+                    resized = pil_img.resize(size)
+                    return np.array(resized)
+                return img
+            except:
+                return img
+        
+        def cvtColor(self, img, code):
+            if hasattr(img, 'shape') and len(img.shape) == 3:
+                if code in [3, 4]:  # BGR<->RGB
+                    return img[:, :, ::-1]
+            return img
+        
+        def imread(self, path):
+            try:
+                from PIL import Image
+                import numpy as np
+                img = Image.open(path)
+                return np.array(img)
+            except:
+                return None
+        
+        def imwrite(self, path, img):
+            try:
+                from PIL import Image
+                if hasattr(img, 'shape'):
+                    Image.fromarray(img).save(path)
+                    return True
+            except:
+                pass
+            return False
+    
+    cv2 = OpenCVFallback()
+
+except Exception as e:
+    logging.getLogger(__name__).error(f"❌ OpenCV 로드 중 오류: {e}")
+    
+    # 최후 폴백
+    class MinimalOpenCV:
+        def __getattr__(self, name):
+            def dummy_func(*args, **kwargs):
+                logging.getLogger(__name__).warning(f"OpenCV {name} 호출됨 - 폴백 모드")
+                return None
+            return dummy_func
+    
+    cv2 = MinimalOpenCV()
+    OPENCV_AVAILABLE = False
+    
 # 핵심 라이브러리
 import numpy as np
 import cv2

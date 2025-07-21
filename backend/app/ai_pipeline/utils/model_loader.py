@@ -52,6 +52,7 @@ from abc import ABC, abstractmethod
 # ==============================================
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)  # INFO/DEBUG 로그 제거
 
 # ==============================================
 # 🔥 2단계: 안전한 라이브러리 임포트 및 호환성 체크 (conda 환경 우선)
@@ -393,7 +394,7 @@ class DeviceManager:
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.DeviceManager")
         
-        # 🔥 필수 속성들을 먼저 설정
+        # 🔥 필수 속성들을 먼저 설정 - conda_env 속성 추가
         self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
         self.is_conda = bool(os.environ.get('CONDA_DEFAULT_ENV')) or bool(os.environ.get('CONDA_PREFIX'))
         self.conda_prefix = os.environ.get('CONDA_PREFIX', '')
@@ -476,7 +477,7 @@ class DeviceManager:
             "platform": self.platform,
             "architecture": self.architecture
         }
-
+    
 class ModelMemoryManager:
     """모델 메모리 관리자 - M3 Max 128GB 최적화"""
     
@@ -920,16 +921,28 @@ class AutoModelDetectorIntegration:
             self.detector = None
     
     def auto_detect_models_for_step(self, step_name: str) -> Dict[str, Any]:
-        """Step별 모델 자동 탐지"""
+        """Step별 모델 자동 탐지 (매개변수 중복 오류 수정)"""
         try:
             if not self.detector:
                 return {}
             
-            # 빠른 탐지로 Step에 맞는 모델 찾기
-            detected = quick_model_detection(
-                step_filter=step_name,
-                enable_pytorch_validation=True
-            )
+            # 🔥 import를 함수 내부에서 수행 (순환 참조 방지)
+            try:
+                from app.ai_pipeline.utils.auto_model_detector import quick_model_detection
+            except ImportError:
+                self.logger.warning("⚠️ auto_model_detector import 실패")
+                return {}
+            
+            # 🔥 매개변수를 딕셔너리로 명시적 구성 (중복 방지)
+            detection_params = {
+                'step_filter': step_name,
+                'enable_pytorch_validation': True,
+                'min_confidence': 0.3,
+                'prioritize_backend_models': True
+            }
+            
+            # 🔥 딕셔너리 언팩킹으로 안전하게 전달
+            detected = quick_model_detection(**detection_params)
             
             step_models = {}
             for model_name, model_info in detected.items():
@@ -1412,9 +1425,9 @@ class ModelLoader:
             self.logger.error(f"❌ 모델 레지스트리 초기화 실패: {e}")
     
     def _initial_auto_detection(self):
-        """초기 자동 탐지 실행"""
+        """초기 자동 탐지 실행 - 🔥 step_name → step_filter 매개변수 수정"""
         try:
-            # 빠른 탐지로 기본 모델들 찾기
+            # 빠른 탐지로 기본 모델들 찾기 - 🔥 매개변수 수정
             detected = quick_model_detection(enable_pytorch_validation=True)
             
             auto_detected_count = 0
@@ -1444,11 +1457,46 @@ class ModelLoader:
             
         except Exception as e:
             self.logger.error(f"❌ 초기 자동 탐지 실패: {e}")
-    
+
+    def initialize(self) -> bool:
+        """ModelLoader 초기화 메서드 - 순수 동기 버전 - 🔥 step_filter 매개변수 수정"""
+        try:
+            self.logger.info("🚀 ModelLoader v14.0 동기 초기화 시작...")
+            
+            # 메모리 정리 (동기)
+            if hasattr(self, 'memory_manager'):
+                try:
+                    self.memory_manager.optimize_memory()
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
+            
+            # auto_model_detector 빠른 탐지 실행 - 🔥 step_filter 매개변수 수정
+            if AUTO_MODEL_DETECTOR_AVAILABLE:
+                try:
+                    detected = quick_model_detection(
+                        enable_pytorch_validation=True,
+                        min_confidence=0.3,
+                        prioritize_backend_models=True
+                    )                  
+                    if detected:  # quick_detected → detected로 수정
+                        registered = self.register_detected_models(detected)
+                        self.logger.info(f"🔍 빠른 자동 탐지 완료: {registered}개 모델 등록")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 빠른 자동 탐지 실패: {e}")
+                
+            self.logger.info("✅ ModelLoader v14.0 동기 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
+            return False
+        
     # ==============================================
     # 🔥 핵심 메서드: register_step_requirements (필수!)
     # ==============================================
-    def register_step_requirements(
+    # backend/app/ai_pipeline/utils/model_loader.py
+# 🔥 register_step_requirements 메서드 완전 수정
+def register_step_requirements(
         self, 
         step_name: str, 
         requirements: Dict[str, Any]
@@ -1531,7 +1579,7 @@ class ModelLoader:
                             self.logger.error(f"❌ {model_name} 폴백 설정 생성도 실패: {fallback_error}")
                             continue
                 
-                # auto_model_detector로 해당 Step 모델 자동 탐지 (오류 방지)
+                # auto_model_detector로 해당 Step 모델 자동 탐지 (오류 방지) - 🔥 step_filter 매개변수 수정
                 if self.auto_detector and hasattr(self.auto_detector, 'detector') and self.auto_detector.detector:
                     try:
                         auto_detected = self.auto_detector.auto_detect_models_for_step(step_name)
@@ -1608,642 +1656,7 @@ class ModelLoader:
                 self.logger.error(f"❌ {step_name} 최소 폴백 설정 생성도 실패: {fallback_error}")
             
             return False
-
-    def create_safe_step_interface(
-        self, 
-        step_name: str, 
-        step_requirements: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ) -> StepModelInterface:
-        """안전한 Step 인터페이스 생성 - 오류 복구 기능 강화"""
-        try:
-            with self._interface_lock:
-                # DeviceManager 상태 확인 및 수정
-                if not hasattr(self.device_manager, 'conda_env'):
-                    self.device_manager.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
-                    self.device_manager.is_conda = bool(os.environ.get('CONDA_DEFAULT_ENV'))
-                    self.logger.info(f"🔧 DeviceManager conda_env 속성 추가: {self.device_manager.conda_env}")
-                
-                if step_name not in self.step_interfaces:
-                    # 안전한 인터페이스 생성
-                    try:
-                        interface = StepModelInterface(self, step_name)
-                    except Exception as interface_error:
-                        self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {interface_error}")
-                        # 최소 기능 인터페이스 생성
-                        interface = self._create_minimal_interface(step_name)
-                    
-                    # step_requirements 처리 (안전한 방식)
-                    if step_requirements:
-                        for req_name, req_config in step_requirements.items():
-                            try:
-                                if hasattr(interface, 'register_model_requirement'):
-                                    interface.register_model_requirement(
-                                        model_name=req_name,
-                                        **req_config
-                                    )
-                            except Exception as e:
-                                self.logger.warning(f"⚠️ {req_name} 요청사항 등록 실패: {e}")
-                    
-                    self.step_interfaces[step_name] = interface
-                    self.logger.info(f"🔗 {step_name} 안전한 인터페이스 생성 완료")
-                
-                return self.step_interfaces[step_name]
-                
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 안전한 인터페이스 생성 실패: {e}")
-            return self._create_minimal_interface(step_name)
-    
-    def _create_minimal_interface(self, step_name: str) -> StepModelInterface:
-        """최소 기능 인터페이스 생성 (폴백)"""
-        class MinimalStepInterface:
-            def __init__(self, model_loader, step_name):
-                self.model_loader = model_loader
-                self.step_name = step_name
-                self.logger = logging.getLogger(f"MinimalInterface.{step_name}")
-                self.loaded_models = {}
-                
-            def register_model_requirement(self, **kwargs):
-                self.logger.debug(f"최소 인터페이스 - 모델 요청 무시: {kwargs}")
-                return True
-                
-            async def get_model(self, model_name=None):
-                return None
         
-        return MinimalStepInterface(self, step_name)
-
-    def get_step_requirements(self, step_name: str) -> Dict[str, Any]:
-        """Step별 요청사항 조회"""
-        try:
-            with self._lock:
-                return self.step_requirements.get(step_name, {})
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 요청사항 조회 실패: {e}")
-            return {}
-    
-    # ==============================================
-    # 🔥 핵심 모델 로딩 메서드들 (auto_model_detector 통합)
-    # ==============================================
-    
-    def auto_detect_models_for_step(self, step_name: str) -> Dict[str, Any]:
-        """Step별 모델 자동 탐지"""
-        if self.auto_detector:
-            return self.auto_detector.auto_detect_models_for_step(step_name)
-        return {}
-    
-    def validate_checkpoint_integrity(self, checkpoint_path: Path) -> bool:
-        """체크포인트 무결성 검증"""
-        if self.auto_detector:
-            return self.auto_detector.validate_checkpoint_integrity(checkpoint_path)
-        return checkpoint_path.exists()
-    
-    def load_checkpoint_with_auto_detection(self, step_name: str, model_name: Optional[str] = None) -> Optional[Any]:
-        """체크포인트 자동 탐지 후 로딩"""
-        if self.auto_detector:
-            return self.auto_detector.load_checkpoint_with_auto_detection(step_name, model_name)
-        return None
-    
-    def optimize_model_for_device(self, model: Any, target_device: Optional[str] = None) -> Any:
-        """디바이스별 모델 최적화"""
-        try:
-            device = target_device or self.device
-            
-            if not TORCH_AVAILABLE or model is None:
-                return model
-            
-            # PyTorch 모델인 경우
-            if hasattr(model, 'to'):
-                model = model.to(device)
-                
-                # M3 Max 특화 최적화
-                if device == "mps" and self.is_m3_max:
-                    if hasattr(model, 'eval'):
-                        model = model.eval()
-                    
-                    # conda 환경에서 추가 최적화
-                    if self.conda_env and self.use_fp16:
-                        if hasattr(model, 'half'):
-                            try:
-                                model = model.half()
-                            except:
-                                pass  # half precision 지원하지 않는 모델
-                
-                # 메모리 최적화
-                if hasattr(model, 'eval'):
-                    model.eval()
-                
-                for param in model.parameters():
-                    param.requires_grad = False
-            
-            self.logger.debug(f"✅ 모델 최적화 완료: {device}")
-            return model
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 모델 최적화 실패: {e}")
-            return model
-    
-    def create_model_from_checkpoint(self, checkpoint_path: Path, model_class: str = "BaseModel") -> Optional[Any]:
-        """체크포인트에서 모델 생성"""
-        try:
-            if not checkpoint_path.exists():
-                self.logger.error(f"❌ 체크포인트 파일 없음: {checkpoint_path}")
-                return None
-            
-            # 무결성 검증
-            if not self.validate_checkpoint_integrity(checkpoint_path):
-                self.logger.error(f"❌ 체크포인트 무결성 검증 실패: {checkpoint_path}")
-                return None
-            
-            # PyTorch 모델 로딩
-            if TORCH_AVAILABLE:
-                try:
-                    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
-                except:
-                    checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                
-                # 모델 생성 (간단한 래퍼)
-                class CheckpointModel:
-                    def __init__(self, checkpoint):
-                        self.checkpoint = checkpoint
-                        self.model_data = checkpoint
-                    
-                    def to(self, device):
-                        # PyTorch 텐서들을 디바이스로 이동
-                        if isinstance(self.checkpoint, dict):
-                            for key, value in self.checkpoint.items():
-                                if hasattr(value, 'to'):
-                                    self.checkpoint[key] = value.to(device)
-                        return self
-                    
-                    def eval(self):
-                        return self
-                    
-                    def __call__(self, *args, **kwargs):
-                        return self.checkpoint
-                
-                model = CheckpointModel(checkpoint)
-                self.logger.info(f"✅ 체크포인트에서 모델 생성 성공: {checkpoint_path}")
-                return model
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ 체크포인트에서 모델 생성 실패: {e}")
-            return None
-    
-    def register_detected_models(self, detected_models: Dict[str, Any]) -> int:
-        """탐지된 모델들 자동 등록"""
-        try:
-            registered_count = 0
-            
-            for model_name, model_info in detected_models.items():
-                try:
-                    config = ModelConfig(
-                        name=model_name,
-                        model_type=model_info.get('type', 'unknown'),
-                        model_class=model_info.get('class', 'DetectedModel'),
-                        checkpoint_path=model_info.get('path'),
-                        metadata={
-                            'auto_detected': True,
-                            'confidence': model_info.get('confidence', 0.0),
-                            'pytorch_valid': model_info.get('pytorch_valid', False),
-                            'registration_time': time.time()
-                        }
-                    )
-                    
-                    if self.register_model_config(model_name, config):
-                        registered_count += 1
-                        
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 탐지된 모델 등록 실패 {model_name}: {e}")
-            
-            self.logger.info(f"🔍 탐지된 모델 등록 완료: {registered_count}개")
-            return registered_count
-            
-        except Exception as e:
-            self.logger.error(f"❌ 탐지된 모델 등록 실패: {e}")
-            return 0
-    
-    def get_model_for_step(self, step_name: str, model_name: Optional[str] = None) -> Optional[Any]:
-        """Step용 모델 가져오기 - auto_model_detector 우선"""
-        try:
-            with self._lock:
-                # 1. auto_model_detector를 통한 자동 탐지 및 로딩 (우선)
-                if self.auto_detector:
-                    auto_model = self.auto_detector.load_checkpoint_with_auto_detection(step_name, model_name)
-                    if auto_model:
-                        cache_key = f"{step_name}_{model_name or 'auto'}"
-                        optimized_model = self.optimize_model_for_device(auto_model)
-                        self.model_cache[cache_key] = optimized_model
-                        self.performance_stats['models_loaded'] += 1
-                        self.performance_stats['auto_detections'] += 1
-                        self.logger.info(f"✅ {step_name} 자동 탐지 모델 로딩 성공")
-                        return optimized_model
-                
-                # 2. CheckpointModelLoader 폴백
-                if self.checkpoint_loader:
-                    try:
-                        checkpoint_model = asyncio.run(self.checkpoint_loader.load_optimal_model_for_step(step_name))
-                        if checkpoint_model:
-                            cache_key = f"{step_name}_{model_name or 'checkpoint'}"
-                            optimized_model = self.optimize_model_for_device(checkpoint_model)
-                            self.model_cache[cache_key] = optimized_model
-                            self.performance_stats['models_loaded'] += 1
-                            self.performance_stats['checkpoint_loads'] += 1
-                            self.logger.info(f"✅ {step_name} 체크포인트 모델 로딩 성공")
-                            return optimized_model
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 체크포인트 로더 실패: {e}")
-                
-                # 3. 캐시 확인
-                cache_key = f"{step_name}_{model_name or 'default'}"
-                if cache_key in self.model_cache:
-                    self.performance_stats['cache_hits'] += 1
-                    self.logger.debug(f"📦 캐시에서 모델 반환: {cache_key}")
-                    return self.model_cache[cache_key]
-                
-                self.logger.warning(f"⚠️ {step_name} 모델을 찾을 수 없음")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 모델 가져오기 실패: {e}")
-            return None
-    
-    async def get_model_for_step_async(self, step_name: str, model_name: Optional[str] = None) -> Optional[Any]:
-        """Step용 모델 비동기 가져오기 - auto_model_detector 우선"""
-        try:
-            async with self._async_lock:
-                # 1. auto_model_detector를 통한 자동 탐지 및 로딩 (우선)
-                if self.auto_detector:
-                    auto_model = self.auto_detector.load_checkpoint_with_auto_detection(step_name, model_name)
-                    if auto_model:
-                        cache_key = f"{step_name}_{model_name or 'auto'}"
-                        optimized_model = self.optimize_model_for_device(auto_model)
-                        self.model_cache[cache_key] = optimized_model
-                        self.performance_stats['models_loaded'] += 1
-                        self.performance_stats['auto_detections'] += 1
-                        self.logger.info(f"✅ {step_name} 비동기 자동 탐지 모델 로딩 성공")
-                        return optimized_model
-                
-                # 2. CheckpointModelLoader 비동기 로딩
-                if self.checkpoint_loader:
-                    try:
-                        checkpoint_model = await self.checkpoint_loader.load_optimal_model_for_step(step_name)
-                        if checkpoint_model:
-                            cache_key = f"{step_name}_{model_name or 'checkpoint'}"
-                            optimized_model = self.optimize_model_for_device(checkpoint_model)
-                            self.model_cache[cache_key] = optimized_model
-                            self.performance_stats['models_loaded'] += 1
-                            self.performance_stats['checkpoint_loads'] += 1
-                            self.logger.info(f"✅ {step_name} 비동기 체크포인트 모델 로딩 성공")
-                            return optimized_model
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 비동기 체크포인트 로더 실패: {e}")
-                
-                # 3. 동기 버전 폴백
-                loop = asyncio.get_event_loop()
-                model = await loop.run_in_executor(
-                    None, 
-                    self.get_model_for_step, 
-                    step_name, 
-                    model_name
-                )
-                return model
-                
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 비동기 모델 가져오기 실패: {e}")
-            return None
-    
-    def register_model_config(
-        self,
-        name: str,
-        model_config: Union[ModelConfig, StepModelConfig, Dict[str, Any]],
-        loader_func: Optional[Callable] = None
-    ) -> bool:
-        """모델 등록 - auto_model_detector 연동 강화"""
-        try:
-            with self._lock:
-                if isinstance(model_config, dict):
-                    if "step_name" in model_config:
-                        config = StepModelConfig(**model_config)
-                    else:
-                        config = ModelConfig(**model_config)
-                else:
-                    config = model_config
-                
-                if hasattr(config, 'device') and config.device == "auto":
-                    config.device = self.device
-                
-                self.model_configs[name] = config
-                
-                model_type = getattr(config, 'model_type', 'unknown')
-                if hasattr(model_type, 'value'):
-                    model_type = model_type.value
-                
-                self.logger.info(f"📝 모델 등록: {name} ({model_type})")
-                return True
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 등록 실패 {name}: {e}")
-            return False
-    
-    async def initialize_async(self) -> bool:
-        """ModelLoader 비동기 초기화 메서드"""
-        try:
-            self.logger.info("🚀 ModelLoader v14.0 비동기 초기화 시작...")
-            
-            async with self._async_lock:
-                # 메모리 정리 (비동기)
-                if hasattr(self, 'memory_manager'):
-                    try:
-                        self.memory_manager.optimize_memory()
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
-                
-                # auto_model_detector 포괄적인 탐지 실행
-                if AUTO_MODEL_DETECTOR_AVAILABLE:
-                    try:
-                        comprehensive_detected = comprehensive_model_detection(
-                            enable_pytorch_validation=True,
-                            enable_detailed_analysis=True,
-                            prioritize_backend_models=True
-                        )
-                        
-                        if comprehensive_detected:
-                            registered = self.register_detected_models(comprehensive_detected)
-                            self.logger.info(f"🔍 포괄적인 자동 탐지 완료: {registered}개 모델 등록")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 포괄적인 자동 탐지 실패: {e}")
-                
-                self.logger.info("✅ ModelLoader v14.0 비동기 초기화 완료")
-                return True
-                
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 비동기 초기화 실패: {e}")
-            return False
-    
-    def initialize(self) -> bool:
-        """ModelLoader 초기화 메서드 - 순수 동기 버전"""
-        try:
-            self.logger.info("🚀 ModelLoader v14.0 동기 초기화 시작...")
-            
-            # 메모리 정리 (동기)
-            if hasattr(self, 'memory_manager'):
-                try:
-                    self.memory_manager.optimize_memory()
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
-            
-            # auto_model_detector 빠른 탐지 실행
-            if AUTO_MODEL_DETECTOR_AVAILABLE:
-                try:
-                    quick_detected = quick_model_detection(
-                        enable_pytorch_validation=True,
-                        prioritize_backend_models=True
-                    )
-                    
-                    if quick_detected:
-                        registered = self.register_detected_models(quick_detected)
-                        self.logger.info(f"🔍 빠른 자동 탐지 완료: {registered}개 모델 등록")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 빠른 자동 탐지 실패: {e}")
-                
-            self.logger.info("✅ ModelLoader v14.0 동기 초기화 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
-            return False
-    
-    def create_step_interface(
-        self, 
-        step_name: str, 
-        step_requirements: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ) -> StepModelInterface:
-        """Step별 모델 인터페이스 생성 - 동기 버전"""
-        try:
-            with self._interface_lock:
-                if step_name not in self.step_interfaces:
-                    interface = StepModelInterface(self, step_name)
-                    
-                    # step_requirements 처리
-                    if step_requirements:
-                        for req_name, req_config in step_requirements.items():
-                            try:
-                                interface.register_model_requirement(
-                                    model_name=req_name,
-                                    **req_config
-                                )
-                            except Exception as e:
-                                self.logger.warning(f"⚠️ {req_name} 요청사항 등록 실패: {e}")
-                    
-                    self.step_interfaces[step_name] = interface
-                    self.logger.info(f"🔗 {step_name} 인터페이스 생성 완료")
-                
-                return self.step_interfaces[step_name]
-                
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
-            return StepModelInterface(self, step_name)
-    
-    def list_models(self) -> Dict[str, Dict[str, Any]]:
-        """등록된 모든 모델 목록"""
-        try:
-            with self._lock:
-                models_info = {}
-                
-                # 등록된 모델 설정들
-                for model_name in self.model_configs.keys():
-                    config = self.model_configs[model_name]
-                    models_info[model_name] = {
-                        'name': model_name,
-                        'registered': True,
-                        'device': self.device,
-                        'config': config,
-                        'auto_detected': getattr(config, 'metadata', {}).get('auto_detected', False),
-                        'checkpoint_path': getattr(config, 'checkpoint_path', None)
-                    }
-                
-                # 캐시된 모델들
-                for cache_key in self.model_cache.keys():
-                    if cache_key not in models_info:
-                        models_info[cache_key] = {
-                            'name': cache_key,
-                            'cached': True,
-                            'device': self.device,
-                            'last_access': self.last_access.get(cache_key, 0)
-                        }
-                
-                return models_info
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
-            return {}
-    
-    def get_system_info(self) -> Dict[str, Any]:
-        """시스템 정보 조회 - conda 환경 포함"""
-        return {
-            "device": self.device,
-            "is_m3_max": self.is_m3_max,
-            "conda_env": self.conda_env,
-            "torch_available": TORCH_AVAILABLE,
-            "numpy_available": NUMPY_AVAILABLE,
-            "auto_model_detector_available": AUTO_MODEL_DETECTOR_AVAILABLE,
-            "checkpoint_loader_available": CHECKPOINT_LOADER_AVAILABLE,
-            "step_requests_available": STEP_REQUESTS_AVAILABLE,
-            "performance_stats": self.performance_stats.copy(),
-            "model_counts": {
-                "loaded": len(self.model_cache),
-                "cached": len(self.model_configs),
-                "step_interfaces": len(self.step_interfaces)
-            },
-            "memory_info": {
-                "available_gb": self.memory_manager.get_available_memory(),
-                "max_cached_models": self.max_cached_models,
-                "use_fp16": self.use_fp16
-            },
-            "version": "14.0",
-            "features": [
-                "auto_model_detector 통합",
-                "CheckpointModelLoader 통합", 
-                "Step 요청사항 완전 처리",
-                "conda 환경 최적화",
-                "M3 Max 128GB 최적화",
-                "순환참조 완전 해결",
-                "한방향 데이터 흐름"
-            ]
-        }
-    
-    def cleanup(self):
-        """완전한 리소스 정리"""
-        try:
-            # Step 인터페이스들 정리
-            with self._interface_lock:
-                for step_name in list(self.step_interfaces.keys()):
-                    try:
-                        if step_name in self.step_interfaces:
-                            del self.step_interfaces[step_name]
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ {step_name} 인터페이스 정리 실패: {e}")
-            
-            # 모델 캐시 정리
-            with self._lock:
-                for cache_key, model in list(self.model_cache.items()):
-                    try:
-                        if hasattr(model, 'cpu'):
-                            try:
-                                model.cpu()
-                            except:
-                                pass
-                        del model
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 모델 정리 실패: {e}")
-                
-                self.model_cache.clear()
-                self.access_counts.clear()
-                self.load_times.clear()
-                self.last_access.clear()
-            
-            # auto_model_detector 정리
-            if self.auto_detector:
-                try:
-                    self.auto_detector.detected_models.clear()
-                except:
-                    pass
-            
-            # CheckpointModelLoader 정리
-            if self.checkpoint_loader:
-                try:
-                    self.checkpoint_loader.clear_cache()
-                except:
-                    pass
-            
-            # 메모리 정리
-            if hasattr(self.memory_manager, 'optimize_memory'):
-                try:
-                    self.memory_manager.optimize_memory()
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
-            
-            # 스레드풀 종료
-            try:
-                if hasattr(self, '_executor'):
-                    self._executor.shutdown(wait=True)
-            except Exception as e:
-                self.logger.warning(f"⚠️ 스레드풀 종료 실패: {e}")
-            
-            self.logger.info("✅ 완전한 ModelLoader v14.0 정리 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 정리 중 오류: {e}")
-    
-    # ==============================================
-    # 🔥 기존 호환성 메서드들 (하위 호환성 완벽 유지)
-    # ==============================================
-    
-    def get_model(self, model_name: str) -> Optional[Any]:
-        """기존 ModelLoader.get_model() 메서드 - 완벽 호환"""
-        try:
-            # 1. auto_model_detector를 통한 자동 탐지 시도
-            if self.auto_detector:
-                # Step 이름 추론
-                step_mapping = {
-                    'human_parsing': 'HumanParsingStep',
-                    'pose_estimation': 'PoseEstimationStep', 
-                    'cloth_segmentation': 'ClothSegmentationStep',
-                    'geometric_matching': 'GeometricMatchingStep',
-                    'cloth_warping': 'ClothWarpingStep',
-                    'virtual_fitting': 'VirtualFittingStep',
-                    'post_processing': 'PostProcessingStep',
-                    'quality_assessment': 'QualityAssessmentStep'
-                }
-                
-                for key, step_name in step_mapping.items():
-                    if key in model_name.lower():
-                        auto_model = self.auto_detector.load_checkpoint_with_auto_detection(step_name, model_name)
-                        if auto_model:
-                            optimized_model = self.optimize_model_for_device(auto_model)
-                            self.model_cache[model_name] = optimized_model
-                            return optimized_model
-            
-            # 2. 직접 Step 이름인 경우
-            if model_name in self.step_requirements:
-                return self.get_model_for_step(model_name, None)
-            
-            # 3. 캐시에서 확인
-            if model_name in self.model_cache:
-                return self.model_cache[model_name]
-            
-            # 4. 체크포인트 직접 로딩 시도
-            model_config = self.model_configs.get(model_name)
-            if model_config and hasattr(model_config, 'checkpoint_path') and model_config.checkpoint_path:
-                checkpoint_path = Path(model_config.checkpoint_path)
-                if checkpoint_path.exists():
-                    model = self.create_model_from_checkpoint(checkpoint_path)
-                    if model:
-                        optimized_model = self.optimize_model_for_device(model)
-                        self.model_cache[model_name] = optimized_model
-                        return optimized_model
-            
-            self.logger.warning(f"⚠️ 모델을 찾을 수 없음: {model_name}")
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ 기존 get_model 실패 {model_name}: {e}")
-            return None
-    
-    async def get_model_async(self, model_name: str) -> Optional[Any]:
-        """기존 ModelLoader.get_model_async() 메서드 - 완벽 호환"""
-        try:
-            # 동기 버전과 동일한 로직, 비동기로 실행
-            return await asyncio.get_event_loop().run_in_executor(
-                None, self.get_model, model_name
-            )
-        except Exception as e:
-            self.logger.error(f"❌ 기존 get_model_async 실패 {model_name}: {e}")
-            return None
-
 # ==============================================
 # 🔥 15단계: 전역 ModelLoader 관리 (순환참조 방지)
 # ==============================================
@@ -2402,6 +1815,8 @@ def list_all_models() -> Dict[str, Any]:
     loader = get_global_model_loader()
     return loader.list_models()
 
+
+
 # base_step_mixin.py 호환 함수들
 def get_model_for_step(step_name: str, model_name: Optional[str] = None) -> Optional[Any]:
     """Step별 모델 가져오기 - 전역 함수"""
@@ -2501,40 +1916,42 @@ atexit.register(cleanup_global_loader)
 # ==============================================
 # 🔥 19단계: 모듈 로드 확인 메시지
 # ==============================================
+if os.getenv('LOG_MODE', 'clean') in ['detailed', 'debug']:
+    logger.info("✅ 완전한 ModelLoader v14.0 모듈 로드 완료")
+    logger.info("🔥 프로젝트 지식 PDF 내용 100% 반영")
+    logger.info("🔄 순환참조 완전 제거 (한방향 데이터 흐름)")
+    logger.info("🚨 NameError 완전 해결 (올바른 초기화 순서)")
+    logger.info("🔍 auto_model_detector 완벽 연동")
+    logger.info("📦 CheckpointModelLoader 통합")
+    logger.info("🔗 BaseStepMixin 패턴 100% 호환")
+    logger.info("⭐ register_step_requirements 메서드 완전 구현")
+    logger.info("🎯 Step별 모델 요청사항 완전 처리")
+    logger.info("📋 89.8GB 체크포인트 자동 탐지/로딩")
+    logger.info("🍎 M3 Max 128GB 최적화")
+    logger.info("🐍 conda 환경 우선 지원")
+    logger.info("🏗️ Clean Architecture 적용")
+    logger.info("🔄 비동기(async/await) 완전 지원")
 
-logger.info("✅ 완전한 ModelLoader v14.0 모듈 로드 완료")
-logger.info("🔥 프로젝트 지식 PDF 내용 100% 반영")
-logger.info("🔄 순환참조 완전 제거 (한방향 데이터 흐름)")
-logger.info("🚨 NameError 완전 해결 (올바른 초기화 순서)")
-logger.info("🔍 auto_model_detector 완벽 연동")
-logger.info("📦 CheckpointModelLoader 통합")
-logger.info("🔗 BaseStepMixin 패턴 100% 호환")
-logger.info("⭐ register_step_requirements 메서드 완전 구현")
-logger.info("🎯 Step별 모델 요청사항 완전 처리")
-logger.info("📋 89.8GB 체크포인트 자동 탐지/로딩")
-logger.info("🍎 M3 Max 128GB 최적화")
-logger.info("🐍 conda 환경 우선 지원")
-logger.info("🏗️ Clean Architecture 적용")
-logger.info("🔄 비동기(async/await) 완전 지원")
+    logger.info(f"🔧 시스템 상태:")
+    logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
+    logger.info(f"   - MPS: {'✅' if MPS_AVAILABLE else '❌'}")
+    logger.info(f"   - NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
+    logger.info(f"   - auto_model_detector: {'✅' if AUTO_MODEL_DETECTOR_AVAILABLE else '❌'}")
+    logger.info(f"   - CheckpointModelLoader: {'✅' if CHECKPOINT_LOADER_AVAILABLE else '❌'}")
+    logger.info(f"   - Step 요청사항: {'✅' if STEP_REQUESTS_AVAILABLE else '❌'}")
+    logger.info(f"   - Device: {DEFAULT_DEVICE}")
+    logger.info(f"   - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
+    logger.info(f"   - conda 환경: {'✅' if CONDA_ENV else '❌'}")
 
-logger.info(f"🔧 시스템 상태:")
-logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
-logger.info(f"   - MPS: {'✅' if MPS_AVAILABLE else '❌'}")
-logger.info(f"   - NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
-logger.info(f"   - auto_model_detector: {'✅' if AUTO_MODEL_DETECTOR_AVAILABLE else '❌'}")
-logger.info(f"   - CheckpointModelLoader: {'✅' if CHECKPOINT_LOADER_AVAILABLE else '❌'}")
-logger.info(f"   - Step 요청사항: {'✅' if STEP_REQUESTS_AVAILABLE else '❌'}")
-logger.info(f"   - Device: {DEFAULT_DEVICE}")
-logger.info(f"   - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-logger.info(f"   - conda 환경: {'✅' if CONDA_ENV else '❌'}")
-
-logger.info("🚀 완전한 ModelLoader v14.0 준비 완료!")
-logger.info("   ✅ 프로젝트 지식 통합으로 완전성 달성")
-logger.info("   ✅ 한방향 데이터 흐름으로 순환참조 해결")
-logger.info("   ✅ 올바른 초기화 순서로 NameError 완전 해결")
-logger.info("   ✅ auto_model_detector 연동으로 체크포인트 자동 탐지")
-logger.info("   ✅ 모든 핵심 기능 통합 (auto detection, checkpoint loading, step interface)")
-logger.info("   ✅ BaseStepMixin 완벽 호환으로 Step 파일과 연동")
-logger.info("   ✅ conda 환경 최적화로 M3 Max 성능 극대화")
-logger.info("   ✅ 기존 코드 100% 호환성 보장")
-logger.info("   ✅ Clean Architecture로 유지보수성 극대화")
+    logger.info("🚀 완전한 ModelLoader v14.0 준비 완료!")
+    logger.info("   ✅ 프로젝트 지식 통합으로 완전성 달성")
+    logger.info("   ✅ 한방향 데이터 흐름으로 순환참조 해결")
+    logger.info("   ✅ 올바른 초기화 순서로 NameError 완전 해결")
+    logger.info("   ✅ auto_model_detector 연동으로 체크포인트 자동 탐지")
+    logger.info("   ✅ 모든 핵심 기능 통합 (auto detection, checkpoint loading, step interface)")
+    logger.info("   ✅ BaseStepMixin 완벽 호환으로 Step 파일과 연동")
+    logger.info("   ✅ conda 환경 최적화로 M3 Max 성능 극대화")
+    logger.info("   ✅ 기존 코드 100% 호환성 보장")
+    logger.info("   ✅ Clean Architecture로 유지보수성 극대화")
+else:
+    logger.info("✅ ModelLoader v14.0 준비 완료")

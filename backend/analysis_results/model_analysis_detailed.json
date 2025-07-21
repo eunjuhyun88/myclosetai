@@ -1,0 +1,4183 @@
+{
+  "total_files": 481,
+  "total_size_gb": 140.75,
+  "by_step": {
+    "unknown": [
+      {
+        "path": "rvm_mobilenetv3_fp32.pth",
+        "name": "rvm_mobilenetv3_fp32.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "upernet_global_small.pth",
+        "name": "upernet_global_small.pth",
+        "size_mb": 196.76,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "latest_net_G.pth",
+        "name": "latest_net_G.pth",
+        "size_mb": 303.52,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "sk_model2.pth",
+        "name": "sk_model2.pth",
+        "size_mb": 16.38,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "table5_pidinet.pth",
+        "name": "table5_pidinet.pth",
+        "size_mb": 2.74,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "netG.pth",
+        "name": "netG.pth",
+        "size_mb": 207.55,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "groundingdino_swint_ogc.pth",
+        "name": "groundingdino_swint_ogc.pth",
+        "size_mb": 659.86,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "rng_state.pth",
+        "name": "rng_state.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "facenet.pth",
+        "name": "facenet.pth",
+        "size_mb": 146.6,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "250_16_swin_l_oneformer_ade20k_160k.pth",
+        "name": "250_16_swin_l_oneformer_ade20k_160k.pth",
+        "size_mb": 905.73,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "network-bsds500.pth",
+        "name": "network-bsds500.pth",
+        "size_mb": 56.14,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "ControlNetHED.pth",
+        "name": "ControlNetHED.pth",
+        "size_mb": 28.08,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "mlsd_large_512_fp32.pth",
+        "name": "mlsd_large_512_fp32.pth",
+        "size_mb": 6.05,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "ControlNetLama.pth",
+        "name": "ControlNetLama.pth",
+        "size_mb": 195.12,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "res101.pth",
+        "name": "res101.pth",
+        "size_mb": 506.17,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "erika.pth",
+        "name": "erika.pth",
+        "size_mb": 164.78,
+        "extension": ".pth",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "group1-shard1of1.bin",
+        "name": "group1-shard1of1.bin",
+        "size_mb": 0.68,
+        "extension": ".bin",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "clip_vit_large/snapshots/ce19dc912ca5cd21c8a653c79e251e808ccabcd1/pytorch_model.bin",
+        "name": "pytorch_model.bin",
+        "size_mb": 1632.67,
+        "extension": ".bin",
+        "confidence": 0.0,
+        "parent_dir": "ce19dc912ca5cd21c8a653c79e251e808ccabcd1"
+      },
+      {
+        "path": "model_final_162be9.pkl",
+        "name": "model_final_162be9.pkl",
+        "size_mb": 243.91,
+        "extension": ".pkl",
+        "confidence": 0.0,
+        "parent_dir": "ai_models"
+      }
+    ],
+    "step_08_quality_assessment": [
+      {
+        "path": "resnet50_features_01.pth",
+        "name": "resnet50_features_01.pth",
+        "size_mb": 97.79,
+        "extension": ".pth",
+        "confidence": 2.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "vgg19_features_01.pth",
+        "name": "vgg19_features_01.pth",
+        "size_mb": 548.06,
+        "extension": ".pth",
+        "confidence": 2.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "resnet101-63fe2227.pth",
+        "name": "resnet101-63fe2227.pth",
+        "size_mb": 170.51,
+        "extension": ".pth",
+        "confidence": 1.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "deeplabv3_resnet50_01.pth",
+        "name": "deeplabv3_resnet50_01.pth",
+        "size_mb": 160.51,
+        "extension": ".pth",
+        "confidence": 1.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "vgg19-dcbb9e9d.pth",
+        "name": "vgg19-dcbb9e9d.pth",
+        "size_mb": 548.05,
+        "extension": ".pth",
+        "confidence": 1.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "resnet50-0676ba61.pth",
+        "name": "resnet50-0676ba61.pth",
+        "size_mb": 97.78,
+        "extension": ".pth",
+        "confidence": 1.0,
+        "parent_dir": "ai_models"
+      },
+      {
+        "path": "step_08_quality_assessment/resnet50_features_01.pth",
+        "name": "resnet50_features_01.pth",
+        "size_mb": 97.79,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/vgg19_features_01.pth",
+        "name": "vgg19_features_01.pth",
+        "size_mb": 548.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/vgg19_features.pth",
+        "name": "vgg19_features.pth",
+        "size_mb": 548.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/resnet101-63fe2227.pth",
+        "name": "resnet101-63fe2227.pth",
+        "size_mb": 170.51,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/resnet50_backbone.pth",
+        "name": "resnet50_backbone.pth",
+        "size_mb": 97.79,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/lpips_alex_01.pth",
+        "name": "lpips_alex_01.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/resnet50_features.pth",
+        "name": "resnet50_features.pth",
+        "size_mb": 97.79,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/quality.pth",
+        "name": "quality.pth",
+        "size_mb": 0.29,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/deeplabv3_resnet50_01.pth",
+        "name": "deeplabv3_resnet50_01.pth",
+        "size_mb": 160.51,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/deeplabv3_resnet50.pth",
+        "name": "deeplabv3_resnet50.pth",
+        "size_mb": 160.51,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/clip_g.pth",
+        "name": "clip_g.pth",
+        "size_mb": 3519.15,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/vgg19-dcbb9e9d.pth",
+        "name": "vgg19-dcbb9e9d.pth",
+        "size_mb": 548.05,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/resnet50-0676ba61.pth",
+        "name": "resnet50-0676ba61.pth",
+        "size_mb": 97.78,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/lpips_alex.pth",
+        "name": "lpips_alex.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/resnet50_backbone_01.pth",
+        "name": "resnet50_backbone_01.pth",
+        "size_mb": 97.79,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/pytorch_model_02.bin",
+        "name": "pytorch_model_02.bin",
+        "size_mb": 577.21,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/clip_vit_b32.bin",
+        "name": "clip_vit_b32.bin",
+        "size_mb": 577.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/pytorch_model.bin",
+        "name": "pytorch_model.bin",
+        "size_mb": 1632.67,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "step_08_quality_assessment/clip_vision_model.bin",
+        "name": "clip_vision_model.bin",
+        "size_mb": 577.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      {
+        "path": "organized/step_08_quality_assessment/pytorch_model_15.bin",
+        "name": "pytorch_model_15.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_08_quality_assessment"
+      }
+    ],
+    "step_06_virtual_fitting": [
+      {
+        "path": "step_06_virtual_fitting/upernet_global_small.pth",
+        "name": "upernet_global_small.pth",
+        "size_mb": 196.76,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/latest_net_G.pth",
+        "name": "latest_net_G.pth",
+        "size_mb": 303.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/sam_vit_h.pth",
+        "name": "sam_vit_h.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/netG.pth",
+        "name": "netG.pth",
+        "size_mb": 207.55,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/groundingdino_swint_ogc.pth",
+        "name": "groundingdino_swint_ogc.pth",
+        "size_mb": 659.86,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/tom_final.pth",
+        "name": "tom_final.pth",
+        "size_mb": 3279.07,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/sam_vit_h_4b8939.pth",
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/resnet101-63fe2227.pth",
+        "name": "resnet101-63fe2227.pth",
+        "size_mb": 170.51,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/body_pose_model.pth",
+        "name": "body_pose_model.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/facenet.pth",
+        "name": "facenet.pth",
+        "size_mb": 146.6,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/250_16_swin_l_oneformer_ade20k_160k.pth",
+        "name": "250_16_swin_l_oneformer_ade20k_160k.pth",
+        "size_mb": 905.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/deeplabv3_resnet50_01.pth",
+        "name": "deeplabv3_resnet50_01.pth",
+        "size_mb": 160.51,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/deeplabv3_resnet50.pth",
+        "name": "deeplabv3_resnet50.pth",
+        "size_mb": 160.51,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/clip_g.pth",
+        "name": "clip_g.pth",
+        "size_mb": 3519.15,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/hrviton_final_01.pth",
+        "name": "hrviton_final_01.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/exp-schp-201908261155-lip.pth",
+        "name": "exp-schp-201908261155-lip.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/*.pth",
+        "name": "*.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/hrviton_final.pth",
+        "name": "hrviton_final.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/exp-schp-201908301523-atr.pth",
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/body_pose_model.pth",
+        "name": "body_pose_model.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/hrviton_final_01.pth",
+        "name": "hrviton_final_01.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/exp-schp-201908261155-lip.pth",
+        "name": "exp-schp-201908261155-lip.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/exp-schp-201908301523-atr.pth",
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/hrviton_final.pth",
+        "name": "hrviton_final.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model.fp16_02.bin",
+        "name": "diffusion_pytorch_model.fp16_02.bin",
+        "size_mb": 159.65,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_11.bin",
+        "name": "diffusion_pytorch_model_11.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_05.bin",
+        "name": "diffusion_pytorch_model_05.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_04.bin",
+        "name": "diffusion_pytorch_model_04.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_10.bin",
+        "name": "diffusion_pytorch_model_10.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model.fp16_03.bin",
+        "name": "diffusion_pytorch_model.fp16_03.bin",
+        "size_mb": 159.65,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/vae_model.bin",
+        "name": "vae_model.bin",
+        "size_mb": 319.2,
+        "extension": ".bin",
+        "confidence": 18.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model.fp16_01.bin",
+        "name": "diffusion_pytorch_model.fp16_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_12.bin",
+        "name": "diffusion_pytorch_model_12.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_13.bin",
+        "name": "diffusion_pytorch_model_13.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_07.bin",
+        "name": "diffusion_pytorch_model_07.bin",
+        "size_mb": 319.2,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_04.bin",
+        "name": "pytorch_model_04.bin",
+        "size_mb": 469.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_03.bin",
+        "name": "diffusion_pytorch_model_03.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_16.bin",
+        "name": "diffusion_pytorch_model_16.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_02.bin",
+        "name": "diffusion_pytorch_model_02.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_01.bin",
+        "name": "pytorch_model_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_03.bin",
+        "name": "pytorch_model_03.bin",
+        "size_mb": 168.39,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_14.bin",
+        "name": "diffusion_pytorch_model_14.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_01.bin",
+        "name": "diffusion_pytorch_model_01.bin",
+        "size_mb": 3279.07,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_15.bin",
+        "name": "diffusion_pytorch_model_15.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_02.bin",
+        "name": "pytorch_model_02.bin",
+        "size_mb": 469.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/ootd_dc_unet_01.bin",
+        "name": "ootd_dc_unet_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 14.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model.fp16_02.bin",
+        "name": "pytorch_model.fp16_02.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model.non_ema.bin",
+        "name": "diffusion_pytorch_model.non_ema.bin",
+        "size_mb": 3279.08,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model.fp16_01.bin",
+        "name": "pytorch_model.fp16_01.bin",
+        "size_mb": 234.78,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model.fp16.bin",
+        "name": "diffusion_pytorch_model.fp16.bin",
+        "size_mb": 1639.68,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model.fp16.bin",
+        "name": "pytorch_model.fp16.bin",
+        "size_mb": 234.78,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model.bin",
+        "name": "pytorch_model.bin",
+        "size_mb": 469.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_24.bin",
+        "name": "diffusion_pytorch_model_24.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_18.bin",
+        "name": "diffusion_pytorch_model_18.bin",
+        "size_mb": 319.2,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_19.bin",
+        "name": "diffusion_pytorch_model_19.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/vae_model_01.bin",
+        "name": "vae_model_01.bin",
+        "size_mb": 319.2,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/ootd_hd_unet_01.bin",
+        "name": "ootd_hd_unet_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 14.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/ootd_hd_unet.bin",
+        "name": "ootd_hd_unet.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 19.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_19.bin",
+        "name": "pytorch_model_19.bin",
+        "size_mb": 469.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_21.bin",
+        "name": "pytorch_model_21.bin",
+        "size_mb": 469.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_22.bin",
+        "name": "diffusion_pytorch_model_22.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_23.bin",
+        "name": "diffusion_pytorch_model_23.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/pytorch_model_20.bin",
+        "name": "pytorch_model_20.bin",
+        "size_mb": 469.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/ootd_dc_unet.bin",
+        "name": "ootd_dc_unet.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 14.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model.bin",
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 18.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_09.bin",
+        "name": "diffusion_pytorch_model_09.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_21.bin",
+        "name": "diffusion_pytorch_model_21.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_20.bin",
+        "name": "diffusion_pytorch_model_20.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/diffusion_pytorch_model_08.bin",
+        "name": "diffusion_pytorch_model_08.bin",
+        "size_mb": 319.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.fp16_01.bin",
+        "name": "diffusion_pytorch_model.fp16_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/diffusion_pytorch_model_02.bin",
+        "name": "diffusion_pytorch_model_02.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/pytorch_model_01.bin",
+        "name": "pytorch_model_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/pytorch_model.fp16_02.bin",
+        "name": "pytorch_model.fp16_02.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/vae_model.bin",
+        "name": "vae_model.bin",
+        "size_mb": 319.2,
+        "extension": ".bin",
+        "confidence": 18.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/diffusion_pytorch_model_01.bin",
+        "name": "diffusion_pytorch_model_01.bin",
+        "size_mb": 3279.07,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/ootd_dc_unet_01.bin",
+        "name": "ootd_dc_unet_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 14.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/diffusion_pytorch_model.non_ema.bin",
+        "name": "diffusion_pytorch_model.non_ema.bin",
+        "size_mb": 3279.08,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/pytorch_model.fp16_01.bin",
+        "name": "pytorch_model.fp16_01.bin",
+        "size_mb": 234.78,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "organized/step_06_virtual_fitting/diffusion_pytorch_model.fp16.bin",
+        "name": "diffusion_pytorch_model.fp16.bin",
+        "size_mb": 1639.68,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "step_06_virtual_fitting/model_final_162be9.pkl",
+        "name": "model_final_162be9.pkl",
+        "size_mb": 0.0,
+        "extension": ".pkl",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      {
+        "path": "checkpoints/step_06_virtual_fitting/model_final_162be9.pkl",
+        "name": "model_final_162be9.pkl",
+        "size_mb": 0.0,
+        "extension": ".pkl",
+        "confidence": 12.0,
+        "parent_dir": "step_06_virtual_fitting"
+      }
+    ],
+    "step_03_cloth_segmentation": [
+      {
+        "path": "step_03_cloth_segmentation/u2net_03.pth",
+        "name": "u2net_03.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/sk_model.pth",
+        "name": "sk_model.pth",
+        "size_mb": 16.38,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/lightweight_warping_01.pth",
+        "name": "lightweight_warping_01.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_02.pth",
+        "name": "u2net_02.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_14.pth",
+        "name": "u2net_14.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_01.pth",
+        "name": "u2net_01.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_11.pth",
+        "name": "u2net_11.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_05.pth",
+        "name": "u2net_05.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/sam_vit_h.pth",
+        "name": "sam_vit_h.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/tom_final.pth",
+        "name": "tom_final.pth",
+        "size_mb": 3279.07,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 18.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_04.pth",
+        "name": "u2net_04.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_10.pth",
+        "name": "u2net_10.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_06.pth",
+        "name": "u2net_06.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_12.pth",
+        "name": "u2net_12.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2netp.pth",
+        "name": "u2netp.pth",
+        "size_mb": 4.47,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_13.pth",
+        "name": "u2net_13.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_07.pth",
+        "name": "u2net_07.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/sam_vit_b_01ec64.pth",
+        "name": "sam_vit_b_01ec64.pth",
+        "size_mb": 357.67,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/lightweight_warping.pth",
+        "name": "lightweight_warping.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/model_03.pth",
+        "name": "model_03.pth",
+        "size_mb": 168.53,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/model_02.pth",
+        "name": "model_02.pth",
+        "size_mb": 168.53,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/model_01.pth",
+        "name": "model_01.pth",
+        "size_mb": 168.53,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/model.pth",
+        "name": "model.pth",
+        "size_mb": 168.53,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_09.pth",
+        "name": "u2net_09.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_backup.pth",
+        "name": "u2net_backup.pth",
+        "size_mb": 168.53,
+        "extension": ".pth",
+        "confidence": 18.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net_08.pth",
+        "name": "u2net_08.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/sam_vit_b_01ec64_01.pth",
+        "name": "sam_vit_b_01ec64_01.pth",
+        "size_mb": 357.67,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/u2net.pth",
+        "name": "u2net.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 18.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "organized/step_03_cloth_segmentation/u2net_03.pth",
+        "name": "u2net_03.pth",
+        "size_mb": 168.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "organized/step_03_cloth_segmentation/lightweight_warping_01.pth",
+        "name": "lightweight_warping_01.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "organized/step_03_cloth_segmentation/tom_final.pth",
+        "name": "tom_final.pth",
+        "size_mb": 3279.07,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "organized/step_03_cloth_segmentation/u2netp.pth",
+        "name": "u2netp.pth",
+        "size_mb": 4.47,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "organized/step_03_cloth_segmentation/sam_vit_b_01ec64.pth",
+        "name": "sam_vit_b_01ec64.pth",
+        "size_mb": 357.67,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/pytorch_model_01.bin",
+        "name": "pytorch_model_01.bin",
+        "size_mb": 168.39,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/pytorch_model_02.bin",
+        "name": "pytorch_model_02.bin",
+        "size_mb": 168.39,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      {
+        "path": "step_03_cloth_segmentation/pytorch_model.bin",
+        "name": "pytorch_model.bin",
+        "size_mb": 168.39,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      }
+    ],
+    "step_01_human_parsing": [
+      {
+        "path": "checkpoints/step_01_human_parsing/exp-schp-201908261155-lip_22.pth",
+        "name": "exp-schp-201908261155-lip_22.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "checkpoints/step_01_human_parsing/graphonomy_08.pth",
+        "name": "graphonomy_08.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "checkpoints/step_01_human_parsing/exp-schp-201908301523-atr_30.pth",
+        "name": "exp-schp-201908301523-atr_30.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_07.pth",
+        "name": "exp-schp-201908301523-atr_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_13.pth",
+        "name": "exp-schp-201908301523-atr_13.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_01.pth",
+        "name": "graphonomy_lip_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_01.pth",
+        "name": "schp_atr_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_12.pth",
+        "name": "exp-schp-201908301523-atr_12.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_06.pth",
+        "name": "exp-schp-201908301523-atr_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_18.pth",
+        "name": "exp-schp-201908261155-lip_18.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_10.pth",
+        "name": "exp-schp-201908301523-atr_10.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_04.pth",
+        "name": "exp-schp-201908301523-atr_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_03.pth",
+        "name": "graphonomy_lip_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_03.pth",
+        "name": "schp_atr_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_02.pth",
+        "name": "schp_atr_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_02.pth",
+        "name": "graphonomy_lip_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_05.pth",
+        "name": "exp-schp-201908301523-atr_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_11.pth",
+        "name": "exp-schp-201908301523-atr_11.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_19.pth",
+        "name": "exp-schp-201908261155-lip_19.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_21.pth",
+        "name": "exp-schp-201908261155-lip_21.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_09.pth",
+        "name": "exp-schp-201908261155-lip_09.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_29.pth",
+        "name": "exp-schp-201908301523-atr_29.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_15.pth",
+        "name": "exp-schp-201908301523-atr_15.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_01.pth",
+        "name": "exp-schp-201908301523-atr_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_06.pth",
+        "name": "graphonomy_lip_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_06.pth",
+        "name": "schp_atr_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr.pth",
+        "name": "schp_atr.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_07.pth",
+        "name": "schp_atr_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_07.pth",
+        "name": "graphonomy_lip_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_14.pth",
+        "name": "exp-schp-201908301523-atr_14.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_28.pth",
+        "name": "exp-schp-201908301523-atr_28.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_08.pth",
+        "name": "exp-schp-201908261155-lip_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_20.pth",
+        "name": "exp-schp-201908261155-lip_20.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_22.pth",
+        "name": "exp-schp-201908261155-lip_22.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state.pth",
+        "name": "rng_state.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_02.pth",
+        "name": "exp-schp-201908301523-atr_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_16.pth",
+        "name": "exp-schp-201908301523-atr_16.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_05.pth",
+        "name": "schp_atr_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_05.pth",
+        "name": "graphonomy_lip_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_10.pth",
+        "name": "schp_atr_10.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_04.pth",
+        "name": "graphonomy_lip_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_04.pth",
+        "name": "schp_atr_04.pth",
+        "size_mb": 254.5,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_17.pth",
+        "name": "exp-schp-201908301523-atr_17.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_03.pth",
+        "name": "exp-schp-201908301523-atr_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_02.pth",
+        "name": "rng_state_02.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_06.pth",
+        "name": "atr_model_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_03.pth",
+        "name": "lip_model_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_06.pth",
+        "name": "graphonomy_atr_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_08.pth",
+        "name": "graphonomy_08.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_07.pth",
+        "name": "graphonomy_atr_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_02.pth",
+        "name": "lip_model_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_07.pth",
+        "name": "atr_model_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_03.pth",
+        "name": "rng_state_03.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_15.pth",
+        "name": "rng_state_15.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_01.pth",
+        "name": "rng_state_01.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_05.pth",
+        "name": "atr_model_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_05.pth",
+        "name": "graphonomy_atr_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_04.pth",
+        "name": "graphonomy_atr_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_01.pth",
+        "name": "lip_model_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_04.pth",
+        "name": "atr_model_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_14.pth",
+        "name": "rng_state_14.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_10.pth",
+        "name": "rng_state_10.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_04.pth",
+        "name": "rng_state_04.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model.pth",
+        "name": "atr_model.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_05.pth",
+        "name": "lip_model_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_01.pth",
+        "name": "graphonomy_atr_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_04.pth",
+        "name": "lip_model_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_05.pth",
+        "name": "rng_state_05.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_11.pth",
+        "name": "rng_state_11.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_01.pth",
+        "name": "atr_model_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_03.pth",
+        "name": "atr_model_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_07.pth",
+        "name": "rng_state_07.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_13.pth",
+        "name": "rng_state_13.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_06.pth",
+        "name": "lip_model_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_03.pth",
+        "name": "graphonomy_atr_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_02.pth",
+        "name": "graphonomy_atr_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_07.pth",
+        "name": "lip_model_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_12.pth",
+        "name": "rng_state_12.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_06.pth",
+        "name": "rng_state_06.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_02.pth",
+        "name": "atr_model_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_01.pth",
+        "name": "graphonomy_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/clip_g.pth",
+        "name": "clip_g.pth",
+        "size_mb": 3519.15,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_08.pth",
+        "name": "rng_state_08.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_02.pth",
+        "name": "graphonomy_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model.pth",
+        "name": "lip_model.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_03.pth",
+        "name": "graphonomy_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lip_model_08.pth",
+        "name": "lip_model_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/rng_state_09.pth",
+        "name": "rng_state_09.pth",
+        "size_mb": 0.01,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_07.pth",
+        "name": "graphonomy_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_06.pth",
+        "name": "graphonomy_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr_08.pth",
+        "name": "graphonomy_atr_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/atr_model_08.pth",
+        "name": "atr_model_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_04.pth",
+        "name": "graphonomy_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing.pth",
+        "name": "lightweight_parsing.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_05.pth",
+        "name": "graphonomy_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip.pth",
+        "name": "exp-schp-201908261155-lip.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_12.pth",
+        "name": "exp-schp-201908261155-lip_12.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_06.pth",
+        "name": "exp-schp-201908261155-lip_06.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_26.pth",
+        "name": "exp-schp-201908301523-atr_26.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_01.pth",
+        "name": "lightweight_parsing_01.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_09.pth",
+        "name": "schp_atr_09.pth",
+        "size_mb": 254.5,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/*.pth",
+        "name": "*.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip.pth",
+        "name": "graphonomy_lip.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/schp_atr_08.pth",
+        "name": "schp_atr_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_lip_08.pth",
+        "name": "graphonomy_lip_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_27.pth",
+        "name": "exp-schp-201908301523-atr_27.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_07.pth",
+        "name": "exp-schp-201908261155-lip_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_13.pth",
+        "name": "exp-schp-201908261155-lip_13.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_05.pth",
+        "name": "exp-schp-201908261155-lip_05.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_11.pth",
+        "name": "exp-schp-201908261155-lip_11.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_25.pth",
+        "name": "exp-schp-201908301523-atr_25.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_02.pth",
+        "name": "lightweight_parsing_02.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_19.pth",
+        "name": "exp-schp-201908301523-atr_19.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_18.pth",
+        "name": "exp-schp-201908301523-atr_18.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_03.pth",
+        "name": "lightweight_parsing_03.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_24.pth",
+        "name": "exp-schp-201908301523-atr_24.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_30.pth",
+        "name": "exp-schp-201908301523-atr_30.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_10.pth",
+        "name": "exp-schp-201908261155-lip_10.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_04.pth",
+        "name": "exp-schp-201908261155-lip_04.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_14.pth",
+        "name": "exp-schp-201908261155-lip_14.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy.pth",
+        "name": "graphonomy.pth",
+        "size_mb": 6.49,
+        "extension": ".pth",
+        "confidence": 18.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_08.pth",
+        "name": "exp-schp-201908301523-atr_08.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_07.pth",
+        "name": "lightweight_parsing_07.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_20.pth",
+        "name": "exp-schp-201908301523-atr_20.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_21.pth",
+        "name": "exp-schp-201908301523-atr_21.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_06.pth",
+        "name": "lightweight_parsing_06.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_09.pth",
+        "name": "exp-schp-201908301523-atr_09.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_15.pth",
+        "name": "exp-schp-201908261155-lip_15.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_01.pth",
+        "name": "exp-schp-201908261155-lip_01.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_17.pth",
+        "name": "exp-schp-201908261155-lip_17.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_03.pth",
+        "name": "exp-schp-201908261155-lip_03.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_04.pth",
+        "name": "lightweight_parsing_04.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_23.pth",
+        "name": "exp-schp-201908301523-atr_23.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr.pth",
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908301523-atr_22.pth",
+        "name": "exp-schp-201908301523-atr_22.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/lightweight_parsing_05.pth",
+        "name": "lightweight_parsing_05.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_02.pth",
+        "name": "exp-schp-201908261155-lip_02.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/exp-schp-201908261155-lip_16.pth",
+        "name": "exp-schp-201908261155-lip_16.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/graphonomy_atr.pth",
+        "name": "graphonomy_atr.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "organized/step_01_human_parsing/exp-schp-201908301523-atr_07.pth",
+        "name": "exp-schp-201908301523-atr_07.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "organized/step_01_human_parsing/lightweight_parsing.pth",
+        "name": "lightweight_parsing.pth",
+        "size_mb": 0.47,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_06.bin",
+        "name": "pytorch_model_06.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_12.bin",
+        "name": "pytorch_model_12.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_13.bin",
+        "name": "pytorch_model_13.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_07.bin",
+        "name": "pytorch_model_07.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_11.bin",
+        "name": "pytorch_model_11.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_05.bin",
+        "name": "pytorch_model_05.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_08.bin",
+        "name": "training_args_08.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_09.bin",
+        "name": "training_args_09.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_04.bin",
+        "name": "pytorch_model_04.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_10.bin",
+        "name": "pytorch_model_10.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_14.bin",
+        "name": "pytorch_model_14.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_01.bin",
+        "name": "pytorch_model_01.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_15.bin",
+        "name": "pytorch_model_15.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_03.bin",
+        "name": "pytorch_model_03.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_02.bin",
+        "name": "pytorch_model_02.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/clip_vit_b32.bin",
+        "name": "clip_vit_b32.bin",
+        "size_mb": 577.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args.bin",
+        "name": "training_args.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model.bin",
+        "name": "pytorch_model.bin",
+        "size_mb": 1632.67,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_02.bin",
+        "name": "training_args_02.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_03.bin",
+        "name": "training_args_03.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_01.bin",
+        "name": "training_args_01.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_15.bin",
+        "name": "training_args_15.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_14.bin",
+        "name": "training_args_14.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_09.bin",
+        "name": "pytorch_model_09.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_04.bin",
+        "name": "training_args_04.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_10.bin",
+        "name": "training_args_10.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_11.bin",
+        "name": "training_args_11.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_05.bin",
+        "name": "training_args_05.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/clip_vision_model.bin",
+        "name": "clip_vision_model.bin",
+        "size_mb": 577.21,
+        "extension": ".bin",
+        "confidence": 13.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/pytorch_model_08.bin",
+        "name": "pytorch_model_08.bin",
+        "size_mb": 104.5,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_13.bin",
+        "name": "training_args_13.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_07.bin",
+        "name": "training_args_07.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_06.bin",
+        "name": "training_args_06.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      {
+        "path": "step_01_human_parsing/training_args_12.bin",
+        "name": "training_args_12.bin",
+        "size_mb": 0.0,
+        "extension": ".bin",
+        "confidence": 12.0,
+        "parent_dir": "step_01_human_parsing"
+      }
+    ],
+    "step_02_pose_estimation": [
+      {
+        "path": "checkpoints/step_02_pose_estimation/body_pose_model_41.pth",
+        "name": "body_pose_model_41.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "checkpoints/step_02_pose_estimation/openpose_08.pth",
+        "name": "openpose_08.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "organized/step_02_pose_estimation/hand_pose_model_05.pth",
+        "name": "hand_pose_model_05.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "organized/step_02_pose_estimation/openpose_04.pth",
+        "name": "openpose_04.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "organized/step_02_pose_estimation/openpose_body.pth",
+        "name": "openpose_body.pth",
+        "size_mb": 29.24,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "organized/step_02_pose_estimation/clip_g.pth",
+        "name": "clip_g.pth",
+        "size_mb": 3519.15,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "organized/step_02_pose_estimation/150_16_swin_l_oneformer_coco_100ep.pth",
+        "name": "150_16_swin_l_oneformer_coco_100ep.pth",
+        "size_mb": 905.61,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_05.pth",
+        "name": "hand_pose_model_05.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_04.pth",
+        "name": "openpose_04.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/sk_model.pth",
+        "name": "sk_model.pth",
+        "size_mb": 16.38,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/upernet_global_small.pth",
+        "name": "upernet_global_small.pth",
+        "size_mb": 196.76,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/netG_01.pth",
+        "name": "netG_01.pth",
+        "size_mb": 207.55,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/sk_model_01.pth",
+        "name": "sk_model_01.pth",
+        "size_mb": 16.38,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/ControlNetHED_01.pth",
+        "name": "ControlNetHED_01.pth",
+        "size_mb": 28.08,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_05.pth",
+        "name": "openpose_05.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 17.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_04.pth",
+        "name": "hand_pose_model_04.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_10.pth",
+        "name": "hand_pose_model_10.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_06.pth",
+        "name": "hand_pose_model_06.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_07.pth",
+        "name": "openpose_07.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/latest_net_G.pth",
+        "name": "latest_net_G.pth",
+        "size_mb": 303.52,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/sk_model2.pth",
+        "name": "sk_model2.pth",
+        "size_mb": 16.38,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose.pth",
+        "name": "openpose.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 17.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_06.pth",
+        "name": "openpose_06.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_07.pth",
+        "name": "hand_pose_model_07.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_03.pth",
+        "name": "hand_pose_model_03.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_02.pth",
+        "name": "openpose_02.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/table5_pidinet.pth",
+        "name": "table5_pidinet.pth",
+        "size_mb": 2.74,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/erika_01.pth",
+        "name": "erika_01.pth",
+        "size_mb": 164.78,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_41.pth",
+        "name": "body_pose_model_41.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/netG.pth",
+        "name": "netG.pth",
+        "size_mb": 207.55,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_40.pth",
+        "name": "body_pose_model_40.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_03.pth",
+        "name": "openpose_03.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_02.pth",
+        "name": "hand_pose_model_02.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_01.pth",
+        "name": "openpose_01.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/network-bsds500_01.pth",
+        "name": "network-bsds500_01.pth",
+        "size_mb": 56.14,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_01.pth",
+        "name": "hand_pose_model_01.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/sk_model2_01.pth",
+        "name": "sk_model2_01.pth",
+        "size_mb": 16.38,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_18.pth",
+        "name": "body_pose_model_18.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_30.pth",
+        "name": "body_pose_model_30.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_24.pth",
+        "name": "body_pose_model_24.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model.pth",
+        "name": "body_pose_model.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 17.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/latest_net_G_01.pth",
+        "name": "latest_net_G_01.pth",
+        "size_mb": 303.52,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_25.pth",
+        "name": "body_pose_model_25.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_31.pth",
+        "name": "body_pose_model_31.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_19.pth",
+        "name": "body_pose_model_19.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_27.pth",
+        "name": "body_pose_model_27.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_33.pth",
+        "name": "body_pose_model_33.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_32.pth",
+        "name": "body_pose_model_32.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_26.pth",
+        "name": "body_pose_model_26.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/facenet.pth",
+        "name": "facenet.pth",
+        "size_mb": 146.6,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_22.pth",
+        "name": "body_pose_model_22.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_36.pth",
+        "name": "body_pose_model_36.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_37.pth",
+        "name": "body_pose_model_37.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_23.pth",
+        "name": "body_pose_model_23.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_35.pth",
+        "name": "body_pose_model_35.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_21.pth",
+        "name": "body_pose_model_21.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_09.pth",
+        "name": "body_pose_model_09.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_08.pth",
+        "name": "body_pose_model_08.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_20.pth",
+        "name": "body_pose_model_20.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_34.pth",
+        "name": "body_pose_model_34.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_body.pth",
+        "name": "openpose_body.pth",
+        "size_mb": 29.24,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/mlsd_large_512_fp32_01.pth",
+        "name": "mlsd_large_512_fp32_01.pth",
+        "size_mb": 6.05,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_39.pth",
+        "name": "body_pose_model_39.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_11.pth",
+        "name": "body_pose_model_11.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_05.pth",
+        "name": "body_pose_model_05.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_04.pth",
+        "name": "body_pose_model_04.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_10.pth",
+        "name": "body_pose_model_10.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_38.pth",
+        "name": "body_pose_model_38.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/network-bsds500.pth",
+        "name": "network-bsds500.pth",
+        "size_mb": 56.14,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/clip_g.pth",
+        "name": "clip_g.pth",
+        "size_mb": 3519.15,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model.pth",
+        "name": "hand_pose_model.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 17.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_06.pth",
+        "name": "body_pose_model_06.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_12.pth",
+        "name": "body_pose_model_12.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_13.pth",
+        "name": "body_pose_model_13.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_07.pth",
+        "name": "body_pose_model_07.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/table5_pidinet_01.pth",
+        "name": "table5_pidinet_01.pth",
+        "size_mb": 2.74,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/ControlNetHED.pth",
+        "name": "ControlNetHED.pth",
+        "size_mb": 28.08,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/mlsd_large_512_fp32.pth",
+        "name": "mlsd_large_512_fp32.pth",
+        "size_mb": 6.05,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_03.pth",
+        "name": "body_pose_model_03.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_17.pth",
+        "name": "body_pose_model_17.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_16.pth",
+        "name": "body_pose_model_16.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_02.pth",
+        "name": "body_pose_model_02.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_14.pth",
+        "name": "body_pose_model_14.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_28.pth",
+        "name": "body_pose_model_28.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/upernet_global_small_01.pth",
+        "name": "upernet_global_small_01.pth",
+        "size_mb": 196.76,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_29.pth",
+        "name": "body_pose_model_29.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_01.pth",
+        "name": "body_pose_model_01.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/body_pose_model_15.pth",
+        "name": "body_pose_model_15.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/facenet_01.pth",
+        "name": "facenet_01.pth",
+        "size_mb": 146.6,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/150_16_swin_l_oneformer_coco_100ep.pth",
+        "name": "150_16_swin_l_oneformer_coco_100ep.pth",
+        "size_mb": 905.61,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/ControlNetLama_01.pth",
+        "name": "ControlNetLama_01.pth",
+        "size_mb": 195.12,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/RealESRGAN_x4plus.pth",
+        "name": "RealESRGAN_x4plus.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/ControlNetLama.pth",
+        "name": "ControlNetLama.pth",
+        "size_mb": 195.12,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_09.pth",
+        "name": "hand_pose_model_09.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/openpose_08.pth",
+        "name": "openpose_08.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/res101.pth",
+        "name": "res101.pth",
+        "size_mb": 506.17,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/erika.pth",
+        "name": "erika.pth",
+        "size_mb": 164.78,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "step_02_pose_estimation/hand_pose_model_08.pth",
+        "name": "hand_pose_model_08.pth",
+        "size_mb": 140.52,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      {
+        "path": "organized/step_02_pose_estimation/densepose_model.pkl",
+        "name": "densepose_model.pkl",
+        "size_mb": 0.0,
+        "extension": ".pkl",
+        "confidence": 11.0,
+        "parent_dir": "step_02_pose_estimation"
+      }
+    ],
+    "step_04_geometric_matching": [
+      {
+        "path": "step_04_geometric_matching/lightweight_warping_01.pth",
+        "name": "lightweight_warping_01.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/tps_network_02.pth",
+        "name": "tps_network_02.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/tps_network_03.pth",
+        "name": "tps_network_03.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/tps_network_01.pth",
+        "name": "tps_network_01.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/gmm_final.pth",
+        "name": "gmm_final.pth",
+        "size_mb": 4.1,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/geometric_matching_base_02.pth",
+        "name": "geometric_matching_base_02.pth",
+        "size_mb": 18.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/geometric_matching_base_03.pth",
+        "name": "geometric_matching_base_03.pth",
+        "size_mb": 18.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/geometric_matching_base_01.pth",
+        "name": "geometric_matching_base_01.pth",
+        "size_mb": 18.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/geometric_matching_base_04.pth",
+        "name": "geometric_matching_base_04.pth",
+        "size_mb": 18.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/lightweight_warping.pth",
+        "name": "lightweight_warping.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/lightweight_gmm.pth",
+        "name": "lightweight_gmm.pth",
+        "size_mb": 4.1,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/geometric_matching_base.pth",
+        "name": "geometric_matching_base.pth",
+        "size_mb": 18.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/lightweight_gmm_01.pth",
+        "name": "lightweight_gmm_01.pth",
+        "size_mb": 4.1,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/tps_network.pth",
+        "name": "tps_network.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "step_04_geometric_matching/gmm_final_01.pth",
+        "name": "gmm_final_01.pth",
+        "size_mb": 4.1,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "organized/step_04_geometric_matching/tps_network_02.pth",
+        "name": "tps_network_02.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "organized/step_04_geometric_matching/gmm_final.pth",
+        "name": "gmm_final.pth",
+        "size_mb": 4.1,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      {
+        "path": "organized/step_04_geometric_matching/geometric_matching_base_02.pth",
+        "name": "geometric_matching_base_02.pth",
+        "size_mb": 18.73,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_04_geometric_matching"
+      }
+    ],
+    "step_07_post_processing": [
+      {
+        "path": "step_07_post_processing/real_esrgan_x4_v3_01.pth",
+        "name": "real_esrgan_x4_v3_01.pth",
+        "size_mb": 4.66,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_01.pth",
+        "name": "RealESRGAN_x4plus_01.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_03.pth",
+        "name": "RealESRGAN_x4plus_03.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_02.pth",
+        "name": "RealESRGAN_x4plus_02.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_06.pth",
+        "name": "RealESRGAN_x4plus_06.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_07.pth",
+        "name": "RealESRGAN_x4plus_07.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_05.pth",
+        "name": "RealESRGAN_x4plus_05.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus_04.pth",
+        "name": "RealESRGAN_x4plus_04.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/basic_enhancer_01.pth",
+        "name": "basic_enhancer_01.pth",
+        "size_mb": 332.48,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/basic_enhancer.pth",
+        "name": "basic_enhancer.pth",
+        "size_mb": 332.48,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/enhancer.pth",
+        "name": "enhancer.pth",
+        "size_mb": 0.29,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/real_esrgan_x4_v3.pth",
+        "name": "real_esrgan_x4_v3.pth",
+        "size_mb": 4.66,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "step_07_post_processing/RealESRGAN_x4plus.pth",
+        "name": "RealESRGAN_x4plus.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "individual_models/RealESRGAN_x4plus.pth",
+        "name": "RealESRGAN_x4plus.pth",
+        "size_mb": 63.94,
+        "extension": ".pth",
+        "confidence": 1.0,
+        "parent_dir": "individual_models"
+      },
+      {
+        "path": "organized/step_07_post_processing/real_esrgan_x4_v3_01.pth",
+        "name": "real_esrgan_x4_v3_01.pth",
+        "size_mb": 4.66,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "organized/step_07_post_processing/GFPGANv1.4_01.pth",
+        "name": "GFPGANv1.4_01.pth",
+        "size_mb": 332.48,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "organized/step_07_post_processing/codeformer.pth",
+        "name": "codeformer.pth",
+        "size_mb": 359.19,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      {
+        "path": "organized/step_07_post_processing/enhancer.pth",
+        "name": "enhancer.pth",
+        "size_mb": 0.29,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_07_post_processing"
+      }
+    ],
+    "step_05_cloth_warping": [
+      {
+        "path": "step_05_cloth_warping/lightweight_warping_01.pth",
+        "name": "lightweight_warping_01.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/tps_network_02.pth",
+        "name": "tps_network_02.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/tom_final.pth",
+        "name": "tom_final.pth",
+        "size_mb": 3279.07,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/tps_network_03.pth",
+        "name": "tps_network_03.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/tps_network_01.pth",
+        "name": "tps_network_01.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/lightweight_warping.pth",
+        "name": "lightweight_warping.pth",
+        "size_mb": 0.09,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/tps_network.pth",
+        "name": "tps_network.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      {
+        "path": "step_05_cloth_warping/tom_final_01.pth",
+        "name": "tom_final_01.pth",
+        "size_mb": 0.0,
+        "extension": ".pth",
+        "confidence": 11.0,
+        "parent_dir": "step_05_cloth_warping"
+      }
+    ]
+  },
+  "by_extension": {
+    ".pth": 378,
+    ".bin": 99,
+    ".pkl": 4
+  },
+  "recommendations": {
+    "step_08_quality_assessment": {
+      "primary": {
+        "path": "step_08_quality_assessment/vgg19_features_01.pth",
+        "name": "vgg19_features_01.pth",
+        "size_mb": 548.06,
+        "extension": ".pth",
+        "confidence": 14.0,
+        "parent_dir": "step_08_quality_assessment"
+      },
+      "alternatives": [
+        {
+          "path": "step_08_quality_assessment/vgg19_features.pth",
+          "name": "vgg19_features.pth",
+          "size_mb": 548.06,
+          "extension": ".pth",
+          "confidence": 14.0,
+          "parent_dir": "step_08_quality_assessment"
+        },
+        {
+          "path": "step_08_quality_assessment/resnet50_features_01.pth",
+          "name": "resnet50_features_01.pth",
+          "size_mb": 97.79,
+          "extension": ".pth",
+          "confidence": 14.0,
+          "parent_dir": "step_08_quality_assessment"
+        },
+        {
+          "path": "step_08_quality_assessment/resnet50_features.pth",
+          "name": "resnet50_features.pth",
+          "size_mb": 97.79,
+          "extension": ".pth",
+          "confidence": 14.0,
+          "parent_dir": "step_08_quality_assessment"
+        }
+      ],
+      "total_files": 26,
+      "total_size_mb": 11131.100000000002
+    },
+    "step_06_virtual_fitting": {
+      "primary": {
+        "path": "step_06_virtual_fitting/hrviton_final.pth",
+        "name": "hrviton_final.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_06_virtual_fitting"
+      },
+      "alternatives": [
+        {
+          "path": "organized/step_06_virtual_fitting/hrviton_final.pth",
+          "name": "hrviton_final.pth",
+          "size_mb": 2445.75,
+          "extension": ".pth",
+          "confidence": 19.0,
+          "parent_dir": "step_06_virtual_fitting"
+        },
+        {
+          "path": "step_06_virtual_fitting/ootd_hd_unet.bin",
+          "name": "ootd_hd_unet.bin",
+          "size_mb": 0.0,
+          "extension": ".bin",
+          "confidence": 19.0,
+          "parent_dir": "step_06_virtual_fitting"
+        },
+        {
+          "path": "step_06_virtual_fitting/diffusion_pytorch_model.bin",
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 319.21,
+          "extension": ".bin",
+          "confidence": 18.0,
+          "parent_dir": "step_06_virtual_fitting"
+        }
+      ],
+      "total_files": 81,
+      "total_size_mb": 47558.449999999975
+    },
+    "step_03_cloth_segmentation": {
+      "primary": {
+        "path": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.75,
+        "extension": ".pth",
+        "confidence": 18.0,
+        "parent_dir": "step_03_cloth_segmentation"
+      },
+      "alternatives": [
+        {
+          "path": "step_03_cloth_segmentation/u2net_backup.pth",
+          "name": "u2net_backup.pth",
+          "size_mb": 168.53,
+          "extension": ".pth",
+          "confidence": 18.0,
+          "parent_dir": "step_03_cloth_segmentation"
+        },
+        {
+          "path": "step_03_cloth_segmentation/u2net.pth",
+          "name": "u2net.pth",
+          "size_mb": 168.12,
+          "extension": ".pth",
+          "confidence": 18.0,
+          "parent_dir": "step_03_cloth_segmentation"
+        },
+        {
+          "path": "step_03_cloth_segmentation/sam_vit_h.pth",
+          "name": "sam_vit_h.pth",
+          "size_mb": 2445.75,
+          "extension": ".pth",
+          "confidence": 13.0,
+          "parent_dir": "step_03_cloth_segmentation"
+        }
+      ],
+      "total_files": 37,
+      "total_size_mb": 15913.500000000005
+    },
+    "step_01_human_parsing": {
+      "primary": {
+        "path": "step_01_human_parsing/schp_atr.pth",
+        "name": "schp_atr.pth",
+        "size_mb": 255.06,
+        "extension": ".pth",
+        "confidence": 19.0,
+        "parent_dir": "step_01_human_parsing"
+      },
+      "alternatives": [
+        {
+          "path": "step_01_human_parsing/exp-schp-201908261155-lip.pth",
+          "name": "exp-schp-201908261155-lip.pth",
+          "size_mb": 255.06,
+          "extension": ".pth",
+          "confidence": 19.0,
+          "parent_dir": "step_01_human_parsing"
+        },
+        {
+          "path": "step_01_human_parsing/exp-schp-201908301523-atr.pth",
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 255.06,
+          "extension": ".pth",
+          "confidence": 19.0,
+          "parent_dir": "step_01_human_parsing"
+        },
+        {
+          "path": "step_01_human_parsing/graphonomy.pth",
+          "name": "graphonomy.pth",
+          "size_mb": 6.49,
+          "extension": ".pth",
+          "confidence": 18.0,
+          "parent_dir": "step_01_human_parsing"
+        }
+      ],
+      "total_files": 175,
+      "total_size_mb": 35174.92000000006
+    },
+    "step_02_pose_estimation": {
+      "primary": {
+        "path": "step_02_pose_estimation/openpose_05.pth",
+        "name": "openpose_05.pth",
+        "size_mb": 199.57,
+        "extension": ".pth",
+        "confidence": 17.0,
+        "parent_dir": "step_02_pose_estimation"
+      },
+      "alternatives": [
+        {
+          "path": "step_02_pose_estimation/openpose.pth",
+          "name": "openpose.pth",
+          "size_mb": 199.57,
+          "extension": ".pth",
+          "confidence": 17.0,
+          "parent_dir": "step_02_pose_estimation"
+        },
+        {
+          "path": "step_02_pose_estimation/body_pose_model.pth",
+          "name": "body_pose_model.pth",
+          "size_mb": 199.57,
+          "extension": ".pth",
+          "confidence": 17.0,
+          "parent_dir": "step_02_pose_estimation"
+        },
+        {
+          "path": "step_02_pose_estimation/hand_pose_model.pth",
+          "name": "hand_pose_model.pth",
+          "size_mb": 140.52,
+          "extension": ".pth",
+          "confidence": 17.0,
+          "parent_dir": "step_02_pose_estimation"
+        }
+      ],
+      "total_files": 99,
+      "total_size_mb": 23823.049999999985
+    },
+    "step_04_geometric_matching": {
+      "primary": {
+        "path": "step_04_geometric_matching/gmm_final.pth",
+        "name": "gmm_final.pth",
+        "size_mb": 4.1,
+        "extension": ".pth",
+        "confidence": 13.0,
+        "parent_dir": "step_04_geometric_matching"
+      },
+      "alternatives": [
+        {
+          "path": "step_04_geometric_matching/lightweight_gmm.pth",
+          "name": "lightweight_gmm.pth",
+          "size_mb": 4.1,
+          "extension": ".pth",
+          "confidence": 13.0,
+          "parent_dir": "step_04_geometric_matching"
+        },
+        {
+          "path": "step_04_geometric_matching/lightweight_gmm_01.pth",
+          "name": "lightweight_gmm_01.pth",
+          "size_mb": 4.1,
+          "extension": ".pth",
+          "confidence": 13.0,
+          "parent_dir": "step_04_geometric_matching"
+        },
+        {
+          "path": "step_04_geometric_matching/gmm_final_01.pth",
+          "name": "gmm_final_01.pth",
+          "size_mb": 4.1,
+          "extension": ".pth",
+          "confidence": 13.0,
+          "parent_dir": "step_04_geometric_matching"
+        }
+      ],
+      "total_files": 18,
+      "total_size_mb": 143.66
+    },
+    "step_07_post_processing": {
+      "primary": {
+        "path": "step_07_post_processing/real_esrgan_x4_v3_01.pth",
+        "name": "real_esrgan_x4_v3_01.pth",
+        "size_mb": 4.66,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_07_post_processing"
+      },
+      "alternatives": [
+        {
+          "path": "step_07_post_processing/real_esrgan_x4_v3.pth",
+          "name": "real_esrgan_x4_v3.pth",
+          "size_mb": 4.66,
+          "extension": ".pth",
+          "confidence": 12.0,
+          "parent_dir": "step_07_post_processing"
+        },
+        {
+          "path": "organized/step_07_post_processing/real_esrgan_x4_v3_01.pth",
+          "name": "real_esrgan_x4_v3_01.pth",
+          "size_mb": 4.66,
+          "extension": ".pth",
+          "confidence": 12.0,
+          "parent_dir": "step_07_post_processing"
+        },
+        {
+          "path": "organized/step_07_post_processing/codeformer.pth",
+          "name": "codeformer.pth",
+          "size_mb": 359.19,
+          "extension": ".pth",
+          "confidence": 11.0,
+          "parent_dir": "step_07_post_processing"
+        }
+      ],
+      "total_files": 18,
+      "total_size_mb": 1818.77
+    },
+    "step_05_cloth_warping": {
+      "primary": {
+        "path": "step_05_cloth_warping/tps_network_02.pth",
+        "name": "tps_network_02.pth",
+        "size_mb": 2.12,
+        "extension": ".pth",
+        "confidence": 12.0,
+        "parent_dir": "step_05_cloth_warping"
+      },
+      "alternatives": [
+        {
+          "path": "step_05_cloth_warping/tps_network_03.pth",
+          "name": "tps_network_03.pth",
+          "size_mb": 2.12,
+          "extension": ".pth",
+          "confidence": 12.0,
+          "parent_dir": "step_05_cloth_warping"
+        },
+        {
+          "path": "step_05_cloth_warping/tps_network_01.pth",
+          "name": "tps_network_01.pth",
+          "size_mb": 2.12,
+          "extension": ".pth",
+          "confidence": 12.0,
+          "parent_dir": "step_05_cloth_warping"
+        },
+        {
+          "path": "step_05_cloth_warping/tps_network.pth",
+          "name": "tps_network.pth",
+          "size_mb": 2.12,
+          "extension": ".pth",
+          "confidence": 12.0,
+          "parent_dir": "step_05_cloth_warping"
+        }
+      ],
+      "total_files": 8,
+      "total_size_mb": 3287.73
+    }
+  }
+}

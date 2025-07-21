@@ -47,6 +47,18 @@ from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
+import logging
+
+# 시끄러운 라이브러리들 조용하게
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('requests').setLevel(logging.WARNING)
+logging.getLogger('PIL').setLevel(logging.WARNING)
+logging.getLogger('torch').setLevel(logging.WARNING)
+logging.getLogger('transformers').setLevel(logging.WARNING)
+logging.getLogger('diffusers').setLevel(logging.WARNING)
+
+# MyCloset AI 관련만 적당한 레벨로
+logging.getLogger('app').setLevel(logging.WARNING)
 
 # =============================================================================
 # 🔥 Step 1: 경로 및 환경 설정 (M3 Max 최적화)

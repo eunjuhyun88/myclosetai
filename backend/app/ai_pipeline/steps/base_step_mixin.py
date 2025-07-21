@@ -1115,7 +1115,7 @@ class BaseStepMixin:
     # ==============================================
     
     def _ensure_logger_first(self):
-        """🔥 logger 속성 최우선 생성"""
+        """🔥 logger 속성 최우선 생성 - 개선된 버전"""
         try:
             if hasattr(self, 'logger') and self.logger is not None:
                 return
@@ -1129,6 +1129,16 @@ class BaseStepMixin:
             # 로거 생성 및 설정
             self.logger = logging.getLogger(logger_name)
             
+            # 로그 레벨 설정 (환경변수 고려)
+            log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+            if log_level == 'DEBUG':
+                self.logger.setLevel(logging.DEBUG)
+            elif log_level == 'WARNING':
+                self.logger.setLevel(logging.WARNING)
+            else:
+                self.logger.setLevel(logging.INFO)
+            
+            # 핸들러가 없는 경우에만 추가
             if not self.logger.handlers:
                 formatter = logging.Formatter(
                     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -1137,18 +1147,47 @@ class BaseStepMixin:
                 handler = logging.StreamHandler()
                 handler.setFormatter(formatter)
                 self.logger.addHandler(handler)
-                self.logger.setLevel(logging.INFO)
             
             # step_name 속성도 설정
             if not hasattr(self, 'step_name'):
                 self.step_name = step_name
                 
+            # 초기화 시작 로그 (중요)
             self.logger.info(f"🔗 {step_name} logger 속성 생성 완료")
             
         except Exception as e:
             print(f"❌ logger 생성 실패: {e}")
             self._create_emergency_logger()
     
+    def _create_emergency_logger(self):
+        """긴급 로거 생성 - 개선된 버전"""
+        try:
+            class_name = getattr(self, '__class__', type(self)).__name__
+            self.logger = logging.getLogger(f"emergency.{class_name}")
+            
+            # 최소한의 핸들러 설정
+            if not self.logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter('%(levelname)s - %(message)s')
+                handler.setFormatter(formatter)
+                self.logger.addHandler(handler)
+                self.logger.setLevel(logging.WARNING)
+            
+            self.logger.warning(f"🚨 {class_name} 긴급 로거 생성됨")
+            
+        except Exception as e:
+            print(f"🚨 긴급 로거 생성도 실패: {e}")
+            # 최후의 수단: 간단한 로거 클래스
+            class EmergencyLogger:
+                def info(self, msg): print(f"INFO: {msg}")
+                def warning(self, msg): print(f"WARNING: {msg}")
+                def error(self, msg): print(f"ERROR: {msg}")
+                def debug(self, msg): print(f"DEBUG: {msg}")
+            
+            self.logger = EmergencyLogger()
+            self.logger.error(f"🚨 {getattr(self, '__class__', 'Unknown').__name__} 최후 수단 로거 사용")
+
+
     def _create_emergency_logger(self):
         """긴급 로거 생성"""
         try:
@@ -1324,19 +1363,34 @@ class BaseStepMixin:
             self.logger.debug(f"⚠️ safe_super_init 실패: {e}")
     
     def _setup_device_and_system(self, kwargs: Dict[str, Any]):
-        """시스템 환경 설정"""
+        """시스템 환경 설정 - conda 환경 우선 처리"""
         try:
             # 디바이스 설정
             self.device = kwargs.get('device', self._detect_optimal_device())
             self.is_m3_max = self._detect_m3_max()
             
+            # conda 환경 감지 및 설정
+            self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            self.is_conda_env = bool(self.conda_env) or bool(os.environ.get('CONDA_PREFIX'))
+            
             # 메모리 정보
             memory_info = self._get_memory_info()
             self.memory_gb = memory_info.get("total_gb", 16.0)
             
-            # 최적화 설정
-            self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
-            self.optimization_enabled = kwargs.get('optimization_enabled', True)
+            # M3 Max 및 conda 환경 특화 설정
+            if self.is_m3_max and self.is_conda_env:
+                self.memory_gb = min(self.memory_gb, 128.0)  # M3 Max 128GB 제한
+                self.use_fp16 = kwargs.get('use_fp16', True)
+                self.optimization_enabled = kwargs.get('optimization_enabled', True)
+                self.logger.info(f"🍎 M3 Max + conda 환경 최적화 활성화 ({self.conda_env})")
+            elif self.is_m3_max:
+                self.memory_gb = min(self.memory_gb, 64.0)   # conda 없으면 64GB 제한
+                self.use_fp16 = kwargs.get('use_fp16', True)
+                self.optimization_enabled = kwargs.get('optimization_enabled', True)
+                self.logger.warning("⚠️ M3 Max 감지되었으나 conda 환경 권장")
+            else:
+                self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
+                self.optimization_enabled = kwargs.get('optimization_enabled', True)
             
             # 디바이스별 설정
             if self.device == "mps" and MPS_AVAILABLE:
@@ -1344,7 +1398,7 @@ class BaseStepMixin:
             elif self.device == "cuda" and TORCH_AVAILABLE and torch.cuda.is_available():
                 self._setup_cuda_optimizations()
             
-            self.logger.debug(f"🔧 시스템 환경 설정 완료: {self.device}, {self.memory_gb}GB")
+            self.logger.debug(f"🔧 시스템 환경 설정 완료: {self.device}, {self.memory_gb}GB, conda: {self.conda_env}")
             
         except Exception as e:
             self.logger.error(f"❌ 시스템 환경 설정 실패: {e}")
@@ -1354,7 +1408,81 @@ class BaseStepMixin:
             self.memory_gb = 16.0
             self.use_fp16 = False
             self.optimization_enabled = False
+            self.conda_env = ""
+            self.is_conda_env = False
     
+    def _detect_optimal_device(self) -> str:
+        """최적 디바이스 감지 - conda 환경 고려"""
+        try:
+            if TORCH_AVAILABLE:
+                if MPS_AVAILABLE:
+                    # M3 Max + conda 환경인 경우 우선
+                    conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+                    if conda_env:
+                        self.logger.info(f"🍎 M3 Max + conda ({conda_env}) 환경에서 MPS 선택")
+                    else:
+                        self.logger.info("🍎 M3 Max MPS 선택 (conda 환경 권장)")
+                    return "mps"
+                elif hasattr(torch, 'cuda') and torch.cuda.is_available():
+                    return "cuda"
+            return "cpu"
+        except Exception as e:
+            self.logger.warning(f"⚠️ 디바이스 감지 실패: {e}")
+            return "cpu"
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 감지 - 개선된 버전"""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == 'Darwin':  # macOS
+                try:
+                    result = subprocess.run(
+                        ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    cpu_info = result.stdout.strip().lower()
+                    is_m3 = 'apple m3' in cpu_info or 'm3 max' in cpu_info or 'm3 pro' in cpu_info
+                    
+                    if is_m3:
+                        self.logger.info(f"🍎 Apple M3 시리즈 감지: {result.stdout.strip()}")
+                    
+                    return is_m3
+                except subprocess.TimeoutExpired:
+                    self.logger.warning("⚠️ CPU 정보 조회 타임아웃")
+                except Exception as e:
+                    self.logger.debug(f"CPU 정보 조회 실패: {e}")
+        except Exception as e:
+            self.logger.debug(f"M3 Max 감지 실패: {e}")
+        
+        return False
+    
+    def _get_memory_info(self) -> Dict[str, Any]:
+        """메모리 정보 조회 - conda 환경 고려"""
+        try:
+            import psutil
+            memory = psutil.virtual_memory()
+            
+            # conda 환경에서는 더 정확한 메모리 정보 제공
+            conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            if conda_env:
+                self.logger.debug(f"🐍 conda 환경 ({conda_env})에서 메모리 정보 조회")
+            
+            return {
+                "total_gb": memory.total / 1024**3,
+                "available_gb": memory.available / 1024**3,
+                "percent_used": memory.percent,
+                "conda_optimized": bool(conda_env)
+            }
+        except ImportError:
+            self.logger.warning("⚠️ psutil 없음 - 기본 메모리 값 사용")
+            return {
+                "total_gb": 16.0,
+                "available_gb": 8.0,
+                "percent_used": 50.0,
+                "conda_optimized": False
+            }
+            
     def _setup_config_safely(self, kwargs: Dict[str, Any]):
         """안전한 설정 관리"""
         try:
@@ -1735,14 +1863,22 @@ class BaseStepMixin:
             self.logger.error(f"❌ 최종 초기화 완료 처리 실패: {e}")
     
     def _emergency_initialization(self):
-        """🔥 긴급 초기화 (에러 발생시) - 완전 구현"""
+        """🔥 긴급 초기화 (에러 발생시) - 완전 구현 + conda 환경 지원"""
         try:
+            # logger 우선 확인 및 생성
+            if not hasattr(self, 'logger') or self.logger is None:
+                self._create_emergency_logger()
+            
             # Step 기본 정보 설정
             self.step_name = getattr(self, 'step_name', self.__class__.__name__)
             self.device = "cpu"
             self.is_m3_max = False
             self.memory_gb = 16.0
             self.error_count = getattr(self, 'error_count', 0) + 1
+            
+            # conda 환경 정보 추가
+            self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            self.is_conda_env = bool(self.conda_env)
             
             # 상태 플래그들
             self.is_initialized = False
@@ -1820,16 +1956,14 @@ class BaseStepMixin:
             # 콜백과 히스토리
             self.state_change_callbacks = []
             
-            # 로거 확인 및 생성
-            if not hasattr(self, 'logger') or self.logger is None:
-                self._create_emergency_logger()
-            
             # 긴급 초기화 완료 로깅
-            if hasattr(self, 'logger'):
-                self.logger.error(f"🚨 {self.step_name} 긴급 초기화 실행")
-                self.logger.warning("⚠️ 최소한의 기능만 사용 가능합니다")
+            self.logger.error(f"🚨 {self.step_name} 긴급 초기화 실행")
+            self.logger.warning("⚠️ 최소한의 기능만 사용 가능합니다")
+            
+            if self.is_conda_env:
+                self.logger.info(f"🐍 conda 환경 감지: {self.conda_env}")
             else:
-                print(f"🚨 {self.step_name} 긴급 초기화 실행 - 로거 없음")
+                self.logger.warning("⚠️ conda 환경이 아님")
             
         except Exception as e:
             # 최후의 수단: print로 로깅
@@ -1845,7 +1979,11 @@ class BaseStepMixin:
                 self.is_initialized = False
             if not hasattr(self, 'error_count'):
                 self.error_count = 1
-    
+            if not hasattr(self, 'conda_env'):
+                self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+            if not hasattr(self, 'is_conda_env'):
+                self.is_conda_env = bool(self.conda_env)
+                
     # ==============================================
     # 🔥 DI 관련 메서드들
     # ==============================================

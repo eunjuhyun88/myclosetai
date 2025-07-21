@@ -129,6 +129,7 @@ TORCH_AVAILABLE, torch, DEVICE_TYPE, IS_M3_MAX = safe_import_torch()
 OPTIONAL_MODULES = safe_import_optional()
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)  # INFO/DEBUG 로그 제거
 
 # ==============================================
 # 🔥 고급 데이터 구조 모듈 (기존 유지)
@@ -3196,25 +3197,34 @@ def create_advanced_detector(**kwargs) -> RealWorldModelDetector:
     return RealWorldModelDetector(**kwargs)
 
 def quick_model_detection(**kwargs) -> Dict[str, DetectedModel]:
-    """빠른 모델 탐지 - 494개 모델 대응 최적화"""
+    """빠른 모델 탐지 - 494개 모델 대응 최적화 (매개변수 중복 오류 완전 해결)"""
     try:
+        # 🔥 매개변수 중복 방지 - 사용되는 매개변수들을 kwargs에서 제거
+        enable_pytorch_validation = kwargs.pop('enable_pytorch_validation', False)
+        step_filter = kwargs.pop('step_filter', None)
+        min_confidence = kwargs.pop('min_confidence', 0.3)
+        prioritize_backend_models = kwargs.pop('prioritize_backend_models', True)
+        enable_detailed_analysis = kwargs.pop('enable_detailed_analysis', False)
+        enable_performance_profiling = kwargs.pop('enable_performance_profiling', False)
+        max_workers = kwargs.pop('max_workers', 1)
+        
+        # 🔥 탐지기 생성 시 중복 없이 전달 (pop으로 제거된 kwargs 사용)
         detector = create_real_world_detector(
-            enable_pytorch_validation=kwargs.get('enable_pytorch_validation', False),
-            enable_detailed_analysis=False,
-            enable_performance_profiling=False,
-            max_workers=1,
-            **kwargs
+            enable_pytorch_validation=enable_pytorch_validation,
+            enable_detailed_analysis=enable_detailed_analysis,
+            enable_performance_profiling=enable_performance_profiling,
+            max_workers=max_workers,
+            **kwargs  # 이제 중복 매개변수가 제거된 kwargs
         )
         
         detected_models = detector.detect_all_models(
             force_rescan=True,
-            min_confidence=kwargs.get('min_confidence', 0.3),  # 개선된 임계값
-            enable_detailed_analysis=False,
-            prioritize_backend_models=kwargs.get('prioritize_backend_models', True)
+            min_confidence=min_confidence,
+            enable_detailed_analysis=enable_detailed_analysis,
+            prioritize_backend_models=prioritize_backend_models
         )
         
         # Step 필터링
-        step_filter = kwargs.get('step_filter')
         if step_filter:
             filtered_models = {}
             for name, model in detected_models.items():
@@ -3227,7 +3237,8 @@ def quick_model_detection(**kwargs) -> Dict[str, DetectedModel]:
     except Exception as e:
         logger.error(f"빠른 탐지 실패: {e}")
         return {}
-
+    
+    
 def comprehensive_model_detection(**kwargs) -> Dict[str, DetectedModel]:
     """포괄적인 모델 탐지 - 모든 기능 활성화"""
     try:

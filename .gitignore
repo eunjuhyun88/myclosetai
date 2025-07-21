@@ -22,6 +22,15 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# 설치 스크립트들
+*.sh
+Miniconda3-latest-MacOSX-arm64.sh
+
+# 백업 파일들
+*.backup
+fix.sh
+python311_fix.sh
+
 # Virtual Environments
 venv/
 env/

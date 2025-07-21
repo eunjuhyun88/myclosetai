@@ -214,9 +214,10 @@ def _setup_logging():
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
-    # 파일 핸들러 (회전 로그)
+    # 파일 핸들러 (회전 로그) - 수정된 import 방식
     try:
-        file_handler = logging.handlers.RotatingFileHandler(
+        from logging.handlers import RotatingFileHandler
+        file_handler = RotatingFileHandler(
             log_dir / "app.log",
             maxBytes=10*1024*1024,  # 10MB
             backupCount=5
