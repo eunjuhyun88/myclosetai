@@ -1,253 +1,247 @@
-# backend/app/ai_pipeline/utils/image_processing.py
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-🖼️ MyCloset AI - 이미지 처리 함수들 (순환참조 방지 버전) - 완전판
-=========================================================
-✅ model_loader.py에서 분리된 이미지 처리 함수들
-✅ 순환참조 완전 방지 - 독립적인 모듈
-✅ PIL, OpenCV, NumPy 기반 이미지 처리
-✅ PyTorch 텐서 변환 지원
-✅ M3 Max 128GB 최적화
-✅ conda 환경 완벽 지원
-✅ 기존 함수명 100% 유지
-✅ 모든 기능 완전 구현 - 잘린 부분 없음
+🖼️ MyCloset AI - 이미지 처리 모듈 (완전한 Python 구조)
+===========================================================
+✅ 올바른 Python 구조로 완전 재구성
+✅ 함수들을 논리적 순서로 배치
+✅ 모든 기능 완전 구현 (잘린 부분 없음)
+✅ conda 환경 & M3 Max 최적화
+✅ 순환참조 완전 방지
+✅ 타입 힌팅 및 문서화 완료
 
 Author: MyCloset AI Team
 Date: 2025-07-21
-Version: 1.0 (Separated from model_loader.py - Complete)
+Version: 2.0 (Complete Restructure)
 """
 
+# =============================================================================
+# 🔥 1. 표준 라이브러리 임포트
+# =============================================================================
 import io
+import os
+import sys
 import logging
 import base64
 import tempfile
-import os
 import uuid
 import math
-from typing import Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Any, Optional, Tuple, List, Union, Callable
 from pathlib import Path
+from abc import ABC, abstractmethod
 
-# 조건부 임포트 (안전한 처리)
+# =============================================================================
+# 🔥 2. 서드파티 라이브러리 조건부 임포트 (안전한 처리)
+# =============================================================================
+
+# 로거 설정 (최우선)
+logger = logging.getLogger(__name__)
+
+# NumPy 안전 임포트
 try:
     import numpy as np
     NUMPY_AVAILABLE = True
-    logger = logging.getLogger(__name__)
     logger.info("✅ NumPy 사용 가능")
     
-    # NumPy 2.x 호환성 처리
-    major_version = int(np.__version__.split('.')[0])
-    if major_version >= 2:
-        logger.warning(f"⚠️ NumPy {np.__version__} 감지됨. NumPy 1.x 권장")
+    # NumPy 2.x 호환성 체크
+    numpy_version = tuple(map(int, np.__version__.split('.')[:2]))
+    if numpy_version >= (2, 0):
+        logger.warning(f"⚠️ NumPy {np.__version__} 감지 - 1.x 권장")
         logger.warning("🔧 해결방법: conda install numpy=1.24.3 -y --force-reinstall")
+        
 except ImportError as e:
     NUMPY_AVAILABLE = False
     np = None
-    logger = logging.getLogger(__name__)
     logger.warning(f"⚠️ NumPy 없음: {e}")
 
+# PIL/Pillow 안전 임포트
 try:
     from PIL import Image, ImageEnhance, ImageFilter, ImageDraw, ImageFont
     PIL_AVAILABLE = True
     logger.info("✅ PIL/Pillow 사용 가능")
 except ImportError as e:
     PIL_AVAILABLE = False
+    Image = None
     logger.warning(f"⚠️ PIL/Pillow 없음: {e}")
 
+# OpenCV 안전 임포트
 try:
     import cv2
     CV2_AVAILABLE = True
     logger.info("✅ OpenCV 사용 가능")
 except ImportError as e:
     CV2_AVAILABLE = False
+    cv2 = None
     logger.warning(f"⚠️ OpenCV 없음: {e}")
 
+# PyTorch 안전 임포트
 try:
     import torch
     import torch.nn.functional as F
     TORCH_AVAILABLE = True
     logger.info("✅ PyTorch 사용 가능")
+    
+    # M3 Max MPS 체크
+    if hasattr(torch, 'mps') and torch.mps.is_available():
+        logger.info("🚀 M3 Max MPS 가속 사용 가능")
 except ImportError as e:
     TORCH_AVAILABLE = False
     torch = None
+    F = None
     logger.warning(f"⚠️ PyTorch 없음: {e}")
 
-# ==============================================
-# 🔥 기본 이미지 전처리 함수들
-# ==============================================
+# =============================================================================
+# 🔥 3. 상수 및 설정
+# =============================================================================
 
-def preprocess_image(
-    image: Union[str, 'Image.Image', 'np.ndarray'],
-    target_size: Tuple[int, int] = (512, 512),
-    device: str = "mps",
-    normalize: bool = True,
-    to_tensor: bool = True
-) -> Any:
+# 기본 설정값
+DEFAULT_IMAGE_SIZE = (512, 512)
+DEFAULT_DEVICE = "mps" if TORCH_AVAILABLE and hasattr(torch, 'mps') and torch.mps.is_available() else "cpu"
+DEFAULT_DTYPE = torch.float16 if TORCH_AVAILABLE else None
+
+# 지원되는 이미지 포맷
+SUPPORTED_FORMATS = ['JPEG', 'PNG', 'WEBP', 'BMP', 'TIFF']
+SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff']
+
+# 메모리 최적화 설정
+MAX_IMAGE_SIZE = (2048, 2048)  # M3 Max 기준 최대 권장 크기
+MEMORY_THRESHOLD_MB = 500  # 메모리 임계값
+
+# =============================================================================
+# 🔥 4. 기본 헬퍼 함수들 (가장 기초적인 것들)
+# =============================================================================
+
+def _ensure_numpy() -> bool:
+    """NumPy 가용성 확인"""
+    if not NUMPY_AVAILABLE:
+        logger.error("❌ NumPy가 필요합니다. conda install numpy=1.24.3")
+        return False
+    return True
+
+def _ensure_pil() -> bool:
+    """PIL 가용성 확인"""
+    if not PIL_AVAILABLE:
+        logger.error("❌ PIL/Pillow가 필요합니다. conda install pillow")
+        return False
+    return True
+
+def _ensure_torch() -> bool:
+    """PyTorch 가용성 확인"""
+    if not TORCH_AVAILABLE:
+        logger.error("❌ PyTorch가 필요합니다. conda install pytorch")
+        return False
+    return True
+
+def _get_optimal_device() -> str:
+    """최적 디바이스 자동 선택"""
+    if TORCH_AVAILABLE:
+        if hasattr(torch, 'mps') and torch.mps.is_available():
+            return "mps"  # M3 Max
+        elif torch.cuda.is_available():
+            return "cuda"
+    return "cpu"
+
+def _validate_image_input(image: Any) -> bool:
+    """이미지 입력 검증"""
+    if image is None:
+        return False
+    
+    # PIL Image
+    if hasattr(image, 'size') and hasattr(image, 'mode'):
+        return True
+    
+    # NumPy array
+    if NUMPY_AVAILABLE and isinstance(image, np.ndarray):
+        return len(image.shape) >= 2
+    
+    # PyTorch tensor
+    if TORCH_AVAILABLE and torch.is_tensor(image):
+        return len(image.shape) >= 2
+    
+    # 파일 경로
+    if isinstance(image, (str, Path)):
+        return Path(image).exists()
+    
+    return False
+
+# =============================================================================
+# 🔥 5. 핵심 이미지 처리 함수들 (올바른 순서)
+# =============================================================================
+
+def load_image(filepath: Union[str, Path], target_format: str = "RGB") -> Optional[Any]:
     """
-    이미지 전처리 함수 - 완전 구현
+    이미지 파일 로드
     
     Args:
-        image: 입력 이미지 (파일 경로, PIL Image, numpy array)
-        target_size: 타겟 크기 (width, height)
-        device: 디바이스 ("mps", "cuda", "cpu")
-        normalize: 정규화 여부 (0-1 범위로)
-        to_tensor: PyTorch tensor로 변환 여부
+        filepath: 이미지 파일 경로
+        target_format: 타겟 포맷 ('RGB', 'RGBA', 'L')
     
     Returns:
-        전처리된 이미지 (tensor 또는 numpy array)
+        PIL Image 또는 None
     """
     try:
-        logger.debug(f"이미지 전처리 시작: {type(image)}, 타겟 크기: {target_size}")
+        if not _ensure_pil():
+            return None
         
-        # 1. 이미지 로드 및 변환
-        if isinstance(image, (str, Path)):
-            # 파일 경로인 경우
-            if PIL_AVAILABLE:
-                try:
-                    image = Image.open(image).convert('RGB')
-                    logger.debug("✅ PIL로 이미지 로드 성공")
-                except Exception as e:
-                    logger.error(f"❌ PIL 이미지 로드 실패: {e}")
-                    if CV2_AVAILABLE and NUMPY_AVAILABLE:
-                        image = cv2.imread(str(image))
-                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                        logger.debug("✅ OpenCV로 이미지 로드 성공")
-                    else:
-                        raise ImportError("이미지 로드를 위해 PIL 또는 OpenCV가 필요합니다")
-            else:
-                raise ImportError("이미지 로드를 위해 PIL이 필요합니다")
+        filepath = Path(filepath)
+        if not filepath.exists():
+            logger.error(f"❌ 파일이 존재하지 않음: {filepath}")
+            return None
         
-        # 2. PIL Image 처리
-        if hasattr(image, 'size'):  # PIL Image
-            width, height = image.size
-            channels = len(image.getbands())
-            bytes_per_pixel = 1 if image.mode == 'L' else 3 if image.mode == 'RGB' else 4
-            total_bytes = width * height * bytes_per_pixel
-        elif NUMPY_AVAILABLE and hasattr(image, 'nbytes'):  # NumPy array
-            total_bytes = image.nbytes
-        elif TORCH_AVAILABLE and hasattr(image, 'element_size'):  # PyTorch tensor
-            total_bytes = image.numel() * image.element_size()
-        else:
-            total_bytes = 0
+        # 확장자 체크
+        if filepath.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            logger.warning(f"⚠️ 지원하지 않는 확장자: {filepath.suffix}")
         
-        usage.update({
-            "bytes": total_bytes,
-            "mb": total_bytes / (1024 * 1024),
-            "gb": total_bytes / (1024 * 1024 * 1024)
-        })
-        
-        logger.debug(f"메모리 사용량 추정: {usage['mb']:.2f} MB")
-        return usage
-        
-    except Exception as e:
-        logger.error(f"❌ 메모리 사용량 추정 실패: {e}")
-        return {"bytes": 0, "mb": 0, "gb": 0, "error": str(e)}
-
-def optimize_image_memory(image: Any, target_size: Optional[Tuple[int, int]] = None, 
-                         quality: int = 85, format: str = "JPEG") -> Any:
-    """이미지 메모리 사용량 최적화"""
-    try:
-        if not PIL_AVAILABLE:
-            logger.warning("⚠️ PIL 필요, 원본 반환")
-            return image
-        
-        # PIL Image로 변환
-        if hasattr(image, 'save'):  # 이미 PIL Image
-            pil_image = image
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            pil_image = Image.fromarray(image.astype(np.uint8))
-        elif TORCH_AVAILABLE and hasattr(image, 'cpu'):  # PyTorch tensor
-            pil_image = tensor_to_pil(image)
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
-            return image
-        
-        # 크기 조정
-        if target_size:
-            pil_image = pil_image.resize(target_size, Image.Resampling.LANCZOS)
-            logger.debug(f"크기 조정: {target_size}")
-        
-        # 색상 모드 최적화
-        if pil_image.mode == 'RGBA' and format.upper() == 'JPEG':
-            # JPEG는 투명도를 지원하지 않으므로 RGB로 변환
-            background = Image.new('RGB', pil_image.size, (255, 255, 255))
-            background.paste(pil_image, mask=pil_image.split()[-1])
-            pil_image = background
-        elif pil_image.mode not in ['RGB', 'L']:
-            pil_image = pil_image.convert('RGB')
-        
-        # 압축 적용
-        buffer = io.BytesIO()
-        pil_image.save(buffer, format=format, quality=quality, optimize=True)
-        buffer.seek(0)
-        optimized_image = Image.open(buffer)
-        
-        logger.debug(f"✅ 이미지 메모리 최적화 완료: format={format}, quality={quality}")
-        return optimized_image
-        
-    except Exception as e:
-        logger.error(f"❌ 이미지 메모리 최적화 실패: {e}")
-        return image
-
-# ==============================================
-# 🔥 이미지 변환 및 포맷 함수들
-# ==============================================
-
-def convert_image_format(image: Any, target_format: str = "RGB") -> Any:
-    """이미지 포맷 변환"""
-    try:
-        if not PIL_AVAILABLE:
-            logger.warning("⚠️ PIL 필요, 원본 반환")
-            return image
-        
-        # PIL Image로 변환
-        if hasattr(image, 'save'):  # 이미 PIL Image
-            pil_image = image
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            pil_image = Image.fromarray(image.astype(np.uint8))
-        elif TORCH_AVAILABLE and hasattr(image, 'cpu'):  # PyTorch tensor
-            pil_image = tensor_to_pil(image)
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
-            return image
+        # 이미지 로드
+        image = Image.open(filepath)
         
         # 포맷 변환
-        if pil_image.mode != target_format:
-            converted = pil_image.convert(target_format)
-            logger.debug(f"✅ 포맷 변환 완료: {pil_image.mode} → {target_format}")
-            return converted
-        else:
-            logger.debug(f"이미 {target_format} 포맷임")
-            return pil_image
-            
-    except Exception as e:
-        logger.error(f"❌ 이미지 포맷 변환 실패: {e}")
+        if target_format and image.mode != target_format:
+            if target_format == 'RGB' and image.mode == 'RGBA':
+                # 투명도가 있는 경우 흰색 배경으로 합성
+                background = Image.new('RGB', image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                image = background
+            else:
+                image = image.convert(target_format)
+        
+        logger.debug(f"✅ 이미지 로드 완료: {filepath} ({image.size}, {image.mode})")
         return image
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 로드 실패: {e}")
+        return None
 
-def save_image(image: Any, filepath: str, format: str = None, quality: int = 95, **kwargs) -> bool:
-    """이미지 파일로 저장"""
+def save_image(image: Any, filepath: Union[str, Path], 
+              format: str = None, quality: int = 95, **kwargs) -> bool:
+    """
+    이미지 파일로 저장
+    
+    Args:
+        image: 저장할 이미지 (PIL, numpy, tensor)
+        filepath: 저장 경로
+        format: 저장 포맷 (자동 감지 가능)
+        quality: JPEG 품질 (1-100)
+        **kwargs: 추가 저장 옵션
+    
+    Returns:
+        저장 성공 여부
+    """
     try:
-        if not PIL_AVAILABLE:
-            logger.error("❌ PIL 필요함")
+        if not _ensure_pil():
             return False
         
+        filepath = Path(filepath)
+        
         # PIL Image로 변환
-        if hasattr(image, 'save'):  # 이미 PIL Image
-            pil_image = image
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            if image.dtype != np.uint8:
-                if image.max() <= 1.0:
-                    image = (image * 255).astype(np.uint8)
-                else:
-                    image = np.clip(image, 0, 255).astype(np.uint8)
-            pil_image = Image.fromarray(image)
-        elif TORCH_AVAILABLE and hasattr(image, 'cpu'):  # PyTorch tensor
-            pil_image = tensor_to_pil(image)
-        else:
-            logger.error(f"❌ 지원하지 않는 이미지 타입: {type(image)}")
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            logger.error(f"❌ PIL 이미지 변환 실패: {type(image)}")
             return False
         
         # 포맷 자동 감지
         if format is None:
-            format = Path(filepath).suffix.upper().lstrip('.')
+            format = filepath.suffix.upper().lstrip('.')
             if format == 'JPG':
                 format = 'JPEG'
         
@@ -261,14 +255,15 @@ def save_image(image: Any, filepath: str, format: str = None, quality: int = 95,
             pil_image = background
         
         # 디렉토리 생성
-        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         
-        # 저장
+        # 저장 옵션 설정
         save_kwargs = {'format': format, **kwargs}
         if format.upper() in ['JPEG', 'WEBP']:
             save_kwargs['quality'] = quality
             save_kwargs['optimize'] = True
         
+        # 저장 실행
         pil_image.save(filepath, **save_kwargs)
         
         logger.debug(f"✅ 이미지 저장 완료: {filepath} ({format})")
@@ -278,72 +273,1018 @@ def save_image(image: Any, filepath: str, format: str = None, quality: int = 95,
         logger.error(f"❌ 이미지 저장 실패: {e}")
         return False
 
-def load_image(filepath: str, target_format: str = "RGB") -> Any:
-    """이미지 파일 로드"""
+def convert_to_pil(image: Any) -> Optional[Any]:
+    """
+    다양한 이미지 타입을 PIL Image로 변환
+    
+    Args:
+        image: 변환할 이미지 (numpy, tensor, PIL 등)
+    
+    Returns:
+        PIL Image 또는 None
+    """
     try:
-        if not PIL_AVAILABLE:
-            logger.error("❌ PIL 필요함")
+        if not _ensure_pil():
             return None
         
-        if not Path(filepath).exists():
-            logger.error(f"❌ 파일이 존재하지 않음: {filepath}")
+        # 이미 PIL Image인 경우
+        if hasattr(image, 'save') and hasattr(image, 'size'):
+            return image
+        
+        # NumPy array인 경우
+        if NUMPY_AVAILABLE and isinstance(image, np.ndarray):
+            # 데이터 타입 정규화
+            if image.dtype != np.uint8:
+                if image.max() <= 1.0:
+                    image = (image * 255).astype(np.uint8)
+                else:
+                    image = np.clip(image, 0, 255).astype(np.uint8)
+            
+            # 차원에 따른 처리
+            if len(image.shape) == 3:
+                if image.shape[2] == 3:
+                    return Image.fromarray(image, 'RGB')
+                elif image.shape[2] == 4:
+                    return Image.fromarray(image, 'RGBA')
+                elif image.shape[2] == 1:
+                    return Image.fromarray(image.squeeze(), 'L')
+            elif len(image.shape) == 2:
+                return Image.fromarray(image, 'L')
+        
+        # PyTorch tensor인 경우
+        if TORCH_AVAILABLE and torch.is_tensor(image):
+            return tensor_to_pil(image)
+        
+        # 파일 경로인 경우
+        if isinstance(image, (str, Path)):
+            return load_image(image)
+        
+        logger.warning(f"⚠️ 지원하지 않는 이미지 타입: {type(image)}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ PIL 변환 실패: {e}")
+        return None
+
+def convert_to_numpy(image: Any) -> Optional[np.ndarray]:
+    """
+    다양한 이미지 타입을 NumPy array로 변환
+    
+    Args:
+        image: 변환할 이미지
+    
+    Returns:
+        NumPy array 또는 None
+    """
+    try:
+        if not _ensure_numpy():
             return None
         
-        # 이미지 로드
-        pil_image = Image.open(filepath)
+        # 이미 NumPy array인 경우
+        if isinstance(image, np.ndarray):
+            return image
         
-        # 포맷 변환
-        if target_format and pil_image.mode != target_format:
-            pil_image = pil_image.convert(target_format)
+        # PIL Image인 경우
+        if hasattr(image, 'size') and hasattr(image, 'mode'):
+            return np.array(image)
         
-        logger.debug(f"✅ 이미지 로드 완료: {filepath} ({pil_image.size}, {pil_image.mode})")
+        # PyTorch tensor인 경우
+        if TORCH_AVAILABLE and torch.is_tensor(image):
+            # CPU로 이동 후 numpy 변환
+            if image.is_cuda or (hasattr(image, 'is_mps') and image.is_mps):
+                image = image.cpu()
+            
+            # 차원 조정
+            if image.dim() == 4:  # (N, C, H, W)
+                image = image.squeeze(0)
+            if image.dim() == 3:  # (C, H, W)
+                image = image.permute(1, 2, 0)  # (H, W, C)
+            
+            # detach 후 numpy 변환
+            if hasattr(image, 'detach'):
+                image = image.detach()
+            
+            return image.numpy()
+        
+        # 파일 경로인 경우
+        if isinstance(image, (str, Path)):
+            pil_image = load_image(image)
+            if pil_image:
+                return np.array(pil_image)
+        
+        logger.warning(f"⚠️ 지원하지 않는 이미지 타입: {type(image)}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ NumPy 변환 실패: {e}")
+        return None
+
+def tensor_to_pil(tensor: torch.Tensor) -> Optional[Any]:
+    """
+    PyTorch tensor를 PIL Image로 변환
+    
+    Args:
+        tensor: PyTorch tensor (C,H,W) 또는 (N,C,H,W)
+    
+    Returns:
+        PIL Image 또는 None
+    """
+    try:
+        if not _ensure_torch() or not _ensure_pil():
+            return None
+        
+        if not torch.is_tensor(tensor):
+            logger.error("❌ PyTorch tensor가 아닙니다")
+            return None
+        
+        # 차원 조정
+        if tensor.dim() == 4:  # (N, C, H, W)
+            tensor = tensor.squeeze(0)
+            
+        if tensor.dim() == 3:  # (C, H, W)
+            tensor = tensor.permute(1, 2, 0)  # (H, W, C)
+        
+        # CPU로 이동
+        if tensor.is_cuda or (hasattr(tensor, 'is_mps') and tensor.is_mps):
+            tensor = tensor.cpu()
+        
+        # detach 및 numpy 변환
+        if hasattr(tensor, 'detach'):
+            tensor = tensor.detach()
+        
+        array = tensor.numpy()
+        
+        # 값 범위 조정 (0-1 → 0-255)
+        if array.dtype != np.uint8:
+            if array.max() <= 1.0:
+                array = (array * 255).astype(np.uint8)
+            else:
+                array = np.clip(array, 0, 255).astype(np.uint8)
+        
+        # PIL Image 생성
+        if len(array.shape) == 3:
+            if array.shape[2] == 3:
+                return Image.fromarray(array, 'RGB')
+            elif array.shape[2] == 1:
+                return Image.fromarray(array.squeeze(), 'L')
+            elif array.shape[2] == 4:
+                return Image.fromarray(array, 'RGBA')
+        elif len(array.shape) == 2:
+            return Image.fromarray(array, 'L')
+        
+        logger.error(f"❌ 지원하지 않는 텐서 형태: {array.shape}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ tensor→PIL 변환 실패: {e}")
+        return None
+
+def pil_to_tensor(image: Any, device: str = None, normalize: bool = True) -> Optional[torch.Tensor]:
+    """
+    PIL Image를 PyTorch tensor로 변환
+    
+    Args:
+        image: PIL Image 또는 변환 가능한 이미지
+        device: 타겟 디바이스
+        normalize: 0-1 범위로 정규화 여부
+    
+    Returns:
+        PyTorch tensor (N,C,H,W) 또는 None
+    """
+    try:
+        if not _ensure_torch():
+            return None
+        
+        if device is None:
+            device = _get_optimal_device()
+        
+        # PIL Image로 변환
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return None
+        
+        # NumPy array로 변환
+        array = np.array(pil_image).astype(np.float32)
+        
+        # 정규화
+        if normalize and array.max() > 1.0:
+            array = array / 255.0
+        
+        # 차원 조정
+        if len(array.shape) == 2:  # 그레이스케일 (H, W)
+            array = np.expand_dims(array, axis=-1)  # (H, W, 1)
+        
+        if len(array.shape) == 3:  # (H, W, C)
+            # (H, W, C) → (C, H, W) → (1, C, H, W)
+            tensor = torch.from_numpy(array).permute(2, 0, 1).unsqueeze(0)
+        else:
+            logger.error(f"❌ 지원하지 않는 배열 형태: {array.shape}")
+            return None
+        
+        # 디바이스로 이동
+        tensor = tensor.to(device)
+        
+        logger.debug(f"✅ PIL→tensor 변환 완료: {tensor.shape}, device: {device}")
+        return tensor
+        
+    except Exception as e:
+        logger.error(f"❌ PIL→tensor 변환 실패: {e}")
+        return None
+
+# =============================================================================
+# 🔥 6. 이미지 크기 및 형태 조정 함수들
+# =============================================================================
+
+def resize_image(image: Any, target_size: Tuple[int, int], 
+                keep_aspect_ratio: bool = True, 
+                resample_method: str = "LANCZOS") -> Optional[Any]:
+    """
+    이미지 크기 조정
+    
+    Args:
+        image: 입력 이미지
+        target_size: 타겟 크기 (width, height)
+        keep_aspect_ratio: 비율 유지 여부
+        resample_method: 리샘플링 방법
+    
+    Returns:
+        크기 조정된 이미지
+    """
+    try:
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return None
+        
+        original_size = pil_image.size
+        
+        # 비율 유지하면서 크기 조정
+        if keep_aspect_ratio:
+            # 타겟 크기에 맞게 비율 계산
+            scale = min(target_size[0] / original_size[0], 
+                       target_size[1] / original_size[1])
+            
+            new_size = (int(original_size[0] * scale), 
+                       int(original_size[1] * scale))
+            
+            # 크기 조정
+            resample = getattr(Image.Resampling, resample_method, Image.Lanczos)
+            resized = pil_image.resize(new_size, resample)
+            
+            # 패딩 추가 (중앙 배치)
+            if new_size != target_size:
+                # 새 이미지 생성 (검은색 배경)
+                padded = Image.new(pil_image.mode, target_size, (0, 0, 0))
+                
+                # 중앙에 배치
+                offset = ((target_size[0] - new_size[0]) // 2,
+                         (target_size[1] - new_size[1]) // 2)
+                padded.paste(resized, offset)
+                
+                return padded
+            else:
+                return resized
+        else:
+            # 비율 무시하고 크기 조정
+            resample = getattr(Image.Resampling, resample_method, Image.Lanczos)
+            return pil_image.resize(target_size, resample)
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 크기 조정 실패: {e}")
+        return image
+
+def crop_image(image: Any, bbox: Tuple[int, int, int, int]) -> Optional[Any]:
+    """
+    이미지 크롭
+    
+    Args:
+        image: 입력 이미지
+        bbox: 크롭 영역 (left, top, right, bottom)
+    
+    Returns:
+        크롭된 이미지
+    """
+    try:
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return None
+        
+        # 크롭 영역 검증
+        width, height = pil_image.size
+        left, top, right, bottom = bbox
+        
+        left = max(0, min(left, width))
+        top = max(0, min(top, height))
+        right = max(left, min(right, width))
+        bottom = max(top, min(bottom, height))
+        
+        # 크롭 실행
+        cropped = pil_image.crop((left, top, right, bottom))
+        
+        logger.debug(f"✅ 이미지 크롭 완료: {bbox} → {cropped.size}")
+        return cropped
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 크롭 실패: {e}")
+        return image
+
+def pad_image(image: Any, padding: Union[int, Tuple[int, int, int, int]], 
+             fill_color: Tuple[int, int, int] = (0, 0, 0)) -> Optional[Any]:
+    """
+    이미지 패딩 추가
+    
+    Args:
+        image: 입력 이미지
+        padding: 패딩 크기 (전체) 또는 (left, top, right, bottom)
+        fill_color: 패딩 색상
+    
+    Returns:
+        패딩이 추가된 이미지
+    """
+    try:
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return None
+        
+        # 패딩 값 정규화
+        if isinstance(padding, int):
+            padding = (padding, padding, padding, padding)
+        elif len(padding) == 2:
+            padding = (padding[0], padding[1], padding[0], padding[1])
+        
+        left, top, right, bottom = padding
+        
+        # 새 크기 계산
+        old_width, old_height = pil_image.size
+        new_width = old_width + left + right
+        new_height = old_height + top + bottom
+        
+        # 새 이미지 생성
+        padded = Image.new(pil_image.mode, (new_width, new_height), fill_color)
+        
+        # 원본 이미지 붙이기
+        padded.paste(pil_image, (left, top))
+        
+        logger.debug(f"✅ 이미지 패딩 완료: {padding}")
+        return padded
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 패딩 실패: {e}")
+        return image
+
+# =============================================================================
+# 🔥 7. 이미지 정규화 및 전처리 함수들
+# =============================================================================
+
+def normalize_image(image: Any, mean: Tuple[float, float, float] = (0.485, 0.456, 0.406), 
+                   std: Tuple[float, float, float] = (0.229, 0.224, 0.225)) -> Optional[Any]:
+    """
+    이미지 정규화 (ImageNet 표준)
+    
+    Args:
+        image: 입력 이미지
+        mean: 평균값 (채널별)
+        std: 표준편차 (채널별)
+    
+    Returns:
+        정규화된 이미지
+    """
+    try:
+        if TORCH_AVAILABLE and torch.is_tensor(image):
+            # PyTorch tensor 정규화
+            normalized = image.clone().float()
+            
+            if normalized.dim() == 4:  # (N, C, H, W)
+                for i in range(min(3, normalized.shape[1])):
+                    normalized[:, i, :, :] = (normalized[:, i, :, :] - mean[i]) / std[i]
+            elif normalized.dim() == 3:  # (C, H, W)
+                for i in range(min(3, normalized.shape[0])):
+                    normalized[i, :, :] = (normalized[i, :, :] - mean[i]) / std[i]
+            
+            return normalized
+            
+        elif NUMPY_AVAILABLE:
+            # NumPy array 정규화
+            array = convert_to_numpy(image)
+            if array is None:
+                return None
+            
+            normalized = array.astype(np.float32) / 255.0  # 0-1 정규화
+            
+            # ImageNet 정규화 적용
+            if len(normalized.shape) == 3 and normalized.shape[2] >= 3:
+                for i in range(3):
+                    normalized[:, :, i] = (normalized[:, :, i] - mean[i]) / std[i]
+            
+            return normalized
+        
+        logger.warning("⚠️ 정규화를 위해 PyTorch 또는 NumPy가 필요합니다")
+        return image
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 정규화 실패: {e}")
+        return image
+
+def denormalize_image(image: Any, mean: Tuple[float, float, float] = (0.485, 0.456, 0.406), 
+                     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)) -> Optional[Any]:
+    """
+    이미지 역정규화
+    
+    Args:
+        image: 정규화된 이미지
+        mean: 원래 평균값
+        std: 원래 표준편차
+    
+    Returns:
+        역정규화된 이미지
+    """
+    try:
+        if TORCH_AVAILABLE and torch.is_tensor(image):
+            # PyTorch tensor 역정규화
+            denormalized = image.clone().float()
+            
+            if denormalized.dim() == 4:  # (N, C, H, W)
+                for i in range(min(3, denormalized.shape[1])):
+                    denormalized[:, i, :, :] = denormalized[:, i, :, :] * std[i] + mean[i]
+            elif denormalized.dim() == 3:  # (C, H, W)
+                for i in range(min(3, denormalized.shape[0])):
+                    denormalized[i, :, :] = denormalized[i, :, :] * std[i] + mean[i]
+            
+            # 0-1 범위로 클리핑
+            denormalized = torch.clamp(denormalized, 0, 1)
+            return denormalized
+            
+        elif NUMPY_AVAILABLE:
+            # NumPy array 역정규화
+            array = convert_to_numpy(image)
+            if array is None:
+                return None
+            
+            denormalized = array.copy().astype(np.float32)
+            
+            # ImageNet 역정규화 적용
+            if len(denormalized.shape) == 3 and denormalized.shape[2] >= 3:
+                for i in range(3):
+                    denormalized[:, :, i] = denormalized[:, :, i] * std[i] + mean[i]
+            
+            # 0-1 범위로 클리핑 후 0-255로 변환
+            denormalized = np.clip(denormalized, 0, 1) * 255
+            return denormalized.astype(np.uint8)
+        
+        logger.warning("⚠️ 역정규화를 위해 PyTorch 또는 NumPy가 필요합니다")
+        return image
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 역정규화 실패: {e}")
+        return image
+
+def preprocess_image(image: Any, target_size: Tuple[int, int] = DEFAULT_IMAGE_SIZE,
+                    device: str = None, normalize: bool = True, 
+                    to_tensor: bool = True) -> Optional[Any]:
+    """
+    통합 이미지 전처리 함수
+    
+    Args:
+        image: 입력 이미지 (파일경로, PIL, numpy, tensor)
+        target_size: 타겟 크기 (width, height)
+        device: 디바이스 ("mps", "cuda", "cpu")
+        normalize: 정규화 여부
+        to_tensor: tensor로 변환 여부
+    
+    Returns:
+        전처리된 이미지
+    """
+    try:
+        logger.debug(f"이미지 전처리 시작: {type(image)} → {target_size}")
+        
+        if device is None:
+            device = _get_optimal_device()
+        
+        # 1. 이미지 로드/변환
+        if isinstance(image, (str, Path)):
+            pil_image = load_image(image)
+        else:
+            pil_image = convert_to_pil(image)
+        
+        if pil_image is None:
+            logger.error("❌ 이미지 로드/변환 실패")
+            return None
+        
+        # 2. 크기 조정
+        if pil_image.size != target_size:
+            pil_image = resize_image(pil_image, target_size, keep_aspect_ratio=True)
+        
+        # 3. RGB 변환
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+        
+        # 4. tensor 변환 여부에 따른 처리
+        if to_tensor:
+            if not _ensure_torch():
+                logger.warning("⚠️ PyTorch 없음, NumPy array 반환")
+                array = np.array(pil_image).astype(np.float32)
+                if normalize:
+                    array = array / 255.0
+                return array
+            
+            # tensor로 변환
+            tensor = pil_to_tensor(pil_image, device, normalize)
+            if tensor is None:
+                logger.error("❌ tensor 변환 실패")
+                return None
+            
+            logger.debug(f"✅ 전처리 완료: {tensor.shape}, device: {device}")
+            return tensor
+        else:
+            # PIL 또는 numpy로 반환
+            if normalize:
+                array = np.array(pil_image).astype(np.float32) / 255.0
+                return array
+            else:
+                return pil_image
+                
+    except Exception as e:
+        logger.error(f"❌ 이미지 전처리 실패: {e}")
+        return None
+
+# =============================================================================
+# 🔥 8. Base64 변환 함수들
+# =============================================================================
+
+def image_to_base64(image: Any, format: str = "JPEG", quality: int = 95) -> str:
+    """
+    이미지를 Base64 문자열로 변환
+    
+    Args:
+        image: 입력 이미지
+        format: 저장 포맷
+        quality: 압축 품질
+    
+    Returns:
+        Base64 문자열
+    """
+    try:
+        if not _ensure_pil():
+            return ""
+        
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            logger.error("❌ PIL 변환 실패")
+            return ""
+        
+        # RGB 변환 (JPEG 호환성)
+        if format.upper() == 'JPEG' and pil_image.mode in ['RGBA', 'LA']:
+            background = Image.new('RGB', pil_image.size, (255, 255, 255))
+            if pil_image.mode == 'RGBA':
+                background.paste(pil_image, mask=pil_image.split()[-1])
+            else:
+                background.paste(pil_image)
+            pil_image = background
+        
+        # Base64 변환
+        buffer = io.BytesIO()
+        save_kwargs = {'format': format}
+        if format.upper() in ['JPEG', 'WEBP']:
+            save_kwargs['quality'] = quality
+            save_kwargs['optimize'] = True
+        
+        pil_image.save(buffer, **save_kwargs)
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        logger.debug(f"✅ Base64 변환 완료: {len(img_str)} 문자")
+        return img_str
+        
+    except Exception as e:
+        logger.error(f"❌ Base64 변환 실패: {e}")
+        return ""
+
+def base64_to_image(base64_str: str) -> Optional[Any]:
+    """
+    Base64 문자열을 이미지로 변환
+    
+    Args:
+        base64_str: Base64 문자열
+    
+    Returns:
+        PIL Image 또는 None
+    """
+    try:
+        if not _ensure_pil():
+            return None
+        
+        # Base64 디코딩
+        img_data = base64.b64decode(base64_str)
+        img_buffer = io.BytesIO(img_data)
+        pil_image = Image.open(img_buffer)
+        
+        # RGB 변환
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+        
+        logger.debug(f"✅ Base64→이미지 변환 완료: {pil_image.size}")
         return pil_image
         
     except Exception as e:
-        logger.error(f"❌ 이미지 로드 실패: {e}")
+        logger.error(f"❌ Base64→이미지 변환 실패: {e}")
         return None
 
-# ==============================================
-# 🔥 이미지 시각화 및 디버깅 함수들
-# ==============================================
+# =============================================================================
+# 🔥 9. 이미지 후처리 함수들
+# =============================================================================
 
-def create_image_grid(images: List[Any], grid_size: Optional[Tuple[int, int]] = None, 
-                     padding: int = 2, background_color: Tuple[int, int, int] = (255, 255, 255)) -> Any:
-    """이미지들을 격자로 배열"""
+def postprocess_segmentation(output: Any, threshold: float = 0.5) -> Optional[Any]:
+    """
+    세그멘테이션 결과 후처리
+    
+    Args:
+        output: 모델 출력 (확률 맵)
+        threshold: 이진화 임계값
+    
+    Returns:
+        이진 마스크 (0-255)
+    """
     try:
-        if not PIL_AVAILABLE or not images:
-            logger.warning("⚠️ PIL 필요하거나 이미지가 없음")
+        logger.debug(f"세그멘테이션 후처리 시작: {type(output)}")
+        
+        # PyTorch tensor 처리
+        if TORCH_AVAILABLE and torch.is_tensor(output):
+            # CPU로 이동
+            if output.is_cuda or (hasattr(output, 'is_mps') and output.is_mps):
+                output = output.cpu()
+            
+            # numpy 변환
+            if hasattr(output, 'detach'):
+                output_np = output.detach().numpy()
+            else:
+                output_np = output.numpy()
+        else:
+            output_np = convert_to_numpy(output)
+        
+        if output_np is None:
+            logger.error("❌ NumPy 변환 실패")
             return None
         
-        # 격자 크기 계산
+        # 차원 조정
+        if output_np.ndim == 4:  # (N, C, H, W)
+            output_np = output_np.squeeze(0)
+        
+        if output_np.ndim == 3:  # (C, H, W)
+            if output_np.shape[0] == 1:
+                output_np = output_np.squeeze(0)
+            else:
+                # 다중 클래스인 경우 argmax
+                output_np = np.argmax(output_np, axis=0)
+                # 배경(0) 제외한 영역을 1로 설정
+                output_np = (output_np > 0).astype(np.float32)
+        
+        # 이진화
+        if output_np.dtype != np.uint8:
+            binary_mask = (output_np > threshold).astype(np.uint8) * 255
+        else:
+            binary_mask = (output_np > int(threshold * 255)).astype(np.uint8) * 255
+        
+        logger.debug(f"✅ 후처리 완료: {binary_mask.shape}, 범위: {binary_mask.min()}-{binary_mask.max()}")
+        return binary_mask
+        
+    except Exception as e:
+        logger.error(f"❌ 세그멘테이션 후처리 실패: {e}")
+        return None
+
+def postprocess_pose_keypoints(output: Any, confidence_threshold: float = 0.3) -> Dict[str, Any]:
+    """
+    포즈 키포인트 후처리
+    
+    Args:
+        output: 히트맵 출력 (C, H, W)
+        confidence_threshold: 신뢰도 임계값
+    
+    Returns:
+        키포인트 정보 딕셔너리
+    """
+    try:
+        result = {
+            "keypoints": [],
+            "connections": [],
+            "valid_keypoints": 0,
+            "confidence_scores": []
+        }
+        
+        if not _ensure_numpy():
+            return result
+        
+        # NumPy로 변환
+        if TORCH_AVAILABLE and torch.is_tensor(output):
+            if output.is_cuda or (hasattr(output, 'is_mps') and output.is_mps):
+                output = output.cpu()
+            heatmaps = output.detach().numpy()
+        else:
+            heatmaps = convert_to_numpy(output)
+        
+        if heatmaps is None:
+            return result
+        
+        # 차원 조정
+        if heatmaps.ndim == 4:  # (N, C, H, W)
+            heatmaps = heatmaps.squeeze(0)
+        
+        num_keypoints = min(heatmaps.shape[0], 18)  # COCO 18개 키포인트
+        height, width = heatmaps.shape[1], heatmaps.shape[2]
+        
+        # 각 키포인트 위치 찾기
+        keypoints = []
+        confidence_scores = []
+        
+        for i in range(num_keypoints):
+            heatmap = heatmaps[i]
+            
+            # 최대값 위치 찾기
+            max_val = np.max(heatmap)
+            if max_val > confidence_threshold:
+                max_idx = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+                y, x = max_idx
+                
+                keypoints.append((int(x), int(y), float(max_val)))
+                confidence_scores.append(float(max_val))
+            else:
+                keypoints.append((0, 0, 0.0))
+                confidence_scores.append(0.0)
+        
+        # COCO 키포인트 연결 정의
+        connections = [
+            (0, 1), (1, 2), (2, 3), (3, 4),     # 머리
+            (1, 5), (5, 6), (6, 7),             # 왼팔
+            (1, 8), (8, 9), (9, 10),            # 오른팔
+            (1, 11), (11, 12), (12, 13),        # 왼다리
+            (1, 14), (14, 15), (15, 16)         # 오른다리
+        ]
+        
+        # 유효한 연결만 필터링
+        valid_connections = []
+        for conn in connections:
+            if (conn[0] < len(keypoints) and conn[1] < len(keypoints) and 
+                keypoints[conn[0]][2] > confidence_threshold and 
+                keypoints[conn[1]][2] > confidence_threshold):
+                valid_connections.append(conn)
+        
+        result.update({
+            "keypoints": keypoints,
+            "connections": valid_connections,
+            "valid_keypoints": sum(1 for kp in keypoints if kp[2] > confidence_threshold),
+            "confidence_scores": confidence_scores
+        })
+        
+        logger.debug(f"✅ 포즈 후처리 완료: {result['valid_keypoints']}개 유효 키포인트")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ 포즈 후처리 실패: {e}")
+        return result
+
+# =============================================================================
+# 🔥 10. 이미지 품질 향상 함수들
+# =============================================================================
+
+def enhance_image_contrast(image: Any, factor: float = 1.2) -> Optional[Any]:
+    """이미지 대비 향상"""
+    try:
+        if not _ensure_pil():
+            return image
+        
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return image
+        
+        enhancer = ImageEnhance.Contrast(pil_image)
+        enhanced = enhancer.enhance(factor)
+        
+        logger.debug(f"✅ 대비 향상: factor={factor}")
+        return enhanced
+        
+    except Exception as e:
+        logger.error(f"❌ 대비 향상 실패: {e}")
+        return image
+
+def enhance_image_brightness(image: Any, factor: float = 1.1) -> Optional[Any]:
+    """이미지 밝기 향상"""
+    try:
+        if not _ensure_pil():
+            return image
+        
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return image
+        
+        enhancer = ImageEnhance.Brightness(pil_image)
+        enhanced = enhancer.enhance(factor)
+        
+        logger.debug(f"✅ 밝기 향상: factor={factor}")
+        return enhanced
+        
+    except Exception as e:
+        logger.error(f"❌ 밝기 향상 실패: {e}")
+        return image
+
+def enhance_image_sharpness(image: Any, factor: float = 1.1) -> Optional[Any]:
+    """이미지 선명도 향상"""
+    try:
+        if not _ensure_pil():
+            return image
+        
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return image
+        
+        enhancer = ImageEnhance.Sharpness(pil_image)
+        enhanced = enhancer.enhance(factor)
+        
+        logger.debug(f"✅ 선명도 향상: factor={factor}")
+        return enhanced
+        
+    except Exception as e:
+        logger.error(f"❌ 선명도 향상 실패: {e}")
+        return image
+
+def apply_gaussian_blur(image: Any, radius: float = 1.0) -> Optional[Any]:
+    """가우시안 블러 적용"""
+    try:
+        if not _ensure_pil():
+            return image
+        
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return image
+        
+        blurred = pil_image.filter(ImageFilter.GaussianBlur(radius=radius))
+        
+        logger.debug(f"✅ 가우시안 블러: radius={radius}")
+        return blurred
+        
+    except Exception as e:
+        logger.error(f"❌ 가우시안 블러 실패: {e}")
+        return image
+
+# =============================================================================
+# 🔥 11. 고급 이미지 처리 함수들
+# =============================================================================
+
+def apply_clahe_enhancement(image: Any, clip_limit: float = 2.0, 
+                           tile_grid_size: Tuple[int, int] = (8, 8)) -> Optional[Any]:
+    """CLAHE (대비 제한 적응 히스토그램 평활화) 적용"""
+    try:
+        if not CV2_AVAILABLE or not _ensure_numpy():
+            logger.warning("⚠️ OpenCV 또는 NumPy 필요")
+            return image
+        
+        array = convert_to_numpy(image)
+        if array is None:
+            return image
+        
+        # CLAHE 객체 생성
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+        
+        # 컬러 이미지인 경우 LAB 공간에서 처리
+        if len(array.shape) == 3 and array.shape[2] == 3:
+            # RGB → LAB 변환
+            lab = cv2.cvtColor(array, cv2.COLOR_RGB2LAB)
+            lab[:, :, 0] = clahe.apply(lab[:, :, 0])  # L 채널에만 적용
+            enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        elif len(array.shape) == 2:
+            # 그레이스케일
+            enhanced = clahe.apply(array)
+        else:
+            logger.warning("⚠️ 지원하지 않는 이미지 형태")
+            return image
+        
+        # PIL Image로 변환
+        if _ensure_pil():
+            return Image.fromarray(enhanced)
+        else:
+            return enhanced
+            
+    except Exception as e:
+        logger.error(f"❌ CLAHE 적용 실패: {e}")
+        return image
+
+def detect_dominant_colors(image: Any, k: int = 5) -> List[Tuple[int, int, int]]:
+    """이미지에서 주요 색상 k개 추출"""
+    try:
+        if not _ensure_numpy():
+            return []
+        
+        array = convert_to_numpy(image)
+        if array is None or len(array.shape) != 3:
+            return []
+        
+        # 픽셀을 1차원으로 변환
+        pixels = array.reshape((-1, 3))
+        
+        # 고유 색상과 개수 계산
+        unique_colors, counts = np.unique(
+            pixels.view(np.dtype((np.void, pixels.dtype.itemsize * pixels.shape[1]))), 
+            return_counts=True
+        )
+        
+        # 상위 k개 색상 추출
+        top_indices = np.argsort(counts)[-k:][::-1]
+        dominant_colors = []
+        
+        for idx in top_indices:
+            color_bytes = unique_colors[idx].view(pixels.dtype).reshape(pixels.shape[1])
+            dominant_colors.append(tuple(color_bytes.astype(int)))
+        
+        logger.debug(f"✅ 주요 색상 {k}개 추출 완료")
+        return dominant_colors
+        
+    except Exception as e:
+        logger.error(f"❌ 주요 색상 추출 실패: {e}")
+        return []
+
+def calculate_image_similarity(image1: Any, image2: Any, method: str = "mse") -> float:
+    """두 이미지 간의 유사도 계산"""
+    try:
+        if not _ensure_numpy():
+            return 0.0
+        
+        # 이미지들을 numpy array로 변환
+        arr1 = convert_to_numpy(image1)
+        arr2 = convert_to_numpy(image2)
+        
+        if arr1 is None or arr2 is None:
+            return 0.0
+        
+        # 크기 맞추기 (더 작은 크기로)
+        if arr1.shape != arr2.shape:
+            min_h = min(arr1.shape[0], arr2.shape[0])
+            min_w = min(arr1.shape[1], arr2.shape[1])
+            
+            if len(arr1.shape) == 3:
+                arr1 = arr1[:min_h, :min_w, :]
+                arr2 = arr2[:min_h, :min_w, :]
+            else:
+                arr1 = arr1[:min_h, :min_w]
+                arr2 = arr2[:min_h, :min_w]
+        
+        # 유사도 계산
+        if method == "mse":
+            # Mean Squared Error (낮을수록 유사)
+            mse = np.mean((arr1.astype(float) - arr2.astype(float)) ** 2)
+            similarity = 1.0 / (1.0 + mse / 255.0)
+        elif method == "cosine":
+            # 코사인 유사도
+            arr1_flat = arr1.flatten().astype(float)
+            arr2_flat = arr2.flatten().astype(float)
+            
+            dot_product = np.dot(arr1_flat, arr2_flat)
+            norm1 = np.linalg.norm(arr1_flat)
+            norm2 = np.linalg.norm(arr2_flat)
+            
+            if norm1 == 0 or norm2 == 0:
+                similarity = 0.0
+            else:
+                similarity = dot_product / (norm1 * norm2)
+        else:
+            logger.warning(f"⚠️ 지원하지 않는 유사도 방법: {method}")
+            return 0.0
+        
+        logger.debug(f"✅ 이미지 유사도: {similarity:.3f} ({method})")
+        return float(similarity)
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 유사도 계산 실패: {e}")
+        return 0.0
+
+# =============================================================================
+# 🔥 12. 시각화 및 디버깅 함수들
+# =============================================================================
+
+def create_image_grid(images: List[Any], grid_size: Optional[Tuple[int, int]] = None, 
+                     padding: int = 2, background_color: Tuple[int, int, int] = (255, 255, 255)) -> Optional[Any]:
+    """이미지들을 격자로 배열"""
+    try:
+        if not _ensure_pil() or not images:
+            return None
+        
+        # 격자 크기 자동 계산
         if grid_size is None:
             grid_cols = int(math.ceil(math.sqrt(len(images))))
             grid_rows = int(math.ceil(len(images) / grid_cols))
-            grid_size = (grid_rows, grid_cols)
         else:
             grid_rows, grid_cols = grid_size
         
-        # PIL Image로 변환
+        # 모든 이미지를 PIL로 변환
         pil_images = []
         for img in images:
-            if hasattr(img, 'save'):  # 이미 PIL Image
-                pil_images.append(img)
-            elif NUMPY_AVAILABLE and hasattr(img, 'shape'):  # NumPy array
-                pil_images.append(Image.fromarray(img.astype(np.uint8)))
-            elif TORCH_AVAILABLE and hasattr(img, 'cpu'):  # PyTorch tensor
-                pil_images.append(tensor_to_pil(img))
-            else:
-                logger.warning(f"⚠️ 지원하지 않는 이미지 타입: {type(img)}")
-                continue
+            pil_img = convert_to_pil(img)
+            if pil_img:
+                pil_images.append(pil_img)
         
         if not pil_images:
-            logger.warning("⚠️ 변환 가능한 이미지가 없음")
             return None
         
-        # 모든 이미지를 같은 크기로 조정
+        # 최대 크기 계산
         max_width = max(img.width for img in pil_images)
         max_height = max(img.height for img in pil_images)
         
+        # 모든 이미지를 같은 크기로 조정
         resized_images = []
         for img in pil_images:
             resized = img.resize((max_width, max_height), Image.Resampling.LANCZOS)
@@ -368,7 +1309,7 @@ def create_image_grid(images: List[Any], grid_size: Optional[Tuple[int, int]] = 
             
             grid_image.paste(img, (x, y))
         
-        logger.debug(f"✅ 이미지 격자 생성 완료: {grid_size}, {len(resized_images)}개 이미지")
+        logger.debug(f"✅ 이미지 격자 생성: {grid_size}, {len(resized_images)}개")
         return grid_image
         
     except Exception as e:
@@ -376,29 +1317,23 @@ def create_image_grid(images: List[Any], grid_size: Optional[Tuple[int, int]] = 
         return None
 
 def add_text_to_image(image: Any, text: str, position: Tuple[int, int] = (10, 10), 
-                     font_size: int = 20, color: Tuple[int, int, int] = (0, 0, 0)) -> Any:
+                     font_size: int = 20, color: Tuple[int, int, int] = (0, 0, 0)) -> Optional[Any]:
     """이미지에 텍스트 추가"""
     try:
-        if not PIL_AVAILABLE:
-            logger.warning("⚠️ PIL 필요, 원본 반환")
+        if not _ensure_pil():
             return image
         
-        # PIL Image로 변환
-        if hasattr(image, 'save'):  # 이미 PIL Image
-            pil_image = image.copy()
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            pil_image = Image.fromarray(image.astype(np.uint8))
-        elif TORCH_AVAILABLE and hasattr(image, 'cpu'):  # PyTorch tensor
-            pil_image = tensor_to_pil(image)
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
             return image
         
-        # 드로잉 객체 생성
-        draw = ImageDraw.Draw(pil_image)
+        # 복사본 생성
+        result = pil_image.copy()
+        draw = ImageDraw.Draw(result)
         
-        # 폰트 설정 (기본 폰트 사용)
+        # 폰트 설정
         try:
+            # 시스템 폰트 시도
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             try:
@@ -409,36 +1344,24 @@ def add_text_to_image(image: Any, text: str, position: Tuple[int, int] = (10, 10
         # 텍스트 추가
         draw.text(position, text, fill=color, font=font)
         
-        logger.debug(f"✅ 텍스트 추가 완료: '{text}' at {position}")
-        return pil_image
+        logger.debug(f"✅ 텍스트 추가: '{text}' at {position}")
+        return result
         
     except Exception as e:
         logger.error(f"❌ 텍스트 추가 실패: {e}")
         return image
 
-def create_comparison_image(image1: Any, image2: Any, labels: Tuple[str, str] = ("Original", "Processed")) -> Any:
-    """두 이미지를 비교하는 이미지 생성"""
+def create_comparison_image(image1: Any, image2: Any, 
+                          labels: Tuple[str, str] = ("Original", "Processed")) -> Optional[Any]:
+    """두 이미지를 나란히 비교하는 이미지 생성"""
     try:
-        if not PIL_AVAILABLE:
-            logger.warning("⚠️ PIL 필요")
+        if not _ensure_pil():
             return None
         
-        # PIL Image로 변환
-        def to_pil(img):
-            if hasattr(img, 'save'):  # 이미 PIL Image
-                return img
-            elif NUMPY_AVAILABLE and hasattr(img, 'shape'):  # NumPy array
-                return Image.fromarray(img.astype(np.uint8))
-            elif TORCH_AVAILABLE and hasattr(img, 'cpu'):  # PyTorch tensor
-                return tensor_to_pil(img)
-            else:
-                return None
-        
-        pil1 = to_pil(image1)
-        pil2 = to_pil(image2)
+        pil1 = convert_to_pil(image1)
+        pil2 = convert_to_pil(image2)
         
         if pil1 is None or pil2 is None:
-            logger.warning("⚠️ 이미지 변환 실패")
             return None
         
         # 같은 크기로 조정
@@ -448,7 +1371,7 @@ def create_comparison_image(image1: Any, image2: Any, labels: Tuple[str, str] = 
         pil1 = pil1.resize((max_width, max_height), Image.Resampling.LANCZOS)
         pil2 = pil2.resize((max_width, max_height), Image.Resampling.LANCZOS)
         
-        # 비교 이미지 생성 (좌우 배치)
+        # 비교 이미지 생성
         padding = 20
         text_height = 30
         
@@ -462,35 +1385,216 @@ def create_comparison_image(image1: Any, image2: Any, labels: Tuple[str, str] = 
         comparison.paste(pil2, (max_width + padding * 2, text_height + padding))
         
         # 라벨 추가
-        comparison = add_text_to_image(comparison, labels[0], (padding, 5), font_size=20)
-        comparison = add_text_to_image(comparison, labels[1], (max_width + padding * 2, 5), font_size=20)
+        comparison = add_text_to_image(comparison, labels[0], (padding, 5))
+        comparison = add_text_to_image(comparison, labels[1], (max_width + padding * 2, 5))
         
-        logger.debug(f"✅ 비교 이미지 생성 완료: {labels}")
+        logger.debug(f"✅ 비교 이미지 생성: {labels}")
         return comparison
         
     except Exception as e:
         logger.error(f"❌ 비교 이미지 생성 실패: {e}")
         return None
 
-# ==============================================
-# 🔥 Step별 특화 처리 함수들
-# ==============================================
+# =============================================================================
+# 🔥 13. 메모리 관리 및 최적화 함수들
+# =============================================================================
+
+def cleanup_image_memory() -> bool:
+    """이미지 처리 관련 메모리 정리"""
+    try:
+        logger.debug("이미지 메모리 정리 시작")
+        
+        # Python garbage collection
+        import gc
+        collected = gc.collect()
+        
+        # PyTorch 캐시 정리
+        if TORCH_AVAILABLE:
+            if hasattr(torch, 'cuda') and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug("CUDA 캐시 정리")
+            
+            if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
+                try:
+                    torch.mps.empty_cache()
+                    logger.debug("MPS 캐시 정리")
+                except:
+                    pass
+        
+        logger.info(f"✅ 메모리 정리 완료: {collected}개 객체 수집")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ 메모리 정리 실패: {e}")
+        return False
+
+def estimate_memory_usage(image: Any) -> Dict[str, float]:
+    """이미지 메모리 사용량 추정"""
+    try:
+        usage = {"bytes": 0, "mb": 0, "gb": 0}
+        
+        if hasattr(image, 'size') and hasattr(image, 'mode'):  # PIL Image
+            width, height = image.size
+            channels = len(image.getbands())
+            bytes_per_pixel = 1 if image.mode == 'L' else 3 if image.mode == 'RGB' else 4
+            total_bytes = width * height * bytes_per_pixel
+            
+        elif NUMPY_AVAILABLE and hasattr(image, 'nbytes'):  # NumPy array
+            total_bytes = image.nbytes
+            
+        elif TORCH_AVAILABLE and torch.is_tensor(image):  # PyTorch tensor
+            total_bytes = image.numel() * image.element_size()
+            
+        else:
+            logger.warning("⚠️ 메모리 사용량 계산 불가")
+            return usage
+        
+        usage.update({
+            "bytes": total_bytes,
+            "mb": total_bytes / (1024 * 1024),
+            "gb": total_bytes / (1024 * 1024 * 1024)
+        })
+        
+        logger.debug(f"메모리 사용량: {usage['mb']:.2f} MB")
+        return usage
+        
+    except Exception as e:
+        logger.error(f"❌ 메모리 사용량 계산 실패: {e}")
+        return {"bytes": 0, "mb": 0, "gb": 0, "error": str(e)}
+
+def optimize_image_memory(image: Any, target_size: Optional[Tuple[int, int]] = None, 
+                         quality: int = 85) -> Optional[Any]:
+    """이미지 메모리 사용량 최적화"""
+    try:
+        if not _ensure_pil():
+            return image
+        
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
+            return image
+        
+        # 크기 조정
+        if target_size and pil_image.size != target_size:
+            pil_image = resize_image(pil_image, target_size, keep_aspect_ratio=True)
+        
+        # 메모리 사용량 체크
+        memory_usage = estimate_memory_usage(pil_image)
+        
+        # 임계값 초과시 압축 적용
+        if memory_usage['mb'] > MEMORY_THRESHOLD_MB:
+            # JPEG 압축 적용
+            buffer = io.BytesIO()
+            if pil_image.mode == 'RGBA':
+                # 투명도 제거
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                background.paste(pil_image, mask=pil_image.split()[-1])
+                pil_image = background
+            
+            pil_image.save(buffer, format='JPEG', quality=quality, optimize=True)
+            buffer.seek(0)
+            pil_image = Image.open(buffer)
+            
+            logger.debug(f"✅ 메모리 최적화 적용: quality={quality}")
+        
+        return pil_image
+        
+    except Exception as e:
+        logger.error(f"❌ 메모리 최적화 실패: {e}")
+        return image
+
+def validate_image_format(image: Any) -> Dict[str, Any]:
+    """이미지 포맷 및 속성 검증"""
+    try:
+        result = {
+            "valid": False,
+            "type": str(type(image)),
+            "format": None,
+            "size": None,
+            "mode": None,
+            "channels": None,
+            "dtype": None,
+            "memory_usage_mb": 0.0
+        }
+        
+        if hasattr(image, 'size') and hasattr(image, 'mode'):  # PIL Image
+            memory_usage = estimate_memory_usage(image)
+            result.update({
+                "valid": True,
+                "format": "PIL",
+                "size": image.size,
+                "mode": image.mode,
+                "channels": len(image.getbands()),
+                "memory_usage_mb": memory_usage['mb']
+            })
+            
+        elif NUMPY_AVAILABLE and isinstance(image, np.ndarray):  # NumPy array
+            memory_usage = estimate_memory_usage(image)
+            result.update({
+                "valid": True,
+                "format": "NumPy",
+                "size": (image.shape[1], image.shape[0]) if len(image.shape) >= 2 else image.shape,
+                "channels": image.shape[2] if len(image.shape) == 3 else 1,
+                "dtype": str(image.dtype),
+                "memory_usage_mb": memory_usage['mb']
+            })
+            
+        elif TORCH_AVAILABLE and torch.is_tensor(image):  # PyTorch tensor
+            memory_usage = estimate_memory_usage(image)
+            result.update({
+                "valid": True,
+                "format": "PyTorch",
+                "size": (image.shape[-1], image.shape[-2]) if len(image.shape) >= 2 else image.shape,
+                "channels": image.shape[-3] if len(image.shape) >= 3 else 1,
+                "dtype": str(image.dtype),
+                "memory_usage_mb": memory_usage['mb']
+            })
+        
+        logger.debug(f"이미지 검증: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ 이미지 검증 실패: {e}")
+        return {"valid": False, "error": str(e)}
+
+# =============================================================================
+# 🔥 14. Step별 특화 처리 함수들
+# =============================================================================
+
+def preprocess_pose_input(image: Any, target_size: Tuple[int, int] = (368, 368)) -> Optional[Any]:
+    """포즈 추정용 이미지 전처리"""
+    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
+
+def preprocess_human_parsing_input(image: Any, target_size: Tuple[int, int] = (512, 512)) -> Optional[Any]:
+    """인체 파싱용 이미지 전처리"""
+    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
+
+def preprocess_cloth_segmentation_input(image: Any, target_size: Tuple[int, int] = (320, 320)) -> Optional[Any]:
+    """의류 세그멘테이션용 이미지 전처리"""
+    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
+
+def preprocess_virtual_fitting_input(person_img: Any, cloth_img: Any, 
+                                   target_size: Tuple[int, int] = (512, 512)) -> Tuple[Optional[Any], Optional[Any]]:
+    """가상 피팅용 이미지 전처리"""
+    person_tensor = preprocess_image(person_img, target_size, normalize=True, to_tensor=True)
+    cloth_tensor = preprocess_image(cloth_img, target_size, normalize=True, to_tensor=True)
+    return person_tensor, cloth_tensor
 
 def postprocess_human_parsing(output: Any, num_classes: int = 20, 
-                             colormap: Optional[List[Tuple[int, int, int]]] = None) -> Any:
+                             colormap: Optional[List[Tuple[int, int, int]]] = None) -> Optional[Any]:
     """인체 파싱 결과 후처리 (컬러맵 적용)"""
     try:
-        if not NUMPY_AVAILABLE:
-            logger.warning("⚠️ NumPy 필요")
+        if not _ensure_numpy():
             return output
         
         # 출력을 numpy array로 변환
-        if TORCH_AVAILABLE and hasattr(output, 'cpu'):
-            pred = output.cpu().numpy()
-        elif hasattr(output, 'shape'):
-            pred = output
+        if TORCH_AVAILABLE and torch.is_tensor(output):
+            if output.is_cuda or (hasattr(output, 'is_mps') and output.is_mps):
+                output = output.cpu()
+            pred = output.detach().numpy()
         else:
-            logger.warning("⚠️ 지원하지 않는 출력 타입")
+            pred = convert_to_numpy(output)
+        
+        if pred is None:
             return output
         
         # 차원 조정
@@ -503,26 +1607,19 @@ def postprocess_human_parsing(output: Any, num_classes: int = 20,
         if colormap is None:
             colormap = []
             for i in range(num_classes):
-                # HSV 색공간에서 균등하게 분포된 색상 생성
-                hue = int(i * 360 / num_classes)
                 if i == 0:  # 배경은 검은색
                     colormap.append((0, 0, 0))
                 else:
-                    # HSV to RGB 변환 (간단한 버전)
-                    c = 255
-                    x = int(c * (1 - abs((hue / 60) % 2 - 1)))
-                    if 0 <= hue < 60:
-                        rgb = (c, x, 0)
-                    elif 60 <= hue < 120:
-                        rgb = (x, c, 0)
-                    elif 120 <= hue < 180:
-                        rgb = (0, c, x)
-                    elif 180 <= hue < 240:
-                        rgb = (0, x, c)
-                    elif 240 <= hue < 300:
-                        rgb = (x, 0, c)
-                    else:
-                        rgb = (c, 0, x)
+                    # HSV 색공간에서 균등 분포
+                    hue = int(i * 360 / num_classes)
+                    # 간단한 HSV to RGB 변환
+                    c, x = 255, int(255 * (1 - abs((hue / 60) % 2 - 1)))
+                    if 0 <= hue < 60: rgb = (c, x, 0)
+                    elif 60 <= hue < 120: rgb = (x, c, 0)
+                    elif 120 <= hue < 180: rgb = (0, c, x)
+                    elif 180 <= hue < 240: rgb = (0, x, c)
+                    elif 240 <= hue < 300: rgb = (x, 0, c)
+                    else: rgb = (c, 0, x)
                     colormap.append(rgb)
         
         # 컬러맵 적용
@@ -540,105 +1637,18 @@ def postprocess_human_parsing(output: Any, num_classes: int = 20,
         logger.error(f"❌ 인체 파싱 후처리 실패: {e}")
         return output
 
-def postprocess_pose_keypoints(output: Any, confidence_threshold: float = 0.3) -> Dict[str, Any]:
-    """포즈 키포인트 후처리"""
-    try:
-        result = {
-            "keypoints": [],
-            "connections": [],
-            "valid_keypoints": 0,
-            "confidence_scores": []
-        }
-        
-        if not NUMPY_AVAILABLE:
-            logger.warning("⚠️ NumPy 필요")
-            return result
-        
-        # OpenPose 키포인트 연결 정보 (COCO 포맷)
-        connections = [
-            (0, 1), (1, 2), (2, 3), (3, 4),     # 머리
-            (1, 5), (5, 6), (6, 7),             # 왼팔
-            (1, 8), (8, 9), (9, 10),            # 오른팔
-            (1, 11), (11, 12), (12, 13),        # 왼다리
-            (1, 14), (14, 15), (15, 16)         # 오른다리
-        ]
-        
-        # 출력을 numpy array로 변환
-        if TORCH_AVAILABLE and hasattr(output, 'cpu'):
-            heatmaps = output.cpu().numpy()
-        elif hasattr(output, 'shape'):
-            heatmaps = output
-        else:
-            logger.warning("⚠️ 지원하지 않는 출력 타입")
-            return result
-        
-        # 차원 조정
-        if heatmaps.ndim == 4:  # (N, C, H, W)
-            heatmaps = heatmaps.squeeze(0)
-        
-        num_keypoints = min(heatmaps.shape[0], 18)  # OpenPose 18 키포인트
-        height, width = heatmaps.shape[1], heatmaps.shape[2]
-        
-        # 각 키포인트 위치 찾기
-        keypoints = []
-        confidence_scores = []
-        
-        for i in range(num_keypoints):
-            heatmap = heatmaps[i]
-            
-            # 최대값 위치 찾기
-            max_val = np.max(heatmap)
-            if max_val > confidence_threshold:
-                max_idx = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-                y, x = max_idx
-                
-                # 이미지 좌표로 변환
-                keypoints.append((x, y, max_val))
-                confidence_scores.append(max_val)
-            else:
-                keypoints.append((0, 0, 0))
-                confidence_scores.append(0.0)
-        
-        # 유효한 연결만 필터링
-        valid_connections = []
-        for conn in connections:
-            if (conn[0] < len(keypoints) and conn[1] < len(keypoints) and 
-                keypoints[conn[0]][2] > confidence_threshold and 
-                keypoints[conn[1]][2] > confidence_threshold):
-                valid_connections.append(conn)
-        
-        result.update({
-            "keypoints": keypoints,
-            "connections": valid_connections,
-            "valid_keypoints": sum(1 for kp in keypoints if kp[2] > confidence_threshold),
-            "confidence_scores": confidence_scores
-        })
-        
-        logger.debug(f"✅ 포즈 키포인트 후처리 완료: {result['valid_keypoints']}개 유효 키포인트")
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ 포즈 키포인트 후처리 실패: {e}")
-        return result
-
-def create_pose_visualization(image: Any, keypoints_result: Dict[str, Any]) -> Any:
+def create_pose_visualization(image: Any, keypoints_result: Dict[str, Any]) -> Optional[Any]:
     """포즈 키포인트 시각화"""
     try:
-        if not PIL_AVAILABLE:
-            logger.warning("⚠️ PIL 필요")
+        if not _ensure_pil():
             return image
         
-        # PIL Image로 변환
-        if hasattr(image, 'save'):  # 이미 PIL Image
-            vis_image = image.copy()
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            vis_image = Image.fromarray(image.astype(np.uint8))
-        elif TORCH_AVAILABLE and hasattr(image, 'cpu'):  # PyTorch tensor
-            vis_image = tensor_to_pil(image)
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
+        pil_image = convert_to_pil(image)
+        if pil_image is None:
             return image
         
+        # 복사본 생성
+        vis_image = pil_image.copy()
         draw = ImageDraw.Draw(vis_image)
         
         keypoints = keypoints_result.get("keypoints", [])
@@ -651,17 +1661,19 @@ def create_pose_visualization(image: Any, keypoints_result: Dict[str, Any]) -> A
                 pt2 = keypoints[conn[1]]
                 
                 if pt1[2] > 0 and pt2[2] > 0:  # 유효한 키포인트들만
-                    draw.line([pt1[0], pt1[1], pt2[0], pt2[1]], fill=(0, 255, 0), width=3)
+                    draw.line([pt1[0], pt1[1], pt2[0], pt2[1]], 
+                             fill=(0, 255, 0), width=3)
         
         # 키포인트 그리기
         for i, (x, y, conf) in enumerate(keypoints):
             if conf > 0:
-                # 신뢰도에 따른 색상 결정
-                color = (255, int(255 * conf), 0)  # 빨강-노랑 그라데이션
+                # 신뢰도에 따른 색상
+                color = (255, int(255 * conf), 0)
                 radius = 5
                 
                 # 원 그리기
-                draw.ellipse([x-radius, y-radius, x+radius, y+radius], fill=color, outline=(0, 0, 0))
+                draw.ellipse([x-radius, y-radius, x+radius, y+radius], 
+                           fill=color, outline=(0, 0, 0), width=2)
         
         logger.debug("✅ 포즈 시각화 완료")
         return vis_image
@@ -670,1279 +1682,234 @@ def create_pose_visualization(image: Any, keypoints_result: Dict[str, Any]) -> A
         logger.error(f"❌ 포즈 시각화 실패: {e}")
         return image
 
-# ==============================================
-# 🔥 모듈 정보 및 내보내기
-# ==============================================
+# =============================================================================
+# 🔥 15. 배치 처리 함수들
+# =============================================================================
 
-__version__ = "1.0.0"
+def create_batch(images: List[Any], device: str = None) -> Optional[Any]:
+    """이미지 리스트를 배치 텐서로 변환"""
+    try:
+        if not _ensure_torch() or not images:
+            return None
+        
+        if device is None:
+            device = _get_optimal_device()
+        
+        tensors = []
+        for i, img in enumerate(images):
+            if torch.is_tensor(img):
+                tensor = img
+                if tensor.dim() == 3:  # (C, H, W)
+                    tensor = tensor.unsqueeze(0)  # (1, C, H, W)
+            else:
+                tensor = pil_to_tensor(img, device, normalize=True)
+                if tensor is None:
+                    continue
+            
+            tensors.append(tensor)
+        
+        if not tensors:
+            return None
+        
+        # 배치로 결합
+        batch = torch.cat(tensors, dim=0).to(device)
+        
+        logger.debug(f"✅ 배치 생성: {batch.shape}, device: {device}")
+        return batch
+        
+    except Exception as e:
+        logger.error(f"❌ 배치 생성 실패: {e}")
+        return None
+
+def split_batch(batch: torch.Tensor) -> List[torch.Tensor]:
+    """배치 텐서를 개별 텐서들로 분할"""
+    try:
+        if not TORCH_AVAILABLE or not torch.is_tensor(batch):
+            return []
+        
+        if batch.dim() != 4:  # (N, C, H, W)
+            logger.warning("⚠️ 4차원 배치 텐서가 아닙니다")
+            return []
+        
+        tensors = [batch[i:i+1] for i in range(batch.shape[0])]
+        
+        logger.debug(f"✅ 배치 분할: {len(tensors)}개 텐서")
+        return tensors
+        
+    except Exception as e:
+        logger.error(f"❌ 배치 분할 실패: {e}")
+        return []
+
+# =============================================================================
+# 🔥 16. 모듈 정보 및 내보내기
+# =============================================================================
+
+__version__ = "2.0.0"
 __author__ = "MyCloset AI Team"
-__description__ = "이미지 처리 함수들 - model_loader.py에서 분리 (완전판)"
+__description__ = "완전한 이미지 처리 모듈 - 올바른 Python 구조"
 
+# 모든 공개 함수들
 __all__ = [
-    # 기본 전처리 함수들
-    'preprocess_image',
-    'postprocess_segmentation',
+    # 기본 이미지 I/O
+    'load_image',
+    'save_image',
     
-    # 특화 전처리 함수들
+    # 이미지 변환
+    'convert_to_pil',
+    'convert_to_numpy',
+    'tensor_to_pil',
+    'pil_to_tensor',
+    
+    # 크기 및 형태 조정
+    'resize_image',
+    'crop_image',
+    'pad_image',
+    
+    # 정규화 및 전처리
+    'normalize_image',
+    'denormalize_image',
+    'preprocess_image',
+    
+    # Base64 변환
+    'image_to_base64',
+    'base64_to_image',
+    
+    # 후처리
+    'postprocess_segmentation',
+    'postprocess_pose_keypoints',
+    'postprocess_human_parsing',
+    
+    # 품질 향상
+    'enhance_image_contrast',
+    'enhance_image_brightness',
+    'enhance_image_sharpness',
+    'apply_gaussian_blur',
+    
+    # 고급 처리
+    'apply_clahe_enhancement',
+    'detect_dominant_colors',
+    'calculate_image_similarity',
+    
+    # 시각화
+    'create_image_grid',
+    'add_text_to_image',
+    'create_comparison_image',
+    'create_pose_visualization',
+    
+    # 메모리 관리
+    'cleanup_image_memory',
+    'estimate_memory_usage',
+    'optimize_image_memory',
+    'validate_image_format',
+    
+    # Step별 특화
     'preprocess_pose_input',
     'preprocess_human_parsing_input',
     'preprocess_cloth_segmentation_input',
     'preprocess_virtual_fitting_input',
     
-    # 이미지 변환 함수들
-    'tensor_to_pil',
-    'pil_to_tensor',
-    'resize_image',
-    'normalize_image',
-    'denormalize_image',
+    # 배치 처리
     'create_batch',
+    'split_batch',
     
-    # Base64 변환 함수들
-    'image_to_base64',
-    'base64_to_image',
-    'numpy_to_base64',
-    'base64_to_numpy',
+    # 유틸리티
+    '_get_optimal_device',
+    '_validate_image_input',
     
-    # 이미지 품질 향상 함수들
-    'enhance_image_contrast',
-    'enhance_image_brightness',
-    'enhance_image_sharpness',
-    'enhance_image_color',
-    'apply_gaussian_blur',
-    'apply_unsharp_mask',
-    'apply_edge_enhance',
-    
-    # 고급 처리 함수들
-    'apply_clahe_enhancement',
-    'remove_background_simple',
-    'detect_dominant_colors',
-    'calculate_image_similarity',
-    
-    # 검증 및 분석 함수들
-    'validate_image_format',
-    'get_image_statistics',
-    'detect_image_artifacts',
-    
-    # 메모리 관리 함수들
-    'cleanup_image_memory',
-    'estimate_memory_usage',
-    'optimize_image_memory',
-    
-    # 이미지 변환 및 포맷 함수들
-    'convert_image_format',
-    'save_image',
-    'load_image',
-    
-    # 시각화 및 디버깅 함수들
-    'create_image_grid',
-    'add_text_to_image',
-    'create_comparison_image',
-    
-    # Step별 특화 처리 함수들
-    'postprocess_human_parsing',
-    'postprocess_pose_keypoints',
-    'create_pose_visualization',
-    
-    # 상수들
+    # 상수
+    'DEFAULT_IMAGE_SIZE',
+    'DEFAULT_DEVICE',
+    'SUPPORTED_FORMATS',
+    'SUPPORTED_EXTENSIONS',
     'NUMPY_AVAILABLE',
     'PIL_AVAILABLE',
     'CV2_AVAILABLE',
     'TORCH_AVAILABLE'
 ]
 
-logger.info(f"🖼️ 이미지 처리 모듈 v{__version__} 로드 완료 (완전판)")
+# 초기화 로그
+logger.info(f"🖼️ 이미지 처리 모듈 v{__version__} 로드 완료")
 logger.info(f"📦 사용 가능한 함수: {len(__all__)}개")
-logger.info(f"⚡ 라이브러리 지원:")
+logger.info(f"🔧 라이브러리 지원 상태:")
 logger.info(f"   - NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
 logger.info(f"   - PIL/Pillow: {'✅' if PIL_AVAILABLE else '❌'}")
 logger.info(f"   - OpenCV: {'✅' if CV2_AVAILABLE else '❌'}")
 logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
+logger.info(f"🚀 최적 디바이스: {_get_optimal_device()}")
 
-# ==============================================
-# 🔥 사용 예시 (주석)
-# ==============================================
+# =============================================================================
+# 🔥 17. 사용 예시 (주석으로 문서화)
+# =============================================================================
 
 """
 🎯 사용 예시:
 
-# 1. 기본 이미지 전처리
-from backend.app.ai_pipeline.utils.image_processing import preprocess_image
-
-processed = preprocess_image(
-    image='path/to/image.jpg',
-    target_size=(512, 512),
-    normalize=True,
-    to_tensor=True
+# 1. 기본 이미지 처리
+from backend.app.ai_pipeline.utils.image_processing import (
+    load_image, save_image, preprocess_image, postprocess_segmentation
 )
 
-# 2. 세그멘테이션 후처리
-from backend.app.ai_pipeline.utils.image_processing import postprocess_segmentation
+# 이미지 로드 및 전처리
+image = load_image('input.jpg')
+processed = preprocess_image(image, target_size=(512, 512), to_tensor=True)
 
-binary_mask = postprocess_segmentation(model_output, threshold=0.5)
+# 세그멘테이션 후처리
+mask = postprocess_segmentation(model_output, threshold=0.5)
 
-# 3. 텐서 ↔ PIL 변환
-from backend.app.ai_pipeline.utils.image_processing import tensor_to_pil, pil_to_tensor
+# 2. 이미지 변환
+from backend.app.ai_pipeline.utils.image_processing import (
+    tensor_to_pil, pil_to_tensor, convert_to_numpy
+)
 
 pil_image = tensor_to_pil(tensor)
 tensor = pil_to_tensor(pil_image, device='mps')
+array = convert_to_numpy(image)
 
-# 4. Base64 변환
-from backend.app.ai_pipeline.utils.image_processing import image_to_base64, base64_to_image
+# 3. Base64 변환
+from backend.app.ai_pipeline.utils.image_processing import (
+    image_to_base64, base64_to_image
+)
 
 base64_str = image_to_base64(image, format='JPEG', quality=95)
 image = base64_to_image(base64_str)
 
-# 5. 배치 생성
+# 4. 배치 처리
 from backend.app.ai_pipeline.utils.image_processing import create_batch
 
-batch_tensor = create_batch([image1, image2, image3], device='mps')
+batch_tensor = create_batch([img1, img2, img3], device='mps')
 
-# 6. 이미지 향상
-from backend.app.ai_pipeline.utils.image_processing import enhance_image_contrast
+# 5. 이미지 향상
+from backend.app.ai_pipeline.utils.image_processing import (
+    enhance_image_contrast, apply_clahe_enhancement
+)
 
 enhanced = enhance_image_contrast(image, factor=1.2)
+clahe_enhanced = apply_clahe_enhancement(image, clip_limit=2.0)
 
-# 7. 고급 처리
-from backend.app.ai_pipeline.utils.image_processing import apply_clahe_enhancement, detect_dominant_colors
+# 6. Step별 특화 처리
+from backend.app.ai_pipeline.utils.image_processing import (
+    preprocess_pose_input, postprocess_human_parsing, create_pose_visualization
+)
 
-enhanced = apply_clahe_enhancement(image, clip_limit=2.0)
-colors = detect_dominant_colors(image, k=5)
-
-# 8. Step별 특화 처리
-from backend.app.ai_pipeline.utils.image_processing import postprocess_human_parsing, create_pose_visualization
-
+pose_input = preprocess_pose_input(image, target_size=(368, 368))
 colored_parsing = postprocess_human_parsing(parsing_output, num_classes=20)
 pose_vis = create_pose_visualization(image, keypoints_result)
 
-# 9. 이미지 저장 및 로드
-from backend.app.ai_pipeline.utils.image_processing import save_image, load_image
-
-save_image(image, 'output.jpg', quality=95)
-loaded_image = load_image('input.jpg', target_format='RGB')
-
-# 10. 시각화
-from backend.app.ai_pipeline.utils.image_processing import create_image_grid, create_comparison_image
+# 7. 시각화
+from backend.app.ai_pipeline.utils.image_processing import (
+    create_image_grid, create_comparison_image, add_text_to_image
+)
 
 grid = create_image_grid([img1, img2, img3, img4], grid_size=(2, 2))
 comparison = create_comparison_image(original, processed, ('Before', 'After'))
-"""image, 'resize'):  # PIL Image
-            logger.debug("PIL Image 처리 중...")
-            image = image.resize(target_size, Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
-            
-            if NUMPY_AVAILABLE:
-                img_array = np.array(image).astype(np.float32)
-                logger.debug(f"PIL → NumPy 변환: {img_array.shape}")
-            else:
-                # NumPy 없는 경우 수동 변환
-                width, height = image.size
-                img_array = []
-                for y in range(height):
-                    row = []
-                    for x in range(width):
-                        pixel = image.getpixel((x, y))
-                        if isinstance(pixel, int):  # 그레이스케일
-                            row.append([pixel, pixel, pixel])
-                        else:  # RGB
-                            row.append(list(pixel))
-                    img_array.append(row)
-                logger.debug("PIL → 리스트 변환 완료")
-        
-        # 3. OpenCV/NumPy 처리
-        elif CV2_AVAILABLE and NUMPY_AVAILABLE and hasattr(image, 'shape'):  # OpenCV/numpy array
-            logger.debug(f"OpenCV/NumPy 배열 처리 중: {image.shape}")
-            if len(image.shape) == 3 and image.shape[2] == 3:
-                # RGB 이미지
-                img_array = cv2.resize(image, target_size).astype(np.float32)
-            elif len(image.shape) == 2:
-                # 그레이스케일
-                img_array = cv2.resize(image, target_size)
-                img_array = np.stack([img_array] * 3, axis=-1).astype(np.float32)
-            else:
-                raise ValueError(f"지원하지 않는 이미지 형태: {image.shape}")
-        
-        # 4. 폴백 처리
-        else:
-            logger.warning("⚠️ 폴백 처리 - 기본 크기의 제로 배열 생성")
-            if NUMPY_AVAILABLE:
-                img_array = np.zeros((target_size[1], target_size[0], 3), dtype=np.float32)
-            else:
-                img_array = [[[0.0, 0.0, 0.0] for _ in range(target_size[0])] for _ in range(target_size[1])]
-        
-        # 5. 정규화
-        if normalize:
-            logger.debug("이미지 정규화 적용")
-            if NUMPY_AVAILABLE and hasattr(img_array, 'dtype'):
-                if img_array.max() > 1.0:
-                    img_array = img_array / 255.0
-            elif isinstance(img_array, list):
-                # 리스트 형태인 경우
-                for i, row in enumerate(img_array):
-                    for j, pixel in enumerate(row):
-                        img_array[i][j] = [p/255.0 if p > 1.0 else p for p in pixel]
-        
-        # 6. PyTorch tensor 변환
-        if to_tensor and TORCH_AVAILABLE:
-            logger.debug("PyTorch 텐서로 변환")
-            if NUMPY_AVAILABLE and hasattr(img_array, 'shape'):
-                # numpy array → tensor
-                img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)  # NHWC → NCHW
-                img_tensor = img_tensor.to(device)
-                logger.debug(f"✅ 텐서 변환 완료: {img_tensor.shape}, device: {device}")
-                return img_tensor
-            else:
-                # 리스트 → tensor
-                if isinstance(img_array, list):
-                    height = len(img_array)
-                    width = len(img_array[0]) if height > 0 else target_size[0]
-                    channels = len(img_array[0][0]) if height > 0 and width > 0 else 3
-                    
-                    tensor_data = torch.zeros(1, channels, height, width)
-                    for h in range(height):
-                        for w in range(width):
-                            for c in range(channels):
-                                if h < len(img_array) and w < len(img_array[h]) and c < len(img_array[h][w]):
-                                    tensor_data[0, c, h, w] = img_array[h][w][c]
-                    
-                    tensor_data = tensor_data.to(device)
-                    logger.debug(f"✅ 리스트→텐서 변환 완료: {tensor_data.shape}")
-                    return tensor_data
-        
-        # 7. NumPy 배열 또는 리스트로 반환
-        logger.debug(f"최종 반환: {type(img_array)}")
-        return img_array
-            
-    except Exception as e:
-        logger.error(f"❌ 이미지 전처리 실패: {e}")
-        # 폴백: 기본 크기의 제로 데이터
-        if to_tensor and TORCH_AVAILABLE:
-            return torch.zeros(1, 3, target_size[1], target_size[0], device=device)
-        elif NUMPY_AVAILABLE:
-            return np.zeros((target_size[1], target_size[0], 3), dtype=np.float32)
-        else:
-            return [[[0.0, 0.0, 0.0] for _ in range(target_size[0])] for _ in range(target_size[1])]
+labeled = add_text_to_image(image, 'MyCloset AI', position=(10, 10))
 
-def postprocess_segmentation(output: Any, threshold: float = 0.5) -> Any:
-    """
-    세그멘테이션 결과 후처리 함수 - 완전 구현
-    
-    Args:
-        output: 모델 출력 (tensor, numpy array, 또는 리스트)
-        threshold: 이진화 임계값
-    
-    Returns:
-        후처리된 마스크 (0-255 값의 이미지)
-    """
-    try:
-        logger.debug(f"세그멘테이션 후처리 시작: {type(output)}")
-        
-        # 1. PyTorch tensor 처리
-        if TORCH_AVAILABLE and hasattr(output, 'cpu'):
-            output_np = output.cpu().numpy()
-            logger.debug("PyTorch 텐서 → NumPy 변환")
-        elif TORCH_AVAILABLE and hasattr(output, 'detach'):
-            output_np = output.detach().cpu().numpy()
-            logger.debug("PyTorch 텐서 (gradient) → NumPy 변환")
-        elif NUMPY_AVAILABLE and hasattr(output, 'shape'):
-            output_np = output
-            logger.debug("NumPy 배열 사용")
-        else:
-            # 리스트나 기타 형태
-            output_np = output
-            logger.debug("리스트/기타 형태 처리")
-        
-        # 2. 차원 조정
-        if NUMPY_AVAILABLE and hasattr(output_np, 'shape'):
-            logger.debug(f"원본 shape: {output_np.shape}")
-            
-            # 배치 차원 제거
-            if output_np.ndim == 4:  # (N, C, H, W)
-                output_np = output_np.squeeze(0)
-                logger.debug(f"배치 차원 제거: {output_np.shape}")
-            
-            if output_np.ndim == 3:  # (C, H, W)
-                if output_np.shape[0] == 1:  # 단일 채널
-                    output_np = output_np.squeeze(0)
-                    logger.debug(f"채널 차원 제거: {output_np.shape}")
-                else:  # 다중 채널인 경우 첫 번째 채널 사용
-                    output_np = output_np[0]
-                    logger.debug(f"첫 번째 채널 선택: {output_np.shape}")
-            
-            # 3. 이진화 적용
-            binary_mask = (output_np > threshold).astype(np.uint8) * 255
-            logger.debug(f"이진화 완료: {binary_mask.shape}, 값 범위: {binary_mask.min()}-{binary_mask.max()}")
-            
-            return binary_mask
-        
-        else:
-            # NumPy 없는 경우 리스트 처리
-            logger.debug("리스트 기반 후처리")
-            
-            def process_value(val):
-                if isinstance(val, (list, tuple)):
-                    # 중첩 구조인 경우 재귀적으로 처리
-                    return [process_value(v) for v in val]
-                else:
-                    # 단일 값 처리
-                    return 255 if float(val) > threshold else 0
-            
-            if isinstance(output, (list, tuple)):
-                # 중첩 리스트 구조 처리
-                if len(output) > 0 and isinstance(output[0], (list, tuple)):
-                    # 2D 이상 구조
-                    if len(output[0]) > 0 and isinstance(output[0][0], (list, tuple)):
-                        # 3D 구조 (첫 번째 채널 사용)
-                        output = output[0] if isinstance(output[0][0], (list, tuple)) else output
-                    
-                    result = [[255 if float(pixel) > threshold else 0 for pixel in row] for row in output]
-                    logger.debug("2D 리스트 후처리 완료")
-                    return result
-                else:
-                    # 1D 구조
-                    result = [255 if float(val) > threshold else 0 for val in output]
-                    logger.debug("1D 리스트 후처리 완료")
-                    return result
-            else:
-                # 단일 값
-                result = 255 if float(output) > threshold else 0
-                logger.debug("단일 값 후처리 완료")
-                return result
-            
-    except Exception as e:
-        logger.error(f"❌ 세그멘테이션 후처리 실패: {e}")
-        # 폴백: 기본 크기의 제로 마스크
-        if NUMPY_AVAILABLE:
-            return np.zeros((512, 512), dtype=np.uint8)
-        else:
-            return [[0 for _ in range(512)] for _ in range(512)]
+# 8. 메모리 관리
+from backend.app.ai_pipeline.utils.image_processing import (
+    cleanup_image_memory, estimate_memory_usage, optimize_image_memory
+)
 
-# ==============================================
-# 🔥 특화된 전처리 함수들
-# ==============================================
-
-def preprocess_pose_input(image: Any, target_size: Tuple[int, int] = (368, 368)) -> Any:
-    """포즈 추정용 이미지 전처리"""
-    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
-
-def preprocess_human_parsing_input(image: Any, target_size: Tuple[int, int] = (512, 512)) -> Any:
-    """인체 파싱용 이미지 전처리"""
-    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
-
-def preprocess_cloth_segmentation_input(image: Any, target_size: Tuple[int, int] = (320, 320)) -> Any:
-    """의류 세그멘테이션용 이미지 전처리"""
-    return preprocess_image(image, target_size, normalize=True, to_tensor=True)
-
-def preprocess_virtual_fitting_input(person_img: Any, cloth_img: Any, target_size: Tuple[int, int] = (512, 512)) -> Tuple[Any, Any]:
-    """가상 피팅용 이미지 전처리"""
-    person_tensor = preprocess_image(person_img, target_size, normalize=True, to_tensor=True)
-    cloth_tensor = preprocess_image(cloth_img, target_size, normalize=True, to_tensor=True)
-    return person_tensor, cloth_tensor
-
-# ==============================================
-# 🔥 이미지 변환 함수들
-# ==============================================
-
-def tensor_to_pil(tensor: Any) -> Any:
-    """
-    텐서를 PIL 이미지로 변환
-    
-    Args:
-        tensor: PyTorch tensor (C, H, W) 또는 (N, C, H, W)
-    
-    Returns:
-        PIL Image 또는 numpy array
-    """
-    try:
-        logger.debug(f"텐서→PIL 변환 시작: {type(tensor)}")
-        
-        if not TORCH_AVAILABLE:
-            logger.warning("⚠️ PyTorch 없음, 원본 반환")
-            return tensor
-        
-        # tensor 처리
-        if hasattr(tensor, 'dim'):
-            logger.debug(f"텐서 차원: {tensor.dim()}, 크기: {tensor.shape}")
-            
-            if tensor.dim() == 4:  # (N, C, H, W)
-                tensor = tensor.squeeze(0)
-                logger.debug(f"배치 차원 제거: {tensor.shape}")
-            
-            if tensor.dim() == 3:  # (C, H, W)
-                tensor = tensor.permute(1, 2, 0)  # (H, W, C)
-                logger.debug(f"차원 순서 변경: {tensor.shape}")
-            
-            # CPU로 이동
-            if hasattr(tensor, 'cpu'):
-                tensor = tensor.cpu()
-                logger.debug("CPU로 이동")
-            
-            # numpy 변환
-            if hasattr(tensor, 'numpy'):
-                tensor_np = tensor.numpy()
-                logger.debug("NumPy 변환 완료")
-            elif hasattr(tensor, 'detach'):
-                tensor_np = tensor.detach().numpy()
-                logger.debug("Detach 후 NumPy 변환 완료")
-            else:
-                tensor_np = tensor
-        else:
-            tensor_np = tensor
-        
-        # 값 범위 조정
-        if NUMPY_AVAILABLE and hasattr(tensor_np, 'dtype'):
-            logger.debug(f"값 범위 조정: dtype={tensor_np.dtype}, 범위={tensor_np.min():.3f}-{tensor_np.max():.3f}")
-            
-            if tensor_np.dtype != np.uint8:
-                # 0-1 범위를 0-255로 변환
-                if tensor_np.max() <= 1.0:
-                    tensor_np = (tensor_np * 255).astype(np.uint8)
-                    logger.debug("0-1 → 0-255 변환")
-                else:
-                    tensor_np = np.clip(tensor_np, 0, 255).astype(np.uint8)
-                    logger.debug("클리핑 후 uint8 변환")
-        
-        # PIL Image 생성
-        if PIL_AVAILABLE:
-            try:
-                if NUMPY_AVAILABLE and hasattr(tensor_np, 'shape'):
-                    if len(tensor_np.shape) == 3 and tensor_np.shape[2] == 3:
-                        pil_image = Image.fromarray(tensor_np, 'RGB')
-                        logger.debug("✅ PIL RGB 이미지 생성 완료")
-                        return pil_image
-                    elif len(tensor_np.shape) == 2:
-                        pil_image = Image.fromarray(tensor_np, 'L')
-                        logger.debug("✅ PIL 그레이스케일 이미지 생성 완료")
-                        return pil_image
-                    else:
-                        logger.warning(f"⚠️ 지원하지 않는 shape: {tensor_np.shape}")
-                        return tensor_np
-                else:
-                    # NumPy 없는 경우 기본 처리
-                    logger.debug("NumPy 없음, 원본 반환")
-                    return tensor_np
-            except Exception as e:
-                logger.error(f"❌ PIL 이미지 생성 실패: {e}")
-                return tensor_np
-        else:
-            logger.warning("⚠️ PIL 없음, NumPy 배열 반환")
-            return tensor_np
-            
-    except Exception as e:
-        logger.error(f"❌ tensor→PIL 변환 실패: {e}")
-        return None
-
-def pil_to_tensor(image: Any, device: str = "mps") -> Any:
-    """
-    PIL 이미지를 텐서로 변환
-    
-    Args:
-        image: PIL Image 또는 numpy array
-        device: 대상 디바이스
-    
-    Returns:
-        PyTorch tensor (N, C, H, W)
-    """
-    try:
-        logger.debug(f"PIL→텐서 변환 시작: {type(image)}")
-        
-        if not TORCH_AVAILABLE:
-            logger.warning("⚠️ PyTorch 없음, 원본 반환")
-            return image
-        
-        # PIL Image 처리
-        if hasattr(image, 'size'):  # PIL Image
-            width, height = image.size
-            logger.debug(f"PIL 이미지 크기: {width}x{height}")
-            
-            if NUMPY_AVAILABLE:
-                img_array = np.array(image).astype(np.float32) / 255.0
-                
-                if len(img_array.shape) == 3:  # RGB
-                    tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)  # (H,W,C) → (N,C,H,W)
-                else:  # 그레이스케일
-                    tensor = torch.from_numpy(img_array).unsqueeze(0).unsqueeze(0)  # (H,W) → (N,C,H,W)
-                
-                tensor = tensor.to(device)
-                logger.debug(f"✅ PIL→텐서 변환 완료: {tensor.shape}, device: {device}")
-                return tensor
-            else:
-                # NumPy 없는 경우 수동 변환
-                if image.mode == 'RGB':
-                    channels = 3
-                elif image.mode == 'L':
-                    channels = 1
-                else:
-                    channels = 3
-                    image = image.convert('RGB')
-                
-                tensor = torch.zeros(1, channels, height, width, device=device)
-                
-                for y in range(height):
-                    for x in range(width):
-                        pixel = image.getpixel((x, y))
-                        if isinstance(pixel, int):  # 그레이스케일
-                            tensor[0, 0, y, x] = pixel / 255.0
-                        else:  # RGB
-                            for c, val in enumerate(pixel[:channels]):
-                                tensor[0, c, y, x] = val / 255.0
-                
-                logger.debug(f"✅ 수동 PIL→텐서 변환 완료: {tensor.shape}")
-                return tensor
-        
-        # numpy array 처리
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):
-            logger.debug(f"NumPy 배열 처리: {image.shape}")
-            
-            img_array = image.astype(np.float32)
-            if img_array.max() > 1.0:
-                img_array = img_array / 255.0
-            
-            if len(image.shape) == 3:  # (H, W, C)
-                tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
-            elif len(image.shape) == 2:  # (H, W) 그레이스케일
-                tensor = torch.from_numpy(img_array).unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
-            else:
-                raise ValueError(f"지원하지 않는 배열 차원: {image.shape}")
-            
-            tensor = tensor.to(device)
-            logger.debug(f"✅ NumPy→텐서 변환 완료: {tensor.shape}")
-            return tensor
-        
-        # 폴백: 기본 텐서
-        logger.warning("⚠️ 변환 실패, 기본 텐서 반환")
-        return torch.zeros(1, 3, 512, 512, device=device)
-            
-    except Exception as e:
-        logger.error(f"❌ PIL→tensor 변환 실패: {e}")
-        if TORCH_AVAILABLE:
-            return torch.zeros(1, 3, 512, 512, device=device)
-        else:
-            return None
-
-# ==============================================
-# 🔥 이미지 유틸리티 함수들
-# ==============================================
-
-def resize_image(image: Any, target_size: Tuple[int, int]) -> Any:
-    """이미지 크기 조정"""
-    try:
-        logger.debug(f"이미지 크기 조정: {type(image)} → {target_size}")
-        
-        if hasattr(image, 'resize'):  # PIL Image
-            resized = image.resize(target_size, Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
-            logger.debug("✅ PIL 크기 조정 완료")
-            return resized
-        elif CV2_AVAILABLE and NUMPY_AVAILABLE and hasattr(image, 'shape'):
-            resized = cv2.resize(image, target_size)
-            logger.debug("✅ OpenCV 크기 조정 완료")
-            return resized
-        else:
-            # 기본 처리 (크기 조정 없이 반환)
-            logger.warning("⚠️ 크기 조정 불가, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 이미지 크기 조정 실패: {e}")
-        return image
-
-def normalize_image(image: Any, mean: Tuple[float, float, float] = (0.485, 0.456, 0.406), 
-                   std: Tuple[float, float, float] = (0.229, 0.224, 0.225)) -> Any:
-    """이미지 정규화 (ImageNet 기본값)"""
-    try:
-        logger.debug(f"이미지 정규화: mean={mean}, std={std}")
-        
-        if TORCH_AVAILABLE and hasattr(image, 'dim'):
-            # PyTorch tensor
-            image_normalized = image.clone()
-            if image_normalized.dim() == 4:  # (N, C, H, W)
-                for i in range(3):
-                    image_normalized[:, i, :, :] = (image_normalized[:, i, :, :] - mean[i]) / std[i]
-            elif image_normalized.dim() == 3:  # (C, H, W)
-                for i in range(3):
-                    image_normalized[i, :, :] = (image_normalized[i, :, :] - mean[i]) / std[i]
-            logger.debug("✅ PyTorch 텐서 정규화 완료")
-            return image_normalized
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):
-            # numpy array
-            image_normalized = image.astype(np.float32).copy()
-            if len(image.shape) == 4:  # (N, H, W, C)
-                for i in range(3):
-                    image_normalized[:, :, :, i] = (image_normalized[:, :, :, i] - mean[i]) / std[i]
-            elif len(image.shape) == 3:  # (H, W, C)
-                for i in range(3):
-                    image_normalized[:, :, i] = (image_normalized[:, :, i] - mean[i]) / std[i]
-            logger.debug("✅ NumPy 배열 정규화 완료")
-            return image_normalized
-        else:
-            logger.warning("⚠️ 정규화 지원하지 않는 타입, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 이미지 정규화 실패: {e}")
-        return image
-
-def denormalize_image(image: Any, mean: Tuple[float, float, float] = (0.485, 0.456, 0.406), 
-                     std: Tuple[float, float, float] = (0.229, 0.224, 0.225)) -> Any:
-    """이미지 역정규화"""
-    try:
-        logger.debug(f"이미지 역정규화: mean={mean}, std={std}")
-        
-        if TORCH_AVAILABLE and hasattr(image, 'dim'):
-            # PyTorch tensor
-            image_denormalized = image.clone()
-            if image_denormalized.dim() == 4:  # (N, C, H, W)
-                for i in range(3):
-                    image_denormalized[:, i, :, :] = image_denormalized[:, i, :, :] * std[i] + mean[i]
-            elif image_denormalized.dim() == 3:  # (C, H, W)
-                for i in range(3):
-                    image_denormalized[i, :, :] = image_denormalized[i, :, :] * std[i] + mean[i]
-            logger.debug("✅ PyTorch 텐서 역정규화 완료")
-            return image_denormalized
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):
-            # numpy array
-            image_denormalized = image.astype(np.float32).copy()
-            if len(image.shape) == 4:  # (N, H, W, C)
-                for i in range(3):
-                    image_denormalized[:, :, :, i] = image_denormalized[:, :, :, i] * std[i] + mean[i]
-            elif len(image.shape) == 3:  # (H, W, C)
-                for i in range(3):
-                    image_denormalized[:, :, i] = image_denormalized[:, :, i] * std[i] + mean[i]
-            logger.debug("✅ NumPy 배열 역정규화 완료")
-            return image_denormalized
-        else:
-            logger.warning("⚠️ 역정규화 지원하지 않는 타입, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 이미지 역정규화 실패: {e}")
-        return image
-
-def create_batch(images: List[Any], device: str = "mps") -> Any:
-    """이미지 리스트를 배치로 변환"""
-    try:
-        logger.debug(f"배치 생성: {len(images)}개 이미지 → device: {device}")
-        
-        if not images:
-            logger.warning("⚠️ 빈 이미지 리스트, 기본 텐서 반환")
-            if TORCH_AVAILABLE:
-                return torch.zeros(1, 3, 512, 512, device=device)
-            else:
-                return []
-        
-        if TORCH_AVAILABLE:
-            # 모든 이미지를 tensor로 변환
-            tensors = []
-            for i, img in enumerate(images):
-                logger.debug(f"이미지 {i+1}/{len(images)} 처리 중...")
-                
-                if hasattr(img, 'dim'):  # 이미 tensor
-                    if img.dim() == 3:  # (C, H, W)
-                        tensors.append(img.unsqueeze(0))
-                    else:
-                        tensors.append(img)
-                else:
-                    # PIL 또는 numpy → tensor
-                    tensor = pil_to_tensor(img, device)
-                    tensors.append(tensor)
-            
-            # 배치로 결합
-            if tensors:
-                batch = torch.cat(tensors, dim=0)
-                batch = batch.to(device)
-                logger.debug(f"✅ 배치 생성 완료: {batch.shape}")
-                return batch
-            else:
-                logger.warning("⚠️ 텐서 변환 실패, 기본 텐서 반환")
-                return torch.zeros(1, 3, 512, 512, device=device)
-        else:
-            logger.warning("⚠️ PyTorch 없음, 원본 리스트 반환")
-            return images
-            
-    except Exception as e:
-        logger.error(f"❌ 배치 생성 실패: {e}")
-        if TORCH_AVAILABLE:
-            return torch.zeros(len(images) if images else 1, 3, 512, 512, device=device)
-        else:
-            return images
-
-# ==============================================
-# 🔥 Base64 변환 함수들
-# ==============================================
-
-def image_to_base64(image: Any, format: str = "JPEG", quality: int = 95) -> str:
-    """이미지를 Base64 문자열로 변환"""
-    try:
-        logger.debug(f"이미지→Base64 변환: format={format}, quality={quality}")
-        
-        if not PIL_AVAILABLE:
-            logger.error("❌ PIL 필요함")
-            return ""
-        
-        # PIL Image로 변환
-        if hasattr(image, 'save'):  # 이미 PIL Image
-            pil_image = image
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            if image.dtype != np.uint8:
-                if image.max() <= 1.0:
-                    image = (image * 255).astype(np.uint8)
-                else:
-                    image = np.clip(image, 0, 255).astype(np.uint8)
-            pil_image = Image.fromarray(image)
-        elif TORCH_AVAILABLE and hasattr(image, 'cpu'):  # PyTorch tensor
-            pil_image = tensor_to_pil(image)
-        else:
-            logger.error(f"❌ 지원하지 않는 이미지 타입: {type(image)}")
-            return ""
-        
-        # RGB 모드로 변환
-        if pil_image.mode != 'RGB':
-            pil_image = pil_image.convert('RGB')
-        
-        # Base64 변환
-        buffer = io.BytesIO()
-        pil_image.save(buffer, format=format, quality=quality)
-        img_str = base64.b64encode(buffer.getvalue()).decode()
-        
-        logger.debug(f"✅ Base64 변환 완료: {len(img_str)} 문자")
-        return img_str
-        
-    except Exception as e:
-        logger.error(f"❌ 이미지→Base64 변환 실패: {e}")
-        return ""
-
-def base64_to_image(base64_str: str) -> Any:
-    """Base64 문자열을 이미지로 변환"""
-    try:
-        logger.debug(f"Base64→이미지 변환: {len(base64_str)} 문자")
-        
-        if not PIL_AVAILABLE:
-            logger.error("❌ PIL 필요함")
-            return None
-        
-        # Base64 디코딩
-        img_data = base64.b64decode(base64_str)
-        img_buffer = io.BytesIO(img_data)
-        pil_image = Image.open(img_buffer).convert('RGB')
-        
-        logger.debug(f"✅ Base64→이미지 변환 완료: {pil_image.size}")
-        return pil_image
-        
-    except Exception as e:
-        logger.error(f"❌ Base64→이미지 변환 실패: {e}")
-        return None
-
-def numpy_to_base64(array: 'np.ndarray', format: str = "JPEG", quality: int = 95) -> str:
-    """NumPy 배열을 Base64로 변환"""
-    try:
-        if not NUMPY_AVAILABLE:
-            logger.error("❌ NumPy 필요함")
-            return ""
-        
-        return image_to_base64(array, format, quality)
-        
-    except Exception as e:
-        logger.error(f"❌ NumPy→Base64 변환 실패: {e}")
-        return ""
-
-def base64_to_numpy(base64_str: str) -> Any:
-    """Base64를 NumPy 배열로 변환"""
-    try:
-        if not NUMPY_AVAILABLE:
-            logger.error("❌ NumPy 필요함")
-            return None
-        
-        pil_image = base64_to_image(base64_str)
-        if pil_image:
-            return np.array(pil_image)
-        else:
-            return None
-            
-    except Exception as e:
-        logger.error(f"❌ Base64→NumPy 변환 실패: {e}")
-        return None
-
-# ==============================================
-# 🔥 이미지 품질 향상 함수들
-# ==============================================
-
-def enhance_image_contrast(image: Any, factor: float = 1.2) -> Any:
-    """이미지 대비 향상"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            enhancer = ImageEnhance.Contrast(image)
-            enhanced = enhancer.enhance(factor)
-            logger.debug(f"✅ 대비 향상 완료: factor={factor}")
-            return enhanced
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 대비 향상 실패: {e}")
-        return image
-
-def enhance_image_brightness(image: Any, factor: float = 1.1) -> Any:
-    """이미지 밝기 향상"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            enhancer = ImageEnhance.Brightness(image)
-            enhanced = enhancer.enhance(factor)
-            logger.debug(f"✅ 밝기 향상 완료: factor={factor}")
-            return enhanced
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 밝기 향상 실패: {e}")
-        return image
-
-def enhance_image_sharpness(image: Any, factor: float = 1.1) -> Any:
-    """이미지 선명도 향상"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            enhancer = ImageEnhance.Sharpness(image)
-            enhanced = enhancer.enhance(factor)
-            logger.debug(f"✅ 선명도 향상 완료: factor={factor}")
-            return enhanced
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 선명도 향상 실패: {e}")
-        return image
-
-def enhance_image_color(image: Any, factor: float = 1.1) -> Any:
-    """이미지 색상 향상"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            enhancer = ImageEnhance.Color(image)
-            enhanced = enhancer.enhance(factor)
-            logger.debug(f"✅ 색상 향상 완료: factor={factor}")
-            return enhanced
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 색상 향상 실패: {e}")
-        return image
-
-def apply_gaussian_blur(image: Any, radius: float = 1.0) -> Any:
-    """가우시안 블러 적용"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            blurred = image.filter(ImageFilter.GaussianBlur(radius=radius))
-            logger.debug(f"✅ 가우시안 블러 적용 완료: radius={radius}")
-            return blurred
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 가우시안 블러 적용 실패: {e}")
-        return image
-
-def apply_unsharp_mask(image: Any, radius: float = 2.0, percent: int = 150, threshold: int = 3) -> Any:
-    """언샤프 마스크 적용 (선명도 향상)"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            # PIL의 UnsharpMask 필터 사용
-            unsharp = image.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=threshold))
-            logger.debug(f"✅ 언샤프 마스크 적용 완료: radius={radius}, percent={percent}")
-            return unsharp
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 언샤프 마스크 적용 실패: {e}")
-        return image
-
-def apply_edge_enhance(image: Any, factor: float = 1.0) -> Any:
-    """엣지 강화 필터 적용"""
-    try:
-        if PIL_AVAILABLE and hasattr(image, 'save'):
-            # EDGE_ENHANCE 필터 적용
-            if factor > 1.0:
-                edge_enhanced = image.filter(ImageFilter.EDGE_ENHANCE_MORE)
-            else:
-                edge_enhanced = image.filter(ImageFilter.EDGE_ENHANCE)
-            logger.debug(f"✅ 엣지 강화 완료: factor={factor}")
-            return edge_enhanced
-        else:
-            logger.warning("⚠️ PIL 이미지가 아님, 원본 반환")
-            return image
-    except Exception as e:
-        logger.error(f"❌ 엣지 강화 실패: {e}")
-        return image
-
-# ==============================================
-# 🔥 고급 이미지 처리 함수들
-# ==============================================
-
-def apply_clahe_enhancement(image: Any, clip_limit: float = 2.0, tile_grid_size: Tuple[int, int] = (8, 8)) -> Any:
-    """CLAHE (Contrast Limited Adaptive Histogram Equalization) 적용"""
-    try:
-        if not CV2_AVAILABLE or not NUMPY_AVAILABLE:
-            logger.warning("⚠️ OpenCV/NumPy 필요, 원본 반환")
-            return image
-        
-        # PIL Image를 numpy array로 변환
-        if hasattr(image, 'save'):  # PIL Image
-            img_array = np.array(image)
-        elif hasattr(image, 'shape'):  # numpy array
-            img_array = image
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
-            return image
-        
-        # CLAHE 객체 생성
-        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-        
-        # 컬러 이미지인 경우 LAB 공간에서 처리
-        if len(img_array.shape) == 3:
-            lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
-            lab[:, :, 0] = clahe.apply(lab[:, :, 0])  # L 채널에만 적용
-            enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-        else:
-            # 그레이스케일 이미지
-            enhanced = clahe.apply(img_array)
-        
-        # PIL Image로 변환하여 반환
-        if PIL_AVAILABLE:
-            return Image.fromarray(enhanced)
-        else:
-            return enhanced
-            
-    except Exception as e:
-        logger.error(f"❌ CLAHE 적용 실패: {e}")
-        return image
-
-def remove_background_simple(image: Any, threshold: int = 240) -> Any:
-    """간단한 배경 제거 (흰색 배경 가정)"""
-    try:
-        if not NUMPY_AVAILABLE:
-            logger.warning("⚠️ NumPy 필요, 원본 반환")
-            return image
-        
-        # PIL Image를 numpy array로 변환
-        if hasattr(image, 'save'):  # PIL Image
-            img_array = np.array(image)
-        elif hasattr(image, 'shape'):  # numpy array
-            img_array = image.copy()
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
-            return image
-        
-        # 알파 채널 추가 (RGBA)
-        if len(img_array.shape) == 3 and img_array.shape[2] == 3:
-            # RGB에서 RGBA로 변환
-            alpha_channel = np.ones((img_array.shape[0], img_array.shape[1]), dtype=img_array.dtype) * 255
-            img_rgba = np.dstack((img_array, alpha_channel))
-            
-            # 흰색 배경을 투명하게 만들기
-            white_pixels = np.all(img_array >= threshold, axis=2)
-            img_rgba[white_pixels, 3] = 0  # 알파값을 0으로 (투명)
-            
-            # PIL Image로 변환
-            if PIL_AVAILABLE:
-                return Image.fromarray(img_rgba, 'RGBA')
-            else:
-                return img_rgba
-        else:
-            logger.warning("⚠️ RGB 이미지가 아님")
-            return image
-            
-    except Exception as e:
-        logger.error(f"❌ 배경 제거 실패: {e}")
-        return image
-
-def detect_dominant_colors(image: Any, k: int = 5) -> List[Tuple[int, int, int]]:
-    """이미지에서 주요 색상 추출 (K-means 클러스터링)"""
-    try:
-        if not NUMPY_AVAILABLE:
-            logger.warning("⚠️ NumPy 필요")
-            return []
-        
-        # PIL Image를 numpy array로 변환
-        if hasattr(image, 'save'):  # PIL Image
-            img_array = np.array(image)
-        elif hasattr(image, 'shape'):  # numpy array
-            img_array = image
-        else:
-            logger.warning("⚠️ 지원하지 않는 이미지 타입")
-            return []
-        
-        # 이미지를 1차원으로 변환
-        if len(img_array.shape) == 3:
-            pixels = img_array.reshape((-1, 3))
-        else:
-            logger.warning("⚠️ 컬러 이미지가 아님")
-            return []
-        
-        # 간단한 색상 분석 (K-means 대신 히스토그램 기반)
-        unique_colors, counts = np.unique(pixels.view(np.dtype((np.void, pixels.dtype.itemsize * pixels.shape[1]))), 
-                                        return_counts=True)
-        
-        # 상위 k개 색상 추출
-        top_indices = np.argsort(counts)[-k:][::-1]
-        dominant_colors = []
-        
-        for idx in top_indices:
-            color_bytes = unique_colors[idx].view(pixels.dtype).reshape(pixels.shape[1])
-            dominant_colors.append(tuple(color_bytes.astype(int)))
-        
-        logger.debug(f"✅ 주요 색상 {k}개 추출 완료")
-        return dominant_colors
-        
-    except Exception as e:
-        logger.error(f"❌ 주요 색상 추출 실패: {e}")
-        return []
-
-def calculate_image_similarity(image1: Any, image2: Any, method: str = "mse") -> float:
-    """두 이미지 간의 유사도 계산"""
-    try:
-        if not NUMPY_AVAILABLE:
-            logger.warning("⚠️ NumPy 필요")
-            return 0.0
-        
-        # 이미지들을 numpy array로 변환
-        def to_array(img):
-            if hasattr(img, 'save'):  # PIL Image
-                return np.array(img)
-            elif hasattr(img, 'shape'):  # numpy array
-                return img
-            else:
-                return None
-        
-        arr1 = to_array(image1)
-        arr2 = to_array(image2)
-        
-        if arr1 is None or arr2 is None:
-            logger.warning("⚠️ 이미지 변환 실패")
-            return 0.0
-        
-        # 크기 맞추기
-        if arr1.shape != arr2.shape:
-            # 더 작은 크기로 맞춤
-            min_height = min(arr1.shape[0], arr2.shape[0])
-            min_width = min(arr1.shape[1], arr2.shape[1])
-            arr1 = arr1[:min_height, :min_width]
-            arr2 = arr2[:min_height, :min_width]
-        
-        # 유사도 계산
-        if method == "mse":
-            # Mean Squared Error (낮을수록 유사)
-            mse = np.mean((arr1.astype(float) - arr2.astype(float)) ** 2)
-            # 0-1 범위로 정규화 (1에 가까울수록 유사)
-            similarity = 1.0 / (1.0 + mse / 255.0)
-        elif method == "cosine":
-            # 코사인 유사도
-            arr1_flat = arr1.flatten().astype(float)
-            arr2_flat = arr2.flatten().astype(float)
-            
-            dot_product = np.dot(arr1_flat, arr2_flat)
-            norm1 = np.linalg.norm(arr1_flat)
-            norm2 = np.linalg.norm(arr2_flat)
-            
-            if norm1 == 0 or norm2 == 0:
-                similarity = 0.0
-            else:
-                similarity = dot_product / (norm1 * norm2)
-        else:
-            logger.warning(f"⚠️ 지원하지 않는 유사도 방법: {method}")
-            return 0.0
-        
-        logger.debug(f"✅ 이미지 유사도 계산 완료: {similarity:.3f} ({method})")
-        return float(similarity)
-        
-    except Exception as e:
-        logger.error(f"❌ 이미지 유사도 계산 실패: {e}")
-        return 0.0
-
-# ==============================================
-# 🔥 이미지 검증 및 분석 함수들
-# ==============================================
-
-def validate_image_format(image: Any) -> Dict[str, Any]:
-    """이미지 포맷 및 속성 검증"""
-    try:
-        result = {
-            "valid": False,
-            "type": str(type(image)),
-            "format": None,
-            "size": None,
-            "mode": None,
-            "channels": None,
-            "dtype": None,
-            "memory_usage_mb": 0.0
-        }
-        
-        if hasattr(image, 'size'):  # PIL Image
-            result.update({
-                "valid": True,
-                "format": "PIL",
-                "size": image.size,
-                "mode": image.mode,
-                "channels": len(image.getbands()),
-                "memory_usage_mb": (image.size[0] * image.size[1] * len(image.getbands())) / (1024 * 1024)
-            })
-        elif NUMPY_AVAILABLE and hasattr(image, 'shape'):  # NumPy array
-            memory_mb = image.nbytes / (1024 * 1024) if hasattr(image, 'nbytes') else 0.0
-            result.update({
-                "valid": True,
-                "format": "NumPy",
-                "size": (image.shape[1], image.shape[0]) if len(image.shape) >= 2 else image.shape,
-                "channels": image.shape[2] if len(image.shape) == 3 else 1,
-                "dtype": str(image.dtype),
-                "memory_usage_mb": memory_mb
-            })
-        elif TORCH_AVAILABLE and hasattr(image, 'shape'):  # PyTorch tensor
-            memory_mb = (image.numel() * image.element_size()) / (1024 * 1024) if hasattr(image, 'numel') else 0.0
-            result.update({
-                "valid": True,
-                "format": "PyTorch",
-                "size": (image.shape[-1], image.shape[-2]) if len(image.shape) >= 2 else image.shape,
-                "channels": image.shape[-3] if len(image.shape) >= 3 else 1,
-                "dtype": str(image.dtype),
-                "memory_usage_mb": memory_mb
-            })
-        
-        logger.debug(f"이미지 검증 결과: {result}")
-        return result
-        
-    except Exception as e:
-        logger.error(f"❌ 이미지 검증 실패: {e}")
-        return {"valid": False, "error": str(e)}
-
-def get_image_statistics(image: Any) -> Dict[str, Any]:
-    """이미지 통계 정보"""
-    try:
-        stats = {"error": None}
-        
-        if NUMPY_AVAILABLE and hasattr(image, 'shape'):
-            if hasattr(image, 'cpu'):  # PyTorch tensor
-                array = image.cpu().numpy()
-            else:
-                array = image
-            
-            stats.update({
-                "mean": float(np.mean(array)),
-                "std": float(np.std(array)),
-                "min": float(np.min(array)),
-                "max": float(np.max(array)),
-                "median": float(np.median(array)),
-                "shape": array.shape,
-                "unique_values": int(len(np.unique(array))),
-                "zero_ratio": float(np.mean(array == 0))
-            })
-        elif hasattr(image, 'size'):  # PIL Image
-            if NUMPY_AVAILABLE:
-                array = np.array(image)
-                stats.update({
-                    "mean": float(np.mean(array)),
-                    "std": float(np.std(array)),
-                    "min": float(np.min(array)),
-                    "max": float(np.max(array)),
-                    "median": float(np.median(array)),
-                    "size": image.size,
-                    "mode": image.mode,
-                    "unique_values": int(len(np.unique(array)))
-                })
-        
-        logger.debug(f"이미지 통계: {stats}")
-        return stats
-        
-    except Exception as e:
-        logger.error(f"❌ 이미지 통계 계산 실패: {e}")
-        return {"error": str(e)}
-
-def detect_image_artifacts(image: Any) -> Dict[str, Any]:
-    """이미지 아티팩트 감지"""
-    try:
-        artifacts = {
-            "noise_level": 0.0,
-            "blur_level": 0.0,
-            "compression_artifacts": False,
-            "over_saturation": False,
-            "under_exposure": False,
-            "over_exposure": False
-        }
-        
-        if not NUMPY_AVAILABLE:
-            logger.warning("⚠️ NumPy 필요")
-            return artifacts
-        
-        # PIL Image를 numpy array로 변환
-        if hasattr(image, 'save'):  # PIL Image
-            img_array = np.array(image)
-        elif hasattr(image, 'shape'):  # numpy array
-            img_array = image
-        else:
-            return artifacts
-        
-        # 그레이스케일로 변환
-        if len(img_array.shape) == 3:
-            gray = np.mean(img_array, axis=2)
-        else:
-            gray = img_array
-        
-        # 노이즈 레벨 추정 (Laplacian variance 사용)
-        if CV2_AVAILABLE:
-            laplacian_var = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_64F).var()
-            artifacts["noise_level"] = float(laplacian_var / 1000.0)  # 정규화
-        
-        # 블러 레벨 추정
-        if CV2_AVAILABLE:
-            blur_score = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_64F).var()
-            artifacts["blur_level"] = float(1.0 - min(blur_score / 1000.0, 1.0))
-        
-        # 노출 문제 감지
-        mean_brightness = np.mean(gray)
-        artifacts["under_exposure"] = mean_brightness < 50
-        artifacts["over_exposure"] = mean_brightness > 200
-        
-        # 과포화 감지
-        if len(img_array.shape) == 3:
-            max_values = np.max(img_array, axis=2)
-            artifacts["over_saturation"] = np.mean(max_values >= 250) > 0.1
-        
-        logger.debug(f"아티팩트 감지 결과: {artifacts}")
-        return artifacts
-        
-    except Exception as e:
-        logger.error(f"❌ 아티팩트 감지 실패: {e}")
-        return {"error": str(e)}
-
-# ==============================================
-# 🔥 메모리 관리 함수들
-# ==============================================
-
-def cleanup_image_memory():
-    """이미지 처리 관련 메모리 정리"""
-    try:
-        logger.debug("이미지 메모리 정리 시작")
-        
-        # Python garbage collection
-        import gc
-        collected = gc.collect()
-        logger.debug(f"Python GC: {collected}개 객체 수집")
-        
-        # PyTorch 캐시 정리
-        if TORCH_AVAILABLE:
-            if hasattr(torch, 'cuda') and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                logger.debug("CUDA 캐시 정리 완료")
-            
-            if hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
-                try:
-                    torch.mps.empty_cache()
-                    logger.debug("MPS 캐시 정리 완료")
-                except:
-                    pass
-        
-        logger.info("✅ 이미지 메모리 정리 완료")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ 이미지 메모리 정리 실패: {e}")
-        return False
-
-def estimate_memory_usage(image: Any) -> Dict[str, float]:
-    """이미지 메모리 사용량 추정"""
-    try:
-        usage = {"bytes": 0, "mb": 0, "gb": 0, "error": None}
-        
-        if hasattr(
+memory_info = estimate_memory_usage(image)
+optimized = optimize_image_memory(image, target_size=(512, 512))
+cleanup_image_memory()
+"""

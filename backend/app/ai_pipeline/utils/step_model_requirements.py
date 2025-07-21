@@ -1,6 +1,6 @@
 # backend/app/ai_pipeline/utils/step_model_requests.py
 """
-🔥 Step별 AI 모델 요청 정의 시스템 v5.1 (실제 탐지 파일 100% 반영)
+🔥 Step별 AI 모델 요청 정의 시스템 v6.0 (완전한 구현)
 ✅ 프로젝트 지식 기반 실제 체크포인트 파일 완벽 반영
 ✅ 실제 탐지된 파일명과 크기 정확히 일치
 ✅ ModelLoader와 100% 호환 데이터 구조
@@ -8,14 +8,24 @@
 ✅ M3 Max 128GB 최적화
 ✅ 프로덕션 안정성 보장
 ✅ GitHub 실제 구조 기반 검증
+✅ StepModelRequestAnalyzer 완전 구현
+✅ register_step_requirements 지원
+✅ 모든 누락된 함수/클래스 완전 구현
 """
 
+import os
+import sys
 import time
 import logging
-from typing import Dict, Any, Optional, List, Tuple, Union
+import asyncio
+import threading
+from typing import Dict, Any, Optional, List, Tuple, Union, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import weakref
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +71,26 @@ class ModelRequest:
     
     # 메타데이터
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """딕셔너리로 변환"""
+        return {
+            "model_name": self.model_name,
+            "step_class": self.step_class,
+            "step_priority": self.step_priority.value,
+            "model_class": self.model_class,
+            "input_size": self.input_size,
+            "num_classes": self.num_classes,
+            "output_format": self.output_format,
+            "device": self.device,
+            "precision": self.precision,
+            "checkpoint_patterns": self.checkpoint_patterns,
+            "file_extensions": self.file_extensions,
+            "size_range_mb": self.size_range_mb,
+            "optimization_params": self.optimization_params,
+            "alternative_models": self.alternative_models,
+            "metadata": self.metadata
+        }
 
 # ==============================================
 # 🔥 실제 탐지된 체크포인트 파일 기반 모델 요청 정의
@@ -565,99 +595,6 @@ def get_steps_by_priority(priority: StepPriority) -> List[str]:
         if request.step_priority == priority
     ]
 
-# ==============================================
-# 🔥 실제 탐지 결과 기반 분석기 클래스
-# ==============================================
-
-class StepModelRequestAnalyzer:
-    """Step 모델 요청사항 분석기 - 실제 탐지 결과 기반"""
-    
-    @staticmethod
-    def get_step_request_info(step_name: str) -> Optional[Dict[str, Any]]:
-        """Step별 요청 정보 반환 (ModelLoader 호환)"""
-        request = STEP_MODEL_REQUESTS.get(step_name)
-        if not request:
-            return None
-        
-        return {
-            "model_name": request.model_name,
-            "model_type": request.model_class,
-            "input_size": request.input_size,
-            "num_classes": request.num_classes,
-            "device": request.device,
-            "precision": request.precision,
-            "checkpoint_patterns": request.checkpoint_patterns,
-            "optimization_params": request.optimization_params,
-            "step_priority": request.step_priority.value,
-            "alternative_models": request.alternative_models,
-            "metadata": request.metadata
-        }
-    
-    @staticmethod
-    def get_all_step_requirements() -> Dict[str, Any]:
-        """모든 Step 요구사항 반환"""
-        return {
-            step_name: StepModelRequestAnalyzer.get_step_request_info(step_name)
-            for step_name in STEP_MODEL_REQUESTS.keys()
-        }
-    
-    @staticmethod
-    def get_critical_steps() -> List[str]:
-        """중요한 Step들 반환 (실제 우선순위 기반)"""
-        return [
-            step_name for step_name, request in STEP_MODEL_REQUESTS.items()
-            if request.step_priority == StepPriority.CRITICAL
-        ]
-    
-    @staticmethod
-    def get_model_for_step(step_name: str) -> Optional[str]:
-        """Step에 대한 권장 모델명 반환"""
-        request = STEP_MODEL_REQUESTS.get(step_name)
-        return request.model_name if request else None
-    
-    @staticmethod
-    def get_actual_detected_files() -> Dict[str, Dict[str, Any]]:
-        """실제 탐지된 파일 정보 반환"""
-        detected_files = {}
-        for step_name, request in STEP_MODEL_REQUESTS.items():
-            if "actual_files" in request.metadata:
-                detected_files[step_name] = request.metadata["actual_files"]
-        return detected_files
-    
-    @staticmethod
-    def get_file_size_validation_ranges() -> Dict[str, Tuple[float, float]]:
-        """Step별 파일 크기 검증 범위 반환"""
-        return {
-            step_name: request.size_range_mb
-            for step_name, request in STEP_MODEL_REQUESTS.items()
-        }
-
-# ==============================================
-# 🔥 ModelLoader 호환 함수들 (실제 구조 반영)
-# ==============================================
-
-def get_all_step_requirements() -> Dict[str, Any]:
-    """전체 Step 요구사항 (ModelLoader 호환)"""
-    return StepModelRequestAnalyzer.get_all_step_requirements()
-
-def create_model_loader_config_from_detection(step_name: str, detected_models: List[Path]) -> Dict[str, Any]:
-    """탐지된 모델로부터 ModelLoader 설정 생성"""
-    request = get_step_request(step_name)
-    if not request or not detected_models:
-        return {}
-    
-    # 실제 탐지된 파일 크기 기준으로 최적 모델 선택
-    best_model = max(detected_models, key=lambda p: p.stat().st_size)
-    
-    return get_model_config_for_step(step_name, best_model)
-
-def get_actual_detected_patterns() -> Dict[str, List[str]]:
-    """실제 탐지된 파일 기반 검증된 패턴들 반환"""
-    return {
-        step_name: request.checkpoint_patterns
-        for step_name, request in STEP_MODEL_REQUESTS.items()
-    }
-
 def validate_against_actual_files(step_name: str, file_name: str, file_size_mb: float) -> Dict[str, Any]:
     """실제 탐지된 파일과 비교 검증"""
     request = get_step_request(step_name)
@@ -688,6 +625,556 @@ def validate_against_actual_files(step_name: str, file_name: str, file_size_mb: 
     }
 
 # ==============================================
+# 🔥 완전한 StepModelRequestAnalyzer 클래스 구현
+# ==============================================
+
+class StepModelRequestAnalyzer:
+    """Step 모델 요청사항 분석기 - 실제 탐지 결과 기반 (완전 구현)"""
+    
+    def __init__(self):
+        """초기화"""
+        self._cache = {}
+        self._registered_requirements = {}
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="StepAnalyzer")
+        self._lock = threading.Lock()
+        logger.info("✅ StepModelRequestAnalyzer 초기화 완료")
+    
+    def __del__(self):
+        """소멸자 - 리소스 정리"""
+        if hasattr(self, '_executor'):
+            self._executor.shutdown(wait=False)
+    
+    # ==============================================
+    # 🔥 기본 분석 메서드들
+    # ==============================================
+    
+    def analyze_requirements(self, step_name: str) -> Dict[str, Any]:
+        """Step별 요구사항 분석 (핵심 메서드)"""
+        request = STEP_MODEL_REQUESTS.get(step_name)
+        if not request:
+            return {
+                "error": f"Unknown step: {step_name}",
+                "available_steps": list(STEP_MODEL_REQUESTS.keys())
+            }
+        
+        # 캐시 확인
+        with self._lock:
+            cache_key = f"analyze_{step_name}"
+            if cache_key in self._cache:
+                return self._cache[cache_key]
+        
+        # 분석 실행
+        analysis = {
+            "step_name": step_name,
+            "model_name": request.model_name,
+            "model_type": request.model_class,
+            "step_class": request.step_class,
+            "step_priority": request.step_priority.value,
+            "priority_name": request.step_priority.name,
+            
+            # 모델 스펙
+            "input_size": request.input_size,
+            "num_classes": request.num_classes,
+            "output_format": request.output_format,
+            
+            # 디바이스 설정
+            "device": request.device,
+            "precision": request.precision,
+            
+            # 체크포인트 정보
+            "checkpoint_patterns": request.checkpoint_patterns,
+            "file_extensions": request.file_extensions,
+            "size_range_mb": request.size_range_mb,
+            
+            # 최적화 파라미터
+            "optimization_params": request.optimization_params,
+            
+            # 대체 모델
+            "alternative_models": request.alternative_models,
+            
+            # 실제 파일 정보
+            "actual_files": request.metadata.get("actual_files", {}),
+            "file_sizes_mb": request.metadata.get("file_sizes_mb", {}),
+            
+            # 메타데이터
+            "metadata": request.metadata,
+            "description": request.metadata.get("description", ""),
+            
+            # ModelLoader 호환 요구사항
+            "requirements": {
+                "models": [request.model_name],
+                "device": request.device,
+                "precision": request.precision,
+                "memory_fraction": request.optimization_params.get("memory_fraction", 0.8),
+                "batch_size": request.optimization_params.get("batch_size", 1)
+            },
+            
+            # 분석 메타데이터
+            "analysis_timestamp": time.time(),
+            "is_critical": request.step_priority == StepPriority.CRITICAL,
+            "supports_alternatives": len(request.alternative_models) > 0
+        }
+        
+        # 캐시 저장
+        with self._lock:
+            self._cache[cache_key] = analysis
+        
+        return analysis
+    
+    def get_step_requirements(self, step_name: str) -> Dict[str, Any]:
+        """Step별 요구사항 반환 (analyze_requirements와 동일)"""
+        return self.analyze_requirements(step_name)
+    
+    @staticmethod
+    def get_step_request_info(step_name: str) -> Optional[Dict[str, Any]]:
+        """Step별 요청 정보 반환 (ModelLoader 호환)"""
+        request = STEP_MODEL_REQUESTS.get(step_name)
+        if not request:
+            return None
+        
+        return {
+            "model_name": request.model_name,
+            "model_type": request.model_class,
+            "input_size": request.input_size,
+            "num_classes": request.num_classes,
+            "device": request.device,
+            "precision": request.precision,
+            "checkpoint_patterns": request.checkpoint_patterns,
+            "optimization_params": request.optimization_params,
+            "step_priority": request.step_priority.value,
+            "alternative_models": request.alternative_models,
+            "metadata": request.metadata
+        }
+    
+    @staticmethod
+    def get_all_step_requirements() -> Dict[str, Any]:
+        """모든 Step 요구사항 반환"""
+        return {
+            step_name: StepModelRequestAnalyzer.get_step_request_info(step_name)
+            for step_name in STEP_MODEL_REQUESTS.keys()
+        }
+    
+    # ==============================================
+    # 🔥 우선순위 및 분류 메서드들
+    # ==============================================
+    
+    @staticmethod
+    def get_critical_steps() -> List[str]:
+        """중요한 Step들 반환 (실제 우선순위 기반)"""
+        return [
+            step_name for step_name, request in STEP_MODEL_REQUESTS.items()
+            if request.step_priority == StepPriority.CRITICAL
+        ]
+    
+    @staticmethod
+    def get_high_priority_steps() -> List[str]:
+        """높은 우선순위 Step들 반환"""
+        return [
+            step_name for step_name, request in STEP_MODEL_REQUESTS.items()
+            if request.step_priority == StepPriority.HIGH
+        ]
+    
+    @staticmethod
+    def get_steps_by_priority_level(priority: StepPriority) -> List[str]:
+        """우선순위별 Step 목록 반환"""
+        return [
+            step_name for step_name, request in STEP_MODEL_REQUESTS.items()
+            if request.step_priority == priority
+        ]
+    
+    def get_priority_analysis(self) -> Dict[str, Any]:
+        """우선순위 분석 결과"""
+        analysis = {
+            "total_steps": len(STEP_MODEL_REQUESTS),
+            "by_priority": {},
+            "priority_distribution": {},
+            "critical_steps": self.get_critical_steps(),
+            "recommended_order": []
+        }
+        
+        # 우선순위별 분류
+        for priority in StepPriority:
+            steps = self.get_steps_by_priority_level(priority)
+            analysis["by_priority"][priority.name] = steps
+            analysis["priority_distribution"][priority.name] = len(steps)
+        
+        # 권장 실행 순서 (우선순위 기반)
+        for priority in [StepPriority.CRITICAL, StepPriority.HIGH, StepPriority.MEDIUM, StepPriority.LOW]:
+            analysis["recommended_order"].extend(self.get_steps_by_priority_level(priority))
+        
+        return analysis
+    
+    # ==============================================
+    # 🔥 모델 관련 메서드들
+    # ==============================================
+    
+    @staticmethod
+    def get_model_for_step(step_name: str) -> Optional[str]:
+        """Step에 대한 권장 모델명 반환"""
+        request = STEP_MODEL_REQUESTS.get(step_name)
+        return request.model_name if request else None
+    
+    @staticmethod
+    def get_all_models() -> Dict[str, str]:
+        """모든 Step의 모델명 반환"""
+        return {
+            step_name: request.model_name
+            for step_name, request in STEP_MODEL_REQUESTS.items()
+        }
+    
+    def get_model_requirements_summary(self) -> Dict[str, Any]:
+        """모델 요구사항 요약"""
+        summary = {
+            "total_models": len(STEP_MODEL_REQUESTS),
+            "device_requirements": {},
+            "precision_requirements": {},
+            "memory_requirements": {},
+            "size_distribution": {
+                "small": [],    # < 100MB
+                "medium": [],   # 100MB - 1GB
+                "large": [],    # > 1GB
+            }
+        }
+        
+        for step_name, request in STEP_MODEL_REQUESTS.items():
+            # 디바이스 요구사항
+            device = request.device
+            if device not in summary["device_requirements"]:
+                summary["device_requirements"][device] = []
+            summary["device_requirements"][device].append(step_name)
+            
+            # 정밀도 요구사항
+            precision = request.precision
+            if precision not in summary["precision_requirements"]:
+                summary["precision_requirements"][precision] = []
+            summary["precision_requirements"][precision].append(step_name)
+            
+            # 메모리 요구사항
+            memory_fraction = request.optimization_params.get("memory_fraction", 0.5)
+            if memory_fraction not in summary["memory_requirements"]:
+                summary["memory_requirements"][memory_fraction] = []
+            summary["memory_requirements"][memory_fraction].append(step_name)
+            
+            # 크기 분포
+            min_size, max_size = request.size_range_mb
+            avg_size = (min_size + max_size) / 2
+            
+            if avg_size < 100:
+                summary["size_distribution"]["small"].append(step_name)
+            elif avg_size < 1000:
+                summary["size_distribution"]["medium"].append(step_name)
+            else:
+                summary["size_distribution"]["large"].append(step_name)
+        
+        return summary
+    
+    # ==============================================
+    # 🔥 파일 탐지 및 검증 메서드들
+    # ==============================================
+    
+    @staticmethod
+    def get_actual_detected_files() -> Dict[str, Dict[str, Any]]:
+        """실제 탐지된 파일 정보 반환"""
+        detected_files = {}
+        for step_name, request in STEP_MODEL_REQUESTS.items():
+            if "actual_files" in request.metadata:
+                detected_files[step_name] = request.metadata["actual_files"]
+        return detected_files
+    
+    @staticmethod
+    def get_file_size_validation_ranges() -> Dict[str, Tuple[float, float]]:
+        """Step별 파일 크기 검증 범위 반환"""
+        return {
+            step_name: request.size_range_mb
+            for step_name, request in STEP_MODEL_REQUESTS.items()
+        }
+    
+    def validate_file_for_step(self, step_name: str, file_path: Union[str, Path], 
+                              file_size_mb: Optional[float] = None) -> Dict[str, Any]:
+        """파일이 Step 요구사항에 맞는지 검증"""
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+        
+        # 파일 크기 계산 (제공되지 않은 경우)
+        if file_size_mb is None:
+            try:
+                file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            except OSError:
+                return {"valid": False, "reason": f"Cannot access file: {file_path}"}
+        
+        return validate_model_for_step(step_name, file_path, file_size_mb)
+    
+    def find_best_model_for_step(self, step_name: str, available_files: List[Path]) -> Optional[Dict[str, Any]]:
+        """Step에 가장 적합한 모델 찾기"""
+        request = get_step_request(step_name)
+        if not request or not available_files:
+            return None
+        
+        candidates = []
+        
+        for file_path in available_files:
+            try:
+                file_size_mb = file_path.stat().st_size / (1024 * 1024)
+                validation = self.validate_file_for_step(step_name, file_path, file_size_mb)
+                
+                if validation.get("valid", False):
+                    candidates.append({
+                        "path": file_path,
+                        "size_mb": file_size_mb,
+                        "confidence": validation.get("confidence", 0.0),
+                        "validation": validation
+                    })
+            except OSError:
+                continue
+        
+        if not candidates:
+            return None
+        
+        # 가장 높은 confidence를 가진 모델 선택
+        best_candidate = max(candidates, key=lambda x: x["confidence"])
+        
+        return {
+            "step_name": step_name,
+            "best_model": best_candidate,
+            "all_candidates": candidates,
+            "recommendation_reason": "Highest confidence score",
+            "model_config": get_model_config_for_step(step_name, best_candidate["path"])
+        }
+    
+    # ==============================================
+    # 🔥 register_step_requirements 메서드 (핵심)
+    # ==============================================
+    
+    def register_step_requirements(self, step_name: str, **requirements) -> bool:
+        """Step 요구사항 등록 (ModelLoader 연동용)"""
+        try:
+            with self._lock:
+                self._registered_requirements[step_name] = {
+                    "timestamp": time.time(),
+                    "requirements": requirements,
+                    "source": "external_registration"
+                }
+            
+            logger.info(f"✅ Step 요구사항 등록 완료: {step_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Step 요구사항 등록 실패 {step_name}: {e}")
+            return False
+    
+    def get_registered_requirements(self, step_name: str) -> Optional[Dict[str, Any]]:
+        """등록된 요구사항 반환"""
+        with self._lock:
+            return self._registered_requirements.get(step_name)
+    
+    def get_all_registered_requirements(self) -> Dict[str, Any]:
+        """모든 등록된 요구사항 반환"""
+        with self._lock:
+            return self._registered_requirements.copy()
+    
+    def clear_registered_requirements(self, step_name: Optional[str] = None):
+        """등록된 요구사항 정리"""
+        with self._lock:
+            if step_name:
+                self._registered_requirements.pop(step_name, None)
+            else:
+                self._registered_requirements.clear()
+    
+    # ==============================================
+    # 🔥 캐시 및 성능 관리
+    # ==============================================
+    
+    def clear_cache(self):
+        """캐시 정리"""
+        with self._lock:
+            self._cache.clear()
+        logger.info("✅ StepModelRequestAnalyzer 캐시 정리 완료")
+    
+    def get_cache_info(self) -> Dict[str, Any]:
+        """캐시 정보 반환"""
+        with self._lock:
+            return {
+                "cache_size": len(self._cache),
+                "registered_requirements": len(self._registered_requirements),
+                "cache_keys": list(self._cache.keys())
+            }
+    
+    # ==============================================
+    # 🔥 비동기 메서드들
+    # ==============================================
+    
+    async def analyze_requirements_async(self, step_name: str) -> Dict[str, Any]:
+        """비동기 요구사항 분석"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, self.analyze_requirements, step_name)
+    
+    async def validate_file_for_step_async(self, step_name: str, file_path: Union[str, Path], 
+                                          file_size_mb: Optional[float] = None) -> Dict[str, Any]:
+        """비동기 파일 검증"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._executor, 
+            self.validate_file_for_step, 
+            step_name, file_path, file_size_mb
+        )
+    
+    # ==============================================
+    # 🔥 진단 및 시스템 정보
+    # ==============================================
+    
+    def get_system_info(self) -> Dict[str, Any]:
+        """시스템 정보 반환"""
+        return {
+            "step_model_requests_version": "6.0",
+            "total_steps": len(STEP_MODEL_REQUESTS),
+            "step_names": list(STEP_MODEL_REQUESTS.keys()),
+            "priority_levels": [p.name for p in StepPriority],
+            "cache_enabled": True,
+            "thread_pool_workers": self._executor._max_workers if hasattr(self._executor, '_max_workers') else 4,
+            "registered_requirements_count": len(self._registered_requirements),
+            "cache_size": len(self._cache)
+        }
+    
+    def diagnose_step(self, step_name: str) -> Dict[str, Any]:
+        """Step 진단"""
+        request = get_step_request(step_name)
+        if not request:
+            return {"error": f"Step {step_name} not found"}
+        
+        diagnosis = {
+            "step_name": step_name,
+            "exists": True,
+            "priority": request.step_priority.name,
+            "model_defined": bool(request.model_name),
+            "patterns_defined": len(request.checkpoint_patterns) > 0,
+            "alternatives_available": len(request.alternative_models) > 0,
+            "optimization_configured": len(request.optimization_params) > 0,
+            "metadata_complete": len(request.metadata) > 0,
+            "actual_files_mapped": "actual_files" in request.metadata,
+            "file_sizes_known": "file_sizes_mb" in request.metadata,
+            "health_score": 0.0
+        }
+        
+        # 건강도 점수 계산
+        health_factors = [
+            diagnosis["model_defined"],
+            diagnosis["patterns_defined"],
+            diagnosis["alternatives_available"],
+            diagnosis["optimization_configured"],
+            diagnosis["metadata_complete"],
+            diagnosis["actual_files_mapped"],
+            diagnosis["file_sizes_known"]
+        ]
+        
+        diagnosis["health_score"] = sum(health_factors) / len(health_factors)
+        diagnosis["health_status"] = "excellent" if diagnosis["health_score"] >= 0.9 else \
+                                   "good" if diagnosis["health_score"] >= 0.7 else \
+                                   "fair" if diagnosis["health_score"] >= 0.5 else "poor"
+        
+        return diagnosis
+    
+    def get_full_diagnostic_report(self) -> Dict[str, Any]:
+        """전체 진단 보고서"""
+        report = {
+            "system_info": self.get_system_info(),
+            "priority_analysis": self.get_priority_analysis(),
+            "model_requirements_summary": self.get_model_requirements_summary(),
+            "step_diagnostics": {},
+            "overall_health": {
+                "total_steps": len(STEP_MODEL_REQUESTS),
+                "healthy_steps": 0,
+                "average_health_score": 0.0
+            }
+        }
+        
+        # 각 Step 진단
+        total_health = 0.0
+        for step_name in STEP_MODEL_REQUESTS.keys():
+            diagnosis = self.diagnose_step(step_name)
+            report["step_diagnostics"][step_name] = diagnosis
+            total_health += diagnosis.get("health_score", 0.0)
+            if diagnosis.get("health_status") in ["excellent", "good"]:
+                report["overall_health"]["healthy_steps"] += 1
+        
+        report["overall_health"]["average_health_score"] = total_health / len(STEP_MODEL_REQUESTS)
+        
+        return report
+
+# ==============================================
+# 🔥 전역 인스턴스 및 편의 함수들
+# ==============================================
+
+# 전역 분석기 인스턴스
+_global_analyzer: Optional[StepModelRequestAnalyzer] = None
+_analyzer_lock = threading.Lock()
+
+def get_global_analyzer() -> StepModelRequestAnalyzer:
+    """전역 분석기 인스턴스 반환 (싱글톤)"""
+    global _global_analyzer
+    if _global_analyzer is None:
+        with _analyzer_lock:
+            if _global_analyzer is None:
+                _global_analyzer = StepModelRequestAnalyzer()
+    return _global_analyzer
+
+def analyze_step_requirements(step_name: str) -> Dict[str, Any]:
+    """편의 함수: Step 요구사항 분석"""
+    analyzer = get_global_analyzer()
+    return analyzer.analyze_requirements(step_name)
+
+def register_step_requirements(step_name: str, **requirements) -> bool:
+    """편의 함수: Step 요구사항 등록"""
+    analyzer = get_global_analyzer()
+    return analyzer.register_step_requirements(step_name, **requirements)
+
+def validate_step_file(step_name: str, file_path: Union[str, Path], 
+                      file_size_mb: Optional[float] = None) -> Dict[str, Any]:
+    """편의 함수: Step 파일 검증"""
+    analyzer = get_global_analyzer()
+    return analyzer.validate_file_for_step(step_name, file_path, file_size_mb)
+
+# ==============================================
+# 🔥 ModelLoader 호환 함수들 (실제 구조 반영)
+# ==============================================
+
+def get_all_step_requirements() -> Dict[str, Any]:
+    """전체 Step 요구사항 (ModelLoader 호환)"""
+    return StepModelRequestAnalyzer.get_all_step_requirements()
+
+def create_model_loader_config_from_detection(step_name: str, detected_models: List[Path]) -> Dict[str, Any]:
+    """탐지된 모델로부터 ModelLoader 설정 생성"""
+    request = get_step_request(step_name)
+    if not request or not detected_models:
+        return {}
+    
+    # 실제 탐지된 파일 크기 기준으로 최적 모델 선택
+    best_model = max(detected_models, key=lambda p: p.stat().st_size)
+    
+    return get_model_config_for_step(step_name, best_model)
+
+def get_actual_detected_patterns() -> Dict[str, List[str]]:
+    """실제 탐지된 파일 기반 검증된 패턴들 반환"""
+    return {
+        step_name: request.checkpoint_patterns
+        for step_name, request in STEP_MODEL_REQUESTS.items()
+    }
+
+# ==============================================
+# 🔥 정리 함수들
+# ==============================================
+
+def cleanup_analyzer():
+    """분석기 정리"""
+    global _global_analyzer
+    if _global_analyzer:
+        _global_analyzer.clear_cache()
+        _global_analyzer.clear_registered_requirements()
+        _global_analyzer = None
+
+import atexit
+atexit.register(cleanup_analyzer)
+
+# ==============================================
 # 🔥 모듈 익스포트
 # ==============================================
 
@@ -700,7 +1187,7 @@ __all__ = [
     # 데이터
     'STEP_MODEL_REQUESTS',
 
-    # 함수들
+    # 기본 함수들
     'get_step_request',
     'get_all_step_requests',
     'get_checkpoint_patterns',
@@ -711,13 +1198,44 @@ __all__ = [
     'get_all_step_requirements',
     'create_model_loader_config_from_detection',
     'get_actual_detected_patterns',
-    'validate_against_actual_files'
+    'validate_against_actual_files',
+    
+    # 전역 인스턴스 및 편의 함수들
+    'get_global_analyzer',
+    'analyze_step_requirements',
+    'register_step_requirements',
+    'validate_step_file',
+    'cleanup_analyzer'
 ]
 
-# 로깅
-logger.info(f"✅ Step Model Requests v5.1 로드 완료 - 실제 탐지 파일 100% 반영")
+# ==============================================
+# 🔥 모듈 초기화 로깅
+# ==============================================
+
+logger.info("=" * 80)
+logger.info("🔥 Step Model Requests v6.0 로드 완료 - 완전한 구현")
+logger.info("=" * 80)
 logger.info(f"📋 {len(STEP_MODEL_REQUESTS)}개 Step 정의 (실제 파일 기반)")
 logger.info("🔧 StepModelRequestAnalyzer 클래스 완전 구현")
 logger.info("🎯 실제 탐지된 체크포인트 패턴 정확히 적용")
 logger.info("🚀 ModelLoader 완벽 호환성 + 실제 파일 검증 보장")
-logger.info("💾 실제 파일 크기 정보: exp-schp-201908301523-atr.pth (255.1MB), openpose.pth (199.6MB), u2net.pth (168.1MB)")
+logger.info("💾 실제 파일 크기 정보:")
+logger.info("   - exp-schp-201908301523-atr.pth (255.1MB)")
+logger.info("   - openpose.pth (199.6MB)")
+logger.info("   - u2net.pth (168.1MB)")
+logger.info("   - sam_vit_h_4b8939.pth (2445.7MB)")
+logger.info("   - pytorch_model.bin (577.2MB)")
+logger.info("✅ register_step_requirements 메서드 완전 구현")
+logger.info("✅ 비동기 처리 지원")
+logger.info("✅ 캐시 시스템 구현")
+logger.info("✅ 전역 싱글톤 인스턴스 제공")
+logger.info("✅ 진단 및 시스템 정보 제공")
+logger.info("✅ 모든 ModelLoader 연동 요구사항 충족")
+logger.info("=" * 80)
+
+# 초기화 시 전역 분석기 생성
+try:
+    _initial_analyzer = get_global_analyzer()
+    logger.info("✅ 전역 StepModelRequestAnalyzer 인스턴스 생성 완료")
+except Exception as e:
+    logger.error(f"❌ 전역 분석기 초기화 실패: {e}")

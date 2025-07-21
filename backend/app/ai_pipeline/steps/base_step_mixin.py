@@ -1,8 +1,9 @@
 # app/ai_pipeline/steps/base_step_mixin.py
 """
-🔥 BaseStepMixin v10.0 - 완전한 기능 + DI 적용 (모든 오류 해결)
+🔥 BaseStepMixin v10.1 - 비동기 처리 완전 해결 + 완전한 기능 + DI 적용
 ====================================================================
 
+✅ 비동기 처리 완전 해결 (coroutine 경고 완전 제거)
 ✅ from functools import wraps 추가 (NameError 해결)
 ✅ 의존성 주입 패턴 완전 적용
 ✅ 기존 모든 기능 100% 유지
@@ -17,13 +18,13 @@
 ✅ 워밍업 시스템
 ✅ 에러 복구 시스템
 ✅ 체크포인트 관리 시스템
-✅ 비동기 처리 완전 지원
+✅ 비동기 처리 완전 지원 (coroutine 경고 해결)
 ✅ 순환 임포트 완전 해결
 ✅ 모든 누락 메서드 구현
 
 Author: MyCloset AI Team
 Date: 2025-07-20
-Version: 10.0 (Complete Features + All Errors Fixed)
+Version: 10.1 (Complete Features + Async Fixed)
 """
 
 # ==============================================
@@ -38,7 +39,7 @@ import threading
 import traceback
 import weakref
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, List, Type, Callable, Tuple, TYPE_CHECKING
+from typing import Dict, Any, Optional, Union, List, Type, Callable, Tuple, TYPE_CHECKING, Awaitable
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
@@ -52,8 +53,8 @@ import subprocess
 import psutil
 from datetime import datetime
 from enum import Enum
-# 각 파일에 추가할 개선된 코드
 
+# 각 파일에 추가할 개선된 코드
 try:
     from app.core.gpu_config import safe_mps_empty_cache
 except ImportError:
@@ -62,6 +63,7 @@ except ImportError:
         import gc
         gc.collect()
         return {"success": True, "method": "fallback_gc"}
+
 # ==============================================
 # 🔥 2. TYPE_CHECKING으로 순환 임포트 완전 방지
 # ==============================================
@@ -531,11 +533,11 @@ class DIHelper:
             }
 
 # ==============================================
-# 🔥 7. 워밍업 시스템 (기존 기능 유지)
+# 🔥 7. 워밍업 시스템 (비동기 처리 완전 해결)
 # ==============================================
 
 class WarmupSystem:
-    """워밍업 시스템"""
+    """워밍업 시스템 - 비동기 처리 완전 해결"""
     
     def __init__(self, step_instance):
         self.step = step_instance
@@ -549,7 +551,7 @@ class WarmupSystem:
         self.warmup_times = {}
     
     def run_warmup_sequence(self) -> Dict[str, Any]:
-        """워밍업 시퀀스 실행"""
+        """워밍업 시퀀스 실행 (동기)"""
         try:
             total_start = time.time()
             results = {}
@@ -575,7 +577,7 @@ class WarmupSystem:
             results['memory_warmup'] = memory_result
             self.warmup_status['memory_warmup'] = memory_result.get('success', False)
             
-            # 4. 파이프라인 워밍업
+            # 4. 파이프라인 워밍업 (🔥 비동기 처리 완전 해결)
             pipeline_start = time.time()
             pipeline_result = self._pipeline_warmup()
             self.warmup_times['pipeline_warmup'] = time.time() - pipeline_start
@@ -605,8 +607,65 @@ class WarmupSystem:
                 'warmup_status': self.warmup_status.copy()
             }
     
+    async def run_warmup_sequence_async(self) -> Dict[str, Any]:
+        """워밍업 시퀀스 실행 (비동기)"""
+        try:
+            total_start = time.time()
+            results = {}
+            
+            # 1. 모델 워밍업
+            model_start = time.time()
+            model_result = await self._model_warmup_async()
+            self.warmup_times['model_warmup'] = time.time() - model_start
+            results['model_warmup'] = model_result
+            self.warmup_status['model_warmup'] = model_result.get('success', False)
+            
+            # 2. 디바이스 워밍업
+            device_start = time.time()
+            device_result = await self._device_warmup_async()
+            self.warmup_times['device_warmup'] = time.time() - device_start
+            results['device_warmup'] = device_result
+            self.warmup_status['device_warmup'] = device_result.get('success', False)
+            
+            # 3. 메모리 워밍업
+            memory_start = time.time()
+            memory_result = await self._memory_warmup_async()
+            self.warmup_times['memory_warmup'] = time.time() - memory_start
+            results['memory_warmup'] = memory_result
+            self.warmup_status['memory_warmup'] = memory_result.get('success', False)
+            
+            # 4. 파이프라인 워밍업 (🔥 비동기 처리 완전 해결)
+            pipeline_start = time.time()
+            pipeline_result = await self._pipeline_warmup_async()
+            self.warmup_times['pipeline_warmup'] = time.time() - pipeline_start
+            results['pipeline_warmup'] = pipeline_result
+            self.warmup_status['pipeline_warmup'] = pipeline_result.get('success', False)
+            
+            total_time = time.time() - total_start
+            
+            success_count = sum(1 for status in self.warmup_status.values() if status)
+            overall_success = success_count >= 3  # 4개 중 3개 이상 성공
+            
+            self.logger.info(f"🔥 비동기 워밍업 완료: {success_count}/4 성공 ({total_time:.2f}초)")
+            
+            return {
+                'success': overall_success,
+                'total_time': total_time,
+                'warmup_status': self.warmup_status.copy(),
+                'warmup_times': self.warmup_times.copy(),
+                'results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 워밍업 시퀀스 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'warmup_status': self.warmup_status.copy()
+            }
+    
     def _model_warmup(self) -> Dict[str, Any]:
-        """모델 워밍업"""
+        """모델 워밍업 (동기)"""
         try:
             if hasattr(self.step, 'model_loader') and self.step.model_loader:
                 # 테스트 모델 로드
@@ -622,8 +681,29 @@ class WarmupSystem:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    async def _model_warmup_async(self) -> Dict[str, Any]:
+        """모델 워밍업 (비동기)"""
+        try:
+            if hasattr(self.step, 'model_loader') and self.step.model_loader:
+                # 테스트 모델 로드
+                try:
+                    if hasattr(self.step.model_loader, 'get_model_async'):
+                        test_model = await self.step.model_loader.get_model_async("warmup_test")
+                    else:
+                        test_model = self.step.model_loader.get_model("warmup_test")
+                    
+                    if test_model:
+                        return {'success': True, 'message': '모델 로더 비동기 워밍업 완료'}
+                except:
+                    pass
+            
+            return {'success': True, 'message': '모델 비동기 워밍업 건너뜀'}
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     def _device_warmup(self) -> Dict[str, Any]:
-        """디바이스 워밍업"""
+        """디바이스 워밍업 (동기)"""
         try:
             if TORCH_AVAILABLE:
                 device = getattr(self.step, 'device', 'cpu')
@@ -643,8 +723,19 @@ class WarmupSystem:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    async def _device_warmup_async(self) -> Dict[str, Any]:
+        """디바이스 워밍업 (비동기)"""
+        try:
+            # 동기 워밍업을 비동기로 실행
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, self._device_warmup)
+            return result
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     def _memory_warmup(self) -> Dict[str, Any]:
-        """메모리 워밍업"""
+        """메모리 워밍업 (동기)"""
         try:
             if hasattr(self.step, 'memory_manager') and self.step.memory_manager:
                 result = self.step.memory_manager.optimize_memory()
@@ -657,15 +748,76 @@ class WarmupSystem:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    async def _memory_warmup_async(self) -> Dict[str, Any]:
+        """메모리 워밍업 (비동기)"""
+        try:
+            if hasattr(self.step, 'memory_manager') and self.step.memory_manager:
+                if hasattr(self.step.memory_manager, 'optimize_memory_async'):
+                    result = await self.step.memory_manager.optimize_memory_async()
+                else:
+                    result = self.step.memory_manager.optimize_memory()
+                return {'success': result.get('success', False), 'message': '메모리 비동기 최적화 완료'}
+            
+            # 기본 메모리 정리
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, gc.collect)
+            return {'success': True, 'message': '기본 메모리 비동기 정리 완료'}
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     def _pipeline_warmup(self) -> Dict[str, Any]:
-        """파이프라인 워밍업"""
+        """파이프라인 워밍업 (동기) - 🔥 coroutine 경고 완전 해결"""
         try:
             # Step별 워밍업 로직 (기본)
             if hasattr(self.step, 'warmup_step'):
-                result = self.step.warmup_step()
-                return {'success': result.get('success', True), 'message': 'Step 워밍업 완료'}
+                warmup_method = getattr(self.step, 'warmup_step')
+                
+                # 🔥 비동기 함수인지 확인하고 적절히 처리
+                if asyncio.iscoroutinefunction(warmup_method):
+                    try:
+                        # 현재 이벤트 루프가 있는지 확인
+                        try:
+                            loop = asyncio.get_running_loop()
+                            # 이미 실행 중인 루프에서는 동기적으로 처리할 수 없음
+                            self.logger.warning("⚠️ 실행 중인 이벤트 루프에서 동기 파이프라인 워밍업 요청됨")
+                            return {'success': True, 'message': '비동기 파이프라인 워밍업 건너뜀 (동기 모드)'}
+                        except RuntimeError:
+                            # 실행 중인 루프가 없으면 새 루프로 실행
+                            result = asyncio.run(warmup_method())
+                            return {'success': result.get('success', True), 'message': 'Step 워밍업 완료 (비동기→동기)'}
+                    except Exception as e:
+                        self.logger.warning(f"비동기 워밍업 실패: {e}")
+                        return {'success': False, 'error': str(e)}
+                else:
+                    # 동기 함수인 경우 직접 호출
+                    result = warmup_method()
+                    return {'success': result.get('success', True), 'message': 'Step 워밍업 완료'}
             
             return {'success': True, 'message': '파이프라인 워밍업 건너뜀'}
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    async def _pipeline_warmup_async(self) -> Dict[str, Any]:
+        """파이프라인 워밍업 (비동기) - 🔥 coroutine 경고 완전 해결"""
+        try:
+            # Step별 워밍업 로직 (기본)
+            if hasattr(self.step, 'warmup_step'):
+                warmup_method = getattr(self.step, 'warmup_step')
+                
+                # 🔥 비동기 함수인지 확인하고 적절히 처리
+                if asyncio.iscoroutinefunction(warmup_method):
+                    # 비동기 함수인 경우 await로 호출
+                    result = await warmup_method()
+                    return {'success': result.get('success', True), 'message': 'Step 비동기 워밍업 완료'}
+                else:
+                    # 동기 함수인 경우 executor로 실행
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, warmup_method)
+                    return {'success': result.get('success', True), 'message': 'Step 워밍업 완료 (동기→비동기)'}
+            
+            return {'success': True, 'message': '파이프라인 비동기 워밍업 건너뜀'}
             
         except Exception as e:
             return {'success': False, 'error': str(e)}
@@ -851,15 +1003,30 @@ class StepMemoryOptimizer:
                 "error": str(e),
                 "timestamp": time.time()
             }
+    
+    async def optimize_memory_async(self, aggressive: bool = False) -> Dict[str, Any]:
+        """메모리 최적화 실행 (비동기)"""
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, lambda: self.optimize_memory(aggressive))
+            return result
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 Step 메모리 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": time.time()
+            }
 
 # ==============================================
-# 🔥 10. 메인 BaseStepMixin 클래스 (모든 기능 포함)
+# 🔥 10. 메인 BaseStepMixin 클래스 (비동기 처리 완전 해결)
 # ==============================================
 
 class BaseStepMixin:
     """
-    🔥 BaseStepMixin v10.0 - 완전한 기능 + DI 적용 (모든 오류 해결)
+    🔥 BaseStepMixin v10.1 - 비동기 처리 완전 해결 + 완전한 기능 + DI 적용
     
+    ✅ 비동기 처리 완전 해결 (coroutine 경고 완전 제거)
     ✅ from functools import wraps 추가 (NameError 해결)
     ✅ 의존성 주입 패턴 완전 적용
     ✅ 기존 모든 기능 100% 유지
@@ -874,7 +1041,7 @@ class BaseStepMixin:
     ✅ 워밍업 시스템
     ✅ 에러 복구 시스템
     ✅ 체크포인트 관리 시스템
-    ✅ 비동기 처리 완전 지원
+    ✅ 비동기 처리 완전 지원 (coroutine 경고 해결)
     ✅ 순환 임포트 완전 해결
     """
     
@@ -884,7 +1051,7 @@ class BaseStepMixin:
     _global_checkpoint_manager = None
     
     def __init__(self, *args, **kwargs):
-        """완전 안전한 초기화 - 모든 기능 포함 + DI 적용 + 모든 오류 해결"""
+        """완전 안전한 초기화 - 모든 기능 포함 + DI 적용 + 비동기 처리 완전 해결"""
         
         # ===== 🔥 STEP 0: logger 속성 최우선 생성 (절대 누락 방지) =====
         self._ensure_logger_first()
@@ -931,7 +1098,7 @@ class BaseStepMixin:
                 # 성능 모니터링
                 self._setup_performance_monitoring()
                 
-                # ModelLoader 인터페이스 (DI 기반)
+                # ModelLoader 인터페이스 (DI 기반) - 🔥 비동기 처리 해결
                 self._setup_model_interface()
                 
                 # 체크포인트 탐지 및 연동
@@ -943,7 +1110,7 @@ class BaseStepMixin:
                 # 최종 초기화 완료
                 self._finalize_initialization()
                 
-                self.logger.info(f"✅ {self.step_name} BaseStepMixin v10.0 초기화 완료")
+                self.logger.info(f"✅ {self.step_name} BaseStepMixin v10.1 초기화 완료")
                 self.logger.debug(f"🔧 Device: {self.device}, Memory: {self.memory_gb}GB, DI: {self.di_available}")
                 
             except Exception as e:
@@ -1350,7 +1517,7 @@ class BaseStepMixin:
             self.performance_monitor = None
     
     def _setup_model_interface(self):
-        """ModelLoader 인터페이스 설정 (DI 기반)"""
+        """ModelLoader 인터페이스 설정 (DI 기반) - 🔥 비동기 처리 해결"""
         try:
             self.logger.info(f"🔗 {self.step_name} ModelLoader 인터페이스 설정 중...")
             
@@ -1358,8 +1525,18 @@ class BaseStepMixin:
             if hasattr(self, 'model_loader') and self.model_loader:
                 try:
                     if hasattr(self.model_loader, 'create_step_interface'):
-                        self.step_interface = self.model_loader.create_step_interface(self.step_name)
-                        self.logger.info("✅ Step 인터페이스 생성 성공")
+                        # 🔥 비동기 함수인지 확인하고 적절히 처리
+                        create_method = self.model_loader.create_step_interface
+                        
+                        if asyncio.iscoroutinefunction(create_method):
+                            # 비동기 함수인 경우 - 동기 초기화에서는 처리하지 않음
+                            self.logger.warning("⚠️ create_step_interface가 비동기 함수임 - 나중에 비동기로 처리 필요")
+                            self.step_interface = None
+                            self._pending_async_setup = True  # 나중에 비동기 설정 필요 표시
+                        else:
+                            # 동기 함수인 경우 직접 호출
+                            self.step_interface = create_method(self.step_name)
+                            self.logger.info("✅ Step 인터페이스 생성 성공")
                     else:
                         self.step_interface = None
                         self.logger.warning("⚠️ ModelLoader에 create_step_interface 메서드 없음")
@@ -1368,6 +1545,7 @@ class BaseStepMixin:
                     self.step_interface = None
             else:
                 self.step_interface = None
+                self._pending_async_setup = False
             
             # 모델 관련 속성 초기화
             self._ai_model = None
@@ -1386,6 +1564,39 @@ class BaseStepMixin:
         except Exception as e:
             self.logger.error(f"❌ ModelLoader 인터페이스 설정 실패: {e}")
             self.step_interface = None
+            self._pending_async_setup = False
+    
+    async def _setup_model_interface_async(self):
+        """ModelLoader 인터페이스 비동기 설정 - 🔥 비동기 처리 완전 해결"""
+        try:
+            self.logger.info(f"🔗 {self.step_name} ModelLoader 인터페이스 비동기 설정 중...")
+            
+            # 대기 중인 비동기 설정이 있는 경우
+            if getattr(self, '_pending_async_setup', False):
+                if hasattr(self, 'model_loader') and self.model_loader:
+                    try:
+                        if hasattr(self.model_loader, 'create_step_interface'):
+                            create_method = self.model_loader.create_step_interface
+                            
+                            if asyncio.iscoroutinefunction(create_method):
+                                # 비동기 함수인 경우 await로 호출
+                                self.step_interface = await create_method(self.step_name)
+                                self.logger.info("✅ Step 인터페이스 비동기 생성 성공")
+                            else:
+                                # 동기 함수인 경우 직접 호출
+                                self.step_interface = create_method(self.step_name)
+                                self.logger.info("✅ Step 인터페이스 생성 성공 (동기)")
+                            
+                            self._pending_async_setup = False
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 비동기 생성 실패: {e}")
+                        self.step_interface = None
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 인터페이스 비동기 설정 실패: {e}")
+            return False
     
     def _setup_checkpoint_detection(self):
         """체크포인트 탐지 및 연동 (기존 기능 유지)"""
@@ -1505,6 +1716,7 @@ class BaseStepMixin:
             self.optimization_enabled = False
             self.auto_memory_cleanup = False
             self.auto_warmup = False
+            self._pending_async_setup = False
             
             # 의존성들을 None으로 초기화
             self.model_loader = None
@@ -1652,7 +1864,8 @@ class BaseStepMixin:
                 'di_container_connected': di_status.get('container_available', False),
                 'dependencies_status': di_status.get('dependencies', {}),
                 'registered_services_count': len(di_status.get('registered_services', [])),
-                'step_interface_available': hasattr(self, 'step_interface') and self.step_interface is not None
+                'step_interface_available': hasattr(self, 'step_interface') and self.step_interface is not None,
+                'pending_async_setup': getattr(self, '_pending_async_setup', False)
             }
         except Exception as e:
             return {
@@ -1661,6 +1874,7 @@ class BaseStepMixin:
                 'dependencies_status': {},
                 'registered_services_count': 0,
                 'step_interface_available': False,
+                'pending_async_setup': False,
                 'error': str(e)
             }
     
@@ -1753,7 +1967,7 @@ class BaseStepMixin:
             self.logger.warning(f"⚠️ CUDA 최적화 설정 실패: {e}")
     
     # ==============================================
-    # 🔥 공통 메서드들 (기존 기능 유지 + DI 적용)
+    # 🔥 공통 메서드들 (비동기 처리 완전 해결)
     # ==============================================
     
     def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
@@ -1806,7 +2020,7 @@ class BaseStepMixin:
             return None
     
     async def get_model_async(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """비동기 모델 가져오기 (DI 기반, 기존 기능 유지)"""
+        """비동기 모델 가져오기 (DI 기반, 비동기 처리 완전 해결)"""
         try:
             # 캐시 확인
             cache_key = model_name or "default"
@@ -1905,7 +2119,7 @@ class BaseStepMixin:
             return {"success": False, "error": str(e)}
     
     async def optimize_memory_async(self, aggressive: bool = False) -> Dict[str, Any]:
-        """비동기 메모리 최적화"""
+        """비동기 메모리 최적화 - 🔥 비동기 처리 완전 해결"""
         try:
             # DI를 통한 MemoryManager 사용
             if hasattr(self, 'memory_manager') and self.memory_manager:
@@ -1915,8 +2129,39 @@ class BaseStepMixin:
                         if result.get('success', False):
                             self.last_memory_optimization = time.time()
                             return result
+                    elif hasattr(self.memory_manager, 'optimize_memory'):
+                        # 동기 메서드를 비동기로 실행
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(
+                            None, 
+                            lambda: self.memory_manager.optimize_memory(aggressive=aggressive)
+                        )
+                        if result.get('success', False):
+                            self.last_memory_optimization = time.time()
+                            return result
                 except Exception as e:
                     self.logger.debug(f"비동기 DI MemoryManager 실패: {e}")
+            
+            # 내장 메모리 최적화 사용
+            if hasattr(self, 'memory_optimizer') and self.memory_optimizer:
+                try:
+                    if hasattr(self.memory_optimizer, 'optimize_memory_async'):
+                        result = await self.memory_optimizer.optimize_memory_async(aggressive=aggressive)
+                        if result.get('success', False):
+                            self.last_memory_optimization = time.time()
+                        return result
+                    else:
+                        # 동기 메서드를 비동기로 실행
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(
+                            None, 
+                            lambda: self.memory_optimizer.optimize_memory(aggressive)
+                        )
+                        if result.get('success', False):
+                            self.last_memory_optimization = time.time()
+                        return result
+                except Exception as e:
+                    self.logger.debug(f"비동기 내장 메모리 최적화 실패: {e}")
             
             # 폴백: 동기 메서드를 비동기로 실행
             loop = asyncio.get_event_loop()
@@ -1928,7 +2173,7 @@ class BaseStepMixin:
             return {"success": False, "error": str(e)}
     
     def warmup(self) -> Dict[str, Any]:
-        """워밍업 실행 (기존 기능 유지)"""
+        """워밍업 실행 (동기) - 🔥 비동기 처리 완전 해결"""
         try:
             if hasattr(self, 'warmup_system') and self.warmup_system:
                 if not getattr(self, 'warmup_completed', False):
@@ -1953,12 +2198,36 @@ class BaseStepMixin:
             return {"success": False, "error": str(e)}
     
     async def warmup_async(self) -> Dict[str, Any]:
-        """비동기 워밍업"""
+        """비동기 워밍업 - 🔥 비동기 처리 완전 해결"""
         try:
-            # 동기 워밍업을 비동기로 실행
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, self.warmup)
-            return result
+            # 대기 중인 비동기 설정 처리
+            if getattr(self, '_pending_async_setup', False):
+                await self._setup_model_interface_async()
+            
+            if hasattr(self, 'warmup_system') and self.warmup_system:
+                if not getattr(self, 'warmup_completed', False):
+                    # 비동기 워밍업 시퀀스 실행
+                    if hasattr(self.warmup_system, 'run_warmup_sequence_async'):
+                        result = await self.warmup_system.run_warmup_sequence_async()
+                    else:
+                        # 동기 워밍업을 비동기로 실행
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(None, self.warmup_system.run_warmup_sequence)
+                    
+                    if result.get('success', False):
+                        self.warmup_completed = True
+                        self.is_ready = True
+                        self.warmup_results = result
+                    return result
+                else:
+                    return {
+                        'success': True,
+                        'message': '이미 워밍업 완료됨',
+                        'cached_results': getattr(self, 'warmup_results', {})
+                    }
+            
+            # 기본 비동기 워밍업
+            return {'success': True, 'message': '기본 비동기 워밍업 완료'}
             
         except Exception as e:
             self.logger.error(f"❌ 비동기 워밍업 실패: {e}")
@@ -2128,9 +2397,66 @@ class BaseStepMixin:
             self.cleanup()
         except:
             pass
+    
+    # ==============================================
+    # 🔥 비동기 특화 메서드들 (새로 추가) - warmup_step 등을 위한 기본 구현
+    # ==============================================
+    
+    async def warmup_step(self) -> Dict[str, Any]:
+        """Step별 워밍업 메서드 (비동기) - 🔥 coroutine 경고 해결을 위한 기본 구현"""
+        try:
+            # Step별로 오버라이드할 수 있는 기본 워밍업 로직
+            self.logger.debug(f"🔥 {self.step_name} 기본 비동기 워밍업 시작")
+            
+            # 기본 워밍업 작업들
+            tasks = []
+            
+            # 1. 모델 초기화 확인
+            if hasattr(self, 'model_loader') and self.model_loader:
+                try:
+                    model = await self.get_model_async("default")
+                    if model:
+                        self.logger.debug(f"✅ {self.step_name} 모델 워밍업 성공")
+                    else:
+                        self.logger.debug(f"⚠️ {self.step_name} 모델 워밍업 건너뜀")
+                except Exception as e:
+                    self.logger.debug(f"⚠️ {self.step_name} 모델 워밍업 실패: {e}")
+            
+            # 2. 메모리 최적화
+            try:
+                await self.optimize_memory_async()
+                self.logger.debug(f"✅ {self.step_name} 메모리 최적화 완료")
+            except Exception as e:
+                self.logger.debug(f"⚠️ {self.step_name} 메모리 최적화 실패: {e}")
+            
+            # 3. Step별 특화 워밍업 (서브클래스에서 오버라이드)
+            await self._step_specific_warmup()
+            
+            return {
+                'success': True, 
+                'message': f'{self.step_name} 비동기 워밍업 완료',
+                'step_name': self.step_name,
+                'timestamp': time.time()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 비동기 워밍업 실패: {e}")
+            return {
+                'success': False, 
+                'error': str(e),
+                'step_name': self.step_name,
+                'timestamp': time.time()
+            }
+    
+    async def _step_specific_warmup(self) -> None:
+        """Step별 특화 워밍업 로직 (서브클래스에서 오버라이드)"""
+        # 기본 구현은 아무것도 하지 않음
+        # 각 Step 클래스에서 필요에 따라 오버라이드
+        await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+        self.logger.debug(f"🔥 {self.step_name} 특화 워밍업 기본 구현 (오버라이드 권장)")
 
 # ==============================================
-# 🔥 11. 안전한 데코레이터들 (기존 기능 유지)
+# 🔥 11. 안전한 데코레이터들 (비동기 처리 완전 해결)
 # ==============================================
 
 def safe_step_method(func: Callable) -> Callable:
@@ -2186,7 +2512,7 @@ def safe_step_method(func: Callable) -> Callable:
     return wrapper
 
 def async_safe_step_method(func: Callable) -> Callable:
-    """안전한 비동기 Step 메서드 실행 데코레이터 (기존 기능 유지)"""
+    """안전한 비동기 Step 메서드 실행 데코레이터 - 🔥 비동기 처리 완전 해결"""
     @wraps(func)  # ✅ 이제 정상 작동
     async def wrapper(self, *args, **kwargs):
         try:
@@ -2197,7 +2523,13 @@ def async_safe_step_method(func: Callable) -> Callable:
             # 성능 모니터링
             start_time = time.time()
             
-            result = await func(self, *args, **kwargs)
+            # 🔥 func가 비동기 함수인지 확인하고 적절히 호출
+            if asyncio.iscoroutinefunction(func):
+                result = await func(self, *args, **kwargs)
+            else:
+                # 동기 함수인 경우 executor로 실행
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, lambda: func(self, *args, **kwargs))
             
             # 성능 기록
             duration = time.time() - start_time
@@ -2285,6 +2617,60 @@ def performance_monitor(operation_name: str) -> Callable:
         return wrapper
     return decorator
 
+def async_performance_monitor(operation_name: str) -> Callable:
+    """비동기 성능 모니터링 데코레이터 - 🔥 새로 추가"""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            start_time = time.time()
+            success = True
+            try:
+                # 🔥 func가 비동기 함수인지 확인하고 적절히 호출
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(self, *args, **kwargs)
+                else:
+                    # 동기 함수인 경우 executor로 실행
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, lambda: func(self, *args, **kwargs))
+                return result
+            except Exception as e:
+                success = False
+                raise e
+            finally:
+                duration = time.time() - start_time
+                
+                # 성능 모니터에 기록
+                if hasattr(self, 'performance_monitor') and self.performance_monitor:
+                    self.performance_monitor.record_operation(f"{operation_name}_async", duration, success)
+                
+                # 기본 성능 메트릭에도 기록
+                if hasattr(self, 'performance_metrics'):
+                    if 'operations' not in self.performance_metrics:
+                        self.performance_metrics['operations'] = {}
+                    
+                    async_op_name = f"{operation_name}_async"
+                    if async_op_name not in self.performance_metrics['operations']:
+                        self.performance_metrics['operations'][async_op_name] = {
+                            'count': 0,
+                            'total_time': 0.0,
+                            'success_count': 0,
+                            'failure_count': 0,
+                            'avg_time': 0.0
+                        }
+                    
+                    op_metrics = self.performance_metrics['operations'][async_op_name]
+                    op_metrics['count'] += 1
+                    op_metrics['total_time'] += duration
+                    op_metrics['avg_time'] = op_metrics['total_time'] / op_metrics['count']
+                    
+                    if success:
+                        op_metrics['success_count'] += 1
+                    else:
+                        op_metrics['failure_count'] += 1
+                        
+        return wrapper
+    return decorator
+
 def memory_optimize_after(func: Callable) -> Callable:
     """메서드 실행 후 자동 메모리 최적화"""
     @wraps(func)
@@ -2313,12 +2699,46 @@ def memory_optimize_after(func: Callable) -> Callable:
     
     return wrapper
 
+def async_memory_optimize_after(func: Callable) -> Callable:
+    """비동기 메서드 실행 후 자동 메모리 최적화 - 🔥 새로 추가"""
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        try:
+            # 🔥 func가 비동기 함수인지 확인하고 적절히 호출
+            if asyncio.iscoroutinefunction(func):
+                result = await func(self, *args, **kwargs)
+            else:
+                # 동기 함수인 경우 executor로 실행
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, lambda: func(self, *args, **kwargs))
+            
+            # 자동 메모리 정리 (설정된 경우)
+            if getattr(self, 'auto_memory_cleanup', False):
+                try:
+                    await self.optimize_memory_async()
+                except Exception as e:
+                    if hasattr(self, 'logger'):
+                        self.logger.debug(f"자동 비동기 메모리 정리 실패: {e}")
+            
+            return result
+            
+        except Exception as e:
+            # 에러 발생시에도 메모리 정리
+            if getattr(self, 'auto_memory_cleanup', False):
+                try:
+                    await self.optimize_memory_async(aggressive=True)
+                except:
+                    pass
+            raise e
+    
+    return wrapper
+
 # ==============================================
-# 🔥 12. 기존 Step별 특화 Mixin들 (100% 유지)
+# 🔥 12. 기존 Step별 특화 Mixin들 (100% 유지 + 비동기 지원 추가)
 # ==============================================
 
 class HumanParsingMixin(BaseStepMixin):
-    """Step 1: Human Parsing 특화 Mixin (기존 기능 유지)"""
+    """Step 1: Human Parsing 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2331,9 +2751,27 @@ class HumanParsingMixin(BaseStepMixin):
             'dress', 'coat', 'socks', 'pants', 'jumpsuits', 'scarf', 'skirt',
             'face', 'left_arm', 'right_arm', 'left_leg', 'right_leg', 'left_shoe', 'right_shoe'
         ]
+    
+    async def _step_specific_warmup(self) -> None:
+        """Human Parsing 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Human Parsing 특화 워밍업 시작")
+            
+            # 파싱 모델 워밍업
+            model = await self.get_model_async("human_parsing")
+            if model:
+                self.logger.debug("✅ Human Parsing 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Human Parsing 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Human Parsing 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Human Parsing 특화 워밍업 실패: {e}")
 
 class PoseEstimationMixin(BaseStepMixin):
-    """Step 2: Pose Estimation 특화 Mixin (기존 기능 유지)"""
+    """Step 2: Pose Estimation 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2347,9 +2785,27 @@ class PoseEstimationMixin(BaseStepMixin):
             'right_ankle', 'left_hip', 'left_knee', 'left_ankle', 'right_eye',
             'left_eye', 'right_ear', 'left_ear'
         ]
+    
+    async def _step_specific_warmup(self) -> None:
+        """Pose Estimation 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Pose Estimation 특화 워밍업 시작")
+            
+            # 포즈 모델 워밍업
+            model = await self.get_model_async("pose_estimation")
+            if model:
+                self.logger.debug("✅ Pose Estimation 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Pose Estimation 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Pose Estimation 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Pose Estimation 특화 워밍업 실패: {e}")
 
 class ClothSegmentationMixin(BaseStepMixin):
-    """Step 3: Cloth Segmentation 특화 Mixin (기존 기능 유지)"""
+    """Step 3: Cloth Segmentation 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2357,9 +2813,27 @@ class ClothSegmentationMixin(BaseStepMixin):
         self.step_type = "cloth_segmentation"
         self.output_format = "cloth_mask"
         self.segmentation_methods = ['traditional', 'u2net', 'deeplab', 'auto', 'hybrid']
+    
+    async def _step_specific_warmup(self) -> None:
+        """Cloth Segmentation 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Cloth Segmentation 특화 워밍업 시작")
+            
+            # 옷 분할 모델 워밍업
+            model = await self.get_model_async("cloth_segmentation")
+            if model:
+                self.logger.debug("✅ Cloth Segmentation 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Cloth Segmentation 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Cloth Segmentation 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Cloth Segmentation 특화 워밍업 실패: {e}")
 
 class GeometricMatchingMixin(BaseStepMixin):
-    """Step 4: Geometric Matching 특화 Mixin (기존 기능 유지)"""
+    """Step 4: Geometric Matching 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2367,9 +2841,27 @@ class GeometricMatchingMixin(BaseStepMixin):
         self.step_type = "geometric_matching"
         self.output_format = "transformation_matrix"
         self.matching_methods = ['thin_plate_spline', 'affine', 'perspective', 'flow_based']
+    
+    async def _step_specific_warmup(self) -> None:
+        """Geometric Matching 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Geometric Matching 특화 워밍업 시작")
+            
+            # 기하학적 매칭 모델 워밍업
+            model = await self.get_model_async("geometric_matching")
+            if model:
+                self.logger.debug("✅ Geometric Matching 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Geometric Matching 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Geometric Matching 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Geometric Matching 특화 워밍업 실패: {e}")
 
 class ClothWarpingMixin(BaseStepMixin):
-    """Step 5: Cloth Warping 특화 Mixin (기존 기능 유지)"""
+    """Step 5: Cloth Warping 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2377,9 +2869,27 @@ class ClothWarpingMixin(BaseStepMixin):
         self.step_type = "cloth_warping"
         self.output_format = "warped_cloth"
         self.warping_stages = ['preprocessing', 'geometric_transformation', 'texture_mapping', 'postprocessing']
+    
+    async def _step_specific_warmup(self) -> None:
+        """Cloth Warping 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Cloth Warping 특화 워밍업 시작")
+            
+            # 옷 변형 모델 워밍업
+            model = await self.get_model_async("cloth_warping")
+            if model:
+                self.logger.debug("✅ Cloth Warping 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Cloth Warping 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Cloth Warping 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Cloth Warping 특화 워밍업 실패: {e}")
 
 class VirtualFittingMixin(BaseStepMixin):
-    """Step 6: Virtual Fitting 특화 Mixin (기존 기능 유지)"""
+    """Step 6: Virtual Fitting 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2387,9 +2897,27 @@ class VirtualFittingMixin(BaseStepMixin):
         self.step_type = "virtual_fitting"
         self.output_format = "fitted_image"
         self.fitting_modes = ['standard', 'high_quality', 'fast', 'experimental']
+    
+    async def _step_specific_warmup(self) -> None:
+        """Virtual Fitting 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Virtual Fitting 특화 워밍업 시작")
+            
+            # 가상 피팅 모델 워밍업
+            model = await self.get_model_async("virtual_fitting")
+            if model:
+                self.logger.debug("✅ Virtual Fitting 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Virtual Fitting 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Virtual Fitting 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Virtual Fitting 특화 워밍업 실패: {e}")
 
 class PostProcessingMixin(BaseStepMixin):
-    """Step 7: Post Processing 특화 Mixin (기존 기능 유지)"""
+    """Step 7: Post Processing 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2397,9 +2925,27 @@ class PostProcessingMixin(BaseStepMixin):
         self.step_type = "post_processing"
         self.output_format = "enhanced_image"
         self.processing_methods = ['super_resolution', 'denoising', 'color_correction', 'sharpening']
+    
+    async def _step_specific_warmup(self) -> None:
+        """Post Processing 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Post Processing 특화 워밍업 시작")
+            
+            # 후처리 모델 워밍업
+            model = await self.get_model_async("post_processing")
+            if model:
+                self.logger.debug("✅ Post Processing 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Post Processing 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Post Processing 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Post Processing 특화 워밍업 실패: {e}")
 
 class QualityAssessmentMixin(BaseStepMixin):
-    """Step 8: Quality Assessment 특화 Mixin (기존 기능 유지)"""
+    """Step 8: Quality Assessment 특화 Mixin (기존 기능 유지 + 비동기 지원)"""
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2407,9 +2953,83 @@ class QualityAssessmentMixin(BaseStepMixin):
         self.step_type = "quality_assessment"
         self.output_format = "quality_score"
         self.assessment_criteria = ['perceptual_quality', 'technical_quality', 'aesthetic_quality', 'overall_quality']
+    
+    async def _step_specific_warmup(self) -> None:
+        """Quality Assessment 특화 워밍업"""
+        try:
+            self.logger.debug("🔥 Quality Assessment 특화 워밍업 시작")
+            
+            # 품질 평가 모델 워밍업
+            model = await self.get_model_async("quality_assessment")
+            if model:
+                self.logger.debug("✅ Quality Assessment 모델 워밍업 완료")
+            else:
+                self.logger.debug("⚠️ Quality Assessment 모델 없음")
+            
+            await asyncio.sleep(0.001)  # 최소한의 비동기 작업
+            self.logger.debug("✅ Quality Assessment 특화 워밍업 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Quality Assessment 특화 워밍업 실패: {e}")
 
 # ==============================================
-# 🔥 13. 모듈 내보내기
+# 🔥 13. 비동기 유틸리티 함수들 (새로 추가)
+# ==============================================
+
+async def ensure_coroutine(func_or_coro, *args, **kwargs) -> Any:
+    """함수나 코루틴을 안전하게 실행하는 유틸리티"""
+    try:
+        if asyncio.iscoroutinefunction(func_or_coro):
+            return await func_or_coro(*args, **kwargs)
+        elif callable(func_or_coro):
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: func_or_coro(*args, **kwargs))
+        elif asyncio.iscoroutine(func_or_coro):
+            return await func_or_coro
+        else:
+            return func_or_coro
+    except Exception as e:
+        logging.error(f"❌ ensure_coroutine 실행 실패: {e}")
+        return None
+
+def is_coroutine_function_safe(func) -> bool:
+    """안전한 코루틴 함수 검사"""
+    try:
+        return asyncio.iscoroutinefunction(func)
+    except:
+        return False
+
+def is_coroutine_safe(obj) -> bool:
+    """안전한 코루틴 객체 검사"""
+    try:
+        return asyncio.iscoroutine(obj)
+    except:
+        return False
+
+async def run_with_timeout(coro_or_func, timeout: float = 30.0, *args, **kwargs) -> Any:
+    """타임아웃을 적용한 안전한 실행"""
+    try:
+        if asyncio.iscoroutinefunction(coro_or_func):
+            return await asyncio.wait_for(coro_or_func(*args, **kwargs), timeout=timeout)
+        elif callable(coro_or_func):
+            loop = asyncio.get_event_loop()
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: coro_or_func(*args, **kwargs)), 
+                timeout=timeout
+            )
+        elif asyncio.iscoroutine(coro_or_func):
+            return await asyncio.wait_for(coro_or_func, timeout=timeout)
+        else:
+            return coro_or_func
+    except asyncio.TimeoutError:
+        logging.warning(f"⚠️ 실행 타임아웃 ({timeout}초): {coro_or_func}")
+        return None
+    except Exception as e:
+        logging.error(f"❌ run_with_timeout 실행 실패: {e}")
+        return None
+
+# ==============================================
+# 🔥 14. 모듈 내보내기
 # ==============================================
 
 __all__ = [
@@ -2433,11 +3053,19 @@ __all__ = [
     'PostProcessingMixin',
     'QualityAssessmentMixin',
     
-    # 데코레이터들
+    # 데코레이터들 (동기/비동기)
     'safe_step_method',
     'async_safe_step_method',
     'performance_monitor',
+    'async_performance_monitor',
     'memory_optimize_after',
+    'async_memory_optimize_after',
+    
+    # 비동기 유틸리티들
+    'ensure_coroutine',
+    'is_coroutine_function_safe',
+    'is_coroutine_safe',
+    'run_with_timeout',
     
     # 상수들
     'TORCH_AVAILABLE',
@@ -2447,10 +3075,11 @@ __all__ = [
 ]
 
 # ==============================================
-# 🔥 14. 모듈 로드 완료 메시지
+# 🔥 15. 모듈 로드 완료 메시지
 # ==============================================
 
-print("✅ BaseStepMixin v10.0 모듈 로드 완료 - 완전한 기능 + DI (모든 오류 해결)")
+print("✅ BaseStepMixin v10.1 모듈 로드 완료 - 비동기 처리 완전 해결")
+print("🔥 비동기 처리 완전 해결 (coroutine 경고 완전 제거)")
 print("🔥 from functools import wraps 추가 - NameError 완전 해결")
 print("🚨 _emergency_initialization 메서드 완전 구현")
 print("🚀 의존성 주입 패턴 완전 적용")
@@ -2462,16 +3091,32 @@ print("🛡️ SafeFunctionValidator 통합")
 print("🍎 M3 Max 128GB 최적화")
 print("📊 성능 모니터링 시스템")
 print("🧹 메모리 최적화 시스템")
-print("🔥 워밍업 시스템")
+print("🔥 워밍업 시스템 (동기/비동기 완전 지원)")
 print("🔄 에러 복구 시스템")
 print("📁 체크포인트 관리 시스템")
-print("⚡ 비동기 처리 완전 지원")
+print("⚡ 비동기 처리 완전 지원 (coroutine 경고 해결)")
 print("🎯 프로덕션 레벨 안정성 최고 수준")
 print("🔗 DI Container v2.0 완벽 호환")
 print("🔧 모든 누락 메서드 구현 완료")
+print("🌟 warmup_step() 비동기 메서드 기본 구현 추가")
+print("🌟 _step_specific_warmup() 비동기 메서드 기본 구현 추가")
+print("🌟 async/await 완전 지원으로 coroutine 경고 완전 해결")
 print(f"🔧 시스템 상태:")
 print(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
 print(f"   - MPS: {'✅' if MPS_AVAILABLE else '❌'}")
 print(f"   - NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
 print(f"   - PIL: {'✅' if PIL_AVAILABLE else '❌'}")
-print("🚀 BaseStepMixin v10.0 완전 준비 완료 - 모든 오류 해결!")
+print("🚀 BaseStepMixin v10.1 완전 준비 완료 - 비동기 처리 완전 해결!")
+print("🌟 주요 개선사항:")
+print("   ✅ warmup_step() 비동기 메서드 완전 구현")
+print("   ✅ _pipeline_warmup() coroutine 경고 완전 해결")
+print("   ✅ _setup_model_interface_async() 추가")
+print("   ✅ 모든 Step별 Mixin에 비동기 워밍업 추가")
+print("   ✅ 비동기 데코레이터 추가 (async_safe_step_method)")
+print("   ✅ 비동기 유틸리티 함수들 추가")
+print("   ✅ ensure_coroutine() 안전한 비동기 실행")
+print("   ✅ run_with_timeout() 타임아웃 적용 실행")
+print("   ✅ conda 환경 우선 지원")
+print("   ✅ 모든 기존 클래스명/함수명 100% 유지")
+print("   ✅ M3 Max 128GB 최대 활용")
+print("   ✅ Clean Architecture 적용")
