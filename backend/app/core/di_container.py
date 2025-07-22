@@ -1,102 +1,112 @@
-# backend/app/core/di_container.py
+# backend/app/services/di_container.py
 """
-🔥 의존성 주입 컨테이너 - 순환 임포트 완전 해결 + DI Container 아키텍처 핵심
-================================================================================
+🔥 DI Container - 최적 결합 버전 (실용성 + 완전성)
+==================================================
 
-✅ 싱글톤 패턴으로 전역 관리
-✅ 인터페이스 기반 등록/조회
-✅ 지연 로딩 지원 (Lazy Loading)
-✅ 팩토리 함수 지원
-✅ 스레드 안전성
-✅ 약한 참조로 메모리 누수 방지
-✅ conda 환경 최적화
+✅ MyCloset AI 프로젝트 특화 (문서 4 기반)
+✅ 프로덕션급 DI Container 기능 (제안 버전 기반)
+✅ 순환참조 완전 해결
+✅ ModelLoader, MemoryManager, BaseStepMixin 직접 연동
+✅ Mock 구현체 포함 (폴백 지원)
+✅ conda 환경 우선 최적화
 ✅ M3 Max 128GB 최적화
-✅ 순환참조 완전 방지
-✅ ModelLoader → BaseStepMixin → Services 완전 연동
-✅ 프로덕션 레벨 안정성
+✅ 순환 의존성 감지 및 방지
+✅ 생명주기 관리 및 메모리 보호
 
-핵심 역할:
-- 모든 의존성의 중앙 집중 관리
-- ModelLoader, MemoryManager, BaseStepMixin 생성 및 주입
-- Services 레이어에서 필요한 의존성 제공
-- 순환참조 방지를 위한 지연 로딩
-
-Author: MyCloset AI Team  
+Author: MyCloset AI Team
 Date: 2025-07-22
-Version: 2.0.0 (Complete DI Architecture)
+Version: 3.0 (Optimal Combined)
 """
 
+# ==============================================
+# 🔥 1. conda 환경 우선 체크 및 설정
+# ==============================================
 import os
+import sys
 import gc
 import logging
 import threading
 import weakref
 import time
 import platform
-from typing import Dict, Any, Optional, Type, TypeVar, Callable, Union, List, Set
+import subprocess
+from typing import Dict, Any, Optional, Type, TypeVar, Callable, Union, List
 from abc import ABC, abstractmethod
-from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
-# ==============================================
-# 🔥 1. 기본 설정 및 환경 감지
-# ==============================================
+# conda 환경 우선 설정
+CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
+IS_CONDA = CONDA_ENV != 'none'
+
+if IS_CONDA:
+    print(f"✅ conda 환경 감지: {CONDA_ENV}")
+    # conda 우선 라이브러리 경로 설정
+    if 'CONDA_PREFIX' in os.environ:
+        conda_lib_path = os.path.join(os.environ['CONDA_PREFIX'], 'lib', 'python3.9', 'site-packages')
+        if os.path.exists(conda_lib_path) and conda_lib_path not in sys.path:
+            sys.path.insert(0, conda_lib_path)
+else:
+    print("⚠️ conda 환경 비활성화 - conda activate <env> 권장")
 
 # 로거 설정
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 타입 변수
 T = TypeVar('T')
 
-# conda 환경 정보
-CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
-IS_CONDA = CONDA_ENV != 'none'
+# ==============================================
+# 🔥 2. 시스템 환경 감지
+# ==============================================
 
-# M3 Max 감지
 def detect_m3_max() -> bool:
-    """M3 Max 감지"""
+    """M3 Max 감지 (정확한 방식)"""
     try:
-        if platform.system() == 'Darwin' and 'arm64' in platform.machine():
-            return True
-    except:
+        if platform.system() == 'Darwin':
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                capture_output=True, text=True, timeout=5
+            )
+            return 'M3' in result.stdout
+    except Exception:
         pass
     return False
 
 IS_M3_MAX = detect_m3_max()
-
-# 디바이스 설정
 DEVICE = 'mps' if IS_M3_MAX else 'cpu'
-os.environ['DEVICE'] = DEVICE
 
-# PyTorch 가용성 체크
+# PyTorch 가용성 체크 (conda 우선)
 TORCH_AVAILABLE = False
+MPS_AVAILABLE = False
 try:
     import torch
     TORCH_AVAILABLE = True
     
-    # M3 Max 최적화 설정
-    if IS_M3_MAX:
-        os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        # M3 Max 최적화 설정
+        os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+        os.environ.setdefault('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.0')
+        
+    logger.info(f"✅ PyTorch 로드: MPS={MPS_AVAILABLE}, M3 Max={IS_M3_MAX}")
 except ImportError:
-    pass
-
-logger.info(f"🔗 DI Container 환경: conda={IS_CONDA}, M3 Max={IS_M3_MAX}, PyTorch={TORCH_AVAILABLE}")
+    logger.warning("⚠️ PyTorch 없음 - conda install pytorch 권장")
 
 # ==============================================
-# 🔥 2. DI Container 인터페이스 및 설정 클래스들
+# 🔥 3. DI Container 설정 클래스들
 # ==============================================
 
 class DependencyScope(Enum):
     """의존성 스코프"""
-    SINGLETON = "singleton"      # 싱글톤 (기본값)
-    TRANSIENT = "transient"     # 매번 새로 생성
-    SCOPED = "scoped"           # 스코프별 (세션별)
+    SINGLETON = "singleton"
+    TRANSIENT = "transient"
+    SCOPED = "scoped"
 
 @dataclass
 class DependencyInfo:
-    """의존성 정보"""
+    """의존성 정보 (상세 추적용)"""
     key: str
     implementation: Any
     factory: Optional[Callable]
@@ -110,7 +120,7 @@ class IDependencyContainer(ABC):
     """의존성 컨테이너 인터페이스"""
     
     @abstractmethod
-    def register(self, interface: Union[str, Type], implementation: Any, scope: DependencyScope = DependencyScope.SINGLETON) -> None:
+    def register(self, interface: Union[str, Type], implementation: Any, singleton: bool = True) -> None:
         """의존성 등록"""
         pass
     
@@ -125,63 +135,82 @@ class IDependencyContainer(ABC):
         pass
 
 # ==============================================
-# 🔥 3. 메인 DI Container 클래스
+# 🔥 4. 메인 DI Container (결합 버전)
 # ==============================================
 
 class DIContainer(IDependencyContainer):
     """
-    🔥 의존성 주입 컨테이너 - MyCloset AI 아키텍처의 핵심
+    🔥 최적 결합 DI Container - MyCloset AI 특화 + 프로덕션급 기능
     
     특징:
-    ✅ 스레드 안전한 싱글톤/임시 인스턴스 지원
-    ✅ 팩토리 함수 및 지연 로딩
-    ✅ 약한 참조로 메모리 누수 방지  
-    ✅ 순환참조 완전 방지
-    ✅ M3 Max 메모리 최적화
+    ✅ MyCloset AI 구조에 맞춤 (문서 4 기반)
+    ✅ 순환 의존성 감지 및 방지 (제안 버전 기반)
+    ✅ ModelLoader, MemoryManager, BaseStepMixin 직접 연동
+    ✅ Mock 폴백 구현체 포함
+    ✅ 생명주기 관리 및 메모리 보호
+    ✅ conda 환경 우선 최적화
     """
     
     def __init__(self):
-        # 의존성 저장소들
+        # 의존성 저장소들 (상세 추적)
         self._dependencies: Dict[str, DependencyInfo] = {}
+        self._services: Dict[str, Any] = {}
         self._singletons: Dict[str, Any] = {}
         self._factories: Dict[str, Callable] = {}
         self._scoped_instances: Dict[str, Dict[str, Any]] = {}
         
-        # 스레드 안전성
-        self._lock = threading.RLock()
+        # 순환 의존성 방지
+        self._dependency_graph: Dict[str, List[str]] = {}
+        self._resolving_stack: List[str] = []
         
-        # 메모리 관리
+        # 스레드 안전성 강화
+        self._lock = threading.RLock()
+        self._resolution_lock = threading.RLock()
+        
+        # 메모리 보호 (약한 참조)
         self._weak_refs: Dict[str, weakref.ref] = {}
         
-        # 통계
+        # 생명주기 훅들
+        self._lifecycle_hooks: Dict[str, List[Callable]] = {
+            'before_create': [],
+            'after_create': [],
+            'before_destroy': []
+        }
+        
+        # 상세 통계 (프로덕션용)
         self._stats = {
             'total_registrations': 0,
             'total_resolutions': 0,
             'cache_hits': 0,
             'cache_misses': 0,
+            'circular_dependencies_detected': 0,
             'memory_cleanups': 0,
+            'created_instances': 0,
             'initialization_time': time.time()
         }
         
-        # 초기화 플래그
+        # 초기화 상태
         self._initialized = False
         
-        logger.info("🔗 DIContainer 인스턴스 생성 완료")
+        logger.info("🔗 DIContainer 최적 결합 버전 생성")
     
     def initialize(self) -> bool:
-        """DI Container 초기화"""
+        """DI Container 초기화 (MyCloset AI 특화)"""
         if self._initialized:
             return True
         
         try:
             with self._lock:
-                # 기본 의존성들 등록
-                self._register_core_dependencies()
+                # MyCloset AI 핵심 의존성들 등록
+                self._register_mycloset_dependencies()
                 
-                # 초기화 완료
+                # conda 환경 최적화
+                if IS_CONDA:
+                    self._optimize_for_conda()
+                
                 self._initialized = True
                 
-                logger.info("✅ DIContainer 초기화 완료")
+                logger.info("✅ DIContainer 초기화 완료 (MyCloset AI 특화)")
                 logger.info(f"🔧 환경: conda={IS_CONDA}, M3 Max={IS_M3_MAX}, Device={DEVICE}")
                 
                 return True
@@ -191,26 +220,22 @@ class DIContainer(IDependencyContainer):
             return False
     
     def register(
-        self, 
-        interface: Union[str, Type], 
-        implementation: Any = None, 
-        scope: DependencyScope = DependencyScope.SINGLETON,
+        self,
+        interface: Union[str, Type],
+        implementation: Any = None,
+        singleton: bool = True,
         factory: Optional[Callable] = None
     ) -> None:
-        """
-        의존성 등록
-        
-        Args:
-            interface: 인터페이스 (문자열 또는 타입)
-            implementation: 구현체 또는 클래스
-            scope: 의존성 스코프
-            factory: 팩토리 함수 (implementation보다 우선)
-        """
+        """의존성 등록 (순환 의존성 감지 포함)"""
         try:
             with self._lock:
                 key = self._get_key(interface)
                 
+                # 생명주기 훅 실행
+                self._execute_lifecycle_hooks('before_create', key)
+                
                 # 의존성 정보 생성
+                scope = DependencyScope.SINGLETON if singleton else DependencyScope.TRANSIENT
                 dep_info = DependencyInfo(
                     key=key,
                     implementation=implementation,
@@ -223,152 +248,107 @@ class DIContainer(IDependencyContainer):
                 
                 if factory:
                     self._factories[key] = factory
+                elif implementation:
+                    if singleton:
+                        if isinstance(implementation, type):
+                            # 클래스인 경우 팩토리로 등록
+                            self._factories[key] = lambda: implementation()
+                        else:
+                            # 인스턴스인 경우 직접 등록
+                            self._singletons[key] = implementation
+                    else:
+                        self._services[key] = implementation
+                
+                # 의존성 그래프 업데이트
+                self._update_dependency_graph(key, implementation or factory)
+                
+                # 생명주기 훅 실행
+                self._execute_lifecycle_hooks('after_create', key)
                 
                 self._stats['total_registrations'] += 1
                 
-                scope_text = scope.value
-                factory_text = " (Factory)" if factory else ""
-                logger.debug(f"✅ 의존성 등록: {key} [{scope_text}]{factory_text}")
+                logger.debug(f"✅ 의존성 등록: {key} ({'싱글톤' if singleton else '임시'})")
                 
         except Exception as e:
             logger.error(f"❌ 의존성 등록 실패 {interface}: {e}")
+            raise
     
-    def register_factory(
-        self, 
-        interface: Union[str, Type], 
-        factory: Callable, 
-        scope: DependencyScope = DependencyScope.SINGLETON
-    ) -> None:
-        """팩토리 함수 등록"""
-        self.register(interface, None, scope, factory)
-    
-    def register_instance(self, interface: Union[str, Type], instance: Any) -> None:
-        """인스턴스 직접 등록 (항상 싱글톤)"""
+    def get(self, interface: Union[str, Type]) -> Optional[Any]:
+        """의존성 조회 (순환 의존성 감지 포함)"""
         try:
-            with self._lock:
-                key = self._get_key(interface)
-                self._singletons[key] = instance
-                
-                # 의존성 정보도 등록
-                dep_info = DependencyInfo(
-                    key=key,
-                    implementation=instance,
-                    factory=None,
-                    scope=DependencyScope.SINGLETON,
-                    created_at=time.time(),
-                    is_initialized=True
-                )
-                self._dependencies[key] = dep_info
-                
-                self._stats['total_registrations'] += 1
-                logger.debug(f"✅ 인스턴스 등록: {key}")
-                
-        except Exception as e:
-            logger.error(f"❌ 인스턴스 등록 실패 {interface}: {e}")
-    
-    def get(self, interface: Union[str, Type], scope_id: str = "default") -> Optional[Any]:
-        """
-        의존성 조회
-        
-        Args:
-            interface: 인터페이스
-            scope_id: 스코프 ID (scoped 의존성용)
-            
-        Returns:
-            구현체 인스턴스 또는 None
-        """
-        try:
-            with self._lock:
+            with self._resolution_lock:
                 key = self._get_key(interface)
                 self._stats['total_resolutions'] += 1
                 
-                # 의존성 정보 확인
-                if key not in self._dependencies:
-                    logger.debug(f"⚠️ 등록되지 않은 의존성: {key}")
-                    self._stats['cache_misses'] += 1
+                # 순환 의존성 감지
+                if key in self._resolving_stack:
+                    circular_path = ' -> '.join(self._resolving_stack + [key])
+                    self._stats['circular_dependencies_detected'] += 1
+                    logger.error(f"❌ 순환 의존성 감지: {circular_path}")
                     return None
                 
-                dep_info = self._dependencies[key]
-                dep_info.access_count += 1
-                dep_info.last_access = time.time()
+                self._resolving_stack.append(key)
                 
-                # 스코프별 처리
-                if dep_info.scope == DependencyScope.SINGLETON:
-                    return self._get_singleton(key, dep_info)
-                
-                elif dep_info.scope == DependencyScope.SCOPED:
-                    return self._get_scoped(key, dep_info, scope_id)
-                
-                elif dep_info.scope == DependencyScope.TRANSIENT:
-                    return self._create_instance(key, dep_info)
-                
-                return None
-                
+                try:
+                    result = self._resolve_dependency(key)
+                    if result is not None:
+                        self._stats['cache_hits'] += 1
+                    else:
+                        self._stats['cache_misses'] += 1
+                    return result
+                finally:
+                    self._resolving_stack.remove(key)
+                    
         except Exception as e:
             logger.error(f"❌ 의존성 조회 실패 {interface}: {e}")
             return None
     
-    def _get_singleton(self, key: str, dep_info: DependencyInfo) -> Optional[Any]:
-        """싱글톤 인스턴스 조회/생성"""
-        # 이미 생성된 싱글톤 확인
-        if key in self._singletons:
-            self._stats['cache_hits'] += 1
-            return self._singletons[key]
-        
-        # 새로 생성
-        instance = self._create_instance(key, dep_info)
-        if instance is not None:
-            self._singletons[key] = instance
-            self._stats['cache_misses'] += 1
-        
-        return instance
-    
-    def _get_scoped(self, key: str, dep_info: DependencyInfo, scope_id: str) -> Optional[Any]:
-        """스코프별 인스턴스 조회/생성"""
-        if scope_id not in self._scoped_instances:
-            self._scoped_instances[scope_id] = {}
-        
-        scope_dict = self._scoped_instances[scope_id]
-        
-        if key in scope_dict:
-            self._stats['cache_hits'] += 1
-            return scope_dict[key]
-        
-        instance = self._create_instance(key, dep_info)
-        if instance is not None:
-            scope_dict[key] = instance
-            self._stats['cache_misses'] += 1
-        
-        return instance
-    
-    def _create_instance(self, key: str, dep_info: DependencyInfo) -> Optional[Any]:
-        """인스턴스 생성"""
-        try:
-            # 팩토리 함수 우선
-            if dep_info.factory:
-                instance = dep_info.factory()
-                logger.debug(f"🏭 팩토리로 생성: {key}")
-                return instance
+    def _resolve_dependency(self, key: str) -> Optional[Any]:
+        """실제 의존성 해결 (상세 추적)"""
+        with self._lock:
+            # 의존성 정보 업데이트
+            if key in self._dependencies:
+                dep_info = self._dependencies[key]
+                dep_info.access_count += 1
+                dep_info.last_access = time.time()
             
-            # 구현체로 생성
-            if dep_info.implementation:
-                impl = dep_info.implementation
-                
-                # 클래스인 경우 인스턴스 생성
-                if isinstance(impl, type):
-                    instance = impl()
-                    logger.debug(f"🔧 클래스로 생성: {key}")
+            # 1. 싱글톤 체크
+            if key in self._singletons:
+                return self._singletons[key]
+            
+            # 2. 약한 참조 체크 (메모리 보호)
+            if key in self._weak_refs:
+                weak_ref = self._weak_refs[key]
+                instance = weak_ref()
+                if instance is not None:
                     return instance
                 else:
-                    # 이미 인스턴스인 경우
-                    logger.debug(f"📦 기존 인스턴스 반환: {key}")
-                    return impl
+                    # 약한 참조가 해제됨
+                    del self._weak_refs[key]
             
-            logger.debug(f"⚠️ 생성 방법 없음: {key}")
-            return None
+            # 3. 일반 서비스 체크
+            if key in self._services:
+                return self._services[key]
             
-        except Exception as e:
-            logger.error(f"❌ 인스턴스 생성 실패 {key}: {e}")
+            # 4. 팩토리 체크
+            if key in self._factories:
+                try:
+                    factory = self._factories[key]
+                    instance = factory()
+                    self._stats['created_instances'] += 1
+                    
+                    # 싱글톤이면 캐시
+                    if key in self._dependencies and self._dependencies[key].scope == DependencyScope.SINGLETON:
+                        self._singletons[key] = instance
+                    else:
+                        # 약한 참조로 저장
+                        self._weak_refs[key] = weakref.ref(instance)
+                    
+                    return instance
+                except Exception as e:
+                    logger.error(f"❌ 팩토리 실행 실패 ({key}): {e}")
+            
+            logger.debug(f"⚠️ 서비스를 찾을 수 없음: {key}")
             return None
     
     def is_registered(self, interface: Union[str, Type]) -> bool:
@@ -376,17 +356,19 @@ class DIContainer(IDependencyContainer):
         try:
             with self._lock:
                 key = self._get_key(interface)
-                return key in self._dependencies
-        except:
+                return (key in self._services or 
+                       key in self._singletons or 
+                       key in self._factories or
+                       key in self._dependencies)
+        except Exception:
             return False
     
-    def _register_core_dependencies(self):
-        """핵심 의존성들 등록"""
+    def _register_mycloset_dependencies(self):
+        """MyCloset AI 핵심 의존성들 등록 (문서 4 기반)"""
         try:
-            # ModelLoader 팩토리 등록
+            # 1. ModelLoader 등록 (핵심!)
             def create_model_loader():
                 try:
-                    # 동적 import로 순환참조 방지
                     from ..ai_pipeline.utils.model_loader import ModelLoader, get_global_model_loader
                     loader = get_global_model_loader()
                     if loader:
@@ -397,13 +379,13 @@ class DIContainer(IDependencyContainer):
                 except Exception as e:
                     logger.debug(f"ModelLoader 생성 실패: {e}")
                 
-                # 폴백: Mock ModelLoader 생성
+                # 폴백: Mock ModelLoader
                 return self._create_mock_model_loader()
             
-            self.register_factory('IModelLoader', create_model_loader, DependencyScope.SINGLETON)
-            self.register_factory('model_loader', create_model_loader, DependencyScope.SINGLETON)
+            self.register('IModelLoader', factory=create_model_loader, singleton=True)
+            self.register('model_loader', factory=create_model_loader, singleton=True)
             
-            # MemoryManager 팩토리 등록
+            # 2. MemoryManager 등록
             def create_memory_manager():
                 try:
                     from ..ai_pipeline.utils.memory_manager import MemoryManager, get_global_memory_manager
@@ -416,13 +398,13 @@ class DIContainer(IDependencyContainer):
                 except Exception as e:
                     logger.debug(f"MemoryManager 생성 실패: {e}")
                 
-                # 폴백: Mock MemoryManager 생성
+                # 폴백: Mock MemoryManager
                 return self._create_mock_memory_manager()
             
-            self.register_factory('IMemoryManager', create_memory_manager, DependencyScope.SINGLETON)
-            self.register_factory('memory_manager', create_memory_manager, DependencyScope.SINGLETON)
+            self.register('IMemoryManager', factory=create_memory_manager, singleton=True)
+            self.register('memory_manager', factory=create_memory_manager, singleton=True)
             
-            # BaseStepMixin 팩토리 등록
+            # 3. BaseStepMixin 등록
             def create_step_mixin():
                 try:
                     from ..ai_pipeline.steps.base_step_mixin import BaseStepMixin
@@ -434,13 +416,13 @@ class DIContainer(IDependencyContainer):
                 except Exception as e:
                     logger.debug(f"BaseStepMixin 생성 실패: {e}")
                 
-                # 폴백: Mock StepMixin 생성
+                # 폴백: Mock StepMixin
                 return self._create_mock_step_mixin()
             
-            self.register_factory('IStepMixin', create_step_mixin, DependencyScope.TRANSIENT)
-            self.register_factory('step_mixin', create_step_mixin, DependencyScope.TRANSIENT)
+            self.register('IStepMixin', factory=create_step_mixin, singleton=False)
+            self.register('step_mixin', factory=create_step_mixin, singleton=False)
             
-            # SafeFunctionValidator 팩토리 등록
+            # 4. SafeFunctionValidator 등록
             def create_function_validator():
                 try:
                     from ..ai_pipeline.utils.model_loader import SafeFunctionValidator
@@ -450,29 +432,46 @@ class DIContainer(IDependencyContainer):
                 except ImportError:
                     return self._create_mock_function_validator()
             
-            self.register_factory('ISafeFunctionValidator', create_function_validator, DependencyScope.SINGLETON)
-            self.register_factory('function_validator', create_function_validator, DependencyScope.SINGLETON)
+            self.register('ISafeFunctionValidator', factory=create_function_validator, singleton=True)
+            self.register('function_validator', factory=create_function_validator, singleton=True)
             
-            logger.info("✅ 핵심 의존성 등록 완료")
+            # 5. 기본 시스템 서비스들
+            self.register('logger', logger, singleton=True)
+            self.register('device', DEVICE, singleton=True)
+            self.register('conda_info', {
+                'conda_env': CONDA_ENV,
+                'is_conda': IS_CONDA,
+                'is_m3_max': IS_M3_MAX,
+                'torch_available': TORCH_AVAILABLE
+            }, singleton=True)
+            
+            logger.info("✅ MyCloset AI 핵심 의존성 등록 완료")
             
         except Exception as e:
-            logger.error(f"❌ 핵심 의존성 등록 실패: {e}")
+            logger.error(f"❌ MyCloset AI 의존성 등록 실패: {e}")
     
     def _create_mock_model_loader(self):
-        """Mock ModelLoader 생성"""
+        """Mock ModelLoader 생성 (문서 4 기반 + 개선)"""
         class MockModelLoader:
             def __init__(self):
                 self.logger = logger
                 self.models = {}
                 self.is_initialized = True
                 self.device = DEVICE
+                self.step_interfaces = {}
             
             def initialize(self):
                 return True
             
             def get_model(self, model_name: str):
                 if model_name not in self.models:
-                    self.models[model_name] = f"mock_model_{model_name}"
+                    self.models[model_name] = {
+                        "name": model_name,
+                        "device": self.device,
+                        "type": "mock_model",
+                        "loaded": True,
+                        "size_mb": 50.0
+                    }
                     self.logger.debug(f"🤖 Mock 모델 생성: {model_name}")
                 return self.models[model_name]
             
@@ -486,47 +485,82 @@ class DIContainer(IDependencyContainer):
                 return self.get_model(model_name)
             
             def create_step_interface(self, step_name: str):
-                return {
-                    "step_name": step_name,
-                    "model": self.get_model(f"{step_name}_model"),
-                    "interface_type": "mock",
-                    "device": self.device
-                }
+                if step_name not in self.step_interfaces:
+                    self.step_interfaces[step_name] = {
+                        "step_name": step_name,
+                        "model": self.get_model(f"{step_name}_model"),
+                        "interface_type": "mock",
+                        "device": self.device,
+                        "methods": ["get_model_sync", "get_model", "load_model"]
+                    }
+                return self.step_interfaces[step_name]
             
             def cleanup_models(self):
                 self.models.clear()
+                self.step_interfaces.clear()
+            
+            def get_model_info(self):
+                return {
+                    "loaded_models": len(self.models),
+                    "device": self.device,
+                    "total_step_interfaces": len(self.step_interfaces)
+                }
         
         logger.info("✅ Mock ModelLoader 생성 (폴백)")
         return MockModelLoader()
     
     def _create_mock_memory_manager(self):
-        """Mock MemoryManager 생성"""
+        """Mock MemoryManager 생성 (문서 4 기반 + 개선)"""
         class MockMemoryManager:
             def __init__(self):
                 self.logger = logger
                 self.is_initialized = True
+                self.optimization_count = 0
             
             def optimize_memory(self):
                 try:
+                    # 기본 메모리 정리
                     gc.collect()
-                    if TORCH_AVAILABLE and IS_M3_MAX:
+                    
+                    # M3 Max MPS 최적화
+                    if TORCH_AVAILABLE and IS_M3_MAX and MPS_AVAILABLE:
                         import torch
-                        if torch.backends.mps.is_available() and hasattr(torch.mps, 'empty_cache'):
+                        if hasattr(torch.mps, 'empty_cache'):
                             torch.mps.empty_cache()
-                    return True
+                            self.logger.debug("🍎 MPS 캐시 정리 완료")
+                    
+                    self.optimization_count += 1
+                    return {"success": True, "method": "mock_optimization", "count": self.optimization_count}
+                    
                 except Exception as e:
                     self.logger.debug(f"메모리 최적화 실패: {e}")
-                    return False
+                    return {"success": False, "error": str(e)}
             
             async def optimize_memory_async(self):
                 return self.optimize_memory()
             
             def get_memory_info(self):
-                return {
-                    "total_gb": 128 if IS_M3_MAX else 16,
-                    "available_gb": 96 if IS_M3_MAX else 12,
-                    "device": DEVICE
-                }
+                try:
+                    import psutil
+                    memory = psutil.virtual_memory()
+                    return {
+                        "total_gb": round(memory.total / (1024**3), 2),
+                        "available_gb": round(memory.available / (1024**3), 2),
+                        "percent": memory.percent,
+                        "device": DEVICE,
+                        "is_m3_max": IS_M3_MAX,
+                        "optimization_count": self.optimization_count
+                    }
+                except ImportError:
+                    # psutil 없는 경우
+                    return {
+                        "total_gb": 128 if IS_M3_MAX else 16,
+                        "available_gb": 96 if IS_M3_MAX else 12,
+                        "percent": 75.0,
+                        "device": DEVICE,
+                        "is_m3_max": IS_M3_MAX,
+                        "optimization_count": self.optimization_count
+                    }
             
             def cleanup(self):
                 self.optimize_memory()
@@ -535,19 +569,23 @@ class DIContainer(IDependencyContainer):
         return MockMemoryManager()
     
     def _create_mock_step_mixin(self):
-        """Mock StepMixin 생성"""
+        """Mock StepMixin 생성 (문서 4 기반 + 개선)"""
         class MockStepMixin:
             def __init__(self):
                 self.logger = logger
                 self.model_loader = None
                 self.memory_manager = None
+                self.function_validator = None
                 self.is_initialized = False
+                self.device = DEVICE
+                
+                # 처리 통계
                 self.processing_stats = {
                     'total_processed': 0,
                     'successful_processed': 0,
-                    'failed_processed': 0
+                    'failed_processed': 0,
+                    'average_processing_time': 0.0
                 }
-                self.device = DEVICE
             
             def set_model_loader(self, model_loader):
                 self.model_loader = model_loader
@@ -556,6 +594,10 @@ class DIContainer(IDependencyContainer):
             def set_memory_manager(self, memory_manager):
                 self.memory_manager = memory_manager
                 self.logger.debug("✅ Mock StepMixin - MemoryManager 주입 완료")
+            
+            def set_function_validator(self, function_validator):
+                self.function_validator = function_validator
+                self.logger.debug("✅ Mock StepMixin - FunctionValidator 주입 완료")
             
             def initialize(self):
                 self.is_initialized = True
@@ -566,6 +608,8 @@ class DIContainer(IDependencyContainer):
                 return self.initialize()
             
             async def process_async(self, data, step_name: str):
+                start_time = time.time()
+                
                 try:
                     # 메모리 최적화
                     if self.memory_manager:
@@ -575,24 +619,38 @@ class DIContainer(IDependencyContainer):
                     import asyncio
                     await asyncio.sleep(0.1)
                     
+                    processing_time = time.time() - start_time
+                    
+                    # 통계 업데이트
                     self.processing_stats['total_processed'] += 1
                     self.processing_stats['successful_processed'] += 1
+                    
+                    # 평균 처리 시간 업데이트
+                    total = self.processing_stats['total_processed']
+                    current_avg = self.processing_stats['average_processing_time']
+                    self.processing_stats['average_processing_time'] = (
+                        (current_avg * (total - 1) + processing_time) / total
+                    )
                     
                     return {
                         "success": True,
                         "step_name": step_name,
-                        "processed_data": f"mock_processed_{step_name}",
-                        "processing_time": 0.1,
-                        "device": self.device
+                        "processed_data": f"mock_processed_{step_name}_{int(time.time())}",
+                        "processing_time": processing_time,
+                        "device": self.device,
+                        "mock_implementation": True
                     }
                     
                 except Exception as e:
+                    self.processing_stats['total_processed'] += 1
                     self.processing_stats['failed_processed'] += 1
+                    
                     return {
                         "success": False,
                         "step_name": step_name,
                         "error": str(e),
-                        "processing_time": 0.0
+                        "processing_time": time.time() - start_time,
+                        "mock_implementation": True
                     }
             
             def get_status(self):
@@ -600,13 +658,23 @@ class DIContainer(IDependencyContainer):
                     "initialized": self.is_initialized,
                     "has_model_loader": self.model_loader is not None,
                     "has_memory_manager": self.memory_manager is not None,
+                    "has_function_validator": self.function_validator is not None,
                     "processing_stats": self.processing_stats,
-                    "device": self.device
+                    "device": self.device,
+                    "mock_implementation": True
                 }
             
             def cleanup(self):
                 if self.memory_manager:
                     self.memory_manager.cleanup()
+                
+                # 통계 리셋
+                self.processing_stats = {
+                    'total_processed': 0,
+                    'successful_processed': 0,
+                    'failed_processed': 0,
+                    'average_processing_time': 0.0
+                }
         
         logger.info("✅ Mock StepMixin 생성 (폴백)")
         return MockStepMixin()
@@ -614,32 +682,87 @@ class DIContainer(IDependencyContainer):
     def _create_mock_function_validator(self):
         """Mock FunctionValidator 생성"""
         class MockFunctionValidator:
+            def __init__(self):
+                self.validated_functions = set()
+            
             def validate_function(self, func):
+                func_name = getattr(func, '__name__', 'unknown')
+                self.validated_functions.add(func_name)
                 return True
             
             def is_safe_function(self, func_name: str):
                 return True
+            
+            def get_validated_functions(self):
+                return list(self.validated_functions)
         
         return MockFunctionValidator()
     
-    def clear_scope(self, scope_id: str) -> None:
-        """특정 스코프 정리"""
+    def _optimize_for_conda(self):
+        """conda 환경 최적화 (문서 4 기반)"""
         try:
-            with self._lock:
-                if scope_id in self._scoped_instances:
-                    del self._scoped_instances[scope_id]
-                    logger.debug(f"🧹 스코프 정리: {scope_id}")
+            # 환경 변수 설정
+            os.environ['OMP_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
+            os.environ['MKL_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
+            os.environ['NUMEXPR_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
+            
+            # PyTorch 최적화
+            if TORCH_AVAILABLE:
+                import torch
+                torch.set_num_threads(max(1, os.cpu_count() // 2))
+                
+                # M3 Max MPS 최적화
+                if IS_M3_MAX and MPS_AVAILABLE:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    logger.info("🍎 M3 Max MPS conda 최적화 완료")
+            
+            logger.info(f"🐍 conda 환경 '{CONDA_ENV}' 최적화 완료")
+            
         except Exception as e:
-            logger.error(f"❌ 스코프 정리 실패 {scope_id}: {e}")
+            logger.warning(f"⚠️ conda 최적화 실패: {e}")
+    
+    def _update_dependency_graph(self, key: str, implementation: Any):
+        """의존성 그래프 업데이트 (순환 의존성 감지용)"""
+        try:
+            dependencies = []
+            
+            if isinstance(implementation, type):
+                # 생성자 파라미터 분석
+                import inspect
+                sig = inspect.signature(implementation.__init__)
+                for param_name, param in sig.parameters.items():
+                    if param_name != 'self' and param.annotation != inspect.Parameter.empty:
+                        dependencies.append(self._get_key(param.annotation))
+            
+            self._dependency_graph[key] = dependencies
+            
+        except Exception as e:
+            logger.debug(f"의존성 그래프 업데이트 실패 ({key}): {e}")
+    
+    def _execute_lifecycle_hooks(self, event: str, key: str):
+        """생명주기 훅 실행"""
+        try:
+            for hook in self._lifecycle_hooks.get(event, []):
+                hook(key)
+        except Exception as e:
+            logger.debug(f"생명주기 훅 실행 실패 ({event}, {key}): {e}")
+    
+    def add_lifecycle_hook(self, event: str, hook: Callable):
+        """생명주기 훅 추가"""
+        if event in self._lifecycle_hooks:
+            self._lifecycle_hooks[event].append(hook)
+            logger.debug(f"생명주기 훅 추가: {event}")
     
     def cleanup_memory(self) -> Dict[str, int]:
-        """메모리 정리"""
+        """고급 메모리 정리"""
         try:
             with self._lock:
                 cleanup_stats = {
                     'weak_refs_cleaned': 0,
                     'singletons_kept': 0,
-                    'scoped_instances_kept': 0
+                    'scoped_instances_cleaned': 0,
+                    'gc_collected': 0
                 }
                 
                 # 약한 참조 정리
@@ -650,49 +773,78 @@ class DIContainer(IDependencyContainer):
                 
                 # 통계 업데이트
                 cleanup_stats['singletons_kept'] = len(self._singletons)
-                cleanup_stats['scoped_instances_kept'] = sum(len(scope) for scope in self._scoped_instances.values())
+                cleanup_stats['scoped_instances_cleaned'] = sum(len(scope) for scope in self._scoped_instances.values())
                 
                 # 전역 메모리 정리
                 collected = gc.collect()
                 cleanup_stats['gc_collected'] = collected
                 
+                # M3 Max 메모리 최적화
+                if TORCH_AVAILABLE and IS_M3_MAX and MPS_AVAILABLE:
+                    import torch
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                        cleanup_stats['mps_cache_cleared'] = True
+                
                 self._stats['memory_cleanups'] += 1
                 
-                logger.debug(f"🧹 메모리 정리 완료: {cleanup_stats}")
+                logger.debug(f"🧹 고급 메모리 정리 완료: {cleanup_stats}")
                 return cleanup_stats
                 
         except Exception as e:
             logger.error(f"❌ 메모리 정리 실패: {e}")
             return {}
     
-    def get_stats(self) -> Dict[str, Any]:
-        """통계 정보 조회"""
+    def get_container_info(self) -> Dict[str, Any]:
+        """컨테이너 상태 정보 (상세)"""
         try:
             with self._lock:
                 uptime = time.time() - self._stats['initialization_time']
                 
                 return {
-                    **self._stats,
-                    'uptime_seconds': uptime,
-                    'registered_dependencies': len(self._dependencies),
-                    'singleton_instances': len(self._singletons),
-                    'scoped_instances': sum(len(scope) for scope in self._scoped_instances.values()),
-                    'factory_count': len(self._factories),
-                    'is_initialized': self._initialized,
-                    'environment': {
-                        'is_conda': IS_CONDA,
-                        'conda_env': CONDA_ENV,
-                        'is_m3_max': IS_M3_MAX,
-                        'device': DEVICE,
-                        'torch_available': TORCH_AVAILABLE
-                    }
+                    "container_type": "MyCloset AI Optimized DI Container",
+                    "version": "3.0_optimal_combined",
+                    "uptime_seconds": uptime,
+                    "is_initialized": self._initialized,
+                    "statistics": dict(self._stats),
+                    "registrations": {
+                        "total_dependencies": len(self._dependencies),
+                        "singleton_instances": len(self._singletons),
+                        "transient_services": len(self._services),
+                        "factory_functions": len(self._factories),
+                        "weak_references": len(self._weak_refs)
+                    },
+                    "dependency_graph": {
+                        "total_nodes": len(self._dependency_graph),
+                        "circular_dependencies": self._stats['circular_dependencies_detected']
+                    },
+                    "lifecycle": {
+                        "hooks_registered": sum(len(hooks) for hooks in self._lifecycle_hooks.values())
+                    },
+                    "environment": {
+                        "is_conda": IS_CONDA,
+                        "conda_env": CONDA_ENV,
+                        "is_m3_max": IS_M3_MAX,
+                        "device": DEVICE,
+                        "torch_available": TORCH_AVAILABLE,
+                        "mps_available": MPS_AVAILABLE
+                    },
+                    "features": [
+                        "MyCloset AI 특화",
+                        "순환 의존성 감지",
+                        "생명주기 관리",
+                        "메모리 보호",
+                        "conda 최적화",
+                        "M3 Max 최적화",
+                        "Mock 폴백 지원"
+                    ]
                 }
         except Exception as e:
-            logger.error(f"❌ 통계 조회 실패: {e}")
-            return {}
+            logger.error(f"❌ 컨테이너 정보 조회 실패: {e}")
+            return {"error": str(e)}
     
     def get_registered_services(self) -> Dict[str, Dict[str, Any]]:
-        """등록된 서비스 목록 조회"""
+        """등록된 서비스 목록 조회 (상세)"""
         try:
             with self._lock:
                 services = {}
@@ -715,6 +867,145 @@ class DIContainer(IDependencyContainer):
             logger.error(f"❌ 서비스 목록 조회 실패: {e}")
             return {}
     
+    def validate_dependencies(self) -> Dict[str, Any]:
+        """의존성 검증 (순환 의존성 포함)"""
+        validation_result = {
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "circular_dependencies": [],
+            "missing_dependencies": []
+        }
+        
+        try:
+            with self._lock:
+                # 순환 의존성 검사
+                for service, dependencies in self._dependency_graph.items():
+                    if self._has_circular_dependency(service, dependencies, []):
+                        validation_result["circular_dependencies"].append(service)
+                        validation_result["valid"] = False
+                
+                # 누락된 의존성 검사
+                for service, dependencies in self._dependency_graph.items():
+                    for dep in dependencies:
+                        if not self.is_registered(dep):
+                            validation_result["missing_dependencies"].append({
+                                "service": service,
+                                "missing_dependency": dep
+                            })
+                
+                if validation_result["circular_dependencies"]:
+                    validation_result["errors"].append(
+                        f"순환 의존성 감지: {validation_result['circular_dependencies']}"
+                    )
+                
+                if validation_result["missing_dependencies"]:
+                    validation_result["warnings"].append(
+                        f"누락된 의존성: {len(validation_result['missing_dependencies'])}개"
+                    )
+                
+        except Exception as e:
+            validation_result["valid"] = False
+            validation_result["errors"].append(f"의존성 검증 중 오류: {str(e)}")
+        
+        return validation_result
+    
+    def _has_circular_dependency(self, service: str, dependencies: List[str], visited: List[str]) -> bool:
+        """순환 의존성 검사"""
+        if service in visited:
+            return True
+        
+        visited.append(service)
+        
+        for dep in dependencies:
+            if dep in self._dependency_graph:
+                if self._has_circular_dependency(dep, self._dependency_graph[dep], visited.copy()):
+                    return True
+        
+        return False
+    
+    def _get_key(self, interface: Union[str, Type]) -> str:
+        """인터페이스를 키로 변환"""
+        if isinstance(interface, str):
+            return interface
+        elif hasattr(interface, '__name__'):
+            return interface.__name__
+        else:
+            return str(interface)
+
+# ==============================================
+# 🔥 5. 간소화된 DI Container (호환성용)
+# ==============================================
+
+class SimpleDIContainer(IDependencyContainer):
+    """간소화된 DI Container - 기본 기능만 제공 (호환성)"""
+    
+    def __init__(self):
+        self._services: Dict[str, Any] = {}
+        self._singletons: Dict[str, Any] = {}
+        self._factories: Dict[str, Callable] = {}
+        self._lock = threading.RLock()
+        
+        # 기본 서비스 등록
+        self.register('device', DEVICE, singleton=True)
+        self.register('conda_env', CONDA_ENV, singleton=True)
+        
+        logger.info("✅ SimpleDIContainer 초기화 완료")
+    
+    def register(self, interface: Union[str, Type], implementation: Any, singleton: bool = True) -> None:
+        """기본 의존성 등록"""
+        with self._lock:
+            key = self._get_key(interface)
+            
+            if callable(implementation) and not isinstance(implementation, type):
+                self._factories[key] = implementation
+            else:
+                if singleton:
+                    self._singletons[key] = implementation
+                else:
+                    self._services[key] = implementation
+            
+            logger.debug(f"✅ 의존성 등록: {key}")
+    
+    def get(self, interface: Union[str, Type]) -> Optional[Any]:
+        """기본 의존성 조회"""
+        with self._lock:
+            key = self._get_key(interface)
+            
+            # 싱글톤 체크
+            if key in self._singletons:
+                return self._singletons[key]
+            
+            # 일반 서비스 체크
+            if key in self._services:
+                return self._services[key]
+            
+            # 팩토리 체크
+            if key in self._factories:
+                try:
+                    return self._factories[key]()
+                except Exception as e:
+                    logger.error(f"❌ 팩토리 실행 실패 {key}: {e}")
+                    return None
+            
+            return None
+    
+    def is_registered(self, interface: Union[str, Type]) -> bool:
+        """등록 여부 확인"""
+        with self._lock:
+            key = self._get_key(interface)
+            return (key in self._services or 
+                   key in self._singletons or 
+                   key in self._factories)
+    
+    def clear(self) -> None:
+        """모든 등록된 서비스 제거"""
+        with self._lock:
+            self._services.clear()
+            self._singletons.clear()
+            self._factories.clear()
+            logger.info("🧹 SimpleDIContainer 정리 완료")
+    
     def _get_key(self, interface: Union[str, Type]) -> str:
         """인터페이스를 키 문자열로 변환"""
         if isinstance(interface, str):
@@ -725,23 +1016,27 @@ class DIContainer(IDependencyContainer):
             return str(interface)
 
 # ==============================================
-# 🔥 4. 전역 DI Container 관리
+# 🔥 6. 전역 DI Container 관리
 # ==============================================
 
-_global_container: Optional[DIContainer] = None
+_global_container: Optional[Union[DIContainer, SimpleDIContainer]] = None
 _container_lock = threading.RLock()
 
-def get_di_container() -> DIContainer:
-    """전역 DI Container 인스턴스 반환 (싱글톤 패턴)"""
+def get_di_container(use_simple: bool = False) -> Union[DIContainer, SimpleDIContainer]:
+    """전역 DI Container 반환"""
     global _global_container
     
     with _container_lock:
         if _global_container is None:
-            _global_container = DIContainer()
-            _global_container.initialize()
-            logger.info("🔗 전역 DI Container 초기화 완료")
-        
-        return _global_container
+            if use_simple:
+                _global_container = SimpleDIContainer()
+                logger.info("✅ SimpleDIContainer 전역 인스턴스 생성")
+            else:
+                _global_container = DIContainer()
+                _global_container.initialize()
+                logger.info("✅ DIContainer 전역 인스턴스 생성 (최적 결합)")
+    
+    return _global_container
 
 def reset_di_container() -> None:
     """전역 DI Container 리셋"""
@@ -749,42 +1044,58 @@ def reset_di_container() -> None:
     
     with _container_lock:
         if _global_container:
-            _global_container.cleanup_memory()
-        
-        _global_container = DIContainer()
-        _global_container.initialize()
-        logger.info("🔄 전역 DI Container 리셋 완료")
+            if hasattr(_global_container, 'cleanup_memory'):
+                _global_container.cleanup_memory()
+            elif hasattr(_global_container, 'clear'):
+                _global_container.clear()
+            
+            _global_container = None
+            logger.info("🔄 전역 DI Container 리셋 완료")
 
 # ==============================================
-# 🔥 5. 편의 함수들
+# 🔥 7. MyCloset AI 특화 편의 함수들
 # ==============================================
 
 def inject_dependencies_to_step(step_instance, container: Optional[DIContainer] = None):
-    """Step 인스턴스에 의존성 주입"""
+    """Step 인스턴스에 의존성 주입 (MyCloset AI 특화)"""
     try:
         if container is None:
             container = get_di_container()
         
-        # 의존성 조회 및 주입
+        injections_made = 0
+        
+        # ModelLoader 주입 (필수)
         model_loader = container.get('IModelLoader')
+        if model_loader:
+            if hasattr(step_instance, 'set_model_loader'):
+                step_instance.set_model_loader(model_loader)
+                injections_made += 1
+            elif hasattr(step_instance, 'model_loader'):
+                step_instance.model_loader = model_loader
+                injections_made += 1
+        
+        # MemoryManager 주입 (옵션)
         memory_manager = container.get('IMemoryManager')
+        if memory_manager:
+            if hasattr(step_instance, 'set_memory_manager'):
+                step_instance.set_memory_manager(memory_manager)
+                injections_made += 1
+            elif hasattr(step_instance, 'memory_manager'):
+                step_instance.memory_manager = memory_manager
+                injections_made += 1
+        
+        # FunctionValidator 주입 (옵션)
         function_validator = container.get('ISafeFunctionValidator')
-        
-        # Step에 의존성 주입
-        if hasattr(step_instance, 'set_model_loader') and model_loader:
-            step_instance.set_model_loader(model_loader)
-        
-        if hasattr(step_instance, 'set_memory_manager') and memory_manager:
-            step_instance.set_memory_manager(memory_manager)
-        
-        if hasattr(step_instance, 'set_function_validator') and function_validator:
-            step_instance.set_function_validator(function_validator)
+        if function_validator:
+            if hasattr(step_instance, 'set_function_validator'):
+                step_instance.set_function_validator(function_validator)
+                injections_made += 1
         
         # 초기화
         if hasattr(step_instance, 'initialize') and not getattr(step_instance, 'is_initialized', False):
             step_instance.initialize()
         
-        logger.debug(f"✅ {step_instance.__class__.__name__} 의존성 주입 완료")
+        logger.debug(f"✅ {step_instance.__class__.__name__} 의존성 주입 완료 ({injections_made}개)")
         
     except Exception as e:
         logger.error(f"❌ Step 의존성 주입 실패: {e}")
@@ -792,13 +1103,11 @@ def inject_dependencies_to_step(step_instance, container: Optional[DIContainer] 
 def create_step_with_di(step_class: Type, **kwargs) -> Any:
     """의존성 주입을 사용하여 Step 인스턴스 생성"""
     try:
-        container = get_di_container()
-        
         # Step 인스턴스 생성
         step_instance = step_class(**kwargs)
         
         # 의존성 주입
-        inject_dependencies_to_step(step_instance, container)
+        inject_dependencies_to_step(step_instance)
         
         logger.debug(f"✅ {step_class.__name__} DI 생성 완료")
         return step_instance
@@ -813,63 +1122,60 @@ def get_service(interface: Union[str, Type]) -> Optional[Any]:
     container = get_di_container()
     return container.get(interface)
 
-def register_service(interface: Union[str, Type], implementation: Any, scope: DependencyScope = DependencyScope.SINGLETON):
+def register_service(interface: Union[str, Type], implementation: Any, singleton: bool = True):
     """편의 함수: 서비스 등록"""
     container = get_di_container()
-    container.register(interface, implementation, scope)
-
-def register_factory_service(interface: Union[str, Type], factory: Callable, scope: DependencyScope = DependencyScope.SINGLETON):
-    """편의 함수: 팩토리 서비스 등록"""
-    container = get_di_container()
-    container.register_factory(interface, factory, scope)
+    container.register(interface, implementation, singleton=singleton)
 
 # ==============================================
-# 🔥 6. 모듈 초기화
+# 🔥 8. Export
 # ==============================================
 
-def initialize_di_system():
-    """DI 시스템 전체 초기화"""
-    try:
-        # 전역 컨테이너 초기화
-        container = get_di_container()
-        
-        if container.is_registered('IModelLoader'):
-            logger.info("🔗 DI 시스템 완전 초기화 완료")
-            return True
-        else:
-            logger.warning("⚠️ DI 시스템 초기화 불완전")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ DI 시스템 초기화 실패: {e}")
-        return False
-
-# 모듈 로드 시 자동 초기화 (main이 아닐 때만)
-if __name__ != "__main__":
-    try:
-        # 자동 초기화는 지연 로딩으로 처리
-        # get_di_container() 호출 시 실제 초기화됨
-        logger.info("📦 DI Container 모듈 로드 완료 (지연 초기화)")
-    except Exception as e:
-        logger.debug(f"DI 시스템 자동 초기화 실패: {e}")
+__all__ = [
+    # 메인 클래스들
+    "DIContainer",
+    "SimpleDIContainer", 
+    "IDependencyContainer",
+    
+    # 설정 클래스들
+    "DependencyScope",
+    "DependencyInfo",
+    
+    # 전역 함수들
+    "get_di_container",
+    "reset_di_container",
+    
+    # MyCloset AI 특화 함수들
+    "inject_dependencies_to_step",
+    "create_step_with_di",
+    "get_service",
+    "register_service",
+    
+    # 타입들
+    "T"
+]
 
 # ==============================================
-# 🔥 7. 모듈 정보
+# 🔥 9. 자동 초기화
 # ==============================================
 
-if __name__ == "__main__":
-    # 직접 실행 시 테스트
-    print("🔥 DI Container 테스트 모드")
+# conda 환경 자동 최적화
+if IS_CONDA:
+    logger.info(f"🐍 conda 환경 '{CONDA_ENV}' 감지 - 자동 최적화 준비")
     
-    container = get_di_container()
-    
-    print(f"📊 통계: {container.get_stats()}")
-    print(f"🔧 등록된 서비스들: {list(container.get_registered_services().keys())}")
-    
-    # ModelLoader 테스트
-    model_loader = container.get('IModelLoader')
-    if model_loader:
-        print(f"✅ ModelLoader: {model_loader.__class__.__name__}")
-        print(f"🤖 테스트 모델 로드: {model_loader.get_model('test_model')}")
-    
-    print("🎉 DI Container 테스트 완료!")
+    # 환경 변수 설정
+    os.environ.setdefault('OMP_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+    os.environ.setdefault('MKL_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+
+# 완료 메시지
+logger.info("✅ DI Container v3.0 로드 완료 (최적 결합 버전)!")
+logger.info("🔗 MyCloset AI 특화 + 프로덕션급 기능")
+logger.info("⚡ 순환 의존성 감지 및 방지")
+logger.info("🧵 스레드 안전성 및 메모리 보호") 
+logger.info("🏭 Mock 폴백 구현체 포함")
+logger.info("🐍 conda 환경 우선 최적화")
+
+if IS_M3_MAX:
+    logger.info("🍎 M3 Max 128GB 메모리 최적화 활성화")
+
+logger.info("🚀 DI Container v3.0 준비 완료!")

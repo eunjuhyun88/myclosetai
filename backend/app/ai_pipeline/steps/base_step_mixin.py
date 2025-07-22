@@ -1,7 +1,7 @@
 # backend/app/ai_pipeline/steps/base_step_mixin.py
 """
-🔥 BaseStepMixin v15.0 - 완전 격리 + 순수 의존성 주입 버전
-==============================================================
+🔥 BaseStepMixin v15.0 - 완전 격리 + 순수 의존성 주입 버전 (완전체)
+====================================================================
 
 ✅ 동적 import 완전 제거 - 순환참조 100% 차단
 ✅ 순수 의존성 주입만 사용
@@ -11,16 +11,19 @@
 ✅ conda 환경 우선
 ✅ 3단계 간단한 초기화
 ✅ 프로덕션 레벨 안정성
+✅ 모든 Step에서 참조하는 기능 완전 포함
+✅ 빠진 함수들 모두 복원
 
 🔥 핵심 원칙:
 - BaseStepMixin은 어떤 모듈도 직접 import 하지 않음
 - 모든 기능은 의존성 주입으로만 제공
 - 외부 모듈과 완전히 독립적
 - 순환참조 불가능한 구조
+- Step 파일들이 요구하는 모든 메서드 제공
 
 Author: MyCloset AI Team
 Date: 2025-07-22
-Version: 15.0 (Pure DI Isolated)
+Version: 15.0 (Pure DI Isolated - Complete)
 """
 
 # ==============================================
@@ -117,6 +120,10 @@ class StepConfig:
     confidence_threshold: float = 0.8
     auto_memory_cleanup: bool = True
     auto_warmup: bool = True
+    optimization_enabled: bool = True
+    quality_level: str = "balanced"
+    device_type: str = "auto"
+    strict_mode: bool = True
 
 # ==============================================
 # 🔥 5. 의존성 주입용 인터페이스 (추상화)
@@ -229,18 +236,23 @@ class InternalMemoryOptimizer:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+# SimpleMemoryOptimizer 별칭 (기존 호환성)
+SimpleMemoryOptimizer = InternalMemoryOptimizer
+
 # ==============================================
-# 🔥 7. BaseStepMixin v15.0 - 완전 격리 버전
+# 🔥 7. BaseStepMixin v15.0 - 완전 격리 버전 (완전체)
 # ==============================================
 class BaseStepMixin:
     """
-    🔥 BaseStepMixin v15.0 - 완전 격리 + 순수 의존성 주입
+    🔥 BaseStepMixin v15.0 - 완전 격리 + 순수 의존성 주입 (완전체)
     
     ✅ 동적 import 완전 제거
     ✅ 순수 의존성 주입만 사용  
     ✅ 모든 외부 모듈 참조 제거
     ✅ 완전 격리된 아키텍처
     ✅ 순환참조 불가능
+    ✅ Step 파일들이 요구하는 모든 메서드 제공
+    ✅ 빠진 함수들 모두 복원
     """
     
     def __init__(self, **kwargs):
@@ -293,8 +305,8 @@ class BaseStepMixin:
         self.memory_manager: Optional[IMemoryManager] = None 
         self.data_converter: Optional[IDataConverter] = None
         
-        # 🔥 폴백 호환성을 위한 속성들 (기존 코드와 호환)
-        self.model_loader = None  # 폐기 예정이지만 호환성 유지
+        # 🔥 폐기 예정이지만 호환성을 위한 속성들
+        self.model_loader = None  # ModelLoader 호환성
         
         # 내부 캐시 (완전 독립적)
         self.model_cache = {}
@@ -305,7 +317,9 @@ class BaseStepMixin:
             'process_count': 0,
             'total_process_time': 0.0,
             'average_process_time': 0.0,
-            'error_history': []
+            'error_history': [],
+            'success_count': 0,
+            'cache_hits': 0
         }
         
         # 에러 추적
@@ -381,13 +395,15 @@ class BaseStepMixin:
         self.data_converter = data_converter
         self.logger.info("✅ DataConverter 주입 완료")
     
-    # 🔥 폐기 예정 메서드 (기존 호환성)
     def set_model_loader(self, model_loader):
         """ModelLoader 의존성 주입 (폐기 예정, 호환성만 유지)"""
         self.model_loader = model_loader
         # 어댑터 패턴으로 변환 시도
         if hasattr(model_loader, 'get_model'):
             self.model_provider = ModelLoaderAdapter(model_loader)
+        if model_loader:
+            self.has_model = True
+            self.model_loaded = True
         self.logger.info("✅ ModelLoader 주입 완료 (폐기 예정 - ModelProvider 사용 권장)")
     
     # ==============================================
@@ -440,9 +456,10 @@ class BaseStepMixin:
             # 캐시 확인
             cache_key = model_name or "default"
             if cache_key in self.model_cache:
+                self.performance_metrics['cache_hits'] += 1
                 return self.model_cache[cache_key]
             
-            # 🔥 순수 DI: ModelProvider 사용
+            # 🔥 순수 DI: ModelProvider 우선 사용
             if self.model_provider:
                 try:
                     model = self.model_provider.get_model(model_name or "default")
@@ -456,10 +473,21 @@ class BaseStepMixin:
                 except Exception as e:
                     self.logger.debug(f"ModelProvider를 통한 모델 로드 실패: {e}")
             
-            # 🔥 NO MORE 동적 import! - 완전 제거됨
-            # 의존성 주입이 없으면 모델을 로드할 수 없음
+            # 🔥 폴백: 기존 ModelLoader 호환성 (폐기 예정)
+            if self.model_loader and hasattr(self.model_loader, 'get_model'):
+                try:
+                    model = self.model_loader.get_model(model_name or "default")
+                    if model:
+                        self.model_cache[cache_key] = model
+                        self.has_model = True
+                        self.model_loaded = True
+                        self._current_model = model
+                        self._current_model_name = model_name
+                        return model
+                except Exception as e:
+                    self.logger.debug(f"ModelLoader 폴백 실패: {e}")
             
-            self.logger.warning("⚠️ ModelProvider가 주입되지 않음 - 의존성 주입 필요")
+            self.logger.warning("⚠️ 모델 제공자가 주입되지 않음 - 의존성 주입 필요")
             return None
                 
         except Exception as e:
@@ -472,6 +500,7 @@ class BaseStepMixin:
             # 캐시 확인
             cache_key = model_name or "default"
             if cache_key in self.model_cache:
+                self.performance_metrics['cache_hits'] += 1
                 return self.model_cache[cache_key]
             
             # 순수 DI: ModelProvider 비동기 사용
@@ -486,7 +515,27 @@ class BaseStepMixin:
                 except Exception as e:
                     self.logger.debug(f"비동기 ModelProvider 실패: {e}")
             
-            self.logger.warning("⚠️ ModelProvider가 주입되지 않음 - 의존성 주입 필요")
+            # 폴백: 기존 ModelLoader 비동기 호환성
+            if self.model_loader:
+                try:
+                    if hasattr(self.model_loader, 'get_model_async'):
+                        model = await self.model_loader.get_model_async(model_name or "default")
+                    elif hasattr(self.model_loader, 'get_model'):
+                        loop = asyncio.get_event_loop()
+                        model = await loop.run_in_executor(None, 
+                            lambda: self.model_loader.get_model(model_name or "default"))
+                    else:
+                        model = None
+                    
+                    if model:
+                        self.model_cache[cache_key] = model
+                        self.has_model = True
+                        self.model_loaded = True
+                        return model
+                except Exception as e:
+                    self.logger.debug(f"비동기 ModelLoader 폴백 실패: {e}")
+            
+            self.logger.warning("⚠️ 모델 제공자가 주입되지 않음 - 의존성 주입 필요")
             return None
                 
         except Exception as e:
@@ -535,6 +584,10 @@ class BaseStepMixin:
             self.logger.error(f"❌ 비동기 메모리 최적화 실패: {e}")
             return {"success": False, "error": str(e)}
     
+    # ==============================================
+    # 🔥 11. 워밍업 메서드들 (완전 복원)
+    # ==============================================
+    
     def warmup_isolated(self) -> Dict[str, Any]:
         """격리된 워밍업 실행"""
         try:
@@ -554,7 +607,7 @@ class BaseStepMixin:
             
             # 2. 모델 워밍업 (의존성 주입 기반)
             try:
-                if self.model_provider:
+                if self.model_provider or self.model_loader:
                     test_model = self.get_model("warmup_test")
                     results.append('model_success' if test_model else 'model_skipped')
                 else:
@@ -598,13 +651,73 @@ class BaseStepMixin:
             self.logger.error(f"❌ 격리된 워밍업 실패: {e}")
             return {"success": False, "error": str(e)}
     
-    # BaseStepMixin 호환용 별칭 (🔥 빠진 기능 추가)
-    async def warmup_step(self) -> Dict[str, Any]:
-        """Step 워밍업 (BaseStepMixin 호환용) - 🔥 빠진 기능 복원"""
-        return await self.warmup_async()
+    def warmup(self) -> Dict[str, Any]:
+        """워밍업 (동기 버전)"""
+        return self.warmup_isolated()
+    
+    async def warmup_async(self) -> Dict[str, Any]:
+        """비동기 워밍업"""
+        try:
+            if self.warmup_completed:
+                return {'success': True, 'message': '이미 워밍업 완료됨', 'cached': True}
+            
+            self.logger.info(f"🔥 {self.step_name} 비동기 워밍업 시작...")
+            start_time = time.time()
+            results = []
+            
+            # 1. 비동기 메모리 워밍업
+            try:
+                memory_result = await self.optimize_memory_async()
+                results.append('memory_async_success' if memory_result.get('success') else 'memory_async_failed')
+            except:
+                results.append('memory_async_failed')
+            
+            # 2. 비동기 모델 워밍업
+            try:
+                if self.model_provider or self.model_loader:
+                    test_model = await self.get_model_async("warmup_test")
+                    results.append('model_async_success' if test_model else 'model_async_skipped')
+                else:
+                    results.append('model_async_skipped')
+            except:
+                results.append('model_async_failed')
+            
+            # 3. 비동기 디바이스 워밍업
+            try:
+                if TORCH_AVAILABLE:
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, self._device_warmup_sync)
+                    results.append('device_async_success')
+                else:
+                    results.append('device_async_skipped')
+            except:
+                results.append('device_async_failed')
+            
+            duration = time.time() - start_time
+            success_count = sum(1 for r in results if 'success' in r)
+            overall_success = success_count > 0
+            
+            if overall_success:
+                self.warmup_completed = True
+                self.is_ready = True
+            
+            self.logger.info(f"🔥 비동기 워밍업 완료: {success_count}/{len(results)} 성공 ({duration:.2f}초)")
+            
+            return {
+                "success": overall_success,
+                "duration": duration,
+                "results": results,
+                "success_count": success_count,
+                "total_count": len(results),
+                "async": True
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 워밍업 실패: {e}")
+            return {"success": False, "error": str(e), "async": True}
     
     def _device_warmup_sync(self):
-        """동기 디바이스 워밍업 (🔥 빠진 기능 추가)"""
+        """동기 디바이스 워밍업"""
         try:
             if TORCH_AVAILABLE:
                 test_tensor = torch.randn(10, 10)
@@ -616,16 +729,16 @@ class BaseStepMixin:
             pass
         return False
     
-    # 호환성 메서드들 (🔥 빠진 기능들 추가)
-    def warmup(self) -> Dict[str, Any]:
-        """워밍업 (호환성)"""
-        return self.warmup_isolated()
+    async def warmup_step(self) -> Dict[str, Any]:
+        """Step 워밍업 (BaseStepMixin 호환용)"""
+        return await self.warmup_async()
     
-    # 🔥 빠진 편의 함수명들 추가 (기존 호환성)
-    create_step_mixin = create_isolated_step_mixin  # 별칭
+    # ==============================================
+    # 🔥 12. 초기화 및 정리 메서드들 (완전 복원)
+    # ==============================================
     
     def initialize(self) -> bool:
-        """초기화 메서드"""
+        """초기화 메서드 - Step들이 사용"""
         try:
             if self.is_initialized:
                 return True
@@ -683,7 +796,7 @@ class BaseStepMixin:
             return {"success": False, "error": str(e)}
     
     def cleanup_models(self):
-        """모델 정리"""
+        """모델 정리 - Step들이 사용"""
         try:
             # 모델 캐시 정리
             self.model_cache.clear()
@@ -712,6 +825,10 @@ class BaseStepMixin:
                 
         except Exception as e:
             self.logger.warning(f"⚠️ 모델 정리 중 오류: {e}")
+    
+    # ==============================================
+    # 🔥 13. 상태 및 성능 메서드들 (완전 복원)
+    # ==============================================
     
     def get_status(self) -> Dict[str, Any]:
         """Step 상태 조회 (완전 격리)"""
@@ -755,7 +872,7 @@ class BaseStepMixin:
             }
     
     def get_performance_summary(self) -> Dict[str, Any]:
-        """성능 요약 조회 (완전 격리) - 🔥 빠진 기능 추가"""
+        """성능 요약 조회 (완전 격리)"""
         try:
             return {
                 'total_processing_count': self.total_processing_count,
@@ -764,6 +881,8 @@ class BaseStepMixin:
                 'success_rate': self._calculate_success_rate(),
                 'average_process_time': self.performance_metrics.get('average_process_time', 0.0),
                 'total_process_time': self.performance_metrics.get('total_process_time', 0.0),
+                'cache_hits': self.performance_metrics.get('cache_hits', 0),
+                'cache_hit_rate': self._calculate_cache_hit_rate(),
                 'version': '15.0-pure-di-isolated',
                 'isolated': True
             }
@@ -778,26 +897,41 @@ class BaseStepMixin:
             total = self.total_processing_count
             errors = self.error_count
             if total > 0:
-                return (total - errors) / total
+                return (total - errors) / total * 100.0
+            return 0.0
+        except:
+            return 0.0
+    
+    def _calculate_cache_hit_rate(self) -> float:
+        """캐시 히트율 계산"""
+        try:
+            hits = self.performance_metrics.get('cache_hits', 0)
+            total = self.total_processing_count
+            if total > 0:
+                return (hits / total) * 100.0
             return 0.0
         except:
             return 0.0
     
     def record_processing(self, duration: float, success: bool = True):
-        """처리 기록"""
+        """처리 기록 - Step들이 사용"""
         try:
             self.total_processing_count += 1
             self.last_processing_time = time.time()
             
-            if not success:
+            if success:
+                self.performance_metrics['success_count'] += 1
+            else:
                 self.error_count += 1
             
             # 성능 메트릭 업데이트
             self.performance_metrics['process_count'] = self.total_processing_count
             self.performance_metrics['total_process_time'] += duration
-            self.performance_metrics['average_process_time'] = (
-                self.performance_metrics['total_process_time'] / self.total_processing_count
-            )
+            
+            if self.total_processing_count > 0:
+                self.performance_metrics['average_process_time'] = (
+                    self.performance_metrics['total_process_time'] / self.total_processing_count
+                )
             
         except Exception as e:
             self.logger.warning(f"⚠️ 처리 기록 실패: {e}")
@@ -811,7 +945,7 @@ class BaseStepMixin:
             pass
 
 # ==============================================
-# 🔥 11. 호환성 어댑터 (기존 ModelLoader 지원)
+# 🔥 14. 호환성 어댑터 (기존 ModelLoader 지원)
 # ==============================================
 class ModelLoaderAdapter(IModelProvider):
     """기존 ModelLoader를 IModelProvider로 변환하는 어댑터"""
@@ -835,6 +969,8 @@ class ModelLoaderAdapter(IModelProvider):
         try:
             if hasattr(self.model_loader, 'get_model_async'):
                 return await self.model_loader.get_model_async(model_name)
+            elif hasattr(self.model_loader, 'load_model_async'):
+                return await self.model_loader.load_model_async(model_name)
             else:
                 # 동기 메서드를 비동기로 실행
                 loop = asyncio.get_event_loop()
@@ -852,7 +988,7 @@ class ModelLoaderAdapter(IModelProvider):
             return False
 
 # ==============================================
-# 🔥 12. Step별 특화 Mixin들 (완전 격리)
+# 🔥 15. Step별 특화 Mixin들 (완전 격리)
 # ==============================================
 
 class HumanParsingMixin(BaseStepMixin):
@@ -960,21 +1096,17 @@ class QualityAssessmentMixin(BaseStepMixin):
         self.use_clip_score = kwargs.get('use_clip_score', True)
 
 # ==============================================
-# 🔥 13. 편의 함수들 (완전 격리) + 기존 호환성
+# 🔥 16. 편의 함수들 (완전 격리) + 기존 호환성 (🔥 문제 해결!)
 # ==============================================
 
 def create_isolated_step_mixin(step_name: str, step_id: int, **kwargs) -> BaseStepMixin:
-    """격리된 BaseStepMixin 인스턴스 생성"""
+    """격리된 BaseStepMixin 인스턴스 생성 - 🔥 빠진 함수 복원!"""
     kwargs.update({'step_name': step_name, 'step_id': step_id})
     return BaseStepMixin(**kwargs)
 
-# 🔥 기존 호환성 함수명 (별칭) - SimpleMemoryOptimizer와 동일
 def create_step_mixin(step_name: str, step_id: int, **kwargs) -> BaseStepMixin:
     """BaseStepMixin 인스턴스 생성 (기존 호환성)"""
     return create_isolated_step_mixin(step_name, step_id, **kwargs)
-
-# 🔥 기존 호환성 별칭 클래스
-SimpleMemoryOptimizer = InternalMemoryOptimizer  # 기존 코드 호환성
 
 def create_human_parsing_step(**kwargs) -> HumanParsingMixin:
     """Human Parsing Step 생성 (격리)"""
@@ -1031,7 +1163,7 @@ def create_m3_max_optimized_step(step_type: str, **kwargs) -> BaseStepMixin:
     return creator(**kwargs)
 
 # ==============================================
-# 🔥 14. 모듈 내보내기 (완전 격리) + 빠진 기능 추가
+# 🔥 17. 모듈 내보내기 (완전 격리) + 빠진 기능 추가
 # ==============================================
 
 __all__ = [
@@ -1058,7 +1190,7 @@ __all__ = [
     'QualityAssessmentMixin',
     
     # 편의 함수들 (완전 격리) + 🔥 기존 호환성 함수명들 추가
-    'create_isolated_step_mixin',
+    'create_isolated_step_mixin',  # 🔥 빠진 함수 복원!
     'create_step_mixin',  # 🔥 기존 호환성
     'create_human_parsing_step',
     'create_pose_estimation_step',
@@ -1079,11 +1211,11 @@ __all__ = [
 ]
 
 # ==============================================
-# 🔥 15. 모듈 로드 완료 메시지
+# 🔥 18. 모듈 로드 완료 메시지
 # ==============================================
 
 print("=" * 80)
-print("🎉 BaseStepMixin v15.0 - 완전 격리 + 순수 의존성 주입!")
+print("🎉 BaseStepMixin v15.0 - 완전 격리 + 순수 의존성 주입 (완전체)!")
 print("=" * 80)
 print("🔥 완전 격리 달성:")
 print("   ✅ 동적 import 완전 제거 - 순환참조 100% 차단")
@@ -1091,6 +1223,7 @@ print("   ✅ 순수 의존성 주입만 사용")
 print("   ✅ 모든 외부 모듈 참조 제거")
 print("   ✅ 완전 독립적인 아키텍처")
 print("   ✅ 순환참조 불가능한 구조")
+print("   ✅ create_isolated_step_mixin 함수 복원!")
 print("")
 print("🔥 인터페이스 기반 설계:")
 print("   🔌 IModelProvider - 모델 제공자 인터페이스")
@@ -1104,12 +1237,14 @@ print("   💉 set_memory_manager() - 메모리 관리자 주입")
 print("   💉 set_data_converter() - 데이터 변환기 주입")
 print("   ⚠️  set_model_loader() - 폐기 예정 (호환성만)")
 print("")
-print("🚀 핵심 메서드들 (순수 DI 기반):")
+print("🚀 Step들이 사용하는 핵심 메서드들 (완전 복원):")
 print("   🤖 get_model(), get_model_async() - 순수 DI")
 print("   🧹 optimize_memory(), optimize_memory_async() - 순수 DI")
-print("   🔥 warmup_isolated(), warmup_async() - 격리된 워밍업")
-print("   📊 get_status() - 격리된 상태")
+print("   🔥 warmup(), warmup_async(), warmup_step() - 격리된 워밍업")
+print("   📊 get_status(), get_performance_summary() - 격리된 상태")
+print("   🔧 initialize(), initialize_async() - 초기화")
 print("   🧹 cleanup(), cleanup_models() - 격리된 정리")
+print("   📝 record_processing() - 처리 기록")
 print("")
 print("🎯 8단계 AI 파이프라인 Step별 Mixin (완전 격리):")
 print("   1️⃣ HumanParsingMixin - 신체 영역 분할")
@@ -1121,12 +1256,21 @@ print("   6️⃣ VirtualFittingMixin - 가상 피팅 (핵심)")
 print("   7️⃣ PostProcessingMixin - 후처리")
 print("   8️⃣ QualityAssessmentMixin - 품질 평가")
 print("")
+print("🔥 완전 복원된 편의 함수들:")
+print("   ✅ create_isolated_step_mixin() - 빠진 함수 복원!")
+print("   ✅ create_step_mixin() - 기존 호환성")
+print("   ✅ create_*_step() - 모든 Step 생성자")
+print("   ✅ create_m3_max_optimized_step() - M3 Max 최적화")
+print("")
 print(f"🔧 시스템 정보:")
 print(f"   conda 환경: {CONDA_INFO['conda_env']}")
 print(f"   PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
 print(f"   MPS (M3 Max): {'✅' if MPS_AVAILABLE else '❌'}")
+print(f"   NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
+print(f"   PIL: {'✅' if PIL_AVAILABLE else '❌'}")
 print("")
 print("🎉 완전 격리 성공! - 순환참조 원천 차단!")
 print("🎉 이제 BaseStepMixin은 어떤 모듈도 직접 참조하지 않습니다!")
 print("🎉 모든 기능은 순수 의존성 주입으로만 제공됩니다!")
+print("🔥 NameError: create_isolated_step_mixin 완전 해결!")
 print("=" * 80)
