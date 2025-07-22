@@ -1,4 +1,4 @@
-"""
+""""
 🔥 MyCloset AI - 2단계: 포즈 추정 (Pose Estimation) - 완전한 실제 AI 전용 버전
 ===============================================================================
 
@@ -168,6 +168,7 @@ except Exception as e:
     
     cv2 = MinimalOpenCV()
     OPENCV_AVAILABLE = False
+
 # ==============================================
 # 🔥 한방향 참조 구조 - 순환참조 완전 방지
 # ==============================================
@@ -353,7 +354,7 @@ class PoseEstimationStep(BaseStepMixin):
         **kwargs
     ):
         """
-        🔥 완전한 실제 AI 전용 생성자 - 폴백 완전 제거
+        🔥 수정된 생성자 - strict_mode 속성 누락 완전 해결
         
         Args:
             device: 디바이스 설정 ('auto', 'mps', 'cuda', 'cpu')
@@ -362,46 +363,94 @@ class PoseEstimationStep(BaseStepMixin):
             **kwargs: 추가 설정
         """
         
-        # 🔥 1. BaseStepMixin 완전 초기화 (MRO 안전)
-        super().__init__(device=device, config=config, **kwargs)
-        
-        # 🔥 2. logger 속성 누락 완전 해결
-        if not hasattr(self, 'logger'):
-            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
-        
-        # 🔥 3. Step 고유 설정
+        # 🔥 0. 핵심 속성들을 BaseStepMixin 초기화 전에 먼저 설정
+        self.strict_mode = strict_mode
         self.step_name = "PoseEstimationStep"
         self.step_number = 2
         self.step_description = "완전한 실제 AI 인체 포즈 추정 및 키포인트 검출"
+        self.is_initialized = False
+        self.initialization_lock = threading.Lock()
         
-        # 🔥 4. 엄격 모드 설정 (핵심)
-        self.strict_mode = strict_mode
+        # 🔥 1. logger 속성 누락 완전 해결 (BaseStepMixin 초기화 전에 설정)
+        if not hasattr(self, 'logger'):
+            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
+        
+        # 🔥 2. BaseStepMixin 완전 초기화 (MRO 안전)
+        try:
+            super().__init__(device=device, config=config, **kwargs)
+        except Exception as e:
+            self.logger.error(f"❌ BaseStepMixin 초기화 실패: {e}")
+            # 초기화 실패해도 기본 속성들은 설정되어 있음
+            if self.strict_mode:
+                raise RuntimeError(f"Strict Mode: BaseStepMixin 초기화 실패: {e}")
+        
+        # 🔥 3. 엄격 모드 로깅
         if self.strict_mode:
             self.logger.info("🔒 Strict Mode 활성화 - 실제 AI 모델만 사용, 폴백 완전 금지")
         
-        # 🔥 5. 디바이스 설정
-        self._setup_device(device)
+        # 🔥 4. 디바이스 설정 (안전한 처리)
+        try:
+            self._setup_device(device)
+        except Exception as e:
+            self.logger.error(f"❌ 디바이스 설정 실패: {e}")
+            # 폴백 설정
+            self.device = "cpu"
+            self.is_m3_max = False
+            self.memory_gb = 16.0
+            if self.strict_mode:
+                raise RuntimeError(f"Strict Mode: 디바이스 설정 실패: {e}")
         
-        # 🔥 6. 설정 통합
-        self._setup_config(config, **kwargs)
+        # 🔥 5. 설정 통합 (안전한 처리)
+        try:
+            self._setup_config(config, **kwargs)
+        except Exception as e:
+            self.logger.error(f"❌ 설정 통합 실패: {e}")
+            # 기본 설정으로 폴백
+            self.config = config or {}
+            self.pose_config = {
+                'confidence_threshold': 0.5,
+                'visualization_enabled': True,
+                'return_analysis': True,
+                'cache_enabled': True,
+                'detailed_analysis': True,
+                'strict_mode': self.strict_mode,
+                'fallback_enabled': False,
+                'real_ai_only': True
+            }
+            if self.strict_mode:
+                raise RuntimeError(f"Strict Mode: 설정 통합 실패: {e}")
         
-        # 🔥 7. 포즈 추정 시스템 초기화
-        self._initialize_pose_system()
-        
-        # 🔥 8. 초기화 상태
-        self.is_initialized = False
-        self.initialization_lock = threading.Lock()
+        # 🔥 6. 포즈 추정 시스템 초기화 (안전한 처리)
+        try:
+            self._initialize_pose_system()
+        except Exception as e:
+            self.logger.error(f"❌ 포즈 추정 시스템 초기화 실패: {e}")
+            # 최소한의 기본 설정
+            self.pose_config = getattr(self, 'pose_config', {
+                'confidence_threshold': 0.5,
+                'visualization_enabled': True,
+                'return_analysis': True,
+                'cache_enabled': True,
+                'detailed_analysis': True,
+                'strict_mode': self.strict_mode,
+                'fallback_enabled': False,
+                'real_ai_only': True
+            })
+            self.prediction_cache = {}
+            self.cache_max_size = 50
+            if self.strict_mode:
+                raise RuntimeError(f"Strict Mode: 포즈 추정 시스템 초기화 실패: {e}")
         
         self.logger.info(f"🎯 {self.step_name} 생성 완료 (Strict Mode: {self.strict_mode})")
     
     def _setup_device(self, device: Optional[str]):
-        """디바이스 설정 - 폴백 없는 엄격 모드"""
+        """디바이스 설정 - 안전한 처리 + 폴백"""
         try:
             if device is None or device == "auto":
-                if torch.backends.mps.is_available():
+                if TORCH_AVAILABLE and torch.backends.mps.is_available():
                     self.device = "mps"
                     self.is_m3_max = True
-                elif torch.cuda.is_available():
+                elif TORCH_AVAILABLE and torch.cuda.is_available():
                     self.device = "cuda"
                     self.is_m3_max = False
                 else:
@@ -413,92 +462,139 @@ class PoseEstimationStep(BaseStepMixin):
             
             # 메모리 정보 수집
             if PSUTIL_AVAILABLE:
-                memory = psutil.virtual_memory()
-                self.memory_gb = memory.total / (1024**3)
+                try:
+                    memory = psutil.virtual_memory()
+                    self.memory_gb = memory.total / (1024**3)
+                except Exception:
+                    self.memory_gb = 16.0
             else:
-                self.memory_gb = 16.0  # 기본값
+                self.memory_gb = 16.0
             
             self.logger.info(f"🔧 디바이스: {self.device}, M3 Max: {self.is_m3_max}, 메모리: {self.memory_gb:.1f}GB")
             
         except Exception as e:
             error_msg = f"디바이스 설정 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
-            if self.strict_mode:
-                raise RuntimeError(f"Strict Mode: {error_msg}")
-            # 비엄격 모드에서만 폴백
+            
+            # 안전한 폴백 설정
             self.device = "cpu"
             self.is_m3_max = False
             self.memory_gb = 16.0
+            
+            if getattr(self, 'strict_mode', False):
+                raise RuntimeError(f"Strict Mode: {error_msg}")
     
     def _setup_config(self, config: Optional[Dict[str, Any]], **kwargs):
-        """설정 통합"""
-        self.config = config or {}
-        
-        # kwargs에서 시스템 파라미터 추출
-        system_params = ['device', 'optimization_level', 'batch_size', 'memory_limit']
-        for key, value in kwargs.items():
-            if key in system_params:
-                self.config[key] = value
-        
-        # 기본 설정 (실제 AI 전용)
-        default_config = {
-            'confidence_threshold': 0.5,
-            'visualization_enabled': True,
-            'return_analysis': True,
-            'cache_enabled': True,
-            'detailed_analysis': True,
-            'strict_mode': self.strict_mode,
-            'fallback_enabled': False,  # 폴백 완전 금지
-            'real_ai_only': True        # 실제 AI만 사용
-        }
-        
-        # 설정 병합
-        for key, default_value in default_config.items():
-            if key not in self.config:
-                self.config[key] = kwargs.get(key, default_value)
-        
-        self.logger.info(f"🔧 설정 완료: {list(self.config.keys())}")
+        """설정 통합 - 안전한 처리"""
+        try:
+            self.config = config or {}
+            
+            # kwargs에서 시스템 파라미터 추출
+            system_params = ['device', 'optimization_level', 'batch_size', 'memory_limit']
+            for key, value in kwargs.items():
+                if key in system_params:
+                    self.config[key] = value
+            
+            # 기본 설정 (실제 AI 전용)
+            default_config = {
+                'confidence_threshold': 0.5,
+                'visualization_enabled': True,
+                'return_analysis': True,
+                'cache_enabled': True,
+                'detailed_analysis': True,
+                'strict_mode': getattr(self, 'strict_mode', True),
+                'fallback_enabled': False,
+                'real_ai_only': True
+            }
+            
+            # 설정 병합
+            for key, default_value in default_config.items():
+                if key not in self.config:
+                    self.config[key] = kwargs.get(key, default_value)
+            
+            self.logger.info(f"🔧 설정 완료: {list(self.config.keys())}")
+            
+        except Exception as e:
+            error_msg = f"설정 통합 실패: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 안전한 폴백 설정
+            self.config = {
+                'confidence_threshold': 0.5,
+                'visualization_enabled': True,
+                'return_analysis': True,
+                'cache_enabled': True,
+                'detailed_analysis': True,
+                'strict_mode': getattr(self, 'strict_mode', True),
+                'fallback_enabled': False,
+                'real_ai_only': True
+            }
+            
+            if getattr(self, 'strict_mode', False):
+                raise RuntimeError(f"Strict Mode: {error_msg}")
     
     def _initialize_pose_system(self):
-        """포즈 추정 시스템 초기화"""
-        
-        # 포즈 추정 설정 (실제 AI 전용)
-        self.pose_config = {
-            'model_priority': self.config.get('model_priority', [
-                'pose_estimation_openpose', 
-                'pose_estimation_sk', 
-                'pose_estimation_lightweight'
-            ]),
-            'confidence_threshold': self.config.get('confidence_threshold', 0.5),
-            'visualization_enabled': self.config.get('visualization_enabled', True),
-            'return_analysis': self.config.get('return_analysis', True),
-            'cache_enabled': self.config.get('cache_enabled', True),
-            'batch_processing': self.config.get('batch_processing', False),
-            'detailed_analysis': self.config.get('detailed_analysis', True),
-            'real_ai_only': True,       # 실제 AI만 사용
-            'fallback_enabled': False   # 폴백 완전 금지
-        }
-        
-        # 최적화 레벨 설정 (M3 Max 특화)
-        if self.is_m3_max:
-            self.optimization_level = 'maximum'
-            self.batch_processing = True
-            self.use_neural_engine = True
-        elif self.memory_gb >= 32:
-            self.optimization_level = 'high'
-            self.batch_processing = True
-            self.use_neural_engine = False
-        else:
+        """포즈 추정 시스템 초기화 - 안전한 처리"""
+        try:
+            # 포즈 추정 설정 (실제 AI 전용)
+            self.pose_config = {
+                'model_priority': self.config.get('model_priority', [
+                    'pose_estimation_openpose', 
+                    'pose_estimation_sk', 
+                    'pose_estimation_lightweight'
+                ]),
+                'confidence_threshold': self.config.get('confidence_threshold', 0.5),
+                'visualization_enabled': self.config.get('visualization_enabled', True),
+                'return_analysis': self.config.get('return_analysis', True),
+                'cache_enabled': self.config.get('cache_enabled', True),
+                'batch_processing': self.config.get('batch_processing', False),
+                'detailed_analysis': self.config.get('detailed_analysis', True),
+                'real_ai_only': True,
+                'fallback_enabled': False
+            }
+            
+            # 최적화 레벨 설정 (M3 Max 특화)
+            if getattr(self, 'is_m3_max', False):
+                self.optimization_level = 'maximum'
+                self.batch_processing = True
+                self.use_neural_engine = True
+            elif getattr(self, 'memory_gb', 16) >= 32:
+                self.optimization_level = 'high'
+                self.batch_processing = True
+                self.use_neural_engine = False
+            else:
+                self.optimization_level = 'basic'
+                self.batch_processing = False
+                self.use_neural_engine = False
+            
+            # 캐시 시스템
+            cache_size = min(100 if getattr(self, 'is_m3_max', False) else 50, 
+                            int(getattr(self, 'memory_gb', 16) * 2))
+            self.prediction_cache = {}
+            self.cache_max_size = cache_size
+            
+            self.logger.info(f"🎯 실제 AI 포즈 시스템 초기화 완료 - 최적화: {self.optimization_level}")
+            
+        except Exception as e:
+            error_msg = f"포즈 추정 시스템 초기화 실패: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 안전한 폴백 설정
+            self.pose_config = {
+                'confidence_threshold': 0.5,
+                'visualization_enabled': True,
+                'return_analysis': True,
+                'cache_enabled': True,
+                'detailed_analysis': True,
+                'real_ai_only': True,
+                'fallback_enabled': False
+            }
             self.optimization_level = 'basic'
-            self.batch_processing = False
-            self.use_neural_engine = False
-        
-        # 캐시 시스템
-        cache_size = min(100 if self.is_m3_max else 50, int(self.memory_gb * 2))
-        self.prediction_cache = {}
-        self.cache_max_size = cache_size
-        
-        self.logger.info(f"🎯 실제 AI 포즈 시스템 초기화 완료 - 최적화: {self.optimization_level}")
+            self.prediction_cache = {}
+            self.cache_max_size = 50
+            
+            if getattr(self, 'strict_mode', False):
+                raise RuntimeError(f"Strict Mode: {error_msg}")
     
     def _get_step_model_requirements(self) -> Dict[str, Any]:
         """🔥 step_model_requests.py 완벽 호환 요구사항"""
@@ -988,445 +1084,6 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger.error(f"❌ {self.step_name} 완전한 실제 AI 처리 실패: {e}")
             if self.strict_mode:
                 raise  # strict_mode에서는 Exception 재발생
-            return self._create_error_result(str(e))
-    
-    async def _process_with_real_ai_model(
-        self, 
-        image: Image.Image, 
-        clothing_type: Optional[str] = None,
-        warmup: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """완전한 실제 AI 모델을 통한 포즈 추정 처리 - 폴백 완전 금지"""
-        try:
-            if not self.active_model or self.active_model not in self.pose_models:
-                error_msg = "활성 실제 AI 모델 없음"
-                self.logger.error(f"❌ {error_msg}")
-                if self.strict_mode:
-                    raise RuntimeError(f"Strict Mode: {error_msg}")
-                return {'success': False, 'error': error_msg}
-            
-            model = self.pose_models[self.active_model]
-            
-            # 실제 AI 모델 재검증
-            if not self._is_real_ai_model(model):
-                error_msg = f"로드된 모델이 실제 AI 모델이 아님: {type(model)}"
-                self.logger.error(f"❌ {error_msg}")
-                if self.strict_mode:
-                    raise RuntimeError(f"Strict Mode: {error_msg}")
-                return {'success': False, 'error': error_msg}
-            
-            self.logger.info(f"🧠 {self.active_model} 실제 AI 모델로 추론 시작")
-            
-            # 이미지를 실제 AI 모델 입력 형식으로 변환
-            model_input = self._prepare_real_ai_model_input(image)
-            
-            if model_input is None:
-                error_msg = "실제 AI 모델 입력 준비 실패"
-                if self.strict_mode:
-                    raise ValueError(f"Strict Mode: {error_msg}")
-                return {'success': False, 'error': error_msg}
-            
-            # 🔥 완전한 실제 AI 모델 추론 실행 (폴백 금지)
-            try:
-                if hasattr(model, '__call__'):
-                    # 직접 호출 가능한 실제 AI 모델
-                    model_output = await self._safe_real_ai_model_call(model, model_input)
-                elif hasattr(model, 'predict'):
-                    # predict 메서드가 있는 실제 AI 모델
-                    model_output = await self._safe_real_ai_model_predict(model, model_input)
-                elif hasattr(model, 'forward'):
-                    # PyTorch 실제 AI 모델
-                    model_output = await self._safe_real_ai_model_forward(model, model_input)
-                else:
-                    error_msg = f"실제 AI 모델 호출 방법 없음: {type(model)}"
-                    if self.strict_mode:
-                        raise ValueError(f"Strict Mode: {error_msg}")
-                    return {'success': False, 'error': error_msg}
-                
-            except Exception as e:
-                error_msg = f"실제 AI 모델 추론 실패: {e}"
-                self.logger.error(f"❌ {error_msg}")
-                if self.strict_mode:
-                    raise RuntimeError(f"Strict Mode: {error_msg}")
-                return {'success': False, 'error': error_msg}
-            
-            # 워밍업 모드인 경우 간단한 성공 결과 반환
-            if warmup:
-                return {"success": True, "warmup": True, "model_used": self.active_model}
-            
-            # 🔥 실제 AI 모델 출력 해석 (완전한 분석)
-            pose_result = self._interpret_real_ai_model_output(model_output, image.size, self.active_model)
-            
-            if not pose_result.get('success', False):
-                error_msg = "실제 AI 모델 출력 해석 실패"
-                if self.strict_mode:
-                    raise ValueError(f"Strict Mode: {error_msg}")
-                return {'success': False, 'error': error_msg}
-            
-            self.logger.info(f"✅ {self.active_model} 실제 AI 추론 완전 성공")
-            return pose_result
-            
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 처리 실패: {e}")
-            if self.strict_mode:
-                raise
-            return {'success': False, 'error': str(e)}
-    
-    def _prepare_real_ai_model_input(self, image: Image.Image) -> Optional[Any]:
-        """실제 AI 모델 입력 준비"""
-        try:
-            # 이미지를 numpy 배열로 변환
-            image_np = np.array(image)
-            
-            # 실제 AI 모델별 입력 크기 조정
-            if hasattr(self, 'target_input_size'):
-                target_size = self.target_input_size
-                image_resized = cv2.resize(image_np, target_size)
-            else:
-                image_resized = image_np
-            
-            # PyTorch 실제 AI 모델인 경우 텐서로 변환
-            if TORCH_AVAILABLE and hasattr(self, 'active_model'):
-                if 'openpose' in self.active_model or 'yolo' in self.active_model or 'sk' in self.active_model:
-                    # 정규화 및 텐서 변환
-                    image_tensor = torch.from_numpy(image_resized).float()
-                    if len(image_tensor.shape) == 3:
-                        image_tensor = image_tensor.permute(2, 0, 1).unsqueeze(0)  # BHWC -> BCHW
-                    image_tensor = image_tensor / 255.0  # 정규화
-                    image_tensor = image_tensor.to(self.device)
-                    return image_tensor
-            
-            return image_resized
-            
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 입력 준비 실패: {e}")
-            return None
-    
-    async def _safe_real_ai_model_call(self, model: Any, input_data: Any) -> Any:
-        """안전한 실제 AI 모델 호출"""
-        try:
-            if asyncio.iscoroutinefunction(model.__call__):
-                return await model(input_data)
-            else:
-                return model(input_data)
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 __call__ 실패: {e}")
-            raise
-    
-    async def _safe_real_ai_model_predict(self, model: Any, input_data: Any) -> Any:
-        """안전한 실제 AI 모델 predict 호출"""
-        try:
-            if asyncio.iscoroutinefunction(model.predict):
-                return await model.predict(input_data)
-            else:
-                return model.predict(input_data)
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 predict 실패: {e}")
-            raise
-    
-    async def _safe_real_ai_model_forward(self, model: Any, input_data: Any) -> Any:
-        """안전한 실제 AI 모델 forward 호출"""
-        try:
-            with torch.no_grad():
-                if asyncio.iscoroutinefunction(model.forward):
-                    return await model.forward(input_data)
-                else:
-                    return model.forward(input_data)
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 forward 실패: {e}")
-            raise
-    
-    def _interpret_real_ai_model_output(self, model_output: Any, image_size: Tuple[int, int], model_name: str) -> Dict[str, Any]:
-        """실제 AI 모델 출력 해석"""
-        try:
-            if 'openpose' in model_name:
-                return self._interpret_openpose_output(model_output, image_size)
-            elif 'yolo' in model_name or 'sk' in model_name:
-                return self._interpret_yolo_output(model_output, image_size)
-            else:
-                return self._interpret_generic_ai_output(model_output, image_size)
-                
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 출력 해석 실패: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def _interpret_openpose_output(self, output: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
-        """OpenPose 실제 AI 출력 해석"""
-        try:
-            keypoints = []
-            confidence_scores = []
-            
-            if TORCH_AVAILABLE and torch.is_tensor(output):
-                output_np = output.cpu().numpy()
-                
-                # 히트맵에서 키포인트 추출
-                if len(output_np.shape) == 4:  # [B, C, H, W]
-                    output_np = output_np[0]  # 첫 번째 배치
-                
-                for i in range(min(output_np.shape[0], 18)):  # 18개 키포인트만
-                    heatmap = output_np[i]
-                    y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-                    confidence = float(heatmap[y, x])
-                    
-                    # 이미지 크기로 스케일링
-                    x_scaled = x * image_size[0] / heatmap.shape[1]
-                    y_scaled = y * image_size[1] / heatmap.shape[0]
-                    
-                    keypoints.append([float(x_scaled), float(y_scaled), confidence])
-                    confidence_scores.append(confidence)
-            
-            return {
-                'keypoints': keypoints,
-                'confidence_scores': confidence_scores,
-                'model_used': 'openpose_real_ai',
-                'success': len(keypoints) > 0,
-                'ai_model_type': 'openpose'
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ OpenPose 실제 AI 출력 해석 실패: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def _interpret_yolo_output(self, results: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
-        """YOLOv8 포즈 실제 AI 출력 해석"""
-        try:
-            keypoints = []
-            confidence_scores = []
-            
-            if hasattr(results, 'keypoints') and results.keypoints is not None:
-                for result in results:
-                    if hasattr(result, 'keypoints') and result.keypoints is not None:
-                        kps = result.keypoints.data[0]  # 첫 번째 사람
-                        for kp in kps:
-                            x, y, conf = float(kp[0]), float(kp[1]), float(kp[2])
-                            keypoints.append([x, y, conf])
-                            confidence_scores.append(conf)
-                        break
-            
-            # COCO 17을 OpenPose 18로 변환
-            if len(keypoints) == 17:
-                keypoints = self._convert_coco_to_openpose(keypoints, image_size)
-                confidence_scores = [kp[2] for kp in keypoints]
-            
-            return {
-                'keypoints': keypoints,
-                'confidence_scores': confidence_scores,
-                'model_used': 'yolov8_real_ai',
-                'success': len(keypoints) > 0,
-                'ai_model_type': 'yolov8'
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ YOLOv8 실제 AI 출력 해석 실패: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def _interpret_generic_ai_output(self, output: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
-        """일반적인 실제 AI 모델 출력 해석"""
-        try:
-            keypoints = []
-            confidence_scores = []
-            
-            # 다양한 실제 AI 출력 형식에 대응
-            if isinstance(output, (list, tuple)):
-                # 리스트/튜플 형태의 키포인트
-                for item in output:
-                    if len(item) >= 3:
-                        keypoints.append([float(item[0]), float(item[1]), float(item[2])])
-                        confidence_scores.append(float(item[2]))
-            elif isinstance(output, np.ndarray):
-                # NumPy 배열
-                if len(output.shape) == 2 and output.shape[1] >= 3:
-                    for i in range(min(output.shape[0], 18)):
-                        keypoints.append([float(output[i, 0]), float(output[i, 1]), float(output[i, 2])])
-                        confidence_scores.append(float(output[i, 2]))
-            elif TORCH_AVAILABLE and torch.is_tensor(output):
-                # PyTorch 텐서
-                output_np = output.cpu().numpy()
-                return self._interpret_generic_ai_output(output_np, image_size)
-            
-            return {
-                'keypoints': keypoints,
-                'confidence_scores': confidence_scores,
-                'model_used': 'generic_real_ai',
-                'success': len(keypoints) > 0,
-                'ai_model_type': 'generic'
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 일반 실제 AI 출력 해석 실패: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def _convert_coco_to_openpose(self, coco_keypoints: List[List[float]], image_size: Tuple[int, int]) -> List[List[float]]:
-        """COCO 17을 OpenPose 18로 변환"""
-        try:
-            # COCO 17 -> OpenPose 18 매핑
-            coco_to_op_mapping = {
-                0: 0,   # nose
-                1: 16,  # left_eye -> left_eye
-                2: 15,  # right_eye -> right_eye
-                3: 18,  # left_ear -> left_ear
-                4: 17,  # right_ear -> right_ear
-                5: 5,   # left_shoulder -> left_shoulder
-                6: 2,   # right_shoulder -> right_shoulder
-                7: 6,   # left_elbow -> left_elbow
-                8: 3,   # right_elbow -> right_elbow
-                9: 7,   # left_wrist -> left_wrist
-                10: 4,  # right_wrist -> right_wrist
-                11: 12, # left_hip -> left_hip
-                12: 9,  # right_hip -> right_hip
-                13: 13, # left_knee -> left_knee
-                14: 10, # right_knee -> right_knee
-                15: 14, # left_ankle -> left_ankle
-                16: 11  # right_ankle -> right_ankle
-            }
-            
-            # OpenPose 18 키포인트 초기화
-            openpose_18 = [[0.0, 0.0, 0.0] for _ in range(18)]
-            
-            # COCO에서 OpenPose로 변환
-            for coco_idx, op_idx in coco_to_op_mapping.items():
-                if coco_idx < len(coco_keypoints) and op_idx < 18:
-                    openpose_18[op_idx] = coco_keypoints[coco_idx]
-            
-            # neck 키포인트 추정
-            left_shoulder = openpose_18[5]
-            right_shoulder = openpose_18[2]
-            if left_shoulder[2] > 0.3 and right_shoulder[2] > 0.3:
-                neck_x = (left_shoulder[0] + right_shoulder[0]) / 2
-                neck_y = (left_shoulder[1] + right_shoulder[1]) / 2
-                neck_conf = min(left_shoulder[2], right_shoulder[2])
-                openpose_18[1] = [neck_x, neck_y, neck_conf]
-            
-            # mid_hip 키포인트 추정
-            left_hip = openpose_18[12]
-            right_hip = openpose_18[9]
-            if left_hip[2] > 0.3 and right_hip[2] > 0.3:
-                mid_hip_x = (left_hip[0] + right_hip[0]) / 2
-                mid_hip_y = (left_hip[1] + right_hip[1]) / 2
-                mid_hip_conf = min(left_hip[2], right_hip[2])
-                openpose_18[8] = [mid_hip_x, mid_hip_y, mid_hip_conf]
-            
-            return openpose_18
-            
-        except Exception as e:
-            self.logger.error(f"❌ COCO to OpenPose 변환 실패: {e}")
-            return [[0.0, 0.0, 0.0] for _ in range(18)]
-    
-    def _preprocess_image_strict(self, image: Union[np.ndarray, Image.Image, str]) -> Optional[Image.Image]:
-        """엄격한 이미지 전처리"""
-        try:
-            if isinstance(image, str):
-                # 파일 경로인 경우
-                if os.path.exists(image):
-                    image = Image.open(image)
-                else:
-                    # Base64 인코딩된 이미지인 경우
-                    try:
-                        image_data = base64.b64decode(image)
-                        image = Image.open(io.BytesIO(image_data))
-                    except Exception as e:
-                        self.logger.error(f"❌ Base64 이미지 디코딩 실패: {e}")
-                        return None
-            elif isinstance(image, np.ndarray):
-                if image.size == 0:
-                    self.logger.error("❌ 빈 numpy 배열")
-                    return None
-                image = Image.fromarray(image)
-            elif not isinstance(image, Image.Image):
-                self.logger.error(f"❌ 지원하지 않는 이미지 타입: {type(image)}")
-                return None
-            
-            # RGB 변환 (필수)
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            
-            # 이미지 크기 검증
-            if image.size[0] < 64 or image.size[1] < 64:
-                self.logger.error(f"❌ 이미지가 너무 작음: {image.size}")
-                return None
-            
-            # 크기 조정 (성능 최적화)
-            max_size = 1024 if self.is_m3_max else 512
-            if max(image.size) > max_size:
-                ratio = max_size / max(image.size)
-                new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
-                image = image.resize(new_size, Image.Resampling.LANCZOS)
-            
-            return image
-            
-        except Exception as e:
-            self.logger.error(f"❌ 엄격한 이미지 전처리 실패: {e}")
-            return None
-    
-    def _generate_cache_key(self, image: Image.Image, clothing_type: Optional[str]) -> str:
-        """캐시 키 생성"""
-        try:
-            # 이미지 해시
-            image_bytes = io.BytesIO()
-            image.save(image_bytes, format='JPEG', quality=50)
-            image_hash = hashlib.md5(image_bytes.getvalue()).hexdigest()[:16]
-            
-            # 설정 해시
-            config_str = f"{clothing_type}_{self.active_model}_{self.pose_config['confidence_threshold']}"
-            config_hash = hashlib.md5(config_str.encode()).hexdigest()[:8]
-            
-            return f"real_ai_pose_{image_hash}_{config_hash}"
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 캐시 키 생성 실패: {e}")
-            return f"real_ai_pose_{int(time.time())}"
-    
-    def _postprocess_complete_result(self, pose_result: Dict[str, Any], image: Image.Image, start_time: float) -> Dict[str, Any]:
-        """완전한 결과 후처리 - 모든 분석 포함"""
-        try:
-            processing_time = time.time() - start_time
-            
-            # PoseMetrics 생성
-            pose_metrics = PoseMetrics(
-                keypoints=pose_result.get('keypoints', []),
-                confidence_scores=pose_result.get('confidence_scores', []),
-                model_used=pose_result.get('model_used', 'unknown'),
-                processing_time=processing_time,
-                image_resolution=image.size
-            )
-            
-            # 🔥 완전한 포즈 분석 (모든 메서드 포함)
-            complete_pose_analysis = self._analyze_pose_quality_complete(pose_metrics)
-            
-            # 시각화 생성
-            visualization = None
-            if self.pose_config['visualization_enabled']:
-                visualization = self._create_advanced_pose_visualization(image, pose_metrics)
-            
-            # 🔥 최종 결과 구성 (완전한 데이터)
-            result = {
-                'success': pose_result.get('success', False),
-                'keypoints': pose_metrics.keypoints,
-                'confidence_scores': pose_metrics.confidence_scores,
-                'pose_analysis': complete_pose_analysis,
-                'visualization': visualization,
-                'processing_time': processing_time,
-                'model_used': pose_metrics.model_used,
-                'image_resolution': pose_metrics.image_resolution,
-                'step_info': {
-                    'step_name': self.step_name,
-                    'step_number': self.step_number,
-                    'optimization_level': self.optimization_level,
-                    'strict_mode': self.strict_mode,
-                    'real_ai_model_name': self.active_model,
-                    'fallback_disabled': True,
-                    'ai_model_type': pose_result.get('ai_model_type', 'unknown')
-                }
-            }
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"❌ 완전한 결과 후처리 실패: {e}")
-            if self.strict_mode:
-                raise
-            return self._create_error_result(str(e))
     
     def _analyze_pose_quality_complete(self, pose_metrics: PoseMetrics) -> Dict[str, Any]:
         """완전한 포즈 품질 분석 - 모든 분석 메서드 포함"""
@@ -2150,7 +1807,444 @@ class PoseEstimationStep(BaseStepMixin):
             self.cleanup_resources()
         except Exception:
             pass
-
+    
+    async def _process_with_real_ai_model(
+        self, 
+        image: Image.Image, 
+        clothing_type: Optional[str] = None,
+        warmup: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """완전한 실제 AI 모델을 통한 포즈 추정 처리 - 폴백 완전 금지"""
+        try:
+            if not self.active_model or self.active_model not in self.pose_models:
+                error_msg = "활성 실제 AI 모델 없음"
+                self.logger.error(f"❌ {error_msg}")
+                if self.strict_mode:
+                    raise RuntimeError(f"Strict Mode: {error_msg}")
+                return {'success': False, 'error': error_msg}
+            
+            model = self.pose_models[self.active_model]
+            
+            # 실제 AI 모델 재검증
+            if not self._is_real_ai_model(model):
+                error_msg = f"로드된 모델이 실제 AI 모델이 아님: {type(model)}"
+                self.logger.error(f"❌ {error_msg}")
+                if self.strict_mode:
+                    raise RuntimeError(f"Strict Mode: {error_msg}")
+                return {'success': False, 'error': error_msg}
+            
+            self.logger.info(f"🧠 {self.active_model} 실제 AI 모델로 추론 시작")
+            
+            # 이미지를 실제 AI 모델 입력 형식으로 변환
+            model_input = self._prepare_real_ai_model_input(image)
+            
+            if model_input is None:
+                error_msg = "실제 AI 모델 입력 준비 실패"
+                if self.strict_mode:
+                    raise ValueError(f"Strict Mode: {error_msg}")
+                return {'success': False, 'error': error_msg}
+            
+            # 🔥 완전한 실제 AI 모델 추론 실행 (폴백 금지)
+            try:
+                if hasattr(model, '__call__'):
+                    # 직접 호출 가능한 실제 AI 모델
+                    model_output = await self._safe_real_ai_model_call(model, model_input)
+                elif hasattr(model, 'predict'):
+                    # predict 메서드가 있는 실제 AI 모델
+                    model_output = await self._safe_real_ai_model_predict(model, model_input)
+                elif hasattr(model, 'forward'):
+                    # PyTorch 실제 AI 모델
+                    model_output = await self._safe_real_ai_model_forward(model, model_input)
+                else:
+                    error_msg = f"실제 AI 모델 호출 방법 없음: {type(model)}"
+                    if self.strict_mode:
+                        raise ValueError(f"Strict Mode: {error_msg}")
+                    return {'success': False, 'error': error_msg}
+                
+            except Exception as e:
+                error_msg = f"실제 AI 모델 추론 실패: {e}"
+                self.logger.error(f"❌ {error_msg}")
+                if self.strict_mode:
+                    raise RuntimeError(f"Strict Mode: {error_msg}")
+                return {'success': False, 'error': error_msg}
+            
+            # 워밍업 모드인 경우 간단한 성공 결과 반환
+            if warmup:
+                return {"success": True, "warmup": True, "model_used": self.active_model}
+            
+            # 🔥 실제 AI 모델 출력 해석 (완전한 분석)
+            pose_result = self._interpret_real_ai_model_output(model_output, image.size, self.active_model)
+            
+            if not pose_result.get('success', False):
+                error_msg = "실제 AI 모델 출력 해석 실패"
+                if self.strict_mode:
+                    raise ValueError(f"Strict Mode: {error_msg}")
+                return {'success': False, 'error': error_msg}
+            
+            self.logger.info(f"✅ {self.active_model} 실제 AI 추론 완전 성공")
+            return pose_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 모델 처리 실패: {e}")
+            if self.strict_mode:
+                raise
+            return {'success': False, 'error': str(e)}
+    
+    def _prepare_real_ai_model_input(self, image: Image.Image) -> Optional[Any]:
+        """실제 AI 모델 입력 준비"""
+        try:
+            # 이미지를 numpy 배열로 변환
+            image_np = np.array(image)
+            
+            # 실제 AI 모델별 입력 크기 조정
+            if hasattr(self, 'target_input_size'):
+                target_size = self.target_input_size
+                image_resized = cv2.resize(image_np, target_size)
+            else:
+                image_resized = image_np
+            
+            # PyTorch 실제 AI 모델인 경우 텐서로 변환
+            if TORCH_AVAILABLE and hasattr(self, 'active_model'):
+                if 'openpose' in self.active_model or 'yolo' in self.active_model or 'sk' in self.active_model:
+                    # 정규화 및 텐서 변환
+                    image_tensor = torch.from_numpy(image_resized).float()
+                    if len(image_tensor.shape) == 3:
+                        image_tensor = image_tensor.permute(2, 0, 1).unsqueeze(0)  # BHWC -> BCHW
+                    image_tensor = image_tensor / 255.0  # 정규화
+                    image_tensor = image_tensor.to(self.device)
+                    return image_tensor
+            
+            return image_resized
+            
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 모델 입력 준비 실패: {e}")
+            return None
+    
+    async def _safe_real_ai_model_call(self, model: Any, input_data: Any) -> Any:
+        """안전한 실제 AI 모델 호출"""
+        try:
+            if asyncio.iscoroutinefunction(model.__call__):
+                return await model(input_data)
+            else:
+                return model(input_data)
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 모델 __call__ 실패: {e}")
+            raise
+    
+    async def _safe_real_ai_model_predict(self, model: Any, input_data: Any) -> Any:
+        """안전한 실제 AI 모델 predict 호출"""
+        try:
+            if asyncio.iscoroutinefunction(model.predict):
+                return await model.predict(input_data)
+            else:
+                return model.predict(input_data)
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 모델 predict 실패: {e}")
+            raise
+    
+    async def _safe_real_ai_model_forward(self, model: Any, input_data: Any) -> Any:
+        """안전한 실제 AI 모델 forward 호출"""
+        try:
+            with torch.no_grad():
+                if asyncio.iscoroutinefunction(model.forward):
+                    return await model.forward(input_data)
+                else:
+                    return model.forward(input_data)
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 모델 forward 실패: {e}")
+            raise
+    
+    def _interpret_real_ai_model_output(self, model_output: Any, image_size: Tuple[int, int], model_name: str) -> Dict[str, Any]:
+        """실제 AI 모델 출력 해석"""
+        try:
+            if 'openpose' in model_name:
+                return self._interpret_openpose_output(model_output, image_size)
+            elif 'yolo' in model_name or 'sk' in model_name:
+                return self._interpret_yolo_output(model_output, image_size)
+            else:
+                return self._interpret_generic_ai_output(model_output, image_size)
+                
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 모델 출력 해석 실패: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _interpret_openpose_output(self, output: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """OpenPose 실제 AI 출력 해석"""
+        try:
+            keypoints = []
+            confidence_scores = []
+            
+            if TORCH_AVAILABLE and torch.is_tensor(output):
+                output_np = output.cpu().numpy()
+                
+                # 히트맵에서 키포인트 추출
+                if len(output_np.shape) == 4:  # [B, C, H, W]
+                    output_np = output_np[0]  # 첫 번째 배치
+                
+                for i in range(min(output_np.shape[0], 18)):  # 18개 키포인트만
+                    heatmap = output_np[i]
+                    y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+                    confidence = float(heatmap[y, x])
+                    
+                    # 이미지 크기로 스케일링
+                    x_scaled = x * image_size[0] / heatmap.shape[1]
+                    y_scaled = y * image_size[1] / heatmap.shape[0]
+                    
+                    keypoints.append([float(x_scaled), float(y_scaled), confidence])
+                    confidence_scores.append(confidence)
+            
+            return {
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
+                'model_used': 'openpose_real_ai',
+                'success': len(keypoints) > 0,
+                'ai_model_type': 'openpose'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ OpenPose 실제 AI 출력 해석 실패: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _interpret_yolo_output(self, results: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """YOLOv8 포즈 실제 AI 출력 해석"""
+        try:
+            keypoints = []
+            confidence_scores = []
+            
+            if hasattr(results, 'keypoints') and results.keypoints is not None:
+                for result in results:
+                    if hasattr(result, 'keypoints') and result.keypoints is not None:
+                        kps = result.keypoints.data[0]  # 첫 번째 사람
+                        for kp in kps:
+                            x, y, conf = float(kp[0]), float(kp[1]), float(kp[2])
+                            keypoints.append([x, y, conf])
+                            confidence_scores.append(conf)
+                        break
+            
+            # COCO 17을 OpenPose 18로 변환
+            if len(keypoints) == 17:
+                keypoints = self._convert_coco_to_openpose(keypoints, image_size)
+                confidence_scores = [kp[2] for kp in keypoints]
+            
+            return {
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
+                'model_used': 'yolov8_real_ai',
+                'success': len(keypoints) > 0,
+                'ai_model_type': 'yolov8'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ YOLOv8 실제 AI 출력 해석 실패: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _interpret_generic_ai_output(self, output: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """일반적인 실제 AI 모델 출력 해석"""
+        try:
+            keypoints = []
+            confidence_scores = []
+            
+            # 다양한 실제 AI 출력 형식에 대응
+            if isinstance(output, (list, tuple)):
+                # 리스트/튜플 형태의 키포인트
+                for item in output:
+                    if len(item) >= 3:
+                        keypoints.append([float(item[0]), float(item[1]), float(item[2])])
+                        confidence_scores.append(float(item[2]))
+            elif isinstance(output, np.ndarray):
+                # NumPy 배열
+                if len(output.shape) == 2 and output.shape[1] >= 3:
+                    for i in range(min(output.shape[0], 18)):
+                        keypoints.append([float(output[i, 0]), float(output[i, 1]), float(output[i, 2])])
+                        confidence_scores.append(float(output[i, 2]))
+            elif TORCH_AVAILABLE and torch.is_tensor(output):
+                # PyTorch 텐서
+                output_np = output.cpu().numpy()
+                return self._interpret_generic_ai_output(output_np, image_size)
+            
+            return {
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
+                'model_used': 'generic_real_ai',
+                'success': len(keypoints) > 0,
+                'ai_model_type': 'generic'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 일반 실제 AI 출력 해석 실패: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _convert_coco_to_openpose(self, coco_keypoints: List[List[float]], image_size: Tuple[int, int]) -> List[List[float]]:
+        """COCO 17을 OpenPose 18로 변환"""
+        try:
+            # COCO 17 -> OpenPose 18 매핑
+            coco_to_op_mapping = {
+                0: 0,   # nose
+                1: 16,  # left_eye -> left_eye
+                2: 15,  # right_eye -> right_eye
+                3: 18,  # left_ear -> left_ear
+                4: 17,  # right_ear -> right_ear
+                5: 5,   # left_shoulder -> left_shoulder
+                6: 2,   # right_shoulder -> right_shoulder
+                7: 6,   # left_elbow -> left_elbow
+                8: 3,   # right_elbow -> right_elbow
+                9: 7,   # left_wrist -> left_wrist
+                10: 4,  # right_wrist -> right_wrist
+                11: 12, # left_hip -> left_hip
+                12: 9,  # right_hip -> right_hip
+                13: 13, # left_knee -> left_knee
+                14: 10, # right_knee -> right_knee
+                15: 14, # left_ankle -> left_ankle
+                16: 11  # right_ankle -> right_ankle
+            }
+            
+            # OpenPose 18 키포인트 초기화
+            openpose_18 = [[0.0, 0.0, 0.0] for _ in range(18)]
+            
+            # COCO에서 OpenPose로 변환
+            for coco_idx, op_idx in coco_to_op_mapping.items():
+                if coco_idx < len(coco_keypoints) and op_idx < 18:
+                    openpose_18[op_idx] = coco_keypoints[coco_idx]
+            
+            # neck 키포인트 추정
+            left_shoulder = openpose_18[5]
+            right_shoulder = openpose_18[2]
+            if left_shoulder[2] > 0.3 and right_shoulder[2] > 0.3:
+                neck_x = (left_shoulder[0] + right_shoulder[0]) / 2
+                neck_y = (left_shoulder[1] + right_shoulder[1]) / 2
+                neck_conf = min(left_shoulder[2], right_shoulder[2])
+                openpose_18[1] = [neck_x, neck_y, neck_conf]
+            
+            # mid_hip 키포인트 추정
+            left_hip = openpose_18[12]
+            right_hip = openpose_18[9]
+            if left_hip[2] > 0.3 and right_hip[2] > 0.3:
+                mid_hip_x = (left_hip[0] + right_hip[0]) / 2
+                mid_hip_y = (left_hip[1] + right_hip[1]) / 2
+                mid_hip_conf = min(left_hip[2], right_hip[2])
+                openpose_18[8] = [mid_hip_x, mid_hip_y, mid_hip_conf]
+            
+            return openpose_18
+            
+        except Exception as e:
+            self.logger.error(f"❌ COCO to OpenPose 변환 실패: {e}")
+            return [[0.0, 0.0, 0.0] for _ in range(18)]
+    
+    def _preprocess_image_strict(self, image: Union[np.ndarray, Image.Image, str]) -> Optional[Image.Image]:
+        """엄격한 이미지 전처리"""
+        try:
+            if isinstance(image, str):
+                # 파일 경로인 경우
+                if os.path.exists(image):
+                    image = Image.open(image)
+                else:
+                    # Base64 인코딩된 이미지인 경우
+                    try:
+                        image_data = base64.b64decode(image)
+                        image = Image.open(io.BytesIO(image_data))
+                    except Exception as e:
+                        self.logger.error(f"❌ Base64 이미지 디코딩 실패: {e}")
+                        return None
+            elif isinstance(image, np.ndarray):
+                if image.size == 0:
+                    self.logger.error("❌ 빈 numpy 배열")
+                    return None
+                image = Image.fromarray(image)
+            elif not isinstance(image, Image.Image):
+                self.logger.error(f"❌ 지원하지 않는 이미지 타입: {type(image)}")
+                return None
+            
+            # RGB 변환 (필수)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # 이미지 크기 검증
+            if image.size[0] < 64 or image.size[1] < 64:
+                self.logger.error(f"❌ 이미지가 너무 작음: {image.size}")
+                return None
+            
+            # 크기 조정 (성능 최적화)
+            max_size = 1024 if self.is_m3_max else 512
+            if max(image.size) > max_size:
+                ratio = max_size / max(image.size)
+                new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
+            
+            return image
+            
+        except Exception as e:
+            self.logger.error(f"❌ 엄격한 이미지 전처리 실패: {e}")
+            return None
+    
+    def _generate_cache_key(self, image: Image.Image, clothing_type: Optional[str]) -> str:
+        """캐시 키 생성"""
+        try:
+            # 이미지 해시
+            image_bytes = io.BytesIO()
+            image.save(image_bytes, format='JPEG', quality=50)
+            image_hash = hashlib.md5(image_bytes.getvalue()).hexdigest()[:16]
+            
+            # 설정 해시
+            config_str = f"{clothing_type}_{self.active_model}_{self.pose_config['confidence_threshold']}"
+            config_hash = hashlib.md5(config_str.encode()).hexdigest()[:8]
+            
+            return f"real_ai_pose_{image_hash}_{config_hash}"
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 캐시 키 생성 실패: {e}")
+            return f"real_ai_pose_{int(time.time())}"
+    
+    def _postprocess_complete_result(self, pose_result: Dict[str, Any], image: Image.Image, start_time: float) -> Dict[str, Any]:
+        """완전한 결과 후처리 - 모든 분석 포함"""
+        try:
+            processing_time = time.time() - start_time
+            
+            # PoseMetrics 생성
+            pose_metrics = PoseMetrics(
+                keypoints=pose_result.get('keypoints', []),
+                confidence_scores=pose_result.get('confidence_scores', []),
+                model_used=pose_result.get('model_used', 'unknown'),
+                processing_time=processing_time,
+                image_resolution=image.size
+            )
+            
+            # 🔥 완전한 포즈 분석 (모든 메서드 포함)
+            complete_pose_analysis = self._analyze_pose_quality_complete(pose_metrics)
+            
+            # 시각화 생성
+            visualization = None
+            if self.pose_config['visualization_enabled']:
+                visualization = self._create_advanced_pose_visualization(image, pose_metrics)
+            
+            # 🔥 최종 결과 구성 (완전한 데이터)
+            result = {
+                'success': pose_result.get('success', False),
+                'keypoints': pose_metrics.keypoints,
+                'confidence_scores': pose_metrics.confidence_scores,
+                'pose_analysis': complete_pose_analysis,
+                'visualization': visualization,
+                'processing_time': processing_time,
+                'model_used': pose_metrics.model_used,
+                'image_resolution': pose_metrics.image_resolution,
+                'step_info': {
+                    'step_name': self.step_name,
+                    'step_number': self.step_number,
+                    'optimization_level': self.optimization_level,
+                    'strict_mode': self.strict_mode,
+                    'real_ai_model_name': self.active_model,
+                    'fallback_disabled': True,
+                    'ai_model_type': pose_result.get('ai_model_type', 'unknown')
+                }
+            }
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ 완전한 결과 후처리 실패: {e}")
+            if self.strict_mode:
+                raise
+            return self._create_error_result(str(e))
 # =================================================================
 # 🔥 호환성 지원 함수들 (완전한 실제 AI 전용)
 # =================================================================
