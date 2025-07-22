@@ -194,6 +194,9 @@ CLOTHING_WARPING_WEIGHTS = {
     'top': {'deformation': 0.5, 'texture': 0.3, 'physics': 0.2},
     'default': {'deformation': 0.4, 'physics': 0.3, 'texture': 0.3}
 }
+
+@dataclass
+class ClothWarpingConfig:
     """의류 워핑 설정"""
     warping_method: WarpingMethod = WarpingMethod.AI_MODEL
     input_size: Tuple[int, int] = (512, 384)
@@ -413,7 +416,7 @@ class ClothPhysicsSimulator:
         except Exception as e:
             self.logger.error(f"시뮬레이션 단계 실패: {e}")
             raise RuntimeError(f"시뮬레이션 단계 실패: {e}")
-                    
+    
     def get_deformed_mesh(self) -> np.ndarray:
         """변형된 메시 반환"""
         if self.mesh_vertices is None:
@@ -1682,6 +1685,83 @@ class ClothWarpingStep(ClothWarpingMixin):
     # ==============================================
     # 🔧 시스템 관리 메서드들 (BaseStepMixin 확장)
     # ==============================================
+    
+    def _update_performance_stats(self, processing_time: float, confidence: float, success: bool = True):
+        """성능 통계 업데이트"""
+        try:
+            self.performance_stats['total_processed'] += 1
+            
+            if success:
+                # 평균 처리 시간 업데이트
+                total = self.performance_stats['total_processed']
+                current_avg = self.performance_stats['avg_processing_time']
+                self.performance_stats['avg_processing_time'] = (
+                    (current_avg * (total - 1) + processing_time) / total
+                )
+                
+                # 성공률 업데이트
+                success_count = self.performance_stats['total_processed'] - self.performance_stats['error_count']
+                self.performance_stats['success_rate'] = success_count / total
+            else:
+                self.performance_stats['error_count'] += 1
+                total = self.performance_stats['total_processed']
+                success_count = total - self.performance_stats['error_count']
+                self.performance_stats['success_rate'] = success_count / total if total > 0 else 0.0
+                
+        except Exception as e:
+            self.logger.warning(f"성능 통계 업데이트 실패: {e}")
+    
+    def get_cache_status(self) -> Dict[str, Any]:
+        """캐시 상태 반환"""
+        return {
+            "enabled": self.warping_config.cache_enabled,
+            "current_size": len(self.prediction_cache),
+            "max_size": self.warping_config.cache_size,
+            "hit_rate": (
+                self.performance_stats.get('cache_hits', 0) / 
+                max(1, self.performance_stats.get('cache_hits', 0) + self.performance_stats.get('cache_misses', 0))
+            ),
+            "total_hits": self.performance_stats.get('cache_hits', 0),
+            "total_misses": self.performance_stats.get('cache_misses', 0)
+        }
+    
+    def clear_cache(self):
+        """캐시 정리"""
+        try:
+            self.prediction_cache.clear()
+            self.logger.info("✅ 캐시 정리 완료")
+        except Exception as e:
+            self.logger.error(f"❌ 캐시 정리 실패: {e}")
+    
+    async def initialize_step_interface(self):
+        """Step 인터페이스 초기화 (ModelLoader 연동)"""
+        try:
+            if self.model_loader and hasattr(self.model_loader, 'create_step_interface'):
+                self.model_interface = self.model_loader.create_step_interface(
+                    step_name=self.step_name,
+                    step_requirements={
+                        'models': [
+                            {
+                                'name': 'cloth_warping_primary',
+                                'type': 'pytorch',
+                                'task': 'cloth_warping',
+                                'priority': 'high',
+                                'optional': False
+                            }
+                        ],
+                        'device': self.device,
+                        'precision': self.warping_config.precision
+                    }
+                )
+                
+                if self.model_interface:
+                    self.logger.info("✅ Step 인터페이스 초기화 완료")
+                    return True
+                    
+            return False
+        except Exception as e:
+            self.logger.error(f"❌ Step 인터페이스 초기화 실패: {e}")
+            return False
     
     def cleanup_resources(self):
         """리소스 정리"""
