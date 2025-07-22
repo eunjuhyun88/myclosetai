@@ -1,33 +1,39 @@
 # =============================================================================
-# backend/app/main.py - 🔥 DI Container 기반 MyCloset 백엔드 서버 (깔끔한 아키텍처)
+# backend/app/main.py - 🔥 프론트엔드 완전 호환 MyCloset AI 백엔드 서버 v7.0
 # =============================================================================
 
 """
-🍎 MyCloset AI FastAPI 서버 - DI Container → ModelLoader → BaseStepMixin → Services → Routes
+🍎 MyCloset AI FastAPI 서버 - 프론트엔드 App.tsx 완전 호환 버전
 ================================================================================
 
-✅ DI Container 패턴 완전 구현
-✅ ModelLoader → BaseStepMixin 의존성 주입 구조
-✅ Services 레이어 완전 분리
-✅ Routes 레이어 깔끔한 구조
-✅ 순환참조 완전 방지
-✅ 8단계 파이프라인 API 완전 구현
+✅ 세션 기반 이미지 관리 (Step 1에서만 업로드, 이후는 session_id)
+✅ 완전한 8단계 파이프라인 API 구현 
 ✅ WebSocket 실시간 진행률 추적
-✅ SessionManager 기반 이미지 관리
-✅ M3 Max 128GB 완전 최적화
+✅ FormData 방식 완전 지원
+✅ 이미지 재업로드 문제 완전 해결
+✅ DI Container 패턴 구현
+✅ M3 Max 128GB 최적화
 ✅ conda 환경 우선 지원
 ✅ 프로덕션 레벨 안정성
+
+프론트엔드 호환성:
+- App.tsx의 모든 API 호출 지원
+- 세션 기반 이미지 처리
+- WebSocket 실시간 업데이트  
+- Complete Pipeline API
+- 8단계 개별 API
+- 에러 처리 및 재시도
 
 아키텍처:
 DI Container → ModelLoader → BaseStepMixin → Services → Routes → FastAPI
 
 Author: MyCloset AI Team
-Date: 2025-07-22
-Version: 6.0.0 (Clean DI Architecture)
+Date: 2025-07-22  
+Version: 7.0.0 (Frontend Compatible)
 """
 
 # =============================================================================
-# 🔥 Step 1: 필수 import 통합
+# 🔥 Step 1: 필수 import 통합 및 환경 설정
 # =============================================================================
 
 import os
@@ -55,25 +61,53 @@ from enum import Enum
 from abc import ABC, abstractmethod
 import weakref
 
-# 환경 변수 및 경고 설정
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 warnings.filterwarnings('ignore')
 
-print("✅ 조용한 로그 모드 활성화")
-print("🚀 MyCloset AI 서버 시작 (DI Container 아키텍처)")
-print(f"📡 서버 주소: http://localhost:8000")
-print(f"📚 API 문서: http://localhost:8000/docs")
-print("=" * 70)
+# 🔧 개발 모드 체크 (이 부분을 추가/수정)
+is_development = (
+    os.getenv('ENVIRONMENT', '').lower() == 'development' or
+    os.getenv('APP_ENV', '').lower() == 'development' or
+    os.getenv('MYCLOSET_DEBUG', '').lower() in ['true', '1'] or
+    os.getenv('SKIP_QUIET_LOGGING', '').lower() in ['true', '1']
+)
 
-# 시끄러운 라이브러리들 조용하게
-for logger_name in ['urllib3', 'requests', 'PIL', 'torch', 'transformers', 'diffusers']:
-    logging.getLogger(logger_name).setLevel(logging.WARNING)
+if is_development:
+    print("🔧 개발 모드 활성화 - 상세 로그 출력")
+    print(f"📡 서버 주소: http://localhost:8000")
+    print(f"📚 API 문서: http://localhost:8000/docs")
+    print("=" * 50)
+    
+    # 개발 모드에서는 로그 억제하지 않음
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+        force=True
+    )
+    
+    # 개발 모드에서는 일부 로거만 조용하게
+    for logger_name in ['urllib3', 'requests', 'PIL']:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+    
+else:
+    # 프로덕션 모드 (기존 조용한 로그 모드)
+    print("✅ 조용한 로그 모드 활성화")
+    print("🚀 MyCloset AI 서버 시작 (조용한 모드)")
+    print(f"📡 서버 주소: http://localhost:8000")
+    print(f"📚 API 문서: http://localhost:8000/docs")
+    print("=" * 50)
 
-# MyCloset AI 관련만 적당한 레벨로
-logging.getLogger('app').setLevel(logging.WARNING)
+    # 시끄러운 라이브러리들 조용하게
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('requests').setLevel(logging.WARNING)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('torch').setLevel(logging.WARNING)
+    logging.getLogger('transformers').setLevel(logging.WARNING)
+    logging.getLogger('diffusers').setLevel(logging.WARNING)
+
+    # MyCloset AI 관련만 적당한 레벨로
+    logging.getLogger('app').setLevel(logging.WARNING)
 
 # =============================================================================
 # 🔥 Step 2: 경로 및 환경 설정
@@ -149,7 +183,72 @@ except ImportError as e:
     print(f"⚠️ PyTorch import 실패: {e}")
 
 # =============================================================================
-# 🔥 Step 4: DI Container 구현 (의존성 주입 컨테이너)
+# 🔥 Step 4: 세션 데이터 모델 (프론트엔드 호환)
+# =============================================================================
+
+@dataclass
+class SessionData:
+    """세션 데이터 모델 - 프론트엔드와 완전 호환"""
+    session_id: str
+    created_at: datetime
+    last_accessed: datetime
+    status: str = 'active'
+    
+    # 이미지 경로 (Step 1에서만 저장)
+    person_image_path: Optional[str] = None
+    clothing_image_path: Optional[str] = None
+    
+    # 측정값 (Step 2에서 저장)
+    measurements: Dict[str, float] = field(default_factory=dict)
+    
+    # 단계별 결과 저장
+    step_results: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    
+    # 추가 메타데이터
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+class StepResult(BaseModel):
+    """Step 결과 모델 - 프론트엔드와 완전 호환"""
+    success: bool
+    step_id: int
+    message: str
+    processing_time: float
+    confidence: float
+    error: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+    
+    # Step 7용 추가 필드
+    fitted_image: Optional[str] = None
+    fit_score: Optional[float] = None
+    recommendations: Optional[List[str]] = None
+
+class TryOnResult(BaseModel):
+    """완전한 파이프라인 결과 모델 - 프론트엔드와 완전 호환"""
+    success: bool
+    message: str
+    processing_time: float
+    confidence: float
+    session_id: str
+    fitted_image: Optional[str] = None
+    fit_score: float
+    measurements: Dict[str, float]
+    clothing_analysis: Dict[str, Any]
+    recommendations: List[str]
+
+class SystemInfo(BaseModel):
+    """시스템 정보 모델"""
+    app_name: str = "MyCloset AI"
+    app_version: str = "7.0.0"
+    architecture: str = "DI Container → ModelLoader → BaseStepMixin → Services → Routes"
+    device: str = "Apple M3 Max" if IS_M3_MAX else "CPU"
+    device_name: str = "MacBook Pro M3 Max" if IS_M3_MAX else "Standard Device"
+    is_m3_max: bool = IS_M3_MAX
+    total_memory_gb: int = 128 if IS_M3_MAX else 16
+    available_memory_gb: int = 96 if IS_M3_MAX else 12
+    timestamp: int
+
+# =============================================================================
+# 🔥 Step 5: DI Container 구현 (의존성 주입 컨테이너)
 # =============================================================================
 
 class DIContainer:
@@ -225,6 +324,9 @@ class DIContainer:
             # BaseStepMixin 팩토리 등록
             self.register_factory('IStepMixin', self._create_step_mixin)
             
+            # SessionManager 팩토리 등록
+            self.register_factory('ISessionManager', self._create_session_manager)
+            
             self._logger.info("✅ 기본 서비스 등록 완료")
             
         except Exception as e:
@@ -253,6 +355,14 @@ class DIContainer:
         except Exception as e:
             self._logger.error(f"❌ StepMixin 생성 실패: {e}")
             return None
+    
+    def _create_session_manager(self):
+        """SessionManager 생성 팩토리"""
+        try:
+            return SessionManager()
+        except Exception as e:
+            self._logger.error(f"❌ SessionManager 생성 실패: {e}")
+            return None
 
 # 글로벌 DI Container 인스턴스
 _global_container = DIContainer()
@@ -264,7 +374,7 @@ def get_container() -> DIContainer:
     return _global_container
 
 # =============================================================================
-# 🔥 Step 5: Mock 구현들 (실제 구현 전까지 사용)
+# 🔥 Step 6: Mock 구현들 (실제 구현 전까지 사용)
 # =============================================================================
 
 class MockModelLoader:
@@ -384,51 +494,51 @@ class MockStepMixin:
             }
 
 # =============================================================================
-# 🔥 Step 6: Services 레이어 - 비즈니스 로직 분리
+# 🔥 Step 7: 세션 관리자 (이미지 재업로드 문제 해결)
 # =============================================================================
 
-class SessionService:
-    """세션 관리 서비스"""
+class SessionManager:
+    """세션 관리자 - 이미지 재업로드 문제 완전 해결"""
     
-    def __init__(self, container: DIContainer):
-        self.container = container
-        self.logger = logging.getLogger("SessionService")
-        self.sessions: Dict[str, Dict[str, Any]] = {}
+    def __init__(self):
+        self.sessions: Dict[str, SessionData] = {}
+        self.logger = logging.getLogger("SessionManager")
         self.session_dir = backend_root / "static" / "sessions"
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.max_sessions = 200
         self.session_ttl = 48 * 3600  # 48시간
     
-    async def create_session(self, person_image: UploadFile = None, clothing_image: UploadFile = None, **kwargs) -> str:
+    async def create_session(
+        self,
+        person_image: Optional[UploadFile] = None,
+        clothing_image: Optional[UploadFile] = None,
+        **kwargs
+    ) -> str:
         """새 세션 생성"""
         session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         
-        session_data = {
-            'session_id': session_id,
-            'created_at': datetime.now(),
-            'last_accessed': datetime.now(),
-            'person_image_path': None,
-            'clothing_image_path': None,
-            'measurements': kwargs.get('measurements', {}),
-            'step_results': {},
-            'status': 'active',
-            'metadata': kwargs
-        }
+        session_data = SessionData(
+            session_id=session_id,
+            created_at=datetime.now(),
+            last_accessed=datetime.now(),
+            status='active',
+            metadata=kwargs
+        )
         
-        # 이미지 저장
+        # 이미지 저장 (Step 1에서만)
         if person_image:
             person_path = self.session_dir / f"{session_id}_person.jpg"
             with open(person_path, "wb") as f:
                 content = await person_image.read()
                 f.write(content)
-            session_data['person_image_path'] = str(person_path)
+            session_data.person_image_path = str(person_path)
         
         if clothing_image:
             clothing_path = self.session_dir / f"{session_id}_clothing.jpg"
             with open(clothing_path, "wb") as f:
                 content = await clothing_image.read()
                 f.write(content)
-            session_data['clothing_image_path'] = str(clothing_path)
+            session_data.clothing_image_path = str(clothing_path)
         
         self.sessions[session_id] = session_data
         
@@ -439,11 +549,11 @@ class SessionService:
         self.logger.info(f"✅ 새 세션 생성: {session_id}")
         return session_id
     
-    async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+    async def get_session(self, session_id: str) -> Optional[SessionData]:
         """세션 조회"""
         session = self.sessions.get(session_id)
         if session:
-            session['last_accessed'] = datetime.now()
+            session.last_accessed = datetime.now()
             return session
         return None
     
@@ -451,17 +561,30 @@ class SessionService:
         """단계 결과 저장"""
         session = await self.get_session(session_id)
         if session:
-            session['step_results'][step_id] = {
+            session.step_results[step_id] = {
                 **result,
                 'timestamp': datetime.now().isoformat(),
                 'step_id': step_id
             }
     
+    async def save_measurements(self, session_id: str, measurements: Dict[str, float]):
+        """측정값 저장"""
+        session = await self.get_session(session_id)
+        if session:
+            session.measurements.update(measurements)
+    
+    def get_session_images(self, session_id: str) -> Tuple[Optional[str], Optional[str]]:
+        """세션 이미지 경로 조회"""
+        session = self.sessions.get(session_id)
+        if session:
+            return session.person_image_path, session.clothing_image_path
+        return None, None
+    
     async def _cleanup_old_sessions(self):
         """가장 오래된 세션들 정리"""
         sessions_by_age = sorted(
             self.sessions.items(),
-            key=lambda x: x[1]['last_accessed']
+            key=lambda x: x[1].last_accessed
         )
         
         cleanup_count = len(sessions_by_age) // 4  # 25% 정리
@@ -473,8 +596,8 @@ class SessionService:
         session = self.sessions.get(session_id)
         if session:
             # 이미지 파일 삭제
-            for path_key in ['person_image_path', 'clothing_image_path']:
-                path = session.get(path_key)
+            for path_attr in ['person_image_path', 'clothing_image_path']:
+                path = getattr(session, path_attr, None)
                 if path and Path(path).exists():
                     try:
                         Path(path).unlink()
@@ -483,8 +606,12 @@ class SessionService:
             
             del self.sessions[session_id]
 
+# =============================================================================
+# 🔥 Step 8: Services 레이어 - 비즈니스 로직 분리
+# =============================================================================
+
 class StepProcessingService:
-    """단계별 처리 서비스"""
+    """단계별 처리 서비스 - 프론트엔드 완전 호환"""
     
     def __init__(self, container: DIContainer):
         self.container = container
@@ -496,7 +623,7 @@ class StepProcessingService:
             'average_processing_time': 0.0
         }
         
-        # 단계별 처리 시간 (초)
+        # 단계별 처리 시간 (초) - 프론트엔드와 동일
         self.step_processing_times = {
             1: 0.8,   # 이미지 업로드 검증
             2: 0.5,   # 신체 측정값 검증
@@ -508,12 +635,27 @@ class StepProcessingService:
             8: 0.7    # 결과 분석
         }
     
-    async def process_step(self, step_id: int, session_id: str, **kwargs) -> Dict[str, Any]:
+    async def process_step(
+        self,
+        step_id: int,
+        session_id: str,
+        websocket_service=None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """단계 처리"""
         start_time = time.time()
         self.processing_stats['total_requests'] += 1
         
         try:
+            # WebSocket 진행률 전송
+            if websocket_service:
+                progress_values = {3: 20, 4: 35, 5: 50, 6: 65, 7: 80, 8: 95}
+                if step_id in progress_values:
+                    await websocket_service.broadcast_progress(
+                        session_id, step_id, progress_values[step_id],
+                        f"Step {step_id} 처리 중..."
+                    )
+            
             # DI Container에서 Step Mixin 조회
             step_mixin = self.container.get('IStepMixin')
             if not step_mixin:
@@ -542,6 +684,12 @@ class StepProcessingService:
             processing_time = time.time() - start_time
             result['processing_time'] = processing_time
             
+            # WebSocket 완료 진행률 전송
+            if websocket_service and result['success']:
+                await websocket_service.broadcast_progress(
+                    session_id, step_id, 100, f"Step {step_id} 완료"
+                )
+            
             self.processing_stats['successful_requests'] += 1
             self._update_average_time(processing_time)
             
@@ -557,14 +705,15 @@ class StepProcessingService:
                 "step_id": step_id,
                 "message": f"Step {step_id} 처리 실패: {str(e)}",
                 "processing_time": processing_time,
-                "error": str(e)
+                "error": str(e),
+                "confidence": 0.0
             }
     
     async def _process_step_specific(self, step_id: int, step_mixin, session_id: str, **kwargs) -> Dict[str, Any]:
         """Step별 특화 처리"""
         step_names = {
             1: "이미지 업로드 검증",
-            2: "신체 측정값 검증", 
+            2: "신체 측정값 검증",
             3: "인체 파싱",
             4: "포즈 추정",
             5: "의류 분석",
@@ -630,7 +779,7 @@ class StepProcessingService:
             self.processing_stats['average_processing_time'] = new_avg
 
 class WebSocketService:
-    """WebSocket 관리 서비스"""
+    """WebSocket 관리 서비스 - 실시간 진행률 추적"""
     
     def __init__(self):
         self.connections: Dict[str, WebSocket] = {}
@@ -692,7 +841,7 @@ class WebSocketService:
                 self.disconnect(client_id)
 
 # =============================================================================
-# 🔥 Step 7: 로깅 시스템 설정
+# 🔥 Step 9: 로깅 시스템 설정
 # =============================================================================
 
 log_storage: List[Dict[str, Any]] = []
@@ -785,53 +934,14 @@ def setup_logging_system():
 logger = setup_logging_system()
 
 # =============================================================================
-# 🔥 Step 8: 데이터 모델 정의
-# =============================================================================
-
-class SystemInfo(BaseModel):
-    app_name: str = "MyCloset AI"
-    app_version: str = "6.0.0"
-    architecture: str = "DI Container → ModelLoader → BaseStepMixin → Services → Routes"
-    device: str = "Apple M3 Max" if IS_M3_MAX else "CPU"
-    device_name: str = "MacBook Pro M3 Max" if IS_M3_MAX else "Standard Device"
-    is_m3_max: bool = IS_M3_MAX
-    total_memory_gb: int = 128 if IS_M3_MAX else 16
-    available_memory_gb: int = 96 if IS_M3_MAX else 12
-    timestamp: int
-
-class StepResult(BaseModel):
-    success: bool
-    step_id: int
-    message: str
-    processing_time: float
-    confidence: float
-    error: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
-    fitted_image: Optional[str] = None
-    fit_score: Optional[float] = None
-    recommendations: Optional[List[str]] = None
-
-class TryOnResult(BaseModel):
-    success: bool
-    message: str
-    processing_time: float
-    confidence: float
-    session_id: str
-    fitted_image: Optional[str] = None
-    fit_score: float
-    measurements: Dict[str, float]
-    clothing_analysis: Dict[str, Any]
-    recommendations: List[str]
-
-# =============================================================================
-# 🔥 Step 9: 서비스 인스턴스 생성 (DI Container 기반)
+# 🔥 Step 10: 서비스 인스턴스 생성 (DI Container 기반)
 # =============================================================================
 
 # DI Container 초기화
 container = get_container()
 
 # 서비스 인스턴스 생성
-session_service = SessionService(container)
+session_manager = SessionManager()
 step_processing_service = StepProcessingService(container)
 websocket_service = WebSocketService()
 
@@ -841,7 +951,7 @@ system_status = {
     "last_initialization": None,
     "error_count": 0,
     "success_count": 0,
-    "version": "6.0.0",
+    "version": "7.0.0",
     "architecture": "DI Container",
     "start_time": time.time()
 }
@@ -855,14 +965,14 @@ for directory in [UPLOAD_DIR, RESULTS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # =============================================================================
-# 🔥 Step 10: FastAPI 생명주기 관리 및 애플리케이션 생성
+# 🔥 Step 11: FastAPI 생명주기 관리 및 애플리케이션 생성
 # =============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
     # 시작
-    logger.info("🚀 MyCloset AI 서버 시작 (DI Container 아키텍처)")
+    logger.info("🚀 MyCloset AI 서버 시작 (프론트엔드 완전 호환 v7.0)")
     system_status["initialized"] = True
     system_status["last_initialization"] = datetime.now().isoformat()
     
@@ -880,8 +990,8 @@ async def lifespan(app: FastAPI):
 # FastAPI 애플리케이션 생성
 app = FastAPI(
     title="MyCloset AI Backend",
-    description="AI 기반 가상 피팅 서비스 - DI Container 아키텍처",
-    version="6.0.0",
+    description="AI 기반 가상 피팅 서비스 - 프론트엔드 완전 호환",
+    version="7.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -913,7 +1023,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory=str(backend_root / "static")), name="static")
 
 # =============================================================================
-# 🔥 Step 11: Routes 레이어 - API 엔드포인트들 (깔끔한 구조)
+# 🔥 Step 12: Routes 레이어 - API 엔드포인트들 (프론트엔드 완전 호환)
 # =============================================================================
 
 # 기본 API 엔드포인트들
@@ -921,17 +1031,17 @@ app.mount("/static", StaticFiles(directory=str(backend_root / "static")), name="
 async def root():
     """루트 엔드포인트"""
     return {
-        "message": "MyCloset AI Server - DI Container 아키텍처",
+        "message": "MyCloset AI Server - 프론트엔드 완전 호환 v7.0",
         "status": "running",
-        "version": "6.0.0",
+        "version": "7.0.0",
         "architecture": "DI Container → ModelLoader → BaseStepMixin → Services → Routes",
         "features": {
-            "dependency_injection": True,
+            "frontend_compatibility": True,
+            "session_based_images": True,
             "8_step_pipeline": True,
             "websocket_realtime": True,
-            "session_management": True,
-            "image_upload": True,
-            "virtual_fitting": True,
+            "form_data_support": True,
+            "image_reupload_prevention": True,
             "m3_max_optimized": IS_M3_MAX,
             "conda_support": True
         }
@@ -943,13 +1053,15 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "version": "6.0.0",
+        "version": "7.0.0",
         "architecture": "DI Container",
         "system": {
             "memory_usage": psutil.virtual_memory().percent if hasattr(psutil, 'virtual_memory') else 0,
             "m3_max": IS_M3_MAX,
             "conda_env": os.environ.get('CONDA_DEFAULT_ENV', 'none'),
-            "di_container": container._initialized
+            "di_container": container._initialized,
+            "session_manager": True,
+            "websocket_service": True
         }
     }
 
@@ -958,16 +1070,19 @@ async def get_system_info():
     """시스템 정보 조회"""
     return SystemInfo(timestamp=int(time.time()))
 
-# Step API 라우터 (Services 레이어 사용)
+# =============================================================================
+# 🔥 Step 13: 8단계 API 엔드포인트들 (프론트엔드 완전 호환)
+# =============================================================================
+
 @app.post("/api/step/1/upload-validation", response_model=StepResult)
 async def step_1_upload_validation(
     person_image: UploadFile = File(...),
     clothing_image: UploadFile = File(...)
 ):
-    """Step 1: 이미지 업로드 검증"""
+    """Step 1: 이미지 업로드 검증 - 세션 생성 및 이미지 저장"""
     try:
-        # 세션 생성 (Services 레이어)
-        session_id = await session_service.create_session(
+        # 세션 생성 및 이미지 저장 (Session Manager 사용)
+        session_id = await session_manager.create_session(
             person_image=person_image,
             clothing_image=clothing_image
         )
@@ -976,12 +1091,18 @@ async def step_1_upload_validation(
         result = await step_processing_service.process_step(
             step_id=1,
             session_id=session_id,
+            websocket_service=websocket_service,
             person_image=person_image,
             clothing_image=clothing_image
         )
         
         # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 1, result)
+        await session_manager.save_step_result(session_id, 1, result)
+        
+        # 세션 ID를 details에 추가 (프론트엔드에서 사용)
+        if result.get("details") is None:
+            result["details"] = {}
+        result["details"]["session_id"] = session_id
         
         if result["success"]:
             system_status["success_count"] += 1
@@ -1012,6 +1133,11 @@ async def step_2_measurements_validation(
 ):
     """Step 2: 신체 측정값 검증"""
     try:
+        # 세션 조회
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
         measurements = {
             "height": height,
             "weight": weight,
@@ -1020,15 +1146,19 @@ async def step_2_measurements_validation(
             "hips": hips
         }
         
+        # 측정값 저장
+        await session_manager.save_measurements(session_id, measurements)
+        
         # Step 처리 (Services 레이어)
         result = await step_processing_service.process_step(
             step_id=2,
             session_id=session_id,
+            websocket_service=websocket_service,
             measurements=measurements
         )
         
         # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 2, result)
+        await session_manager.save_step_result(session_id, 2, result)
         
         if result["success"]:
             system_status["success_count"] += 1
@@ -1037,6 +1167,8 @@ async def step_2_measurements_validation(
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         system_status["error_count"] += 1
         return StepResult(
@@ -1048,263 +1180,24 @@ async def step_2_measurements_validation(
             error=str(e)
         )
 
-# Step 3-8 개별 API 엔드포인트들 (프론트엔드 완전 호환)
-@app.post("/api/step/3/human-parsing", response_model=StepResult)
-async def step_3_human_parsing(
-    session_id: str = Form(...)
-):
-    """Step 3: 인체 파싱"""
+# Step 3-8 개별 API 엔드포인트들 (세션 ID 기반)
+async def process_step_with_session_id(step_id: int, session_id: str) -> StepResult:
+    """세션 ID 기반 Step 처리 공통 함수"""
     try:
-        # WebSocket으로 진행률 전송
-        await websocket_service.broadcast_progress(session_id, 3, 20, "AI 인체 파싱 시작...")
-        
-        # Step 처리 (Services 레이어)
-        result = await step_processing_service.process_step(
-            step_id=3,
-            session_id=session_id
-        )
-        
-        # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 3, result)
-        
-        if result["success"]:
-            await websocket_service.broadcast_progress(session_id, 3, 100, "인체 파싱 완료")
-            system_status["success_count"] += 1
-        else:
-            system_status["error_count"] += 1
-        
-        return result
-        
-    except Exception as e:
-        system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=3,
-            message=f"Step 3 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e)
-        )
-
-@app.post("/api/step/4/pose-estimation", response_model=StepResult)
-async def step_4_pose_estimation(
-    session_id: str = Form(...)
-):
-    """Step 4: 포즈 추정"""
-    try:
-        # WebSocket으로 진행률 전송
-        await websocket_service.broadcast_progress(session_id, 4, 35, "AI 포즈 추정 중...")
-        
-        # Step 처리 (Services 레이어)
-        result = await step_processing_service.process_step(
-            step_id=4,
-            session_id=session_id
-        )
-        
-        # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 4, result)
-        
-        if result["success"]:
-            await websocket_service.broadcast_progress(session_id, 4, 100, "포즈 추정 완료")
-            system_status["success_count"] += 1
-        else:
-            system_status["error_count"] += 1
-        
-        return result
-        
-    except Exception as e:
-        system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=4,
-            message=f"Step 4 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e)
-        )
-
-@app.post("/api/step/5/clothing-analysis", response_model=StepResult)
-async def step_5_clothing_analysis(
-    session_id: str = Form(...)
-):
-    """Step 5: 의류 분석"""
-    try:
-        # WebSocket으로 진행률 전송
-        await websocket_service.broadcast_progress(session_id, 5, 50, "AI 의류 분석 중...")
-        
-        # Step 처리 (Services 레이어)
-        result = await step_processing_service.process_step(
-            step_id=5,
-            session_id=session_id
-        )
-        
-        # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 5, result)
-        
-        if result["success"]:
-            await websocket_service.broadcast_progress(session_id, 5, 100, "의류 분석 완료")
-            system_status["success_count"] += 1
-        else:
-            system_status["error_count"] += 1
-        
-        return result
-        
-    except Exception as e:
-        system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=5,
-            message=f"Step 5 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e)
-        )
-
-@app.post("/api/step/6/geometric-matching", response_model=StepResult)
-async def step_6_geometric_matching(
-    session_id: str = Form(...)
-):
-    """Step 6: 기하학적 매칭"""
-    try:
-        # WebSocket으로 진행률 전송
-        await websocket_service.broadcast_progress(session_id, 6, 65, "AI 기하학적 매칭 중...")
-        
-        # Step 처리 (Services 레이어)
-        result = await step_processing_service.process_step(
-            step_id=6,
-            session_id=session_id
-        )
-        
-        # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 6, result)
-        
-        if result["success"]:
-            await websocket_service.broadcast_progress(session_id, 6, 100, "기하학적 매칭 완료")
-            system_status["success_count"] += 1
-        else:
-            system_status["error_count"] += 1
-        
-        return result
-        
-    except Exception as e:
-        system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=6,
-            message=f"Step 6 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e)
-        )
-
-@app.post("/api/step/7/virtual-fitting", response_model=StepResult)
-async def step_7_virtual_fitting(
-    session_id: str = Form(...)
-):
-    """Step 7: 가상 피팅 (핵심 단계)"""
-    try:
-        # WebSocket으로 진행률 전송
-        await websocket_service.broadcast_progress(session_id, 7, 80, "AI 가상 피팅 생성 중...")
-        
-        # Step 처리 (Services 레이어)
-        result = await step_processing_service.process_step(
-            step_id=7,
-            session_id=session_id
-        )
-        
-        # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 7, result)
-        
-        if result["success"]:
-            await websocket_service.broadcast_progress(session_id, 7, 100, "가상 피팅 완료!")
-            system_status["success_count"] += 1
-        else:
-            system_status["error_count"] += 1
-        
-        return result
-        
-    except Exception as e:
-        system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=7,
-            message=f"Step 7 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e)
-        )
-
-@app.post("/api/step/8/result-analysis", response_model=StepResult)
-async def step_8_result_analysis(
-    session_id: str = Form(...),
-    fitted_image_base64: str = Form(None),
-    fit_score: float = Form(0.88)
-):
-    """Step 8: 결과 분석"""
-    try:
-        # WebSocket으로 진행률 전송
-        await websocket_service.broadcast_progress(session_id, 8, 95, "최종 결과 분석 중...")
-        
-        # Step 처리 (Services 레이어)
-        result = await step_processing_service.process_step(
-            step_id=8,
-            session_id=session_id,
-            fitted_image=fitted_image_base64,
-            fit_score=fit_score
-        )
-        
-        # 세션에 결과 저장
-        await session_service.save_step_result(session_id, 8, result)
-        
-        if result["success"]:
-            await websocket_service.broadcast_progress(session_id, 8, 100, "모든 단계 완료!")
-            system_status["success_count"] += 1
-        else:
-            system_status["error_count"] += 1
-        
-        return result
-        
-    except Exception as e:
-        system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=8,
-            message=f"Step 8 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e)
-        )
-    try:
-        # WebSocket으로 진행률 전송
-        progress_values = {3: 20, 4: 35, 5: 50, 6: 65, 7: 80, 8: 95}
-        step_names = {
-            3: "AI 인체 파싱 중...",
-            4: "AI 포즈 추정 중...", 
-            5: "AI 의류 분석 중...",
-            6: "AI 기하학적 매칭 중...",
-            7: "AI 가상 피팅 생성 중...",
-            8: "최종 결과 분석 중..."
-        }
-        
-        if step_id in progress_values:
-            await websocket_service.broadcast_progress(
-                session_id, step_id, progress_values[step_id], step_names[step_id]
-            )
+        # 세션 조회
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
         # Step 처리 (Services 레이어)
         result = await step_processing_service.process_step(
             step_id=step_id,
-            session_id=session_id
+            session_id=session_id,
+            websocket_service=websocket_service
         )
         
         # 세션에 결과 저장
-        await session_service.save_step_result(session_id, step_id, result)
-        
-        # 완료 진행률 전송
-        if result["success"] and step_id in progress_values:
-            await websocket_service.broadcast_progress(
-                session_id, step_id, 100, f"Step {step_id} 완료"
-            )
+        await session_manager.save_step_result(session_id, step_id, result)
         
         if result["success"]:
             system_status["success_count"] += 1
@@ -1313,6 +1206,8 @@ async def step_8_result_analysis(
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         system_status["error_count"] += 1
         return StepResult(
@@ -1324,6 +1219,80 @@ async def step_8_result_analysis(
             error=str(e)
         )
 
+@app.post("/api/step/3/human-parsing", response_model=StepResult)
+async def step_3_human_parsing(session_id: str = Form(...)):
+    """Step 3: 인체 파싱"""
+    return await process_step_with_session_id(3, session_id)
+
+@app.post("/api/step/4/pose-estimation", response_model=StepResult)
+async def step_4_pose_estimation(session_id: str = Form(...)):
+    """Step 4: 포즈 추정"""
+    return await process_step_with_session_id(4, session_id)
+
+@app.post("/api/step/5/clothing-analysis", response_model=StepResult)
+async def step_5_clothing_analysis(session_id: str = Form(...)):
+    """Step 5: 의류 분석"""
+    return await process_step_with_session_id(5, session_id)
+
+@app.post("/api/step/6/geometric-matching", response_model=StepResult)
+async def step_6_geometric_matching(session_id: str = Form(...)):
+    """Step 6: 기하학적 매칭"""
+    return await process_step_with_session_id(6, session_id)
+
+@app.post("/api/step/7/virtual-fitting", response_model=StepResult)
+async def step_7_virtual_fitting(session_id: str = Form(...)):
+    """Step 7: 가상 피팅 (핵심 단계)"""
+    return await process_step_with_session_id(7, session_id)
+
+@app.post("/api/step/8/result-analysis", response_model=StepResult)
+async def step_8_result_analysis(
+    session_id: str = Form(...),
+    fitted_image_base64: str = Form(None),
+    fit_score: float = Form(0.88)
+):
+    """Step 8: 결과 분석"""
+    try:
+        # 세션 조회
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # Step 처리 (Services 레이어)
+        result = await step_processing_service.process_step(
+            step_id=8,
+            session_id=session_id,
+            websocket_service=websocket_service,
+            fitted_image=fitted_image_base64,
+            fit_score=fit_score
+        )
+        
+        # 세션에 결과 저장
+        await session_manager.save_step_result(session_id, 8, result)
+        
+        if result["success"]:
+            system_status["success_count"] += 1
+        else:
+            system_status["error_count"] += 1
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_status["error_count"] += 1
+        return StepResult(
+            success=False,
+            step_id=8,
+            message=f"Step 8 처리 실패: {str(e)}",
+            processing_time=0.0,
+            confidence=0.0,
+            error=str(e)
+        )
+
+# =============================================================================
+# 🔥 Step 14: 완전한 파이프라인 API (프론트엔드 호환)
+# =============================================================================
+
 @app.post("/api/step/complete", response_model=TryOnResult)
 async def complete_pipeline(
     person_image: UploadFile = File(...),
@@ -1332,20 +1301,42 @@ async def complete_pipeline(
     weight: float = Form(...),
     session_id: str = Form(None)
 ):
-    """완전한 8단계 파이프라인 실행"""
+    """완전한 8단계 파이프라인 실행 - 프론트엔드 완전 호환"""
     start_time = time.time()
     
     try:
         # 세션 생성 또는 기존 세션 사용
         if not session_id:
-            session_id = await session_service.create_session(
+            session_id = await session_manager.create_session(
                 person_image=person_image,
                 clothing_image=clothing_image,
                 measurements={"height": height, "weight": weight}
             )
+        else:
+            # 기존 세션에 측정값 저장
+            await session_manager.save_measurements(session_id, {
+                "height": height, 
+                "weight": weight
+            })
         
-        # 전체 파이프라인 시뮬레이션
-        await asyncio.sleep(3.0)  # 전체 처리 시뮬레이션
+        # 전체 파이프라인 시뮬레이션 (WebSocket으로 진행률 전송)
+        steps_to_process = [
+            (1, "이미지 업로드 검증", 10),
+            (2, "신체 측정값 검증", 25),
+            (3, "AI 인체 파싱", 40),
+            (4, "AI 포즈 추정", 55),
+            (5, "AI 의류 분석", 70),
+            (6, "AI 기하학적 매칭", 85),
+            (7, "AI 가상 피팅", 95),
+            (8, "최종 결과 분석", 100)
+        ]
+        
+        for step_id, step_name, progress in steps_to_process:
+            await websocket_service.broadcast_progress(session_id, step_id, progress, step_name)
+            await asyncio.sleep(0.3)  # 각 단계별 시뮬레이션
+        
+        # 전체 처리 시뮬레이션
+        await asyncio.sleep(2.0)
         
         # BMI 계산
         bmi = weight / ((height / 100) ** 2)
@@ -1405,10 +1396,13 @@ async def complete_pipeline(
             recommendations=[]
         )
 
-# WebSocket 엔드포인트
+# =============================================================================
+# 🔥 Step 15: WebSocket 엔드포인트 (실시간 진행률 추적)
+# =============================================================================
+
 @app.websocket("/api/ws/ai-pipeline")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket 실시간 진행률 추적"""
+    """WebSocket 실시간 진행률 추적 - 프론트엔드 완전 호환"""
     client_id = f"client_{int(time.time())}_{uuid.uuid4().hex[:8]}"
     
     try:
@@ -1474,7 +1468,10 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         websocket_service.disconnect(client_id)
 
-# 세션 관리 API (프론트엔드 완전 호환)
+# =============================================================================
+# 🔥 Step 16: 세션 관리 API (프론트엔드 호환)
+# =============================================================================
+
 @app.get("/api/sessions/status")
 async def get_sessions_status():
     """모든 세션 상태 조회"""
@@ -1482,10 +1479,10 @@ async def get_sessions_status():
         return {
             "success": True,
             "data": {
-                "total_sessions": len(session_service.sessions),
-                "active_sessions": len([s for s in session_service.sessions.values() if s['status'] == 'active']),
-                "session_dir": str(session_service.session_dir),
-                "max_sessions": session_service.max_sessions
+                "total_sessions": len(session_manager.sessions),
+                "active_sessions": len([s for s in session_manager.sessions.values() if s.status == 'active']),
+                "session_dir": str(session_manager.session_dir),
+                "max_sessions": session_manager.max_sessions
             }
         }
     except Exception as e:
@@ -1498,7 +1495,7 @@ async def get_sessions_status():
 async def get_session_status(session_id: str):
     """특정 세션 상태 조회"""
     try:
-        session = await session_service.get_session(session_id)
+        session = await session_manager.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
@@ -1506,14 +1503,14 @@ async def get_session_status(session_id: str):
             "success": True,
             "data": {
                 'session_id': session_id,
-                'status': session['status'],
-                'created_at': session['created_at'].isoformat(),
-                'last_accessed': session['last_accessed'].isoformat(),
-                'completed_steps': list(session['step_results'].keys()),
+                'status': session.status,
+                'created_at': session.created_at.isoformat(),
+                'last_accessed': session.last_accessed.isoformat(),
+                'completed_steps': list(session.step_results.keys()),
                 'total_steps': 8,
-                'progress': len(session['step_results']) / 8 * 100,
-                'has_person_image': session['person_image_path'] is not None,
-                'has_clothing_image': session['clothing_image_path'] is not None
+                'progress': len(session.step_results) / 8 * 100,
+                'has_person_image': session.person_image_path is not None,
+                'has_clothing_image': session.clothing_image_path is not None
             }
         }
     except HTTPException:
@@ -1528,16 +1525,16 @@ async def get_session_status(session_id: str):
 async def get_session_image(session_id: str, image_type: str):
     """세션 이미지 조회 (person 또는 clothing)"""
     try:
-        session = await session_service.get_session(session_id)
+        session = await session_manager.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
-        if image_type == "person" and session['person_image_path']:
-            if Path(session['person_image_path']).exists():
-                return FileResponse(session['person_image_path'], media_type="image/jpeg")
-        elif image_type == "clothing" and session['clothing_image_path']:
-            if Path(session['clothing_image_path']).exists():
-                return FileResponse(session['clothing_image_path'], media_type="image/jpeg")
+        if image_type == "person" and session.person_image_path:
+            if Path(session.person_image_path).exists():
+                return FileResponse(session.person_image_path, media_type="image/jpeg")
+        elif image_type == "clothing" and session.clothing_image_path:
+            if Path(session.clothing_image_path).exists():
+                return FileResponse(session.clothing_image_path, media_type="image/jpeg")
         
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
         
@@ -1546,7 +1543,10 @@ async def get_session_image(session_id: str, image_type: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 파이프라인 정보 API
+# =============================================================================
+# 🔥 Step 17: 파이프라인 정보 API
+# =============================================================================
+
 @app.get("/api/pipeline/steps")
 async def get_pipeline_steps():
     """파이프라인 단계 정보 조회"""
@@ -1616,7 +1616,10 @@ async def get_pipeline_steps():
         "total_estimated_time": sum(step["processing_time"] for step in steps)
     }
 
-# 프론트엔드 폴백 API들
+# =============================================================================
+# 🔥 Step 18: 프론트엔드 폴백 API들
+# =============================================================================
+
 @app.post("/api/virtual-tryon")
 async def virtual_tryon_fallback(
     person_image: UploadFile = File(...),
@@ -1628,13 +1631,6 @@ async def virtual_tryon_fallback(
 ):
     """폴백 가상 피팅 API (프론트엔드 호환)"""
     try:
-        measurements = {
-            "height": height,
-            "weight": weight,
-            "age": age,
-            "gender": gender
-        }
-        
         # Complete 파이프라인으로 리디렉션
         return await complete_pipeline(person_image, clothing_image, height, weight)
         
@@ -1652,7 +1648,10 @@ async def virtual_tryon_fallback(
             recommendations=[]
         )
 
-# AI 시스템 API들
+# =============================================================================
+# 🔥 Step 19: AI 시스템 API들
+# =============================================================================
+
 @app.get("/api/ai/status")
 async def get_ai_status():
     """AI 시스템 상태 조회"""
@@ -1713,7 +1712,11 @@ async def get_ai_models():
             }
         }
     }
-# 관리 API (확장)
+
+# =============================================================================
+# 🔥 Step 20: 관리 API (확장)
+# =============================================================================
+
 @app.get("/admin/logs")
 async def get_recent_logs(limit: int = 100):
     """최근 로그 조회"""
@@ -1755,7 +1758,7 @@ async def cleanup_system():
                 cleanup_results["mps_cache_cleaned"] = True
         
         # 세션 정리
-        await session_service._cleanup_old_sessions()
+        await session_manager._cleanup_old_sessions()
         cleanup_results["sessions_cleaned"] = 1
         
         # 로그 정리 (절반만 유지)
@@ -1799,10 +1802,10 @@ async def get_performance_metrics():
             "performance": {
                 "processing": step_processing_service.processing_stats,
                 "sessions": {
-                    "total_sessions": len(session_service.sessions),
-                    "active_sessions": len([s for s in session_service.sessions.values() if s['status'] == 'active']),
-                    "max_sessions": session_service.max_sessions,
-                    "session_ttl": session_service.session_ttl
+                    "total_sessions": len(session_manager.sessions),
+                    "active_sessions": len([s for s in session_manager.sessions.values() if s.status == 'active']),
+                    "max_sessions": session_manager.max_sessions,
+                    "session_ttl": session_manager.session_ttl
                 },
                 "websocket": {
                     "active_connections": len(websocket_service.connections),
@@ -1810,7 +1813,7 @@ async def get_performance_metrics():
                     "total_sessions_with_subscribers": len(websocket_service.session_connections)
                 },
                 "system": {
-                    "version": "6.0.0",
+                    "version": "7.0.0",
                     "architecture": "DI Container",
                     "device": os.environ.get('DEVICE', 'cpu'),
                     "m3_max": IS_M3_MAX,
@@ -1825,7 +1828,62 @@ async def get_performance_metrics():
             "error": str(e)
         }
 
-# 추가 유틸리티 API들
+@app.get("/admin/stats")
+async def get_system_stats():
+    """시스템 통계 조회"""
+    try:
+        memory_info = psutil.virtual_memory() if hasattr(psutil, 'virtual_memory') else None
+        cpu_info = psutil.cpu_percent(interval=0.1) if hasattr(psutil, 'cpu_percent') else 0
+        
+        return {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "architecture": "DI Container → ModelLoader → BaseStepMixin → Services → Routes",
+            "system": {
+                "memory_usage": {
+                    "total_gb": round(memory_info.total / (1024**3), 2) if memory_info else 0,
+                    "used_gb": round(memory_info.used / (1024**3), 2) if memory_info else 0,
+                    "available_gb": round(memory_info.available / (1024**3), 2) if memory_info else 0,
+                    "percent": memory_info.percent if memory_info else 0
+                },
+                "cpu_usage": {
+                    "percent": cpu_info,
+                    "count": psutil.cpu_count() if hasattr(psutil, 'cpu_count') else 1
+                },
+                "device": {
+                    "type": os.environ.get('DEVICE', 'cpu'),
+                    "is_m3_max": IS_M3_MAX,
+                    "conda_env": os.environ.get('CONDA_DEFAULT_ENV', 'none')
+                }
+            },
+            "application": {
+                "version": "7.0.0",
+                "uptime_seconds": time.time() - system_status.get("start_time", time.time()),
+                "total_success": system_status["success_count"],
+                "total_errors": system_status["error_count"],
+                "di_container_initialized": container._initialized
+            },
+            "processing": step_processing_service.processing_stats,
+            "sessions": {
+                "total_sessions": len(session_manager.sessions),
+                "active_sessions": len([s for s in session_manager.sessions.values() if s.status == 'active'])
+            },
+            "websocket": {
+                "active_connections": len(websocket_service.connections),
+                "session_subscriptions": len(websocket_service.session_connections)
+            }
+        }
+    except Exception as e:
+        logger.error(f"시스템 통계 조회 실패: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+# =============================================================================
+# 🔥 Step 21: 추가 유틸리티 API들
+# =============================================================================
+
 @app.get("/api/utils/device-info")
 async def get_device_info():
     """디바이스 정보 조회"""
@@ -1901,7 +1959,10 @@ async def validate_image_file(
             "error": f"이미지 검증 중 오류 발생: {str(e)}"
         }
 
-# WebSocket 테스트 페이지
+# =============================================================================
+# 🔥 Step 22: WebSocket 테스트 페이지
+# =============================================================================
+
 @app.get("/api/ws/test", response_class=HTMLResponse)
 async def websocket_test_page():
     """WebSocket 테스트 페이지"""
@@ -2033,59 +2094,9 @@ async def websocket_test_page():
     </html>
     """
     return html_content
-async def get_system_stats():
-    """시스템 통계 조회"""
-    try:
-        memory_info = psutil.virtual_memory() if hasattr(psutil, 'virtual_memory') else None
-        cpu_info = psutil.cpu_percent(interval=0.1) if hasattr(psutil, 'cpu_percent') else 0
-        
-        return {
-            "success": True,
-            "timestamp": datetime.now().isoformat(),
-            "architecture": "DI Container → ModelLoader → BaseStepMixin → Services → Routes",
-            "system": {
-                "memory_usage": {
-                    "total_gb": round(memory_info.total / (1024**3), 2) if memory_info else 0,
-                    "used_gb": round(memory_info.used / (1024**3), 2) if memory_info else 0,
-                    "available_gb": round(memory_info.available / (1024**3), 2) if memory_info else 0,
-                    "percent": memory_info.percent if memory_info else 0
-                },
-                "cpu_usage": {
-                    "percent": cpu_info,
-                    "count": psutil.cpu_count() if hasattr(psutil, 'cpu_count') else 1
-                },
-                "device": {
-                    "type": os.environ.get('DEVICE', 'cpu'),
-                    "is_m3_max": IS_M3_MAX,
-                    "conda_env": os.environ.get('CONDA_DEFAULT_ENV', 'none')
-                }
-            },
-            "application": {
-                "version": "6.0.0",
-                "uptime_seconds": time.time() - system_status.get("start_time", time.time()),
-                "total_success": system_status["success_count"],
-                "total_errors": system_status["error_count"],
-                "di_container_initialized": container._initialized
-            },
-            "processing": step_processing_service.processing_stats,
-            "sessions": {
-                "total_sessions": len(session_service.sessions),
-                "active_sessions": len([s for s in session_service.sessions.values() if s['status'] == 'active'])
-            },
-            "websocket": {
-                "active_connections": len(websocket_service.connections),
-                "session_subscriptions": len(websocket_service.session_connections)
-            }
-        }
-    except Exception as e:
-        logger.error(f"시스템 통계 조회 실패: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
 
 # =============================================================================
-# 🔥 Step 12: 전역 예외 처리기
+# 🔥 Step 23: 전역 예외 처리기
 # =============================================================================
 
 @app.exception_handler(Exception)
@@ -2102,7 +2113,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "error": "서버 내부 오류가 발생했습니다",
             "error_id": error_id,
             "detail": str(exc),
-            "version": "6.0.0",
+            "version": "7.0.0",
             "architecture": "DI Container",
             "timestamp": datetime.now().isoformat()
         }
@@ -2118,33 +2129,35 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "success": False,
             "error": exc.detail,
             "status_code": exc.status_code,
-            "version": "6.0.0",
+            "version": "7.0.0",
             "timestamp": datetime.now().isoformat()
         }
     )
 
 # =============================================================================
-# 🔥 Step 13: 서버 시작 정보 출력
+# 🔥 Step 24: 서버 시작 정보 출력
 # =============================================================================
 
 if __name__ == "__main__":
     print("\n" + "="*100)
-    print("🚀 MyCloset AI 서버 시작! (DI Container 아키텍처)")
+    print("🚀 MyCloset AI 서버 시작! (프론트엔드 완전 호환 v7.0)")
     print("="*100)
-    print("🏗️ 깔끔한 아키텍처:")
+    print("🏗️ 프론트엔드 완전 호환 아키텍처:")
     print("  🔗 DI Container → 모든 의존성 관리")
     print("  🤖 ModelLoader → AI 모델 로딩")  
     print("  🧩 BaseStepMixin → Step 기본 기능")
     print("  ⚙️ Services → 비즈니스 로직")
     print("  🛣️ Routes → API 엔드포인트")
     print("="*100)
-    print("🎯 완전 구현된 기능:")
+    print("🎯 프론트엔드 완전 호환 기능:")
+    print("  ✅ 세션 기반 이미지 관리 (Step 1에서만 업로드)")
     print("  ✅ 8단계 파이프라인 API (/api/step/1 ~ /api/step/8)")
     print("  ✅ WebSocket 실시간 진행률 (/api/ws/ai-pipeline)")
-    print("  ✅ SessionService 이미지 관리")
-    print("  ✅ StepProcessingService AI 처리")
-    print("  ✅ WebSocketService 실시간 통신")
+    print("  ✅ FormData 방식 완전 지원")
+    print("  ✅ 이미지 재업로드 문제 완전 해결")
     print("  ✅ 완전한 파이프라인 API (/api/step/complete)")
+    print("  ✅ 세션 관리 API (/api/sessions/*)")
+    print("  ✅ App.tsx 모든 API 호출 지원")
     print("="*100)
     print("🌐 서비스 정보:")
     print(f"  📁 Backend Root: {backend_root}")
@@ -2156,8 +2169,11 @@ if __name__ == "__main__":
     print("="*100)
     print("📡 WebSocket 테스트: ws://localhost:8000/api/ws/ai-pipeline")
     print("🔧 관리자 페이지: http://localhost:8000/admin/stats")
+    print("🧪 WebSocket 테스트 페이지: http://localhost:8000/api/ws/test")
     print("="*100)
-    print("🎉 DI Container 아키텍처로 깔끔하게 구성!")
+    print("🎉 프론트엔드 App.tsx와 완전 호환!")
+    print("🔗 세션 기반 이미지 관리로 재업로드 문제 해결!")
+    print("📱 모든 API 엔드포인트 완전 지원!")
     print("="*100)
     
     # 서버 실행
