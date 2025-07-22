@@ -468,18 +468,21 @@ class RealAIDIContainer:
             from app.ai_pipeline.pipeline_manager import QualityLevel
             
             factory_config = StepFactoryConfig(
-                device=os.environ.get('DEVICE', 'cpu'),
-                device_type='mps' if IS_M3_MAX else 'cpu',
-                memory_gb=128 if IS_M3_MAX else 16,
-                is_m3_max=IS_M3_MAX,
-                optimization_level=OptimizationLevel.M3_MAX if IS_M3_MAX else OptimizationLevel.STANDARD,
-                quality_level=QualityLevel.HIGH,
-                model_cache_dir=str(backend_root / 'ai_models'),
-                use_fp16=IS_M3_MAX,
-                max_cached_models=16 if IS_M3_MAX else 8,
-                lazy_loading=True
+                device='mps' if IS_M3_MAX else 'cpu',                                            # ✅ device만 사용
+                optimization_level=OptimizationLevel.M3_MAX if IS_M3_MAX else OptimizationLevel.STANDARD,  # ✅ 지원됨
+                model_cache_dir=str(backend_root / 'ai_models'),                                 # ✅ 지원됨
+                use_fp16=IS_M3_MAX,                                                              # ✅ 지원됨
+                max_cached_models=50 if IS_M3_MAX else 16,                                       # ✅ 지원됨
+                lazy_loading=True,                                                               # ✅ 지원됨
+                use_conda_optimization=True,                                                     # ✅ 지원됨
+                auto_warmup=True,                                                                # ✅ 지원됨
+                auto_memory_cleanup=True,                                                        # ✅ 지원됨
+                enable_dependency_injection=True,                                                # ✅ 지원됨
+                dependency_injection_mode="runtime",                                            # ✅ 지원됨
+                validate_dependencies=True,                                                      # ✅ 지원됨
+                enable_debug_logging=is_development                                              # ✅ 지원됨
             )
-            
+
             from app.ai_pipeline.factories.step_factory import StepFactory
             self._step_factory = StepFactory(factory_config)
             
