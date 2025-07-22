@@ -1,7 +1,8 @@
 # backend/app/ai_pipeline/factories/step_factory.py
 """
-🔥 StepFactory v1.0 - 의존성 주입 전용 팩토리 (순환참조 완전 해결)
+🔥 StepFactory v1.0 - 의존성 주입 전용 팩토리 (순환참조 완전 해결) - 수정된 버전
 =======================================================================
+✅ StepFactoryConfig 매개변수 불일치 수정 (device_type → device)
 ✅ 순환참조 완전 방지 - 한방향 의존성 구조
 ✅ 의존성 주입 패턴 완전 구현
 ✅ BaseStepMixin과 ModelLoader 안전한 조립
@@ -20,8 +21,8 @@ StepFactory → ModelLoader (생성) → BaseStepMixin (생성) → 의존성 �
 - 단방향 의존성만 허용
 
 Author: MyCloset AI Team
-Date: 2025-07-22
-Version: 1.0 (Dependency Injection Factory)
+Date: 2025-07-23
+Version: 1.0 (Fixed Parameter Compatibility)
 """
 
 import os
@@ -108,7 +109,7 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 # ==============================================
-# 🔥 4. 팩토리 설정 및 데이터 구조
+# 🔥 4. 팩토리 설정 및 데이터 구조 (수정된 버전)
 # ==============================================
 
 class StepType(Enum):
@@ -132,8 +133,10 @@ class OptimizationLevel(IntEnum):
 
 @dataclass
 class StepFactoryConfig:
-    """StepFactory 설정"""
-    # 시스템 설정
+    """
+    🔥 StepFactory 설정 (수정된 버전 - device_type 대신 device 사용)
+    """
+    # 시스템 설정 (🔥 device_type 제거, device만 사용)
     device: str = "auto"
     optimization_level: OptimizationLevel = OptimizationLevel.STANDARD
     use_conda_optimization: bool = True
@@ -158,6 +161,17 @@ class StepFactoryConfig:
     # 디버깅 설정
     enable_debug_logging: bool = False
     validate_dependencies: bool = True
+    
+    # 🔥 기존 호환성을 위한 property (device_type을 device로 자동 매핑)
+    @property
+    def device_type(self) -> str:
+        """기존 호환성을 위한 device_type 속성 (device로 매핑)"""
+        return self.device
+    
+    @device_type.setter
+    def device_type(self, value: str):
+        """device_type 설정 시 device로 매핑"""
+        self.device = value
 
 @dataclass
 class StepFactoryResult:
@@ -410,12 +424,12 @@ class SystemOptimizer:
             return False
 
 # ==============================================
-# 🔥 7. 메인 StepFactory 클래스
+# 🔥 7. 메인 StepFactory 클래스 (수정된 버전)
 # ==============================================
 
 class StepFactory:
     """
-    🔥 StepFactory v1.0 - 의존성 주입 전용 팩토리
+    🔥 StepFactory v1.0 - 의존성 주입 전용 팩토리 (수정된 버전)
     
     핵심 역할:
     1. ModelLoader 인스턴스 생성
@@ -428,7 +442,7 @@ class StepFactory:
     """
     
     def __init__(self, config: Optional[StepFactoryConfig] = None):
-        """StepFactory 초기화"""
+        """StepFactory 초기화 (수정된 버전)"""
         self.config = config or StepFactoryConfig()
         self.logger = logging.getLogger(f"{__name__}.StepFactory")
         
@@ -914,7 +928,7 @@ class StepFactory:
             'step_config': step_config or {}
         }
         
-        key_str = json.dumps(key_data, sort_keys=True)
+        key_str = str(key_data)  # json.dumps 대신 str 사용으로 호환성 향상
         return hashlib.md5(key_str.encode()).hexdigest()
     
     def _get_from_cache(self, cache_key: str) -> Optional[StepFactoryResult]:
@@ -987,7 +1001,7 @@ class StepFactory:
             self.logger.error(f"❌ StepFactory 정리 실패: {e}")
 
 # ==============================================
-# 🔥 12. 전역 팩토리 관리
+# 🔥 12. 전역 팩토리 관리 (수정된 버전)
 # ==============================================
 
 _global_step_factory: Optional[StepFactory] = None
@@ -1212,9 +1226,11 @@ atexit.register(cleanup_global_step_factory)
 # ==============================================
 
 logger.info("=" * 80)
-logger.info("✅ StepFactory v1.0 - 의존성 주입 전용 팩토리 로드 완료")
+logger.info("✅ StepFactory v1.0 - 매개변수 호환성 수정 완료")
 logger.info("=" * 80)
-logger.info("🔥 핵심 기능:")
+logger.info("🔥 핵심 수정사항:")
+logger.info("   ✅ device_type → device 매개변수 통일")
+logger.info("   ✅ device_type property 호환성 지원")
 logger.info("   ✅ 순환참조 완전 방지 - 한방향 의존성 구조")
 logger.info("   ✅ 의존성 주입 패턴 완전 구현")
 logger.info("   ✅ BaseStepMixin과 ModelLoader 안전한 조립")
@@ -1258,7 +1274,9 @@ logger.info("   # 완전 파이프라인")
 logger.info("   pipeline = await create_complete_pipeline_async()")
 logger.info("")
 logger.info("=" * 80)
-logger.info("🚀 StepFactory v1.0 준비 완료!")
+logger.info("🚀 StepFactory v1.0 매개변수 호환성 수정 완료!")
+logger.info("   ✅ device_type 오류 완전 해결")
+logger.info("   ✅ 기존 호환성 유지")
 logger.info("   ✅ 순환참조 완전 해결")
 logger.info("   ✅ 깔끔한 의존성 주입 패턴")
 logger.info("   ✅ BaseStepMixin + ModelLoader 완벽 조립")

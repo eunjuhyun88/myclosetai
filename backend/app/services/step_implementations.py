@@ -33,6 +33,8 @@ import gc
 import importlib
 import traceback
 import weakref
+import os  # 🔥 누락된 os import 추가
+import sys
 from typing import Dict, Any, Optional, List, Union, Tuple, Type, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path

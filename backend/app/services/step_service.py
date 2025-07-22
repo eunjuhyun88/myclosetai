@@ -853,14 +853,36 @@ class ServiceStatus(Enum):
 # 🔥 9. 신체 측정값 데이터 클래스
 # ==============================================
 
-@dataclass
-class BodyMeasurements:
-    """신체 측정값"""
-    height: float
-    weight: float
-    chest: Optional[float] = None
-    waist: Optional[float] = None
-    hips: Optional[float] = None
+try:
+    from ..models.schemas import BodyMeasurements
+    BODY_MEASUREMENTS_IMPORTED = True
+    logger.info("✅ BodyMeasurements import 성공 (models.schemas)")
+except ImportError:
+    try:
+        from ..models import BodyMeasurements
+        BODY_MEASUREMENTS_IMPORTED = True
+        logger.info("✅ BodyMeasurements import 성공 (models)")
+    except ImportError:
+        # 폴백으로만 정의
+        @dataclass
+        class BodyMeasurements:
+            """폴백 신체 측정값"""
+            height: float
+            weight: float
+            chest: Optional[float] = None
+            waist: Optional[float] = None
+            hips: Optional[float] = None
+            
+            @property
+            def bmi(self) -> float:
+                if self.height <= 0 or self.weight <= 0:
+                    return 0.0
+                height_m = self.height / 100.0
+                return round(self.weight / (height_m ** 2), 2)
+        
+        BODY_MEASUREMENTS_IMPORTED = False
+        logger.warning("⚠️ BodyMeasurements 폴백 클래스 사용")
+
 
 # ==============================================
 # 🔥 10. StepServiceManager (메인 매니저)
@@ -1814,7 +1836,8 @@ __all__ = [
     "get_service_availability_info",
     "optimize_device_memory",
     "safe_mps_empty_cache",
-    
+    "BodyMeasurements",
+
     # 호환성 별칭들
     "PipelineService",
     "ServiceBodyMeasurements"
