@@ -21,7 +21,31 @@ logger = logging.getLogger(__name__)
 
 # backend/app/core/config.py 상단에 추가
 import sys
+# backend/app/main.py 파일 맨 위에 추가 (import 구문 바로 다음)
 
+import logging
+import os
+
+# 🔥 로그 레벨 대폭 감소
+logging.getLogger().setLevel(logging.ERROR)  # 전체 로그 레벨을 ERROR로
+logging.getLogger('uvicorn').setLevel(logging.ERROR)
+logging.getLogger('fastapi').setLevel(logging.ERROR)
+
+# AI 파이프라인 로그 완전 억제
+for logger_name in [
+    'app.ai_pipeline', 'pipeline', 'app.core', 'app.services',
+    'app.api', 'app.models', 'torch', 'transformers'
+]:
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+
+# 🎯 핵심 로그만 출력하도록 설정
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(levelname)s: %(message)s',
+    force=True
+)
+
+print("🔇 로그 출력 최소화 완료")
 # DeviceManager 클래스 수정
 class DeviceManager:
     def __init__(self):

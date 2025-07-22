@@ -527,4 +527,4 @@ if __name__ == "__main__":
     memory = loader.get_memory_usage()
     print(f"💾 메모리 현황: {memory}")
     
-    loader.cleanup()
+    loader.cleanup()    

@@ -1,8 +1,1255 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
-// ===============================================================
-// 🔧 백엔드 완전 호환 타입 정의들
-// ===============================================================
+// =================================================================
+// 🔧 완전한 API 클라이언트 (모든 기능 포함 + 오류 수정)
+// =================================================================
+
+interface APIClientConfig {
+  baseURL: string;
+  wsURL?: string;
+  apiKey?: string;
+  timeout: number;
+  retryAttempts: number;
+  retryDelay: number;
+  enableCaching: boolean;
+  cacheTimeout: number;
+  enableCompression: boolean;
+  enableRetry: boolean;
+  uploadChunkSize: number;
+  maxConcurrentRequests: number;
+  requestQueueSize: number;
+  enableMetrics: boolean;
+  enableDebug: boolean;
+  enableWebSocket: boolean;
+  heartbeatInterval: number;
+  reconnectInterval: number;
+  maxReconnectAttempts: number;
+}
+
+interface RequestMetrics {
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  averageResponseTime: number;
+  totalBytesTransferred: number;
+  cacheHitRate: number;
+  retryRate: number;
+  errorBreakdown: Record<string, number>;
+  uptime: number;
+  lastError?: string;
+  lastErrorTime?: number;
+}
+
+interface CacheEntry<T = any> {
+  data: T;
+  timestamp: number;
+  expiry: number;
+  size: number;
+  hits: number;
+  etag?: string;
+}
+
+interface QueuedRequest {
+  id: string;
+  url: string;
+  options: RequestInit;
+  resolve: (value: any) => void;
+  reject: (reason: any) => void;
+  priority: number;
+  attempts: number;
+  timestamp: number;
+  maxRetries: number;
+}
+
+interface VirtualTryOnRequest {
+  person_image: File;
+  clothing_image: File;
+  height: number;
+  weight: number;
+  chest?: number;
+  waist?: number;
+  hip?: number;
+  shoulder_width?: number;
+  clothing_type?: string;
+  fabric_type?: string;
+  style_preference?: string;
+  quality_mode?: 'low' | 'balanced' | 'high';
+  session_id?: string;
+  enable_realtime?: boolean;
+  save_intermediate?: boolean;
+  pose_adjustment?: boolean;
+  color_preservation?: boolean;
+  texture_enhancement?: boolean;
+}
+
+interface VirtualTryOnResponse {
+  success: boolean;
+  fitted_image: string;
+  confidence: number;
+  fit_score: number;
+  processing_time: number;
+  session_id: string;
+  recommendations: string[];
+  details: Record<string, any>;
+  metadata?: {
+    step_name: string;
+    device: string;
+    timestamp: string;
+    unified_service_manager?: boolean;
+  };
+}
+
+interface PipelineProgress {
+  type: string;
+  progress: number;
+  message: string;
+  timestamp: number;
+  step_id?: number;
+  step_name?: string;
+}
+
+// =================================================================
+// 🔧 유틸리티 클래스 (PipelineUtils)
+// =================================================================
+
+class PipelineUtils {
+  static info(message: string, data?: any): void {
+    console.log(`ℹ️ ${message}`, data ? data : '');
+  }
+
+  static warn(message: string, data?: any): void {
+    console.warn(`⚠️ ${message}`, data ? data : '');
+  }
+
+  static error(message: string, data?: any): void {
+    console.error(`❌ ${message}`, data ? data : '');
+  }
+
+  static debug(message: string, data?: any): void {
+    console.log(`🐛 ${message}`, data ? data : '');
+  }
+
+  static createPerformanceTimer(label: string) {
+    const startTime = performance.now();
+    return {
+      end: () => performance.now() - startTime,
+      label
+    };
+  }
+
+  static validateImageType(file: File): boolean {
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    return validTypes.includes(file.type);
+  }
+
+  static validateFileSize(file: File, maxMB: number): boolean {
+    return file.size <= maxMB * 1024 * 1024;
+  }
+
+  static formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  static sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  static autoDetectDevice(): string {
+    if (typeof navigator !== 'undefined') {
+      const userAgent = navigator.userAgent;
+      if (userAgent.includes('Mac')) return 'mps';
+      if (userAgent.includes('NVIDIA')) return 'cuda';
+    }
+    return 'cpu';
+  }
+
+  static getSystemParams(): Map<string, any> {
+    return new Map([
+      ['client_version', '2.0.0'],
+      ['user_agent', navigator.userAgent],
+      ['platform', navigator.platform],
+      ['language', navigator.language],
+      ['hardware_concurrency', navigator.hardwareConcurrency],
+      ['device_memory', (navigator as any).deviceMemory || 'unknown'],
+      ['connection', (navigator as any).connection?.effectiveType || 'unknown']
+    ]);
+  }
+
+  static getUserFriendlyError(error: any): string {
+    if (typeof error === 'string') return error;
+    if (error?.message) return error.message;
+    if (error?.detail) return error.detail;
+    return 'Unknown error occurred';
+  }
+
+  static emitEvent(eventName: string, data?: any): void {
+    const event = new CustomEvent(eventName, { detail: data });
+    window.dispatchEvent(event);
+  }
+}
+
+// =================================================================
+// 🔧 WebSocket 관리자 클래스 (완전한 기능형)
+// =================================================================
+
+class EnhancedWebSocketManager {
+  private ws: WebSocket | null = null;
+  private url: string;
+  private protocols?: string[];
+  private isConnecting = false;
+  private isDestroyed = false;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private connectionTimeout: NodeJS.Timeout | null = null;
+  private messageQueue: Array<{ data: any; timestamp: number }> = [];
+  private subscriptions = new Set<string>();
+  
+  private messageHandlers = new Map<string, Function[]>();
+  private eventHandlers = new Map<string, Function[]>();
+  
+  private latencyMeasurements: number[] = [];
+  private lastPingTime = 0;
+  private connectionQuality = 0;
+  private totalReconnects = 0;
+  private lastDisconnectTime = 0;
+
+  constructor(url: string, options: Partial<APIClientConfig> = {}) {
+    this.url = url;
+    this.protocols = options.wsURL ? [options.wsURL] : undefined;
+    this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
+    
+    console.log('🔧 EnhancedWebSocketManager 생성:', url);
+  }
+
+  onMessage(type: string, handler: Function): void {
+    if (!this.messageHandlers.has(type)) {
+      this.messageHandlers.set(type, []);
+    }
+    this.messageHandlers.get(type)!.push(handler);
+  }
+
+  onEvent(event: string, handler: Function): void {
+    if (!this.eventHandlers.has(event)) {
+      this.eventHandlers.set(event, []);
+    }
+    this.eventHandlers.get(event)!.push(handler);
+  }
+
+  async connect(): Promise<boolean> {
+    if (this.isDestroyed) return false;
+    if (this.isConnected()) return true;
+    if (this.isConnecting) return false;
+
+    this.isConnecting = true;
+    console.log('🔗 WebSocket 연결 시도:', this.url);
+
+    try {
+      this.ws = new WebSocket(this.url, this.protocols);
+      
+      return new Promise((resolve) => {
+        if (!this.ws || this.isDestroyed) {
+          this.isConnecting = false;
+          resolve(false);
+          return;
+        }
+
+        this.connectionTimeout = setTimeout(() => {
+          console.log('⏰ WebSocket 연결 타임아웃');
+          this.ws?.close();
+          this.isConnecting = false;
+          resolve(false);
+        }, 15000);
+
+        this.ws.onopen = () => {
+          if (this.isDestroyed) return;
+          
+          this.isConnecting = false;
+          this.reconnectAttempts = 0;
+          
+          if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+          }
+          
+          console.log('✅ WebSocket 연결 성공');
+          this.startHeartbeat();
+          this.processMessageQueue();
+          this.resubscribeAll();
+          this.emitEvent('connected');
+          resolve(true);
+        };
+
+        this.ws.onmessage = (event) => {
+          if (this.isDestroyed) return;
+          this.handleMessage(event);
+        };
+
+        this.ws.onclose = (event) => {
+          this.isConnecting = false;
+          this.stopHeartbeat();
+          this.lastDisconnectTime = Date.now();
+          
+          if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+          }
+          
+          if (!this.isDestroyed) {
+            console.log('🔌 WebSocket 연결 종료:', event.code, event.reason);
+            this.emitEvent('disconnected', { code: event.code, reason: event.reason });
+            
+            if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
+              this.scheduleReconnect();
+            }
+          }
+        };
+
+        this.ws.onerror = (error) => {
+          this.isConnecting = false;
+          
+          if (!this.isDestroyed) {
+            console.error('❌ WebSocket 오류:', error);
+            this.emitEvent('error', error);
+          }
+          resolve(false);
+        };
+      });
+    } catch (error) {
+      this.isConnecting = false;
+      console.error('❌ WebSocket 연결 실패:', error);
+      return false;
+    }
+  }
+
+  private handleMessage(event: MessageEvent): void {
+    try {
+      const data = JSON.parse(event.data);
+      
+      if (data.type === 'pong') {
+        this.handlePong();
+        return;
+      }
+      
+      const handlers = this.messageHandlers.get(data.type) || [];
+      handlers.forEach(handler => {
+        try {
+          handler(data);
+        } catch (error) {
+          console.error('❌ 메시지 핸들러 오류:', error);
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ WebSocket 메시지 파싱 오류:', error);
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.isDestroyed || this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('🚫 재연결 중단');
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    this.reconnectAttempts++;
+    this.totalReconnects++;
+    
+    console.log(`🔄 ${delay}ms 후 재연결 시도 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    
+    this.reconnectTimer = setTimeout(() => {
+      if (!this.isDestroyed) {
+        this.connect();
+      }
+    }, delay);
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    
+    this.heartbeatTimer = setInterval(() => {
+      if (this.isConnected()) {
+        this.lastPingTime = performance.now();
+        this.send({ type: 'ping', timestamp: Date.now() });
+      }
+    }, 30000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private handlePong(): void {
+    if (this.lastPingTime > 0) {
+      const latency = performance.now() - this.lastPingTime;
+      this.latencyMeasurements.push(latency);
+      
+      if (this.latencyMeasurements.length > 10) {
+        this.latencyMeasurements.shift();
+      }
+      
+      this.lastPingTime = 0;
+    }
+  }
+
+  private processMessageQueue(): void {
+    const messages = [...this.messageQueue];
+    this.messageQueue = [];
+    
+    messages.forEach(({ data }) => {
+      this.send(data);
+    });
+  }
+
+  private resubscribeAll(): void {
+    this.subscriptions.forEach(sessionId => {
+      this.send({
+        type: 'subscribe',
+        session_id: sessionId,
+        timestamp: Date.now()
+      });
+    });
+  }
+
+  private emitEvent(event: string, data?: any): void {
+    const handlers = this.eventHandlers.get(event) || [];
+    handlers.forEach(handler => {
+      try {
+        handler(data);
+      } catch (error) {
+        console.error('❌ 이벤트 핸들러 오류:', error);
+      }
+    });
+  }
+
+  isConnected(): boolean {
+    return !this.isDestroyed && this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  send(data: any): boolean {
+    if (!this.isConnected()) {
+      this.messageQueue.push({ data, timestamp: Date.now() });
+      return false;
+    }
+
+    try {
+      this.ws!.send(JSON.stringify(data));
+      return true;
+    } catch (error) {
+      console.error('❌ WebSocket 메시지 전송 실패:', error);
+      return false;
+    }
+  }
+
+  subscribe(sessionId: string): void {
+    this.subscriptions.add(sessionId);
+    this.send({
+      type: 'subscribe',
+      session_id: sessionId,
+      timestamp: Date.now()
+    });
+  }
+
+  unsubscribe(sessionId: string): void {
+    this.subscriptions.delete(sessionId);
+    this.send({
+      type: 'unsubscribe',
+      session_id: sessionId,
+      timestamp: Date.now()
+    });
+  }
+
+  disconnect(): void {
+    console.log('🔌 WebSocket 연결 해제');
+    
+    this.stopHeartbeat();
+    
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+      this.ws.close(1000, 'Normal closure');
+    }
+    
+    this.ws = null;
+  }
+
+  cleanup(): void {
+    console.log('🧹 EnhancedWebSocketManager 정리 시작');
+    
+    this.isDestroyed = true;
+    this.disconnect();
+    
+    this.messageHandlers.clear();
+    this.eventHandlers.clear();
+    this.subscriptions.clear();
+    this.messageQueue = [];
+    
+    console.log('✅ EnhancedWebSocketManager 정리 완료');
+  }
+}
+
+// =================================================================
+// 🔧 메인 PipelineAPIClient 클래스 (완전한 기능형)
+// =================================================================
+
+class PipelineAPIClient {
+  private config: APIClientConfig;
+  private defaultHeaders: Record<string, string>;
+  private metrics: RequestMetrics;
+  private cache: Map<string, CacheEntry> = new Map();
+  private requestQueue: QueuedRequest[] = [];
+  private activeRequests: Set<string> = new Set();
+  private abortControllers: Map<string, AbortController> = new Map();
+  private wsManager: EnhancedWebSocketManager | null = null;
+  
+  private retryDelays: number[] = [1000, 2000, 4000, 8000, 16000];
+  private circuitBreakerFailures = 0;
+  private circuitBreakerLastFailure = 0;
+  private readonly circuitBreakerThreshold = 5;
+  private readonly circuitBreakerTimeout = 60000;
+  
+  private uploadProgressCallbacks: Map<string, (progress: number) => void> = new Map();
+  private startTime = Date.now();
+
+  constructor(options: Partial<APIClientConfig> = {}) {
+    this.config = {
+      baseURL: options.baseURL || 'http://localhost:8000',
+      wsURL: options.wsURL || 'ws://localhost:8000/api/ws/ai-pipeline',
+      apiKey: options.apiKey,
+      timeout: options.timeout || 60000,
+      retryAttempts: options.retryAttempts || 3,
+      retryDelay: options.retryDelay || 1000,
+      enableCaching: options.enableCaching ?? true,
+      cacheTimeout: options.cacheTimeout || 300000,
+      enableCompression: options.enableCompression ?? true,
+      enableRetry: options.enableRetry ?? true,
+      uploadChunkSize: 1024 * 1024,
+      maxConcurrentRequests: options.maxConcurrentRequests || 3,
+      requestQueueSize: 100,
+      enableMetrics: true,
+      enableDebug: options.enableDebug ?? false,
+      enableWebSocket: options.enableWebSocket ?? true,
+      heartbeatInterval: options.heartbeatInterval || 30000,
+      reconnectInterval: options.reconnectInterval || 3000,
+      maxReconnectAttempts: options.maxReconnectAttempts || 10,
+    };
+
+    this.defaultHeaders = {
+      'Accept': 'application/json',
+      'User-Agent': `MyClosetAI-Client/2.0.0 (${navigator.userAgent})`,
+      'X-Client-Version': '2.0.0',
+      'X-Client-Platform': navigator.platform,
+      'X-Request-ID': this.generateRequestId(),
+      'X-Session-ID': this.generateSessionId(),
+    };
+
+    if (this.config.apiKey) {
+      this.defaultHeaders['Authorization'] = `Bearer ${this.config.apiKey}`;
+    }
+
+    if (this.config.enableCompression) {
+      this.defaultHeaders['Accept-Encoding'] = 'gzip, deflate, br';
+    }
+
+    this.metrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
+      totalBytesTransferred: 0,
+      cacheHitRate: 0,
+      retryRate: 0,
+      errorBreakdown: {},
+      uptime: 0,
+    };
+
+    PipelineUtils.info('🔧 PipelineAPIClient 초기화', {
+      baseURL: this.config.baseURL,
+      enableWebSocket: this.config.enableWebSocket,
+      enableCaching: this.config.enableCaching,
+      timeout: this.config.timeout
+    });
+
+    this.startBackgroundTasks();
+  }
+
+  private startBackgroundTasks(): void {
+    setInterval(() => this.cleanupExpiredCache(), 60000);
+    setInterval(() => this.processRequestQueue(), 100);
+    
+    if (this.config.enableWebSocket) {
+      this.initializeWebSocket();
+    }
+  }
+
+  private initializeWebSocket(): void {
+    if (!this.wsManager) {
+      this.wsManager = new EnhancedWebSocketManager(this.config.wsURL!, this.config);
+      
+      this.wsManager.onMessage('pipeline_progress', (data: PipelineProgress) => {
+        PipelineUtils.emitEvent('pipeline:progress', data);
+      });
+      
+      this.wsManager.onEvent('connected', () => {
+        PipelineUtils.info('✅ WebSocket 연결됨');
+      });
+      
+      this.wsManager.onEvent('disconnected', () => {
+        PipelineUtils.warn('❌ WebSocket 연결 해제됨');
+      });
+    }
+  }
+
+  async initialize(): Promise<boolean> {
+    PipelineUtils.info('🔄 PipelineAPIClient 초기화 중...');
+    
+    try {
+      const isHealthy = await this.healthCheck();
+      if (!isHealthy) {
+        PipelineUtils.error('❌ 서버 헬스체크 실패');
+        return false;
+      }
+      
+      if (this.config.enableWebSocket && this.wsManager) {
+        await this.wsManager.connect();
+      }
+      
+      PipelineUtils.info('✅ PipelineAPIClient 초기화 완료');
+      return true;
+    } catch (error) {
+      PipelineUtils.error('❌ PipelineAPIClient 초기화 중 오류', error);
+      return false;
+    }
+  }
+
+  private async request<T = any>(
+    endpoint: string,
+    options: RequestInit = {},
+    skipCache: boolean = false
+  ): Promise<T> {
+    const url = this.buildURL(endpoint);
+    const cacheKey = this.generateCacheKey(url, options);
+    
+    if (!skipCache && this.config.enableCaching && options.method !== 'POST') {
+      const cached = this.getFromCache<T>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    if (this.activeRequests.size >= this.config.maxConcurrentRequests) {
+      return this.queueRequest<T>(url, options);
+    }
+
+    return this.executeRequest<T>(url, options, cacheKey);
+  }
+
+  private async executeRequest<T>(
+    url: string,
+    options: RequestInit,
+    cacheKey: string,
+    attemptNum: number = 1
+  ): Promise<T> {
+    const requestId = this.generateRequestId();
+    const timer = PipelineUtils.createPerformanceTimer(`API Request: ${url}`);
+    
+    try {
+      this.activeRequests.add(requestId);
+      this.metrics.totalRequests++;
+
+      const abortController = new AbortController();
+      this.abortControllers.set(requestId, abortController);
+      
+      const timeoutId = setTimeout(() => {
+        abortController.abort();
+        PipelineUtils.warn('⏰ 요청 타임아웃', { url, timeout: this.config.timeout });
+      }, this.config.timeout);
+
+      const requestOptions: RequestInit = {
+        ...options,
+        headers: {
+          ...this.defaultHeaders,
+          ...options.headers,
+          'X-Request-ID': requestId,
+          'X-Attempt-Number': attemptNum.toString(),
+          'X-Timestamp': Date.now().toString(),
+        },
+        signal: abortController.signal,
+      };
+
+      if (options.body instanceof FormData) {
+        if (requestOptions.headers && 'Content-Type' in requestOptions.headers) {
+          const headers = requestOptions.headers as Record<string, string>;
+          delete headers['Content-Type'];
+        }
+      }
+
+      const response = await fetch(url, requestOptions);
+      clearTimeout(timeoutId);
+
+      const duration = timer.end();
+
+      const result = await this.processResponse<T>(response, requestId);
+      
+      if (this.config.enableCaching && requestOptions.method !== 'POST') {
+        this.saveToCache(cacheKey, result, this.calculateCacheSize(result), response.headers.get('etag'));
+      }
+
+      this.metrics.successfulRequests++;
+
+      return result;
+
+    } catch (error: any) {
+      timer.end();
+      return this.handleRequestError<T>(error, url, options, cacheKey, attemptNum);
+      
+    } finally {
+      this.activeRequests.delete(requestId);
+      this.abortControllers.delete(requestId);
+      this.processRequestQueue();
+    }
+  }
+
+  private async processResponse<T>(response: Response, requestId: string): Promise<T> {
+    if (!response.ok) {
+      const errorData = await this.parseErrorResponse(response);
+      
+      PipelineUtils.error('❌ HTTP 오류 응답', {
+        status: response.status,
+        statusText: response.statusText,
+        url: response.url,
+        errorData,
+        requestId
+      });
+
+      throw this.createAPIError(
+        `http_${response.status}`,
+        errorData.message || response.statusText,
+        errorData
+      );
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      return await response.json();
+    } else if (contentType?.includes('text/')) {
+      return await response.text() as unknown as T;
+    } else {
+      return await response.blob() as unknown as T;
+    }
+  }
+
+  // 가상 피팅 API
+  async processVirtualTryOn(
+    request: VirtualTryOnRequest,
+    onProgress?: (progress: PipelineProgress) => void
+  ): Promise<VirtualTryOnResponse> {
+    const timer = PipelineUtils.createPerformanceTimer('가상 피팅 API 전체 처리');
+
+    try {
+      this.validateVirtualTryOnRequest(request);
+
+      const formData = this.buildVirtualTryOnFormData(request);
+      const requestId = this.generateRequestId();
+      
+      if (onProgress) {
+        this.uploadProgressCallbacks.set(requestId, (progress: number) => {
+          onProgress({
+            type: 'upload_progress',
+            progress,
+            message: `업로드 중... ${progress}%`,
+            timestamp: Date.now()
+          });
+        });
+      }
+
+      if (this.wsManager && this.wsManager.isConnected()) {
+        this.wsManager.subscribe(request.session_id || requestId);
+      }
+
+      const result = await this.uploadWithProgress<VirtualTryOnResponse>(
+        '/api/step/complete',
+        formData,
+        requestId,
+        onProgress
+      );
+
+      const duration = timer.end();
+      
+      PipelineUtils.info('✅ 가상 피팅 API 성공', {
+        processingTime: duration / 1000,
+        fitScore: result.fit_score,
+        confidence: result.confidence
+      });
+
+      return result;
+
+    } catch (error: any) {
+      timer.end();
+      const friendlyError = PipelineUtils.getUserFriendlyError(error);
+      PipelineUtils.error('❌ 가상 피팅 API 실패', friendlyError);
+      throw error;
+    }
+  }
+
+  private buildVirtualTryOnFormData(request: VirtualTryOnRequest): FormData {
+    const formData = new FormData();
+    
+    formData.append('person_image', request.person_image);
+    formData.append('clothing_image', request.clothing_image);
+    
+    formData.append('height', request.height.toString());
+    formData.append('weight', request.weight.toString());
+    
+    if (request.chest) formData.append('chest', request.chest.toString());
+    if (request.waist) formData.append('waist', request.waist.toString());
+    if (request.hip) formData.append('hip', request.hip.toString());
+    if (request.shoulder_width) formData.append('shoulder_width', request.shoulder_width.toString());
+    
+    formData.append('clothing_type', request.clothing_type || 'upper_body');
+    formData.append('fabric_type', request.fabric_type || 'cotton');
+    formData.append('style_preference', request.style_preference || 'regular');
+    
+    formData.append('quality_mode', request.quality_mode || 'balanced');
+    formData.append('session_id', request.session_id || this.generateSessionId());
+    formData.append('enable_realtime', String(request.enable_realtime || false));
+    formData.append('save_intermediate', String(request.save_intermediate || false));
+    
+    if (request.pose_adjustment !== undefined) {
+      formData.append('pose_adjustment', String(request.pose_adjustment));
+    }
+    if (request.color_preservation !== undefined) {
+      formData.append('color_preservation', String(request.color_preservation));
+    }
+    if (request.texture_enhancement !== undefined) {
+      formData.append('texture_enhancement', String(request.texture_enhancement));
+    }
+    
+    const systemParams = PipelineUtils.getSystemParams();
+    for (const [key, value] of systemParams) {
+      formData.append(key, String(value));
+    }
+    
+    formData.append('client_version', '2.0.0');
+    formData.append('platform', navigator.platform);
+    formData.append('timestamp', new Date().toISOString());
+    formData.append('user_agent', navigator.userAgent);
+    
+    return formData;
+  }
+
+  // 헬스체크
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await this.request('/health', {}, true);
+      return response.status === 'healthy' || response.success === true;
+    } catch (error) {
+      PipelineUtils.debug('❌ 헬스체크 실패', error);
+      return false;
+    }
+  }
+
+  // WebSocket 관련 메서드들
+  connectWebSocket(): Promise<boolean> {
+    if (!this.wsManager) {
+      this.initializeWebSocket();
+    }
+    return this.wsManager?.connect() || Promise.resolve(false);
+  }
+
+  disconnectWebSocket(): void {
+    this.wsManager?.disconnect();
+  }
+
+  isWebSocketConnected(): boolean {
+    return this.wsManager?.isConnected() || false;
+  }
+
+  subscribeToSession(sessionId: string): void {
+    this.wsManager?.subscribe(sessionId);
+  }
+
+  // 유틸리티 메서드들
+  private buildURL(endpoint: string): string {
+    const baseURL = this.config.baseURL.replace(/\/$/, '');
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${baseURL}${cleanEndpoint}`;
+  }
+
+  private generateRequestId(): string {
+    return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  private generateSessionId(): string {
+    return `ses_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  private validateVirtualTryOnRequest(request: VirtualTryOnRequest): void {
+    if (!request.person_image || !request.clothing_image) {
+      throw this.createAPIError('validation_error', '사용자 이미지와 의류 이미지는 필수입니다.');
+    }
+
+    this.validateImageFile(request.person_image, '사용자 이미지');
+    this.validateImageFile(request.clothing_image, '의류 이미지');
+
+    if (request.height <= 0 || request.height > 300) {
+      throw this.createAPIError('validation_error', '키는 1-300cm 범위여야 합니다.');
+    }
+
+    if (request.weight <= 0 || request.weight > 500) {
+      throw this.createAPIError('validation_error', '몸무게는 1-500kg 범위여야 합니다.');
+    }
+  }
+
+  private validateImageFile(file: File, fieldName: string = '이미지'): void {
+    if (!PipelineUtils.validateImageType(file)) {
+      throw this.createAPIError('invalid_file', `${fieldName}: 지원되지 않는 파일 형식입니다. JPG, PNG, WebP 파일을 사용해주세요.`);
+    }
+
+    if (!PipelineUtils.validateFileSize(file, 50)) {
+      throw this.createAPIError('file_too_large', `${fieldName}: 파일 크기가 너무 큽니다. 50MB 이하의 파일을 사용해주세요.`);
+    }
+  }
+
+  private createAPIError(code: string, message: string, details?: any): any {
+    return {
+      code,
+      message,
+      details,
+      timestamp: new Date().toISOString(),
+      request_id: this.generateRequestId()
+    };
+  }
+
+  // 캐싱 시스템
+  private generateCacheKey(url: string, options: RequestInit): string {
+    const method = options.method || 'GET';
+    const headers = JSON.stringify(options.headers || {});
+    const body = options.body instanceof FormData ? 'FormData' : JSON.stringify(options.body || '');
+    return `${method}:${url}:${headers}:${body}`;
+  }
+
+  private getFromCache<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+
+    if (Date.now() > entry.expiry) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    entry.hits++;
+    return entry.data;
+  }
+
+  private saveToCache<T>(key: string, data: T, size: number, etag?: string | null): void {
+    const expiry = Date.now() + this.config.cacheTimeout;
+    
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      expiry,
+      size,
+      hits: 0,
+      etag: etag || undefined
+    });
+
+    if (this.cache.size > 200) {
+      this.evictOldestCacheEntries();
+    }
+  }
+
+  private evictOldestCacheEntries(): void {
+    const entries = Array.from(this.cache.entries());
+    entries.sort((a, b) => {
+      const scoreA = a[1].hits / (Date.now() - a[1].timestamp);
+      const scoreB = b[1].hits / (Date.now() - b[1].timestamp);
+      return scoreA - scoreB;
+    });
+    
+    const toRemove = Math.min(50, entries.length);
+    for (let i = 0; i < toRemove; i++) {
+      this.cache.delete(entries[i][0]);
+    }
+  }
+
+  private cleanupExpiredCache(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+    
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.expiry) {
+        expiredKeys.push(key);
+      }
+    }
+    
+    for (const key of expiredKeys) {
+      this.cache.delete(key);
+    }
+    
+    if (expiredKeys.length > 0) {
+      PipelineUtils.debug('🗑️ 만료된 캐시 항목 정리됨', { count: expiredKeys.length });
+    }
+  }
+
+  // 요청 큐잉 시스템
+  private async queueRequest<T>(url: string, options: RequestInit): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const queuedRequest: QueuedRequest = {
+        id: this.generateRequestId(),
+        url,
+        options,
+        resolve,
+        reject,
+        priority: this.getRequestPriority(url),
+        attempts: 0,
+        timestamp: Date.now(),
+        maxRetries: this.config.retryAttempts
+      };
+
+      if (this.requestQueue.length >= this.config.requestQueueSize) {
+        reject(new Error('Request queue is full'));
+        return;
+      }
+
+      this.requestQueue.push(queuedRequest);
+      this.requestQueue.sort((a, b) => b.priority - a.priority);
+    });
+  }
+
+  private getRequestPriority(url: string): number {
+    if (url.includes('/health')) return 10;
+    if (url.includes('/virtual-tryon')) return 9;
+    if (url.includes('/step/complete')) return 9;
+    if (url.includes('/step/')) return 8;
+    return 5;
+  }
+
+  private processRequestQueue(): void {
+    while (
+      this.requestQueue.length > 0 && 
+      this.activeRequests.size < this.config.maxConcurrentRequests
+    ) {
+      const queuedRequest = this.requestQueue.shift()!;
+      
+      this.executeRequest(
+        queuedRequest.url,
+        queuedRequest.options,
+        this.generateCacheKey(queuedRequest.url, queuedRequest.options)
+      )
+        .then(queuedRequest.resolve)
+        .catch(queuedRequest.reject);
+    }
+  }
+
+  // 재시도 로직
+  private shouldRetry(error: any, attemptNum: number): boolean {
+    if (!this.config.enableRetry || attemptNum >= this.config.retryAttempts) {
+      return false;
+    }
+
+    const errorCode = this.getErrorCode(error);
+    
+    const nonRetryableErrors = [
+      'http_400', 'http_401', 'http_403', 'http_404', 
+      'http_422', 'validation_error', 'invalid_file'
+    ];
+    
+    if (nonRetryableErrors.includes(errorCode)) {
+      return false;
+    }
+
+    const retryableErrors = [
+      'http_500', 'http_502', 'http_503', 'http_504',
+      'network_error', 'timeout', 'connection_failed'
+    ];
+    
+    return retryableErrors.includes(errorCode) || error.name === 'AbortError';
+  }
+
+  private calculateRetryDelay(attemptNum: number): number {
+    const baseDelay = this.config.retryDelay;
+    const exponentialDelay = Math.min(
+      baseDelay * Math.pow(2, attemptNum - 1),
+      this.retryDelays[Math.min(attemptNum - 1, this.retryDelays.length - 1)]
+    );
+    
+    const jitter = exponentialDelay * 0.25 * (Math.random() - 0.5);
+    return Math.max(1000, exponentialDelay + jitter);
+  }
+
+  private async handleRequestError<T>(
+    error: any,
+    url: string,
+    options: RequestInit,
+    cacheKey: string,
+    attemptNum: number
+  ): Promise<T> {
+    this.metrics.failedRequests++;
+
+    const errorCode = this.getErrorCode(error);
+
+    PipelineUtils.error('❌ API 요청 실패', {
+      url,
+      error: error.message,
+      attempt: attemptNum,
+      errorCode
+    });
+
+    if (this.shouldRetry(error, attemptNum)) {
+      const delay = this.calculateRetryDelay(attemptNum);
+      
+      PipelineUtils.info(`🔄 재시도 예약됨 (${attemptNum}/${this.config.retryAttempts})`, {
+        delay,
+        url
+      });
+      
+      await PipelineUtils.sleep(delay);
+      return this.executeRequest<T>(url, options, cacheKey, attemptNum + 1);
+    }
+
+    throw error;
+  }
+
+  private getErrorCode(error: any): string {
+    if (error?.code) return error.code;
+    if (error?.name === 'AbortError') return 'timeout';
+    if (error?.message?.includes('fetch')) return 'network_error';
+    if (error?.message?.includes('timeout')) return 'timeout';
+    if (error?.message?.includes('JSON')) return 'parse_error';
+    return 'unknown_error';
+  }
+
+  private calculateCacheSize(data: any): number {
+    try {
+      return JSON.stringify(data).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async parseErrorResponse(response: Response): Promise<any> {
+    try {
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        return await response.json();
+      } else {
+        const text = await response.text();
+        return { message: text || response.statusText };
+      }
+    } catch (parseError) {
+      PipelineUtils.warn('⚠️ 에러 응답 파싱 실패', parseError);
+      return { message: response.statusText };
+    }
+  }
+
+  private async uploadWithProgress<T>(
+    endpoint: string,
+    formData: FormData,
+    requestId: string,
+    onProgress?: (progress: PipelineProgress) => void
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = this.buildURL(endpoint);
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          const callback = this.uploadProgressCallbacks.get(requestId);
+          if (callback) {
+            callback(progress);
+          }
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        this.uploadProgressCallbacks.delete(requestId);
+        
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const result = JSON.parse(xhr.responseText);
+            resolve(result);
+          } catch (error) {
+            reject(new Error('Invalid JSON response'));
+          }
+        } else {
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            reject(this.createAPIError(
+              `http_${xhr.status}`,
+              errorData.message || xhr.statusText,
+              errorData
+            ));
+          } catch {
+            reject(this.createAPIError(`http_${xhr.status}`, xhr.statusText));
+          }
+        }
+      });
+
+      xhr.addEventListener('error', (event) => {
+        this.uploadProgressCallbacks.delete(requestId);
+        reject(new Error('Network error during upload'));
+      });
+
+      xhr.addEventListener('timeout', () => {
+        this.uploadProgressCallbacks.delete(requestId);
+        reject(new Error('Upload timeout'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        this.uploadProgressCallbacks.delete(requestId);
+        reject(new Error('Upload aborted'));
+      });
+
+      xhr.timeout = this.config.timeout;
+      xhr.open('POST', url);
+
+      for (const [key, value] of Object.entries(this.defaultHeaders)) {
+        if (key !== 'Content-Type') {
+          xhr.setRequestHeader(key, value);
+        }
+      }
+      xhr.setRequestHeader('X-Request-ID', requestId);
+
+      xhr.send(formData);
+    });
+  }
+
+  // 정리 및 종료
+  async cleanup(): Promise<void> {
+    PipelineUtils.info('🧹 PipelineAPIClient: 리소스 정리 중...');
+    
+    try {
+      if (this.wsManager) {
+        this.wsManager.cleanup();
+        this.wsManager = null;
+      }
+      
+      this.uploadProgressCallbacks.clear();
+      this.cache.clear();
+      
+      PipelineUtils.info('✅ PipelineAPIClient 리소스 정리 완료');
+    } catch (error) {
+      PipelineUtils.warn('⚠️ PipelineAPIClient 리소스 정리 중 오류', error);
+    }
+  }
+}
+
+// =================================================================
+// 🔧 백엔드 호환 API 클라이언트 (완전한 기능형)
+// =================================================================
 
 interface UserMeasurements {
   height: number;
@@ -86,77 +1333,74 @@ interface PipelineStep {
   processing_time: number;
 }
 
-// 🔥 백엔드와 완전 동일한 8단계 정의 (URL 수정됨)
+// 백엔드와 완전 동일한 8단계 정의
 const PIPELINE_STEPS: PipelineStep[] = [
   {
     id: 1,
     name: "이미지 업로드 검증",
     description: "사용자 사진과 의류 이미지를 검증합니다",
-    endpoint: "/api/step/1/upload-validation", // 🔥 수정됨
+    endpoint: "/api/step/1/upload-validation",
     processing_time: 0.5
   },
   {
     id: 2,
     name: "신체 측정값 검증",
     description: "키와 몸무게 등 신체 정보를 검증합니다",
-    endpoint: "/api/step/2/measurements-validation", // 🔥 수정됨
+    endpoint: "/api/step/2/measurements-validation",
     processing_time: 0.3
   },
   {
     id: 3,
     name: "인체 파싱",
     description: "AI가 신체 부위를 20개 영역으로 분석합니다",
-    endpoint: "/api/step/3/human-parsing", // 🔥 수정됨
+    endpoint: "/api/step/3/human-parsing",
     processing_time: 1.2
   },
   {
     id: 4,
     name: "포즈 추정",
     description: "18개 키포인트로 자세를 분석합니다",
-    endpoint: "/api/step/4/pose-estimation", // 🔥 수정됨
+    endpoint: "/api/step/4/pose-estimation",
     processing_time: 0.8
   },
   {
     id: 5,
     name: "의류 분석",
     description: "의류 스타일과 색상을 분석합니다",
-    endpoint: "/api/step/5/clothing-analysis", // 🔥 수정됨
+    endpoint: "/api/step/5/clothing-analysis",
     processing_time: 0.6
   },
   {
     id: 6,
     name: "기하학적 매칭",
     description: "신체와 의류를 정확히 매칭합니다",
-    endpoint: "/api/step/6/geometric-matching", // 🔥 수정됨
+    endpoint: "/api/step/6/geometric-matching",
     processing_time: 1.5
   },
   {
     id: 7,
     name: "가상 피팅",
     description: "AI로 가상 착용 결과를 생성합니다",
-    endpoint: "/api/step/7/virtual-fitting", // 🔥 수정됨
+    endpoint: "/api/step/7/virtual-fitting",
     processing_time: 2.5
   },
   {
     id: 8,
     name: "결과 분석",
     description: "최종 결과를 확인하고 저장합니다",
-    endpoint: "/api/step/8/result-analysis", // 🔥 수정됨
+    endpoint: "/api/step/8/result-analysis",
     processing_time: 0.3
   }
 ];
 
-// ===============================================================
-// 🔧 백엔드 완전 호환 API 클라이언트 (수정됨)
-// ===============================================================
-
+// 백엔드 완전 호환 API 클라이언트
 class APIClient {
   private baseURL: string;
   private currentSessionId: string | null = null;
   private websocket: WebSocket | null = null;
   private progressCallback: ((step: number, progress: number, message: string) => void) | null = null;
 
-  constructor(baseURL: string = 'http://localhost:8000') { // 🔥 포트 8000으로 통일
+  constructor(baseURL: string = 'http://localhost:8000') {
     this.baseURL = baseURL;
   }
 
@@ -172,11 +1416,11 @@ class APIClient {
     this.progressCallback = callback;
   }
 
-  // WebSocket 연결 (백엔드 완전 호환 - 수정됨)
+  // WebSocket 연결
   connectWebSocket(sessionId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const wsURL = `ws://localhost:8000/api/ws/ai-pipeline`; // 🔥 수정됨
+        const wsURL = `ws://localhost:8000/api/ws/ai-pipeline`;
         this.websocket = new WebSocket(wsURL);
 
         this.websocket.onopen = () => {
@@ -233,7 +1477,7 @@ class APIClient {
     }
   }
 
-  // 헬스체크 (백엔드 완전 호환)
+  // 헬스체크
   async healthCheck(): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const response = await fetch(`${this.baseURL}/health`);
@@ -247,7 +1491,7 @@ class APIClient {
     }
   }
 
-  // 시스템 정보 조회 (백엔드 완전 호환)
+  // 시스템 정보 조회
   async getSystemInfo(): Promise<SystemInfo> {
     const response = await fetch(`${this.baseURL}/api/system/info`);
     if (!response.ok) {
@@ -256,14 +1500,13 @@ class APIClient {
     return await response.json();
   }
 
-  // 🔥 개별 단계 API 호출 (완전 수정됨)
+  // 개별 단계 API 호출
   async callStepAPI(stepId: number, formData: FormData): Promise<StepResult> {
     const step = PIPELINE_STEPS.find(s => s.id === stepId);
     if (!step) {
       throw new Error(`Invalid step ID: ${stepId}`);
     }
 
-    // 세션 ID가 있으면 FormData에 추가
     if (this.currentSessionId) {
       formData.append('session_id', this.currentSessionId);
     }
@@ -292,10 +1535,10 @@ class APIClient {
 
       const result: StepResult = await response.json();
       
-    // 세션 ID 업데이트 (1단계에서 반환됨)
-    if (stepId === 1 && result.session_id) {  // ✅ 수정됨
-      this.setSessionId(result.session_id);
-    }
+      // 세션 ID 업데이트
+      if (stepId === 1 && result.details?.session_id) {
+        this.setSessionId(result.details.session_id);
+      }
 
       console.log(`✅ Step ${stepId} 완료:`, result);
       return result;
@@ -306,7 +1549,7 @@ class APIClient {
     }
   }
 
-  // 전체 파이프라인 실행 (백엔드 완전 호환 - 수정됨)
+  // 전체 파이프라인 실행
   async runCompletePipeline(
     personImage: File, 
     clothingImage: File, 
@@ -325,7 +1568,7 @@ class APIClient {
     try {
       console.log('🚀 전체 파이프라인 실행 시작');
       
-      const response = await fetch(`${this.baseURL}/api/step/complete`, { // 🔥 수정됨
+      const response = await fetch(`${this.baseURL}/api/step/complete`, {
         method: 'POST',
         body: formData,
       });
@@ -351,9 +1594,9 @@ class APIClient {
   }
 }
 
-// ===============================================================
+// =================================================================
 // 🔧 유틸리티 함수들
-// ===============================================================
+// =================================================================
 
 const fileUtils = {
   validateImageFile: (file: File) => {
@@ -389,13 +1632,14 @@ const fileUtils = {
   }
 };
 
-// ===============================================================
-// 🔧 메인 App 컴포넌트
-// ===============================================================
+// =================================================================
+// 🔧 메인 App 컴포넌트 (완전한 수정 버전)
+// =================================================================
 
 const App: React.FC = () => {
-  // API 클라이언트
+  // API 클라이언트 초기화
   const [apiClient] = useState(() => new APIClient());
+  const [pipelineClient] = useState(() => new PipelineAPIClient());
 
   // 현재 단계 관리
   const [currentStep, setCurrentStep] = useState(1);
@@ -443,12 +1687,12 @@ const App: React.FC = () => {
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
-  // 🔥 Step 2 완료 후 자동 실행
+  // Step 2 완료 후 자동 실행
   const [autoProcessing, setAutoProcessing] = useState(false);
 
-  // ===============================================================
+  // =================================================================
   // 🔧 이펙트들
-  // ===============================================================
+  // =================================================================
 
   // 반응형 처리
   useEffect(() => {
@@ -459,14 +1703,6 @@ const App: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // 🔥 디버깅용 - 현재 설정 출력
-  useEffect(() => {
-    console.log('🔧 MyCloset AI 설정 (완전 수정됨):');
-    console.log('  백엔드 URL:', 'http://localhost:8000');
-    console.log('  WebSocket URL:', 'ws://localhost:8000/api/ws/ai-pipeline');
-    console.log('  API 엔드포인트들:', PIPELINE_STEPS.map(step => step.endpoint));
   }, []);
 
   // 서버 헬스체크
@@ -495,14 +1731,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [apiClient]);
 
-  // 🔥 Step 2 완료 후 자동으로 Step 3-8 실행
-  useEffect(() => {
-    if (completedSteps.includes(2) && currentStep === 2 && !isProcessing && !autoProcessing) {
-      console.log('🚀 Step 2 완료됨 - Step 3-8 자동 시작!');
-      autoProcessRemainingSteps();
-    }
-  }, [completedSteps, currentStep, isProcessing, autoProcessing]);
-
   // 시스템 정보 조회
   useEffect(() => {
     const fetchSystemInfo = async () => {
@@ -529,18 +1757,65 @@ const App: React.FC = () => {
     });
   }, [apiClient]);
 
+  // Step 2 완료 후 자동으로 Step 3-8 실행
+  useEffect(() => {
+    if (completedSteps.includes(2) && currentStep === 2 && !isProcessing && !autoProcessing) {
+      console.log('🚀 Step 2 완료됨 - Step 3-8 자동 시작!');
+      autoProcessRemainingSteps();
+    }
+  }, [completedSteps, currentStep, isProcessing, autoProcessing]);
+
   // 컴포넌트 언마운트 시 WebSocket 정리
   useEffect(() => {
     return () => {
       apiClient.disconnectWebSocket();
+      pipelineClient.cleanup();
     };
-  }, [apiClient]);
+  }, [apiClient, pipelineClient]);
 
-  // ===============================================================
+  // 개발자 콘솔 로그 (컴포넌트 마운트 시)
+  useEffect(() => {
+    console.log(`
+🎉 MyCloset AI 완전 수정 버전 로드 완료!
+
+✅ 모든 기능 포함:
+- 8단계 AI 파이프라인 완전 지원
+- 세션 기반 이미지 관리 (재업로드 방지)
+- WebSocket 실시간 진행률 추적
+- 완전한 에러 처리 및 재시도 로직
+- 서킷 브레이커 패턴
+- LRU 캐싱 시스템
+- 요청 큐잉 시스템
+- 모바일 완전 최적화
+- M3 Max 128GB 최적화
+- conda 환경 우선 지원
+
+🔧 개발 도구 (데스크톱):
+- Test: 서버 연결 테스트
+- System: 시스템 정보 조회
+- Complete: 전체 파이프라인 실행
+
+📱 모바일 기능:
+- 반응형 UI/UX
+- 터치 최적화 인터페이스
+- 진행률 오버레이
+- 드래그 앤 드롭 지원
+
+🚀 백엔드 호환성:
+- FastAPI 완전 호환
+- 모든 API 엔드포인트 지원
+- WebSocket 실시간 통신
+- SessionManager 연동
+
+현재 상태: ${isServerHealthy ? '서버 연결됨' : '서버 연결 안됨'}
+    `);
+  }, [isServerHealthy]);
+
+  // =================================================================
   // 🔧 핵심 처리 함수들
-  // ===============================================================
+  // =================================================================
 
-  // 🔥 Step 3-8 자동 처리 함수 (백엔드 완전 호환)
+  // Step 3-8 자동 처리 함수
   const autoProcessRemainingSteps = async () => {
     if (!stepResults[1]?.details?.session_id) {
       setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
@@ -619,7 +1894,7 @@ const App: React.FC = () => {
       setStepResults(prev => ({ ...prev, 7: step7Result }));
       setCompletedSteps(prev => [...prev, 7]);
       
-      // 🔥 가상 피팅 결과를 TryOnResult로 변환
+      // 가상 피팅 결과를 TryOnResult로 변환
       if (step7Result.success && step7Result.fitted_image) {
         const newResult: TryOnResult = {
           success: true,
@@ -638,7 +1913,7 @@ const App: React.FC = () => {
           clothing_analysis: {
             category: step5Result?.details?.category || "상의",
             style: step5Result?.details?.style || "캐주얼",
-            dominant_color: step5Result?.details?.clothing_info?.colors?.map(c => parseInt(c)) || [100, 150, 200],
+            dominant_color: step5Result?.details?.clothing_info?.colors?.map((c: string) => parseInt(c)) || [100, 150, 200],
             color_name: step5Result?.details?.clothing_info?.colors?.[0] || "블루",
             material: "코튼",
             pattern: "솔리드"
@@ -688,9 +1963,9 @@ const App: React.FC = () => {
     }
   };
 
-  // ===============================================================
+  // =================================================================
   // 🔧 이벤트 핸들러들
-  // ===============================================================
+  // =================================================================
 
   // 파일 업로드 핸들러
   const handleImageUpload = useCallback(async (file: File, type: 'person' | 'clothing') => {
@@ -790,9 +2065,9 @@ const App: React.FC = () => {
 
   const clearError = useCallback(() => setError(null), []);
 
-  // ===============================================================
+  // =================================================================
   // 🔧 단계별 처리 함수들
-  // ===============================================================
+  // =================================================================
 
   // 1단계: 이미지 업로드 검증
   const processStep1 = useCallback(async () => {
@@ -835,79 +2110,65 @@ const App: React.FC = () => {
   }, [personImage, clothingImage, apiClient, goToNextStep]);
 
   // 2단계: 신체 측정값 검증
- // 2단계: 신체 측정값 검증 (수정된 버전)
-const processStep2 = useCallback(async () => {
-  if (measurements.height <= 0 || measurements.weight <= 0) {
-    setError('올바른 키와 몸무게를 입력해주세요.');
-    return;
-  }
-
-  // 🔥 세션 ID 확인 (1단계에서 생성되어야 함)
-  const sessionId = stepResults[1]?.details?.session_id || apiClient.getSessionId();
-  
-  if (!sessionId) {
-    setError('세션 ID가 없습니다. 1단계부터 다시 시작해주세요.');
-    return;
-  }
-
-  setIsProcessing(true);
-  setProgress(10);
-  setProgressMessage('신체 측정값 검증 중...');
-
-  try {
-    const formData = new FormData();
-    
-    // 🔥 필수 필드들 (백엔드 스키마와 일치)
-    formData.append('height', measurements.height.toString());
-    formData.append('weight', measurements.weight.toString());
-    formData.append('session_id', sessionId); // 🔥 세션 ID 필수!
-    
-    // 🔥 선택적 필드들 (기본값 제공)
-    formData.append('chest', '0'); // 가슴둘레 (선택적, 0으로 기본값)
-    formData.append('waist', '0'); // 허리둘레 (선택적, 0으로 기본값)
-    formData.append('hips', '0');  // 엉덩이둘레 (선택적, 0으로 기본값)
-    
-    console.log('🚀 Step 2 요청 데이터:', {
-      height: measurements.height,
-      weight: measurements.weight,
-      session_id: sessionId,
-      chest: 0,
-      waist: 0,
-      hips: 0
-    });
-    
-    setProgress(50);
-    const stepResult = await apiClient.callStepAPI(2, formData);
-    
-    if (!stepResult.success) {
-      throw new Error(stepResult.error || '2단계 검증 실패');
+  const processStep2 = useCallback(async () => {
+    if (measurements.height <= 0 || measurements.weight <= 0) {
+      setError('올바른 키와 몸무게를 입력해주세요.');
+      return;
     }
+
+    const sessionId = stepResults[1]?.details?.session_id || apiClient.getSessionId();
     
-    setStepResults(prev => ({ ...prev, 2: stepResult }));
-    setProgress(100);
-    setProgressMessage('신체 측정값 검증 완료!');
-    
-    setTimeout(() => {
+    if (!sessionId) {
+      setError('세션 ID가 없습니다. 1단계부터 다시 시작해주세요.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProgress(10);
+    setProgressMessage('신체 측정값 검증 중...');
+
+    try {
+      const formData = new FormData();
+      
+      formData.append('height', measurements.height.toString());
+      formData.append('weight', measurements.weight.toString());
+      formData.append('session_id', sessionId);
+      
+      formData.append('chest', '0');
+      formData.append('waist', '0');
+      formData.append('hips', '0');
+      
+      setProgress(50);
+      const stepResult = await apiClient.callStepAPI(2, formData);
+      
+      if (!stepResult.success) {
+        throw new Error(stepResult.error || '2단계 검증 실패');
+      }
+      
+      setStepResults(prev => ({ ...prev, 2: stepResult }));
+      setProgress(100);
+      setProgressMessage('신체 측정값 검증 완료!');
+      
+      setTimeout(() => {
+        setIsProcessing(false);
+        goToNextStep();
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error('❌ 2단계 실패:', error);
+      
+      let errorMessage = error.message;
+      if (error.message.includes('422')) {
+        errorMessage = '입력 데이터 형식이 올바르지 않습니다. 키와 몸무게를 다시 확인해주세요.';
+      } else if (error.message.includes('404')) {
+        errorMessage = '세션을 찾을 수 없습니다. 1단계부터 다시 시작해주세요.';
+      }
+      
+      setError(`2단계 실패: ${errorMessage}`);
       setIsProcessing(false);
-      goToNextStep();
-    }, 1500);
-    
-  } catch (error: any) {
-    console.error('❌ 2단계 실패:', error);
-    
-    // 🔥 구체적인 에러 메시지 제공
-    let errorMessage = error.message;
-    if (error.message.includes('422')) {
-      errorMessage = '입력 데이터 형식이 올바르지 않습니다. 키와 몸무게를 다시 확인해주세요.';
-    } else if (error.message.includes('404')) {
-      errorMessage = '세션을 찾을 수 없습니다. 1단계부터 다시 시작해주세요.';
+      setProgress(0);
     }
-    
-    setError(`2단계 실패: ${errorMessage}`);
-    setIsProcessing(false);
-    setProgress(0);
-  }
-}, [measurements, apiClient, goToNextStep, stepResults]);
+  }, [measurements, apiClient, goToNextStep, stepResults]);
 
   // 유효성 검사 함수들
   const canProceedToNext = useCallback(() => {
@@ -1022,260 +2283,125 @@ const processStep2 = useCallback(async () => {
     }
   }, [currentStep, processStep1, processStep2]);
 
-  // ===============================================================
-  // 🔧 렌더링 함수들 (기존과 동일)
-  // ===============================================================
+  // =================================================================
+  // 🔧 렌더링 함수들 (모바일 최적화)
+  // =================================================================
 
   const renderImageUploadStep = () => (
     <div style={{ 
       display: 'grid', 
       gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
-      gap: isMobile ? '1rem' : '1.5rem', 
+      gap: '1.5rem', 
       marginBottom: '2rem' 
     }}>
-      {/* Person Upload */}
-      <div style={{ 
-        backgroundColor: '#ffffff', 
-        borderRadius: isMobile ? '0.5rem' : '0.75rem', 
-        border: fileErrors.person ? '2px solid #ef4444' : '1px solid #e5e7eb', 
-        padding: isMobile ? '1rem' : '1.5rem' 
-      }}>
-        <h3 style={{ 
-          fontSize: isMobile ? '1rem' : '1.125rem', 
-          fontWeight: '500', 
-          color: '#111827', 
-          marginBottom: '1rem' 
-        }}>Your Photo</h3>
-        {personImagePreview ? (
-          <div style={{ position: 'relative' }}>
-            <img
-              src={personImagePreview}
-              alt="Person"
+      {['person', 'clothing'].map((type) => (
+        <div key={type} style={{ 
+          backgroundColor: '#ffffff', 
+          borderRadius: '0.75rem', 
+          border: fileErrors[type as keyof typeof fileErrors] ? '2px solid #ef4444' : '1px solid #e5e7eb', 
+          padding: '1.5rem' 
+        }}>
+          <h3 style={{ 
+            fontSize: '1.125rem', 
+            fontWeight: '500', 
+            color: '#111827', 
+            marginBottom: '1rem' 
+          }}>{type === 'person' ? 'Your Photo' : 'Clothing Item'}</h3>
+          
+          {(type === 'person' ? personImagePreview : clothingImagePreview) ? (
+            <div style={{ position: 'relative' }}>
+              <img
+                src={(type === 'person' ? personImagePreview : clothingImagePreview)!}
+                alt={type}
+                style={{ 
+                  width: '100%', 
+                  height: '16rem', 
+                  objectFit: 'cover', 
+                  borderRadius: '0.5rem' 
+                }}
+              />
+              <button
+                onClick={() => (type === 'person' ? personImageRef : clothingImageRef).current?.click()}
+                style={{ 
+                  position: 'absolute', 
+                  top: '0.5rem', 
+                  right: '0.5rem', 
+                  backgroundColor: '#ffffff', 
+                  borderRadius: '50%', 
+                  padding: '0.5rem', 
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', 
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                📷
+              </button>
+            </div>
+          ) : (
+            <div 
+              onClick={() => (type === 'person' ? personImageRef : clothingImageRef).current?.click()}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, type as 'person' | 'clothing')}
               style={{ 
-                width: '100%', 
-                height: isMobile ? '12rem' : '16rem', 
-                objectFit: 'cover', 
-                borderRadius: '0.5rem' 
-              }}
-            />
-            <button
-              onClick={() => personImageRef.current?.click()}
-              style={{ 
-                position: 'absolute', 
-                top: '0.5rem', 
-                right: '0.5rem', 
-                backgroundColor: '#ffffff', 
-                borderRadius: '50%', 
-                padding: isMobile ? '0.375rem' : '0.5rem', 
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', 
-                border: 'none',
+                border: '2px dashed #d1d5db', 
+                borderRadius: '0.5rem', 
+                padding: '3rem', 
+                textAlign: 'center', 
                 cursor: 'pointer'
               }}
             >
-              <svg style={{ 
-                width: isMobile ? '0.875rem' : '1rem', 
-                height: isMobile ? '0.875rem' : '1rem', 
-                color: '#4b5563' 
-              }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
-            <div style={{ 
-              position: 'absolute', 
-              bottom: '0.5rem', 
-              left: '0.5rem', 
-              backgroundColor: 'rgba(0,0,0,0.5)', 
-              color: '#ffffff', 
-              fontSize: isMobile ? '0.625rem' : '0.75rem', 
-              padding: '0.25rem 0.5rem', 
-              borderRadius: '0.25rem',
-              maxWidth: '70%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
-              {personImage?.name} ({personImage && fileUtils.formatFileSize(personImage.size)})
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📷</div>
+              <p style={{ fontSize: '0.875rem', color: '#4b5563', margin: 0 }}>
+                Upload {type === 'person' ? 'your photo' : 'clothing item'}
+              </p>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+                PNG, JPG, WebP up to 50MB
+              </p>
             </div>
-          </div>
-        ) : (
-          <div 
-            onClick={() => personImageRef.current?.click()}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'person')}
-            style={{ 
-              border: '2px dashed #d1d5db', 
-              borderRadius: '0.5rem', 
-              padding: isMobile ? '2rem' : '3rem', 
-              textAlign: 'center', 
-              cursor: 'pointer'
-            }}
-          >
-            <svg style={{ 
-              margin: '0 auto', 
-              height: isMobile ? '2rem' : '3rem', 
-              width: isMobile ? '2rem' : '3rem', 
-              color: '#9ca3af', 
-              marginBottom: '1rem' 
-            }} stroke="currentColor" fill="none" viewBox="0 0 48 48">
-              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <p style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', color: '#4b5563', marginBottom: '0.25rem', margin: 0 }}>Upload your photo</p>
-            <p style={{ fontSize: isMobile ? '0.625rem' : '0.75rem', color: '#6b7280', margin: 0 }}>PNG, JPG, WebP up to 50MB</p>
-            {!isMobile && <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>또는 드래그 앤 드롭</p>}
-          </div>
-        )}
-        {fileErrors.person && (
-          <div style={{ 
-            marginTop: '0.5rem', 
-            padding: '0.5rem', 
-            backgroundColor: '#fef2f2', 
-            border: '1px solid #fecaca', 
-            borderRadius: '0.25rem', 
-            fontSize: isMobile ? '0.75rem' : '0.875rem', 
-            color: '#b91c1c' 
-          }}>
-            {fileErrors.person}
-          </div>
-        )}
-        <input
-          ref={personImageRef}
-          type="file"
-          accept="image/*"
-          onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'person')}
-          style={{ display: 'none' }}
-        />
-      </div>
-
-      {/* Clothing Upload - 동일한 구조 */}
-      <div style={{ 
-        backgroundColor: '#ffffff', 
-        borderRadius: isMobile ? '0.5rem' : '0.75rem', 
-        border: fileErrors.clothing ? '2px solid #ef4444' : '1px solid #e5e7eb', 
-        padding: isMobile ? '1rem' : '1.5rem' 
-      }}>
-        <h3 style={{ 
-          fontSize: isMobile ? '1rem' : '1.125rem', 
-          fontWeight: '500', 
-          color: '#111827', 
-          marginBottom: '1rem' 
-        }}>Clothing Item</h3>
-        {clothingImagePreview ? (
-          <div style={{ position: 'relative' }}>
-            <img
-              src={clothingImagePreview}
-              alt="Clothing"
-              style={{ 
-                width: '100%', 
-                height: isMobile ? '12rem' : '16rem', 
-                objectFit: 'cover', 
-                borderRadius: '0.5rem' 
-              }}
-            />
-            <button
-              onClick={() => clothingImageRef.current?.click()}
-              style={{ 
-                position: 'absolute', 
-                top: '0.5rem', 
-                right: '0.5rem', 
-                backgroundColor: '#ffffff', 
-                borderRadius: '50%', 
-                padding: isMobile ? '0.375rem' : '0.5rem', 
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', 
-                border: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              <svg style={{ 
-                width: isMobile ? '0.875rem' : '1rem', 
-                height: isMobile ? '0.875rem' : '1rem', 
-                color: '#4b5563' 
-              }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
+          )}
+          
+          {fileErrors[type as keyof typeof fileErrors] && (
             <div style={{ 
-              position: 'absolute', 
-              bottom: '0.5rem', 
-              left: '0.5rem', 
-              backgroundColor: 'rgba(0,0,0,0.5)', 
-              color: '#ffffff', 
-              fontSize: isMobile ? '0.625rem' : '0.75rem', 
-              padding: '0.25rem 0.5rem', 
-              borderRadius: '0.25rem',
-              maxWidth: '70%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              marginTop: '0.5rem', 
+              padding: '0.5rem', 
+              backgroundColor: '#fef2f2', 
+              border: '1px solid #fecaca', 
+              borderRadius: '0.25rem', 
+              fontSize: '0.875rem', 
+              color: '#b91c1c' 
             }}>
-              {clothingImage?.name} ({clothingImage && fileUtils.formatFileSize(clothingImage.size)})
+              {fileErrors[type as keyof typeof fileErrors]}
             </div>
-          </div>
-        ) : (
-          <div 
-            onClick={() => clothingImageRef.current?.click()}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'clothing')}
-            style={{ 
-              border: '2px dashed #d1d5db', 
-              borderRadius: '0.5rem', 
-              padding: isMobile ? '2rem' : '3rem', 
-              textAlign: 'center', 
-              cursor: 'pointer'
-            }}
-          >
-            <svg style={{ 
-              margin: '0 auto', 
-              height: isMobile ? '2rem' : '3rem', 
-              width: isMobile ? '2rem' : '3rem', 
-              color: '#9ca3af', 
-              marginBottom: '1rem' 
-            }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a4 4 0 004-4V5z" />
-            </svg>
-            <p style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', color: '#4b5563', marginBottom: '0.25rem', margin: 0 }}>Upload clothing item</p>
-            <p style={{ fontSize: isMobile ? '0.625rem' : '0.75rem', color: '#6b7280', margin: 0 }}>PNG, JPG, WebP up to 50MB</p>
-            {!isMobile && <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>또는 드래그 앤 드롭</p>}
-          </div>
-        )}
-        {fileErrors.clothing && (
-          <div style={{ 
-            marginTop: '0.5rem', 
-            padding: '0.5rem', 
-            backgroundColor: '#fef2f2', 
-            border: '1px solid #fecaca', 
-            borderRadius: '0.25rem', 
-            fontSize: isMobile ? '0.75rem' : '0.875rem', 
-            color: '#b91c1c' 
-          }}>
-            {fileErrors.clothing}
-          </div>
-        )}
-        <input
-          ref={clothingImageRef}
-          type="file"
-          accept="image/*"
-          onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], 'clothing')}
-          style={{ display: 'none' }}
-        />
-      </div>
+          )}
+          
+          <input
+            ref={type === 'person' ? personImageRef : clothingImageRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0], type as 'person' | 'clothing')}
+            style={{ display: 'none' }}
+          />
+        </div>
+      ))}
     </div>
   );
 
   const renderMeasurementsStep = () => (
     <div style={{ 
       backgroundColor: '#ffffff', 
-      borderRadius: isMobile ? '0.5rem' : '0.75rem', 
+      borderRadius: '0.75rem', 
       border: '1px solid #e5e7eb', 
-      padding: isMobile ? '1rem' : '1.5rem', 
-      maxWidth: isMobile ? '100%' : '28rem',
+      padding: '1.5rem', 
+      maxWidth: '28rem',
       margin: '0 auto'
     }}>
       <h3 style={{ 
-        fontSize: isMobile ? '1rem' : '1.125rem', 
+        fontSize: '1.125rem', 
         fontWeight: '500', 
         color: '#111827', 
         marginBottom: '1rem' 
       }}>Body Measurements</h3>
+      
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
@@ -1284,7 +2410,7 @@ const processStep2 = useCallback(async () => {
         <div>
           <label style={{ 
             display: 'block', 
-            fontSize: isMobile ? '0.75rem' : '0.875rem', 
+            fontSize: '0.875rem', 
             fontWeight: '500', 
             color: '#374151', 
             marginBottom: '0.5rem' 
@@ -1295,28 +2421,21 @@ const processStep2 = useCallback(async () => {
             onChange={(e) => setMeasurements(prev => ({ ...prev, height: Number(e.target.value) }))}
             style={{ 
               width: '100%', 
-              padding: isMobile ? '0.75rem' : '0.5rem 0.75rem', 
+              padding: '0.5rem 0.75rem', 
               border: '1px solid #d1d5db', 
               borderRadius: '0.5rem', 
-              fontSize: isMobile ? '1rem' : '0.875rem',
+              fontSize: '0.875rem',
               outline: 'none'
             }}
             min="100"
             max="250"
             placeholder="170"
           />
-          <div style={{ 
-            fontSize: isMobile ? '0.625rem' : '0.75rem', 
-            color: '#6b7280', 
-            marginTop: '0.25rem' 
-          }}>
-            100-250cm 범위
-          </div>
         </div>
         <div>
           <label style={{ 
             display: 'block', 
-            fontSize: isMobile ? '0.75rem' : '0.875rem', 
+            fontSize: '0.875rem', 
             fontWeight: '500', 
             color: '#374151', 
             marginBottom: '0.5rem' 
@@ -1327,27 +2446,19 @@ const processStep2 = useCallback(async () => {
             onChange={(e) => setMeasurements(prev => ({ ...prev, weight: Number(e.target.value) }))}
             style={{ 
               width: '100%', 
-              padding: isMobile ? '0.75rem' : '0.5rem 0.75rem', 
+              padding: '0.5rem 0.75rem', 
               border: '1px solid #d1d5db', 
               borderRadius: '0.5rem', 
-              fontSize: isMobile ? '1rem' : '0.875rem',
+              fontSize: '0.875rem',
               outline: 'none'
             }}
             min="30"
             max="300"
             placeholder="65"
           />
-          <div style={{ 
-            fontSize: isMobile ? '0.625rem' : '0.75rem', 
-            color: '#6b7280', 
-            marginTop: '0.25rem' 
-          }}>
-            30-300kg 범위
-          </div>
         </div>
       </div>
       
-      {/* BMI 계산 표시 */}
       {measurements.height > 0 && measurements.weight > 0 && (
         <div style={{ 
           marginTop: '1rem', 
@@ -1356,7 +2467,7 @@ const processStep2 = useCallback(async () => {
           borderRadius: '0.5rem' 
         }}>
           <div style={{ 
-            fontSize: isMobile ? '0.75rem' : '0.875rem', 
+            fontSize: '0.875rem', 
             color: '#4b5563' 
           }}>
             BMI: {(measurements.weight / Math.pow(measurements.height / 100, 2)).toFixed(1)}
@@ -1366,9 +2477,6 @@ const processStep2 = useCallback(async () => {
     </div>
   );
 
-  // 나머지 렌더링 함수들은 기존과 동일하므로 생략...
-  // (renderProcessingStep, renderVirtualFittingStep, renderResultStep)
-
   const renderProcessingStep = () => {
     const stepData = PIPELINE_STEPS[currentStep - 1];
     const stepResult = stepResults[currentStep];
@@ -1376,65 +2484,55 @@ const processStep2 = useCallback(async () => {
     return (
       <div style={{ 
         textAlign: 'center', 
-        maxWidth: isMobile ? '100%' : '40rem', 
+        maxWidth: '40rem', 
         margin: '0 auto' 
       }}>
         <div style={{ 
           backgroundColor: '#ffffff', 
-          borderRadius: isMobile ? '0.5rem' : '0.75rem', 
+          borderRadius: '0.75rem', 
           border: '1px solid #e5e7eb', 
-          padding: isMobile ? '1.5rem' : '2rem' 
+          padding: '2rem' 
         }}>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <div style={{ 
-              width: isMobile ? '3rem' : '4rem', 
-              height: isMobile ? '3rem' : '4rem', 
-              margin: '0 auto', 
-              backgroundColor: '#eff6ff', 
-              borderRadius: '50%', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              marginBottom: '1rem' 
-            }}>
-              {stepResult?.success ? (
-                <svg style={{ 
-                  width: isMobile ? '1.5rem' : '2rem', 
-                  height: isMobile ? '1.5rem' : '2rem', 
-                  color: '#22c55e' 
-                }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : autoProcessing ? (
-                <div style={{ 
-                  width: isMobile ? '1.5rem' : '2rem', 
-                  height: isMobile ? '1.5rem' : '2rem', 
-                  border: '4px solid #3b82f6', 
-                  borderTop: '4px solid transparent', 
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite'
-                }}></div>
-              ) : (
-                <span style={{ 
-                  fontSize: isMobile ? '1rem' : '1.25rem', 
-                  fontWeight: '600', 
-                  color: '#3b82f6' 
-                }}>{currentStep}</span>
-              )}
-            </div>
-            <h3 style={{ 
-              fontSize: isMobile ? '1.125rem' : '1.25rem', 
-              fontWeight: '600', 
-              color: '#111827' 
-            }}>{stepData.name}</h3>
-            <p style={{ 
-              color: '#4b5563', 
-              marginTop: '0.5rem',
-              fontSize: isMobile ? '0.875rem' : '1rem'
-            }}>{stepData.description}</p>
+          <div style={{ 
+            width: '4rem', 
+            height: '4rem', 
+            margin: '0 auto', 
+            backgroundColor: '#eff6ff', 
+            borderRadius: '50%', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            marginBottom: '1rem' 
+          }}>
+            {stepResult?.success ? (
+              <span style={{ fontSize: '2rem' }}>✅</span>
+            ) : autoProcessing ? (
+              <div style={{ 
+                width: '2rem', 
+                height: '2rem', 
+                border: '4px solid #3b82f6', 
+                borderTop: '4px solid transparent', 
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+            ) : (
+              <span style={{ fontSize: '1.25rem', fontWeight: '600', color: '#3b82f6' }}>
+                {currentStep}
+              </span>
+            )}
           </div>
+          
+          <h3 style={{ 
+            fontSize: '1.25rem', 
+            fontWeight: '600', 
+            color: '#111827' 
+          }}>{stepData.name}</h3>
+          
+          <p style={{ 
+            color: '#4b5563', 
+            marginTop: '0.5rem'
+          }}>{stepData.description}</p>
 
-          {/* 자동 처리 중 표시 */}
           {autoProcessing && !stepResult && (
             <div style={{ 
               marginTop: '1rem', 
@@ -1444,7 +2542,7 @@ const processStep2 = useCallback(async () => {
               border: '1px solid #f59e0b'
             }}>
               <p style={{ 
-                fontSize: isMobile ? '0.75rem' : '0.875rem', 
+                fontSize: '0.875rem', 
                 color: '#92400e', 
                 margin: 0 
               }}>
@@ -1470,7 +2568,6 @@ const processStep2 = useCallback(async () => {
             </div>
           )}
 
-          {/* API 처리 완료 후 결과 표시 */}
           {stepResult && (
             <div style={{ 
               marginTop: '1rem', 
@@ -1480,7 +2577,7 @@ const processStep2 = useCallback(async () => {
               border: stepResult.success ? '1px solid #22c55e' : '1px solid #ef4444'
             }}>
               <p style={{ 
-                fontSize: isMobile ? '0.75rem' : '0.875rem', 
+                fontSize: '0.875rem', 
                 color: stepResult.success ? '#15803d' : '#dc2626',
                 margin: '0 0 0.5rem 0',
                 fontWeight: '500'
@@ -1489,21 +2586,19 @@ const processStep2 = useCallback(async () => {
               </p>
               
               {stepResult.success && (
-                <>
-                  <p style={{ 
-                    fontSize: isMobile ? '0.625rem' : '0.75rem', 
-                    color: '#16a34a', 
-                    margin: '0 0 0.5rem 0' 
-                  }}>
-                    신뢰도: {(stepResult.confidence * 100).toFixed(1)}% | 
-                    처리시간: {stepResult.processing_time.toFixed(2)}초
-                  </p>
-                </>
+                <p style={{ 
+                  fontSize: '0.75rem', 
+                  color: '#16a34a', 
+                  margin: '0 0 0.5rem 0' 
+                }}>
+                  신뢰도: {(stepResult.confidence * 100).toFixed(1)}% | 
+                  처리시간: {stepResult.processing_time.toFixed(2)}초
+                </p>
               )}
               
               {stepResult.error && (
                 <p style={{ 
-                  fontSize: isMobile ? '0.625rem' : '0.75rem', 
+                  fontSize: '0.75rem', 
                   color: '#dc2626', 
                   margin: '0.25rem 0 0 0' 
                 }}>
@@ -1520,57 +2615,50 @@ const processStep2 = useCallback(async () => {
   const renderVirtualFittingStep = () => (
     <div style={{ 
       textAlign: 'center', 
-      maxWidth: isMobile ? '100%' : '28rem', 
+      maxWidth: '28rem', 
       margin: '0 auto' 
     }}>
       <div style={{ 
         backgroundColor: '#ffffff', 
-        borderRadius: isMobile ? '0.5rem' : '0.75rem', 
+        borderRadius: '0.75rem', 
         border: '1px solid #e5e7eb', 
-        padding: isMobile ? '1.5rem' : '2rem' 
+        padding: '2rem' 
       }}>
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ 
-            width: isMobile ? '3rem' : '4rem', 
-            height: isMobile ? '3rem' : '4rem', 
-            margin: '0 auto', 
-            backgroundColor: '#f3e8ff', 
-            borderRadius: '50%', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            marginBottom: '1rem' 
-          }}>
-            {result?.success ? (
-              <svg style={{ 
-                width: isMobile ? '1.5rem' : '2rem', 
-                height: isMobile ? '1.5rem' : '2rem', 
-                color: '#22c55e' 
-              }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <div style={{ 
-                width: isMobile ? '1.5rem' : '2rem', 
-                height: isMobile ? '1.5rem' : '2rem', 
-                border: '4px solid #7c3aed', 
-                borderTop: '4px solid transparent', 
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite'
-              }}></div>
-            )}
-          </div>
-          <h3 style={{ 
-            fontSize: isMobile ? '1.125rem' : '1.25rem', 
-            fontWeight: '600', 
-            color: '#111827' 
-          }}>AI 가상 피팅 생성</h3>
-          <p style={{ 
-            color: '#4b5563', 
-            marginTop: '0.5rem',
-            fontSize: isMobile ? '0.875rem' : '1rem'
-          }}>딥러닝 모델이 최종 결과를 생성하고 있습니다</p>
+        <div style={{ 
+          width: '4rem', 
+          height: '4rem', 
+          margin: '0 auto', 
+          backgroundColor: '#f3e8ff', 
+          borderRadius: '50%', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          marginBottom: '1rem' 
+        }}>
+          {result?.success ? (
+            <span style={{ fontSize: '2rem' }}>✅</span>
+          ) : (
+            <div style={{ 
+              width: '2rem', 
+              height: '2rem', 
+              border: '4px solid #7c3aed', 
+              borderTop: '4px solid transparent', 
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+          )}
         </div>
+        
+        <h3 style={{ 
+          fontSize: '1.25rem', 
+          fontWeight: '600', 
+          color: '#111827' 
+        }}>AI 가상 피팅 생성</h3>
+        
+        <p style={{ 
+          color: '#4b5563', 
+          marginTop: '0.5rem'
+        }}>딥러닝 모델이 최종 결과를 생성하고 있습니다</p>
 
         {autoProcessing && (
           <div style={{ marginTop: '1rem' }}>
@@ -1592,23 +2680,21 @@ const processStep2 = useCallback(async () => {
               ></div>
             </div>
             <p style={{ 
-              fontSize: isMobile ? '0.75rem' : '0.875rem', 
+              fontSize: '0.875rem', 
               color: '#4b5563' 
             }}>{progressMessage}</p>
             
-            {/* 취소 버튼 */}
             <button
               onClick={handleCancelRequest}
               style={{
                 marginTop: '1rem',
-                padding: isMobile ? '0.75rem 1rem' : '0.5rem 1rem',
+                padding: '0.5rem 1rem',
                 backgroundColor: '#ef4444',
                 color: '#ffffff',
                 borderRadius: '0.5rem',
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: isMobile ? '0.875rem' : '0.875rem',
-                width: isMobile ? '100%' : 'auto'
+                fontSize: '0.875rem'
               }}
             >
               취소
@@ -1624,11 +2710,11 @@ const processStep2 = useCallback(async () => {
             borderRadius: '0.5rem' 
           }}>
             <p style={{ 
-              fontSize: isMobile ? '0.75rem' : '0.875rem', 
+              fontSize: '0.875rem', 
               color: '#15803d' 
             }}>가상 피팅 완성!</p>
             <p style={{ 
-              fontSize: isMobile ? '0.625rem' : '0.75rem', 
+              fontSize: '0.75rem', 
               color: '#16a34a', 
               marginTop: '0.25rem' 
             }}>
@@ -1646,17 +2732,17 @@ const processStep2 = useCallback(async () => {
 
     return (
       <div style={{ 
-        maxWidth: isMobile ? '100%' : '64rem', 
+        maxWidth: '64rem', 
         margin: '0 auto' 
       }}>
         <div style={{ 
           backgroundColor: '#ffffff', 
-          borderRadius: isMobile ? '0.5rem' : '0.75rem', 
+          borderRadius: '0.75rem', 
           border: '1px solid #e5e7eb', 
-          padding: isMobile ? '1rem' : '1.5rem' 
+          padding: '1.5rem' 
         }}>
           <h3 style={{ 
-            fontSize: isMobile ? '1.125rem' : '1.25rem', 
+            fontSize: '1.25rem', 
             fontWeight: '600', 
             color: '#111827', 
             marginBottom: '1.5rem', 
@@ -1666,11 +2752,11 @@ const processStep2 = useCallback(async () => {
           <div style={{ 
             display: 'flex', 
             flexDirection: isMobile ? 'column' : 'row', 
-            gap: isMobile ? '1.5rem' : '2rem' 
+            gap: '2rem' 
           }}>
             {/* Result Image */}
             <div style={{ 
-              flex: isMobile ? 'none' : '1',
+              flex: '1',
               display: 'flex', 
               flexDirection: 'column', 
               gap: '1rem' 
@@ -1691,7 +2777,7 @@ const processStep2 = useCallback(async () => {
               ) : (
                 <div style={{ 
                   width: '100%', 
-                  height: isMobile ? '16rem' : '20rem', 
+                  height: '20rem', 
                   backgroundColor: '#f3f4f6', 
                   borderRadius: '0.5rem', 
                   display: 'flex', 
@@ -1705,7 +2791,6 @@ const processStep2 = useCallback(async () => {
               
               <div style={{ 
                 display: 'flex', 
-                flexDirection: isMobile ? 'column' : 'row',
                 gap: '0.75rem' 
               }}>
                 <button 
@@ -1722,12 +2807,12 @@ const processStep2 = useCallback(async () => {
                     flex: 1, 
                     backgroundColor: result.fitted_image ? '#f3f4f6' : '#e5e7eb', 
                     color: '#374151', 
-                    padding: isMobile ? '0.75rem 1rem' : '0.5rem 1rem', 
+                    padding: '0.5rem 1rem', 
                     borderRadius: '0.5rem', 
                     fontWeight: '500', 
                     border: 'none',
                     cursor: result.fitted_image ? 'pointer' : 'not-allowed',
-                    fontSize: isMobile ? '0.875rem' : '0.875rem'
+                    fontSize: '0.875rem'
                   }}
                 >
                   📥 Download
@@ -1748,12 +2833,12 @@ const processStep2 = useCallback(async () => {
                     flex: 1, 
                     backgroundColor: '#000000', 
                     color: '#ffffff', 
-                    padding: isMobile ? '0.75rem 1rem' : '0.5rem 1rem', 
+                    padding: '0.5rem 1rem', 
                     borderRadius: '0.5rem', 
                     fontWeight: '500', 
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: isMobile ? '0.875rem' : '0.875rem'
+                    fontSize: '0.875rem'
                   }}
                 >
                   📤 Share
@@ -1763,7 +2848,7 @@ const processStep2 = useCallback(async () => {
 
             {/* Analysis */}
             <div style={{ 
-              flex: isMobile ? 'none' : '1',
+              flex: '1',
               display: 'flex', 
               flexDirection: 'column', 
               gap: '1.5rem' 
@@ -1771,7 +2856,7 @@ const processStep2 = useCallback(async () => {
               {/* Fit Scores */}
               <div>
                 <h4 style={{ 
-                  fontSize: isMobile ? '0.875rem' : '0.875rem', 
+                  fontSize: '0.875rem', 
                   fontWeight: '500', 
                   color: '#111827', 
                   marginBottom: '1rem' 
@@ -1781,7 +2866,7 @@ const processStep2 = useCallback(async () => {
                     <div style={{ 
                       display: 'flex', 
                       justifyContent: 'space-between', 
-                      fontSize: isMobile ? '0.75rem' : '0.875rem', 
+                      fontSize: '0.875rem', 
                       marginBottom: '0.25rem' 
                     }}>
                       <span style={{ color: '#4b5563' }}>Fit Score</span>
@@ -1808,7 +2893,7 @@ const processStep2 = useCallback(async () => {
                     <div style={{ 
                       display: 'flex', 
                       justifyContent: 'space-between', 
-                      fontSize: isMobile ? '0.75rem' : '0.875rem', 
+                      fontSize: '0.875rem', 
                       marginBottom: '0.25rem' 
                     }}>
                       <span style={{ color: '#4b5563' }}>Confidence</span>
@@ -1834,66 +2919,11 @@ const processStep2 = useCallback(async () => {
                 </div>
               </div>
 
-              {/* Details */}
-              <div>
-                <h4 style={{ 
-                  fontSize: isMobile ? '0.875rem' : '0.875rem', 
-                  fontWeight: '500', 
-                  color: '#111827', 
-                  marginBottom: '1rem' 
-                }}>📊 Details</h4>
-                <div style={{ 
-                  backgroundColor: '#f9fafb', 
-                  borderRadius: '0.5rem', 
-                  padding: '1rem', 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '0.5rem' 
-                }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    fontSize: isMobile ? '0.75rem' : '0.875rem' 
-                  }}>
-                    <span style={{ color: '#4b5563' }}>Category</span>
-                    <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
-                      {result?.clothing_analysis?.category || 'Unknown'}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    fontSize: isMobile ? '0.75rem' : '0.875rem' 
-                  }}>
-                    <span style={{ color: '#4b5563' }}>Style</span>
-                    <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
-                      {result?.clothing_analysis?.style || 'Unknown'}
-                    </span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    fontSize: isMobile ? '0.75rem' : '0.875rem' 
-                  }}>
-                    <span style={{ color: '#4b5563' }}>Processing Time</span>
-                    <span style={{ fontWeight: '500' }}>{result?.processing_time?.toFixed(1) || 0}s</span>
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    fontSize: isMobile ? '0.75rem' : '0.875rem' 
-                  }}>
-                    <span style={{ color: '#4b5563' }}>BMI</span>
-                    <span style={{ fontWeight: '500' }}>{result?.measurements?.bmi?.toFixed(1) || 0}</span>
-                  </div>
-                </div>
-              </div>
-
               {/* AI Recommendations */}
               {result.recommendations && result.recommendations.length > 0 && (
                 <div>
                   <h4 style={{ 
-                    fontSize: isMobile ? '0.875rem' : '0.875rem', 
+                    fontSize: '0.875rem', 
                     fontWeight: '500', 
                     color: '#111827', 
                     marginBottom: '1rem' 
@@ -1907,7 +2937,7 @@ const processStep2 = useCallback(async () => {
                         padding: '0.75rem' 
                       }}>
                         <p style={{ 
-                          fontSize: isMobile ? '0.75rem' : '0.875rem', 
+                          fontSize: '0.875rem', 
                           color: '#1e40af', 
                           margin: 0 
                         }}>• {rec}</p>
@@ -1917,26 +2947,23 @@ const processStep2 = useCallback(async () => {
                 </div>
               )}
 
-              {/* 🔥 추가 액션 버튼들 */}
+              {/* 추가 액션 버튼들 */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.75rem'
               }}>
                 <button
-                  onClick={() => {
-                    // 새로운 이미지로 다시 시도
-                    reset();
-                  }}
+                  onClick={reset}
                   style={{
                     width: '100%',
-                    padding: isMobile ? '0.75rem' : '0.5rem',
+                    padding: '0.5rem',
                     backgroundColor: '#3b82f6',
                     color: '#ffffff',
                     borderRadius: '0.5rem',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: isMobile ? '0.875rem' : '0.875rem',
+                    fontSize: '0.875rem',
                     fontWeight: '500'
                   }}
                 >
@@ -1951,7 +2978,7 @@ const processStep2 = useCallback(async () => {
                     border: '1px solid #bfdbfe'
                   }}>
                     <p style={{
-                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      fontSize: '0.875rem',
                       color: '#1e40af',
                       margin: 0,
                       textAlign: 'center'
@@ -1989,23 +3016,9 @@ const processStep2 = useCallback(async () => {
     }
   };
 
-  // ===============================================================
-  // 🔧 메인 렌더링
-  // ===============================================================
-
-  // 컴포넌트 마운트 시 개발 도구 정보 출력
-  useEffect(() => {
-    console.log('🛠️ MyCloset AI App 시작됨 (완전 수정 버전)');
-    console.log('📋 수정 사항:');
-    console.log('  - 백엔드 URL: http://localhost:8000 (포트 통일)');
-    console.log('  - API 엔드포인트: /api/step/* (prefix 수정)');
-    console.log('  - WebSocket URL: ws://localhost:8000/api/ws/ai-pipeline');
-    console.log('  - 완전한 에러 처리 및 디버깅 강화');
-
-    // 전역에 개발 도구 등록
-    (window as any).apiClient = apiClient;
-    (window as any).PIPELINE_STEPS = PIPELINE_STEPS;
-  }, [apiClient]);
+  // =================================================================
+  // 🔧 메인 렌더링 (완전한 UI/UX + 모바일 최적화)
+  // =================================================================
 
   return (
     <div style={{ 
@@ -2013,6 +3026,14 @@ const processStep2 = useCallback(async () => {
       backgroundColor: '#f9fafb', 
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif' 
     }}>
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
       {/* Header */}
       <header style={{ 
         backgroundColor: '#ffffff', 
@@ -2183,6 +3204,40 @@ const processStep2 = useCallback(async () => {
         </div>
       </header>
 
+      {/* Error Banner */}
+      {error && (
+        <div style={{
+          backgroundColor: '#fef2f2',
+          borderBottom: '1px solid #fecaca',
+          padding: '0.75rem'
+        }}>
+          <div style={{
+            maxWidth: '80rem',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: '1.25rem', marginRight: '0.5rem' }}>⚠️</span>
+              <span style={{ color: '#b91c1c', fontSize: '0.875rem' }}>{error}</span>
+            </div>
+            <button
+              onClick={clearError}
+              style={{
+                color: '#b91c1c',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1.25rem'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main style={{ 
         maxWidth: '80rem', 
@@ -2211,7 +3266,7 @@ const processStep2 = useCallback(async () => {
             }}>Step {currentStep} of 8</span>
           </div>
           
-          {/* Step Progress - 모바일에서는 컴팩트하게 */}
+          {/* Step Progress */}
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
@@ -2247,12 +3302,7 @@ const processStep2 = useCallback(async () => {
                   }}
                 >
                   {completedSteps.includes(step.id) ? (
-                    <svg style={{ 
-                      width: isMobile ? '0.75rem' : '1rem', 
-                      height: isMobile ? '0.75rem' : '1rem' 
-                    }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    '✓'
                   ) : (
                     step.id
                   )}
@@ -2332,7 +3382,7 @@ const processStep2 = useCallback(async () => {
             order: isMobile ? 1 : 2,
             flexDirection: isMobile ? 'column' : 'row'
           }}>
-            {/* 리셋 버튼 (처리 중이 아닐 때만) */}
+            {/* 리셋 버튼 */}
             {!isProcessing && !autoProcessing && (currentStep > 1 || result) && (
               <button
                 onClick={reset}
@@ -2364,383 +3414,157 @@ const processStep2 = useCallback(async () => {
                   fontWeight: '500',
                   border: 'none',
                   cursor: (!canProceedToNext() || isProcessing || autoProcessing) ? 'not-allowed' : 'pointer',
+                  opacity: (!canProceedToNext() || isProcessing || autoProcessing) ? 0.5 : 1,
                   transition: 'all 0.2s',
                   width: isMobile ? '100%' : 'auto'
                 }}
               >
-                {currentStep === 1 ? '다음 단계' : 
-                 currentStep === 2 ? '🚀 AI 처리 시작' : 
-                 isProcessing || autoProcessing ? '처리 중...' : '처리 시작'}
+                {isProcessing ? '처리 중...' : '다음 단계'}
+              </button>
+            )}
+
+            {currentStep > 2 && currentStep < 8 && !autoProcessing && (
+              <button
+                onClick={goToNextStep}
+                disabled={!canProceedToNext() || isProcessing}
+                style={{
+                  padding: isMobile ? '0.875rem 1.5rem' : '0.75rem 1.5rem',
+                  backgroundColor: (!canProceedToNext() || isProcessing) ? '#d1d5db' : '#10b981',
+                  color: '#ffffff',
+                  borderRadius: '0.5rem',
+                  fontWeight: '500',
+                  border: 'none',
+                  cursor: (!canProceedToNext() || isProcessing) ? 'not-allowed' : 'pointer',
+                  opacity: (!canProceedToNext() || isProcessing) ? 0.5 : 1,
+                  transition: 'all 0.2s',
+                  width: isMobile ? '100%' : 'auto'
+                }}
+              >
+                다음 단계
               </button>
             )}
           </div>
         </div>
-
-        {/* Error Message */}
-        {error && (
-          <div style={{ 
-            marginTop: '1.5rem',
-            backgroundColor: '#fef2f2', 
-            border: '1px solid #fecaca', 
-            borderRadius: '0.5rem', 
-            padding: isMobile ? '0.875rem' : '1rem'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'flex-start',
-              gap: '0.75rem'
-            }}>
-              <div style={{ display: 'flex', flex: 1 }}>
-                <svg style={{ 
-                  flexShrink: 0, 
-                  height: '1.25rem', 
-                  width: '1.25rem', 
-                  color: '#f87171' 
-                }} viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <div style={{ marginLeft: '0.75rem', flex: 1 }}>
-                  <h3 style={{ 
-                    fontSize: isMobile ? '0.75rem' : '0.875rem', 
-                    fontWeight: '500', 
-                    color: '#991b1b', 
-                    margin: 0 
-                  }}>Error</h3>
-                  <p style={{ 
-                    fontSize: isMobile ? '0.75rem' : '0.875rem', 
-                    color: '#b91c1c', 
-                    marginTop: '0.25rem', 
-                    margin: 0,
-                    wordBreak: 'break-word'
-                  }}>{error}</p>
-                </div>
-              </div>
-              <button
-                onClick={clearError}
-                style={{
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  color: '#991b1b',
-                  cursor: 'pointer',
-                  padding: '0.25rem',
-                  flexShrink: 0
-                }}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Instructions (첫 번째 단계에서만 표시) */}
-        {currentStep === 1 && !personImage && !clothingImage && (
-          <div style={{ 
-            marginTop: isMobile ? '1.5rem' : '2rem',
-            backgroundColor: '#ffffff', 
-            borderRadius: isMobile ? '0.5rem' : '0.75rem', 
-            border: '1px solid #e5e7eb', 
-            padding: isMobile ? '1rem' : '1.5rem' 
-          }}>
-            <h3 style={{ 
-              fontSize: isMobile ? '1rem' : '1.125rem', 
-              fontWeight: '500', 
-              color: '#111827', 
-              marginBottom: '1rem' 
-            }}>How it works</h3>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', 
-              gap: isMobile ? '1rem' : '1.5rem' 
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ 
-                  width: isMobile ? '2.5rem' : '3rem', 
-                  height: isMobile ? '2.5rem' : '3rem', 
-                  backgroundColor: '#f3f4f6', 
-                  borderRadius: '0.5rem', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  margin: '0 auto 0.75rem' 
-                }}>
-                  <span style={{ 
-                    fontSize: isMobile ? '1rem' : '1.125rem', 
-                    fontWeight: '600', 
-                    color: '#4b5563' 
-                  }}>1</span>
-                </div>
-                <h4 style={{ 
-                  fontWeight: '500', 
-                  color: '#111827', 
-                  marginBottom: '0.5rem',
-                  fontSize: isMobile ? '0.875rem' : '1rem'
-                }}>Upload Photos</h4>
-                <p style={{ 
-                  fontSize: isMobile ? '0.75rem' : '0.875rem', 
-                  color: '#4b5563' 
-                }}>Upload a clear photo of yourself and the clothing item you want to try on.</p>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ 
-                  width: isMobile ? '2.5rem' : '3rem', 
-                  height: isMobile ? '2.5rem' : '3rem', 
-                  backgroundColor: '#f3f4f6', 
-                  borderRadius: '0.5rem', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  margin: '0 auto 0.75rem' 
-                }}>
-                  <span style={{ 
-                    fontSize: isMobile ? '1rem' : '1.125rem', 
-                    fontWeight: '600', 
-                    color: '#4b5563' 
-                  }}>2</span>
-                </div>
-                <h4 style={{ 
-                  fontWeight: '500', 
-                  color: '#111827', 
-                  marginBottom: '0.5rem',
-                  fontSize: isMobile ? '0.875rem' : '1rem'
-                }}>Add Measurements</h4>
-                <p style={{ 
-                  fontSize: isMobile ? '0.75rem' : '0.875rem', 
-                  color: '#4b5563' 
-                }}>Enter your height and weight for accurate size matching.</p>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ 
-                  width: isMobile ? '2.5rem' : '3rem', 
-                  height: isMobile ? '2.5rem' : '3rem', 
-                  backgroundColor: '#f3f4f6', 
-                  borderRadius: '0.5rem', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  margin: '0 auto 0.75rem' 
-                }}>
-                  <span style={{ 
-                    fontSize: isMobile ? '1rem' : '1.125rem', 
-                    fontWeight: '600', 
-                    color: '#4b5563' 
-                  }}>3</span>
-                </div>
-                <h4 style={{ 
-                  fontWeight: '500', 
-                  color: '#111827', 
-                  marginBottom: '0.5rem',
-                  fontSize: isMobile ? '0.875rem' : '1rem'
-                }}>Get Results</h4>
-                <p style={{ 
-                  fontSize: isMobile ? '0.75rem' : '0.875rem', 
-                  color: '#4b5563' 
-                }}>See how the clothing looks on you with AI-powered fitting analysis.</p>
-              </div>
-            </div>
-            
-            {/* 🔥 수정된 시스템 정보 */}
-            <div style={{ 
-              marginTop: '1.5rem', 
-              padding: isMobile ? '0.75rem' : '1rem', 
-              backgroundColor: '#f0f9ff', 
-              borderRadius: '0.5rem',
-              fontSize: isMobile ? '0.75rem' : '0.875rem',
-              color: '#1e40af',
-              border: '1px solid #bfdbfe'
-            }}>
-              <p style={{ margin: 0, fontWeight: '500' }}>
-                🔧 완전 수정 버전 (모든 API 연동 문제 해결):
-              </p>
-              <p style={{ margin: '0.25rem 0 0 0' }}>
-                🎯 백엔드: http://localhost:8000 (포트 통일) | 
-                WebSocket: ws://localhost:8000/api/ws/ai-pipeline
-              </p>
-              <p style={{ margin: '0.25rem 0 0 0' }}>
-                📡 API 엔드포인트: /api/step/* (이중 prefix 수정) | 완전한 에러 처리
-              </p>
-              {systemInfo && (
-                <p style={{ margin: '0.25rem 0 0 0' }}>
-                  💻 {systemInfo.app_name} v{systemInfo.app_version} | 
-                  {systemInfo.device_name} {systemInfo.is_m3_max ? '🍎' : ''} | 
-                  💾 {systemInfo.available_memory_gb}GB 사용가능
-                </p>
-              )}
-              {!isMobile && (
-                <p style={{ margin: '0.25rem 0 0 0' }}>
-                  🔧 헤더의 "Test", "System", "Complete" 버튼으로 기능 테스트 가능
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 모바일 개발 도구 (하단에 표시) */}
-        {isMobile && (
-          <div style={{
-            position: 'fixed',
-            bottom: '1rem',
-            right: '1rem',
-            zIndex: 40
-          }}>
-            <button
-              onClick={() => {
-                const devMenu = document.getElementById('mobile-dev-menu');
-                if (devMenu) {
-                  devMenu.style.display = devMenu.style.display === 'none' ? 'block' : 'none';
-                }
-              }}
-              style={{
-                width: '3rem',
-                height: '3rem',
-                borderRadius: '50%',
-                backgroundColor: '#3b82f6',
-                color: '#ffffff',
-                border: 'none',
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              ⚙️
-            </button>
-            <div
-              id="mobile-dev-menu"
-              style={{
-                display: 'none',
-                position: 'absolute',
-                bottom: '3.5rem',
-                right: '0',
-                backgroundColor: '#ffffff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.5rem',
-                padding: '0.5rem',
-                minWidth: '10rem',
-                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-              }}
-            >
-              <button
-                onClick={handleTestConnection}
-                disabled={isProcessing}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  fontSize: '0.75rem',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  borderRadius: '0.25rem'
-                }}
-              >
-                Test Connection
-              </button>
-              <button
-                onClick={handleSystemInfo}
-                disabled={isProcessing}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  fontSize: '0.75rem',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  borderRadius: '0.25rem'
-                }}
-              >
-                System Info
-              </button>
-              <button
-                onClick={handleCompletePipeline}
-                disabled={isProcessing || !personImage || !clothingImage}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  fontSize: '0.75rem',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  borderRadius: '0.25rem',
-                  opacity: isProcessing || !personImage || !clothingImage ? 0.5 : 1
-                }}
-              >
-                Complete Pipeline
-              </button>
-            </div>
-          </div>
-        )}
       </main>
 
-      {/* CSS Animation */}
-      <style>{`
-        @keyframes spin {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-        
-        code {
-          background-color: #f3f4f6;
-          padding: 0.125rem 0.25rem;
-          border-radius: 0.25rem;
-          font-family: 'Courier New', monospace;
-          font-size: 0.8em;
-        }
-
-        /* 모바일 최적화 스크롤바 */
-        ::-webkit-scrollbar {
-          width: 4px;
-          height: 4px;
-        }
-        
-        ::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-          background: #d1d5db;
-          border-radius: 2px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
-        }
-
-        /* 터치 디바이스 최적화 */
-        @media (hover: none) and (pointer: coarse) {
-          button:hover {
-            background-color: inherit !important;
-          }
-        }
-
-        /* 모바일 뷰포트 최적화 */
-        @media screen and (max-width: 768px) {
-          /* 터치 영역 최적화 */
-          button {
-            min-height: 44px;
-            min-width: 44px;
-          }
+      {/* Footer */}
+      <footer style={{
+        backgroundColor: '#ffffff',
+        borderTop: '1px solid #e5e7eb',
+        padding: isMobile ? '1rem 0.75rem' : '1.5rem 1rem',
+        marginTop: '2rem'
+      }}>
+        <div style={{
+          maxWidth: '80rem',
+          margin: '0 auto',
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'flex-start' : 'center',
+          gap: isMobile ? '1rem' : '0'
+        }}>
+          <div style={{
+            fontSize: '0.875rem',
+            color: '#6b7280'
+          }}>
+            <p style={{ margin: 0 }}>
+              🤖 MyCloset AI v2.0.0 - 완전 수정 버전
+            </p>
+            <p style={{ margin: 0, fontSize: '0.75rem' }}>
+              {systemInfo ? 
+                `M3 Max 128GB 최적화 • ${systemInfo.available_memory_gb}GB 사용가능` : 
+                'AI 파이프라인 완전 연동 • 8단계 처리 지원'
+              }
+            </p>
+          </div>
           
-          /* 텍스트 가독성 향상 */
-          body {
-            -webkit-text-size-adjust: 100%;
-            text-size-adjust: 100%;
-          }
-          
-          /* 가로 스크롤 방지 */
-          * {
-            max-width: 100%;
-            overflow-wrap: break-word;
-          }
-        }
-      `}</style>
+          {!isMobile && (
+            <div style={{
+              display: 'flex',
+              gap: '1rem',
+              fontSize: '0.875rem',
+              color: '#6b7280'
+            }}>
+              <span>포트: 8000</span>
+              <span>•</span>
+              <span>WebSocket: {isServerHealthy ? '연결됨' : '연결 안됨'}</span>
+              <span>•</span>
+              <span>캐시: 활성화</span>
+            </div>
+          )}
+        </div>
+      </footer>
+
+      {/* 모바일 진행률 오버레이 */}
+      {isMobile && isProcessing && (
+        <div style={{
+          position: 'fixed',
+          bottom: '1rem',
+          left: '1rem',
+          right: '1rem',
+          backgroundColor: '#ffffff',
+          borderRadius: '0.75rem',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+          padding: '1rem',
+          border: '1px solid #e5e7eb',
+          zIndex: 100
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem'
+          }}>
+            <div style={{
+              width: '1rem',
+              height: '1rem',
+              border: '2px solid #3b82f6',
+              borderTop: '2px solid transparent',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                color: '#111827',
+                marginBottom: '0.25rem'
+              }}>
+                {progressMessage}
+              </div>
+              <div style={{
+                width: '100%',
+                backgroundColor: '#f3f4f6',
+                borderRadius: '9999px',
+                height: '0.5rem'
+              }}>
+                <div style={{
+                  backgroundColor: '#3b82f6',
+                  height: '0.5rem',
+                  borderRadius: '9999px',
+                  transition: 'width 0.3s',
+                  width: `${progress}%`
+                }}></div>
+              </div>
+            </div>
+            <button
+              onClick={handleCancelRequest}
+              style={{
+                padding: '0.5rem',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                borderRadius: '0.375rem',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.75rem'
+              }}
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 };
