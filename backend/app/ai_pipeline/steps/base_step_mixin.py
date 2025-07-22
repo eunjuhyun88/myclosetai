@@ -272,6 +272,9 @@ class BaseStepMixin:
         except Exception as e:
             self._emergency_setup_isolated(e)
     
+
+
+
     def _setup_basic_isolated(self, **kwargs):
         """STEP 1: 기본 설정 (완전 격리)"""
         # 설정
@@ -652,87 +655,242 @@ class BaseStepMixin:
             return {"success": False, "error": str(e)}
     
     def warmup(self) -> Dict[str, Any]:
-        """워밍업 (동기 버전)"""
+        """워밍업 (동기 버전) - Coroutine 안전"""
         return self.warmup_isolated()
-    
+
     async def warmup_async(self) -> Dict[str, Any]:
-        """비동기 워밍업"""
+        """비동기 워밍업 - Coroutine 오류 완전 수정"""
         try:
             if self.warmup_completed:
                 return {'success': True, 'message': '이미 워밍업 완료됨', 'cached': True}
             
-            self.logger.info(f"🔥 {self.step_name} 비동기 워밍업 시작...")
+            self.logger.info(f"🔥 {self.step_name} 안전한 비동기 워밍업 시작...")
             start_time = time.time()
             results = []
             
-            # 1. 비동기 메모리 워밍업
+            # ✅ 1. 메모리 워밍업 - 안전한 방식
             try:
-                memory_result = await self.optimize_memory_async()
+                # 동기 메모리 최적화를 executor에서 실행
+                loop = asyncio.get_event_loop()
+                memory_result = await loop.run_in_executor(None, self.optimize_memory)
                 results.append('memory_async_success' if memory_result.get('success') else 'memory_async_failed')
-            except:
+                self.logger.debug(f"✅ {self.step_name} 메모리 워밍업 완료")
+            except Exception as e:
                 results.append('memory_async_failed')
+                self.logger.debug(f"⚠️ {self.step_name} 메모리 워밍업 실패: {e}")
             
-            # 2. 비동기 모델 워밍업
+            # ✅ 2. 모델 워밍업 - 안전한 방식
             try:
                 if self.model_provider or self.model_loader:
-                    test_model = await self.get_model_async("warmup_test")
+                    # 동기 모델 로드를 executor에서 실행
+                    loop = asyncio.get_event_loop()
+                    test_model = await loop.run_in_executor(None, self.get_model, "warmup_test")
                     results.append('model_async_success' if test_model else 'model_async_skipped')
+                    self.logger.debug(f"✅ {self.step_name} 모델 워밍업 완료")
                 else:
-                    results.append('model_async_skipped')
-            except:
+                    results.append('model_async_skipped_no_provider')
+                    self.logger.debug(f"ℹ️ {self.step_name} 모델 제공자 없음")
+            except Exception as e:
                 results.append('model_async_failed')
+                self.logger.debug(f"⚠️ {self.step_name} 모델 워밍업 실패: {e}")
             
-            # 3. 비동기 디바이스 워밍업
+            # ✅ 3. 디바이스 워밍업 - 안전한 방식
             try:
                 if TORCH_AVAILABLE:
+                    # 동기 디바이스 워밍업을 executor에서 실행
                     loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(None, self._device_warmup_sync)
-                    results.append('device_async_success')
+                    device_success = await loop.run_in_executor(None, self._device_warmup_sync)
+                    results.append('device_async_success' if device_success else 'device_async_failed')
+                    self.logger.debug(f"✅ {self.step_name} 디바이스 워밍업 완료")
                 else:
-                    results.append('device_async_skipped')
-            except:
+                    results.append('device_async_skipped_no_torch')
+                    self.logger.debug(f"ℹ️ {self.step_name} PyTorch 없음")
+            except Exception as e:
                 results.append('device_async_failed')
+                self.logger.debug(f"⚠️ {self.step_name} 디바이스 워밍업 실패: {e}")
             
+            # ✅ 4. 추가 시스템 워밍업 (선택적)
+            try:
+                # GC 실행
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, gc.collect)
+                results.append('gc_async_success')
+                self.logger.debug(f"✅ {self.step_name} GC 워밍업 완료")
+            except Exception as e:
+                results.append('gc_async_failed')
+                self.logger.debug(f"⚠️ {self.step_name} GC 워밍업 실패: {e}")
+            
+            # ✅ 5. Step별 사용자 정의 워밍업 (있는 경우)
+            if hasattr(self, '_custom_warmup') and callable(self._custom_warmup):
+                try:
+                    # 사용자 정의 워밍업이 비동기인지 확인
+                    if asyncio.iscoroutinefunction(self._custom_warmup):
+                        custom_result = await self._custom_warmup()
+                    else:
+                        loop = asyncio.get_event_loop()
+                        custom_result = await loop.run_in_executor(None, self._custom_warmup)
+                    
+                    results.append('custom_async_success' if custom_result else 'custom_async_failed')
+                    self.logger.debug(f"✅ {self.step_name} 사용자 정의 워밍업 완료")
+                except Exception as e:
+                    results.append('custom_async_failed')
+                    self.logger.debug(f"⚠️ {self.step_name} 사용자 정의 워밍업 실패: {e}")
+            
+            # 결과 계산
             duration = time.time() - start_time
             success_count = sum(1 for r in results if 'success' in r)
+            total_count = len(results)
             overall_success = success_count > 0
             
+            # 상태 업데이트
             if overall_success:
                 self.warmup_completed = True
                 self.is_ready = True
             
-            self.logger.info(f"🔥 비동기 워밍업 완료: {success_count}/{len(results)} 성공 ({duration:.2f}초)")
+            self.logger.info(f"🔥 안전한 비동기 워밍업 완료: {success_count}/{total_count} 성공 ({duration:.2f}초)")
             
+            # 상세 결과 반환
             return {
                 "success": overall_success,
                 "duration": duration,
                 "results": results,
                 "success_count": success_count,
-                "total_count": len(results),
-                "async": True
+                "total_count": total_count,
+                "success_rate": (success_count / total_count) * 100 if total_count > 0 else 0,
+                "async": True,
+                "coroutine_safe": True,
+                "step_name": self.step_name,
+                "device": self.device,
+                "timestamp": time.time()
             }
             
         except Exception as e:
-            self.logger.error(f"❌ 비동기 워밍업 실패: {e}")
-            return {"success": False, "error": str(e), "async": True}
-    
-    def _device_warmup_sync(self):
-        """동기 디바이스 워밍업"""
+            self.logger.error(f"❌ 안전한 비동기 워밍업 실패: {e}")
+            return {
+                "success": False, 
+                "error": str(e), 
+                "async": True,
+                "coroutine_safe": True,
+                "step_name": getattr(self, 'step_name', 'unknown'),
+                "duration": time.time() - start_time if 'start_time' in locals() else 0,
+                "timestamp": time.time()
+            }
+
+    def _device_warmup_sync(self) -> bool:
+        """동기 디바이스 워밍업 - 안전한 구현"""
         try:
-            if TORCH_AVAILABLE:
-                test_tensor = torch.randn(10, 10)
-                if self.device != 'cpu':
+            if not TORCH_AVAILABLE:
+                return False
+            
+            # PyTorch 텐서 생성 및 연산 테스트
+            test_tensor = torch.randn(10, 10)
+            
+            # 디바이스 이동 테스트
+            if self.device and self.device != 'cpu':
+                try:
                     test_tensor = test_tensor.to(self.device)
-                _ = torch.matmul(test_tensor, test_tensor.t())
-                return True
-        except:
-            pass
-        return False
-    
+                except Exception as e:
+                    self.logger.debug(f"⚠️ 디바이스 이동 실패: {e}")
+                    return False
+            
+            # 간단한 연산 테스트
+            try:
+                result = torch.matmul(test_tensor, test_tensor.t())
+                # 결과 검증
+                if result.shape == (10, 10):
+                    return True
+                else:
+                    return False
+            except Exception as e:
+                self.logger.debug(f"⚠️ 텐서 연산 실패: {e}")
+                return False
+                
+        except Exception as e:
+            self.logger.debug(f"⚠️ 디바이스 워밍업 전체 실패: {e}")
+            return False
+
     async def warmup_step(self) -> Dict[str, Any]:
-        """Step 워밍업 (BaseStepMixin 호환용)"""
-        return await self.warmup_async()
-    
+        """Step 워밍업 (BaseStepMixin 호환용) - Coroutine 안전"""
+        try:
+            self.logger.debug(f"🔄 {self.step_name} Step 워밍업 호출...")
+            result = await self.warmup_async()
+            
+            # Step 워밍업 특화 메타데이터 추가
+            result.update({
+                "step_warmup": True,
+                "basestepmixin_compatible": True,
+                "called_from": "warmup_step"
+            })
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step 워밍업 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "step_warmup": True,
+                "basestepmixin_compatible": True,
+                "called_from": "warmup_step",
+                "step_name": getattr(self, 'step_name', 'unknown'),
+                "timestamp": time.time()
+            }
+
+    # ✅ 추가: 안전한 초기화 메서드들
+    def initialize(self) -> bool:
+        """초기화 메서드 - Step들이 사용 (Coroutine 안전)"""
+        try:
+            if self.is_initialized:
+                return True
+            
+            # 기본 초기화 작업
+            self.is_initialized = True
+            self.logger.info(f"✅ {self.step_name} 안전한 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ 안전한 초기화 실패: {e}")
+            return False
+
+    async def initialize_async(self) -> bool:
+        """비동기 초기화 메서드 - Coroutine 안전"""
+        try:
+            if self.is_initialized:
+                return True
+            
+            self.logger.debug(f"🔄 {self.step_name} 비동기 초기화 시작...")
+            
+            # ✅ 동기 초기화를 executor에서 안전하게 실행
+            loop = asyncio.get_event_loop()
+            success = await loop.run_in_executor(None, self.initialize)
+            
+            if success:
+                self.logger.info(f"✅ {self.step_name} 안전한 비동기 초기화 완료")
+            else:
+                self.logger.error(f"❌ {self.step_name} 안전한 비동기 초기화 실패")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"❌ 안전한 비동기 초기화 예외: {e}")
+            return False
+
+    # ✅ 추가: 사용자 정의 워밍업 지원
+    def set_custom_warmup(self, warmup_func: Callable):
+        """사용자 정의 워밍업 함수 설정"""
+        if callable(warmup_func):
+            self._custom_warmup = warmup_func
+            self.logger.debug(f"✅ {self.step_name} 사용자 정의 워밍업 설정")
+        else:
+            self.logger.warning(f"⚠️ {self.step_name} 유효하지 않은 워밍업 함수")
+
+    def remove_custom_warmup(self):
+        """사용자 정의 워밍업 함수 제거"""
+        if hasattr(self, '_custom_warmup'):
+            delattr(self, '_custom_warmup')
+            self.logger.debug(f"✅ {self.step_name} 사용자 정의 워밍업 제거")
+
+
     # ==============================================
     # 🔥 12. 초기화 및 정리 메서드들 (완전 복원)
     # ==============================================

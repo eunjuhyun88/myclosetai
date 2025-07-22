@@ -482,133 +482,187 @@ class BaseRealStepImplementation(BaseStepMixin if BASE_STEP_MIXIN_AVAILABLE else
             self.logger.info(f"🤖 AI 모델 요구사항: {self.real_signature.ai_models_needed}")
     
     async def initialize(self) -> bool:
-        """실제 Step 구현체 초기화"""
+        """실제 Step 구현체 초기화 - Coroutine 오류 완전 수정"""
         try:
             if self.is_initialized:
                 return True
                 
             if self.initializing:
-                while self.initializing and not self.is_initialized:
+                # ✅ 무한루프 방지
+                wait_count = 0
+                while self.initializing and not self.is_initialized and wait_count < 50:
                     await asyncio.sleep(0.1)
+                    wait_count += 1
                 return self.is_initialized
             
             self.initializing = True
             
-            # BaseStepMixin 초기화 (있는 경우)
-            if BASE_STEP_MIXIN_AVAILABLE and hasattr(super(), 'initialize'):
-                success = await super().initialize()
-                if not success:
-                    self.logger.error(f"{self.step_name} BaseStepMixin 초기화 실패")
-                    self.initializing = False
-                    return False
-            
-            # 🔥 실제 Step 클래스 로드
-            await self._load_real_step_class()
-            
-            # 🔥 실제 AI 모델 초기화
-            await self._initialize_ai_models()
-            
-            # 메모리 최적화
-            self._optimize_device_memory()
-            
-            # 하위 클래스별 초기화
-            success = await self._initialize_implementation()
-            
-            if success:
-                self.is_initialized = True
-                self.logger.info(f"✅ {self.step_name} 실제 Step 구현체 초기화 완료")
-            else:
-                self.logger.error(f"❌ {self.step_name} 실제 Step 구현체 초기화 실패")
-            
-            self.initializing = False
-            return success
-            
+            try:
+                self.logger.info(f"🔄 {self.step_name} 실제 Step 구현체 초기화 시작...")
+                
+                # ✅ 1. BaseStepMixin 초기화 (안전한 방식)
+                if BASE_STEP_MIXIN_AVAILABLE and hasattr(super(), 'initialize'):
+                    try:
+                        # 동기/비동기 확인 후 안전하게 호출
+                        if asyncio.iscoroutinefunction(super().initialize):
+                            success = await super().initialize()
+                        else:
+                            # 진짜 동기 메서드인 경우만 executor 사용
+                            loop = asyncio.get_event_loop()
+                            success = await loop.run_in_executor(None, super().initialize)
+                        
+                        if not success:
+                            self.logger.error(f"{self.step_name} BaseStepMixin 초기화 실패")
+                            return False
+                        else:
+                            self.logger.debug(f"✅ {self.step_name} BaseStepMixin 초기화 성공")
+                            
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {self.step_name} BaseStepMixin 초기화 실패: {e}")
+                        # BaseStepMixin 초기화 실패해도 계속 진행
+                
+                # ✅ 2. 실제 Step 클래스 로드 (비동기)
+                await self._load_real_step_class()
+                
+                # ✅ 3. 실제 AI 모델 초기화 (비동기)
+                await self._initialize_ai_models()
+                
+                # ✅ 4. 메모리 최적화 (executor 사용)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self._optimize_device_memory)
+                
+                # ✅ 5. 하위 클래스별 초기화
+                success = await self._initialize_implementation()
+                
+                if success:
+                    self.is_initialized = True
+                    self.logger.info(f"✅ {self.step_name} 실제 Step 구현체 초기화 완료")
+                else:
+                    self.logger.error(f"❌ {self.step_name} 실제 Step 구현체 초기화 실패")
+                
+                return success
+                
+            finally:
+                # ✅ 무조건 initializing 플래그 해제
+                self.initializing = False
+                
         except Exception as e:
             self.initializing = False
-            self.logger.error(f"❌ {self.step_name} 실제 Step 구현체 초기화 실패: {e}")
+            self.logger.error(f"❌ {self.step_name} 실제 Step 구현체 초기화 예외: {e}")
             return False
-    
+
     async def _load_real_step_class(self):
-        """실제 Step 클래스 로드"""
+        """실제 Step 클래스 로드 - 안전한 방식"""
         try:
             if not self.real_step_class_name:
-                self.logger.warning(f"Step {self.step_id}에 대한 실제 클래스 매핑 없음")
+                self.logger.debug(f"Step {self.step_id}에 대한 실제 클래스 매핑 없음")
+                return
+            
+            # ✅ StepFactory 메서드 존재 확인
+            if not hasattr(StepFactory, 'get_step_import_path'):
+                self.logger.debug(f"StepFactory.get_step_import_path 메서드 없음")
                 return
             
             # import 경로 확인
             import_info = StepFactory.get_step_import_path(self.step_id)
             if not import_info:
-                self.logger.warning(f"Step {self.step_id}의 import 경로 없음")
+                self.logger.debug(f"Step {self.step_id}의 import 경로 없음")
                 return
             
             import_path, class_name = import_info
             
-            # 동적 import
-            try:
-                module = importlib.import_module(import_path)
-                step_class = getattr(module, class_name)
+            # ✅ 동적 import를 executor에서 실행
+            loop = asyncio.get_event_loop()
+            
+            def load_and_create_step():
+                try:
+                    # 모듈 import
+                    module = importlib.import_module(import_path)
+                    step_class = getattr(module, class_name)
+                    
+                    # 실제 Step 인스턴스 생성
+                    step_config = {
+                        'device': self.device,
+                        'model_loader': self.model_loader,
+                        'di_container': self.di_container
+                    }
+                    
+                    real_step_instance = step_class(**step_config)
+                    return real_step_instance, class_name
+                    
+                except Exception as e:
+                    self.logger.debug(f"Step 클래스 로드/생성 실패: {e}")
+                    return None, None
+            
+            result = await loop.run_in_executor(None, load_and_create_step)
+            real_step_instance, class_name = result
+            
+            if real_step_instance:
+                self.real_step_instance = real_step_instance
                 
-                # 실제 Step 인스턴스 생성 (BaseStepMixin 기반)
-                step_config = {
-                    'device': self.device,
-                    'model_loader': self.model_loader,
-                    'di_container': self.di_container
-                }
-                
-                self.real_step_instance = step_class(**step_config)
-                
-                # BaseStepMixin 초기화
+                # ✅ BaseStepMixin 초기화 (안전한 방식)
                 if hasattr(self.real_step_instance, 'initialize'):
                     if asyncio.iscoroutinefunction(self.real_step_instance.initialize):
                         await self.real_step_instance.initialize()
                     else:
-                        self.real_step_instance.initialize()
+                        await loop.run_in_executor(None, self.real_step_instance.initialize)
                 
                 self.logger.info(f"✅ 실제 Step 클래스 로드 성공: {class_name}")
-                
-            except ImportError as e:
-                self.logger.warning(f"실제 Step 클래스 import 실패 {class_name}: {e}")
-            except AttributeError as e:
-                self.logger.warning(f"실제 Step 클래스 속성 없음 {class_name}: {e}")
-                
+            else:
+                self.logger.warning(f"실제 Step 클래스 로드 실패: {class_name}")
+                    
         except Exception as e:
             self.logger.warning(f"실제 Step 클래스 로드 실패 {self.step_id}: {e}")
-    
+
     async def _initialize_ai_models(self):
-        """실제 AI 모델 초기화"""
+        """실제 AI 모델 초기화 - 안전한 방식"""
         try:
             if not self.real_signature or not self.real_signature.ai_models_needed:
                 self.logger.debug(f"Step {self.step_id}에 필요한 AI 모델 없음")
                 return
             
-            # ModelLoader를 통한 Step Interface 생성
+            # ✅ ModelLoader를 통한 Step Interface 생성 (executor 사용)
             if self.model_loader and hasattr(self.model_loader, 'create_step_interface'):
                 try:
-                    self.step_interface = self.model_loader.create_step_interface(self.real_step_class_name)
+                    loop = asyncio.get_event_loop()
+                    
+                    def create_step_interface():
+                        return self.model_loader.create_step_interface(self.real_step_class_name)
+                    
+                    self.step_interface = await loop.run_in_executor(None, create_step_interface)
+                    
                     if self.step_interface:
                         self.logger.info(f"✅ Step Interface 생성 성공: {self.real_step_class_name}")
                     else:
-                        self.logger.warning(f"⚠️ Step Interface 생성 실패: {self.real_step_class_name}")
+                        self.logger.debug(f"⚠️ Step Interface 생성 실패: {self.real_step_class_name}")
+                        
                 except Exception as e:
                     self.logger.warning(f"Step Interface 생성 오류: {e}")
             
-            # 개별 AI 모델 로드
+            # ✅ 개별 AI 모델 로드 (executor 사용)
             if self.model_loader:
                 for model_name in self.real_signature.ai_models_needed:
                     try:
-                        model = self.model_loader.load_model(model_name)
+                        loop = asyncio.get_event_loop()
+                        
+                        def load_model():
+                            return self.model_loader.load_model(model_name)
+                        
+                        model = await loop.run_in_executor(None, load_model)
+                        
                         if model:
                             self.logger.debug(f"AI 모델 로드 성공: {model_name}")
                         else:
-                            self.logger.warning(f"AI 모델 로드 실패: {model_name}")
+                            self.logger.debug(f"AI 모델 로드 실패: {model_name}")
+                            
                     except Exception as e:
                         self.logger.warning(f"AI 모델 {model_name} 로드 오류: {e}")
                 
         except Exception as e:
             self.logger.warning(f"AI 모델 초기화 실패: {e}")
-    
+
     def _optimize_device_memory(self):
-        """디바이스별 메모리 최적화"""
+        """디바이스별 메모리 최적화 - 동기 메서드 (executor용)"""
         try:
             if TORCH_AVAILABLE:
                 if self.device == "mps" and self.is_m3_max:
@@ -619,41 +673,57 @@ class BaseRealStepImplementation(BaseStepMixin if BASE_STEP_MIXIN_AVAILABLE else
             
             gc.collect()
             self.logger.debug(f"✅ {self.device} 메모리 최적화 완료")
+            return True
         except Exception as e:
             self.logger.warning(f"⚠️ 메모리 최적화 실패: {e}")
-    
-    @abstractmethod
-    async def _initialize_implementation(self) -> bool:
-        """구현체별 초기화 (하위 클래스에서 구현)"""
-        pass
-    
-    @abstractmethod
-    async def process(self, *args, **kwargs) -> Dict[str, Any]:
-        """실제 Step 처리 (하위 클래스에서 구현)"""
-        pass
-    
+            return False
+
     async def cleanup(self):
-        """실제 Step 구현체 정리"""
+        """실제 Step 구현체 정리 - 안전한 방식"""
         try:
-            # BaseStepMixin cleanup (있는 경우)
+            self.logger.info(f"🧹 {self.step_name} 실제 Step 구현체 정리 시작...")
+            
+            # ✅ BaseStepMixin cleanup (안전한 방식)
             if BASE_STEP_MIXIN_AVAILABLE and hasattr(super(), 'cleanup'):
-                await super().cleanup()
+                try:
+                    if asyncio.iscoroutinefunction(super().cleanup):
+                        await super().cleanup()
+                    else:
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, super().cleanup)
+                except Exception as e:
+                    self.logger.warning(f"BaseStepMixin cleanup 실패: {e}")
             
-            # 실제 Step 인스턴스 정리
+            # ✅ 실제 Step 인스턴스 정리 (안전한 방식)
             if self.real_step_instance and hasattr(self.real_step_instance, 'cleanup'):
-                if asyncio.iscoroutinefunction(self.real_step_instance.cleanup):
-                    await self.real_step_instance.cleanup()
-                else:
-                    self.real_step_instance.cleanup()
+                try:
+                    if asyncio.iscoroutinefunction(self.real_step_instance.cleanup):
+                        await self.real_step_instance.cleanup()
+                    else:
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, self.real_step_instance.cleanup)
+                except Exception as e:
+                    self.logger.warning(f"실제 Step 인스턴스 cleanup 실패: {e}")
             
-            # 메모리 최적화
-            self._optimize_device_memory()
+            # ✅ 메모리 최적화 (executor 사용)
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self._optimize_device_memory)
+            except Exception as e:
+                self.logger.warning(f"메모리 최적화 실패: {e}")
             
+            # 상태 리셋
             self.is_initialized = False
+            self.real_step_instance = None
+            self.step_interface = None
+            
             self.logger.info(f"✅ {self.step_name} 실제 Step 구현체 정리 완료")
+            
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} 실제 Step 구현체 정리 실패: {e}")
-    
+
+
+
     def get_implementation_metrics(self) -> Dict[str, Any]:
         """실제 Step 구현체 메트릭 반환"""
         with self._lock:
