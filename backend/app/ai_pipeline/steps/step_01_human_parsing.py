@@ -3421,65 +3421,7 @@ logger.info(f"🧠 동적 import: 런타임 의존성 안전 해결")
 # 🔥 메인 실행부 (TYPE_CHECKING 패턴 검증)
 # =================================================================
 
-if __name__ == "__main__":
-    print("=" * 80)
-    print("🎯 MyCloset AI Step 01 - TYPE_CHECKING 패턴으로 순환참조 완전 해결 버전")
-    print("=" * 80)
-    
-    # 비동기 테스트 실행
-    async def run_all_tests():
-        await test_type_checking_human_parsing()
-        print("\n" + "=" * 80)
-        await test_dynamic_import_integration_parsing()
-        print("\n" + "=" * 80)
-        test_parsing_conversion_type_checking()
-    
-    try:
-        asyncio.run(run_all_tests())
-    except Exception as e:
-        print(f"❌ TYPE_CHECKING 패턴 테스트 실행 실패: {e}")
-    
-    print("\n" + "=" * 80)
-    print("✨ TYPE_CHECKING 패턴 완전한 실제 AI 인체 파싱 시스템 테스트 완료")
-    print("🔥 TYPE_CHECKING 패턴으로 순환참조 완전 방지")
-    print("🧠 동적 import로 런타임 의존성 안전 해결")
-    print("🔗 StepFactory → ModelLoader → BaseStepMixin → 의존성 주입 → 완성된 Step 구조")
-    print("⚡ Graphonomy, U2Net, 경량 모델 실제 추론 엔진")
-    print("💉 완벽한 의존성 주입 패턴")
-    print("🔒 Strict Mode + 완전한 분석 기능")
-    print("👕 20개 부위 정밀 인체 파싱 + 의류 분석")
-    print("=" * 80)
-                                       for i in range(min(self.num_classes, output_np.shape[0]))]
-                    
-                    # 이미지 크기에 맞게 리사이즈
-                    if parsing_map.shape != image_size[::-1]:
-                        if CV2_AVAILABLE:
-                            parsing_map = cv2.resize(parsing_map, image_size, interpolation=cv2.INTER_NEAREST)
-                        elif PIL_AVAILABLE:
-                            pil_img = Image.fromarray(parsing_map)
-                            resized = pil_img.resize(image_size, Image.Resampling.NEAREST)
-                            parsing_map = np.array(resized)
-            
-            return {
-                'parsing_map': parsing_map if parsing_map is not None else np.zeros(image_size[::-1], dtype=np.uint8),
-                'confidence_scores': confidence_scores,
-                'model_used': 'graphonomy_real_ai',
-                'success': parsing_map is not None,
-                'ai_model_type': 'graphonomy'
-            }
-                
-        except Exception as e:
-            self.logger.error(f"❌ Graphonomy AI 출력 해석 실패: {e}")
-            return {
-                'parsing_map': np.zeros(image_size[::-1], dtype=np.uint8),
-                'confidence_scores': [],
-                'model_used': 'graphonomy_real_ai',
-                'success': False, 
-                'ai_model_type': 'graphonomy',
-                'error': str(e)
-            }
-    
-    def _interpret_u2net_output(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
+def _interpret_u2net_output(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
         """U2Net AI 출력 해석"""
         try:
             parsing_map = None
