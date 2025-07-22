@@ -183,7 +183,7 @@ except ImportError as e:
     print(f"⚠️ PyTorch import 실패: {e}")
 
 # =============================================================================
-# 🔥 실제 AI 파이프라인 Components Import (Mock 제거)
+# 🔥 실제 AI 파이프라인 Components Import (Mock 제거) - 수정된 버전
 # =============================================================================
 
 # ModelLoader (실제 구현)
@@ -195,7 +195,7 @@ except ImportError as e:
     print(f"⚠️ ModelLoader import 실패: {e}")
     MODEL_LOADER_AVAILABLE = False
 
-# StepFactory (의존성 주입)
+# StepFactory (의존성 주입) - 수정된 import
 try:
     from app.ai_pipeline.factories.step_factory import StepFactory, StepType, StepFactoryConfig, OptimizationLevel
     STEP_FACTORY_AVAILABLE = True
@@ -231,9 +231,18 @@ except ImportError as e:
     print(f"⚠️ Step 구현체들 import 실패: {e}")
     STEP_IMPLEMENTATIONS_AVAILABLE = False
 
-# Pipeline Manager (통합 관리)
+# Pipeline Manager (통합 관리) - 수정된 import
 try:
-    from app.ai_pipeline.pipeline_manager import PipelineManager, PipelineConfig, QualityLevel
+    from app.ai_pipeline.pipeline_manager import PipelineManager
+    from app.core.pipeline_config import PipelineConfig  # 🔥 수정: core에서 import
+    
+    # QualityLevel은 core.pipeline_config에서 가져오기 시도
+    try:
+        from app.core.pipeline_config import QualityLevel
+    except ImportError:
+        # 폴백: pipeline_manager에서 가져오기
+        from app.ai_pipeline.pipeline_manager import QualityLevel
+    
     PIPELINE_MANAGER_AVAILABLE = True
     print("✅ PipelineManager 연동 성공")
 except ImportError as e:
@@ -457,33 +466,29 @@ class RealAIDIContainer:
             return False
     
     async def _initialize_step_factory(self) -> bool:
-        """실제 StepFactory 초기화"""
+        """실제 StepFactory 초기화 - 수정된 버전"""
         try:
             if not STEP_FACTORY_AVAILABLE:
                 self._logger.warning("⚠️ StepFactory 사용 불가")
                 return False
             
-            # StepFactory 설정
-            from app.ai_pipeline.factories.step_factory import StepFactoryConfig, OptimizationLevel
-            from app.ai_pipeline.pipeline_manager import QualityLevel
-            
+            # StepFactory 설정 - 수정된 버전
             factory_config = StepFactoryConfig(
-                device='mps' if IS_M3_MAX else 'cpu',                                            # ✅ device만 사용
-                optimization_level=OptimizationLevel.M3_MAX if IS_M3_MAX else OptimizationLevel.STANDARD,  # ✅ 지원됨
-                model_cache_dir=str(backend_root / 'ai_models'),                                 # ✅ 지원됨
-                use_fp16=IS_M3_MAX,                                                              # ✅ 지원됨
-                max_cached_models=50 if IS_M3_MAX else 16,                                       # ✅ 지원됨
-                lazy_loading=True,                                                               # ✅ 지원됨
-                use_conda_optimization=True,                                                     # ✅ 지원됨
-                auto_warmup=True,                                                                # ✅ 지원됨
-                auto_memory_cleanup=True,                                                        # ✅ 지원됨
-                enable_dependency_injection=True,                                                # ✅ 지원됨
-                dependency_injection_mode="runtime",                                            # ✅ 지원됨
-                validate_dependencies=True,                                                      # ✅ 지원됨
-                enable_debug_logging=is_development                                              # ✅ 지원됨
+                device='mps' if IS_M3_MAX else 'cpu',
+                optimization_level=OptimizationLevel.M3_MAX if IS_M3_MAX else OptimizationLevel.STANDARD,
+                model_cache_dir=str(backend_root / 'ai_models'),
+                use_fp16=IS_M3_MAX,
+                max_cached_models=50 if IS_M3_MAX else 16,
+                lazy_loading=True,
+                use_conda_optimization=True,
+                auto_warmup=True,
+                auto_memory_cleanup=True,
+                enable_dependency_injection=True,
+                dependency_injection_mode="runtime",
+                validate_dependencies=True,
+                enable_debug_logging=is_development
             )
 
-            from app.ai_pipeline.factories.step_factory import StepFactory
             self._step_factory = StepFactory(factory_config)
             
             # StepFactory 초기화
@@ -505,30 +510,25 @@ class RealAIDIContainer:
             return False
     
     async def _initialize_pipeline_manager(self) -> bool:
-        """실제 PipelineManager 초기화"""
+        """실제 PipelineManager 초기화 - 수정된 버전"""
         try:
             if not PIPELINE_MANAGER_AVAILABLE:
                 self._logger.warning("⚠️ PipelineManager 사용 불가")
                 return False
             
-            # PipelineManager 설정
-            from app.ai_pipeline.pipeline_manager import PipelineConfig, QualityLevel
-            
+            # PipelineManager 설정 - 수정된 버전
             pipeline_config = PipelineConfig(
                 device=os.environ.get('DEVICE', 'cpu'),
-                device_type='mps' if IS_M3_MAX else 'cpu',
                 memory_gb=128 if IS_M3_MAX else 16,
-                is_m3_max=IS_M3_MAX,
-                quality_level=QualityLevel.HIGH,
-                enable_preprocessing=True,
-                enable_postprocessing=True,
-                enable_quality_assessment=True,
+                quality_level="high",  # 🔥 수정: 문자열로 변경
                 batch_size=1,
-                num_workers=4 if IS_M3_MAX else 2,
-                timeout_seconds=300
+                max_workers=4 if IS_M3_MAX else 2,  # 🔥 수정: num_workers → max_workers
+                timeout_seconds=120,
+                max_retries=2,
+                enable_caching=True,
+                memory_optimization=True
             )
             
-            from app.ai_pipeline.pipeline_manager import PipelineManager
             self._pipeline_manager = PipelineManager(pipeline_config)
             
             # PipelineManager 초기화
@@ -731,7 +731,6 @@ class RealAIDIContainer:
             'QualityAssessment': 8
         }
         return step_id_mapping.get(step_name, 0)
-
 
     def get_ai_step(self, step_name: str) -> Optional[Any]:
         """실제 AI Step 조회"""
@@ -1712,16 +1711,6 @@ async def step_8_result_analysis(
         raise
     except Exception as e:
         system_status["error_count"] += 1
-        return StepResult(
-            success=False,
-            step_id=8,
-            message=f"실제 AI Step 8 처리 실패: {str(e)}",
-            processing_time=0.0,
-            confidence=0.0,
-            error=str(e),
-            real_ai_processing=False
-        )
-
 # =============================================================================
 # 🔥 완전한 실제 AI 파이프라인 API
 # =============================================================================
@@ -2238,7 +2227,6 @@ async def get_real_ai_models():
             "ai_pipeline_version": "8.0.0"
         }
     }
-
 # =============================================================================
 # 🔥 관리 API (확장) 
 # =============================================================================
