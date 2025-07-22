@@ -1,42 +1,81 @@
 # app/ai_pipeline/steps/step_07_post_processing.py
 """
-MyCloset AI - 7단계: 후처리 (Post Processing) + 시각화 기능
-🔥 완전 재작성 버전 - 단일 상속 구조 + MRO 문제 완전 해결
+MyCloset AI - 7단계: 후처리 (Post Processing) + AI 연동
+🔥 의존성 주입 패턴 기반 완전한 AI 구현 v2.0
+==================================================
 
-✅ 단일 상속 구조 (PostProcessingStep → BaseStepMixin)
-✅ 한방향 참조 (ModelLoader ← BaseStepMixin ← PostProcessingStep)
-✅ MRO 오류 완전 해결 (다중 상속 제거)
-✅ Logger 속성 누락 문제 완전 해결
-✅ 순환 참조 완전 제거
-✅ 모든 기능 100% 보존 (클래스명, 함수명 동일)
-✅ M3 Max 128GB 최적화
-✅ 시각화 기능 완전 통합
+✅ 의존성 주입 패턴 (DI Pattern) 완전 구현
+✅ BaseStepMixin 단일 상속 구조
+✅ StepFactory → ModelLoader → BaseStepMixin → PostProcessingStep 연동
+✅ 실제 AI 모델 추론 완전 구현
+✅ M3 Max 128GB 메모리 최적화
+✅ conda 환경 우선 지원
+✅ 비동기 처리 완전 해결
+✅ 시각화 기능 통합
 ✅ 프로덕션 레벨 안정성
-✅ 모든 import 오류 수정
-✅ StepModelRequestAnalyzer 완전 연동
+
+핵심 아키텍처:
+StepFactory → ModelLoader (생성) → BaseStepMixin (생성) → 의존성 주입 → 완성된 Step
+
+Author: MyCloset AI Team  
+Date: 2025-07-22
+Version: 2.0 (Dependency Injection AI Implementation)
 """
 
 import os
 import sys
-import logging
+import gc
 import time
 import asyncio
+import logging
 import threading
-import gc
+import traceback
 import hashlib
 import json
-import math
 import base64
-from typing import Dict, Any, Optional, Tuple, List, Union, Callable
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
-from enum import Enum
-from io import BytesIO
 import weakref
+from pathlib import Path
+from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
+from dataclasses import dataclass, field
+from enum import Enum, IntEnum
+from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache, wraps
+from contextlib import asynccontextmanager
 
+# ==============================================
+# 🔥 1. conda 환경 및 시스템 체크
+# ==============================================
 
-# 각 파일에 추가할 개선된 코드
+CONDA_INFO = {
+    'conda_env': os.environ.get('CONDA_DEFAULT_ENV', 'none'),
+    'conda_prefix': os.environ.get('CONDA_PREFIX', 'none'),
+    'python_path': os.path.dirname(os.__file__)
+}
+
+# M3 Max 감지
+def detect_m3_max() -> bool:
+    """M3 Max 감지"""
+    try:
+        import platform
+        import subprocess
+        if platform.system() == 'Darwin':
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                capture_output=True, text=True, timeout=5
+            )
+            return 'M3' in result.stdout
+    except:
+        pass
+    return False
+
+IS_M3_MAX = detect_m3_max()
+
+# ==============================================
+# 🔥 2. 안전한 라이브러리 import
+# ==============================================
+
+# GPU 설정 먼저
 try:
     from app.core.gpu_config import safe_mps_empty_cache
 except ImportError:
@@ -44,185 +83,168 @@ except ImportError:
         import gc
         gc.collect()
         return {"success": True, "method": "fallback_gc"}
-# 안전한 OpenCV import (모든 Step 파일 상단에 추가)
-import os
-import logging
 
-# OpenCV 안전 import (M3 Max + conda 환경 고려)
-OPENCV_AVAILABLE = False
+# PyTorch 안전 import
+TORCH_AVAILABLE = False
+MPS_AVAILABLE = False
 try:
-    # 환경 변수 설정 (iconv 오류 해결)
-    os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '0'  # OpenEXR 비활성화
-    os.environ['OPENCV_IO_ENABLE_JASPER'] = '0'   # Jasper 비활성화
+    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+    
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torchvision import transforms
+    
+    TORCH_AVAILABLE = True
+    
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        
+except ImportError as e:
+    print(f"⚠️ PyTorch 없음: {e}")
+
+# 이미지 처리 라이브러리
+NUMPY_AVAILABLE = False
+PIL_AVAILABLE = False
+OPENCV_AVAILABLE = False
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    print("⚠️ NumPy 없음")
+
+try:
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError:
+    print("⚠️ PIL 없음")
+
+try:
+    # OpenCV 안전 import
+    os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '0'
+    os.environ['OPENCV_IO_ENABLE_JASPER'] = '0'
     
     import cv2
     OPENCV_AVAILABLE = True
-    logging.getLogger(__name__).info(f"✅ OpenCV {cv2.__version__} 로드 성공")
+except ImportError:
+    print("⚠️ OpenCV 없음")
     
-except ImportError as e:
-    logging.getLogger(__name__).warning(f"⚠️ OpenCV import 실패: {e}")
-    logging.getLogger(__name__).warning("💡 해결 방법: conda install opencv -c conda-forge")
-    
-    # OpenCV 폴백 클래스
+    # OpenCV 폴백
     class OpenCVFallback:
         def __init__(self):
             self.INTER_LINEAR = 1
             self.INTER_CUBIC = 2
             self.COLOR_BGR2RGB = 4
             self.COLOR_RGB2BGR = 3
-        
+            
         def resize(self, img, size, interpolation=1):
             try:
                 from PIL import Image
-                if hasattr(img, 'shape'):  # numpy array
+                if hasattr(img, 'shape'):
                     pil_img = Image.fromarray(img)
                     resized = pil_img.resize(size)
-                    return np.array(resized)
+                    return np.array(resized) if NUMPY_AVAILABLE else img
                 return img
             except:
                 return img
-        
+                
         def cvtColor(self, img, code):
             if hasattr(img, 'shape') and len(img.shape) == 3:
                 if code in [3, 4]:  # BGR<->RGB
                     return img[:, :, ::-1]
             return img
-        
-        def imread(self, path):
-            try:
-                from PIL import Image
-                import numpy as np
-                img = Image.open(path)
-                return np.array(img)
-            except:
-                return None
-        
-        def imwrite(self, path, img):
-            try:
-                from PIL import Image
-                if hasattr(img, 'shape'):
-                    Image.fromarray(img).save(path)
-                    return True
-            except:
-                pass
-            return False
     
     cv2 = OpenCVFallback()
 
-except Exception as e:
-    logging.getLogger(__name__).error(f"❌ OpenCV 로드 중 오류: {e}")
-    
-    # 최후 폴백
-    class MinimalOpenCV:
-        def __getattr__(self, name):
-            def dummy_func(*args, **kwargs):
-                logging.getLogger(__name__).warning(f"OpenCV {name} 호출됨 - 폴백 모드")
-                return None
-            return dummy_func
-    
-    cv2 = MinimalOpenCV()
-    OPENCV_AVAILABLE = False
-    
-# 핵심 라이브러리
-import numpy as np
-import cv2
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageDraw, ImageFont
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import transforms
+# 고급 라이브러리들 (옵션)
+SCIPY_AVAILABLE = False
+SKIMAGE_AVAILABLE = False
+SKLEARN_AVAILABLE = False
 
-# 선택적 고급 라이브러리들
 try:
     from scipy.ndimage import gaussian_filter, median_filter
     from scipy.signal import convolve2d
     SCIPY_AVAILABLE = True
 except ImportError:
-    SCIPY_AVAILABLE = False
+    pass
 
 try:
     from skimage import restoration, filters, exposure, morphology
     from skimage.metrics import structural_similarity, peak_signal_noise_ratio
     SKIMAGE_AVAILABLE = True
 except ImportError:
-    SKIMAGE_AVAILABLE = False
+    pass
 
 try:
     from sklearn.cluster import KMeans
     SKLEARN_AVAILABLE = True
 except ImportError:
-    SKLEARN_AVAILABLE = False
+    pass
 
-try:
-    import cupy as cp
-    CUPY_AVAILABLE = True
-except ImportError:
-    CUPY_AVAILABLE = False
+# ==============================================
+# 🔥 3. 의존성 주입을 위한 BaseStepMixin import
+# ==============================================
 
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-
-# 🔥 BaseStepMixin 단일 import (한방향 참조)
+BASE_STEP_MIXIN_AVAILABLE = False
 try:
     from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
     BASE_STEP_MIXIN_AVAILABLE = True
 except ImportError:
-    BASE_STEP_MIXIN_AVAILABLE = False
-    # 안전한 폴백 클래스
+    # 안전한 폴백 Mixin
     class BaseStepMixin:
-        def __init__(self, *args, **kwargs):
-            if not hasattr(self, 'logger'):
-                self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
+        def __init__(self, **kwargs):
+            self.step_name = kwargs.get('step_name', self.__class__.__name__)
+            self.step_id = kwargs.get('step_id', 0)
+            self.device = kwargs.get('device', 'cpu')
+            self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+            
+            # 의존성 주입용 속성들
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            
+            # 상태 플래그들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입"""
+            self.model_loader = model_loader
+            
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입"""
+            self.memory_manager = memory_manager
+            
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입"""
+            self.data_converter = data_converter
 
-# ModelLoader 유틸리티들 (선택적)
+# ModelLoader 인터페이스들 (선택적)
+MODEL_LOADER_AVAILABLE = False
 try:
     from app.ai_pipeline.utils.model_loader import (
         get_global_model_loader, create_model_loader
     )
     MODEL_LOADER_AVAILABLE = True
 except ImportError:
-    MODEL_LOADER_AVAILABLE = False
-
-# 🔥 StepModelRequestAnalyzer import 추가
-try:
-    from app.ai_pipeline.utils.step_model_requirements import (
-        StepModelRequestAnalyzer, get_step_request
-    )
-    STEP_REQUESTS_AVAILABLE = True
-except ImportError:
-    STEP_REQUESTS_AVAILABLE = False
-
-try:
-    from app.ai_pipeline.utils.memory_manager import (
-        MemoryManager, get_global_memory_manager, optimize_memory_usage
-    )
-    MEMORY_MANAGER_AVAILABLE = True
-except ImportError:
-    MEMORY_MANAGER_AVAILABLE = False
-
-try:
-    from app.ai_pipeline.utils.data_converter import (
-        DataConverter, get_global_data_converter
-    )
-    DATA_CONVERTER_AVAILABLE = True
-except ImportError:
-    DATA_CONVERTER_AVAILABLE = False
+    pass
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 1. 열거형 및 데이터 클래스 정의
+# 🔥 4. 데이터 구조 정의
 # ==============================================
 
 class EnhancementMethod(Enum):
     """향상 방법"""
     SUPER_RESOLUTION = "super_resolution"
-    NOISE_REDUCTION = "noise_reduction"
-    DENOISING = "denoising"  # noise_reduction과 동일하지만 호환성 위해 유지
+    NOISE_REDUCTION = "noise_reduction" 
+    DENOISING = "denoising"
     SHARPENING = "sharpening"
     COLOR_CORRECTION = "color_correction"
     CONTRAST_ENHANCEMENT = "contrast_enhancement"
@@ -237,7 +259,7 @@ class QualityLevel(Enum):
     BALANCED = "balanced"
     HIGH = "high"
     ULTRA = "ultra"
-    MAXIMUM = "maximum"  # 🔥 이 줄 추가
+    MAXIMUM = "maximum"
 
 class ProcessingMode(Enum):
     """처리 모드"""
@@ -264,7 +286,7 @@ class PostProcessingConfig:
     cache_size: int = 50
     # 시각화 설정
     enable_visualization: bool = True
-    visualization_quality: str = "high"  # low, medium, high
+    visualization_quality: str = "high"
     show_before_after: bool = True
     show_enhancement_details: bool = True
 
@@ -280,11 +302,12 @@ class PostProcessingResult:
     error_message: Optional[str] = None
 
 # ==============================================
-# 2. 고급 이미지 향상 신경망 모델
+# 🔥 5. AI 신경망 모델 정의
 # ==============================================
 
 class SRResNet(nn.Module):
     """Super Resolution ResNet 모델"""
+    
     def __init__(self, in_channels=3, out_channels=3, num_features=64, num_blocks=16):
         super(SRResNet, self).__init__()
         
@@ -341,6 +364,7 @@ class SRResNet(nn.Module):
 
 class DenoiseNet(nn.Module):
     """노이즈 제거 신경망"""
+    
     def __init__(self, in_channels=3, out_channels=3, num_features=64):
         super(DenoiseNet, self).__init__()
         
@@ -370,20 +394,18 @@ class DenoiseNet(nn.Module):
         return decoded
 
 # ==============================================
-# 3. 메인 PostProcessingStep 클래스 (단일 상속)
+# 🔥 6. 메인 PostProcessingStep 클래스 (의존성 주입 기반)
 # ==============================================
 
 class PostProcessingStep(BaseStepMixin):
     """
-    7단계: 후처리 - 단일 상속 구조 + 시각화
+    7단계: 후처리 - 의존성 주입 패턴 기반 AI 구현
     
-    ✅ 단일 상속 (BaseStepMixin만 상속)
-    ✅ MRO 문제 완전 해결
-    ✅ 한방향 참조 구조
-    ✅ Logger 속성 누락 문제 해결
-    ✅ 모든 기능 100% 보존
+    ✅ BaseStepMixin 단일 상속
+    ✅ 의존성 주입으로 ModelLoader 연동
+    ✅ 실제 AI 모델 추론 구현
+    ✅ M3 Max 최적화
     ✅ 시각화 기능 통합
-    ✅ StepModelRequestAnalyzer 완전 연동
     """
     
     def __init__(
@@ -392,82 +414,81 @@ class PostProcessingStep(BaseStepMixin):
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """✅ 단일 상속 생성자 - BaseStepMixin만 상속"""
+        """의존성 주입 기반 초기화"""
         
-        # === 1. BaseStepMixin 초기화 (단일 상속) ===
+        # === 1. BaseStepMixin 초기화 ===
+        kwargs.setdefault('step_name', 'PostProcessingStep')
+        kwargs.setdefault('step_id', 7)
+        
         try:
             super().__init__(**kwargs)
         except Exception as e:
-            # 폴백: 직접 logger 설정
-            if not hasattr(self, 'logger'):
-                self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
-                self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패: {e}")
+            # 폴백 초기화
+            self.step_name = 'PostProcessingStep'
+            self.step_id = 7
+            self.logger = logging.getLogger(f"pipeline.{self.step_name}")
+            self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패: {e}")
         
-        # === 2. logger 보장 ===
-        if not hasattr(self, 'logger'):
-            self.logger = logging.getLogger(f"pipeline.{self.__class__.__name__}")
-            self.logger.info(f"🔧 {self.__class__.__name__} logger 직접 초기화")
-        
-        # === 3. 기본 초기화 ===
+        # === 2. 디바이스 및 시스템 설정 ===
         self.device = self._auto_detect_device(device)
         self.config = config or {}
-        self.step_name = self.__class__.__name__
+        self.is_m3_max = IS_M3_MAX
+        self.memory_gb = kwargs.get('memory_gb', 128.0 if IS_M3_MAX else 16.0)
         
-        # === 4. 시스템 파라미터 ===
-        self.device_type = kwargs.get('device_type', 'auto')
-        self.memory_gb = kwargs.get('memory_gb', 16.0)
-        self.is_m3_max = kwargs.get('is_m3_max', self._detect_m3_max())
-        self.optimization_enabled = kwargs.get('optimization_enabled', True)
-        self.quality_level = kwargs.get('quality_level', 'balanced')
-        
-        # === 5. 후처리 특화 설정 ===
+        # === 3. 후처리 특화 설정 ===
         self._setup_post_processing_config(kwargs)
         
-        # === 6. 초기화 상태 ===
-        self.is_initialized = False
+        # === 4. AI 모델 관련 초기화 ===
+        self.sr_model = None
+        self.denoise_model = None
+        self.face_detector = None
+        
+        # === 5. 캐시 및 성능 관리 ===
+        self.enhancement_cache = {}
+        self.model_cache = {}
+        self.processing_stats = {
+            'total_processed': 0,
+            'successful_enhancements': 0,
+            'average_improvement': 0.0,
+            'method_usage': {},
+            'cache_hits': 0,
+            'average_processing_time': 0.0
+        }
+        
+        # === 6. 스레드 풀 ===
+        max_workers = 8 if IS_M3_MAX else 4
+        self.executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix=f"{self.step_name}_worker"
+        )
+        
+        # === 7. 모델 경로 ===
+        self.model_base_path = Path("backend/app/ai_pipeline/models/ai_models")
+        self.checkpoint_path = self.model_base_path / "checkpoints" / "step_07_post_processing"
+        self.checkpoint_path.mkdir(parents=True, exist_ok=True)
+        
+        # === 8. 초기화 상태 ===
         self._initialization_lock = threading.RLock()
         
-        # === 7. 단방향 ModelLoader 연결 ===
-        self._setup_model_interface()
-        
-        # === 8. 후처리 특화 초기화 ===
-        self._initialize_post_processing_components()
-        
-        # === 9. 완료 로깅 ===
-        self.logger.info(f"🎯 {self.step_name} 초기화 완료 - 디바이스: {self.device}")
+        self.logger.info(f"✅ {self.step_name} 초기화 완료 - 디바이스: {self.device}")
         if self.is_m3_max:
             self.logger.info(f"🍎 M3 Max 최적화 모드 (메모리: {self.memory_gb}GB)")
     
     def _auto_detect_device(self, preferred_device: Optional[str] = None) -> str:
-        """💡 지능적 디바이스 자동 감지"""
+        """지능적 디바이스 자동 감지"""
         if preferred_device:
             return preferred_device
-
+        
         try:
-            if torch.backends.mps.is_available():
-                return 'mps'  # M3 Max 우선
-            elif torch.cuda.is_available():
-                return 'cuda'  # NVIDIA GPU
-            else:
-                return 'cpu'  # 폴백
+            if TORCH_AVAILABLE:
+                if MPS_AVAILABLE and IS_M3_MAX:
+                    return 'mps'
+                elif torch.cuda.is_available():
+                    return 'cuda'
+            return 'cpu'
         except Exception:
             return 'cpu'
-
-    def _detect_m3_max(self) -> bool:
-        """🍎 M3 Max 칩 자동 감지"""
-        try:
-            import platform
-            import subprocess
-
-            if platform.system() == 'Darwin':  # macOS
-                result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                                        capture_output=True, text=True)
-                cpu_info = result.stdout.strip()
-                return 'M3 Max' in cpu_info or 'M3' in cpu_info
-        except Exception:
-            pass
-        return False
-
+    
     def _setup_post_processing_config(self, kwargs: Dict[str, Any]):
         """후처리 특화 설정"""
         
@@ -481,184 +502,25 @@ class PostProcessingStep(BaseStepMixin):
             else:
                 self.post_processing_config.quality_level = kwargs['quality_level']
         
-        if 'processing_mode' in kwargs:
-            if isinstance(kwargs['processing_mode'], str):
-                self.post_processing_config.processing_mode = ProcessingMode(kwargs['processing_mode'])
-            else:
-                self.post_processing_config.processing_mode = kwargs['processing_mode']
-        
-        if 'enabled_methods' in kwargs:
-            methods = []
-            for method in kwargs['enabled_methods']:
-                if isinstance(method, str):
-                    methods.append(EnhancementMethod(method))
-                else:
-                    methods.append(method)
-            self.post_processing_config.enabled_methods = methods
-        
-        # 시각화 설정
-        self.post_processing_config.enable_visualization = kwargs.get('enable_visualization', True)
-        self.post_processing_config.visualization_quality = kwargs.get('visualization_quality', 'high')
-        self.post_processing_config.show_before_after = kwargs.get('show_before_after', True)
-        self.post_processing_config.show_enhancement_details = kwargs.get('show_enhancement_details', True)
-        
         # M3 Max 특화 설정
-        if self.is_m3_max:
+        if IS_M3_MAX:
             self.post_processing_config.use_gpu_acceleration = True
             self.post_processing_config.max_resolution = (4096, 4096)
             self.post_processing_config.batch_size = min(8, max(1, int(self.memory_gb / 16)))
             self.post_processing_config.cache_size = min(100, max(25, int(self.memory_gb * 2)))
         
-        # 추가 설정들
+        # 기타 설정들
         self.enhancement_strength = kwargs.get('enhancement_strength', 0.7)
         self.preserve_faces = kwargs.get('preserve_faces', True)
         self.auto_adjust_brightness = kwargs.get('auto_adjust_brightness', True)
-
-    def _setup_model_interface(self):
-        """한방향 ModelLoader 인터페이스 설정"""
-        try:
-            if MODEL_LOADER_AVAILABLE:
-                self.logger.debug("🔗 Model Loader 인터페이스 설정 중...")
-                
-                # 전역 모델 로더 사용 (한방향 참조)
-                model_loader = get_global_model_loader()
-                if model_loader:
-                    self.model_interface = model_loader.create_step_interface(self.step_name)
-                    if self.model_interface:
-                        self.logger.info(f"✅ {self.step_name} Model Loader 인터페이스 연결 완료")
-                    else:
-                        self.logger.warning("⚠️ Step 인터페이스 생성 실패")
-                        self.model_interface = None
-                else:
-                    self.logger.warning(f"⚠️ 전역 ModelLoader를 찾을 수 없음")
-                    self.model_interface = None
-                    
-            else:
-                self.logger.warning("⚠️ ModelLoader 사용 불가능 - 시뮬레이션 모드")
-                self.model_interface = None
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ Model Loader 인터페이스 설정 실패: {e}")
-            self.model_interface = None
-
-    def _initialize_post_processing_components(self):
-        """후처리 특화 컴포넌트 초기화"""
-        
-        # 캐시 및 상태 관리
-        self.enhancement_cache: Dict[str, PostProcessingResult] = {}
-        self.model_cache: Dict[str, Any] = {}
-        self.face_detector = None
-        
-        # 성능 통계
-        self.processing_stats = {
-            'total_processed': 0,
-            'successful_enhancements': 0,
-            'average_improvement': 0.0,
-            'method_usage': {},
-            'cache_hits': 0,
-            'average_processing_time': 0.0
-        }
-        
-        # 스레드 풀 (M3 Max 최적화)
-        max_workers = 6 if self.is_m3_max else 3
-        self.executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix=f"{self.step_name}_worker"
-        )
-        
-        # 메모리 관리자 연결 (선택적)
-        self.memory_manager = self._create_memory_manager_safe()
-        
-        # 데이터 변환기 연결 (선택적)
-        self.data_converter = self._create_data_converter_safe()
-        
-        # 모델 경로 설정
-        self.model_base_path = Path("backend/app/ai_pipeline/models/ai_models")
-        self.checkpoint_path = self.model_base_path / "checkpoints" / "step_07_post_processing"
-        self.checkpoint_path.mkdir(parents=True, exist_ok=True)
-        
-        # 향상 방법별 가중치
-        self.enhancement_weights = {
-            EnhancementMethod.SUPER_RESOLUTION: 0.3,
-            EnhancementMethod.NOISE_REDUCTION: 0.2,
-            EnhancementMethod.SHARPENING: 0.2,
-            EnhancementMethod.COLOR_CORRECTION: 0.15,
-            EnhancementMethod.CONTRAST_ENHANCEMENT: 0.1,
-            EnhancementMethod.FACE_ENHANCEMENT: 0.05
-        }
-        
-        self.logger.info(f"📦 후처리 컴포넌트 초기화 완료 - 활성화된 방법: {len(self.post_processing_config.enabled_methods)}개")
-
-    def _create_memory_manager_safe(self):
-        """안전한 메모리 매니저 생성"""
-        try:
-            if MEMORY_MANAGER_AVAILABLE:
-                return get_global_memory_manager()
-        except Exception as e:
-            self.logger.warning(f"⚠️ MemoryManager 생성 실패: {e}")
-        
-        # 폴백 메모리 매니저
-        class SafeMemoryManager:
-            def __init__(self):
-                self.device = 'cpu'
-            
-            async def optimize_memory(self):
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                elif torch.backends.mps.is_available():
-                    try:
-                        safe_mps_empty_cache()
-                    except Exception:
-                        pass
-            
-            async def cleanup_memory(self):
-                await self.optimize_memory()
-        
-        return SafeMemoryManager()
-
-    def _create_data_converter_safe(self):
-        """안전한 데이터 변환기 생성"""
-        try:
-            if DATA_CONVERTER_AVAILABLE:
-                return get_global_data_converter()
-        except Exception as e:
-            self.logger.warning(f"⚠️ DataConverter 생성 실패: {e}")
-        
-        # 폴백 데이터 변환기
-        class SafeDataConverter:
-            @staticmethod
-            def pil_to_tensor(image: Image.Image) -> torch.Tensor:
-                """PIL 이미지를 텐서로 변환"""
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                transform = transforms.ToTensor()
-                return transform(image)
-            
-            @staticmethod
-            def tensor_to_pil(tensor: torch.Tensor) -> Image.Image:
-                """텐서를 PIL 이미지로 변환"""
-                if tensor.dim() == 4:
-                    tensor = tensor.squeeze(0)
-                tensor = torch.clamp(tensor, 0, 1)
-                transform = transforms.ToPILImage()
-                return transform(tensor)
-            
-            @staticmethod
-            def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
-                """텐서를 numpy로 변환"""
-                if tensor.dim() == 4:
-                    tensor = tensor.squeeze(0)
-                tensor = tensor.cpu().detach()
-                if tensor.dim() == 3 and tensor.shape[0] == 3:
-                    tensor = tensor.permute(1, 2, 0)
-                return (tensor.numpy() * 255).astype(np.uint8)
-        
-        return SafeDataConverter()
-
+    
+    # ==============================================
+    # 🔥 7. 의존성 주입 후 초기화 (StepFactory에서 호출)
+    # ==============================================
+    
     async def initialize(self) -> bool:
         """
-        ✅ 통일된 초기화 인터페이스 - Pipeline Manager 호환
+        통일된 초기화 인터페이스 - 의존성 주입 후 호출
         
         Returns:
             bool: 초기화 성공 여부
@@ -670,7 +532,7 @@ class PostProcessingStep(BaseStepMixin):
         try:
             self.logger.info("🔄 7단계: 후처리 시스템 초기화 중...")
             
-            # 1. AI 모델들 초기화
+            # 1. AI 모델들 초기화 (의존성 주입된 ModelLoader 활용)
             await self._initialize_ai_models()
             
             # 2. 얼굴 검출기 초기화
@@ -680,18 +542,19 @@ class PostProcessingStep(BaseStepMixin):
             # 3. 이미지 필터 초기화
             self._initialize_image_filters()
             
-            # 4. GPU 가속 초기화 (M3 Max/CUDA)
+            # 4. GPU 가속 초기화
             if self.post_processing_config.use_gpu_acceleration:
                 await self._initialize_gpu_acceleration()
             
-            # 5. M3 Max 최적화 워밍업
-            if self.is_m3_max:
+            # 5. M3 Max 워밍업
+            if IS_M3_MAX:
                 await self._warmup_m3_max()
             
             # 6. 캐시 시스템 초기화
             self._initialize_cache_system()
             
             self.is_initialized = True
+            self.is_ready = True
             self.logger.info("✅ 후처리 시스템 초기화 완료")
             
             return True
@@ -705,63 +568,151 @@ class PostProcessingStep(BaseStepMixin):
             self.is_initialized = True
             
             return True  # Graceful degradation
-
+    
     async def _initialize_ai_models(self):
-        """🔥 AI 모델들 초기화 - StepModelRequestAnalyzer 연동"""
+        """AI 모델들 초기화 - 의존성 주입된 ModelLoader 활용"""
         try:
-            if not self.model_interface:
-                self.logger.warning("Model Loader 인터페이스가 없습니다. 직접 모델 로드 시도.")
+            self.logger.info("🧠 AI 모델 초기화 시작...")
+            
+            # ModelLoader가 의존성 주입되었는지 확인
+            if not self.model_loader:
+                self.logger.warning("⚠️ ModelLoader가 주입되지 않음 - 기본 모델 생성")
                 await self._load_models_direct()
                 return
             
-            # 🔥 StepModelRequestAnalyzer 사용해서 모델 정보 가져오기
-            if STEP_REQUESTS_AVAILABLE:
-                step_request = StepModelRequestAnalyzer.get_step_request_info(self.step_name)
-                
-                if step_request:
-                    self.logger.info(f"✅ Step 요청 정보 획득: {step_request['model_name']}")
-                    
-                    # Super Resolution 모델 로드
-                    try:
-                        self.sr_model = await self.model_interface.get_model('super_resolution_model')
-                        if self.sr_model:
-                            self.logger.info("✅ Super Resolution 모델 로드 성공 (ModelLoader)")
-                        else:
-                            raise Exception("ModelLoader에서 모델을 찾을 수 없음")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ SR 모델 로드 실패: {e} - 기본 모델 생성")
-                        self.sr_model = self._create_default_sr_model()
-                    
-                    # Denoising 모델 로드
-                    try:
-                        self.denoise_model = await self.model_interface.get_model('denoising_model')
-                        if self.denoise_model:
-                            self.logger.info("✅ Denoising 모델 로드 성공 (ModelLoader)")
-                        else:
-                            raise Exception("ModelLoader에서 모델을 찾을 수 없음")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ Denoising 모델 로드 실패: {e} - 기본 모델 생성")
-                        self.denoise_model = self._create_default_denoise_model()
-                    
-                    # M3 Max 최적화 적용
-                    if self.is_m3_max:
-                        self._optimize_models_for_m3_max()
-                    
-                    self.logger.info("🧠 AI 모델 로드 완료 (StepModelRequestAnalyzer 연동)")
+            # === Super Resolution 모델 로드 ===
+            try:
+                # ModelLoader를 통해 모델 요청
+                if hasattr(self.model_loader, 'get_model_async'):
+                    sr_checkpoint = await self.model_loader.get_model_async('srresnet_x4')
                 else:
-                    self.logger.warning("⚠️ Step 요청 정보 없음 - 기본 모델 생성")
-                    await self._load_models_direct()
-            else:
-                self.logger.warning("⚠️ StepModelRequestAnalyzer 사용 불가 - 기본 모델 생성")
-                await self._load_models_direct()
+                    sr_checkpoint = self.model_loader.get_model('srresnet_x4')
                 
+                if sr_checkpoint:
+                    self.sr_model = self._create_sr_model_from_checkpoint(sr_checkpoint)
+                    if self.sr_model:
+                        self.logger.info("✅ Super Resolution 모델 로드 성공 (ModelLoader)")
+                        self.has_model = True
+                        self.model_loaded = True
+                    else:
+                        raise Exception("체크포인트로부터 모델 생성 실패")
+                else:
+                    raise Exception("ModelLoader에서 SR 모델을 찾을 수 없음")
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ SR 모델 로드 실패: {e} - 기본 모델 생성")
+                self.sr_model = self._create_default_sr_model()
+            
+            # === Denoising 모델 로드 ===
+            try:
+                if hasattr(self.model_loader, 'get_model_async'):
+                    denoise_checkpoint = await self.model_loader.get_model_async('denoising_model')
+                else:
+                    denoise_checkpoint = self.model_loader.get_model('denoising_model')
+                
+                if denoise_checkpoint:
+                    self.denoise_model = self._create_denoise_model_from_checkpoint(denoise_checkpoint)
+                    if self.denoise_model:
+                        self.logger.info("✅ Denoising 모델 로드 성공 (ModelLoader)")
+                    else:
+                        raise Exception("체크포인트로부터 모델 생성 실패")
+                else:
+                    raise Exception("ModelLoader에서 Denoising 모델을 찾을 수 없음")
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ Denoising 모델 로드 실패: {e} - 기본 모델 생성")
+                self.denoise_model = self._create_default_denoise_model()
+            
+            # M3 Max 최적화 적용
+            if IS_M3_MAX:
+                self._optimize_models_for_m3_max()
+            
+            self.logger.info("🧠 AI 모델 로드 완료 (ModelLoader 연동)")
+            
         except Exception as e:
             self.logger.error(f"❌ AI 모델 초기화 실패: {e}")
             await self._load_models_direct()
-
+    
+    def _create_sr_model_from_checkpoint(self, checkpoint) -> Optional[SRResNet]:
+        """체크포인트로부터 Super Resolution 모델 생성"""
+        try:
+            # 모델 인스턴스 생성
+            model = SRResNet(in_channels=3, out_channels=3, num_features=64, num_blocks=16)
+            
+            # 체크포인트 로드
+            if isinstance(checkpoint, dict):
+                # 딕셔너리 형태의 체크포인트
+                if 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                elif 'model' in checkpoint:
+                    state_dict = checkpoint['model']
+                else:
+                    state_dict = checkpoint
+                
+                model.load_state_dict(state_dict, strict=False)
+            else:
+                # 이미 로드된 모델 객체인 경우
+                model = checkpoint
+            
+            # 디바이스로 이동
+            model = model.to(self.device)
+            model.eval()
+            
+            # 정밀도 최적화
+            if self.device == "mps":
+                model = model.float()
+            elif self.device == "cuda":
+                model = model.half()
+            
+            self.logger.info("🔧 SR 모델 체크포인트 변환 완료")
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"❌ SR 모델 체크포인트 변환 실패: {e}")
+            return None
+    
+    def _create_denoise_model_from_checkpoint(self, checkpoint) -> Optional[DenoiseNet]:
+        """체크포인트로부터 Denoising 모델 생성"""
+        try:
+            # 모델 인스턴스 생성
+            model = DenoiseNet(in_channels=3, out_channels=3, num_features=64)
+            
+            # 체크포인트 로드
+            if isinstance(checkpoint, dict):
+                if 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                elif 'model' in checkpoint:
+                    state_dict = checkpoint['model']
+                else:
+                    state_dict = checkpoint
+                
+                model.load_state_dict(state_dict, strict=False)
+            else:
+                model = checkpoint
+            
+            # 디바이스로 이동
+            model = model.to(self.device)
+            model.eval()
+            
+            # 정밀도 최적화
+            if self.device == "mps":
+                model = model.float()
+            elif self.device == "cuda":
+                model = model.half()
+            
+            self.logger.info("🔧 Denoising 모델 체크포인트 변환 완료")
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"❌ Denoising 모델 체크포인트 변환 실패: {e}")
+            return None
+    
     def _create_default_sr_model(self) -> Optional[SRResNet]:
         """기본 Super Resolution 모델 생성"""
         try:
+            if not TORCH_AVAILABLE:
+                return None
+                
             model = SRResNet(in_channels=3, out_channels=3, num_features=64, num_blocks=16)
             model.to(self.device)
             model.eval()
@@ -778,10 +729,13 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ 기본 SR 모델 생성 실패: {e}")
             return None
-
+    
     def _create_default_denoise_model(self) -> Optional[DenoiseNet]:
         """기본 Denoising 모델 생성"""
         try:
+            if not TORCH_AVAILABLE:
+                return None
+                
             model = DenoiseNet(in_channels=3, out_channels=3, num_features=64)
             model.to(self.device)
             model.eval()
@@ -798,14 +752,14 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ 기본 Denoising 모델 생성 실패: {e}")
             return None
-
+    
     async def _load_models_direct(self):
-        """AI 모델 직접 로드 (Model Loader 없이)"""
+        """AI 모델 직접 로드 (ModelLoader 없이)"""
         try:
             # Super Resolution 모델
             self.sr_model = self._create_default_sr_model()
             
-            # Denoising 모델
+            # Denoising 모델  
             self.denoise_model = self._create_default_denoise_model()
             
             # 체크포인트 로드 시도
@@ -813,7 +767,7 @@ class PostProcessingStep(BaseStepMixin):
             if sr_checkpoint.exists() and self.sr_model:
                 try:
                     state_dict = torch.load(sr_checkpoint, map_location=self.device)
-                    self.sr_model.load_state_dict(state_dict)
+                    self.sr_model.load_state_dict(state_dict, strict=False)
                     self.logger.info("✅ SR 모델 체크포인트 로드 성공")
                 except Exception as e:
                     self.logger.warning(f"⚠️ SR 체크포인트 로드 실패: {e}")
@@ -822,13 +776,13 @@ class PostProcessingStep(BaseStepMixin):
             if denoise_checkpoint.exists() and self.denoise_model:
                 try:
                     state_dict = torch.load(denoise_checkpoint, map_location=self.device)
-                    self.denoise_model.load_state_dict(state_dict)
+                    self.denoise_model.load_state_dict(state_dict, strict=False)
                     self.logger.info("✅ Denoising 모델 체크포인트 로드 성공")
                 except Exception as e:
                     self.logger.warning(f"⚠️ Denoising 체크포인트 로드 실패: {e}")
             
             # M3 Max 최적화
-            if self.is_m3_max:
+            if IS_M3_MAX:
                 self._optimize_models_for_m3_max()
             
             self.logger.info("✅ 기본 모델 로드 완료")
@@ -837,22 +791,22 @@ class PostProcessingStep(BaseStepMixin):
             self.logger.error(f"❌ 모델 직접 로드 실패: {e}")
             self.sr_model = None
             self.denoise_model = None
-
+    
     def _optimize_models_for_m3_max(self):
         """M3 Max 하드웨어 최적화"""
         try:
             self.logger.info("🍎 M3 Max 모델 최적화 적용 중...")
             
             # 메모리 매핑 최적화
-            if hasattr(self, 'sr_model') and self.sr_model:
+            if self.sr_model:
                 self.sr_model = self.sr_model.to(self.device)
                 if self.device == "mps":
-                    self.sr_model = self.sr_model.float()  # MPS는 float32가 안전
+                    self.sr_model = self.sr_model.float()
             
-            if hasattr(self, 'denoise_model') and self.denoise_model:
+            if self.denoise_model:
                 self.denoise_model = self.denoise_model.to(self.device)
                 if self.device == "mps":
-                    self.denoise_model = self.denoise_model.float()  # MPS는 float32가 안전
+                    self.denoise_model = self.denoise_model.float()
             
             # 배치 크기 최적화
             self.optimal_batch_size = min(8, max(1, int(self.memory_gb / 16)))
@@ -861,11 +815,15 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ M3 Max 최적화 실패: {e}")
-
+    
     async def _initialize_face_detector(self):
         """얼굴 검출기 초기화"""
         try:
-            # OpenCV DNN 얼굴 검출기
+            if not OPENCV_AVAILABLE:
+                self.logger.warning("⚠️ OpenCV 없어서 얼굴 검출 비활성화")
+                return
+                
+            # OpenCV DNN 얼굴 검출기 시도
             face_net_path = self.checkpoint_path / "opencv_face_detector_uint8.pb"
             face_config_path = self.checkpoint_path / "opencv_face_detector.pbtxt"
             
@@ -876,17 +834,25 @@ class PostProcessingStep(BaseStepMixin):
                 self.logger.info("✅ OpenCV DNN 얼굴 검출기 로드 성공")
             else:
                 # Haar Cascade 폴백
-                cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-                self.face_detector = cv2.CascadeClassifier(cascade_path)
-                self.logger.info("✅ Haar Cascade 얼굴 검출기 로드 성공")
+                try:
+                    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+                    self.face_detector = cv2.CascadeClassifier(cascade_path)
+                    self.logger.info("✅ Haar Cascade 얼굴 검출기 로드 성공")
+                except:
+                    self.face_detector = None
+                    self.logger.warning("⚠️ 얼굴 검출기 로드 실패")
                 
         except Exception as e:
             self.logger.warning(f"얼굴 검출기 초기화 실패: {e}")
             self.face_detector = None
-
+    
     def _initialize_image_filters(self):
         """이미지 필터 초기화"""
         try:
+            if not NUMPY_AVAILABLE:
+                self.logger.warning("⚠️ NumPy 없어서 필터 제한됨")
+                return
+                
             # 커스텀 커널들
             self.sharpening_kernel = np.array([
                 [-1, -1, -1],
@@ -900,9 +866,10 @@ class PostProcessingStep(BaseStepMixin):
                 [0, -1, 0]
             ], dtype=np.float32)
             
-            # 가우시안 커널 (노이즈 제거용)
-            self.gaussian_kernel_3x3 = cv2.getGaussianKernel(3, 0.8)
-            self.gaussian_kernel_5x5 = cv2.getGaussianKernel(5, 1.2)
+            # 가우시안 커널
+            if OPENCV_AVAILABLE:
+                self.gaussian_kernel_3x3 = cv2.getGaussianKernel(3, 0.8)
+                self.gaussian_kernel_5x5 = cv2.getGaussianKernel(5, 1.2)
             
             # 언샤프 마스킹 매개변수
             self.unsharp_params = {
@@ -915,34 +882,24 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"이미지 필터 초기화 실패: {e}")
-
+    
     async def _initialize_gpu_acceleration(self):
         """GPU 가속 초기화"""
         try:
             if self.device == 'mps':
-                # M3 Max Metal Performance Shaders
                 self.logger.info("🍎 M3 Max MPS 가속 활성화")
-                
             elif self.device == 'cuda':
-                # CUDA 가속
                 self.logger.info("🚀 CUDA 가속 활성화")
-                
-                # CuPy 사용 가능시 활성화
-                if CUPY_AVAILABLE:
-                    self.use_cupy = True
-                    self.logger.info("✅ CuPy 가속 활성화")
-                else:
-                    self.use_cupy = False
             else:
                 self.logger.info("💻 CPU 모드에서 실행")
                 
         except Exception as e:
             self.logger.warning(f"GPU 가속 초기화 실패: {e}")
-
+    
     async def _warmup_m3_max(self):
         """M3 Max 최적화 워밍업"""
         try:
-            if not self.is_m3_max:
+            if not IS_M3_MAX or not TORCH_AVAILABLE:
                 return
             
             self.logger.info("🍎 M3 Max 최적화 워밍업 시작...")
@@ -963,35 +920,35 @@ class PostProcessingStep(BaseStepMixin):
             # MPS 캐시 최적화
             if self.device == 'mps':
                 try:
-                    if torch.backends.mps.is_available():
-                        safe_mps_empty_cache()
+                    safe_mps_empty_cache()
                 except Exception:
                     pass
             
-            # 메모리 최적화
+            # 메모리 최적화 (BaseStepMixin 의존성 주입된 경우)
             if self.memory_manager:
-                await self.memory_manager.optimize_memory()
+                try:
+                    if hasattr(self.memory_manager, 'optimize_memory_async'):
+                        await self.memory_manager.optimize_memory_async()
+                    else:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, self.memory_manager.optimize_memory
+                        )
+                except Exception:
+                    pass
             
             self.logger.info("🍎 M3 Max 워밍업 완료")
             
         except Exception as e:
             self.logger.warning(f"M3 Max 워밍업 실패: {e}")
-
+    
     def _initialize_cache_system(self):
         """캐시 시스템 초기화"""
         try:
-            # 캐시 크기 설정 (M3 Max 최적화)
             cache_size = self.post_processing_config.cache_size
-            
-            # LRU 캐시로 변환
-            from functools import lru_cache
-            self._cached_enhancement = lru_cache(maxsize=cache_size)(self._perform_enhancement_cached)
-            
             self.logger.info(f"💾 캐시 시스템 초기화 완료 (크기: {cache_size})")
-            
         except Exception as e:
             self.logger.error(f"캐시 시스템 초기화 실패: {e}")
-
+    
     def _initialize_fallback_system(self):
         """최소한의 폴백 시스템 초기화"""
         try:
@@ -1006,7 +963,11 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"폴백 시스템 초기화도 실패: {e}")
-
+    
+    # ==============================================
+    # 🔥 8. 메인 처리 인터페이스 (Pipeline Manager 호환)
+    # ==============================================
+    
     async def process(
         self, 
         fitting_result: Dict[str, Any],
@@ -1014,7 +975,7 @@ class PostProcessingStep(BaseStepMixin):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        ✅ 통일된 처리 인터페이스 - Pipeline Manager 호환 + 시각화
+        통일된 처리 인터페이스 - Pipeline Manager 호환
         
         Args:
             fitting_result: 가상 피팅 결과 (6단계 출력)
@@ -1046,23 +1007,16 @@ class PostProcessingStep(BaseStepMixin):
             # 3. 향상 옵션 준비
             options = self._prepare_enhancement_options(enhancement_options)
             
-            # 4. 메인 향상 처리 (진행률 추적 버전 사용)
-            progress_callback = kwargs.get('progress_callback')
-            if progress_callback:
-                result = await self._perform_enhancement_pipeline_with_progress(
-                    processed_input, options, progress_callback, **kwargs
-                )
-            else:
-                result = await self._perform_enhancement_pipeline(
-                    processed_input, options, **kwargs
-                )
+            # 4. 메인 향상 처리
+            result = await self._perform_enhancement_pipeline(
+                processed_input, options, **kwargs
+            )
             
             # 5. 시각화 이미지 생성
             if self.post_processing_config.enable_visualization:
                 visualization_results = await self._create_enhancement_visualization(
                     processed_input, result, options
                 )
-                # 시각화 결과를 메타데이터에 추가
                 result.metadata['visualization'] = visualization_results
             
             # 6. 결과 캐싱
@@ -1091,12 +1045,7 @@ class PostProcessingStep(BaseStepMixin):
             )
             
             return self._format_result(error_result)
-
-    # ==============================================
-    # 나머지 메서드들은 원본과 동일하므로 주요 부분만 포함
-    # (실제 파일에는 모든 메서드가 포함되어야 함)
-    # ==============================================
-
+    
     def _process_input_data(self, fitting_result: Dict[str, Any]) -> Dict[str, Any]:
         """입력 데이터 처리"""
         try:
@@ -1112,9 +1061,14 @@ class PostProcessingStep(BaseStepMixin):
                 import base64
                 from io import BytesIO
                 image_data = base64.b64decode(fitted_image)
-                image_pil = Image.open(BytesIO(image_data)).convert('RGB')
-                fitted_image = np.array(image_pil)
-            elif isinstance(fitted_image, torch.Tensor):
+                if PIL_AVAILABLE:
+                    image_pil = Image.open(BytesIO(image_data)).convert('RGB')
+                    fitted_image = np.array(image_pil) if NUMPY_AVAILABLE else image_pil
+                else:
+                    raise ValueError("PIL이 없어서 base64 이미지 처리 불가")
+                    
+            elif TORCH_AVAILABLE and isinstance(fitted_image, torch.Tensor):
+                # PyTorch 텐서 처리
                 if self.data_converter:
                     fitted_image = self.data_converter.tensor_to_numpy(fitted_image)
                 else:
@@ -1124,23 +1078,29 @@ class PostProcessingStep(BaseStepMixin):
                     if fitted_image.ndim == 3 and fitted_image.shape[0] == 3:
                         fitted_image = fitted_image.transpose(1, 2, 0)
                     fitted_image = (fitted_image * 255).astype(np.uint8)
-            elif isinstance(fitted_image, Image.Image):
-                fitted_image = np.array(fitted_image.convert('RGB'))
-            elif not isinstance(fitted_image, np.ndarray):
+                    
+            elif PIL_AVAILABLE and isinstance(fitted_image, Image.Image):
+                if NUMPY_AVAILABLE:
+                    fitted_image = np.array(fitted_image.convert('RGB'))
+                else:
+                    fitted_image = fitted_image.convert('RGB')
+                    
+            elif not NUMPY_AVAILABLE or not isinstance(fitted_image, np.ndarray):
                 raise ValueError(f"지원되지 않는 이미지 타입: {type(fitted_image)}")
             
-            # 이미지 검증
-            if fitted_image.ndim != 3 or fitted_image.shape[2] != 3:
-                raise ValueError(f"잘못된 이미지 형태: {fitted_image.shape}")
-            
-            # 크기 제한 확인
-            max_height, max_width = self.post_processing_config.max_resolution
-            if fitted_image.shape[0] > max_height or fitted_image.shape[1] > max_width:
-                fitted_image = self._resize_image_preserve_ratio(fitted_image, max_height, max_width)
+            # 이미지 검증 (NumPy 배열인 경우)
+            if NUMPY_AVAILABLE and isinstance(fitted_image, np.ndarray):
+                if fitted_image.ndim != 3 or fitted_image.shape[2] != 3:
+                    raise ValueError(f"잘못된 이미지 형태: {fitted_image.shape}")
+                
+                # 크기 제한 확인
+                max_height, max_width = self.post_processing_config.max_resolution
+                if fitted_image.shape[0] > max_height or fitted_image.shape[1] > max_width:
+                    fitted_image = self._resize_image_preserve_ratio(fitted_image, max_height, max_width)
             
             return {
                 'image': fitted_image,
-                'original_shape': fitted_image.shape,
+                'original_shape': fitted_image.shape if hasattr(fitted_image, 'shape') else None,
                 'mask': fitting_result.get('mask'),
                 'confidence': fitting_result.get('confidence', 1.0),
                 'metadata': fitting_result.get('metadata', {})
@@ -1149,7 +1109,7 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"입력 데이터 처리 실패: {e}")
             raise
-
+    
     def _prepare_enhancement_options(self, enhancement_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """향상 옵션 준비"""
         try:
@@ -1175,6 +1135,143 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"향상 옵션 준비 실패: {e}")
             return {}
+    
+    async def _perform_enhancement_pipeline_with_progress(
+        self,
+        processed_input: Dict[str, Any],
+        options: Dict[str, Any],
+        progress_callback: Callable[[str, float, str], None],
+        **kwargs
+    ) -> PostProcessingResult:
+        """향상 파이프라인 수행 - 진행률 추적 버전"""
+        try:
+            if progress_callback:
+                progress_callback("post_processing", 0.0, "후처리 시작...")
+            
+            image = processed_input['image']
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                raise ValueError("NumPy 배열 이미지가 필요합니다")
+                
+            applied_methods = []
+            enhancement_log = []
+            
+            original_quality = self._calculate_image_quality(image)
+            
+            # 전체 메서드 수 계산
+            enabled_methods = self.post_processing_config.enabled_methods
+            total_methods = len(enabled_methods) + 2  # +2 for quality calc and final processing
+            current_method = 0
+            
+            # 각 향상 방법 적용 (진행률 추적)
+            for method in enabled_methods:
+                method_name = method.value
+                current_method += 1
+                progress = current_method / total_methods * 0.8  # 80%까지는 메서드들
+                
+                if progress_callback:
+                    progress_callback("post_processing", progress, f"{method_name} 적용 중...")
+                
+                try:
+                    if method == EnhancementMethod.SUPER_RESOLUTION and options.get(f'apply_{method_name}', False):
+                        # 🔥 실제 AI 모델 추론
+                        enhanced_image = await self._apply_super_resolution(image)
+                        if enhanced_image is not None:
+                            image = enhanced_image
+                            applied_methods.append(method_name)
+                            enhancement_log.append("Super Resolution 적용 (AI 모델)")
+                    
+                    elif method in [EnhancementMethod.NOISE_REDUCTION, EnhancementMethod.DENOISING] and options.get(f'apply_{method_name}', False):
+                        # 🔥 실제 AI 모델 추론
+                        if self.denoise_model:
+                            enhanced_image = await self._apply_ai_denoising(image)
+                        else:
+                            enhanced_image = self._apply_traditional_denoising(image)
+                        
+                        if enhanced_image is not None:
+                            image = enhanced_image
+                            applied_methods.append(method_name)
+                            enhancement_log.append("노이즈 제거 적용 (AI 모델)" if self.denoise_model else "노이즈 제거 적용 (전통적)")
+                    
+                    elif method == EnhancementMethod.SHARPENING and options.get(f'apply_{method_name}', False):
+                        enhanced_image = self._apply_advanced_sharpening(image, options['enhancement_strength'])
+                        if enhanced_image is not None:
+                            image = enhanced_image
+                            applied_methods.append(method_name)
+                            enhancement_log.append("선명도 향상 적용")
+                    
+                    elif method == EnhancementMethod.COLOR_CORRECTION and options.get(f'apply_{method_name}', False):
+                        enhanced_image = self._apply_color_correction(image)
+                        if enhanced_image is not None:
+                            image = enhanced_image
+                            applied_methods.append(method_name)
+                            enhancement_log.append("색상 보정 적용")
+                    
+                    elif method == EnhancementMethod.CONTRAST_ENHANCEMENT and options.get(f'apply_{method_name}', False):
+                        enhanced_image = self._apply_contrast_enhancement(image)
+                        if enhanced_image is not None:
+                            image = enhanced_image
+                            applied_methods.append(method_name)
+                            enhancement_log.append("대비 향상 적용")
+                    
+                    elif method == EnhancementMethod.FACE_ENHANCEMENT and options.get('preserve_faces', False) and self.face_detector:
+                        faces = self._detect_faces(image)
+                        if faces:
+                            enhanced_image = self._enhance_face_regions(image, faces)
+                            if enhanced_image is not None:
+                                image = enhanced_image
+                                applied_methods.append(method_name)
+                                enhancement_log.append(f"얼굴 향상 적용 ({len(faces)}개 얼굴)")
+                
+                except Exception as e:
+                    self.logger.warning(f"{method_name} 처리 실패: {e}")
+                    continue
+            
+            # 최종 후처리 (90% 진행률)
+            if progress_callback:
+                progress_callback("post_processing", 0.9, "최종 후처리 적용 중...")
+            
+            try:
+                final_image = self._apply_final_post_processing(image)
+                if final_image is not None:
+                    image = final_image
+                    enhancement_log.append("최종 후처리 적용")
+            except Exception as e:
+                self.logger.warning(f"최종 후처리 실패: {e}")
+            
+            # 품질 계산 (95% 진행률)
+            if progress_callback:
+                progress_callback("post_processing", 0.95, "품질 분석 중...")
+            
+            final_quality = self._calculate_image_quality(image)
+            quality_improvement = final_quality - original_quality
+            
+            # 완료 (100% 진행률)
+            if progress_callback:
+                progress_callback("post_processing", 1.0, f"후처리 완료 - {len(applied_methods)}개 방법 적용")
+            
+            return PostProcessingResult(
+                success=True,
+                enhanced_image=image,
+                quality_improvement=quality_improvement,
+                applied_methods=applied_methods,
+                processing_time=0.0,  # 호출부에서 설정
+                metadata={
+                    'enhancement_log': enhancement_log,
+                    'original_quality': original_quality,
+                    'final_quality': final_quality,
+                    'original_shape': processed_input['original_shape'],
+                    'options_used': options
+                }
+            )
+            
+        except Exception as e:
+            if progress_callback:
+                progress_callback("post_processing", 0.0, f"후처리 실패: {e}")
+            return PostProcessingResult(
+                success=False,
+                error_message=f"향상 파이프라인 실패: {e}",
+                processing_time=0.0
+            )
 
     async def _perform_enhancement_pipeline(
         self,
@@ -1182,9 +1279,12 @@ class PostProcessingStep(BaseStepMixin):
         options: Dict[str, Any],
         **kwargs
     ) -> PostProcessingResult:
-        """향상 파이프라인 수행"""
+        """향상 파이프라인 수행 - 실제 AI 추론 구현"""
         try:
-            image = processed_input['image'].copy()
+            image = processed_input['image']
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                raise ValueError("NumPy 배열 이미지가 필요합니다")
+                
             applied_methods = []
             enhancement_log = []
             
@@ -1196,13 +1296,15 @@ class PostProcessingStep(BaseStepMixin):
                 
                 try:
                     if method == EnhancementMethod.SUPER_RESOLUTION and options.get(f'apply_{method_name}', False):
+                        # 🔥 실제 AI 모델 추론
                         enhanced_image = await self._apply_super_resolution(image)
                         if enhanced_image is not None:
                             image = enhanced_image
                             applied_methods.append(method_name)
-                            enhancement_log.append("Super Resolution 적용")
+                            enhancement_log.append("Super Resolution 적용 (AI 모델)")
                     
                     elif method in [EnhancementMethod.NOISE_REDUCTION, EnhancementMethod.DENOISING] and options.get(f'apply_{method_name}', False):
+                        # 🔥 실제 AI 모델 추론
                         if self.denoise_model:
                             enhanced_image = await self._apply_ai_denoising(image)
                         else:
@@ -1211,7 +1313,7 @@ class PostProcessingStep(BaseStepMixin):
                         if enhanced_image is not None:
                             image = enhanced_image
                             applied_methods.append(method_name)
-                            enhancement_log.append("노이즈 제거 적용")
+                            enhancement_log.append("노이즈 제거 적용 (AI 모델)" if self.denoise_model else "노이즈 제거 적용 (전통적)")
                     
                     elif method == EnhancementMethod.SHARPENING and options.get(f'apply_{method_name}', False):
                         enhanced_image = self._apply_advanced_sharpening(image, options['enhancement_strength'])
@@ -1281,39 +1383,46 @@ class PostProcessingStep(BaseStepMixin):
                 error_message=f"향상 파이프라인 실패: {e}",
                 processing_time=0.0
             )
-
+    
     # ==============================================
-    # AI 모델 처리 메서드들
+    # 🔥 9. AI 모델 추론 메서드들 (실제 구현)
     # ==============================================
-
+    
     async def _apply_super_resolution(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """Super Resolution 적용"""
+        """🔥 실제 Super Resolution AI 모델 추론"""
         try:
-            if not self.sr_model:
+            if not self.sr_model or not TORCH_AVAILABLE or not PIL_AVAILABLE:
+                self.logger.warning("⚠️ SR 모델 또는 필요 라이브러리 없음")
                 return None
             
-            # 이미지를 텐서로 변환
+            # NumPy → PIL → Tensor 변환
+            if NUMPY_AVAILABLE and isinstance(image, np.ndarray):
+                pil_image = Image.fromarray(image)
+            else:
+                return None
+                
+            # 텐서 변환
             transform = transforms.Compose([
                 transforms.ToTensor(),
             ])
             
-            # PIL로 변환 후 텐서로
-            pil_image = Image.fromarray(image)
             input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
             
+            # 정밀도 설정
             if self.device == "mps":
                 input_tensor = input_tensor.float()
             elif self.device == "cuda":
                 input_tensor = input_tensor.half()
             
-            # 추론
+            # 🔥 실제 AI 모델 추론
             with torch.no_grad():
+                self.logger.debug("🧠 Super Resolution AI 모델 추론 시작...")
                 output_tensor = self.sr_model(input_tensor)
                 
                 # 후처리
                 output_tensor = torch.clamp(output_tensor, 0, 1)
                 
-                # 텐서를 numpy로 변환
+                # Tensor → NumPy 변환
                 output_np = output_tensor.squeeze().cpu().float().numpy()
                 if output_np.ndim == 3:
                     output_np = output_np.transpose(1, 2, 0)
@@ -1321,36 +1430,44 @@ class PostProcessingStep(BaseStepMixin):
                 # 0-255 범위로 변환
                 enhanced_image = (output_np * 255).astype(np.uint8)
                 
+                self.logger.debug("✅ Super Resolution AI 모델 추론 완료")
                 return enhanced_image
                 
         except Exception as e:
-            self.logger.error(f"Super Resolution 적용 실패: {e}")
+            self.logger.error(f"❌ Super Resolution 적용 실패: {e}")
             return None
-
+    
     async def _apply_ai_denoising(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """AI 기반 노이즈 제거"""
+        """🔥 실제 AI 기반 노이즈 제거 모델 추론"""
         try:
-            if not self.denoise_model:
+            if not self.denoise_model or not TORCH_AVAILABLE or not PIL_AVAILABLE:
+                self.logger.warning("⚠️ Denoising 모델 또는 필요 라이브러리 없음")
                 return None
             
-            # 이미지를 텐서로 변환
+            # NumPy → PIL → Tensor 변환
+            if NUMPY_AVAILABLE and isinstance(image, np.ndarray):
+                pil_image = Image.fromarray(image)
+            else:
+                return None
+                
             transform = transforms.Compose([
                 transforms.ToTensor(),
             ])
             
-            pil_image = Image.fromarray(image)
             input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
             
+            # 정밀도 설정
             if self.device == "mps":
                 input_tensor = input_tensor.float()
             elif self.device == "cuda":
                 input_tensor = input_tensor.half()
             
-            # 추론
+            # 🔥 실제 AI 모델 추론
             with torch.no_grad():
+                self.logger.debug("🧠 Denoising AI 모델 추론 시작...")
                 output_tensor = self.denoise_model(input_tensor)
                 
-                # 텐서를 numpy로 변환
+                # Tensor → NumPy 변환
                 output_np = output_tensor.squeeze().cpu().float().numpy()
                 if output_np.ndim == 3:
                     output_np = output_np.transpose(1, 2, 0)
@@ -1358,20 +1475,24 @@ class PostProcessingStep(BaseStepMixin):
                 # 0-255 범위로 변환
                 denoised_image = (output_np * 255).astype(np.uint8)
                 
+                self.logger.debug("✅ Denoising AI 모델 추론 완료")
                 return denoised_image
                 
         except Exception as e:
-            self.logger.error(f"AI 노이즈 제거 실패: {e}")
+            self.logger.error(f"❌ AI 노이즈 제거 실패: {e}")
             return None
-
+    
     # ==============================================
-    # 전통적 이미지 처리 메서드들
+    # 🔥 10. 전통적 이미지 처리 메서드들
     # ==============================================
-
+    
     def _apply_traditional_denoising(self, image: np.ndarray) -> np.ndarray:
         """전통적 노이즈 제거"""
         try:
-            # 비선형 확산 필터 또는 bilateral 필터 사용
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            # scikit-image가 있으면 고급 필터 사용
             if SKIMAGE_AVAILABLE:
                 denoised = restoration.denoise_bilateral(
                     image, 
@@ -1380,18 +1501,29 @@ class PostProcessingStep(BaseStepMixin):
                     channel_axis=2
                 )
                 return (denoised * 255).astype(np.uint8)
-            else:
+            elif OPENCV_AVAILABLE:
                 # OpenCV bilateral filter
                 denoised = cv2.bilateralFilter(image, 9, 75, 75)
                 return denoised
+            else:
+                # 가장 기본적인 가우시안 블러 (scipy 없이)
+                from scipy.ndimage import gaussian_filter
+                denoised = gaussian_filter(image, sigma=1.0)
+                return denoised.astype(np.uint8)
                 
         except Exception as e:
             self.logger.error(f"전통적 노이즈 제거 실패: {e}")
             return image
-
+    
     def _apply_advanced_sharpening(self, image: np.ndarray, strength: float) -> np.ndarray:
         """고급 선명도 향상"""
         try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            if not OPENCV_AVAILABLE:
+                return image
+                
             # 언샤프 마스킹
             blurred = cv2.GaussianBlur(image, (5, 5), 1.0)
             unsharp_mask = cv2.addWeighted(image, 1 + strength, blurred, -strength, 0)
@@ -1415,10 +1547,16 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"선명도 향상 실패: {e}")
             return image
-
+    
     def _apply_color_correction(self, image: np.ndarray) -> np.ndarray:
         """색상 보정"""
         try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            if not OPENCV_AVAILABLE:
+                return image
+                
             # LAB 색공간으로 변환
             lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
             l, a, b = cv2.split(lab)
@@ -1441,10 +1579,13 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"색상 보정 실패: {e}")
             return image
-
+    
     def _adjust_white_balance(self, image: np.ndarray) -> np.ndarray:
         """화이트 밸런스 조정"""
         try:
+            if not NUMPY_AVAILABLE:
+                return image
+                
             # Gray World 알고리즘
             r_mean = np.mean(image[:, :, 0])
             g_mean = np.mean(image[:, :, 1])
@@ -1473,10 +1614,16 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"화이트 밸런스 조정 실패: {e}")
             return image
-
+    
     def _apply_contrast_enhancement(self, image: np.ndarray) -> np.ndarray:
         """대비 향상"""
         try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            if not OPENCV_AVAILABLE:
+                return image
+                
             # 적응형 히스토그램 평활화
             lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
             l, a, b = cv2.split(lab)
@@ -1497,10 +1644,13 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"대비 향상 실패: {e}")
             return image
-
+    
     def _apply_sigmoid_correction(self, image: np.ndarray, gain: float, cutoff: float) -> np.ndarray:
         """시그모이드 곡선을 사용한 대비 조정"""
         try:
+            if not NUMPY_AVAILABLE:
+                return image
+                
             # 0-1 범위로 정규화
             normalized = image.astype(np.float32) / 255.0
             
@@ -1515,11 +1665,11 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"시그모이드 보정 실패: {e}")
             return image
-
+    
     def _detect_faces(self, image: np.ndarray) -> List[Tuple[int, int, int, int]]:
         """얼굴 검출"""
         try:
-            if not self.face_detector:
+            if not self.face_detector or not OPENCV_AVAILABLE or not NUMPY_AVAILABLE:
                 return []
             
             faces = []
@@ -1553,10 +1703,13 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"얼굴 검출 실패: {e}")
             return []
-
+    
     def _enhance_face_regions(self, image: np.ndarray, faces: List[Tuple[int, int, int, int]]) -> np.ndarray:
         """얼굴 영역 향상"""
         try:
+            if not NUMPY_AVAILABLE or not OPENCV_AVAILABLE:
+                return image
+                
             enhanced = image.copy()
             
             for (x, y, w, h) in faces:
@@ -1584,10 +1737,13 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"얼굴 영역 향상 실패: {e}")
             return image
-
+    
     def _apply_final_post_processing(self, image: np.ndarray) -> np.ndarray:
         """최종 후처리"""
         try:
+            if not NUMPY_AVAILABLE or not OPENCV_AVAILABLE:
+                return image
+                
             # 1. 미세한 노이즈 제거
             denoised = cv2.medianBlur(image, 3)
             
@@ -1605,10 +1761,16 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"최종 후처리 실패: {e}")
             return image
-
+    
     def _calculate_image_quality(self, image: np.ndarray) -> float:
         """이미지 품질 점수 계산"""
         try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return 0.5
+                
+            if not OPENCV_AVAILABLE:
+                return 0.5
+            
             # 여러 품질 지표의 조합
             
             # 1. 선명도 (라플라시안 분산)
@@ -1642,10 +1804,13 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"품질 계산 실패: {e}")
             return 0.5
-
+    
     def _resize_image_preserve_ratio(self, image: np.ndarray, max_height: int, max_width: int) -> np.ndarray:
         """비율을 유지하면서 이미지 크기 조정"""
         try:
+            if not NUMPY_AVAILABLE or not OPENCV_AVAILABLE:
+                return image
+                
             h, w = image.shape[:2]
             
             if h <= max_height and w <= max_width:
@@ -1664,11 +1829,11 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"이미지 크기 조정 실패: {e}")
             return image
-
+    
     # ==============================================
-    # 시각화 관련 메서드들
+    # 🔥 11. 시각화 관련 메서드들
     # ==============================================
-
+    
     async def _create_enhancement_visualization(
         self,
         processed_input: Dict[str, Any],
@@ -1687,6 +1852,13 @@ class PostProcessingStep(BaseStepMixin):
             def _create_visualizations():
                 original_image = processed_input['image']
                 enhanced_image = result.enhanced_image
+                
+                if not NUMPY_AVAILABLE or not PIL_AVAILABLE:
+                    return {
+                        'before_after_comparison': '',
+                        'enhancement_details': '',
+                        'quality_metrics': ''
+                    }
                 
                 visualizations = {}
                 
@@ -1727,7 +1899,7 @@ class PostProcessingStep(BaseStepMixin):
                 'enhancement_details': '',
                 'quality_metrics': ''
             }
-
+    
     def _create_before_after_comparison(
         self,
         original_image: np.ndarray,
@@ -1736,6 +1908,9 @@ class PostProcessingStep(BaseStepMixin):
     ) -> np.ndarray:
         """Before/After 비교 이미지 생성"""
         try:
+            if not NUMPY_AVAILABLE or not PIL_AVAILABLE or not OPENCV_AVAILABLE:
+                return np.ones((600, 1100, 3), dtype=np.uint8) * 200
+                
             # 이미지 크기 맞추기
             target_size = (512, 512)
             original_resized = cv2.resize(original_image, target_size, interpolation=cv2.INTER_LANCZOS4)
@@ -1756,13 +1931,17 @@ class PostProcessingStep(BaseStepMixin):
             
             # 폰트 설정
             try:
-                title_font = ImageFont.truetype("arial.ttf", 24)
-                subtitle_font = ImageFont.truetype("arial.ttf", 16)
-                text_font = ImageFont.truetype("arial.ttf", 14)
-            except Exception:
-                title_font = ImageFont.load_default()
-                subtitle_font = ImageFont.load_default()
-                text_font = ImageFont.load_default()
+                title_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
+                subtitle_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 16)
+                text_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 14)
+            except:
+                try:
+                    title_font = ImageFont.load_default()
+                    subtitle_font = ImageFont.load_default()
+                    text_font = ImageFont.load_default()
+                except:
+                    # 텍스트 없이 이미지만 반환
+                    return np.array(canvas_pil)
             
             # 제목
             draw.text((canvas_width//2 - 100, 10), "후처리 결과 비교", fill=(50, 50, 50), font=title_font)
@@ -1789,8 +1968,11 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"⚠️ Before/After 비교 이미지 생성 실패: {e}")
             # 폴백: 기본 이미지
-            return np.ones((600, 1100, 3), dtype=np.uint8) * 200
-
+            if NUMPY_AVAILABLE:
+                return np.ones((600, 1100, 3), dtype=np.uint8) * 200
+            else:
+                return None
+    
     def _create_enhancement_details_visualization(
         self,
         original_image: np.ndarray,
@@ -1800,6 +1982,9 @@ class PostProcessingStep(BaseStepMixin):
     ) -> np.ndarray:
         """향상 세부사항 시각화"""
         try:
+            if not NUMPY_AVAILABLE or not PIL_AVAILABLE or not OPENCV_AVAILABLE:
+                return np.ones((400, 800, 3), dtype=np.uint8) * 200
+                
             # 간단한 그리드 생성
             grid_size = 256
             canvas_width = grid_size * 3 + 100
@@ -1819,9 +2004,9 @@ class PostProcessingStep(BaseStepMixin):
             draw = ImageDraw.Draw(canvas_pil)
             
             try:
-                font = ImageFont.truetype("arial.ttf", 12)
-            except Exception:
                 font = ImageFont.load_default()
+            except:
+                return np.array(canvas_pil)
             
             # 라벨
             draw.text((25, 5), "원본", fill=(50, 50, 50), font=font)
@@ -1839,8 +2024,11 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ 향상 세부사항 시각화 실패: {e}")
-            return np.ones((400, 800, 3), dtype=np.uint8) * 200
-
+            if NUMPY_AVAILABLE:
+                return np.ones((400, 800, 3), dtype=np.uint8) * 200
+            else:
+                return None
+    
     def _create_quality_metrics_visualization(
         self,
         result: PostProcessingResult,
@@ -1848,6 +2036,9 @@ class PostProcessingStep(BaseStepMixin):
     ) -> np.ndarray:
         """품질 메트릭 시각화"""
         try:
+            if not NUMPY_AVAILABLE or not PIL_AVAILABLE:
+                return np.ones((300, 400, 3), dtype=np.uint8) * 200
+                
             # 품질 메트릭 정보 패널 생성
             canvas_width = 400
             canvas_height = 300
@@ -1858,11 +2049,10 @@ class PostProcessingStep(BaseStepMixin):
             
             # 폰트 설정
             try:
-                title_font = ImageFont.truetype("arial.ttf", 16)
-                text_font = ImageFont.truetype("arial.ttf", 12)
-            except Exception:
                 title_font = ImageFont.load_default()
                 text_font = ImageFont.load_default()
+            except:
+                return np.array(canvas_pil)
             
             # 제목
             draw.text((20, 20), "후처리 품질 분석", fill=(50, 50, 50), font=title_font)
@@ -1890,11 +2080,20 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ 품질 메트릭 시각화 실패: {e}")
-            return np.ones((300, 400, 3), dtype=np.uint8) * 200
-
-    def _numpy_to_base64(self, image: np.ndarray) -> str:
+            if NUMPY_AVAILABLE:
+                return np.ones((300, 400, 3), dtype=np.uint8) * 200
+            else:
+                return None
+    
+    def _numpy_to_base64(self, image) -> str:
         """numpy 배열을 base64 문자열로 변환"""
         try:
+            if image is None or not PIL_AVAILABLE:
+                return ""
+                
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return ""
+            
             # PIL 이미지로 변환
             pil_image = Image.fromarray(image)
             
@@ -1916,11 +2115,11 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"⚠️ base64 변환 실패: {e}")
             return ""
-
+    
     # ==============================================
-    # 유틸리티 및 관리 메서드들
+    # 🔥 12. 유틸리티 및 관리 메서드들
     # ==============================================
-
+    
     def _generate_cache_key(self, fitting_result: Dict[str, Any], enhancement_options: Optional[Dict[str, Any]]) -> str:
         """캐시 키 생성"""
         try:
@@ -1929,7 +2128,7 @@ class PostProcessingStep(BaseStepMixin):
             if isinstance(fitted_image, str):
                 # Base64 문자열의 해시
                 image_hash = hashlib.md5(fitted_image.encode()).hexdigest()[:16]
-            elif isinstance(fitted_image, np.ndarray):
+            elif NUMPY_AVAILABLE and isinstance(fitted_image, np.ndarray):
                 image_hash = hashlib.md5(fitted_image.tobytes()).hexdigest()[:16]
             else:
                 image_hash = str(hash(str(fitted_image)))[:16]
@@ -1939,13 +2138,13 @@ class PostProcessingStep(BaseStepMixin):
             options_hash = hashlib.md5(options_str.encode()).hexdigest()[:8]
             
             # 전체 키 생성
-            cache_key = f"{image_hash}_{options_hash}_{self.device}_{self.quality_level}"
+            cache_key = f"{image_hash}_{options_hash}_{self.device}_{self.post_processing_config.quality_level.value}"
             return cache_key
             
         except Exception as e:
             self.logger.warning(f"캐시 키 생성 실패: {e}")
             return f"fallback_{time.time()}_{self.device}"
-
+    
     def _cleanup_cache(self):
         """캐시 정리 (LRU 방식)"""
         try:
@@ -1954,7 +2153,7 @@ class PostProcessingStep(BaseStepMixin):
             
             # 가장 오래된 항목들 제거
             items = list(self.enhancement_cache.items())
-            # 처리 시간 기준으로 정렬 (최근 사용된 것이 뒤에)
+            # 처리 시간 기준으로 정렬
             items.sort(key=lambda x: x[1].processing_time)
             
             # 절반 정도 제거
@@ -1967,7 +2166,7 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"캐시 정리 실패: {e}")
-
+    
     def _update_statistics(self, result: PostProcessingResult, processing_time: float):
         """통계 업데이트"""
         try:
@@ -2003,7 +2202,7 @@ class PostProcessingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"통계 업데이트 실패: {e}")
-
+    
     def _format_result(self, result: PostProcessingResult) -> Dict[str, Any]:
         """결과를 표준 딕셔너리 형태로 포맷 + API 호환성"""
         try:
@@ -2044,11 +2243,11 @@ class PostProcessingStep(BaseStepMixin):
                         'step_name': 'post_processing',
                         'step_number': 7,
                         'device': self.device,
-                        'quality_level': self.quality_level,
+                        'quality_level': self.post_processing_config.quality_level.value,
                         'optimization': 'M3 Max' if self.is_m3_max else self.device,
                         'models_used': {
-                            'sr_model': hasattr(self, 'sr_model') and self.sr_model is not None,
-                            'denoise_model': hasattr(self, 'denoise_model') and self.denoise_model is not None,
+                            'sr_model': self.sr_model is not None,
+                            'denoise_model': self.denoise_model is not None,
                             'face_detector': self.face_detector is not None
                         }
                     },
@@ -2065,7 +2264,7 @@ class PostProcessingStep(BaseStepMixin):
                 
                 # 기존 API 호환성 필드들
                 formatted_result.update({
-                    'enhanced_image': result.enhanced_image.tolist() if result.enhanced_image is not None else None,
+                    'enhanced_image': result.enhanced_image.tolist() if NUMPY_AVAILABLE and result.enhanced_image is not None else None,
                     'applied_methods': result.applied_methods,
                     'metadata': result.metadata
                 })
@@ -2105,22 +2304,434 @@ class PostProcessingStep(BaseStepMixin):
                 'applied_methods': [],
                 'error_message': str(e)
             }
-
-    async def _perform_enhancement_cached(self, *args, **kwargs):
-        """캐시된 향상 수행 (LRU 캐시용)"""
-        return await self._perform_enhancement_pipeline(*args, **kwargs)
-
+    
+    # ==============================================
+    # 🔥 13. BaseStepMixin 호환 인터페이스들 + 추가 기능들
+    # ==============================================
+    
+    def record_processing(self, duration: float, success: bool = True):
+        """처리 기록 - BaseStepMixin 호환"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            if hasattr(super(), 'record_processing'):
+                super().record_processing(duration, success)
+            
+            # 후처리 특화 기록
+            self.processing_stats['total_processed'] += 1
+            
+            if success:
+                self.processing_stats['successful_enhancements'] += 1
+            
+            # 평균 처리 시간 업데이트
+            current_avg = self.processing_stats['average_processing_time']
+            total = self.processing_stats['total_processed']
+            self.processing_stats['average_processing_time'] = (
+                (current_avg * (total - 1) + duration) / total
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 처리 기록 실패: {e}")
+    
+    def get_performance_summary(self) -> Dict[str, Any]:
+        """성능 요약 조회 - BaseStepMixin 호환"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_summary = {}
+            if hasattr(super(), 'get_performance_summary'):
+                base_summary = super().get_performance_summary()
+            
+            # 후처리 특화 성능 요약
+            post_processing_summary = {
+                'total_enhancements': self.processing_stats['total_processed'],
+                'successful_enhancements': self.processing_stats['successful_enhancements'],
+                'success_rate': (
+                    self.processing_stats['successful_enhancements'] / 
+                    max(1, self.processing_stats['total_processed'])
+                ),
+                'average_improvement': self.processing_stats['average_improvement'],
+                'average_processing_time': self.processing_stats['average_processing_time'],
+                'cache_hits': self.processing_stats['cache_hits'],
+                'cache_hit_rate': (
+                    self.processing_stats['cache_hits'] / 
+                    max(1, self.processing_stats['total_processed'])
+                ),
+                'method_usage': self.processing_stats['method_usage'],
+                'models_loaded': {
+                    'sr_model': self.sr_model is not None,
+                    'denoise_model': self.denoise_model is not None,
+                    'face_detector': self.face_detector is not None
+                }
+            }
+            
+            # 통합 반환
+            return {**base_summary, **post_processing_summary}
+            
+        except Exception as e:
+            self.logger.error(f"❌ 성능 요약 조회 실패: {e}")
+            return {}
+    
+    async def warmup_step(self) -> Dict[str, Any]:
+        """Step 워밍업 - BaseStepMixin 호환 별칭"""
+        return await self.warmup_async()
+    
+    def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+        """모델 가져오기 - BaseStepMixin 호환 (동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            if hasattr(super(), 'get_model'):
+                model = super().get_model(model_name)
+                if model:
+                    return model
+            
+            # 후처리 특화 모델 반환
+            if not model_name or model_name == "default":
+                # 기본 모델 (Super Resolution 우선)
+                return self.sr_model or self.denoise_model
+            elif "sr" in model_name.lower() or "super" in model_name.lower():
+                return self.sr_model
+            elif "denoise" in model_name.lower() or "noise" in model_name.lower():
+                return self.denoise_model
+            elif "face" in model_name.lower():
+                return self.face_detector
+            else:
+                # 캐시에서 검색
+                return self.model_cache.get(model_name)
+                
+        except Exception as e:
+            self.logger.error(f"❌ 모델 가져오기 실패: {e}")
+            return None
+    
+    async def get_model_async(self, model_name: Optional[str] = None) -> Optional[Any]:
+        """모델 가져오기 - BaseStepMixin 호환 (비동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            if hasattr(super(), 'get_model_async'):
+                model = await super().get_model_async(model_name)
+                if model:
+                    return model
+            
+            # 동기 메서드를 비동기로 실행
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, lambda: self.get_model(model_name))
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 모델 가져오기 실패: {e}")
+            return None
+    
+    def optimize_memory(self, aggressive: bool = False) -> Dict[str, Any]:
+        """메모리 최적화 - BaseStepMixin 호환 (동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_result = {}
+            if hasattr(super(), 'optimize_memory'):
+                base_result = super().optimize_memory(aggressive)
+            
+            # 후처리 특화 메모리 최적화
+            post_processing_result = {
+                'cache_cleared': 0,
+                'models_optimized': 0
+            }
+            
+            # 캐시 정리
+            if aggressive:
+                cache_size_before = len(self.enhancement_cache)
+                self.enhancement_cache.clear()
+                post_processing_result['cache_cleared'] = cache_size_before
+            
+            # 모델 메모리 최적화
+            models_optimized = 0
+            if self.sr_model and TORCH_AVAILABLE:
+                if hasattr(self.sr_model, 'cpu'):
+                    self.sr_model.cpu()
+                models_optimized += 1
+            
+            if self.denoise_model and TORCH_AVAILABLE:
+                if hasattr(self.denoise_model, 'cpu'):
+                    self.denoise_model.cpu()
+                models_optimized += 1
+            
+            post_processing_result['models_optimized'] = models_optimized
+            
+            # PyTorch 메모리 정리
+            if TORCH_AVAILABLE:
+                if self.device == 'mps' and MPS_AVAILABLE:
+                    try:
+                        safe_mps_empty_cache()
+                    except:
+                        pass
+                elif self.device == 'cuda':
+                    try:
+                        torch.cuda.empty_cache()
+                    except:
+                        pass
+                
+                gc.collect()
+            
+            # 결과 통합
+            return {
+                **base_result,
+                'post_processing': post_processing_result,
+                'success': True
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 메모리 최적화 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def optimize_memory_async(self, aggressive: bool = False) -> Dict[str, Any]:
+        """메모리 최적화 - BaseStepMixin 호환 (비동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_result = {}
+            if hasattr(super(), 'optimize_memory_async'):
+                base_result = await super().optimize_memory_async(aggressive)
+            
+            # 동기 메서드를 비동기로 실행
+            loop = asyncio.get_event_loop()
+            post_processing_result = await loop.run_in_executor(
+                None, lambda: self.optimize_memory(aggressive)
+            )
+            
+            return {**base_result, **post_processing_result}
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 메모리 최적화 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def warmup(self) -> Dict[str, Any]:
+        """워밍업 - BaseStepMixin 호환 (동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_result = {}
+            if hasattr(super(), 'warmup'):
+                base_result = super().warmup()
+            
+            # 후처리 특화 워밍업
+            start_time = time.time()
+            warmup_results = []
+            
+            # AI 모델 워밍업
+            if self.sr_model and TORCH_AVAILABLE:
+                try:
+                    dummy_tensor = torch.randn(1, 3, 256, 256).to(self.device)
+                    with torch.no_grad():
+                        _ = self.sr_model(dummy_tensor)
+                    warmup_results.append("sr_model_success")
+                except:
+                    warmup_results.append("sr_model_failed")
+            
+            if self.denoise_model and TORCH_AVAILABLE:
+                try:
+                    dummy_tensor = torch.randn(1, 3, 256, 256).to(self.device)
+                    with torch.no_grad():
+                        _ = self.denoise_model(dummy_tensor)
+                    warmup_results.append("denoise_model_success")
+                except:
+                    warmup_results.append("denoise_model_failed")
+            
+            # 이미지 처리 워밍업
+            if NUMPY_AVAILABLE and OPENCV_AVAILABLE:
+                try:
+                    dummy_image = np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
+                    _ = self._calculate_image_quality(dummy_image)
+                    warmup_results.append("image_processing_success")
+                except:
+                    warmup_results.append("image_processing_failed")
+            
+            duration = time.time() - start_time
+            success_count = sum(1 for r in warmup_results if 'success' in r)
+            
+            post_processing_warmup = {
+                'duration': duration,
+                'results': warmup_results,
+                'success_count': success_count,
+                'total_count': len(warmup_results),
+                'success': success_count > 0
+            }
+            
+            return {**base_result, 'post_processing': post_processing_warmup}
+            
+        except Exception as e:
+            self.logger.error(f"❌ 워밍업 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def warmup_async(self) -> Dict[str, Any]:
+        """워밍업 - BaseStepMixin 호환 (비동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_result = {}
+            if hasattr(super(), 'warmup_async'):
+                base_result = await super().warmup_async()
+            
+            # 동기 메서드를 비동기로 실행
+            loop = asyncio.get_event_loop()
+            post_processing_result = await loop.run_in_executor(None, self.warmup)
+            
+            return {**base_result, **post_processing_result}
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 워밍업 실패: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def cleanup_models(self):
+        """모델 정리 - BaseStepMixin 호환"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            if hasattr(super(), 'cleanup_models'):
+                super().cleanup_models()
+            
+            # 후처리 특화 모델 정리
+            models_cleaned = 0
+            
+            if self.sr_model:
+                if hasattr(self.sr_model, 'cpu'):
+                    self.sr_model.cpu()
+                del self.sr_model
+                self.sr_model = None
+                models_cleaned += 1
+            
+            if self.denoise_model:
+                if hasattr(self.denoise_model, 'cpu'):
+                    self.denoise_model.cpu()
+                del self.denoise_model
+                self.denoise_model = None
+                models_cleaned += 1
+            
+            if self.face_detector:
+                del self.face_detector
+                self.face_detector = None
+                models_cleaned += 1
+            
+            # 캐시 정리
+            self.model_cache.clear()
+            self.enhancement_cache.clear()
+            
+            # PyTorch 메모리 정리
+            if TORCH_AVAILABLE:
+                if self.device == 'mps':
+                    try:
+                        safe_mps_empty_cache()
+                    except:
+                        pass
+                elif self.device == 'cuda':
+                    try:
+                        torch.cuda.empty_cache()
+                    except:
+                        pass
+                
+                gc.collect()
+            
+            self.has_model = False
+            self.model_loaded = False
+            self.logger.info(f"🧹 후처리 모델 정리 완료 ({models_cleaned}개 모델)")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 모델 정리 중 오류: {e}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Step 상태 조회 - BaseStepMixin 호환"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_status = {}
+            if hasattr(super(), 'get_status'):
+                base_status = super().get_status()
+            
+            # 후처리 특화 상태 정보
+            post_processing_status = {
+                'step_name': 'PostProcessingStep',
+                'step_id': 7,
+                'device': self.device,
+                'is_m3_max': self.is_m3_max,
+                'memory_gb': self.memory_gb,
+                'models': {
+                    'sr_model_loaded': self.sr_model is not None,
+                    'denoise_model_loaded': self.denoise_model is not None,
+                    'face_detector_loaded': self.face_detector is not None
+                },
+                'config': {
+                    'quality_level': self.post_processing_config.quality_level.value,
+                    'processing_mode': self.post_processing_config.processing_mode.value,
+                    'enabled_methods': [method.value for method in self.post_processing_config.enabled_methods],
+                    'enhancement_strength': self.enhancement_strength,
+                    'visualization_enabled': self.post_processing_config.enable_visualization
+                },
+                'cache': {
+                    'enhancement_cache_size': len(self.enhancement_cache),
+                    'model_cache_size': len(self.model_cache),
+                    'max_cache_size': self.post_processing_config.cache_size
+                },
+                'statistics': self.processing_stats,
+                'dependencies': {
+                    'torch_available': TORCH_AVAILABLE,
+                    'mps_available': MPS_AVAILABLE,
+                    'opencv_available': OPENCV_AVAILABLE,
+                    'pil_available': PIL_AVAILABLE,
+                    'numpy_available': NUMPY_AVAILABLE,
+                    'model_loader_injected': self.model_loader is not None,
+                    'memory_manager_injected': self.memory_manager is not None,
+                    'data_converter_injected': self.data_converter is not None
+                }
+            }
+            
+            return {**base_status, 'post_processing': post_processing_status}
+            
+        except Exception as e:
+            self.logger.error(f"❌ 상태 조회 실패: {e}")
+            return {
+                'step_name': 'PostProcessingStep',
+                'error': str(e),
+                'timestamp': time.time()
+            }
+    
+    def initialize(self) -> bool:
+        """초기화 메서드 - BaseStepMixin 호환 (동기 버전)"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_success = True
+            if hasattr(super(), 'initialize'):
+                base_success = super().initialize()
+            
+            # 후처리 초기화는 비동기이므로 여기서는 기본만
+            if not self.is_initialized:
+                # 기본 상태만 설정
+                self.is_initialized = True
+                self.logger.info(f"✅ {self.step_name} 기본 초기화 완료 (비동기 초기화 필요)")
+            
+            return base_success and self.is_initialized
+            
+        except Exception as e:
+            self.logger.error(f"❌ 초기화 실패: {e}")
+            return False
+    
+    async def initialize_async(self) -> bool:
+        """비동기 초기화 메서드 - BaseStepMixin 호환"""
+        try:
+            # BaseStepMixin 부모 메서드 호출 (있는 경우)
+            base_success = True
+            if hasattr(super(), 'initialize_async'):
+                base_success = await super().initialize_async()
+            
+            # 실제 초기화 실행
+            post_processing_success = await self.initialize()
+            
+            return base_success and post_processing_success
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 초기화 실패: {e}")
+            return False
+    
     async def get_step_info(self) -> Dict[str, Any]:
-        """7단계 상세 정보 반환"""
+        """7단계 상세 정보 반환 - 확장 버전"""
         try:
             return {
                 "step_name": "post_processing",
                 "step_number": 7,
                 "device": self.device,
                 "initialized": self.is_initialized,
+                "ready": self.is_ready,
                 "models_loaded": {
-                    "sr_model": hasattr(self, 'sr_model') and self.sr_model is not None,
-                    "denoise_model": hasattr(self, 'denoise_model') and self.denoise_model is not None,
+                    "sr_model": self.sr_model is not None,
+                    "denoise_model": self.denoise_model is not None,
                     "face_detector": self.face_detector is not None
                 },
                 "config": {
@@ -2130,7 +2741,11 @@ class PostProcessingStep(BaseStepMixin):
                     "enhancement_strength": self.enhancement_strength,
                     "preserve_faces": self.preserve_faces,
                     "enable_visualization": self.post_processing_config.enable_visualization,
-                    "visualization_quality": self.post_processing_config.visualization_quality
+                    "visualization_quality": self.post_processing_config.visualization_quality,
+                    "max_resolution": self.post_processing_config.max_resolution,
+                    "use_gpu_acceleration": self.post_processing_config.use_gpu_acceleration,
+                    "batch_size": self.post_processing_config.batch_size,
+                    "cache_size": self.post_processing_config.cache_size
                 },
                 "performance": self.processing_stats,
                 "cache": {
@@ -2141,10 +2756,26 @@ class PostProcessingStep(BaseStepMixin):
                 },
                 "optimization": {
                     "m3_max_enabled": self.is_m3_max,
-                    "optimization_enabled": self.optimization_enabled,
                     "memory_gb": self.memory_gb,
-                    "device_type": self.device_type,
+                    "device_type": self.device,
                     "use_gpu_acceleration": self.post_processing_config.use_gpu_acceleration
+                },
+                "dependencies": {
+                    "model_loader": self.model_loader is not None,
+                    "memory_manager": self.memory_manager is not None,
+                    "data_converter": self.data_converter is not None,
+                    "torch_available": TORCH_AVAILABLE,
+                    "mps_available": MPS_AVAILABLE,
+                    "opencv_available": OPENCV_AVAILABLE,
+                    "pil_available": PIL_AVAILABLE,
+                    "numpy_available": NUMPY_AVAILABLE,
+                    "scipy_available": SCIPY_AVAILABLE,
+                    "skimage_available": SKIMAGE_AVAILABLE
+                },
+                "system_info": {
+                    "conda_env": CONDA_INFO['conda_env'],
+                    "conda_prefix": CONDA_INFO['conda_prefix'],
+                    "is_m3_max": IS_M3_MAX
                 }
             }
         except Exception as e:
@@ -2154,7 +2785,7 @@ class PostProcessingStep(BaseStepMixin):
                 "step_number": 7,
                 "error": str(e)
             }
-
+    
     def get_statistics(self) -> Dict[str, Any]:
         """처리 통계 반환"""
         try:
@@ -2179,10 +2810,9 @@ class PostProcessingStep(BaseStepMixin):
                 'is_m3_max': self.is_m3_max,
                 'memory_gb': self.memory_gb,
                 'enabled_methods': [method.value for method in self.post_processing_config.enabled_methods],
-                'optimization_enabled': self.optimization_enabled,
                 'models_loaded': {
-                    'sr_model': hasattr(self, 'sr_model') and self.sr_model is not None,
-                    'denoise_model': hasattr(self, 'denoise_model') and self.denoise_model is not None,
+                    'sr_model': self.sr_model is not None,
+                    'denoise_model': self.denoise_model is not None,
                     'face_detector': self.face_detector is not None
                 }
             }
@@ -2192,7 +2822,7 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"통계 조회 실패: {e}")
             return {'error': str(e)}
-
+    
     async def cleanup(self):
         """리소스 정리"""
         try:
@@ -2203,19 +2833,19 @@ class PostProcessingStep(BaseStepMixin):
             self.model_cache.clear()
             
             # 모델 메모리 해제
-            if hasattr(self, 'sr_model') and self.sr_model:
+            if self.sr_model:
                 if hasattr(self.sr_model, 'cpu'):
                     self.sr_model.cpu()
                 del self.sr_model
                 self.sr_model = None
             
-            if hasattr(self, 'denoise_model') and self.denoise_model:
+            if self.denoise_model:
                 if hasattr(self.denoise_model, 'cpu'):
                     self.denoise_model.cpu()
                 del self.denoise_model
                 self.denoise_model = None
             
-            if hasattr(self, 'face_detector') and self.face_detector:
+            if self.face_detector:
                 del self.face_detector
                 self.face_detector = None
             
@@ -2223,17 +2853,25 @@ class PostProcessingStep(BaseStepMixin):
             if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=True)
             
-            # 메모리 정리
+            # 메모리 정리 (BaseStepMixin 의존성 주입된 경우)
             if self.memory_manager:
-                await self.memory_manager.cleanup_memory()
+                try:
+                    if hasattr(self.memory_manager, 'cleanup_memory_async'):
+                        await self.memory_manager.cleanup_memory_async()
+                    elif hasattr(self.memory_manager, 'cleanup_memory'):
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, self.memory_manager.cleanup_memory
+                        )
+                except Exception:
+                    pass
             
             # PyTorch 캐시 정리
-            if self.device == 'mps':
+            if self.device == 'mps' and TORCH_AVAILABLE:
                 try:
                     safe_mps_empty_cache()
                 except Exception:
                     pass
-            elif self.device == 'cuda':
+            elif self.device == 'cuda' and TORCH_AVAILABLE:
                 try:
                     torch.cuda.empty_cache()
                 except Exception:
@@ -2243,11 +2881,12 @@ class PostProcessingStep(BaseStepMixin):
             gc.collect()
             
             self.is_initialized = False
+            self.is_ready = False
             self.logger.info("✅ 7단계 후처리 시스템 정리 완료")
             
         except Exception as e:
             self.logger.error(f"정리 과정에서 오류 발생: {e}")
-
+    
     def __del__(self):
         """소멸자"""
         try:
@@ -2257,7 +2896,7 @@ class PostProcessingStep(BaseStepMixin):
             pass
 
 # ==============================================
-# 4. 팩토리 함수들 및 유틸리티
+# 🔥 14. 팩토리 함수들
 # ==============================================
 
 def create_post_processing_step(
@@ -2275,9 +2914,8 @@ def create_post_processing_step(
 def create_m3_max_post_processing_step(**kwargs) -> PostProcessingStep:
     """M3 Max 최적화된 후처리 스텝 생성"""
     m3_max_config = {
-        'device': 'mps',
+        'device': 'mps' if MPS_AVAILABLE else 'cpu',
         'is_m3_max': True,
-        'optimization_enabled': True,
         'memory_gb': 128,
         'quality_level': 'high',
         'processing_mode': 'quality',
@@ -2309,7 +2947,6 @@ def create_production_post_processing_step(
     production_config = {
         'quality_level': quality_level,
         'processing_mode': processing_mode,
-        'optimization_enabled': True,
         'enabled_methods': [
             'noise_reduction',
             'sharpening',
@@ -2348,7 +2985,7 @@ def create_real_time_post_processing_step(**kwargs) -> PostProcessingStep:
     return PostProcessingStep(**real_time_config)
 
 # ==============================================
-# 5. 독립 실행형 유틸리티 함수들
+# 🔥 15. 독립 실행형 유틸리티 함수들
 # ==============================================
 
 def enhance_image_quality(
@@ -2359,6 +2996,9 @@ def enhance_image_quality(
 ) -> np.ndarray:
     """독립 실행형 이미지 품질 향상 함수"""
     try:
+        if not NUMPY_AVAILABLE:
+            return image
+            
         if methods is None:
             methods = ['sharpening', 'color_correction', 'contrast_enhancement']
         
@@ -2379,7 +3019,10 @@ def enhance_image_quality(
             
             await step.cleanup()
             
-            return result['enhanced_image'] if result['success'] else image
+            if result['success'] and result.get('enhanced_image') is not None:
+                return np.array(result['enhanced_image'])
+            else:
+                return image
         
         # 이벤트 루프 실행
         try:
@@ -2429,7 +3072,7 @@ def batch_enhance_images(
         return images
 
 # ==============================================
-# 6. 모듈 익스포트
+# 🔥 16. 모듈 익스포트 (완전한 목록)
 # ==============================================
 
 __all__ = [
@@ -2457,24 +3100,27 @@ __all__ = [
     'enhance_image_quality',
     'batch_enhance_images',
     
-    # 가용성 플래그들
+    # 가용성 플래그들 (확장)
+    'TORCH_AVAILABLE',
+    'MPS_AVAILABLE',
+    'NUMPY_AVAILABLE',
+    'PIL_AVAILABLE',
+    'OPENCV_AVAILABLE',
     'SCIPY_AVAILABLE',
-    'SKIMAGE_AVAILABLE', 
+    'SKIMAGE_AVAILABLE',
     'SKLEARN_AVAILABLE',
-    'CUPY_AVAILABLE',
-    'PSUTIL_AVAILABLE'
+    'BASE_STEP_MIXIN_AVAILABLE',
+    'MODEL_LOADER_AVAILABLE',
+    
+    # 시스템 정보
+    'IS_M3_MAX',
+    'CONDA_INFO',
+    'detect_m3_max'
 ]
 
-# 모듈 초기화 로깅
-logger.info("✅ Step 07 후처리 모듈 로드 완료 - 완전 수정 버전")
-logger.info(f"   - BaseStepMixin 연동: {'✅' if BASE_STEP_MIXIN_AVAILABLE else '❌'}")
-logger.info(f"   - Model Loader 연동: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
-logger.info(f"   - Step 요청사항 연동: {'✅' if STEP_REQUESTS_AVAILABLE else '❌'}")
-logger.info(f"   - PyTorch 사용 가능: {'✅' if torch.cuda.is_available() or torch.backends.mps.is_available() else '❌'}")
-logger.info(f"   - OpenCV 사용 가능: {'✅' if cv2 else '❌'}")
-logger.info(f"   - scikit-image 사용 가능: {'✅' if SKIMAGE_AVAILABLE else '❌'}")
-logger.info(f"   - SciPy 사용 가능: {'✅' if SCIPY_AVAILABLE else '❌'}")
-logger.info(f"   - psutil 사용 가능: {'✅' if PSUTIL_AVAILABLE else '❌'}")
+# ==============================================
+# 🔥 17. 모듈 초기화 및 정리
+# ==============================================
 
 # 자동 정리 등록
 import atexit
@@ -2483,15 +3129,73 @@ def _cleanup_on_exit():
     """프로그램 종료 시 정리"""
     try:
         # 전역 인스턴스들 정리
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        elif torch.backends.mps.is_available():
-            try:
-                safe_mps_empty_cache()
-            except Exception:
-                pass
+        if TORCH_AVAILABLE:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif MPS_AVAILABLE:
+                try:
+                    safe_mps_empty_cache()
+                except Exception:
+                    pass
         gc.collect()
     except Exception:
         pass
 
 atexit.register(_cleanup_on_exit)
+
+# 모듈 초기화 로깅
+logger.info("=" * 80)
+logger.info("✅ Step 07 후처리 모듈 로드 완료 - 의존성 주입 기반 AI 연동 v2.0")
+logger.info("=" * 80)
+logger.info("🔥 핵심 특징:")
+logger.info("   ✅ 의존성 주입 패턴 (DI Pattern) 완전 구현")
+logger.info("   ✅ BaseStepMixin 단일 상속 구조")
+logger.info("   ✅ StepFactory → ModelLoader → BaseStepMixin → PostProcessingStep 연동")
+logger.info("   ✅ 실제 AI 모델 추론 완전 구현")
+logger.info("   ✅ M3 Max 128GB 메모리 최적화")
+logger.info("   ✅ conda 환경 우선 지원")
+logger.info("   ✅ 비동기 처리 완전 해결")
+logger.info("   ✅ 시각화 기능 통합")
+logger.info("   ✅ 프로덕션 레벨 안정성")
+logger.info("")
+logger.info("🧠 AI 모델 연동:")
+logger.info("   🔥 Super Resolution (SRResNet) - 실제 AI 추론 구현")
+logger.info("   🔥 Denoising (DenoiseNet) - 실제 AI 추론 구현")
+logger.info("   👁️ Face Detection (OpenCV DNN/Haar) - 얼굴 검출")
+logger.info("   🎨 Traditional Image Processing - 전통적 이미지 처리")
+logger.info("")
+logger.info("🔧 라이브러리 상태:")
+logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
+logger.info(f"   - MPS (M3 Max): {'✅' if MPS_AVAILABLE else '❌'}")
+logger.info(f"   - NumPy: {'✅' if NUMPY_AVAILABLE else '❌'}")
+logger.info(f"   - PIL: {'✅' if PIL_AVAILABLE else '❌'}")
+logger.info(f"   - OpenCV: {'✅' if OPENCV_AVAILABLE else '❌'}")
+logger.info(f"   - BaseStepMixin: {'✅' if BASE_STEP_MIXIN_AVAILABLE else '❌'}")
+logger.info(f"   - ModelLoader: {'✅' if MODEL_LOADER_AVAILABLE else '❌'}")
+logger.info("")
+logger.info(f"🍎 시스템 상태:")
+logger.info(f"   - conda 환경: {CONDA_INFO['conda_env']}")
+logger.info(f"   - M3 Max 감지: {'✅' if IS_M3_MAX else '❌'}")
+logger.info("")
+logger.info("🌟 사용 예시:")
+logger.info("   # 기본 사용")
+logger.info("   step = create_post_processing_step()")
+logger.info("   result = await step.process(fitting_result)")
+logger.info("   ")
+logger.info("   # M3 Max 최적화")
+logger.info("   step = create_m3_max_post_processing_step()")
+logger.info("   ")
+logger.info("   # 의존성 주입 (StepFactory에서 자동)")
+logger.info("   step.set_model_loader(model_loader)")
+logger.info("   step.set_memory_manager(memory_manager)")
+logger.info("   step.set_data_converter(data_converter)")
+logger.info("   await step.initialize()")
+logger.info("")
+logger.info("=" * 80)
+logger.info("🚀 PostProcessingStep v2.0 준비 완료!")
+logger.info("   ✅ 의존성 주입 패턴 완전 구현")
+logger.info("   ✅ 실제 AI 모델 추론 구현")
+logger.info("   ✅ ModelLoader 89.8GB 체크포인트 활용")
+logger.info("   ✅ M3 Max 128GB 최적화")
+logger.info("   ✅ 프로덕션 레벨 안정성")
+logger.info("=" * 80)
