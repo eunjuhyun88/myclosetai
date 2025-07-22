@@ -46,6 +46,13 @@ from functools import lru_cache, wraps
 from contextlib import contextmanager
 from collections import defaultdict
 from abc import ABC, abstractmethod
+# model_loader.py 상단에 추가 (TYPE_CHECKING 블록 밖에)
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    Image = None
+    PIL_AVAILABLE = False
 
 # ==============================================
 # 🔥 1단계: 기본 로깅 설정
@@ -2385,28 +2392,165 @@ def postprocess_segmentation(output, threshold=0.5):
         logger.error(f"❌ 세그멘테이션 후처리 실패: {e}")
         return output
 
-def tensor_to_pil(tensor):
-    """텐서를 PIL 이미지로 변환"""
+def tensor_to_pil(tensor: Union[torch.Tensor, np.ndarray], 
+                       device_safe: bool = True) -> Optional['Image.Image']:  # 문자열로 감싸기
+    """텐서를 PIL 이미지로 변환 - 차원 안전 버전"""
+    
     try:
-        if TORCH_AVAILABLE and hasattr(tensor, 'cpu'):
-            tensor = tensor.cpu()
+        # Step 1: 입력 검증 및 표준화
+        if tensor is None:
+            return None
         
-        if hasattr(tensor, 'numpy'):
-            arr = tensor.numpy()
+        # PyTorch 텐서 처리
+        if torch.is_tensor(tensor):
+            # 디바이스 안전 이동
+            if device_safe and tensor.device.type != 'cpu':
+                if tensor.device.type == 'mps':
+                    # M3 Max MPS 안전 이동
+                    with torch.no_grad():
+                        tensor = tensor.detach().cpu()
+                else:
+                    tensor = tensor.detach().cpu()
+            
+            # NumPy 변환
+            if hasattr(tensor, 'numpy'):
+                arr = tensor.numpy()
+            else:
+                arr = np.array(tensor)
         else:
-            arr = tensor
+            # NumPy 배열 처리
+            arr = np.array(tensor)
         
-        if len(arr.shape) == 3 and arr.shape[0] in [1, 3]:
-            arr = arr.transpose(1, 2, 0)
+        # Step 2: 차원 정규화
+        original_shape = arr.shape
         
-        if arr.max() <= 1.0:
-            arr = (arr * 255).astype('uint8')
+        if len(arr.shape) == 4:  # (B, C, H, W)
+            arr = arr[0]  # 첫 번째 배치 사용
+        elif len(arr.shape) == 3:  # (C, H, W)
+            if arr.shape[0] in [1, 3, 4]:  # 채널이 첫 번째 차원
+                arr = arr.transpose(1, 2, 0)  # (H, W, C)
+        elif len(arr.shape) == 2:  # (H, W) - 그레이스케일
+            pass  # 그대로 유지
+        else:
+            raise ValueError(f"지원하지 않는 배열 차원: {original_shape}")
         
-        from PIL import Image
-        return Image.fromarray(arr)
+        # Step 3: 값 범위 정규화 (안전한 방식)
+        arr_max = np.max(arr) if arr.size > 0 else 1.0
+        arr_min = np.min(arr) if arr.size > 0 else 0.0
+        
+        if arr_max <= 1.0 and arr_min >= 0.0:
+            # [0, 1] 범위 -> [0, 255]
+            arr = (arr * 255).astype(np.uint8)
+        elif arr_max <= 255.0 and arr_min >= 0.0:
+            # 이미 [0, 255] 범위
+            arr = arr.astype(np.uint8)
+        else:
+            # 범위 정규화 필요
+            if arr_max != arr_min:
+                arr = ((arr - arr_min) / (arr_max - arr_min) * 255).astype(np.uint8)
+            else:
+                arr = np.zeros_like(arr, dtype=np.uint8)
+        
+        # Step 4: PIL 이미지 생성
+        if len(arr.shape) == 2:  # 그레이스케일
+            return Image.fromarray(arr, mode='L')
+        elif len(arr.shape) == 3:
+            if arr.shape[2] == 1:  # 단일 채널
+                return Image.fromarray(arr.squeeze(-1), mode='L')
+            elif arr.shape[2] == 3:  # RGB
+                return Image.fromarray(arr, mode='RGB')
+            elif arr.shape[2] == 4:  # RGBA
+                return Image.fromarray(arr, mode='RGBA')
+            else:
+                # 첫 3개 채널만 사용
+                return Image.fromarray(arr[:, :, :3], mode='RGB')
+        else:
+            raise ValueError(f"PIL 변환 불가능한 배열 형태: {arr.shape}")
+            
     except Exception as e:
-        logger.error(f"❌ 텐서 변환 실패: {e}")
-        return tensor
+        print(f"❌ 텐서 변환 실패: {e}")
+        return None
+
+# 🚀 conda + M3 Max 특화 최적화 버전
+def tensor_to_pil_conda_optimized(tensor: Union[torch.Tensor, np.ndarray],
+                                normalize_range: Tuple[float, float] = (0.0, 1.0),
+                                target_size: Optional[Tuple[int, int]] = None) -> Optional[Image.Image]:
+    """conda 환경 + M3 Max 최적화 텐서 변환"""
+    try:
+        # conda 환경 최적화 설정
+        if torch.is_tensor(tensor):
+            # M3 Max MPS 최적화 경로
+            if tensor.device.type == 'mps':
+                with torch.inference_mode():  # conda 환경 최적화
+                    # MPS 메모리 효율적 변환
+                    if tensor.dtype != torch.float32:
+                        tensor = tensor.float()
+                    
+                    # 차원 정규화
+                    if tensor.dim() == 4:
+                        tensor = tensor.squeeze(0)  # (B=1, C, H, W) -> (C, H, W)
+                    
+                    # CPU 이동 (MPS 안전)
+                    arr = tensor.detach().cpu().numpy()
+            else:
+                # CPU/CUDA 경로
+                arr = tensor.detach().cpu().numpy() if tensor.device.type != 'cpu' else tensor.numpy()
+        else:
+            arr = np.array(tensor)
+        
+        # 차원 및 값 정규화
+        arr = _normalize_array_dimensions(arr)
+        arr = _normalize_array_values(arr, normalize_range)
+        
+        # PIL 이미지 생성
+        pil_img = _array_to_pil(arr)
+        
+        # 크기 조정 (conda 환경 최적화)
+        if target_size and pil_img:
+            pil_img = pil_img.resize(target_size, Image.Resampling.LANCZOS)
+        
+        return pil_img
+        
+    except Exception as e:
+        print(f"⚠️ 최적화 변환 실패, 기본 변환 사용: {e}")
+        return tensor_to_pil_fixed(tensor)
+
+def _normalize_array_dimensions(arr: np.ndarray) -> np.ndarray:
+    """배열 차원 정규화"""
+    if arr.ndim == 4:  # (B, C, H, W)
+        arr = arr[0]
+    if arr.ndim == 3 and arr.shape[0] in [1, 3, 4]:  # (C, H, W)
+        arr = arr.transpose(1, 2, 0)
+    return arr
+
+def _normalize_array_values(arr: np.ndarray, 
+                          input_range: Tuple[float, float] = (0.0, 1.0)) -> np.ndarray:
+    """배열 값 정규화"""
+    arr_min, arr_max = np.min(arr), np.max(arr)
+    
+    if arr_max <= input_range[1] and arr_min >= input_range[0]:
+        # 예상 범위 내 -> [0, 255]
+        return (arr * 255).astype(np.uint8)
+    else:
+        # 범위 정규화 필요
+        if arr_max != arr_min:
+            arr_norm = (arr - arr_min) / (arr_max - arr_min)
+            return (arr_norm * 255).astype(np.uint8)
+        else:
+            return np.zeros_like(arr, dtype=np.uint8)
+
+def _array_to_pil(arr: np.ndarray) -> Optional[Image.Image]:
+    """NumPy 배열을 PIL 이미지로 변환"""
+    if arr.ndim == 2:
+        return Image.fromarray(arr, mode='L')
+    elif arr.ndim == 3:
+        if arr.shape[2] == 1:
+            return Image.fromarray(arr.squeeze(-1), mode='L')
+        elif arr.shape[2] == 3:
+            return Image.fromarray(arr, mode='RGB')
+        elif arr.shape[2] == 4:
+            return Image.fromarray(arr, mode='RGBA')
+    return None
 
 def pil_to_tensor(image, device="cpu"):
     """PIL 이미지를 텐서로 변환"""

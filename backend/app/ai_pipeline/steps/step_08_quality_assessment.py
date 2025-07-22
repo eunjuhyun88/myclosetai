@@ -55,7 +55,12 @@ from functools import lru_cache, wraps
 import numpy as np
 import base64
 import io
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 # 각 파일에 추가할 개선된 코드
 try:
     from app.core.gpu_config import safe_mps_empty_cache

@@ -45,7 +45,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from io import BytesIO
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 # ==============================================
 # 🔥 1. TYPE_CHECKING으로 순환참조 완전 방지
 # ==============================================

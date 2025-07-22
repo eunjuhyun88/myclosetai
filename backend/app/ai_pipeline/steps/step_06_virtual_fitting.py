@@ -39,7 +39,12 @@ from enum import Enum
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 
 # 각 파일에 추가할 개선된 코드
 try:

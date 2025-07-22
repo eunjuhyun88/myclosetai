@@ -39,7 +39,12 @@ from functools import lru_cache, wraps
 from contextlib import contextmanager
 import numpy as np
 import io
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 # ==============================================
 # 🔥 필수 패키지 검증 (conda 환경 우선)
 # ==============================================
@@ -853,33 +858,7 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger.debug(f"키포인트 필터링 실패: {e}")
             return keypoints
     
-    def create_pose_heatmap(self, keypoints: List[List[float]], image_size: Tuple[int, int], sigma: float = 3.0) -> Optional[np.ndarray]:
-        """포즈 히트맵 생성"""
-        try:
-            width, height = image_size
-            heatmap = np.zeros((self.num_keypoints, height, width), dtype=np.float32)
-            
-            for i, kp in enumerate(keypoints):
-                if len(kp) >= 3 and kp[2] > 0.1:  # 최소 신뢰도
-                    x, y, conf = int(kp[0]), int(kp[1]), kp[2]
-                    
-                    # 경계 체크
-                    if 0 <= x < width and 0 <= y < height:
-                        # 가우시안 히트맵 생성
-                        y_range = np.arange(height).reshape(-1, 1)
-                        x_range = np.arange(width).reshape(1, -1)
-                        
-                        # 가우시안 함수 적용
-                        gaussian = np.exp(-((x_range - x)**2 + (y_range - y)**2) / (2 * sigma**2))
-                        heatmap[i] = gaussian * conf
-            
-            return heatmap
-            
-        except Exception as e:
-            self.logger.error(f"포즈 히트맵 생성 실패: {e}")
-            return None
-
-
+    
     def interpolate_missing_keypoints(self, keypoints: List[List[float]]) -> List[List[float]]:
         """누락된 키포인트 보간"""
         try:
@@ -2091,28 +2070,62 @@ class PoseEstimationStep(BaseStepMixin):
             return {'success': False, 'error': str(e)}
     
     def _interpret_openpose_output(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
-        """OpenPose AI 출력 해석"""
+        """OpenPose AI 출력 해석 - 수정된 안전한 버전"""
         try:
             keypoints = []
             confidence_scores = []
             
             if torch.is_tensor(output):
-                output_np = output.cpu().numpy()
+                # ✅ 수정 1: 안전한 디바이스 이동
+                if output.device.type == 'mps':
+                    with torch.no_grad():
+                        output_np = output.detach().cpu().numpy()
+                else:
+                    output_np = output.detach().cpu().numpy()
                 
-                # 히트맵에서 키포인트 추출
+                # ✅ 수정 2: 차원 검사 추가
                 if len(output_np.shape) == 4:  # [B, C, H, W]
-                    output_np = output_np[0]  # 첫 번째 배치
+                    if output_np.shape[0] > 0:
+                        output_np = output_np[0]  # 첫 번째 배치
+                    else:
+                        return {
+                            'keypoints': [],
+                            'confidence_scores': [],
+                            'model_used': 'openpose_real_ai',
+                            'success': False,
+                            'ai_model_type': 'openpose',
+                            'error': 'Empty batch dimension'
+                        }
                 
-                for i in range(min(output_np.shape[0], 18)):  # 18개 키포인트
+                # ✅ 수정 3: 안전한 범위 검사
+                num_keypoints = min(output_np.shape[0], 18)
+                if num_keypoints <= 0:
+                    return {
+                        'keypoints': [],
+                        'confidence_scores': [],
+                        'model_used': 'openpose_real_ai', 
+                        'success': False,
+                        'ai_model_type': 'openpose',
+                        'error': 'No keypoints in output'
+                    }
+                
+                for i in range(num_keypoints):  # 18개 키포인트
                     heatmap = output_np[i]
                     
-                    # 최대값 위치 찾기
-                    y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+                    # ✅ 수정 4: 안전한 argmax 처리
+                    if heatmap.size == 0:
+                        keypoints.append([0.0, 0.0, 0.0])
+                        confidence_scores.append(0.0)
+                        continue
+                    
+                    # ✅ 수정 5: unravel_index 대신 divmod 사용
+                    max_idx = np.argmax(heatmap.flatten())  # 1차원으로 평면화
+                    y, x = np.divmod(max_idx, heatmap.shape[1])  # 안전한 2D 좌표 변환
                     confidence = float(heatmap[y, x])
                     
-                    # 이미지 크기로 스케일링
-                    x_scaled = x * image_size[0] / heatmap.shape[1]
-                    y_scaled = y * image_size[1] / heatmap.shape[0]
+                    # ✅ 수정 6: 안전한 스케일링 (0으로 나누기 방지)
+                    x_scaled = x * image_size[0] / max(heatmap.shape[1] - 1, 1)
+                    y_scaled = y * image_size[1] / max(heatmap.shape[0] - 1, 1)
                     
                     keypoints.append([float(x_scaled), float(y_scaled), confidence])
                     confidence_scores.append(confidence)
@@ -2124,11 +2137,185 @@ class PoseEstimationStep(BaseStepMixin):
                 'success': len(keypoints) > 0,
                 'ai_model_type': 'openpose'
             }
-            
+                
         except Exception as e:
             self.logger.error(f"❌ OpenPose AI 출력 해석 실패: {e}")
-            return {'success': False, 'error': str(e)}
+            return {
+                'keypoints': [],
+                'confidence_scores': [],
+                'model_used': 'openpose_real_ai',
+                'success': False, 
+                'ai_model_type': 'openpose',
+                'error': str(e)
+            }
+
+
+    # 🚀 conda + M3 Max 최적화 버전
+    def _interpret_openpose_output_optimized(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """OpenPose AI 출력 해석 - conda 환경 최적화"""
+        
+        try:
+            # conda 환경 감지
+            is_conda = hasattr(self, 'conda_optimized') and self.conda_optimized
+            is_m3_max = hasattr(self, 'is_m3_max') and self.is_m3_max
+            
+            # Step 1: 입력 및 환경 검증
+            if not self._validate_openpose_input(output, image_size):
+                return self._create_empty_result('validation_failed')
+            
+            # Step 2: 환경별 최적화 분기
+            if is_m3_max and output.device.type == 'mps':
+                return self._extract_keypoints_mps_optimized(output, image_size)
+            elif is_conda:
+                return self._extract_keypoints_conda_optimized(output, image_size)
+            else:
+                return self._extract_keypoints_standard(output, image_size)
+            
+        except Exception as e:
+            self.logger.error(f"❌ 최적화된 OpenPose 출력 해석 실패: {e}")
+            return self._create_empty_result('optimization_failed', str(e))
+
+    def _extract_keypoints_mps_optimized(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """M3 Max MPS 최적화 키포인트 추출"""
+        
+        with torch.inference_mode():  # MPS 최적화
+            # 차원 정규화
+            if output.dim() == 4:
+                output = output.squeeze(0)  # (B=1, C, H, W) -> (C, H, W)
+            
+            num_keypoints = min(output.size(0), 18)
+            height, width = output.size(-2), output.size(-1)
+            
+            keypoints = []
+            confidence_scores = []
+            
+            for i in range(num_keypoints):
+                heatmap = output[i]  # (H, W)
+                
+                # MPS 최적화된 argmax
+                flat_heatmap = heatmap.view(-1)
+                max_val, max_idx = torch.max(flat_heatmap, dim=0)
+                
+                # 2D 좌표 계산
+                y = max_idx // width
+                x = max_idx % width
+                
+                # 스케일링
+                x_scaled = float(x.item()) * image_size[0] / max(width - 1, 1)
+                y_scaled = float(y.item()) * image_size[1] / max(height - 1, 1)
+                confidence = float(max_val.item())
+                
+                keypoints.append([x_scaled, y_scaled, confidence])
+                confidence_scores.append(confidence)
+        
+        return self._create_openpose_result(keypoints, confidence_scores, image_size, (height, width))
+
+    def _extract_keypoints_conda_optimized(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """conda 환경 최적화 키포인트 추출"""
+        
+        # 안전한 CPU 이동
+        if output.device.type != 'cpu':
+            output_np = output.detach().cpu().numpy()
+        else:
+            output_np = output.detach().numpy()
+        
+        # 차원 정규화
+        if output_np.ndim == 4 and output_np.shape[0] > 0:
+            output_np = output_np[0]
+        
+        num_keypoints = min(output_np.shape[0], 18)
+        height, width = output_np.shape[-2], output_np.shape[-1]
+        
+        keypoints = []
+        confidence_scores = []
+        
+        # 벡터화된 처리 (conda 환경 최적화)
+        for i in range(num_keypoints):
+            heatmap = output_np[i]
+            
+            # 안전한 argmax
+            if heatmap.size > 0:
+                max_idx = np.argmax(heatmap.ravel())
+                y, x = np.divmod(max_idx, width)
+                confidence = float(heatmap.flat[max_idx])
+                
+                # 스케일링
+                x_scaled = float(x) * image_size[0] / max(width - 1, 1)
+                y_scaled = float(y) * image_size[1] / max(height - 1, 1)
+                
+                keypoints.append([x_scaled, y_scaled, confidence])
+                confidence_scores.append(confidence)
+            else:
+                keypoints.append([0.0, 0.0, 0.0])
+                confidence_scores.append(0.0)
+        
+        return self._create_openpose_result(keypoints, confidence_scores, image_size, (height, width))
+
+    def _extract_keypoints_standard(self, output: torch.Tensor, image_size: Tuple[int, int]) -> Dict[str, Any]:
+        """표준 키포인트 추출 (폴백용)"""
+        
+        # 기존 수정된 버전 사용
+        return self._interpret_openpose_output_fixed(output, image_size)
+
+# ==============================================
+# 🔧 헬퍼 함수들
+# ==============================================
+
+def _validate_openpose_input(self, output: torch.Tensor, image_size: Tuple[int, int]) -> bool:
+    """OpenPose 입력 검증"""
     
+    if not torch.is_tensor(output):
+        self.logger.error("❌ 출력이 텐서가 아님")
+        return False
+    
+    if output.numel() == 0:
+        self.logger.error("❌ 빈 텐서")
+        return False
+    
+    if len(image_size) != 2 or any(s <= 0 for s in image_size):
+        self.logger.error(f"❌ 잘못된 이미지 크기: {image_size}")
+        return False
+    
+    if output.dim() not in [2, 3, 4]:
+        self.logger.error(f"❌ 지원하지 않는 텐서 차원: {output.dim()}")
+        return False
+    
+    return True
+
+def _create_empty_result(self, reason: str, error_msg: str = "") -> Dict[str, Any]:
+    """빈 결과 생성"""
+    
+    return {
+        'keypoints': [],
+        'confidence_scores': [],
+        'model_used': 'openpose_real_ai',
+        'success': False,
+        'ai_model_type': 'openpose',
+        'error_reason': reason,
+        'error_message': error_msg,
+        'num_keypoints': 0
+    }
+
+def _create_openpose_result(self, keypoints: List[List[float]], 
+                          confidence_scores: List[float],
+                          image_size: Tuple[int, int],
+                          heatmap_size: Tuple[int, int]) -> Dict[str, Any]:
+    """OpenPose 결과 생성"""
+    
+    return {
+        'keypoints': keypoints,
+        'confidence_scores': confidence_scores,
+        'model_used': 'openpose_real_ai',
+        'success': len(keypoints) > 0,
+        'ai_model_type': 'openpose',
+        'num_keypoints': len(keypoints),
+        'image_size': image_size,
+        'heatmap_size': heatmap_size,
+        'valid_keypoints': sum(1 for conf in confidence_scores if conf > 0.1)
+    }
+
+
+
     def _interpret_yolo_output(self, results: Any, image_size: Tuple[int, int]) -> Dict[str, Any]:
         """YOLOv8 AI 출력 해석"""
         try:
@@ -3632,7 +3819,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 80)
     print("✨ 완전한 실제 AI 포즈 추정 시스템 테스트 완료")
     print("🔥 StepFactory → ModelLoader → BaseStepMixin → 의존성 주입 → 완성된 Step 구조")
-    print("🧠 체크포인트 → 실제 AI 모델 클래스 변환 완전 구현")
+    print("🧠 체크포인트 → ㅌ실제 AI 모델 클래스 변환 완전 구현")
     print("⚡ OpenPose, YOLOv8, 경량 모델 실제 추론 엔진")
     print("💉 완벽한 의존성 주입 패턴")
     print("🔒 Strict Mode + 완전한 분석 기능")

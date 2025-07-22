@@ -41,7 +41,12 @@ from functools import wraps
 from enum import Enum
 from io import BytesIO
 import base64
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 # ==============================================
 # 🔥 1. 환경 최적화 (M3 Max + conda)
 # ==============================================
@@ -255,12 +260,17 @@ class KeypointDetectionNet(nn.Module):
         
         # 회귀 결과와 결합
         final_keypoints = (keypoints + coords) / 2.0
-        
+        if heatmaps.dim() != 4:
+            raise ValueError(f"Expected 4D heatmaps (B, C, H, W), got {heatmaps.dim()}D")
+    
+        max_values, _ = heatmaps.max(dim=(2,3), keepdim=True)
+        confidence = torch.sigmoid(max_values.squeeze(-1).squeeze(-1))
+    
         return {
             'keypoints': final_keypoints,
             'heatmaps': heatmaps,
             'coords': coords,
-            'confidence': torch.sigmoid(heatmaps.max(dim=(2,3))[0])
+            'confidence': confidence
         }
     
     def _extract_keypoints_from_heatmap(self, heatmaps: torch.Tensor) -> torch.Tensor:

@@ -42,7 +42,12 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache, wraps
 from contextlib import asynccontextmanager
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 # ==============================================
 # 🔥 1. conda 환경 및 시스템 체크
 # ==============================================

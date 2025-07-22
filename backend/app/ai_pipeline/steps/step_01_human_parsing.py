@@ -38,6 +38,12 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from enum import Enum
 import platform
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 
 # ==============================================
 # 🔥 1. 필수 라이브러리 Import (안전한 방식)

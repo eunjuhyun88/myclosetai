@@ -47,7 +47,12 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 import base64
 from io import BytesIO
-
+# 파일 상단 import 섹션에
+from ..utils.pytorch_safe_ops import (
+    safe_max, safe_amax, safe_argmax,
+    extract_keypoints_from_heatmaps,
+    tensor_to_pil_conda_optimized
+)
 # ==============================================
 # 🔧 TYPE_CHECKING으로 순환참조 방지
 # ==============================================

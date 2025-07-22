@@ -342,17 +342,24 @@ class CondaEnvironmentManager:
         """M3 Max 감지"""
         try:
             import platform
-            if platform.processor() == 'arm' and platform.system() == 'Darwin':
-                # macOS ARM64
-                with open('/proc/cpuinfo', 'r') as f:
-                    cpu_info = f.read()
-                    return 'Apple M3 Max' in cpu_info
-        except:
+            system = platform.system()
+            machine = platform.machine()
+            
+            if system == 'Darwin' and machine == 'arm64':
+                # macOS ARM64 (M1/M2/M3)
+                try:
+                    import subprocess
+                    result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                                          capture_output=True, text=True)
+                    cpu_info = result.stdout.strip()
+                    return 'Apple' in cpu_info and ('M3' in cpu_info or 'M2' in cpu_info or 'M1' in cpu_info)
+                except:
+                    return True  # ARM64 macOS면 일단 Apple Silicon으로 간주
+                    
+        except Exception:
             pass
         
-        # 간단한 ARM64 macOS 감지
-        import os
-        return 'arm64' in str(os.uname()) if hasattr(os, 'uname') else False
+        return False
     
     def check_conda_environment(self) -> Dict[str, Any]:
         """conda 환경 체크"""
@@ -449,7 +456,7 @@ class MissingModelManager:
             state["recommendations"].append(f"패키지 설치 필요: {', '.join(state['conda_info']['missing_packages'])}")
         
         if state["missing_models"]:
-            total_missing_size = sum(MISSING_MODELS[m]["file_size_mb"] for m in state["missing_models"])
+            total_missing_size = sum(MISSING_MODELS[m].file_size_mb for m in state["missing_models"])
             state["recommendations"].append(f"모델 다운로드 필요: {len(state['missing_models'])}개 ({total_missing_size:.1f}MB)")
         
         return state
