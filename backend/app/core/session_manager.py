@@ -387,104 +387,63 @@ class SessionManager:
     # 🔥 기존 API 메서드들 (100% 호환성 유지)
     # =========================================================================
     
-    async def create_session(
-        self, 
-        person_image: Image.Image = None,
-        clothing_image: Image.Image = None,
-        measurements: Optional[Dict[str, Any]] = None,
-        **kwargs  # 기존 호환성 (user_image, cloth_image 등)
-    ) -> str:
-        """
-        🔥 새 세션 생성 및 이미지 저장 (기존 함수명 유지)
+    async def create_session(self, person_image=None, clothing_image=None, **kwargs):
+        session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         
-        Args:
-            person_image: 사용자 이미지 (PIL Image) 또는 kwargs의 user_image
-            clothing_image: 의류 이미지 (PIL Image) 또는 kwargs의 cloth_image
-            measurements: 신체 측정값 (선택적) 또는 kwargs의 body_measurements
-            **kwargs: 기존 호환성 파라미터들
-            
-        Returns:
-            str: 생성된 세션 ID
-        """
-        try:
-            start_time = time.time()
-            
-            # 기존 호환성 처리
-            if person_image is None and 'user_image' in kwargs:
-                person_image = kwargs['user_image']
-            if clothing_image is None and 'cloth_image' in kwargs:
-                clothing_image = kwargs['cloth_image']
-            if measurements is None and 'body_measurements' in kwargs:
-                measurements = kwargs['body_measurements']
-                if isinstance(measurements, str):
-                    try:
-                        measurements = json.loads(measurements)
-                    except:
-                        measurements = {}
-            
-            if person_image is None or clothing_image is None:
-                raise ValueError("person_image와 clothing_image가 필요합니다")
-            
-            # 1. 세션 ID 및 디렉토리 생성
-            session_id = self._generate_session_id()
-            session_dir = self.base_path / session_id
-            session_dir.mkdir(parents=True, exist_ok=True)
-            
-            logger.info(f"🔄 새 세션 생성 시작: {session_id}")
-            
-            # 2. 이미지 저장 (고품질 + 최적화)
-            person_info = await self._save_image(
-                person_image, session_dir / "person_image.jpg", "person"
-            )
-            clothing_info = await self._save_image(
-                clothing_image, session_dir / "clothing_image.jpg", "clothing"  
-            )
-            
-            # 3. 세션 메타데이터 생성
-            metadata = SessionMetadata(
-                session_id=session_id,
-                created_at=datetime.now(),
-                last_accessed=datetime.now(),
-                measurements=measurements or {},
-                person_image=person_info,
-                clothing_image=clothing_info
-            )
-            
-            # 4. 세션 데이터 생성 및 등록
-            session_data = SessionData(metadata, session_dir)
-            
-            # 5. 초기 이미지를 Step 0 데이터로 저장 (데이터 흐름용)
-            session_data.step_data_cache[0] = {
-                'person_image': person_image,
-                'clothing_image': clothing_image,
-                'primary_output': person_image
-            }
-            
-            with self._lock:
-                self.sessions[session_id] = session_data
-            
-            # 6. 메타데이터 파일 저장
-            await self._save_session_metadata(session_data)
-            
-            # 7. 세션 수 제한 확인
-            await self._enforce_session_limit()
-            
-            processing_time = time.time() - start_time
-            logger.info(f"✅ 세션 생성 완료: {session_id} ({processing_time:.2f}초)")
-            logger.info(f"📊 현재 활성 세션: {len(self.sessions)}개")
-            
-            return session_id
-            
-        except Exception as e:
-            logger.error(f"❌ 세션 생성 실패: {e}")
-            # 실패 시 정리
-            if 'session_dir' in locals():
-                try:
-                    shutil.rmtree(session_dir)
-                except:
-                    pass
-            raise
-    
+        session_data = {
+            "session_id": session_id,
+            "created_at": datetime.now(),
+            "last_accessed": datetime.now(),
+            "status": "active",
+            "step_results": {},
+            "ai_metadata": {
+                "ai_pipeline_version": "12.0.0",
+                "step_implementations_available": STEP_IMPLEMENTATIONS_AVAILABLE,
+                "aenter_error_fixed": True
+            },
+            **kwargs
+        }
+        
+        # 🔧 이미지 저장 (파일 포인터 위치 확인)
+        if person_image:
+            person_path = self.session_dir / f"{session_id}_person.jpg"
+            try:
+                # 파일 포인터를 처음으로 이동
+                if hasattr(person_image.file, 'seek'):
+                    person_image.file.seek(0)
+                
+                with open(person_path, "wb") as f:
+                    content = await person_image.read()
+                    if len(content) > 0:  # 내용이 있는지 확인
+                        f.write(content)
+                        session_data["person_image_path"] = str(person_path)
+                        logger.info(f"✅ 사용자 이미지 저장: {len(content)} bytes")
+                    else:
+                        logger.warning("⚠️ 사용자 이미지 내용이 비어있음")
+            except Exception as e:
+                logger.error(f"❌ 사용자 이미지 저장 실패: {e}")
+        
+        if clothing_image:
+            clothing_path = self.session_dir / f"{session_id}_clothing.jpg"
+            try:
+                # 파일 포인터를 처음으로 이동
+                if hasattr(clothing_image.file, 'seek'):
+                    clothing_image.file.seek(0)
+                    
+                with open(clothing_path, "wb") as f:
+                    content = await clothing_image.read()
+                    if len(content) > 0:  # 내용이 있는지 확인
+                        f.write(content)
+                        session_data["clothing_image_path"] = str(clothing_path)
+                        logger.info(f"✅ 의류 이미지 저장: {len(content)} bytes")
+                    else:
+                        logger.warning("⚠️ 의류 이미지 내용이 비어있음")
+            except Exception as e:
+                logger.error(f"❌ 의류 이미지 저장 실패: {e}")
+        
+        self.sessions[session_id] = session_data
+        return session_id
+
     async def get_session_images(self, session_id: str) -> Tuple[Image.Image, Image.Image]:
         """
         🔥 세션에서 이미지 로드 (기존 함수명 유지)

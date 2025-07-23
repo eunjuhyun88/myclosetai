@@ -507,10 +507,10 @@ class BaseRealStepImplementation(BaseStepMixin if BASE_STEP_MIXIN_AVAILABLE else
                 return True
                 
             if self.initializing:
-                # ✅ 무한루프 방지
+                # ✅ 무한루프 방지 (동기 버전)
                 wait_count = 0
                 while self.initializing and not self.is_initialized and wait_count < 50:
-                    time.sleep(0.1)  # 동기 sleep
+                    time.sleep(0.1)  # 동기 sleep으로 변경
                     wait_count += 1
                 return self.is_initialized
             
@@ -562,7 +562,7 @@ class BaseRealStepImplementation(BaseStepMixin if BASE_STEP_MIXIN_AVAILABLE else
             self.initializing = False
             self.logger.error(f"❌ {self.step_name} 실제 Step 구현체 초기화 예외: {e}")
             return False
-
+        
     def _load_real_step_class_sync(self):
         """실제 Step 클래스 로드 - 동기 버전"""
         try:

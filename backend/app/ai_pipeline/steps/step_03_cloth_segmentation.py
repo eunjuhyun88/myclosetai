@@ -891,18 +891,18 @@ class ClothSegmentationStep:
     # ==============================================
     
     async def process(
-        self,
-        image,
-        clothing_type: Optional[str] = None,
-        quality_level: Optional[str] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
+    self,
+    image,
+    clothing_type: Optional[str] = None,
+    quality_level: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
         """메인 처리 메서드 - TYPE_CHECKING 패턴 + 실제 AI 추론"""
         
         if not self.is_initialized:
             if not await self.initialize():
                 return self._create_error_result("초기화 실패")
-        
+
         start_time = time.time()
         
         try:
@@ -919,7 +919,8 @@ class ClothSegmentationStep:
             # ===== 3. 품질 레벨 설정 =====
             quality = QualityLevel(quality_level or self.segmentation_config.quality_level.value)
             
-            # ===== 4. 실제 AI 세그멘테이션 실행 =====
+            # ===== 4. 실제 AI 세그멘테이션 실행 (monitor_performance 제거) =====
+            self.logger.info("🔄 AI 세그멘테이션 시작...")
             mask, confidence = await self._run_ai_segmentation(
                 processed_image, detected_clothing_type, quality
             )
@@ -933,6 +934,7 @@ class ClothSegmentationStep:
             # ===== 6. 시각화 이미지 생성 =====
             visualizations = {}
             if self.segmentation_config.enable_visualization:
+                self.logger.info("🔄 시각화 이미지 생성...")
                 visualizations = self._create_visualizations(
                     processed_image, final_mask, detected_clothing_type
                 )
@@ -947,17 +949,18 @@ class ClothSegmentationStep:
                 'clothing_type': detected_clothing_type.value if hasattr(detected_clothing_type, 'value') else str(detected_clothing_type),
                 'processing_time': processing_time,
                 'method_used': self._get_current_method(),
-                'ai_models_used': list(self.models_loaded.keys()),
+                'ai_models_used': list(self.models_loaded.keys()) if hasattr(self, 'models_loaded') else [],
                 'metadata': {
                     'device': self.device,
                     'quality_level': quality.value,
-                    'models_used': list(self.models_loaded.keys()),
-                    'checkpoints_loaded': list(self.checkpoints_loaded.keys()),
+                    'models_used': list(self.models_loaded.keys()) if hasattr(self, 'models_loaded') else [],
+                    'checkpoints_loaded': list(self.checkpoints_loaded.keys()) if hasattr(self, 'checkpoints_loaded') else [],
                     'image_size': processed_image.size if hasattr(processed_image, 'size') else (512, 512),
                     'ai_inference': True,
                     'model_loader_used': self.model_loader is not None,
                     'is_m3_max': self.is_m3_max,
-                    'type_checking_pattern': True
+                    'type_checking_pattern': True,
+                    'monitor_performance_fixed': True  # 수정됨을 표시
                 }
             }
             

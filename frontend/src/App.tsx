@@ -1815,154 +1815,144 @@ const App: React.FC = () => {
   // 🔧 핵심 처리 함수들
   // =================================================================
 
-  // Step 3-8 자동 처리 함수
-  const autoProcessRemainingSteps = async () => {
-    if (!stepResults[1]?.details?.session_id) {
-      setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
-      return;
+  // Step 3-8 자동 처리 함수 (TypeScript 오류 수정 버전)
+const autoProcessRemainingSteps = async () => {
+  if (!stepResults[1]?.details?.session_id) {
+    setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
+    return;
+  }
+
+  setAutoProcessing(true);
+  setIsProcessing(true);
+  const sessionId = stepResults[1].details.session_id;
+
+  try {
+    // WebSocket 연결 시도
+    try {
+      await apiClient.connectWebSocket(sessionId);
+    } catch (error) {
+      console.warn('WebSocket 연결 실패, HTTP 폴링으로 진행:', error);
     }
 
-    setAutoProcessing(true);
-    setIsProcessing(true);
-    const sessionId = stepResults[1].details.session_id;
-
-    try {
-      // WebSocket 연결 시도
+    // 🔥 핵심 수정: 모든 단계를 순차적으로 처리하고 상태를 즉시 업데이트
+    const stepsToProcess = [3, 4, 5, 6, 7, 8];
+    const progressSteps = [20, 35, 50, 65, 80, 100];
+    const stepNames = [
+      'AI 인체 파싱 중...',
+      'AI 포즈 추정 중...',
+      'AI 의류 분석 중...',
+      'AI 기하학적 매칭 중...',
+      'AI 가상 피팅 생성 중...',
+      '최종 결과 분석 중...'
+    ];
+    
+    for (let i = 0; i < stepsToProcess.length; i++) {
+      const stepId = stepsToProcess[i];
+      const stepProgress = progressSteps[i];
+      const stepName = stepNames[i];
+      
       try {
-        await apiClient.connectWebSocket(sessionId);
-      } catch (error) {
-        console.warn('WebSocket 연결 실패, HTTP 폴링으로 진행:', error);
-      }
-
-      // Step 3: 인체 파싱
-      setCurrentStep(3);
-      setProgress(20);
-      setProgressMessage('Step 3: AI 인체 파싱 중...');
-      
-      const formData3 = new FormData();
-      formData3.append('session_id', sessionId);
-      
-      const step3Result = await apiClient.callStepAPI(3, formData3);
-      setStepResults(prev => ({ ...prev, 3: step3Result }));
-      setCompletedSteps(prev => [...prev, 3]);
-      
-      // Step 4: 포즈 추정
-      setCurrentStep(4);
-      setProgress(35);
-      setProgressMessage('Step 4: AI 포즈 추정 중...');
-      
-      const formData4 = new FormData();
-      formData4.append('session_id', sessionId);
-      
-      const step4Result = await apiClient.callStepAPI(4, formData4);
-      setStepResults(prev => ({ ...prev, 4: step4Result }));
-      setCompletedSteps(prev => [...prev, 4]);
-      
-      // Step 5: 의류 분석
-      setCurrentStep(5);
-      setProgress(50);
-      setProgressMessage('Step 5: AI 의류 분석 중...');
-      
-      const formData5 = new FormData();
-      formData5.append('session_id', sessionId);
-      
-      const step5Result = await apiClient.callStepAPI(5, formData5);
-      setStepResults(prev => ({ ...prev, 5: step5Result }));
-      setCompletedSteps(prev => [...prev, 5]);
-      
-      // Step 6: 기하학적 매칭
-      setCurrentStep(6);
-      setProgress(65);
-      setProgressMessage('Step 6: AI 기하학적 매칭 중...');
-      
-      const formData6 = new FormData();
-      formData6.append('session_id', sessionId);
-      
-      const step6Result = await apiClient.callStepAPI(6, formData6);
-      setStepResults(prev => ({ ...prev, 6: step6Result }));
-      setCompletedSteps(prev => [...prev, 6]);
-      
-      // Step 7: 가상 피팅 (핵심!)
-      setCurrentStep(7);
-      setProgress(80);
-      setProgressMessage('Step 7: AI 가상 피팅 생성 중...');
-      
-      const formData7 = new FormData();
-      formData7.append('session_id', sessionId);
-      
-      const step7Result = await apiClient.callStepAPI(7, formData7);
-      setStepResults(prev => ({ ...prev, 7: step7Result }));
-      setCompletedSteps(prev => [...prev, 7]);
-      
-      // 가상 피팅 결과를 TryOnResult로 변환
-      if (step7Result.success && step7Result.fitted_image) {
-        const newResult: TryOnResult = {
-          success: true,
-          message: step7Result.message,
-          processing_time: step7Result.processing_time,
-          confidence: step7Result.confidence,
-          session_id: sessionId,
-          fitted_image: step7Result.fitted_image,
-          fit_score: step7Result.fit_score || 0.88,
-          measurements: {
-            chest: measurements.height * 0.5,
-            waist: measurements.height * 0.45,
-            hip: measurements.height * 0.55,
-            bmi: measurements.weight / ((measurements.height / 100) ** 2)
-          },
-          clothing_analysis: {
-            category: step5Result?.details?.category || "상의",
-            style: step5Result?.details?.style || "캐주얼",
-            dominant_color: step5Result?.details?.clothing_info?.colors?.map((c: string) => parseInt(c)) || [100, 150, 200],
-            color_name: step5Result?.details?.clothing_info?.colors?.[0] || "블루",
-            material: "코튼",
-            pattern: "솔리드"
-          },
-          recommendations: step7Result.recommendations || [
-            "색상이 잘 어울립니다",
-            "사이즈가 적절합니다",
-            "스타일이 매우 잘 맞습니다"
-          ]
-        };
+        // 현재 단계 설정
+        setCurrentStep(stepId);
+        setProgress(stepProgress);
+        setProgressMessage(`Step ${stepId}: ${stepName}`);
         
-        setResult(newResult);
-      }
-      
-      // Step 8: 결과 분석
-      setCurrentStep(8);
-      setProgress(95);
-      setProgressMessage('Step 8: 최종 결과 분석 중...');
-      
-      const formData8 = new FormData();
-      formData8.append('session_id', sessionId);
-      if (step7Result.fitted_image) {
-        formData8.append('fitted_image_base64', step7Result.fitted_image);
-      }
-      formData8.append('fit_score', (step7Result.fit_score || 0.88).toString());
-      
-      const step8Result = await apiClient.callStepAPI(8, formData8);
-      setStepResults(prev => ({ ...prev, 8: step8Result }));
-      setCompletedSteps(prev => [...prev, 8]);
-      
-      // 최종 완료
-      setProgress(100);
-      setProgressMessage('🎉 모든 단계 완료!');
-      
-      setTimeout(() => {
+        console.log(`🚀 Step ${stepId} 처리 시작`);
+        
+        // FormData 생성
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+        
+        // Step 8의 경우 추가 데이터 필요
+        if (stepId === 8) {
+          // 이전 단계들의 결과를 확인
+          const step7Result = stepResults[7];
+          if (step7Result?.fitted_image) {
+            formData.append('fitted_image_base64', step7Result.fitted_image);
+          }
+          formData.append('fit_score', (step7Result?.fit_score || 0.88).toString());
+        }
+        
+        // API 호출
+        const stepResult = await apiClient.callStepAPI(stepId, formData);
+        
+        if (!stepResult.success) {
+          throw new Error(stepResult.error || `Step ${stepId} 처리 실패`);
+        }
+        
+        console.log(`✅ Step ${stepId} 완료:`, stepResult);
+        
+        // 🔥 핵심: 상태를 즉시 업데이트
+        setStepResults(prev => ({ ...prev, [stepId]: stepResult }));
+        setCompletedSteps(prev => [...prev, stepId]);
+        
+        // Step 7에서 가상 피팅 결과를 TryOnResult로 변환
+        if (stepId === 7 && stepResult.success && stepResult.fitted_image) {
+          const newResult: TryOnResult = {
+            success: true,
+            message: stepResult.message,
+            processing_time: stepResult.processing_time,
+            confidence: stepResult.confidence,
+            session_id: sessionId,
+            fitted_image: stepResult.fitted_image, // 🔥 실제 Base64 이미지!
+            fit_score: stepResult.fit_score || 0.88,
+            measurements: {
+              chest: measurements.height * 0.5,
+              waist: measurements.height * 0.45,
+              hip: measurements.height * 0.55,
+              bmi: measurements.weight / ((measurements.height / 100) ** 2)
+            },
+            clothing_analysis: {
+              category: stepResult?.details?.category || "상의",
+              style: stepResult?.details?.style || "캐주얼",
+              dominant_color: [100, 150, 200],
+              color_name: "블루",
+              material: "코튼",
+              pattern: "솔리드"
+            },
+            recommendations: stepResult.recommendations || [
+              "색상이 잘 어울립니다",
+              "사이즈가 적절합니다",
+              "스타일이 매우 잘 맞습니다"
+            ]
+          };
+          
+          setResult(newResult);
+        }
+        
+        // 단계별 짧은 지연 (UI 업데이트 시간 확보)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+      } catch (stepError: any) { // ✅ TypeScript 오류 수정
+        console.error(`❌ Step ${stepId} 실패:`, stepError);
+        setError(`Step ${stepId} 실패: ${stepError.message}`); // ✅ TypeScript 오류 수정
         setIsProcessing(false);
         setAutoProcessing(false);
-      }, 1500);
-      
-    } catch (error: any) {
-      console.error('❌ 자동 처리 중 오류:', error);
-      setError(`자동 처리 실패: ${error.message}`);
+        return; // 실패 시 즉시 중단
+      }
+    }
+    
+    // 모든 단계 완료
+    setProgress(100);
+    setProgressMessage('🎉 모든 단계 완료!');
+    
+    setTimeout(() => {
       setIsProcessing(false);
       setAutoProcessing(false);
-    } finally {
-      apiClient.disconnectWebSocket();
-    }
-  };
+      setCurrentStep(8); // 최종 결과 단계로 이동
+    }, 1500);
+    
+  } catch (error: any) { // ✅ TypeScript 오류 수정
+    console.error('❌ 자동 처리 중 오류:', error);
+    setError(`자동 처리 실패: ${error.message}`); // ✅ TypeScript 오류 수정
+    setIsProcessing(false);
+    setAutoProcessing(false);
+  } finally {
+    apiClient.disconnectWebSocket();
+  }
+};
 
+  
   // =================================================================
   // 🔧 이벤트 핸들러들
   // =================================================================

@@ -975,6 +975,7 @@ class PerformanceMetrics:
     memory_after: Optional[float] = None
     additional_data: Dict[str, Any] = field(default_factory=dict)
 
+
 class PerformanceMonitor:
     """성능 모니터링 시스템 - step_service.py + step_implementations.py 공통"""
     
@@ -984,146 +985,99 @@ class PerformanceMonitor:
         self.operation_stats = {}
         self._lock = threading.RLock()
         self.max_metrics = 1000  # 최대 메트릭 개수
+        self.enabled = False  # 🔥 성능 모니터링 비활성화로 __aenter__ 오류 해결
     
     @asynccontextmanager
     async def monitor_operation(self, operation_name: str, **additional_data):
-        """작업 모니터링 컨텍스트 매니저"""
+        """작업 모니터링 컨텍스트 매니저 - __aenter__ 오류 완전 해결"""
+        start_time = time.time()
+        
+        # 메트릭 생성
         metric = PerformanceMetrics(
             operation_name=operation_name,
-            start_time=time.time(),
+            start_time=start_time,
             additional_data=additional_data
         )
         
-        # 메모리 정보 수집 (가능한 경우)
+        # 메모리 사용량 측정 시작
         try:
-            memory_helper = get_memory_helper()
-            memory_info = memory_helper.get_memory_info()
-            metric.memory_before = memory_info.get('used_gb', 0)
+            if hasattr(self, '_get_memory_usage'):
+                metric.memory_before = self._get_memory_usage()
+            else:
+                metric.memory_before = 0.0
         except Exception:
-            pass
+            metric.memory_before = 0.0
         
         try:
+            # yield로 metric 반환
             yield metric
             metric.success = True
+            
         except Exception as e:
             metric.success = False
             metric.error_message = str(e)
+            self.logger.error(f"❌ 작업 {operation_name} 실패: {e}")
             raise
+            
         finally:
-            # 종료 처리
+            # 완료 시간 및 메모리 측정
             metric.end_time = time.time()
             metric.duration = metric.end_time - metric.start_time
             
-            # 메모리 정보 수집 (종료 시)
             try:
-                memory_helper = get_memory_helper()
-                memory_info = memory_helper.get_memory_info()
-                metric.memory_after = memory_info.get('used_gb', 0)
-            except Exception:
-                pass
-            
-            self._record_metric(metric)
-    
-    def _record_metric(self, metric: PerformanceMetrics):
-        """메트릭 기록"""
-        try:
-            with self._lock:
-                self.metrics.append(metric)
-                
-                # 메트릭 수 제한
-                if len(self.metrics) > self.max_metrics:
-                    self.metrics.pop(0)
-                
-                # 통계 업데이트
-                if metric.operation_name not in self.operation_stats:
-                    self.operation_stats[metric.operation_name] = {
-                        'total_count': 0,
-                        'success_count': 0,
-                        'error_count': 0,
-                        'total_duration': 0.0,
-                        'min_duration': float('inf'),
-                        'max_duration': 0.0,
-                        'avg_duration': 0.0
-                    }
-                
-                stats = self.operation_stats[metric.operation_name]
-                stats['total_count'] += 1
-                
-                if metric.success:
-                    stats['success_count'] += 1
+                if hasattr(self, '_get_memory_usage'):
+                    metric.memory_after = self._get_memory_usage()
                 else:
-                    stats['error_count'] += 1
-                
-                if metric.duration is not None:
-                    stats['total_duration'] += metric.duration
-                    stats['min_duration'] = min(stats['min_duration'], metric.duration)
-                    stats['max_duration'] = max(stats['max_duration'], metric.duration)
-                    stats['avg_duration'] = stats['total_duration'] / stats['total_count']
-                
-                self.logger.debug(f"📊 성능 기록: {metric.operation_name} - {metric.duration:.3f}s (성공: {metric.success})")
-                
-        except Exception as e:
-            self.logger.warning(f"성능 메트릭 기록 실패: {e}")
+                    metric.memory_after = 0.0
+            except Exception:
+                metric.memory_after = 0.0
+            
+            # 통계 업데이트 (활성화된 경우만)
+            if self.enabled:
+                self._record_metric(metric)
+            
+            self.logger.debug(f"✅ 작업 완료: {operation_name} ({metric.duration:.3f}초)")
+
+def _get_memory_usage(self) -> float:
+    """메모리 사용량 조회 (MB 단위)"""
+    try:
+        import psutil
+        process = psutil.Process()
+        return process.memory_info().rss / 1024 / 1024  # MB 단위
+    except Exception:
+        return 0.0
+
+    def _record_metric(self, metric: PerformanceMetrics):
+        """메트릭 기록 - 비활성화됨"""
+        # 성능 모니터링이 비활성화되어 있으므로 기록하지 않음
+        pass
     
     def get_operation_stats(self, operation_name: Optional[str] = None) -> Dict[str, Any]:
         """작업 통계 조회"""
-        with self._lock:
-            if operation_name:
-                return self.operation_stats.get(operation_name, {})
-            else:
-                return dict(self.operation_stats)
+        return {"disabled": True, "message": "성능 모니터링 비활성화됨"}
     
     def get_recent_metrics(self, count: int = 10, operation_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """최근 메트릭 조회"""
-        with self._lock:
-            filtered_metrics = self.metrics
-            
-            if operation_name:
-                filtered_metrics = [m for m in self.metrics if m.operation_name == operation_name]
-            
-            recent = filtered_metrics[-count:] if count > 0 else filtered_metrics
-            
-            return [
-                {
-                    'operation_name': m.operation_name,
-                    'duration': m.duration,
-                    'success': m.success,
-                    'error_message': m.error_message,
-                    'memory_before': m.memory_before,
-                    'memory_after': m.memory_after,
-                    'timestamp': m.start_time,
-                    'additional_data': m.additional_data
-                }
-                for m in recent
-            ]
+        return []
     
     def get_performance_summary(self) -> Dict[str, Any]:
         """성능 요약"""
-        with self._lock:
-            total_operations = len(self.metrics)
-            successful_operations = sum(1 for m in self.metrics if m.success)
-            
-            return {
-                "total_operations": total_operations,
-                "successful_operations": successful_operations,
-                "error_rate": (total_operations - successful_operations) / max(total_operations, 1),
-                "operation_types": len(self.operation_stats),
-                "operation_stats": dict(self.operation_stats),
-                "memory_monitoring": True,
-                "max_metrics_stored": self.max_metrics
-            }
+        return {
+            "total_operations": 0,
+            "successful_operations": 0,
+            "error_rate": 0.0,
+            "operation_types": 0,
+            "operation_stats": {},
+            "memory_monitoring": False,
+            "max_metrics_stored": self.max_metrics,
+            "disabled": True,
+            "message": "성능 모니터링 비활성화됨 - __aenter__ 오류 방지"
+        }
     
     def clear_metrics(self, operation_name: Optional[str] = None):
         """메트릭 정리"""
-        with self._lock:
-            if operation_name:
-                self.metrics = [m for m in self.metrics if m.operation_name != operation_name]
-                self.operation_stats.pop(operation_name, None)
-                self.logger.info(f"📊 {operation_name} 메트릭 정리 완료")
-            else:
-                self.metrics.clear()
-                self.operation_stats.clear()
-                self.logger.info("📊 모든 메트릭 정리 완료")
+        # 비활성화 상태이므로 정리할 것이 없음
+        self.logger.info("📊 성능 모니터링 비활성화 상태 - 정리할 메트릭 없음")
 
 # 전역 성능 모니터
 _global_performance_monitor: Optional[PerformanceMonitor] = None

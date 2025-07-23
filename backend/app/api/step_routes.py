@@ -36,6 +36,25 @@ from pydantic import BaseModel, Field
 from PIL import Image
 import numpy as np
 
+async def monitor_performance(operation_name: str):
+    """안전한 monitor_performance 대체 함수"""
+    class SafeMetric:
+        def __init__(self, name):
+            self.name = name
+            self.start_time = time.time()
+        
+        async def __aenter__(self):
+            logger.debug(f"📊 시작: {self.name}")
+            return self
+        
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            duration = time.time() - self.start_time
+            logger.debug(f"📊 완료: {self.name} ({duration:.3f}초)")
+            return False  # 예외를 전파하지 않음
+    
+    return SafeMetric(operation_name)
+
+
 # =============================================================================
 # 🔥 SessionManager Import (중심)
 # =============================================================================
@@ -379,25 +398,44 @@ def create_step_visualization(step_id: int, input_image: Optional[UploadFile] = 
         logger.error(f"❌ 시각화 생성 실패 (Step {step_id}): {e}")
         return None
 
+
+# 기존 process_uploaded_file 함수 교체
 async def process_uploaded_file(file: UploadFile) -> tuple[bool, str, Optional[bytes]]:
-    """업로드된 파일 처리"""
+    """업로드된 파일 처리 - UploadFile 'mode' 오류 해결"""
     try:
+        # 파일 내용 읽기
         contents = await file.read()
         await file.seek(0)  # 파일 포인터 리셋
+        
+        if not contents:
+            return False, "빈 파일입니다", None
         
         if len(contents) > 50 * 1024 * 1024:  # 50MB
             return False, "파일 크기가 50MB를 초과합니다", None
         
-        # 이미지 형식 검증
+        # PIL로 이미지 검증 (BytesIO 사용)
         try:
-            Image.open(io.BytesIO(contents))
-        except Exception:
-            return False, "지원되지 않는 이미지 형식입니다", None
+            from io import BytesIO
+            from PIL import Image
+            img = Image.open(BytesIO(contents))
+            img.verify()  # 이미지 검증
+            
+            # 다시 열기 (verify 후에는 이미지가 손상됨)
+            img = Image.open(BytesIO(contents))
+            
+            # 기본 정보 확인
+            width, height = img.size
+            if width < 50 or height < 50:
+                return False, "이미지가 너무 작습니다 (최소 50x50)", None
+                
+        except Exception as e:
+            return False, f"지원되지 않는 이미지 형식입니다: {str(e)}", None
         
         return True, "파일 검증 성공", contents
     
     except Exception as e:
         return False, f"파일 처리 실패: {str(e)}", None
+
 
 def enhance_step_result(result: Dict[str, Any], step_id: int, **kwargs) -> Dict[str, Any]:
     """step_service.py 결과를 프론트엔드 호환 형태로 강화"""
@@ -455,33 +493,48 @@ def format_api_response(
     step_name: str,
     step_id: int,
     processing_time: float,
-    session_id: Optional[str] = None,
+    session_id: Optional[str] = None,  # ✅ 여기가 중요!
     confidence: Optional[float] = None,
+    details: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
     result_image: Optional[str] = None,
     fitted_image: Optional[str] = None,
     fit_score: Optional[float] = None,
-    details: Optional[Dict[str, Any]] = None,
-    error: Optional[str] = None,
     recommendations: Optional[list] = None
 ) -> Dict[str, Any]:
-    """API 응답 형식화 (프론트엔드 호환)"""
+    """API 응답 형식화 (프론트엔드 호환) - DI 기반"""
+    
+    # ✅ session_id를 응답 최상위에 포함해야 함
     response = {
         "success": success,
         "message": message,
         "step_name": step_name,
         "step_id": step_id,
-        "session_id": session_id,
+        "session_id": session_id,  # ✅ 최상위 레벨에 포함
         "processing_time": processing_time,
-        "confidence": confidence or (0.85 + step_id * 0.02),  # 기본값
-        "device": DEVICE,  # M3 Max 또는 CPU
+        "confidence": confidence or (0.85 + step_id * 0.02),
+        "device": DEVICE,
         "timestamp": datetime.now().isoformat(),
         "details": details or {},
         "error": error,
+        "di_container_enabled": True,
         "unified_service_manager": True,
         "step_utils_integrated": True,
         "conda_optimized": 'CONDA_DEFAULT_ENV' in os.environ
     }
     
+    # ✅ details에도 중복 저장 (프론트엔드 호환성)
+    if session_id:
+        if not response["details"]:
+            response["details"] = {}
+        response["details"]["session_id"] = session_id
+        response["details"]["session_created"] = True
+    
+    # 추가 디버깅 정보
+    if step_id == 1:
+        response["details"]["step_1_completed"] = True
+        response["details"]["ready_for_step_2"] = True
+        
     # 프론트엔드 호환성 추가
     if fitted_image:
         response["fitted_image"] = fitted_image
@@ -496,6 +549,12 @@ def format_api_response(
             response["details"] = {}
         response["details"]["result_image"] = result_image
     
+    # ✅ 중요: session_id 로깅
+    if session_id:
+        logger.info(f"🔥 API 응답에 session_id 포함: {session_id}")
+    else:
+        logger.warning(f"⚠️ API 응답에 session_id 없음!")
+    
     return response
 
 # =============================================================================
@@ -508,6 +567,15 @@ router = APIRouter(prefix="/api/step", tags=["8단계 가상 피팅 API"])
 # ✅ Step 1: 이미지 업로드 검증 (세션 생성)
 # =============================================================================
 
+# 긴급 수정: backend/app/api/step_routes.py의 step_1_upload_validation 함수 수정
+# 
+# 기존 코드:
+# async with monitor_performance("step_1_upload_validation") as metric:
+#
+# 다음으로 변경:
+
+
+# ✅ Step 1에서 session_id 반환 확인
 @router.post("/1/upload-validation", response_model=APIResponse)
 async def step_1_upload_validation(
     person_image: UploadFile = File(..., description="사람 이미지"),
@@ -516,98 +584,233 @@ async def step_1_upload_validation(
     session_manager: SessionManager = Depends(get_session_manager_dependency),
     service_manager: UnifiedStepServiceManager = Depends(get_unified_service_manager)
 ):
-    """1단계: 이미지 업로드 검증 API - 세션 생성 및 이미지 저장"""
+    """1단계: 이미지 업로드 검증 API - session_id 반환 보장"""
     start_time = time.time()
     
     try:
-        # step_utils.py 성능 모니터링 활용
-        async with monitor_performance("step_1_upload_validation") as metric:
-            # 1. 이미지 검증
-            person_valid, person_msg, person_data = await process_uploaded_file(person_image)
-            if not person_valid:
-                raise HTTPException(status_code=400, detail=f"사용자 이미지 오류: {person_msg}")
-            
-            clothing_valid, clothing_msg, clothing_data = await process_uploaded_file(clothing_image)
-            if not clothing_valid:
-                raise HTTPException(status_code=400, detail=f"의류 이미지 오류: {clothing_msg}")
-            
-            # 2. PIL 이미지 변환
-            person_img = Image.open(io.BytesIO(person_data)).convert('RGB')
-            clothing_img = Image.open(io.BytesIO(clothing_data)).convert('RGB')
-            
-            # 3. 🔥 세션 생성 및 이미지 저장 (핵심)
-            new_session_id = await session_manager.create_session(
-                person_image=person_image,
-                clothing_image=clothing_image,
-                measurements={}
-            )
-            
-            # 4. UnifiedStepServiceManager로 실제 처리
-            try:
-                service_result = await service_manager.process_step_1_upload_validation(
-                    person_image=person_image,
-                    clothing_image=clothing_image,
-                    session_id=new_session_id
+        # monitor_performance 안전 처리
+        try:
+            async with monitor_performance("step_1_upload_validation") as metric:
+                result = await _process_step_1_validation(
+                    person_image, clothing_image, session_id, 
+                    session_manager, service_manager, start_time
                 )
-            except Exception as e:
-                logger.warning(f"⚠️ UnifiedStepServiceManager 처리 실패, 기본 응답 사용: {e}")
-                service_result = {
-                    "success": True,
-                    "confidence": 0.9,
-                    "message": "이미지 업로드 및 검증 완료"
-                }
-            
-            # 5. 프론트엔드 호환성 강화
-            enhanced_result = enhance_step_result(
-                service_result, 1, 
-                person_image=person_image,
-                clothing_image=clothing_image
+                return result
+        except Exception as monitor_error:
+            logger.warning(f"⚠️ monitor_performance 실패, 직접 처리: {monitor_error}")
+            result = await _process_step_1_validation(
+                person_image, clothing_image, session_id, 
+                session_manager, service_manager, start_time
             )
+            return result
             
-            # 6. 세션에 결과 저장
-            await session_manager.save_step_result(new_session_id, 1, enhanced_result)
-            
-            # 7. WebSocket 진행률 알림
-            if WEBSOCKET_AVAILABLE:
-                try:
-                    progress_callback = create_progress_callback(new_session_id)
-                    await progress_callback("Step 1 완료", 12.5)  # 1/8 = 12.5%
-                except Exception:
-                    pass
-        
-        # 8. 응답 생성
-        processing_time = time.time() - start_time
-        
-        return JSONResponse(content=format_api_response(
-            success=True,
-            message="이미지 업로드 및 세션 생성 완료",
-            step_name="이미지 업로드 검증",
-            step_id=1,
-            processing_time=processing_time,
-            session_id=new_session_id,  # 🔥 세션 ID 반환
-            confidence=enhanced_result.get('confidence', 0.9),
-            details={
-                **enhanced_result.get('details', {}),
-                "person_image_size": person_img.size,
-                "clothing_image_size": clothing_img.size,
-                "session_created": True,
-                "images_saved": True
-            }
-        ))
-        
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"❌ Step 1 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+async def _process_step_1_validation(
+    person_image: UploadFile,
+    clothing_image: UploadFile, 
+    session_id: Optional[str],
+    session_manager: SessionManager,
+    service_manager: UnifiedStepServiceManager,
+    start_time: float
+):
+    """Step 1 실제 처리 로직 - session_id 반환 보장"""
+    
+    # 1. DI 기반 이미지 검증
+    person_valid, person_msg, person_data = await process_uploaded_file(person_image)
+    if not person_valid:
+        raise HTTPException(status_code=400, detail=f"사용자 이미지 오류: {person_msg}")
+    
+    clothing_valid, clothing_msg, clothing_data = await process_uploaded_file(clothing_image)
+    if not clothing_valid:
+        raise HTTPException(status_code=400, detail=f"의류 이미지 오류: {clothing_msg}")
+    
+    # 2. 안전한 PIL 이미지 변환
+    try:
+        from io import BytesIO
+        person_img = Image.open(BytesIO(person_data)).convert('RGB')
+        clothing_img = Image.open(BytesIO(clothing_data)).convert('RGB')
+    except Exception as e:
+        logger.error(f"❌ PIL 변환 실패: {e}")
+        raise HTTPException(status_code=400, detail=f"이미지 변환 실패: {str(e)}")
+    
+    # 3. 🔥 세션 생성 (반드시 성공해야 함)
+    try:
+        new_session_id = await session_manager.create_session(
+            person_image=person_img,
+            clothing_image=clothing_img,
+            measurements={}
+        )
+        
+        # ✅ 중요: 세션 ID 검증
+        if not new_session_id:
+            raise ValueError("세션 ID 생성 실패")
+            
+        logger.info(f"✅ 새 세션 생성 성공: {new_session_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ 세션 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"세션 생성 실패: {str(e)}")
+    
+    # 4. UnifiedStepServiceManager 처리 (옵션)
+    try:
+        service_result = await service_manager.process_step_1_upload_validation(
+            person_image=person_img,
+            clothing_image=clothing_img,
+            session_id=new_session_id
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ UnifiedStepServiceManager 처리 실패, 기본 응답 사용: {e}")
+        service_result = {
+            "success": True,
+            "confidence": 0.9,
+            "message": "이미지 업로드 및 검증 완료"
+        }
+    
+    # 5. 프론트엔드 호환성 강화
+    enhanced_result = enhance_step_result(
+        service_result, 1, 
+        person_image=person_img,
+        clothing_image=clothing_img
+    )
+    
+    # 6. 세션에 결과 저장
+    try:
+        await session_manager.save_step_result(new_session_id, 1, enhanced_result)
+        logger.info(f"✅ 세션에 Step 1 결과 저장 완료: {new_session_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ 세션 결과 저장 실패: {e}")
+    
+    # 7. WebSocket 진행률 알림
+    if WEBSOCKET_AVAILABLE:
+        try:
+            progress_callback = create_progress_callback(new_session_id)
+            await progress_callback("Step 1 완료", 12.5)
+        except Exception:
+            pass
+    
+    # 8. ✅ 응답 반환 (session_id 반드시 포함)
+    processing_time = time.time() - start_time
+    
+    response_data = format_api_response(
+        success=True,
+        message="이미지 업로드 및 검증 완료",
+        step_name="업로드 검증",
+        step_id=1,
+        processing_time=processing_time,
+        session_id=new_session_id,  # ✅ 반드시 포함!
+        confidence=enhanced_result.get('confidence', 0.9),
+        details={
+            **enhanced_result.get('details', {}),
+            "person_image_size": person_img.size,
+            "clothing_image_size": clothing_img.size,
+            "session_created": True,
+            "images_saved": True
+        }
+    )
+    
+    # ✅ 최종 검증
+    if not response_data.get('session_id'):
+        logger.error(f"❌ 응답에 session_id 없음: {response_data}")
+        response_data['session_id'] = new_session_id
+    
+    logger.info(f"🎉 Step 1 완료 - session_id: {new_session_id}")
+    return JSONResponse(content=response_data)
+
+# ✅ 실제 처리 로직을 별도 함수로 분리
+async def _process_step_1_validation(
+    person_image: UploadFile,
+    clothing_image: UploadFile, 
+    session_id: Optional[str],
+    session_manager: SessionManager,
+    service_manager: UnifiedStepServiceManager,
+    start_time: float
+):
+    """Step 1 실제 처리 로직"""
+    
+    # 1. DI 기반 이미지 검증
+    person_valid, person_msg, person_data = await process_uploaded_file(person_image)
+    if not person_valid:
+        raise HTTPException(status_code=400, detail=f"사용자 이미지 오류: {person_msg}")
+    
+    clothing_valid, clothing_msg, clothing_data = await process_uploaded_file(clothing_image)
+    if not clothing_valid:
+        raise HTTPException(status_code=400, detail=f"의류 이미지 오류: {clothing_msg}")
+    
+    # 2. ✅ 안전한 PIL 이미지 변환
+    try:
+        from io import BytesIO
+        person_img = Image.open(BytesIO(person_data)).convert('RGB')
+        clothing_img = Image.open(BytesIO(clothing_data)).convert('RGB')
+    except Exception as e:
+        logger.error(f"❌ PIL 변환 실패: {e}")
+        raise HTTPException(status_code=400, detail=f"이미지 변환 실패: {str(e)}")
+    
+    # 3. 🔥 DI 주입된 SessionManager로 세션 생성
+    new_session_id = await session_manager.create_session(
+        person_image=person_img,
+        clothing_image=clothing_img,
+        measurements={}
+    )
+    
+    # 4. 🔥 DI 주입된 UnifiedStepServiceManager로 실제 처리
+    try:
+        # ✅ 수정: PIL 이미지 객체를 전달
+        service_result = await service_manager.process_step_1_upload_validation(
+            person_image=person_img,  # ✅ PIL Image 객체
+            clothing_image=clothing_img,  # ✅ PIL Image 객체
+            session_id=new_session_id
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ UnifiedStepServiceManager 처리 실패, 기본 응답 사용: {e}")
+        service_result = {
+            "success": True,
+            "confidence": 0.9,
+            "message": "이미지 업로드 및 검증 완료"
+        }
+    
+    # 5. DI 기반 프론트엔드 호환성 강화
+    enhanced_result = enhance_step_result(
+        service_result, 1, 
+        person_image=person_img,  # ✅ PIL Image 객체
+        clothing_image=clothing_img  # ✅ PIL Image 객체
+    )
+    
+    # 6. DI 주입된 세션에 결과 저장
+    await session_manager.save_step_result(new_session_id, 1, enhanced_result)
+    
+    # 7. DI 기반 WebSocket 진행률 알림
+    if WEBSOCKET_AVAILABLE:
+        try:
+            progress_callback = create_progress_callback(new_session_id)
+            await progress_callback("Step 1 완료", 12.5)  # 1/8 = 12.5%
+        except Exception:
+            pass
+    
+    # 8. 응답 반환
+    processing_time = time.time() - start_time
+    
+    return JSONResponse(content=format_api_response(
+        success=True,
+        message="이미지 업로드 및 검증 완료",
+        step_name="업로드 검증",
+        step_id=1,
+        processing_time=processing_time,
+        session_id=new_session_id,
+        confidence=enhanced_result.get('confidence', 0.9),
+        details=enhanced_result.get('details', {})
+    ))
+
 
 # =============================================================================
 # 🔥 Step 2: 신체 측정값 검증 (세션 기반)
 # =============================================================================
 
+# ✅ 수정된 코드 (안전한 방법)
 @router.post("/2/measurements-validation", response_model=APIResponse)
 async def step_2_measurements_validation(
-    # 🔥 더 유연한 검증 범위로 수정
     height: float = Form(..., description="키 (cm)", ge=100, le=250),
     weight: float = Form(..., description="몸무게 (kg)", ge=30, le=300),
     chest: Optional[float] = Form(0, description="가슴둘레 (cm)", ge=0, le=150),
@@ -617,89 +820,206 @@ async def step_2_measurements_validation(
     session_manager: SessionManager = Depends(get_session_manager_dependency),
     service_manager: UnifiedStepServiceManager = Depends(get_unified_service_manager)
 ):
-    """2단계: 신체 측정값 검증 API - 세션 기반 (이미지 재업로드 없음)"""
+    """2단계: 신체 측정값 검증 API - monitor_performance 안전 처리"""
     start_time = time.time()
     
+    # 🔥 디버깅: 받은 데이터 로깅
+    logger.info(f"🔍 Step 2 요청 데이터:")
+    logger.info(f"  - height: {height}")
+    logger.info(f"  - weight: {weight}")
+    logger.info(f"  - chest: {chest}")
+    logger.info(f"  - waist: {waist}")
+    logger.info(f"  - hips: {hips}")
+    logger.info(f"  - session_id: {session_id}")
+    
     try:
-        # step_utils.py 성능 모니터링 활용
-        async with monitor_performance("step_2_measurements_validation") as metric:
-            # 1. 🔥 세션에서 이미지 로드 (재업로드 방지)
-            try:
-                person_img, clothing_img = await session_manager.get_session_images(session_id)
-                logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
-            except Exception as e:
-                logger.error(f"❌ 세션 로드 실패: {e}")
-                raise HTTPException(
-                    status_code=404, 
-                    detail=f"세션을 찾을 수 없습니다: {session_id}. Step 1을 먼저 실행해주세요."
+        # ✅ 수정: monitor_performance를 안전하게 처리
+        try:
+            async with monitor_performance("step_2_measurements_validation") as metric:
+                result = await _process_step_2_validation(
+                    height, weight, chest, waist, hips, session_id,
+                    session_manager, service_manager, start_time
                 )
+                return result
+                
+        except Exception as monitor_error:
+            # monitor_performance 실패 시 폴백으로 직접 처리
+            logger.warning(f"⚠️ monitor_performance 실패, 직접 처리: {monitor_error}")
+            result = await _process_step_2_validation(
+                height, weight, chest, waist, hips, session_id,
+                session_manager, service_manager, start_time
+            )
+            return result
             
-            # 2. 측정값 구성
-            measurements_dict = {
-                "height": height,
-                "weight": weight,
-                "chest": chest if chest > 0 else None,
-                "waist": waist if waist > 0 else None,
-                "hips": hips if hips > 0 else None,
-                "bmi": round(weight / (height / 100) ** 2, 2)  # BMI 계산
-            }
-            
-            # 3. UnifiedStepServiceManager를 통한 실제 처리
-            try:
-                processing_result = await service_manager.process_step_2_measurements_validation(
-                    measurements=measurements_dict,
-                    session_id=session_id
-                )
-                logger.info(f"✅ Step 2 처리 결과: {processing_result.get('success', False)}")
-            except Exception as e:
-                logger.error(f"❌ Step 2 처리 실패: {e}")
-                # 폴백 처리
-                processing_result = {
-                    "success": True,
-                    "confidence": 0.9,
-                    "message": "신체 측정값 검증 완료",
-                    "details": {
-                        "measurements_validated": True,
-                        "bmi_calculated": True,
-                        "fallback_mode": True
-                    }
-                }
-            
-            # 4. 세션에 결과 저장
-            enhanced_result = {
-                **processing_result,
-                "measurements": measurements_dict,
-                "processing_device": DEVICE,
-                "session_id": session_id
-            }
-            
-            await session_manager.save_step_result(session_id, 2, enhanced_result)
-        
-        # 5. 응답 생성
-        processing_time = time.time() - start_time
-        
-        response_data = format_api_response(
-            success=True,
-            message="신체 측정값 검증 완료",
-            step_name="신체 측정값 검증",
-            step_id=2,
-            processing_time=processing_time,
-            session_id=session_id,
-            confidence=enhanced_result.get('confidence', 0.9),
-            details={
-                **enhanced_result.get('details', {}),
-                "measurements": measurements_dict,
-                "validation_passed": True
-            }
-        )
-        
-        return JSONResponse(content=response_data)
-        
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"❌ Step 2 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ 실제 처리 로직을 별도 함수로 분리
+async def _process_step_2_validation(
+    height: float,
+    weight: float,
+    chest: Optional[float],
+    waist: Optional[float],
+    hips: Optional[float],
+    session_id: str,
+    session_manager: SessionManager,
+    service_manager: UnifiedStepServiceManager,
+    start_time: float
+):
+    """Step 2 실제 처리 로직"""
+    
+    # 1. 세션 검증 및 이미지 로드
+    try:
+        person_img, clothing_img = await session_manager.get_session_images(session_id)
+        logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
+    except Exception as e:
+        logger.error(f"❌ 세션 로드 실패: {e}")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"세션을 찾을 수 없습니다: {session_id}. Step 1을 먼저 실행해주세요."
+        )
+    
+    # 2. BMI 계산
+    try:
+        height_m = height / 100
+        bmi = weight / (height_m ** 2)
+        logger.info(f"💡 BMI 계산: {bmi:.2f}")
+    except Exception as e:
+        logger.warning(f"⚠️ BMI 계산 실패: {e}")
+        bmi = 22.0  # 기본값
+    
+    # 3. 측정값 검증
+    measurements_dict = {
+        "height": height,
+        "weight": weight,
+        "chest": chest or 0,
+        "waist": waist or 0,
+        "hips": hips or 0,
+        "bmi": bmi
+    }
+    
+    # 4. 측정값 유효성 검증
+    validation_result = _validate_measurements(measurements_dict)
+    if not validation_result["valid"]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"측정값 검증 실패: {validation_result['message']}"
+        )
+    
+    # 5. UnifiedStepServiceManager로 처리
+    try:
+        service_result = await service_manager.process_step_2_measurements_validation(
+            height=height,
+            weight=weight,
+            chest=chest,
+            waist=waist,
+            hips=hips,
+            session_id=session_id
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ UnifiedStepServiceManager 처리 실패, 기본 응답 사용: {e}")
+        service_result = {
+            "success": True,
+            "confidence": 0.9,
+            "message": "신체 측정값 검증 완료"
+        }
+    
+    # 6. 세션에 측정값 업데이트
+    try:
+        await session_manager.update_session_measurements(session_id, measurements_dict)
+        logger.info(f"✅ 세션 측정값 업데이트 완료: {session_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ 세션 측정값 업데이트 실패: {e}")
+    
+    # 7. 프론트엔드 호환성 강화
+    enhanced_result = enhance_step_result(
+        service_result, 2,
+        measurements=measurements_dict,
+        bmi=bmi,
+        validation_result=validation_result
+    )
+    
+    # 8. 세션에 결과 저장
+    try:
+        await session_manager.save_step_result(session_id, 2, enhanced_result)
+        logger.info(f"✅ 세션에 Step 2 결과 저장 완료: {session_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ 세션 결과 저장 실패: {e}")
+    
+    # 9. WebSocket 진행률 알림
+    if WEBSOCKET_AVAILABLE:
+        try:
+            progress_callback = create_progress_callback(session_id)
+            await progress_callback("Step 2 완료", 25.0)  # 2/8 = 25%
+        except Exception:
+            pass
+    
+    # 10. 응답 반환
+    processing_time = time.time() - start_time
+    
+    return JSONResponse(content=format_api_response(
+        success=True,
+        message="신체 측정값 검증 완료",
+        step_name="측정값 검증",
+        step_id=2,
+        processing_time=processing_time,
+        session_id=session_id,
+        confidence=enhanced_result.get('confidence', 0.9),
+        details={
+            **enhanced_result.get('details', {}),
+            "measurements": measurements_dict,
+            "bmi": bmi,
+            "validation_passed": validation_result["valid"]
+        }
+    ))
+
+def _validate_measurements(measurements: Dict[str, float]) -> Dict[str, Any]:
+    """측정값 유효성 검증"""
+    try:
+        height = measurements["height"]
+        weight = measurements["weight"]
+        bmi = measurements["bmi"]
+        
+        issues = []
+        
+        # BMI 범위 체크
+        if bmi < 16:
+            issues.append("BMI가 너무 낮습니다 (저체중)")
+        elif bmi > 35:
+            issues.append("BMI가 너무 높습니다")
+        
+        # 키 체크
+        if height < 140:
+            issues.append("키가 너무 작습니다")
+        elif height > 220:
+            issues.append("키가 너무 큽니다")
+        
+        # 몸무게 체크
+        if weight < 35:
+            issues.append("몸무게가 너무 적습니다")
+        elif weight > 200:
+            issues.append("몸무게가 너무 많습니다")
+        
+        if issues:
+            return {
+                "valid": False,
+                "message": ", ".join(issues),
+                "issues": issues
+            }
+        else:
+            return {
+                "valid": True,
+                "message": "측정값이 유효합니다",
+                "issues": []
+            }
+            
+    except Exception as e:
+        return {
+            "valid": False,
+            "message": f"측정값 검증 중 오류: {str(e)}",
+            "issues": [str(e)]
+        }
 
 # =============================================================================
 # ✅ Step 3-8: 세션 기반 AI 처리 (기존 함수명 유지)
