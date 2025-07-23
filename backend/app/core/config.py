@@ -684,9 +684,12 @@ class Settings(SafeConfigMixin):
         
         # CORS 설정
         self.cors_origins = [
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://127.0.0.1:3000'
+            "http://localhost:3000",
+            "http://localhost:5173",     # ← 이것 추가!
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080"
         ]
         
         # 파일 업로드 설정
