@@ -1,14 +1,21 @@
-# backend/app/__init__.py
+# ============================================================================
+# 🍎 MyCloset AI - 완전한 __init__.py 파일 시스템
+# ============================================================================
+# conda 환경 우선 + 순환참조 해결 + 역할별 분리 + 지연 로딩 패턴
+
+# ============================================================================
+# 📁 backend/app/__init__.py - 메인 패키지 초기화
+# ============================================================================
+
 """
-🍎 MyCloset AI 메인 애플리케이션 패키지 v6.0
+🍎 MyCloset AI 메인 애플리케이션 패키지 v7.0
 ==============================================
 
-✅ Python Path 자동 설정 (Import 오류 완전 해결)
-✅ conda 환경 우선 최적화 
+✅ conda 환경 우선 최적화
+✅ Python Path 자동 설정 (Import 오류 완전 해결) 
 ✅ M3 Max 128GB 메모리 완전 활용
-✅ 순환참조 완전 방지
+✅ 순환참조 완전 방지 (지연 로딩 패턴)
 ✅ 89.8GB AI 모델 경로 자동 설정
-✅ main.py 완벽 호환
 ✅ 레이어 아키텍처 지원 (API → Service → Pipeline → AI)
 ✅ 프로덕션 레벨 안정성
 ✅ 모든 하위 모듈 안전한 로딩
@@ -28,8 +35,8 @@ backend/                   ← 작업 디렉토리 (여기서 python app/main.py
 └── static/               ← 정적 파일 및 업로드
 
 작성자: MyCloset AI Team
-날짜: 2025-07-22
-버전: v6.0.0 (Complete Package Initialization)
+날짜: 2025-07-23
+버전: v7.0.0 (Complete Init System with Conda Priority)
 """
 
 import os
@@ -37,12 +44,41 @@ import sys
 import logging
 import platform
 import subprocess
+import threading
+import weakref
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 import warnings
 
 # =============================================================================
-# 🔥 Step 1: 패키지 경로 및 환경 자동 설정
+# 🔥 Step 1: conda 환경 우선 체크 및 설정
+# =============================================================================
+
+# conda 환경 감지
+CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
+CONDA_PREFIX = os.environ.get('CONDA_PREFIX', '')
+IS_CONDA = CONDA_ENV != 'none' or bool(CONDA_PREFIX)
+
+if IS_CONDA:
+    print(f"🐍 conda 환경 감지: {CONDA_ENV} at {CONDA_PREFIX}")
+    
+    # conda 우선 라이브러리 경로 설정
+    if CONDA_PREFIX:
+        python_version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        conda_site_packages = os.path.join(CONDA_PREFIX, 'lib', python_version, 'site-packages')
+        if os.path.exists(conda_site_packages) and conda_site_packages not in sys.path:
+            sys.path.insert(0, conda_site_packages)
+            print(f"✅ conda site-packages 경로 추가: {conda_site_packages}")
+    
+    # conda 환경 최적화 설정
+    os.environ.setdefault('OMP_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+    os.environ.setdefault('MKL_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+    os.environ.setdefault('NUMEXPR_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+else:
+    print("⚠️ conda 환경이 비활성화됨 - 'conda activate <환경명>' 권장")
+
+# =============================================================================
+# 🔥 Step 2: 패키지 경로 및 환경 자동 설정
 # =============================================================================
 
 # 현재 패키지의 절대 경로
@@ -52,9 +88,9 @@ _project_root = _backend_root.parent
 
 # Python Path 자동 설정 (Import 오류 해결)
 _paths_to_add = [
-    str(_backend_root),    # backend/ 경로 (가장 중요!)
-    str(_current_package_dir),  # backend/app/ 경로
-    str(_project_root),    # 프로젝트 루트 경로
+    str(_backend_root),           # backend/ 경로 (가장 중요!)
+    str(_current_package_dir),    # backend/app/ 경로
+    str(_project_root),           # 프로젝트 루트 경로
 ]
 
 for path in _paths_to_add:
@@ -66,146 +102,122 @@ os.environ.update({
     'PYTHONPATH': f"{_backend_root}:{os.environ.get('PYTHONPATH', '')}",
     'PROJECT_ROOT': str(_project_root),
     'BACKEND_ROOT': str(_backend_root),
-    'APP_ROOT': str(_current_package_dir)
+    'APP_ROOT': str(_current_package_dir),
+    'MYCLOSET_CONDA_ENV': CONDA_ENV if IS_CONDA else 'none'
 })
 
-# 작업 디렉토리를 backend로 설정 (중요!)
-try:
-    os.chdir(_backend_root)
-except OSError as e:
-    warnings.warn(f"작업 디렉토리 변경 실패: {e}")
-
-# =============================================================================
-# 🔥 Step 2: 시스템 환경 감지 및 최적화 설정
-# =============================================================================
-
-def _detect_system_environment() -> Dict[str, Any]:
-    """시스템 환경 자동 감지 (conda 환경 우선)"""
-    env_info = {
-        'platform': platform.system(),
-        'machine': platform.machine(),
-        'python_version': platform.python_version(),
-        'is_conda': False,
-        'conda_env': None,
-        'is_m3_max': False,
-        'device': 'cpu',
-        'memory_gb': 16.0,
-        'cpu_count': os.cpu_count() or 4
-    }
-    
+# 작업 디렉토리를 backend로 설정
+if Path.cwd() != _backend_root:
     try:
-        # conda 환경 감지
-        conda_env = os.environ.get('CONDA_DEFAULT_ENV')
-        conda_prefix = os.environ.get('CONDA_PREFIX')
-        if conda_env and conda_env != 'base':
-            env_info['is_conda'] = True
-            env_info['conda_env'] = conda_env
-        elif conda_prefix:
-            env_info['is_conda'] = True
-            env_info['conda_env'] = Path(conda_prefix).name
-        
-        # M3 Max 감지 (conda 환경에서 최적화)
-        if (env_info['platform'] == 'Darwin' and 
-            'arm64' in env_info['machine']):
-            try:
-                result = subprocess.run(
-                    ['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                    capture_output=True, text=True, timeout=3
-                )
-                if 'M3' in result.stdout:
-                    env_info['is_m3_max'] = True
-                    env_info['memory_gb'] = 128.0  # M3 Max Unified Memory
-                    env_info['device'] = 'mps'
-            except:
-                pass
-        
-        # 메모리 감지
-        try:
-            import psutil
-            env_info['memory_gb'] = round(psutil.virtual_memory().total / (1024**3))
-        except ImportError:
-            pass
-            
-        # PyTorch 디바이스 감지
-        try:
-            import torch
-            if torch.backends.mps.is_available():
-                env_info['device'] = 'mps'
-            elif torch.cuda.is_available():
-                env_info['device'] = 'cuda'
-        except ImportError:
-            pass
-            
+        os.chdir(_backend_root)
+        print(f"✅ 작업 디렉토리 설정: {_backend_root}")
     except Exception as e:
-        warnings.warn(f"시스템 환경 감지 중 오류: {e}")
-    
-    return env_info
-
-# 전역 시스템 정보
-SYSTEM_INFO = _detect_system_environment()
-
-# M3 Max 최적화 환경 변수 설정
-if SYSTEM_INFO['is_m3_max']:
-    os.environ.update({
-        'PYTORCH_ENABLE_MPS_FALLBACK': '1',
-        'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.0',
-        'OMP_NUM_THREADS': str(min(SYSTEM_INFO['cpu_count'] * 2, 16)),
-        'DEVICE': 'mps'
-    })
+        warnings.warn(f"작업 디렉토리 설정 실패: {e}")
 
 # =============================================================================
-# 🔥 Step 3: AI 모델 경로 자동 설정 (89.8GB 모델)
+# 🔥 Step 3: 시스템 정보 수집 (conda 환경 최적화)
 # =============================================================================
 
-def _setup_ai_model_paths() -> Dict[str, Path]:
-    """AI 모델 경로 자동 설정 및 검증"""
-    ai_models_root = _backend_root / "ai_models"
-    
-    model_paths = {
-        'ai_models_root': ai_models_root,
-        'step_01_human_parsing': ai_models_root / "step_01_human_parsing",
-        'step_02_pose_estimation': ai_models_root / "step_02_pose_estimation", 
-        'step_03_cloth_segmentation': ai_models_root / "step_03_cloth_segmentation",
-        'step_04_geometric_matching': ai_models_root / "step_04_geometric_matching",
-        'step_05_cloth_warping': ai_models_root / "step_05_cloth_warping",
-        'step_06_virtual_fitting': ai_models_root / "step_06_virtual_fitting",
-        'step_07_post_processing': ai_models_root / "step_07_post_processing",
-        'step_08_quality_assessment': ai_models_root / "step_08_quality_assessment",
-        'checkpoints': ai_models_root / "checkpoints",
-        'cache': ai_models_root / "cache",
-        'huggingface_cache': ai_models_root / "huggingface_cache"
-    }
-    
-    # 환경 변수로 경로 설정
-    for name, path in model_paths.items():
-        env_name = f"AI_MODEL_{name.upper()}_PATH"
-        os.environ[env_name] = str(path)
-    
-    return model_paths
+def _detect_m3_max() -> bool:
+    """M3 Max 칩 감지"""
+    try:
+        if platform.system() == 'Darwin':
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                capture_output=True, text=True, timeout=5
+            )
+            chip_info = result.stdout.strip()
+            return 'M3' in chip_info and ('Max' in chip_info or 'Pro' in chip_info)
+    except Exception:
+        pass
+    return False
 
-AI_MODEL_PATHS = _setup_ai_model_paths()
+def _get_memory_gb() -> float:
+    """메모리 용량 감지"""
+    try:
+        if platform.system() == 'Darwin':
+            result = subprocess.run(
+                ['sysctl', '-n', 'hw.memsize'],
+                capture_output=True, text=True, timeout=5
+            )
+            return int(result.stdout.strip()) / (1024**3)
+        else:
+            try:
+                import psutil
+                return psutil.virtual_memory().total / (1024**3)
+            except ImportError:
+                return 16.0
+    except Exception:
+        return 16.0
+
+def _detect_device() -> str:
+    """최적 디바이스 감지 (conda 환경 우선)"""
+    try:
+        # conda PyTorch 체크
+        import torch
+        
+        # M3 Max MPS 우선
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            # conda 환경에서 MPS 최적화 설정
+            if IS_CONDA:
+                os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+                os.environ.setdefault('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.0')
+            return 'mps'
+        elif torch.cuda.is_available():
+            return 'cuda'
+        else:
+            return 'cpu'
+    except ImportError:
+        return 'cpu'
+
+# 시스템 정보 수집
+SYSTEM_INFO = {
+    'python_version': platform.python_version(),
+    'platform': platform.platform(),
+    'architecture': platform.architecture()[0],
+    'cpu_count': os.cpu_count(),
+    'memory_gb': _get_memory_gb(),
+    'is_m3_max': _detect_m3_max(),
+    'device': _detect_device(),
+    'is_conda': IS_CONDA,
+    'conda_env': CONDA_ENV,
+    'conda_prefix': CONDA_PREFIX,
+    'backend_root': str(_backend_root),
+    'app_root': str(_current_package_dir)
+}
+
+# AI 모델 경로 설정
+AI_MODEL_PATHS = {
+    'ai_models_root': _backend_root / 'ai_models',
+    'checkpoints': _backend_root / 'ai_models' / 'checkpoints',
+    'configs': _backend_root / 'ai_models' / 'configs',
+    'weights': _backend_root / 'ai_models' / 'weights'
+}
+
+# AI 모델 환경 변수 설정
+os.environ.setdefault("MYCLOSET_AI_MODELS_PATH", str(AI_MODEL_PATHS['ai_models_root']))
 
 # =============================================================================
-# 🔥 Step 4: 로깅 시스템 설정
+# 🔥 Step 4: 로깅 시스템 설정 (conda 환경 최적화)
 # =============================================================================
 
 def _setup_logging():
-    """패키지 전체 로깅 시스템 설정"""
-    # 로그 디렉토리 생성
-    log_dir = _backend_root / "logs"
-    log_dir.mkdir(exist_ok=True)
+    """로깅 시스템 초기화"""
+    logger = logging.getLogger('mycloset_ai')
     
-    # 로거 설정
-    logger = logging.getLogger("app")
-    logger.setLevel(logging.INFO)
-    
-    # 이미 핸들러가 있으면 스킵
     if logger.handlers:
         return logger
     
-    # 포매터 설정
+    logger.setLevel(logging.INFO)
+    
+    # 로그 디렉토리
+    log_dir = _backend_root / 'logs'
+    log_dir.mkdir(exist_ok=True)
+    
+    # 포맷터 (conda 환경 정보 포함)
+    conda_info = f"conda:{CONDA_ENV}" if IS_CONDA else "pip"
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        f'%(asctime)s - {conda_info} - %(name)s - %(levelname)s - %(message)s'
     )
     
     # 콘솔 핸들러
@@ -214,7 +226,7 @@ def _setup_logging():
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
-    # 파일 핸들러 (회전 로그) - 수정된 import 방식
+    # 파일 핸들러 (선택적)
     try:
         from logging.handlers import RotatingFileHandler
         file_handler = RotatingFileHandler(
@@ -234,12 +246,112 @@ def _setup_logging():
 logger = _setup_logging()
 
 # =============================================================================
-# 🔥 Step 5: 패키지 메타데이터 및 정보
+# 🔥 Step 5: 지연 로딩 시스템 (순환참조 방지)
 # =============================================================================
 
-__version__ = "6.0.0"
+class LazyLoader:
+    """지연 로딩 헬퍼 클래스 - 순환참조 완전 방지"""
+    
+    def __init__(self):
+        self._cache = {}
+        self._loading = set()
+        self._lock = threading.RLock()
+    
+    def load_module(self, module_name: str, package: str = None):
+        """모듈 지연 로딩"""
+        cache_key = f"{package}.{module_name}" if package else module_name
+        
+        with self._lock:
+            # 캐시에서 확인
+            if cache_key in self._cache:
+                return self._cache[cache_key]
+            
+            # 순환 로딩 방지
+            if cache_key in self._loading:
+                logger.warning(f"순환참조 감지: {cache_key}")
+                return None
+            
+            self._loading.add(cache_key)
+            
+            try:
+                import importlib
+                full_module_name = f"{package}.{module_name}" if package else module_name
+                module = importlib.import_module(full_module_name)
+                self._cache[cache_key] = module
+                logger.debug(f"✅ 지연 로딩 성공: {cache_key}")
+                return module
+                
+            except ImportError as e:
+                logger.debug(f"⚠️ 지연 로딩 실패: {cache_key} - {e}")
+                self._cache[cache_key] = None
+                return None
+            
+            except Exception as e:
+                logger.error(f"❌ 지연 로딩 오류: {cache_key} - {e}")
+                self._cache[cache_key] = None
+                return None
+            
+            finally:
+                self._loading.discard(cache_key)
+    
+    def get_class(self, module_name: str, class_name: str, package: str = None):
+        """클래스 지연 로딩"""
+        module = self.load_module(module_name, package)
+        if module:
+            return getattr(module, class_name, None)
+        return None
+
+# 전역 지연 로더
+_lazy_loader = LazyLoader()
+
+# =============================================================================
+# 🔥 Step 6: 핵심 모듈 지연 로딩 (순환참조 방지)
+# =============================================================================
+
+def get_config():
+    """Config 모듈 지연 로딩"""
+    return _lazy_loader.load_module('config', 'app.core')
+
+def get_gpu_config():
+    """GPU Config 모듈 지연 로딩"""
+    return _lazy_loader.load_module('gpu_config', 'app.core')
+
+def get_session_manager():
+    """Session Manager 모듈 지연 로딩"""
+    return _lazy_loader.load_module('session_manager', 'app.core')
+
+def get_model_loader():
+    """Model Loader 모듈 지연 로딩"""
+    return _lazy_loader.load_module('model_loader', 'app.ai_pipeline.utils')
+
+def get_pipeline_manager():
+    """Pipeline Manager 모듈 지연 로딩"""
+    return _lazy_loader.load_module('pipeline_manager', 'app.ai_pipeline')
+
+def get_file_manager():
+    """File Manager 모듈 지연 로딩"""
+    return _lazy_loader.load_module('file_manager', 'app.utils')
+
+def get_image_utils():
+    """Image Utils 모듈 지연 로딩"""
+    return _lazy_loader.load_module('image_utils', 'app.utils')
+
+# 지연 로딩 편의 함수들
+def safe_import(module_name: str, package: str = None):
+    """안전한 모듈 import (지연 로딩)"""
+    return _lazy_loader.load_module(module_name, package)
+
+def safe_get_class(module_name: str, class_name: str, package: str = None):
+    """안전한 클래스 import (지연 로딩)"""
+    return _lazy_loader.get_class(module_name, class_name, package)
+
+# =============================================================================
+# 🔥 Step 7: 패키지 메타데이터 및 정보
+# =============================================================================
+
+__version__ = "7.0.0"
 __author__ = "MyCloset AI Team"
-__description__ = "AI-powered Virtual Try-On Platform"
+__description__ = "AI-powered Virtual Try-On Platform with Conda Priority"
 __license__ = "Proprietary"
 
 # 패키지 정보
@@ -252,6 +364,7 @@ PACKAGE_INFO = {
     'app_root': str(_current_package_dir),
     'python_version': SYSTEM_INFO['python_version'],
     'conda_env': SYSTEM_INFO['conda_env'],
+    'is_conda': SYSTEM_INFO['is_conda'],
     'is_m3_max': SYSTEM_INFO['is_m3_max'],
     'device': SYSTEM_INFO['device'],
     'memory_gb': SYSTEM_INFO['memory_gb'],
@@ -259,33 +372,7 @@ PACKAGE_INFO = {
 }
 
 # =============================================================================
-# 🔥 Step 6: 핵심 모듈 안전한 로딩 (순환참조 방지)
-# =============================================================================
-
-def _safe_import(module_name: str, package: str = None):
-    """안전한 모듈 import (오류 시 로그만 기록)"""
-    try:
-        if package:
-            module = __import__(f"{package}.{module_name}", fromlist=[module_name])
-        else:
-            module = __import__(module_name)
-        return module
-    except ImportError as e:
-        logger.warning(f"⚠️ {module_name} import 실패: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"❌ {module_name} import 오류: {e}")
-        return None
-
-# 핵심 모듈들 미리 로드 시도 (실패해도 계속 진행)
-_core_modules = {
-    'config': _safe_import('config', 'app.core'),
-    'gpu_config': _safe_import('gpu_config', 'app.core'),
-    'session_manager': _safe_import('session_manager', 'app.core'),
-}
-
-# =============================================================================
-# 🔥 Step 7: 유틸리티 함수들
+# 🔥 Step 8: 유틸리티 함수들
 # =============================================================================
 
 def get_package_info() -> Dict[str, Any]:
@@ -322,7 +409,7 @@ def validate_environment() -> Dict[str, Any]:
         'conda_env_name': SYSTEM_INFO['conda_env'],
         'device_available': SYSTEM_INFO['device'] != 'cpu',
         'memory_sufficient': SYSTEM_INFO['memory_gb'] >= 8.0,
-        'core_modules_loaded': sum(1 for m in _core_modules.values() if m is not None)
+        'lazy_loader_ready': _lazy_loader is not None
     }
     
     validation['overall_status'] = all([
@@ -334,50 +421,48 @@ def validate_environment() -> Dict[str, Any]:
     return validation
 
 # =============================================================================
-# 🔥 Step 8: 패키지 초기화 완료 및 상태 출력
+# 🔥 Step 9: 초기화 상태 출력
 # =============================================================================
 
 def _print_initialization_status():
     """초기화 상태 출력 (conda 환경 우선)"""
     print(f"\n🍎 MyCloset AI 패키지 초기화 완료!")
-    print(f"📍 버전: {__version__}")
-    print(f"🐍 Python: {SYSTEM_INFO['python_version']}")
+    print(f"📦 버전: {__version__}")
+    print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'} ({CONDA_ENV})")
+    print(f"🍎 M3 Max: {'✅' if SYSTEM_INFO['is_m3_max'] else '❌'}")
+    print(f"🖥️  디바이스: {SYSTEM_INFO['device']}")
+    print(f"💾 메모리: {SYSTEM_INFO['memory_gb']:.1f}GB")
+    print(f"📁 AI 모델 경로: {AI_MODEL_PATHS['ai_models_root']}")
+    print(f"🔗 지연 로딩: ✅ 활성화")
+    print(f"🔧 Python Path: ✅ 설정 완료")
     
-    if SYSTEM_INFO['is_conda']:
-        print(f"🐍 Conda 환경: {SYSTEM_INFO['conda_env']} ✅")
+    if IS_CONDA:
+        print(f"🐍 conda 최적화: ✅ 활성화")
+        print(f"🐍 conda 경로: {CONDA_PREFIX}")
     else:
-        print(f"⚠️  일반 Python 환경 (conda 권장)")
-    
-    if SYSTEM_INFO['is_m3_max']:
-        print(f"🍎 M3 Max {SYSTEM_INFO['memory_gb']:.0f}GB: {SYSTEM_INFO['device']} ✅")
-    else:
-        print(f"💻 {SYSTEM_INFO['platform']}: {SYSTEM_INFO['device']}")
-    
-    print(f"📁 Backend: {_backend_root}")
-    print(f"🤖 AI Models: {'✅' if AI_MODEL_PATHS['ai_models_root'].exists() else '❌'}")
-    
-    validation = validate_environment()
-    if validation['overall_status']:
-        print(f"✅ 환경 검증 완료 - 서버 실행 가능!")
-    else:
-        print(f"⚠️  환경 검증 실패 - 설정을 확인하세요")
-    print()
+        print(f"⚠️  conda 비활성화 - 성능 최적화를 위해 conda 사용 권장")
 
-# 초기화 상태 출력 (개발 환경에서만)
-if os.getenv('DEBUG', '').lower() in ['true', '1'] or '--verbose' in sys.argv:
-    _print_initialization_status()
+# 초기화 상태 출력
+_print_initialization_status()
 
 # =============================================================================
-# 🔥 Step 9: __all__ 및 공개 API 정의
+# 🔥 Step 10: 패키지 Export
 # =============================================================================
 
 __all__ = [
-    # 메타데이터
+    # 🔥 버전 정보
     '__version__',
     '__author__',
     '__description__',
     
-    # 정보 함수들
+    # 📊 시스템 정보
+    'SYSTEM_INFO',
+    'PACKAGE_INFO',
+    'AI_MODEL_PATHS',
+    'IS_CONDA',
+    'CONDA_ENV',
+    
+    # 🔧 유틸리티 함수들
     'get_package_info',
     'get_system_info', 
     'get_ai_model_paths',
@@ -386,40 +471,19 @@ __all__ = [
     'get_device',
     'validate_environment',
     
-    # 상수들
-    'SYSTEM_INFO',
-    'AI_MODEL_PATHS',
-    'PACKAGE_INFO',
-    
-    # 경로들
-    '_backend_root',
-    '_current_package_dir',
-    '_project_root'
+    # 🚀 지연 로딩 함수들
+    'get_config',
+    'get_gpu_config',
+    'get_session_manager',
+    'get_model_loader',
+    'get_pipeline_manager',
+    'get_file_manager',
+    'get_image_utils',
+    'safe_import',
+    'safe_get_class',
 ]
 
-# =============================================================================
-# 🔥 최종: 초기화 성공 로그
-# =============================================================================
-
-logger.info(f"🎉 MyCloset AI 패키지 초기화 완료 (v{__version__})")
-logger.info(f"🐍 환경: {'Conda' if SYSTEM_INFO['is_conda'] else 'Python'} - {SYSTEM_INFO['conda_env'] or 'system'}")
-logger.info(f"🍎 M3 Max: {'활성' if SYSTEM_INFO['is_m3_max'] else '비활성'}")
-logger.info(f"🤖 AI 모델: {'사용가능' if AI_MODEL_PATHS['ai_models_root'].exists() else '없음'}")
-logger.info(f"📁 작업경로: {Path.cwd()}")
-
-# 환경 검증 및 경고
-validation = validate_environment()
-if not validation['overall_status']:
-    logger.warning("⚠️ 환경 검증 실패 - 일부 기능이 제한될 수 있습니다")
-    if not validation['python_path_ok']:
-        logger.warning("   - Python 경로 설정 문제")
-    if not validation['working_directory_ok']:
-        logger.warning("   - 작업 디렉토리 문제")
-    if not validation['memory_sufficient']:
-        logger.warning("   - 메모리 부족 (최소 8GB 권장)")
-
-# conda 환경 권장 메시지
-if not SYSTEM_INFO['is_conda']:
-    logger.info("💡 conda 환경 사용을 권장합니다: conda activate mycloset-ai")
-
-logger.info("=" * 60)
+logger.info("🎉 MyCloset AI 메인 패키지 초기화 완료!")
+logger.info(f"🐍 conda 환경: {IS_CONDA} ({CONDA_ENV})")
+logger.info(f"🍎 M3 Max 최적화: {SYSTEM_INFO['is_m3_max']}")
+logger.info(f"🔗 지연 로딩 시스템: 활성화")

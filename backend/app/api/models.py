@@ -465,7 +465,7 @@ class ModelsRouter(OptimalRouterConstructor):
                 model_loader = get_model_loader()
                 if model_loader:
                     # 캐시 확인
-                    if not force_reload and model_name in getattr(model_loader, '_loaded_models', {}):
+                    if not force_reload and model_name in getattr(model_loader, 'loaded_models', {}):
                         self._stats["cache_hits"] += 1
                         self._loading_status[model_name] = "loaded"
                         
