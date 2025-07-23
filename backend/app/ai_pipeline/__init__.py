@@ -1,457 +1,470 @@
-
-# ============================================================================
-# 📁 backend/app/ai_pipeline/__init__.py - AI 파이프라인 모듈
-# ============================================================================
-
+# backend/app/ai_pipeline/__init__.py
 """
-🤖 MyCloset AI Pipeline 모듈 - conda 환경 우선 AI 파이프라인
-===========================================================
+🍎 MyCloset AI 파이프라인 시스템 v7.0 - 단순화된 초기화
+================================================================
 
+✅ 단순하고 안정적인 초기화
+✅ 순환참조 완전 방지
 ✅ conda 환경 우선 최적화
-✅ 순환참조 완전 방지 (지연 로딩 패턴) 
-✅ 8단계 AI 파이프라인 통합 관리
-✅ Step 클래스들 안전한 로딩
-✅ ModelLoader, MemoryManager 통합
-✅ M3 Max 128GB 메모리 최적화
-✅ 동적 AI 모델 로딩
+✅ M3 Max 128GB 메모리 활용
+✅ 8단계 AI 파이프라인 지원
+✅ 지연 로딩으로 성능 최적화
+✅ 실패 허용적 설계 (Fault Tolerant)
 
-역할: AI 파이프라인의 전체 라이프사이클과 Step 관리를 담당
+8단계 AI 파이프라인:
+Step 1: HumanParsingStep (SCHP/Graphonomy)
+Step 2: PoseEstimationStep (OpenPose/YOLO)
+Step 3: ClothSegmentationStep (U2Net/SAM)
+Step 4: GeometricMatchingStep (TPS/GMM)
+Step 5: ClothWarpingStep (Advanced Warping)
+Step 6: VirtualFittingStep (OOTDiffusion/IDM-VTON)
+Step 7: PostProcessingStep (Enhancement/SR)
+Step 8: QualityAssessmentStep (CLIP/Quality)
+
+작성자: MyCloset AI Team
+날짜: 2025-07-23
+버전: v7.0.0 (Simplified Pipeline Initialization)
 """
 
-import os
-import sys
 import logging
-import threading
-import time
+import sys
+import warnings
+from typing import Dict, Any, Optional, List, Type
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Type, Union
+
+# 경고 무시
+warnings.filterwarnings('ignore')
+
+# =============================================================================
+# 🔥 기본 설정 및 로깅
+# =============================================================================
+
+logger = logging.getLogger(__name__)
 
 # 상위 패키지에서 시스템 정보 가져오기
 try:
-    from .. import SYSTEM_INFO, AI_MODEL_PATHS, IS_CONDA, CONDA_ENV, _lazy_loader
-except ImportError:
+    from .. import get_system_info, is_conda_environment, is_m3_max, get_device
+    SYSTEM_INFO = get_system_info()
+    IS_CONDA = is_conda_environment()
+    IS_M3_MAX = is_m3_max()
+    DEVICE = get_device()
+    logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공")
+except ImportError as e:
+    logger.warning(f"⚠️ 상위 패키지 로드 실패, 기본값 사용: {e}")
     SYSTEM_INFO = {'device': 'cpu', 'is_m3_max': False, 'memory_gb': 16.0}
-    AI_MODEL_PATHS = {'ai_models_root': Path(__file__).parent.parent.parent / 'ai_models'}
-    IS_CONDA = 'CONDA_DEFAULT_ENV' in os.environ
-    CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
-    _lazy_loader = None
-
-# 로거 설정
-logger = logging.getLogger(__name__)
+    IS_CONDA = False
+    IS_M3_MAX = False
+    DEVICE = 'cpu'
 
 # =============================================================================
-# 🔥 AI Pipeline 정보
+# 🔥 파이프라인 상수 정의
 # =============================================================================
 
-__version__ = "4.0.0"
-__author__ = "MyCloset AI Team"
-__description__ = "AI Pipeline System with Conda Priority and Lazy Loading"
-
-# Step 정보
-STEP_MODULES = {
-    'step_01': 'step_01_human_parsing',
-    'step_02': 'step_02_pose_estimation',
-    'step_03': 'step_03_cloth_segmentation',
-    'step_04': 'step_04_geometric_matching',
-    'step_05': 'step_05_cloth_warping',
-    'step_06': 'step_06_virtual_fitting',
-    'step_07': 'step_07_post_processing',
-    'step_08': 'step_08_quality_assessment'
+# 8단계 파이프라인 정의
+PIPELINE_STEPS = {
+    'step_01': {
+        'name': 'HumanParsingStep',
+        'description': '인체 파싱 - Human Body Parsing',
+        'models': ['SCHP', 'Graphonomy'],
+        'priority': 2
+    },
+    'step_02': {
+        'name': 'PoseEstimationStep', 
+        'description': '포즈 추정 - Pose Estimation',
+        'models': ['OpenPose', 'YOLO-Pose'],
+        'priority': 4
+    },
+    'step_03': {
+        'name': 'ClothSegmentationStep',
+        'description': '의류 분할 - Cloth Segmentation', 
+        'models': ['U2Net', 'SAM'],
+        'priority': 3
+    },
+    'step_04': {
+        'name': 'GeometricMatchingStep',
+        'description': '기하학적 매칭 - Geometric Matching',
+        'models': ['TPS', 'GMM'],
+        'priority': 7
+    },
+    'step_05': {
+        'name': 'ClothWarpingStep',
+        'description': '의류 변형 - Cloth Warping',
+        'models': ['Advanced Warping'],
+        'priority': 8
+    },
+    'step_06': {
+        'name': 'VirtualFittingStep',
+        'description': '가상 피팅 - Virtual Fitting',
+        'models': ['OOTDiffusion', 'IDM-VTON'],
+        'priority': 1  # 가장 중요
+    },
+    'step_07': {
+        'name': 'PostProcessingStep',
+        'description': '후처리 - Post Processing',
+        'models': ['RealESRGAN', 'Enhancement'],
+        'priority': 5
+    },
+    'step_08': {
+        'name': 'QualityAssessmentStep',
+        'description': '품질 평가 - Quality Assessment',
+        'models': ['CLIP', 'Quality Metrics'],
+        'priority': 6
+    }
 }
 
-STEP_CLASSES = {
-    'step_01': 'HumanParsingStep',
-    'step_02': 'PoseEstimationStep',
-    'step_03': 'ClothSegmentationStep',
-    'step_04': 'GeometricMatchingStep',
-    'step_05': 'ClothWarpingStep',
-    'step_06': 'VirtualFittingStep',
-    'step_07': 'PostProcessingStep',
-    'step_08': 'QualityAssessmentStep'
-}
+# conda 환경에서 로딩 우선순위
+LOADING_PRIORITY = sorted(PIPELINE_STEPS.keys(), 
+                         key=lambda x: PIPELINE_STEPS[x]['priority'])
 
 # =============================================================================
-# 🔥 지연 로딩 함수들 (순환참조 방지)
+# 🔥 지연 로딩 매니저 (단순화)
 # =============================================================================
 
-def get_pipeline_manager_class():
-    """PipelineManager 클래스 지연 로딩"""
-    if _lazy_loader:
-        return _lazy_loader.get_class('pipeline_manager', 'PipelineManager', 'app.ai_pipeline')
+class SimplePipelineLoader:
+    """단순화된 파이프라인 로더"""
     
-    try:
-        from .pipeline_manager import PipelineManager
-        return PipelineManager
-    except ImportError as e:
-        logger.warning(f"PipelineManager 클래스 로딩 실패: {e}")
-        return None
-
-def get_model_loader_class():
-    """ModelLoader 클래스 지연 로딩"""
-    if _lazy_loader:
-        return _lazy_loader.get_class('model_loader', 'ModelLoader', 'app.ai_pipeline.utils')
-    
-    try:
-        from .utils.model_loader import ModelLoader
-        return ModelLoader
-    except ImportError as e:
-        logger.warning(f"ModelLoader 클래스 로딩 실패: {e}")
-        return None
-
-def get_memory_manager_class():
-    """MemoryManager 클래스 지연 로딩"""
-    if _lazy_loader:
-        return _lazy_loader.get_class('memory_manager', 'MemoryManager', 'app.ai_pipeline.utils')
-    
-    try:
-        from .utils.memory_manager import MemoryManager
-        return MemoryManager
-    except ImportError as e:
-        logger.warning(f"MemoryManager 클래스 로딩 실패: {e}")
-        return None
-
-def get_step_factory_class():
-    """StepFactory 클래스 지연 로딩"""
-    if _lazy_loader:
-        return _lazy_loader.get_class('step_factory', 'StepFactory', 'app.ai_pipeline.factories')
-    
-    try:
-        from .factories.step_factory import StepFactory
-        return StepFactory
-    except ImportError as e:
-        logger.warning(f"StepFactory 클래스 로딩 실패: {e}")
-        return None
-
-# =============================================================================
-# 🔥 Step 클래스 지연 로딩 (순환참조 방지)
-# =============================================================================
-
-def safe_import_step(step_id: str) -> Optional[Type[Any]]:
-    """안전한 Step 클래스 import (지연 로딩)"""
-    try:
-        module_name = STEP_MODULES.get(step_id)
-        class_name = STEP_CLASSES.get(step_id)
+    def __init__(self):
+        self._loaded_modules = {}
+        self._loaded_classes = {}
+        self._failed_loads = set()
+        self.logger = logging.getLogger(f"{__name__}.SimplePipelineLoader")
         
-        if not module_name or not class_name:
-            logger.error(f"❌ 알 수 없는 Step ID: {step_id}")
-            return None
-        
-        if _lazy_loader:
-            return _lazy_loader.get_class(module_name, class_name, 'app.ai_pipeline.steps')
-        
-        # 직접 import (폴백)
-        try:
-            import importlib
-            full_module_name = f"app.ai_pipeline.steps.{module_name}"
-            module = importlib.import_module(full_module_name)
-            step_class = getattr(module, class_name, None)
+    def safe_import_step(self, step_id: str) -> Optional[Type]:
+        """안전한 Step 클래스 import"""
+        if step_id in self._loaded_classes:
+            return self._loaded_classes[step_id]
             
-            if step_class:
-                logger.debug(f"✅ {step_id} ({class_name}) import 성공")
-                return step_class
-            else:
-                logger.error(f"❌ {class_name} 클래스를 {module_name}에서 찾을 수 없음")
+        if step_id in self._failed_loads:
+            return None
+            
+        try:
+            step_info = PIPELINE_STEPS.get(step_id)
+            if not step_info:
+                self.logger.warning(f"⚠️ 알 수 없는 Step ID: {step_id}")
                 return None
                 
-        except ImportError as e:
-            logger.warning(f"❌ {step_id} import 실패: {e}")
-            return None
-        
-    except Exception as e:
-        logger.error(f"❌ {step_id} 예상치 못한 오류: {e}")
+            # 모듈 이름 생성
+            module_name = f"app.ai_pipeline.steps.{step_id}_{step_info['description'].split(' - ')[1].lower().replace(' ', '_')}"
+            class_name = step_info['name']
+            
+            # 동적 import 시도
+            import importlib
+            try:
+                module = importlib.import_module(module_name)
+                step_class = getattr(module, class_name, None)
+                
+                if step_class:
+                    self._loaded_classes[step_id] = step_class
+                    self.logger.info(f"✅ {step_id} ({class_name}) 로드 성공")
+                    return step_class
+                else:
+                    self.logger.warning(f"⚠️ {class_name} 클래스를 찾을 수 없음")
+                    
+            except ImportError as e:
+                self.logger.debug(f"📋 {step_id} 모듈 없음 (정상): {e}")
+                
+        except Exception as e:
+            self.logger.error(f"❌ {step_id} 로드 실패: {e}")
+            
+        # 실패 기록
+        self._failed_loads.add(step_id)
+        self._loaded_classes[step_id] = None
         return None
+        
+    def load_all_available_steps(self) -> Dict[str, Optional[Type]]:
+        """사용 가능한 모든 Step 로드"""
+        loaded_steps = {}
+        
+        # conda 환경이면 우선순위 순으로 로드
+        load_order = LOADING_PRIORITY if IS_CONDA else PIPELINE_STEPS.keys()
+        
+        for step_id in load_order:
+            step_class = self.safe_import_step(step_id)
+            loaded_steps[step_id] = step_class
+            
+        available_count = sum(1 for step in loaded_steps.values() if step is not None)
+        total_count = len(PIPELINE_STEPS)
+        
+        self.logger.info(f"📊 Step 로딩 완료: {available_count}/{total_count}개")
+        if IS_CONDA:
+            self.logger.info("🐍 conda 환경: 우선순위 기반 로딩 적용")
+            
+        return loaded_steps
+        
+    def get_step_info(self, step_id: str) -> Dict[str, Any]:
+        """Step 정보 반환"""
+        step_config = PIPELINE_STEPS.get(step_id, {})
+        step_class = self._loaded_classes.get(step_id)
+        
+        return {
+            'step_id': step_id,
+            'name': step_config.get('name', 'Unknown'),
+            'description': step_config.get('description', ''),
+            'models': step_config.get('models', []),
+            'priority': step_config.get('priority', 10),
+            'available': step_class is not None,
+            'loaded': step_class is not None,
+            'failed': step_id in self._failed_loads
+        }
 
-def load_all_steps() -> Dict[str, Optional[Type[Any]]]:
-    """모든 Step 클래스 지연 로딩"""
-    loaded_steps = {}
-    
-    for step_id in STEP_MODULES.keys():
-        step_class = safe_import_step(step_id)
-        loaded_steps[step_id] = step_class
-    
-    available_count = sum(1 for step in loaded_steps.values() if step is not None)
-    logger.info(f"✅ Step 로딩 완료: {available_count}/8개")
-    
-    return loaded_steps
+# 전역 로더 인스턴스
+_pipeline_loader = SimplePipelineLoader()
 
 # =============================================================================
-# 🔥 팩토리 함수들 (conda 환경 최적화)
+# 🔥 유틸리티 모듈 안전한 로딩
 # =============================================================================
 
-def create_pipeline_manager(**kwargs) -> Optional[Any]:
-    """PipelineManager 인스턴스 생성 (conda 환경 최적화)"""
-    PipelineManager = get_pipeline_manager_class()
-    if PipelineManager:
-        # conda 환경 설정 추가
-        pipeline_config = {
-            'device': SYSTEM_INFO.get('device', 'cpu'),
-            'is_m3_max': SYSTEM_INFO.get('is_m3_max', False),
-            'memory_gb': SYSTEM_INFO.get('memory_gb', 16.0),
-            'conda_optimized': IS_CONDA,
-            'conda_env': CONDA_ENV
-        }
-        pipeline_config.update(kwargs)
-        
-        try:
-            return PipelineManager(**pipeline_config)
-        except Exception as e:
-            logger.error(f"PipelineManager 생성 실패: {e}")
-            return None
-    return None
-
-def create_model_loader(**kwargs) -> Optional[Any]:
-    """ModelLoader 인스턴스 생성 (conda 환경 최적화)"""
-    ModelLoader = get_model_loader_class()
-    if ModelLoader:
-        # conda 환경 모델 로딩 설정
-        loader_config = {
-            'device': SYSTEM_INFO.get('device', 'cpu'),
-            'models_path': str(AI_MODEL_PATHS.get('ai_models_root', '.')),
-            'conda_optimized': IS_CONDA,
-            'memory_efficient': SYSTEM_INFO.get('is_m3_max', False)
-        }
-        loader_config.update(kwargs)
-        
-        try:
-            return ModelLoader(**loader_config)
-        except Exception as e:
-            logger.error(f"ModelLoader 생성 실패: {e}")
-            return None
-    return None
-
-def create_step_instance(step_name: Union[str, int], **kwargs) -> Optional[Any]:
-    """Step 인스턴스 생성 (conda 환경 최적화)"""
+def _safe_import_utils():
+    """유틸리티 모듈들 안전하게 import"""
+    utils_status = {
+        'model_loader': False,
+        'memory_manager': False,
+        'data_converter': False,
+        'model_interface': False
+    }
+    
     try:
-        if isinstance(step_name, int):
-            step_key = f"step_{step_name:02d}"
-        else:
-            step_key = step_name
+        from .utils import (
+            get_step_model_interface,
+            get_step_memory_manager, 
+            get_step_data_converter,
+            preprocess_image_for_step
+        )
+        utils_status.update({
+            'model_loader': True,
+            'memory_manager': True,
+            'data_converter': True,
+            'model_interface': True
+        })
+        logger.info("✅ 파이프라인 유틸리티 모듈 로드 성공")
         
-        step_class = safe_import_step(step_key)
-        if step_class is None:
-            logger.error(f"Step 클래스를 찾을 수 없음: {step_name}")
-            return None
+        # 전역에 추가
+        globals().update({
+            'get_step_model_interface': get_step_model_interface,
+            'get_step_memory_manager': get_step_memory_manager,
+            'get_step_data_converter': get_step_data_converter,
+            'preprocess_image_for_step': preprocess_image_for_step
+        })
         
-        # conda 환경 Step 설정
-        step_config = {
-            'device': SYSTEM_INFO.get('device', 'cpu'),
-            'is_m3_max': SYSTEM_INFO.get('is_m3_max', False),
-            'memory_gb': SYSTEM_INFO.get('memory_gb', 16.0),
-            'conda_optimized': IS_CONDA
-        }
-        step_config.update(kwargs)
+    except ImportError as e:
+        logger.warning(f"⚠️ 유틸리티 모듈 로드 실패: {e}")
         
-        return step_class(**step_config)
-        
-    except Exception as e:
-        logger.error(f"Step 인스턴스 생성 실패 {step_name}: {e}")
-        return None
+        # 폴백 함수들
+        def _fallback_function(name: str):
+            def fallback(*args, **kwargs):
+                logger.warning(f"⚠️ {name} 함수 사용 불가 (모듈 로드 실패)")
+                return None
+            return fallback
+            
+        globals().update({
+            'get_step_model_interface': _fallback_function('get_step_model_interface'),
+            'get_step_memory_manager': _fallback_function('get_step_memory_manager'),
+            'get_step_data_converter': _fallback_function('get_step_data_converter'),
+            'preprocess_image_for_step': _fallback_function('preprocess_image_for_step')
+        })
+    
+    return utils_status
+
+# 유틸리티 로딩
+UTILS_STATUS = _safe_import_utils()
 
 # =============================================================================
-# 🔥 전역 인스턴스 관리 (싱글톤 패턴)
-# =============================================================================
-
-_global_instances = {}
-_instance_lock = threading.RLock()
-
-def get_global_pipeline_manager():
-    """전역 PipelineManager 인스턴스 반환"""
-    with _instance_lock:
-        if 'pipeline_manager' not in _global_instances:
-            _global_instances['pipeline_manager'] = create_pipeline_manager()
-        return _global_instances['pipeline_manager']
-
-def get_global_model_loader():
-    """전역 ModelLoader 인스턴스 반환"""
-    with _instance_lock:
-        if 'model_loader' not in _global_instances:
-            _global_instances['model_loader'] = create_model_loader()
-        return _global_instances['model_loader']
-
-# =============================================================================
-# 🔥 파이프라인 상태 관리
+# 🔥 파이프라인 관리 함수들
 # =============================================================================
 
 def get_pipeline_status() -> Dict[str, Any]:
-    """파이프라인 시스템 상태 반환"""
-    loaded_steps = load_all_steps()
+    """파이프라인 전체 상태 반환"""
+    loaded_steps = _pipeline_loader.load_all_available_steps()
     available_steps = [k for k, v in loaded_steps.items() if v is not None]
     
     return {
-        'version': __version__,
         'system_info': SYSTEM_INFO,
-        'conda_environment': IS_CONDA,
-        'conda_env_name': CONDA_ENV,
-        'availability': {
-            'pipeline_manager': get_pipeline_manager_class() is not None,
-            'model_loader': get_model_loader_class() is not None,
-            'memory_manager': get_memory_manager_class() is not None,
-            'step_factory': get_step_factory_class() is not None,
-        },
-        'steps': {
-            'total_steps': len(STEP_MODULES),
-            'available_steps': len(available_steps),
-            'loaded_steps': available_steps,
-            'step_classes': {k: v is not None for k, v in loaded_steps.items()}
-        },
-        'ai_models': {
-            'models_path': str(AI_MODEL_PATHS.get('ai_models_root', '')),
-            'models_exist': AI_MODEL_PATHS.get('ai_models_root', Path('.')).exists()
-        }
+        'conda_optimized': IS_CONDA,
+        'm3_max_optimized': IS_M3_MAX,
+        'device': DEVICE,
+        'total_steps': len(PIPELINE_STEPS),
+        'available_steps': len(available_steps),
+        'loaded_steps': available_steps,
+        'failed_steps': [k for k, v in loaded_steps.items() if v is None],
+        'success_rate': (len(available_steps) / len(PIPELINE_STEPS)) * 100,
+        'utils_status': UTILS_STATUS,
+        'loading_priority': LOADING_PRIORITY if IS_CONDA else None
     }
+
+def get_step_class(step_name: str) -> Optional[Type]:
+    """Step 클래스 반환"""
+    if step_name.startswith('step_'):
+        return _pipeline_loader.safe_import_step(step_name)
+    else:
+        # 클래스명으로 검색
+        for step_id, step_info in PIPELINE_STEPS.items():
+            if step_info['name'] == step_name:
+                return _pipeline_loader.safe_import_step(step_id)
+    return None
+
+def create_step_instance(step_name: str, **kwargs) -> Optional[Any]:
+    """Step 인스턴스 생성"""
+    step_class = get_step_class(step_name)
+    if step_class is None:
+        logger.error(f"❌ Step 클래스를 찾을 수 없음: {step_name}")
+        return None
+        
+    try:
+        # 기본 설정 추가
+        default_config = {
+            'device': DEVICE,
+            'is_m3_max': IS_M3_MAX,
+            'memory_gb': SYSTEM_INFO.get('memory_gb', 16.0),
+            'conda_optimized': IS_CONDA
+        }
+        default_config.update(kwargs)
+        
+        return step_class(**default_config)
+        
+    except Exception as e:
+        logger.error(f"❌ Step 인스턴스 생성 실패 {step_name}: {e}")
+        return None
 
 def list_available_steps() -> List[str]:
     """사용 가능한 Step 목록 반환"""
-    loaded_steps = load_all_steps()
-    return [k for k, v in loaded_steps.items() if v is not None]
+    loaded_steps = _pipeline_loader.load_all_available_steps()
+    return [step_id for step_id, step_class in loaded_steps.items() if step_class is not None]
 
-# =============================================================================
-# 🔥 초기화 함수들
-# =============================================================================
+def get_step_info(step_id: str) -> Dict[str, Any]:
+    """Step 정보 반환"""
+    return _pipeline_loader.get_step_info(step_id)
 
-async def initialize_pipeline_system(**kwargs) -> Dict[str, Any]:
-    """전체 파이프라인 시스템 초기화 (conda 환경 최적화)"""
+async def initialize_pipeline_system() -> bool:
+    """파이프라인 시스템 초기화"""
     try:
-        start_time = time.time()
-        results = {}
+        logger.info("🚀 파이프라인 시스템 초기화 시작")
         
-        logger.info("🚀 AI 파이프라인 시스템 초기화 시작...")
+        # Step 클래스들 로드
+        loaded_steps = _pipeline_loader.load_all_available_steps()
+        available_count = sum(1 for step in loaded_steps.values() if step is not None)
         
-        # 1. ModelLoader 초기화
-        try:
-            model_loader = create_model_loader(**kwargs)
-            results['model_loader'] = {
-                'success': model_loader is not None,
-                'instance': model_loader
-            }
-            if model_loader:
-                logger.info("✅ ModelLoader 초기화 완료")
-        except Exception as e:
-            logger.error(f"❌ ModelLoader 초기화 실패: {e}")
-            results['model_loader'] = {'success': False, 'error': str(e)}
-        
-        # 2. PipelineManager 초기화
-        try:
-            pipeline_manager = create_pipeline_manager(**kwargs)
-            results['pipeline_manager'] = {
-                'success': pipeline_manager is not None,
-                'instance': pipeline_manager
-            }
-            if pipeline_manager:
-                logger.info("✅ PipelineManager 초기화 완료")
-        except Exception as e:
-            logger.error(f"❌ PipelineManager 초기화 실패: {e}")
-            results['pipeline_manager'] = {'success': False, 'error': str(e)}
-        
-        # 3. Step 클래스들 로딩
-        try:
-            loaded_steps = load_all_steps()
-            results['steps'] = {
-                'success': len(loaded_steps) > 0,
-                'loaded_count': sum(1 for step in loaded_steps.values() if step is not None),
-                'total_count': len(STEP_MODULES),
-                'steps': loaded_steps
-            }
-            logger.info(f"✅ Step 클래스 로딩 완료: {results['steps']['loaded_count']}/8개")
-        except Exception as e:
-            logger.error(f"❌ Step 클래스 로딩 실패: {e}")
-            results['steps'] = {'success': False, 'error': str(e)}
-        
-        # 초기화 완료
-        initialization_time = time.time() - start_time
-        results['overall'] = {
-            'success': any(result.get('success', False) for result in results.values()),
-            'initialization_time': initialization_time,
-            'conda_optimized': IS_CONDA,
-            'device': SYSTEM_INFO.get('device', 'cpu')
-        }
-        
-        logger.info(f"🎉 AI 파이프라인 시스템 초기화 완료 ({initialization_time:.2f}초)")
-        return results
+        logger.info(f"✅ 파이프라인 시스템 초기화 완료: {available_count}/{len(PIPELINE_STEPS)}개 Step")
+        return available_count > 0
         
     except Exception as e:
-        logger.error(f"❌ AI 파이프라인 시스템 초기화 실패: {e}")
-        return {'overall': {'success': False, 'error': str(e)}}
+        logger.error(f"❌ 파이프라인 시스템 초기화 실패: {e}")
+        return False
 
-def cleanup_pipeline_system():
+async def cleanup_pipeline_system() -> None:
     """파이프라인 시스템 정리"""
     try:
-        logger.info("🧹 AI 파이프라인 시스템 정리 시작...")
+        logger.info("🧹 파이프라인 시스템 정리 시작")
         
-        # 전역 인스턴스 정리
-        with _instance_lock:
-            for name, instance in _global_instances.items():
-                try:
-                    if hasattr(instance, 'cleanup'):
-                        instance.cleanup()
-                except Exception as e:
-                    logger.warning(f"인스턴스 정리 실패 {name}: {e}")
-            
-            _global_instances.clear()
+        # 캐시 정리
+        _pipeline_loader._loaded_modules.clear()
+        _pipeline_loader._loaded_classes.clear()
+        _pipeline_loader._failed_loads.clear()
         
-        # 메모리 정리
-        import gc
-        gc.collect()
-        
-        # MPS 캐시 정리 (M3 Max)
-        if SYSTEM_INFO.get('device') == 'mps':
+        # GPU 메모리 정리 (가능한 경우)
+        if DEVICE in ['cuda', 'mps']:
             try:
                 import torch
-                if hasattr(torch.mps, 'empty_cache'):
-                    torch.mps.empty_cache()
-            except Exception as e:
-                logger.warning(f"MPS 캐시 정리 실패: {e}")
-        
-        logger.info("✅ AI 파이프라인 시스템 정리 완료")
+                if DEVICE == 'cuda' and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                elif DEVICE == 'mps' and torch.backends.mps.is_available():
+                    # M3 Max 메모리 정리 (안전하게)
+                    import gc
+                    gc.collect()
+            except:
+                pass
+                
+        logger.info("✅ 파이프라인 시스템 정리 완료")
         
     except Exception as e:
-        logger.error(f"❌ AI 파이프라인 시스템 정리 실패: {e}")
+        logger.warning(f"⚠️ 파이프라인 시스템 정리 실패: {e}")
 
 # =============================================================================
-# 🔥 AI Pipeline 모듈 Export
+# 🔥 자동 Step 클래스 로딩 (전역 변수)
+# =============================================================================
+
+# 사용 가능한 Step 클래스들을 전역 변수로 설정
+try:
+    _loaded_steps = _pipeline_loader.load_all_available_steps()
+    
+    # 개별 Step 클래스들을 전역에 추가
+    for step_id, step_class in _loaded_steps.items():
+        if step_class:
+            step_info = PIPELINE_STEPS[step_id]
+            class_name = step_info['name']
+            globals()[class_name] = step_class
+            
+    logger.info("✅ Step 클래스들 전역 설정 완료")
+    
+except Exception as e:
+    logger.warning(f"⚠️ Step 클래스 전역 설정 실패: {e}")
+
+# =============================================================================
+# 🔥 Export 목록
 # =============================================================================
 
 __all__ = [
-    # 🔥 버전 정보
-    '__version__',
-    '__author__',
-    '__description__',
+    # 🎯 파이프라인 상수
+    'PIPELINE_STEPS',
+    'LOADING_PRIORITY',
+    'SYSTEM_INFO',
     
-    # 📊 Step 정보
-    'STEP_MODULES',
-    'STEP_CLASSES',
-    
-    # 🔗 지연 로딩 함수들
-    'get_pipeline_manager_class',
-    'get_model_loader_class',
-    'get_memory_manager_class',
-    'get_step_factory_class',
-    
-    # 🔧 Step 관리 함수들
-    'safe_import_step',
-    'load_all_steps',
-    'list_available_steps',
-    
-    # 🏭 팩토리 함수들
-    'create_pipeline_manager',
-    'create_model_loader',
-    'create_step_instance',
-    
-    # 🌍 전역 인스턴스 함수들
-    'get_global_pipeline_manager',
-    'get_global_model_loader',
-    
-    # 🔧 상태 관리 함수들
+    # 🔧 파이프라인 관리 함수들
     'get_pipeline_status',
-    
-    # 🚀 초기화 함수들
+    'get_step_class',
+    'create_step_instance',
+    'list_available_steps',
+    'get_step_info',
     'initialize_pipeline_system',
     'cleanup_pipeline_system',
+    
+    # 🛠️ 유틸리티 함수들 (조건부)
+    'get_step_model_interface',
+    'get_step_memory_manager',
+    'get_step_data_converter', 
+    'preprocess_image_for_step',
+    
+    # 📊 상태 정보
+    'UTILS_STATUS',
+    'IS_CONDA',
+    'IS_M3_MAX',
+    'DEVICE'
 ]
 
-# 초기화 정보 출력
-logger.info("🤖 MyCloset AI Pipeline 모듈 초기화 완료")
-logger.info(f"🐍 conda 최적화: {IS_CONDA}")
-logger.info(f"🍎 M3 Max: {SYSTEM_INFO.get('is_m3_max', False)}")
-logger.info(f"📊 총 Step 수: {len(STEP_MODULES)}")
-logger.info(f"🔗 지연 로딩: 활성화")
+# Step 클래스들도 동적으로 추가
+for step_info in PIPELINE_STEPS.values():
+    class_name = step_info['name']
+    if class_name in globals():
+        __all__.append(class_name)
+
+# =============================================================================
+# 🔥 초기화 완료 메시지
+# =============================================================================
+
+def _print_initialization_summary():
+    """초기화 요약 출력"""
+    status = get_pipeline_status()
+    available_count = status['available_steps']
+    total_count = status['total_steps']
+    success_rate = status['success_rate']
+    
+    print(f"\n🍎 MyCloset AI 파이프라인 시스템 v7.0 초기화 완료!")
+    print(f"📊 사용 가능한 Step: {available_count}/{total_count}개 ({success_rate:.1f}%)")
+    print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'}")
+    print(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
+    print(f"🖥️ 디바이스: {DEVICE}")
+    print(f"🛠️ 유틸리티: {sum(UTILS_STATUS.values())}/4개 사용 가능")
+    
+    if available_count > 0:
+        print(f"✅ 로드된 Steps: {', '.join(status['loaded_steps'])}")
+    
+    if status['failed_steps']:
+        print(f"⚠️ 실패한 Steps: {', '.join(status['failed_steps'])}")
+        
+    print("🚀 파이프라인 시스템 준비 완료!\n")
+
+# 초기화 상태 출력 (한 번만)
+if not hasattr(sys, '_mycloset_pipeline_initialized'):
+    _print_initialization_summary()
+    sys._mycloset_pipeline_initialized = True
+
+logger.info("🍎 MyCloset AI 파이프라인 시스템 초기화 완료")
