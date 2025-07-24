@@ -399,6 +399,16 @@ cleanup.log
 mycloset_backup_*.tar.gz
 *.old
 
+# 중복 backend 폴더 방지
+backend/backend/
+**/backend/backend/
+
+# AI 모델 디렉토리는 루트의 backend/ai_models만 허용
+/backend/ai_models/
+!/backend/ai_models/.gitkeep
+!/backend/ai_models/*.yaml
+!/backend/ai_models/*.md
+
 # ============================================================================
 # 📝 문서화
 # ============================================================================

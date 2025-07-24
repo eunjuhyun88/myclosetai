@@ -1105,7 +1105,7 @@ class ModelLoader:
     config: Optional[Dict[str, Any]] = None,
     **kwargs
 ):
-        """개선된 ModelLoader 생성자 - 경로 처리 오류 해결"""
+        """개선된 ModelLoader 생성자 - backend/backend 문제 완전 해결"""
         
         # 기본 설정
         self.config = config or {}
@@ -1123,79 +1123,114 @@ class ModelLoader:
         self.conda_env = CONDA_ENV
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         
-        # 🔥 ModelLoader 특화 파라미터 (경로 처리 완전 수정)
-        current_file = Path(__file__)  # backend/app/ai_pipeline/utils/model_loader.py
-        backend_root = current_file.parents[3]  # backend/ 디렉토리로 이동
-        default_ai_models_path = backend_root / "ai_models"
+        # 🔥 backend/backend 방지 경로 계산
+        model_cache_dir_raw = kwargs.get('model_cache_dir')
 
-        model_cache_dir_raw = kwargs.get('model_cache_dir', str(default_ai_models_path))
-
-        # 🔥 안전한 경로 변환 (str object has no attribute 'exists' 오류 해결)
-        try:
-            if model_cache_dir_raw is None:
-                self.model_cache_dir = default_ai_models_path
-                self.logger.info(f"⚠️ model_cache_dir이 None - 기본값 사용: {default_ai_models_path}")
-                    
-            elif isinstance(model_cache_dir_raw, str):
-                self.model_cache_dir = Path(model_cache_dir_raw).resolve()
-                self.logger.debug(f"✅ 문자열 경로 변환: {model_cache_dir_raw}")
+        if model_cache_dir_raw is None:
+            # 기본값: 안전한 경로 계산
+            current_file = Path(__file__).absolute()
+            
+            # backend/app/ai_pipeline/utils/model_loader.py에서 backend/ 찾기
+            current = current_file.parent  # utils/
+            backend_root = None
+            
+            for _ in range(10):
+                if current.name == 'backend':
+                    backend_root = current
+                    break
+                elif current.parent == current:
+                    break
+                current = current.parent
+            
+            if backend_root:
+                self.model_cache_dir = backend_root / "ai_models"
+            else:
+                # 폴백: 상대 경로
+                self.model_cache_dir = Path("./ai_models").absolute()
+                
+            self.logger.info(f"📁 기본 AI 모델 경로: {self.model_cache_dir}")
+            
+        else:
+            # 🔥 사용자 지정 경로에서 backend/backend 패턴 제거
+            if isinstance(model_cache_dir_raw, str):
+                if "backend/backend" in model_cache_dir_raw:
+                    corrected_path = model_cache_dir_raw.replace("backend/backend", "backend")
+                    self.logger.info(f"✅ backend/backend 자동 수정: {model_cache_dir_raw} → {corrected_path}")
+                    model_cache_dir_raw = corrected_path
+                self.model_cache_dir = Path(model_cache_dir_raw).absolute()
                 
             elif isinstance(model_cache_dir_raw, Path):
-                self.model_cache_dir = model_cache_dir_raw.resolve()
-                self.logger.debug(f"✅ Path 객체 정규화: {model_cache_dir_raw}")
-                
+                path_str = str(model_cache_dir_raw)
+                if "backend/backend" in path_str:
+                    corrected_path = Path(path_str.replace("backend/backend", "backend"))
+                    self.logger.info(f"✅ Path 객체 backend/backend 자동 수정: {model_cache_dir_raw} → {corrected_path}")
+                    self.model_cache_dir = corrected_path.absolute()
+                else:
+                    self.model_cache_dir = model_cache_dir_raw.absolute()
             else:
-                # 예상치 못한 타입인 경우
+                # 예상치 못한 타입
                 self.logger.warning(f"⚠️ 예상치 못한 model_cache_dir 타입: {type(model_cache_dir_raw)}")
-                self.logger.warning(f"   값: {repr(model_cache_dir_raw)}")
-                
-                # 문자열 변환 시도
                 try:
-                    self.model_cache_dir = Path(str(model_cache_dir_raw)).resolve()
+                    self.model_cache_dir = Path(str(model_cache_dir_raw)).absolute()
                     self.logger.info(f"✅ 강제 문자열 변환 성공: {self.model_cache_dir}")
                 except Exception as str_error:
                     self.logger.error(f"❌ 강제 변환 실패: {str_error}")
+                    # 최종 폴백
                     current_file = Path(__file__).absolute()
                     backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
                     self.model_cache_dir = backend_root / "ai_models"
-                    self.logger.info("✅ 최종 폴백 경로 사용: ./ai_models")
-                    
-            # 경로 존재 확인 및 생성
-            try:
-                if not self.model_cache_dir.exists():
-                    self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-                    self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
-                else:
-                    self.logger.debug(f"📁 AI 모델 디렉토리 확인: {self.model_cache_dir}")
-            except Exception as mkdir_error:
-                self.logger.error(f"❌ 디렉토리 생성 실패: {mkdir_error}")
-                # 폴백 디렉토리 시도
-                try:
-                    current_file = Path(__file__).absolute()
-                    backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
-                    fallback_path = backend_root / "ai_models_fallback"
-                    fallback_path.mkdir(parents=True, exist_ok=True)
-                    self.model_cache_dir = fallback_path
-                    self.logger.warning(f"⚠️ 폴백 디렉토리 사용: {self.model_cache_dir}")
-                except Exception as fallback_error:
-                    self.logger.error(f"❌ 폴백 디렉토리도 실패: {fallback_error}")
-                    # 현재 디렉토리 사용
-                    current_file = Path(__file__).absolute()
-                    backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
-                    self.model_cache_dir = backend_root
-                    self.logger.warning(f"🚨 현재 디렉토리 사용: {self.model_cache_dir}")
-                    
-        except Exception as path_error:
-            self.logger.error(f"❌ 모델 경로 처리 실패: {path_error}")
-            # 완전 폴백
-            current_file = Path(__file__).absolute()
-            backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
-            self.model_cache_dir = backend_root / "ai_models"            
-            try:
+                    self.logger.info("✅ 최종 폴백 경로 사용")
+
+        # 🔥 최종 검증: backend/backend 패턴이 남아있는지 확인
+        final_path_str = str(self.model_cache_dir)
+        if "backend/backend" in final_path_str:
+            final_corrected = Path(final_path_str.replace("backend/backend", "backend"))
+            self.logger.warning(f"🚨 최종 검증에서 backend/backend 발견 및 수정: {self.model_cache_dir} → {final_corrected}")
+            self.model_cache_dir = final_corrected
+
+        # 디렉토리 존재 확인 및 생성
+        try:
+            if not self.model_cache_dir.exists():
                 self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-            except Exception as mkdir_error:
-                self.logger.error(f"❌ 폴백 디렉토리 생성 실패: {mkdir_error}")
-                                
+                self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
+            else:
+                self.logger.debug(f"📁 AI 모델 디렉토리 확인: {self.model_cache_dir}")
+                
+        except Exception as mkdir_error:
+            self.logger.error(f"❌ 디렉토리 생성 실패: {mkdir_error}")
+            
+            # 🔥 폴백 전략 (backend/backend 방지)
+            try:
+                # 현재 작업 디렉토리 확인
+                current_work_dir = Path.cwd()
+                
+                if current_work_dir.name == 'backend':
+                    # backend/ 내에서 실행 중인 경우
+                    fallback_path = current_work_dir / "ai_models"
+                else:
+                    # 다른 위치에서 실행 중인 경우
+                    fallback_path = current_work_dir / "backend" / "ai_models"
+                
+                # backend/backend 패턴 최종 확인
+                fallback_str = str(fallback_path)
+                if "backend/backend" in fallback_str:
+                    fallback_path = Path(fallback_str.replace("backend/backend", "backend"))
+                    self.logger.warning(f"🚨 폴백에서도 backend/backend 수정: {fallback_str}")
+                
+                fallback_path.mkdir(parents=True, exist_ok=True)
+                self.model_cache_dir = fallback_path
+                self.logger.warning(f"⚠️ 폴백 디렉토리 사용: {self.model_cache_dir}")
+                
+            except Exception as fallback_error:
+                self.logger.error(f"❌ 폴백 디렉토리도 실패: {fallback_error}")
+                # 최종 폴백: 현재 디렉토리에 emergency 디렉토리
+                self.model_cache_dir = Path.cwd() / "ai_models_emergency"
+                try:
+                    self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+                    self.logger.warning(f"🚨 비상 디렉토리 사용: {self.model_cache_dir}")
+                except:
+                    pass  # 최종 폴백이므로 실패해도 계속 진행
+                        
         # 나머지 초기화 계속...
         self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
         self.max_cached_models = kwargs.get('max_cached_models', 30 if self.is_m3_max else 15)
@@ -1250,6 +1285,7 @@ class ModelLoader:
         self.logger.info(f"💾 Memory: {self.memory_gb:.1f}GB")
         self.logger.info(f"🎯 최소 모델 크기: {self.min_model_size_mb}MB")
         self.logger.info(f"📁 모델 캐시 디렉토리: {self.model_cache_dir}")
+
 
     def _initialize_file_mapper(self):
         """🔥 지연 초기화로 file_mapper 설정"""
