@@ -45,6 +45,8 @@ from collections import defaultdict
 from abc import ABC, abstractmethod
 from app.core.model_paths import get_model_path, is_model_available, get_all_available_models
 
+
+
 # ==============================================
 # 🔥 1단계: 기본 로깅 설정
 # ==============================================
@@ -1126,60 +1128,17 @@ class ModelLoader:
         # 🔥 backend/backend 방지 경로 계산
         model_cache_dir_raw = kwargs.get('model_cache_dir')
 
+        # ✅ 이 간단한 코드로 교체
         if model_cache_dir_raw is None:
-            # 기본값: 안전한 경로 계산
-            current_file = Path(__file__).absolute()
-            
-            # backend/app/ai_pipeline/utils/model_loader.py에서 backend/ 찾기
-            current = current_file.parent  # utils/
-            backend_root = None
-            
-            for _ in range(10):
-                if current.name == 'backend':
-                    backend_root = current
-                    break
-                elif current.parent == current:
-                    break
-                current = current.parent
-            
-            if backend_root:
-                self.model_cache_dir = backend_root / "ai_models"
-            else:
-                # 폴백: 상대 경로
-                self.model_cache_dir = Path("./ai_models").absolute()
-                
-            self.logger.info(f"📁 기본 AI 모델 경로: {self.model_cache_dir}")
-            
+            self.model_cache_dir = self._calculate_correct_ai_models_path()
+            self.logger.info(f"📁 자동 계산된 AI 모델 경로: {self.model_cache_dir}")    
         else:
-            # 🔥 사용자 지정 경로에서 backend/backend 패턴 제거
-            if isinstance(model_cache_dir_raw, str):
-                if "backend/backend" in model_cache_dir_raw:
-                    corrected_path = model_cache_dir_raw.replace("backend/backend", "backend")
-                    self.logger.info(f"✅ backend/backend 자동 수정: {model_cache_dir_raw} → {corrected_path}")
-                    model_cache_dir_raw = corrected_path
-                self.model_cache_dir = Path(model_cache_dir_raw).absolute()
-                
-            elif isinstance(model_cache_dir_raw, Path):
-                path_str = str(model_cache_dir_raw)
-                if "backend/backend" in path_str:
-                    corrected_path = Path(path_str.replace("backend/backend", "backend"))
-                    self.logger.info(f"✅ Path 객체 backend/backend 자동 수정: {model_cache_dir_raw} → {corrected_path}")
-                    self.model_cache_dir = corrected_path.absolute()
-                else:
-                    self.model_cache_dir = model_cache_dir_raw.absolute()
-            else:
-                # 예상치 못한 타입
-                self.logger.warning(f"⚠️ 예상치 못한 model_cache_dir 타입: {type(model_cache_dir_raw)}")
-                try:
-                    self.model_cache_dir = Path(str(model_cache_dir_raw)).absolute()
-                    self.logger.info(f"✅ 강제 문자열 변환 성공: {self.model_cache_dir}")
-                except Exception as str_error:
-                    self.logger.error(f"❌ 강제 변환 실패: {str_error}")
-                    # 최종 폴백
-                    current_file = Path(__file__).absolute()
-                    backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
-                    self.model_cache_dir = backend_root / "ai_models"
-                    self.logger.info("✅ 최종 폴백 경로 사용")
+            self.model_cache_dir = self._fix_user_path(model_cache_dir_raw)
+            self.logger.info(f"📁 사용자 지정 AI 모델 경로: {self.model_cache_dir}")
+        
+        
+        self.model_cache_dir = self._verify_and_fix_path(self.model_cache_dir)
+
 
         # 🔥 최종 검증: backend/backend 패턴이 남아있는지 확인
         final_path_str = str(self.model_cache_dir)
@@ -1285,6 +1244,561 @@ class ModelLoader:
         self.logger.info(f"💾 Memory: {self.memory_gb:.1f}GB")
         self.logger.info(f"🎯 최소 모델 크기: {self.min_model_size_mb}MB")
         self.logger.info(f"📁 모델 캐시 디렉토리: {self.model_cache_dir}")
+
+    def _calculate_correct_ai_models_path(self) -> Path:
+        """✅ 올바른 AI 모델 경로 자동 계산"""
+        try:
+            # 방법 1: 현재 파일 기준 정확한 계산
+            current_file = Path(__file__).resolve()
+            self.logger.debug(f"🔍 현재 파일: {current_file}")
+            
+            # backend/app/ai_pipeline/utils/model_loader.py에서
+            # backend/ 디렉토리 찾기
+            current_path = current_file.parent  # utils/
+            
+            for i in range(10):  # 최대 10단계 상위로 이동
+                self.logger.debug(f"  단계 {i}: {current_path}")
+                
+                if current_path.name == 'backend':
+                    ai_models_path = current_path / "ai_models"
+                    self.logger.info(f"✅ 방법 1 성공: {ai_models_path}")
+                    return ai_models_path
+                
+                if current_path.parent == current_path:  # 루트 도달
+                    break
+                current_path = current_path.parent
+            
+            # 방법 2: conda 환경 기반 추론
+            if self.conda_env == 'mycloset-ai-clean':
+                cwd = Path.cwd()
+                self.logger.debug(f"🐍 conda 환경 감지, 현재 디렉토리: {cwd}")
+                
+                if cwd.name == 'backend':
+                    ai_models_path = cwd / "ai_models"
+                    self.logger.info(f"✅ 방법 2a 성공: {ai_models_path}")
+                    return ai_models_path
+                elif 'mycloset-ai' in str(cwd):
+                    ai_models_path = cwd / "backend" / "ai_models"
+                    self.logger.info(f"✅ 방법 2b 성공: {ai_models_path}")
+                    return ai_models_path
+            
+            # 방법 3: 절대 경로 시도 (paste.txt 패턴)
+            potential_paths = [
+                Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"),
+                Path.home() / "MVP" / "mycloset-ai" / "backend" / "ai_models",
+                Path.cwd() / "backend" / "ai_models",
+                Path.cwd() / "ai_models"
+            ]
+            
+            for path in potential_paths:
+                if path.exists():
+                    self.logger.info(f"✅ 방법 3 성공: {path}")
+                    return path
+            
+            # 방법 4: 최종 폴백
+            fallback_path = Path.cwd() / "ai_models"
+            self.logger.warning(f"⚠️ 모든 방법 실패, 폴백 사용: {fallback_path}")
+            return fallback_path
+            
+        except Exception as e:
+            self.logger.error(f"❌ 경로 계산 실패: {e}")
+            return Path.cwd() / "ai_models"
+
+    def _fix_user_path(self, user_path) -> Path:
+        """✅ 사용자 지정 경로에서 backend/backend 패턴 제거"""
+        try:
+            if isinstance(user_path, str):
+                # backend/backend 패턴 제거
+                if "backend/backend" in user_path:
+                    fixed_path = user_path.replace("backend/backend", "backend")
+                    self.logger.info(f"✅ backend/backend 패턴 수정: {user_path} → {fixed_path}")
+                    return Path(fixed_path).resolve()
+                return Path(user_path).resolve()
+                
+            elif isinstance(user_path, Path):
+                path_str = str(user_path)
+                if "backend/backend" in path_str:
+                    fixed_path = Path(path_str.replace("backend/backend", "backend"))
+                    self.logger.info(f"✅ Path 객체 backend/backend 수정: {user_path} → {fixed_path}")
+                    return fixed_path.resolve()
+                return user_path.resolve()
+            else:
+                # 예상치 못한 타입은 문자열로 변환 후 처리
+                return Path(str(user_path)).resolve()
+                
+        except Exception as e:
+            self.logger.error(f"❌ 사용자 경로 수정 실패: {e}")
+            return Path.cwd() / "ai_models"
+
+    # backend/app/ai_pipeline/utils/model_loader.py
+# _verify_and_fix_path 메서드 수정 (심볼릭 링크 처리 추가)
+
+    def _verify_and_fix_path(self, path: Path) -> Path:
+        """✅ 최종 경로 검증 및 수정 (심볼릭 링크 처리 포함)"""
+        try:
+            # backend/backend 패턴 최종 확인
+            path_str = str(path)
+            if "backend/backend" in path_str:
+                fixed_path = Path(path_str.replace("backend/backend", "backend"))
+                self.logger.warning(f"🚨 최종 검증에서 backend/backend 발견 및 수정: {path} → {fixed_path}")
+                path = fixed_path
+            
+            # 디렉토리 존재 확인
+            if not path.exists():
+                self.logger.warning(f"⚠️ 경로가 존재하지 않음, 생성 시도: {path}")
+                try:
+                    path.mkdir(parents=True, exist_ok=True)
+                    self.logger.info(f"✅ 디렉토리 생성 성공: {path}")
+                except Exception as mkdir_error:
+                    self.logger.error(f"❌ 디렉토리 생성 실패: {mkdir_error}")
+                    # 현재 디렉토리에 폴백
+                    path = Path.cwd() / "ai_models_emergency"
+                    path.mkdir(parents=True, exist_ok=True)
+                    self.logger.warning(f"🚨 비상 디렉토리 사용: {path}")
+            
+            # 🔥 실제 존재하는 모델 파일들만 확인 (심볼릭 링크 포함)
+            model_files = []
+            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt"]
+            
+            for ext in extensions:
+                try:
+                    files = list(path.rglob(f"*{ext}"))
+                    # 🔥 심볼릭 링크 처리 추가
+                    valid_files = []
+                    for file_path in files:
+                        if file_path.is_symlink():
+                            # 심볼릭 링크인 경우 실제 경로 확인
+                            try:
+                                real_path = file_path.resolve()
+                                if real_path.exists():
+                                    valid_files.append(real_path)
+                                    self.logger.debug(f"🔗 심볼릭 링크 해결: {file_path} → {real_path}")
+                                else:
+                                    self.logger.warning(f"⚠️ 끊어진 심볼릭 링크: {file_path}")
+                            except Exception as symlink_error:
+                                self.logger.warning(f"⚠️ 심볼릭 링크 처리 실패: {file_path} - {symlink_error}")
+                        elif file_path.exists():
+                            # 일반 파일
+                            valid_files.append(file_path)
+                    
+                    model_files.extend(valid_files)
+                except Exception as glob_error:
+                    self.logger.debug(f"glob 실패 {ext}: {glob_error}")
+                    continue
+            
+            # 중복 제거 (같은 파일을 가리키는 심볼릭 링크들)
+            unique_files = []
+            seen_inodes = set()
+            for file_path in model_files:
+                try:
+                    stat_info = file_path.stat()
+                    inode = (stat_info.st_dev, stat_info.st_ino)
+                    if inode not in seen_inodes:
+                        unique_files.append(file_path)
+                        seen_inodes.add(inode)
+                except Exception:
+                    # stat 실패 시에도 추가 (안전)
+                    unique_files.append(file_path)
+            
+            file_count = len(unique_files)
+            
+            if file_count > 0:
+                # 🔥 실제 크기 계산 (안전하게)
+                total_size_gb = 0.0
+                valid_files = 0
+                large_files = []
+                
+                for model_file in unique_files:
+                    try:
+                        size_mb = model_file.stat().st_size / (1024 * 1024)
+                        if size_mb >= 1:  # 1MB 이상만 카운트 (더 관대하게)
+                            total_size_gb += size_mb / 1024
+                            valid_files += 1
+                            if size_mb > 500:  # 500MB 이상은 대형 파일
+                                large_files.append((model_file.name, size_mb))
+                    except Exception:
+                        continue
+                
+                self.logger.info(f"✅ 경로 검증 성공: {path}")
+                self.logger.info(f"📊 총 모델 파일: {file_count}개 (중복 제거 후)")
+                self.logger.info(f"📊 유효 모델 파일(1MB+): {valid_files}개")
+                self.logger.info(f"📊 총 크기: {total_size_gb:.1f}GB")
+                
+                # 🔥 실제 발견된 대형 파일들 출력
+                if large_files:
+                    large_files.sort(key=lambda x: x[1], reverse=True)  # 크기순 정렬
+                    self.logger.info(f"🎯 대형 모델 파일 발견: {len(large_files)}개")
+                    for name, size_mb in large_files[:3]:  # 상위 3개만
+                        self.logger.info(f"   ✅ {name}: {size_mb:.1f}MB")
+                
+                # 🔥 실제 발견된 패턴 확인 (하드코딩 제거)
+                found_patterns = []
+                for model_file in unique_files:
+                    filename = model_file.name.lower()
+                    if "schp" in filename or "atr" in filename:
+                        found_patterns.append("human_parsing")
+                    elif "diffusion" in filename:
+                        found_patterns.append("virtual_fitting")
+                    elif "u2net" in filename:
+                        found_patterns.append("cloth_segmentation")
+                    elif "sam_vit" in filename:
+                        found_patterns.append("sam_segmentation")
+                    elif "openpose" in filename:
+                        found_patterns.append("pose_estimation")
+                
+                if found_patterns:
+                    unique_patterns = list(set(found_patterns))
+                    self.logger.info(f"🎯 탐지된 모델 타입: {', '.join(unique_patterns)}")
+                
+            else:
+                self.logger.warning(f"⚠️ 모델 파일이 없음: {path}")
+                self.logger.info(f"💡 다음 명령어로 모델을 다운로드하세요:")
+                self.logger.info(f"   mkdir -p {path}")
+                self.logger.info(f"   # 그리고 모델 파일들을 해당 디렉토리에 배치")
+            
+            return path
+            
+        except Exception as e:
+            self.logger.error(f"❌ 경로 검증 실패: {e}")
+            # 오류가 발생해도 원래 경로 반환
+            return path
+
+# backend/app/ai_pipeline/utils/model_loader.py
+# _scan_available_models 메서드를 이 코드로 완전 교체
+
+    def _scan_available_models(self):
+        """🔥 실제 디렉토리 구조 기반 모델 스캔 (정확한 버전)"""
+        try:
+            self.logger.info("🔍 실제 디렉토리 구조 기반 모델 스캔 시작...")
+            
+            if not self.model_cache_dir.exists():
+                self.logger.warning(f"⚠️ 모델 디렉토리 없음: {self.model_cache_dir}")
+                return
+            
+            # 🎯 실제 확인된 디렉토리 구조 기반 검색 경로
+            search_paths = [
+                # 루트 디렉토리
+                self.model_cache_dir,
+                
+                # 실제 존재하는 메인 디렉토리들
+                self.model_cache_dir / "cache",
+                self.model_cache_dir / "checkpoints", 
+                self.model_cache_dir / "cloth_segmentation",
+                self.model_cache_dir / "experimental_models",
+                self.model_cache_dir / "future_enhancements",
+                self.model_cache_dir / "Graphonomy",
+                self.model_cache_dir / "human_parsing",
+                self.model_cache_dir / "pose_estimation",
+                self.model_cache_dir / "Self-Correction-Human-Parsing",
+                self.model_cache_dir / "virtual_fitting",
+                
+                # Step 디렉토리들 (실제 확인됨)
+                self.model_cache_dir / "step_01_human_parsing",
+                self.model_cache_dir / "step_02_pose_estimation",
+                self.model_cache_dir / "step_03_cloth_segmentation",
+                self.model_cache_dir / "step_04_geometric_matching",
+                self.model_cache_dir / "step_05_cloth_warping",
+                self.model_cache_dir / "step_06_virtual_fitting",
+                self.model_cache_dir / "step_07_post_processing",
+                self.model_cache_dir / "step_08_quality_assessment",
+                
+                # checkpoints 하위 디렉토리들
+                self.model_cache_dir / "checkpoints" / "ootdiffusion",
+                self.model_cache_dir / "checkpoints" / "stable-diffusion-v1-5",
+                self.model_cache_dir / "checkpoints" / "step_01_human_parsing",
+                self.model_cache_dir / "checkpoints" / "step_02_pose_estimation",
+                self.model_cache_dir / "checkpoints" / "step_03_cloth_segmentation",
+                self.model_cache_dir / "checkpoints" / "step_04_geometric_matching",
+                self.model_cache_dir / "checkpoints" / "step_05_cloth_warping",
+                self.model_cache_dir / "checkpoints" / "step_06_virtual_fitting",
+                self.model_cache_dir / "checkpoints" / "step_07_post_processing",
+                self.model_cache_dir / "checkpoints" / "step_08_quality_assessment",
+                
+                # 기타 중요 하위 디렉토리들
+                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion",
+                self.model_cache_dir / "step_06_virtual_fitting" / "idm_vton_ultra",
+                self.model_cache_dir / "step_01_human_parsing" / "ultra_models",
+                self.model_cache_dir / "step_03_cloth_segmentation" / "ultra_models",
+            ]
+            
+            # 존재하는 경로만 필터링
+            existing_paths = []
+            for path in search_paths:
+                if path.exists() and path.is_dir():
+                    existing_paths.append(path)
+                    
+            self.logger.info(f"📁 존재하는 검색 경로: {len(existing_paths)}개 (총 {len(search_paths)}개 중)")
+            
+            # 경로들을 3개씩 묶어서 로깅
+            for i in range(0, min(len(existing_paths), 12), 3):
+                batch = existing_paths[i:i+3]
+                batch_names = [p.name for p in batch]
+                self.logger.info(f"  📂 경로 {i+1}-{i+len(batch)}: {', '.join(batch_names)}")
+            
+            # 실제 파일 스캔
+            scanned_models = []
+            scanned_count = 0
+            total_size_gb = 0.0
+            symlink_count = 0
+            large_files = []
+            
+            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt", ".pkl"]
+            processed_inodes = set()  # 중복 방지용
+            
+            for search_path in existing_paths:
+                self.logger.debug(f"🔍 스캔 중: {search_path}")
+                
+                try:
+                    for ext in extensions:
+                        # glob으로 재귀적으로 모든 파일 찾기
+                        pattern = f"**/*{ext}"
+                        for model_file in search_path.glob(pattern):
+                            try:
+                                # 디렉토리는 건너뛰기
+                                if not model_file.is_file():
+                                    continue
+                                    
+                                # 제외할 파일들
+                                if any(exclude in str(model_file) for exclude in [
+                                    "cleanup_backup", "__pycache__", ".git", ".DS_Store", 
+                                    ".lock", ".tmp", "temp_", "backup_"
+                                ]):
+                                    continue
+                                
+                                # 🔥 심볼릭 링크 처리
+                                actual_file = model_file
+                                is_symlink = False
+                                
+                                if model_file.is_symlink():
+                                    try:
+                                        actual_file = model_file.resolve()
+                                        if not actual_file.exists():
+                                            self.logger.warning(f"⚠️ 끊어진 심볼릭 링크: {model_file}")
+                                            continue
+                                        is_symlink = True
+                                        symlink_count += 1
+                                        self.logger.debug(f"🔗 심볼릭 링크 해결: {model_file.name} → {actual_file.name}")
+                                    except Exception as symlink_error:
+                                        self.logger.warning(f"⚠️ 심볼릭 링크 처리 실패: {model_file} - {symlink_error}")
+                                        continue
+                                
+                                # 중복 방지 (같은 파일을 가리키는 심볼릭 링크들)
+                                try:
+                                    stat_info = actual_file.stat()
+                                    inode = (stat_info.st_dev, stat_info.st_ino)
+                                    if inode in processed_inodes:
+                                        continue
+                                    processed_inodes.add(inode)
+                                except:
+                                    pass  # stat 실패해도 계속 진행
+                                
+                                size_mb = actual_file.stat().st_size / (1024 * 1024)
+                                total_size_gb += size_mb / 1024
+                                
+                                # 🔥 크기 필터링 (1MB 이상)
+                                if size_mb < 1:
+                                    continue
+                                
+                                # 대형 파일 목록에 추가
+                                if size_mb > 100:  # 100MB 이상
+                                    large_files.append((model_file.name, size_mb, str(search_path.name)))
+                                
+                                # 🔥 간단한 검증
+                                is_valid = self._quick_validate_file(actual_file)
+                                if not is_valid:
+                                    continue
+                                
+                                relative_path = model_file.relative_to(self.model_cache_dir)
+                                
+                                # 🔥 실제 파일명과 경로 기반 스마트 타입 감지
+                                model_type, step_class = self._smart_detect_model_info_enhanced(actual_file, search_path)
+                                
+                                model_info = {
+                                    "name": model_file.stem,  # 원본 이름 사용
+                                    "path": str(relative_path),
+                                    "size_mb": round(size_mb, 2),
+                                    "model_type": model_type,
+                                    "step_class": step_class,
+                                    "loaded": False,
+                                    "device": self.device,
+                                    "is_valid": is_valid,
+                                    "metadata": {
+                                        "extension": ext,
+                                        "parent_dir": model_file.parent.name,
+                                        "full_path": str(actual_file),  # 실제 파일 경로
+                                        "original_path": str(model_file),  # 원본 경로 (심볼릭 링크일 수 있음)
+                                        "is_symlink": is_symlink,
+                                        "is_large": size_mb > 500,
+                                        "priority_score": self._calculate_priority_score_enhanced(size_mb, is_valid, model_type),
+                                        "detected_from": str(search_path.name),
+                                        "search_depth": len(relative_path.parts) - 1
+                                    }
+                                }
+                                
+                                scanned_models.append(model_info)
+                                scanned_count += 1
+                                
+                                # 처음 10개만 상세 로깅
+                                if scanned_count <= 10:
+                                    symlink_status = "🔗" if is_symlink else "📦"
+                                    size_status = "🔥" if size_mb > 500 else "📦"
+                                    self.logger.info(f"{symlink_status}{size_status} 발견: {model_info['name']} ({size_mb:.1f}MB) @ {search_path.name}")
+                                
+                            except Exception as e:
+                                self.logger.debug(f"⚠️ 파일 처리 실패 {model_file}: {e}")
+                                continue
+                                
+                except Exception as path_error:
+                    self.logger.debug(f"⚠️ 경로 스캔 실패 {search_path}: {path_error}")
+                    continue
+            
+            # 크기 우선순위로 정렬
+            scanned_models.sort(key=lambda x: x["metadata"]["priority_score"], reverse=True)
+            
+            # available_models에 등록
+            for model_info in scanned_models:
+                self.available_models[model_info["name"]] = model_info
+            
+            # 📊 상세한 통계 출력
+            valid_models = [m for m in scanned_models if m["is_valid"]]
+            large_model_count = len([m for m in scanned_models if m["metadata"]["is_large"]])
+            
+            self.logger.info(f"✅ 실제 구조 기반 스캔 완료")
+            self.logger.info(f"📊 총 모델 파일: {scanned_count}개")
+            self.logger.info(f"✅ 유효 모델: {len(valid_models)}개")
+            self.logger.info(f"🔥 대형 모델(500MB+): {large_model_count}개")
+            self.logger.info(f"🔗 심볼릭 링크: {symlink_count}개")
+            self.logger.info(f"💾 총 크기: {total_size_gb:.1f}GB")
+            
+            # 상위 5개 모델 출력
+            if scanned_models:
+                self.logger.info("🏆 우선순위 상위 모델들:")
+                for i, model in enumerate(scanned_models[:5]):
+                    symlink_mark = "🔗" if model["metadata"]["is_symlink"] else ""
+                    size_mark = "🔥" if model["metadata"]["is_large"] else ""
+                    self.logger.info(f"  {i+1}. {symlink_mark}{size_mark}{model['name']}: {model['size_mb']:.1f}MB ({model['model_type']})")
+            
+            # 대형 파일들 별도 출력
+            if large_files:
+                large_files.sort(key=lambda x: x[1], reverse=True)  # 크기순 정렬
+                self.logger.info("🔥 대형 모델 파일들:")
+                for i, (name, size_mb, location) in enumerate(large_files[:5]):
+                    self.logger.info(f"  🔥 {i+1}. {name}: {size_mb:.1f}MB @ {location}")
+            
+            # 모델 타입별 통계
+            type_stats = {}
+            for model in scanned_models:
+                model_type = model["model_type"]
+                if model_type not in type_stats:
+                    type_stats[model_type] = 0
+                type_stats[model_type] += 1
+            
+            if type_stats:
+                self.logger.info("📊 모델 타입별 분포:")
+                for model_type, count in sorted(type_stats.items(), key=lambda x: x[1], reverse=True):
+                    self.logger.info(f"  📦 {model_type}: {count}개")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 모델 스캔 완전 실패: {e}")
+            import traceback
+            self.logger.error(f"📋 오류 스택:")
+            self.logger.error(traceback.format_exc())
+
+    def _smart_detect_model_info_enhanced(self, model_file: Path, search_path: Path) -> tuple:
+        """향상된 모델 타입 및 Step 클래스 감지 (실제 구조 기반)"""
+        filename = model_file.name.lower()
+        path_str = str(model_file).lower()
+        search_path_name = search_path.name.lower()
+        
+        # 🎯 파일명 기반 우선 감지 (정확성 높음)
+        if "schp" in filename or "atr" in filename:
+            return "human_parsing", "HumanParsingStep"
+        elif "exp-schp" in filename:
+            return "human_parsing", "HumanParsingStep"
+        elif "graphonomy" in filename:
+            return "human_parsing", "HumanParsingStep"
+        elif "openpose" in filename or "pose_model" in filename:
+            return "pose_estimation", "PoseEstimationStep"
+        elif "u2net" in filename:
+            return "cloth_segmentation", "ClothSegmentationStep"
+        elif "sam_vit" in filename:
+            return "cloth_segmentation", "ClothSegmentationStep"
+        elif "diffusion_pytorch_model" in filename:
+            return "virtual_fitting", "VirtualFittingStep"
+        elif "pytorch_model" in filename and ("diffusion" in path_str or "stable" in path_str):
+            return "virtual_fitting", "VirtualFittingStep"
+        elif "esrgan" in filename or "gfpgan" in filename:
+            return "post_processing", "PostProcessingStep"
+        elif "clip" in filename and "vit" in filename:
+            return "quality_assessment", "QualityAssessmentStep"
+        
+        # 🎯 경로 기반 감지 (폴백)
+        if "step_01" in search_path_name or "human_parsing" in search_path_name:
+            return "human_parsing", "HumanParsingStep"
+        elif "step_02" in search_path_name or "pose_estimation" in search_path_name:
+            return "pose_estimation", "PoseEstimationStep"
+        elif "step_03" in search_path_name or "cloth_segmentation" in search_path_name:
+            return "cloth_segmentation", "ClothSegmentationStep"
+        elif "step_04" in search_path_name or "geometric_matching" in search_path_name:
+            return "geometric_matching", "GeometricMatchingStep"
+        elif "step_05" in search_path_name or "cloth_warping" in search_path_name:
+            return "cloth_warping", "ClothWarpingStep"
+        elif "step_06" in search_path_name or "virtual_fitting" in search_path_name or "ootdiffusion" in search_path_name:
+            return "virtual_fitting", "VirtualFittingStep"
+        elif "step_07" in search_path_name or "post_processing" in search_path_name:
+            return "post_processing", "PostProcessingStep"
+        elif "step_08" in search_path_name or "quality_assessment" in search_path_name:
+            return "quality_assessment", "QualityAssessmentStep"
+        elif "self-correction" in search_path_name:
+            return "human_parsing", "HumanParsingStep"
+        elif "graphonomy" in search_path_name:
+            return "human_parsing", "HumanParsingStep"
+        elif "stable-diffusion" in search_path_name:
+            return "virtual_fitting", "VirtualFittingStep"
+        
+        # 기본값
+        return "unknown", "UnknownStep"
+
+    def _calculate_priority_score_enhanced(self, size_mb: float, is_valid: bool, model_type: str) -> float:
+        """향상된 모델 우선순위 점수 계산"""
+        score = 0.0
+        
+        # 크기 기반 점수 (로그 스케일)
+        if size_mb > 0:
+            import math
+            score += math.log10(max(size_mb, 1)) * 100
+        
+        # 검증 성공 보너스
+        if is_valid:
+            score += 100
+        
+        # 모델 타입별 우선순위 보너스
+        type_priority = {
+            "virtual_fitting": 200,      # 가상 피팅이 가장 중요
+            "human_parsing": 150,        # 인간 파싱도 중요
+            "cloth_segmentation": 120,   # 의류 분할
+            "pose_estimation": 100,      # 포즈 추정
+            "post_processing": 80,       # 후처리
+            "quality_assessment": 60,    # 품질 평가
+            "geometric_matching": 50,    # 기하학적 매칭
+            "cloth_warping": 40,         # 의류 변형
+            "unknown": 0                 # 알 수 없는 타입
+        }
+        
+        score += type_priority.get(model_type, 0)
+        
+        # 대형 모델 보너스
+        if size_mb > 2000:  # 2GB 이상
+            score += 200
+        elif size_mb > 1000:  # 1GB 이상
+            score += 150
+        elif size_mb > 500:   # 500MB 이상
+            score += 100
+        elif size_mb > 200:   # 200MB 이상
+            score += 50
+        
+        return score
+
 
 
     def _initialize_file_mapper(self):
@@ -2109,206 +2623,193 @@ class ModelLoader:
             self.logger.error(f"❌ AutoModelDetector 통합 실패: {e}")
             return False
 
+    # backend/app/ai_pipeline/utils/model_loader.py
+# _scan_available_models 메서드 수정
+
     def _scan_available_models(self):
-        """🔥 사용 가능한 체크포인트 파일들 스캔 (완전 동적 + 크기 우선순위)"""
+        """🔥 사용 가능한 체크포인트 파일들 스캔 (실제 파일 기반)"""
         try:
-            self.logger.info("🔍 완전 동적 체크포인트 스캔 시작...")
+            self.logger.info("🔍 실제 존재하는 모델 파일 스캔 시작...")
             
-            if not self.model_cache_dir.is_absolute():
-                current_file = Path(__file__)
-                backend_root = current_file.parents[3]  # backend/
-                self.model_cache_dir = backend_root / self.model_cache_dir
-                
             if not self.model_cache_dir.exists():
                 self.logger.warning(f"⚠️ 모델 디렉토리 없음: {self.model_cache_dir}")
-                self.logger.info(f"💡 생성 명령어: mkdir -p {self.model_cache_dir}")
                 return
             
-            # ✅ file_mapper 안전성 체크 강화
-            search_paths = []
-            if self.file_mapper and hasattr(self.file_mapper, 'discover_all_search_paths'):
-                try:
-                    search_paths = self.file_mapper.discover_all_search_paths(self.model_cache_dir)
-                    if search_paths:
-                        self.logger.info(f"📁 file_mapper로 검색 경로 획득: {len(search_paths)}개")
-                    else:
-                        self.logger.warning("⚠️ file_mapper가 빈 경로 목록 반환")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ file_mapper 검색 실패: {e}")
-                    search_paths = []
-            else:
-                self.logger.warning("⚠️ file_mapper 없거나 discover_all_search_paths 메서드 없음")
+            # 실제 존재하는 모든 검색 경로
+            search_paths = [
+                self.model_cache_dir,
+                self.model_cache_dir / "checkpoints",
+                self.model_cache_dir / "models",
+                # Step별 경로들
+                self.model_cache_dir / "step_01_human_parsing",
+                self.model_cache_dir / "step_02_pose_estimation", 
+                self.model_cache_dir / "step_03_cloth_segmentation",
+                self.model_cache_dir / "step_04_geometric_matching",
+                self.model_cache_dir / "step_05_cloth_warping",
+                self.model_cache_dir / "step_06_virtual_fitting",
+                self.model_cache_dir / "step_07_post_processing",
+                self.model_cache_dir / "step_08_quality_assessment",
+                # 특수 경로들
+                self.model_cache_dir / "Self-Correction-Human-Parsing",
+                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion",
+            ]
             
-            # 폴백: 기본 검색 경로 사용
-            if not search_paths:
-                search_paths = [
-                    self.model_cache_dir,
-                    self.model_cache_dir / "checkpoints",
-                    self.model_cache_dir / "models",
-                    self.model_cache_dir / "step_01",
-                    self.model_cache_dir / "step_02",
-                    self.model_cache_dir / "step_03",
-                    self.model_cache_dir / "step_04",
-                    self.model_cache_dir / "step_05",
-                    self.model_cache_dir / "step_06",
-                    self.model_cache_dir / "step_07",
-                    self.model_cache_dir / "step_08",
-                    self.model_cache_dir / "ultra_models",
-                    # 추가 경로들 (프로젝트 지식 기반)
-                    self.model_cache_dir / "checkpoints" / "human_parsing",
-                    self.model_cache_dir / "checkpoints" / "pose_estimation",
-                    self.model_cache_dir / "checkpoints" / "step_01_human_parsing",
-                    self.model_cache_dir / "checkpoints" / "step_02_pose_estimation",
-                    self.model_cache_dir / "checkpoints" / "step_03_cloth_segmentation",
-                    self.model_cache_dir / "checkpoints" / "step_04_geometric_matching",
-                    self.model_cache_dir / "checkpoints" / "step_05_cloth_warping",
-                    self.model_cache_dir / "checkpoints" / "step_06_virtual_fitting",
-                    self.model_cache_dir / "checkpoints" / "step_07_post_processing",
-                    self.model_cache_dir / "checkpoints" / "step_08_quality_assessment"
-                ]
-                # 존재하는 경로만 필터링
-                search_paths = [p for p in search_paths if p.exists()]
-                self.logger.info(f"📁 기본 검색 경로 사용: {len(search_paths)}개")
+            # 존재하는 경로만 필터링
+            existing_paths = [p for p in search_paths if p.exists()]
+            self.logger.info(f"📁 존재하는 검색 경로: {len(existing_paths)}개")
             
-            # 임시 리스트에 저장 후 크기순 정렬
+            # 실제 파일 스캔
             scanned_models = []
             scanned_count = 0
-            validated_count = 0
-            large_models_count = 0
-            small_models_filtered = 0
             total_size_gb = 0.0
             
-            # 체크포인트 확장자 지원
-            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt", ".pkl", ".pickle"]
+            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt"]
             
-            # 🔥 동적 경로 스캔
-            for search_path in search_paths:
+            for search_path in existing_paths:
                 self.logger.debug(f"📁 스캔 중: {search_path}")
                 
-                for ext in extensions:
-                    for model_file in search_path.rglob(f"*{ext}"):
-                        if any(exclude in str(model_file) for exclude in ["cleanup_backup", "__pycache__", ".git"]):
-                            continue
-                            
-                        try:
-                            size_mb = model_file.stat().st_size / (1024 * 1024)
-                            total_size_gb += size_mb / 1024
-                            
-                            # 🔥 크기 필터링 (50MB 미만 제거)
-                            if size_mb < self.min_model_size_mb:
-                                small_models_filtered += 1
-                                self.logger.debug(f"🗑️ 작은 파일 제외: {model_file.name} ({size_mb:.1f}MB)")
-                                continue
-                            
-                            if size_mb > 1000:  # 1GB 이상
-                                large_models_count += 1
-                            
-                            # 🔥 체크포인트 검증
-                            validation = self.validator.validate_checkpoint_file(model_file)
-                            self.performance_stats['validation_count'] += 1
-                            
-                            if validation.is_valid:
-                                self.performance_stats['validation_success'] += 1
-                                validated_count += 1
-                            else:
-                                # 검증 실패한 파일은 제외
-                                self.logger.debug(f"⚠️ 검증 실패: {model_file.name} - {validation.error_message}")
-                                continue
-                            
-                            relative_path = model_file.relative_to(self.model_cache_dir)
-                            
-                            # 🔥 동적 모델 타입 및 Step 클래스 탐지
-                            model_type = self._detect_model_type_dynamic(model_file)
-                            step_class = self._detect_step_class_dynamic(model_file)
-                            
-                            model_info = {
-                                "name": model_file.stem,
-                                "path": str(relative_path),
-                                "size_mb": round(size_mb, 2),
-                                "model_type": model_type,
-                                "step_class": step_class,
-                                "loaded": False,
-                                "device": self.device,
-                                "validation": validation,
-                                "is_valid": validation.is_valid,
-                                "metadata": {
-                                    "extension": ext,
-                                    "parent_dir": model_file.parent.name,
-                                    "full_path": str(model_file),
-                                    "is_large": size_mb > 1000,
-                                    "last_modified": model_file.stat().st_mtime,
-                                    "validation_time": validation.validation_time,
-                                    "priority_score": self._calculate_priority_score(size_mb, validation.is_valid),
-                                    "search_path": str(search_path)  # 🔥 탐지 경로 추가
+                try:
+                    for ext in extensions:
+                        for model_file in search_path.rglob(f"*{ext}"):
+                            try:
+                                # 제외할 파일들
+                                if any(exclude in str(model_file) for exclude in [
+                                    "cleanup_backup", "__pycache__", ".git", ".DS_Store"
+                                ]):
+                                    continue
+                                    
+                                size_mb = model_file.stat().st_size / (1024 * 1024)
+                                total_size_gb += size_mb / 1024
+                                
+                                # 🔥 크기 필터링 (50MB 이상만)
+                                if size_mb < self.min_model_size_mb:
+                                    continue
+                                
+                                # 🔥 체크포인트 검증 (간단한 버전)
+                                is_valid = self._quick_validate_file(model_file)
+                                if not is_valid:
+                                    continue
+                                
+                                relative_path = model_file.relative_to(self.model_cache_dir)
+                                
+                                # 🔥 실제 파일명 기반 스마트 타입 감지
+                                model_type, step_class = self._smart_detect_model_info(model_file)
+                                
+                                model_info = {
+                                    "name": model_file.stem,
+                                    "path": str(relative_path),
+                                    "size_mb": round(size_mb, 2),
+                                    "model_type": model_type,
+                                    "step_class": step_class,
+                                    "loaded": False,
+                                    "device": self.device,
+                                    "is_valid": is_valid,
+                                    "metadata": {
+                                        "extension": ext,
+                                        "parent_dir": model_file.parent.name,
+                                        "full_path": str(model_file),
+                                        "is_large": size_mb > 1000,
+                                        "priority_score": self._calculate_priority_score(size_mb, is_valid),
+                                        "detected_from": str(search_path.name)
+                                    }
                                 }
-                            }
-                            
-                            scanned_models.append(model_info)
-                            scanned_count += 1
-                            
-                            # 처음 10개만 상세 로깅
-                            if scanned_count <= 10:
-                                status = "✅" if validation.is_valid else "⚠️"
-                                self.logger.info(f"📦 {status} 발견: {model_info['name']} ({size_mb:.1f}MB) @ {search_path.name}")
-                            
-                        except Exception as e:
-                            self.logger.debug(f"⚠️ 모델 스캔 실패 {model_file}: {e}")
+                                
+                                scanned_models.append(model_info)
+                                scanned_count += 1
+                                
+                                # 처음 5개만 상세 로깅
+                                if scanned_count <= 5:
+                                    self.logger.info(f"📦 ✅ 발견: {model_info['name']} ({size_mb:.1f}MB) @ {search_path.name}")
+                                
+                            except Exception as e:
+                                self.logger.debug(f"⚠️ 파일 처리 실패 {model_file}: {e}")
+                                continue
+                                
+                except Exception as path_error:
+                    self.logger.debug(f"⚠️ 경로 스캔 실패 {search_path}: {path_error}")
+                    continue
             
-            # 🔥 크기 우선순위로 정렬
-            if self.prioritize_large_models:
-                scanned_models.sort(key=lambda x: x["metadata"]["priority_score"], reverse=True)
-                self.logger.info("🎯 대형 모델 우선순위 정렬 적용")
+            # 크기 우선순위로 정렬
+            scanned_models.sort(key=lambda x: x["metadata"]["priority_score"], reverse=True)
             
-            # 정렬된 순서로 available_models에 등록
+            # available_models에 등록
             for model_info in scanned_models:
                 self.available_models[model_info["name"]] = model_info
             
-            # 통계 업데이트
-            self.performance_stats.update({
-                'total_models_found': scanned_count,
-                'large_models_found': large_models_count,
-                'small_models_filtered': small_models_filtered
-            })
-            
-            validation_rate = validated_count / scanned_count if scanned_count > 0 else 0
-            
-            self.logger.info(f"✅ 완전 동적 스캔 완료: {scanned_count}개 등록")
-            self.logger.info(f"🔍 검증 성공: {validated_count}개 ({validation_rate:.1%})")
-            self.logger.info(f"📊 대용량 모델(1GB+): {large_models_count}개")
-            self.logger.info(f"🗑️ 작은 파일 제외: {small_models_filtered}개 ({self.min_model_size_mb}MB 미만)")
+            self.logger.info(f"✅ 실제 파일 기반 스캔 완료: {scanned_count}개 등록")
             self.logger.info(f"💾 총 모델 크기: {total_size_gb:.1f}GB")
             
-            # 상위 5개 모델 출력
+            # 상위 3개 모델 출력
             if scanned_models:
                 self.logger.info("🏆 우선순위 상위 모델들:")
-                for i, model in enumerate(scanned_models[:5]):
-                    self.logger.info(f"  {i+1}. {model['name']}: {model['size_mb']:.1f}MB")
+                for i, model in enumerate(scanned_models[:3]):
+                    self.logger.info(f"  {i+1}. {model['name']}: {model['size_mb']:.1f}MB ({model['model_type']})")
             
         except Exception as e:
-            self.logger.error(f"❌ 완전 동적 모델 스캔 실패: {e}")
-            # 예외 발생 시에도 기본 경로에서 스캔 시도
-            try:
-                self.logger.info("🔄 예외 상황 - 기본 경로 스캔 시도")
-                for model_file in self.model_cache_dir.rglob("*.pth"):
-                    size_mb = model_file.stat().st_size / (1024 * 1024) 
-                    if size_mb >= 50:  # 50MB 이상만
-                        self.available_models[model_file.stem] = {
-                            "name": model_file.stem,
-                            "path": str(model_file.relative_to(self.model_cache_dir)),
-                            "size_mb": round(size_mb, 2),
-                            "model_type": "unknown",
-                            "step_class": "UnknownStep",
-                            "loaded": False,
-                            "device": self.device,
-                            "is_valid": True,  # 기본값
-                            "metadata": {
-                                "emergency_scan": True,
-                                "full_path": str(model_file)
-                            }
-                        }
-                self.logger.info(f"🚨 비상 스캔으로 {len(self.available_models)}개 모델 발견")
-            except Exception as emergency_error:
-                self.logger.error(f"❌ 비상 스캔도 실패: {emergency_error}")
+            self.logger.error(f"❌ 모델 스캔 완전 실패: {e}")
+
+    def _quick_validate_file(self, file_path: Path) -> bool:
+        """빠른 파일 검증 (크기와 확장자만)"""
+        try:
+            if not file_path.exists():
+                return False
+            
+            size_mb = file_path.stat().st_size / (1024 * 1024)
+            
+            # 너무 작은 파일 제외
+            if size_mb < 1:  # 1MB 미만
+                return False
+                
+            # 확장자 확인
+            valid_extensions = {'.pth', '.pt', '.bin', '.safetensors', '.ckpt'}
+            if file_path.suffix.lower() not in valid_extensions:
+                return False
+                
+            return True
+            
+        except Exception:
+            return False
+
+    def _smart_detect_model_info(self, model_file: Path) -> tuple:
+        """실제 파일명과 경로로 스마트하게 모델 타입 감지"""
+        filename = model_file.name.lower()
+        path_str = str(model_file).lower()
+        
+        # 파일명 기반 우선 감지
+        if "schp" in filename or "atr" in filename or "human" in filename:
+            return "human_parsing", "HumanParsingStep"
+        elif "openpose" in filename or "pose" in filename:
+            return "pose_estimation", "PoseEstimationStep"  
+        elif "u2net" in filename or "sam_vit" in filename or "segment" in filename:
+            return "cloth_segmentation", "ClothSegmentationStep"
+        elif "diffusion" in filename or "pytorch_model" in filename:
+            return "virtual_fitting", "VirtualFittingStep"
+        elif "esrgan" in filename or "gfpgan" in filename:
+            return "post_processing", "PostProcessingStep"
+        elif "clip" in filename:
+            return "quality_assessment", "QualityAssessmentStep"
+        
+        # 경로 기반 감지
+        if "step_01" in path_str or "human_parsing" in path_str:
+            return "human_parsing", "HumanParsingStep"
+        elif "step_02" in path_str or "pose" in path_str:
+            return "pose_estimation", "PoseEstimationStep"
+        elif "step_03" in path_str or "cloth" in path_str:
+            return "cloth_segmentation", "ClothSegmentationStep"
+        elif "step_04" in path_str:
+            return "geometric_matching", "GeometricMatchingStep"
+        elif "step_05" in path_str:
+            return "cloth_warping", "ClothWarpingStep"
+        elif "step_06" in path_str or "virtual" in path_str or "ootd" in path_str:
+            return "virtual_fitting", "VirtualFittingStep"
+        elif "step_07" in path_str:
+            return "post_processing", "PostProcessingStep"
+        elif "step_08" in path_str:
+            return "quality_assessment", "QualityAssessmentStep"
+        
+        # 기본값
+        return "unknown", "UnknownStep"
+
 
     def _detect_model_type_dynamic(self, model_file: Path) -> str:
         """🔥 동적 모델 타입 감지 (실제 파일명 + 경로 기반)"""

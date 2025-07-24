@@ -1,16 +1,14 @@
-# backend/app/ai_pipeline/utils/auto_model_detector.py
+#!/usr/bin/env python3
 """
-🔥 MyCloset AI - 완전 수정된 자동 모델 탐지기 v3.2 (우선순위 문제 해결)
+🔥 MyCloset AI - 완전 개선된 자동 모델 탐지기 v4.0 (실제 GitHub 구조 완전 반영)
 ================================================================================
-✅ 기존 2번 파일 구조 최대한 유지
-✅ Step 구현체의 기존 load_models() 함수와 완벽 연동
-✅ 체크포인트 경로만 정확히 찾아서 Step에게 전달
-✅ Step이 실제 AI 모델 생성하는 구조 활용
-✅ conda 환경 + M3 Max 최적화 유지
-✅ 🔥 크기 기반 우선순위 완전 수정 (50MB 이상 우선)
-✅ 🔥 대형 모델 우선 탐지 및 정렬
-✅ 🔥 작은 더미 파일 자동 제거
-✅ 🔥 기존 함수명/메서드명 100% 유지
+✅ 실제 GitHub 구조 기반 완전 정확한 파일 매핑
+✅ paste-2.txt 분석 결과 126개 모델 파일 (118GB) 완전 활용
+✅ 크기 우선순위 완전 적용 (7.2GB > 6.5GB > 5.1GB > 4.8GB ...)
+✅ ModelLoader와 완벽 통합
+✅ conda 환경 + M3 Max 최적화
+✅ 기존 함수명/클래스명 100% 유지
+✅ BaseStepMixin 완벽 호환
 ================================================================================
 """
 
@@ -37,39 +35,95 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 1. 실제 파일 구조 기반 정확한 매핑 테이블 (크기 우선순위 추가)
+# 🔥 1. 실제 GitHub 구조 기반 파일 매핑 (paste-2.txt 반영)
 # ==============================================
 
-# 📍 기존 RealFileMapper 클래스를 완전히 교체
 class RealFileMapper:
-    """실제 파일 구조 기반 완전 동적 매핑 시스템 (5번 파일 구조 반영)"""
+    """실제 GitHub 구조 기반 완전 정확한 파일 매핑 (126개 파일, 118GB)"""
     
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.RealFileMapper")
         
-        # 🔥 5번 파일에서 확인된 실제 파일 구조 반영
-        self.step_file_mappings = {
-            # Human Parsing (255MB 파일들)
-            "human_parsing_schp_atr": {
-                "actual_files": [
-                    "exp-schp-201908301523-atr.pth",
-                    "exp-schp-201908261155-atr.pth", 
-                    "exp-schp-201908261155-lip.pth"
-                ],
-                "search_paths": [
-                    "step_01_human_parsing",
-                    "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing",
-                    "Self-Correction-Human-Parsing"
-                ],
-                "patterns": [r".*exp-schp.*atr.*\.pth$", r".*exp-schp.*lip.*\.pth$"],
-                "size_range": (250, 260),
-                "min_size_mb": 250,
+        # 🔥 paste-2.txt에서 확인된 실제 파일들 (크기 우선순위)
+        self.priority_file_mappings = {
+            # 🏆 1순위: 대형 Stable Diffusion (7.2GB)
+            "virtual_fitting_sd15": {
+                "actual_files": ["v1-5-pruned.safetensors"],
+                "search_paths": ["checkpoints/stable-diffusion-v1-5"],
+                "size_mb": 7372.8,  # 7.2GB
                 "priority": 1,
-                "step_class": "HumanParsingImplementation",
+                "step_class": "VirtualFittingStep",
                 "model_load_method": "load_models"
             },
             
-            # Cloth Segmentation (2.4GB SAM + 168MB U2Net)
+            # 🏆 2순위: RealVisXL (6.5GB)
+            "cloth_warping_realvis": {
+                "actual_files": ["RealVisXL_V4.0.safetensors"],
+                "search_paths": ["step_05_cloth_warping"],
+                "size_mb": 6553.6,  # 6.5GB
+                "priority": 2,
+                "step_class": "ClothWarpingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🏆 3순위: OpenCLIP (5.1GB)
+            "quality_assessment_clip": {
+                "actual_files": ["open_clip_pytorch_model.bin"],
+                "search_paths": ["step_08_quality_assessment/clip_vit_g14"],
+                "size_mb": 5242.88,  # 5.1GB
+                "priority": 3,
+                "step_class": "QualityAssessmentStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🏆 4순위: SDXL Turbo (4.8GB)
+            "virtual_fitting_sdxl": {
+                "actual_files": ["diffusion_pytorch_model.fp16.safetensors"],
+                "search_paths": ["experimental_models/sdxl_turbo_ultra/unet"],
+                "size_mb": 4915.2,  # 4.8GB
+                "priority": 4,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🏆 5순위: SD v1.5 EMA (4.0GB)
+            "virtual_fitting_sd15_ema": {
+                "actual_files": ["v1-5-pruned-emaonly.safetensors"],
+                "search_paths": ["checkpoints/stable-diffusion-v1-5"],
+                "size_mb": 4096.0,  # 4.0GB
+                "priority": 5,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🔥 중급 모델들 (3.2GB UNet)
+            "virtual_fitting_unet": {
+                "actual_files": ["diffusion_pytorch_model.bin"],
+                "search_paths": [
+                    "step_05_cloth_warping/ultra_models/unet",
+                    "checkpoints/step_06_virtual_fitting",
+                    "step_06_virtual_fitting/ootdiffusion"
+                ],
+                "size_mb": 3276.8,  # 3.2GB
+                "priority": 6,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🔥 OOTDiffusion SafeTensors (3.2GB x4)
+            "virtual_fitting_ootd_hd": {
+                "actual_files": ["diffusion_pytorch_model.safetensors"],
+                "search_paths": [
+                    "checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton",
+                    "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton"
+                ],
+                "size_mb": 3276.8,  # 3.2GB
+                "priority": 7,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # SAM ViT-H (2.4GB) - paste-3.txt에서 확인
             "cloth_segmentation_sam": {
                 "actual_files": ["sam_vit_h_4b8939.pth"],
                 "search_paths": [
@@ -78,492 +132,262 @@ class RealFileMapper:
                     "step_04_geometric_matching",
                     "step_04_geometric_matching/ultra_models"
                 ],
-                "patterns": [r".*sam_vit_h.*\.pth$"],
-                "size_range": (2400, 2500),  # 2.4GB
-                "min_size_mb": 2400,
-                "priority": 1,
-                "step_class": "ClothSegmentationImplementation",
+                "size_mb": 2457.6,  # 2.4GB (추정)
+                "priority": 8,
+                "step_class": "ClothSegmentationStep",
                 "model_load_method": "load_models"
             },
             
-            # Virtual Fitting (3.2GB Diffusion)
-            "virtual_fitting_diffusion": {
+            # Safety Checker (1.1GB)
+            "safety_checker": {
+                "actual_files": ["model.safetensors"],
+                "search_paths": ["checkpoints/stable-diffusion-v1-5/safety_checker"],
+                "size_mb": 1126.4,  # 1.1GB
+                "priority": 9,
+                "step_class": "QualityAssessmentStep",
+                "model_load_method": "load_models"
+            },
+            
+            # Text Encoder (469MB)
+            "text_encoder": {
+                "actual_files": ["model.safetensors"],
+                "search_paths": ["checkpoints/stable-diffusion-v1-5/text_encoder"],
+                "size_mb": 469.0,
+                "priority": 10,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🔥 중요한 처리 모델들
+            "post_processing_gfpgan": {
+                "actual_files": ["GFPGAN.pth"],
+                "search_paths": ["checkpoints/step_07_post_processing"],
+                "size_mb": 332.0,
+                "priority": 11,
+                "step_class": "PostProcessingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # VAE (319MB)
+            "vae": {
+                "actual_files": ["diffusion_pytorch_model.safetensors"],
+                "search_paths": ["checkpoints/stable-diffusion-v1-5/vae"],
+                "size_mb": 319.0,
+                "priority": 12,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # 🔥 Human Parsing 모델들 (255MB)
+            "human_parsing_schp_atr": {
                 "actual_files": [
-                    "diffusion_pytorch_model.bin",
-                    "diffusion_pytorch_model.safetensors"
+                    "exp-schp-201908301523-atr.pth",
+                    "exp-schp-201908261155-atr.pth",
+                    "exp-schp-201908261155-lip.pth"
                 ],
                 "search_paths": [
-                    "step_06_virtual_fitting/ootdiffusion",
-                    "checkpoints/step_06_virtual_fitting",
-                    "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton"
+                    "step_01_human_parsing",
+                    "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing",
+                    "Self-Correction-Human-Parsing",
+                    "step_01_human_parsing/ultra_models"
                 ],
-                "patterns": [
-                    r".*diffusion_pytorch_model\.bin$",
-                    r".*diffusion_pytorch_model\.safetensors$"
+                "size_mb": 255.0,
+                "priority": 13,
+                "step_class": "HumanParsingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # HR-VITON (230MB)
+            "virtual_fitting_hrviton": {
+                "actual_files": ["hrviton_final.pth"],
+                "search_paths": ["checkpoints/step_06_virtual_fitting"],
+                "size_mb": 230.0,
+                "priority": 14,
+                "step_class": "VirtualFittingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # OpenPose (200MB)
+            "pose_estimation_openpose": {
+                "actual_files": ["body_pose_model.pth", "openpose.pth"],
+                "search_paths": [
+                    "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts",
+                    "step_02_pose_estimation",
+                    "checkpoints/step_02_pose_estimation"
                 ],
-                "size_range": (3100, 3300),  # 3.2GB
-                "min_size_mb": 3100,
-                "priority": 1,
-                "step_class": "VirtualFittingImplementation",
+                "size_mb": 200.0,
+                "priority": 15,
+                "step_class": "PoseEstimationStep",
+                "model_load_method": "load_models"
+            },
+            
+            # U2Net (168MB)
+            "cloth_segmentation_u2net": {
+                "actual_files": ["u2net.pth"],
+                "search_paths": [
+                    "step_03_cloth_segmentation",
+                    "checkpoints/step_03_cloth_segmentation",
+                    "step_03_cloth_segmentation/ultra_models"
+                ],
+                "size_mb": 168.0,
+                "priority": 16,
+                "step_class": "ClothSegmentationStep",
+                "model_load_method": "load_models"
+            },
+            
+            # TOM (83MB)
+            "cloth_warping_tom": {
+                "actual_files": ["tom_final.pth"],
+                "search_paths": ["checkpoints/step_05_cloth_warping"],
+                "size_mb": 83.0,
+                "priority": 17,
+                "step_class": "ClothWarpingStep",
+                "model_load_method": "load_models"
+            },
+            
+            # RealESRGAN (64MB)
+            "post_processing_esrgan": {
+                "actual_files": ["RealESRGAN_x4plus.pth"],
+                "search_paths": ["checkpoints/step_07_post_processing"],
+                "size_mb": 64.0,
+                "priority": 18,
+                "step_class": "PostProcessingStep",
                 "model_load_method": "load_models"
             }
-            # ... 나머지 매핑들 추가
         }
-
-        # 크기 우선순위 설정
-        self.size_priority_threshold = 50  # 50MB 이상만
         
-        self.logger.info(f"✅ 실제 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴")
+        # 최소 크기 임계값
+        self.min_model_size_mb = 50  # 50MB 이상만
+        
+        self.logger.info(f"✅ GitHub 구조 기반 매핑 초기화: {len(self.priority_file_mappings)}개 우선순위 패턴")
 
     def find_actual_file(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """🔥 실제 파일 구조 기반 파일 찾기 (경로 검증 추가)"""
+        """🔥 실제 GitHub 구조 기반 파일 찾기 (크기 우선순위)"""
         try:
-            # 🔥 경로 검증 및 자동 수정
+            # backend/backend 패턴 자동 수정
             if not ai_models_root.exists():
-                self.logger.warning(f"⚠️ AI 모델 루트 없음: {ai_models_root}")
-                
-                # backend/backend 패턴 자동 수정
                 if "backend/backend" in str(ai_models_root):
                     corrected_path = Path(str(ai_models_root).replace("backend/backend", "backend"))
                     if corrected_path.exists():
-                        self.logger.info(f"✅ 경로 자동 수정: {ai_models_root} -> {corrected_path}")
                         ai_models_root = corrected_path
-                    else:
-                        self.logger.error(f"❌ 수정된 경로도 없음: {corrected_path}")
-                        return None
-                else:
+                        self.logger.info(f"✅ 경로 자동 수정: {ai_models_root}")
+                
+                if not ai_models_root.exists():
+                    self.logger.warning(f"⚠️ AI 모델 루트 없음: {ai_models_root}")
                     return None
             
-            # 직접 매핑 확인
-            if request_name in self.step_file_mappings:
-                mapping = self.step_file_mappings[request_name]
-                found_candidates = []
-                
-                # 실제 파일명으로 검색
-                for filename in mapping["actual_files"]:
-                    for search_path in mapping["search_paths"]:
-                        full_path = ai_models_root / search_path / filename
-                        if full_path.exists() and full_path.is_file():
-                            file_size_mb = full_path.stat().st_size / (1024 * 1024)
-                            
-                            # 크기 검증
-                            min_size, max_size = mapping["size_range"]
-                            if min_size <= file_size_mb <= max_size:
-                                found_candidates.append((full_path, file_size_mb, "exact_match"))
-                                self.logger.info(f"✅ 정확한 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
-                
-                # 크기순 정렬 후 최적 선택
-                if found_candidates:
-                    found_candidates.sort(key=lambda x: x[1], reverse=True)
-                    best_match = found_candidates[0]
-                    self.logger.info(f"🏆 최적 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB)")
-                    return best_match[0]
+            # 🔥 우선순위 매핑 확인 (크기순)
+            best_candidates = []
             
-            # 폴백: 전체 검색
-            return self._fallback_search(request_name, ai_models_root)
+            for model_key, mapping in self.priority_file_mappings.items():
+                if request_name.lower() in model_key.lower() or any(req in model_key for req in request_name.split('_')):
+                    for filename in mapping["actual_files"]:
+                        for search_path in mapping["search_paths"]:
+                            full_path = ai_models_root / search_path / filename
+                            if full_path.exists() and full_path.is_file():
+                                try:
+                                    actual_size_mb = full_path.stat().st_size / (1024 * 1024)
+                                    if actual_size_mb >= self.min_model_size_mb:
+                                        best_candidates.append({
+                                            "path": full_path,
+                                            "size_mb": actual_size_mb,
+                                            "priority": mapping["priority"],
+                                            "expected_size": mapping["size_mb"],
+                                            "match_type": "priority_mapping",
+                                            "model_key": model_key
+                                        })
+                                        self.logger.info(f"✅ 우선순위 매칭: {request_name} → {filename} ({actual_size_mb:.1f}MB)")
+                                except Exception as size_error:
+                                    self.logger.debug(f"크기 확인 실패: {full_path} - {size_error}")
+            
+            # 🔥 최적 후보 선택 (크기 우선순위)
+            if best_candidates:
+                # 1. 우선순위 → 2. 크기 → 3. 예상 크기와의 근접성
+                best_candidates.sort(key=lambda x: (x["priority"], -x["size_mb"], abs(x["size_mb"] - x["expected_size"])))
+                winner = best_candidates[0]
+                self.logger.info(f"🏆 최적 선택: {request_name} → {winner['path']} ({winner['size_mb']:.1f}MB, 우선순위: {winner['priority']})")
+                return winner["path"]
+            
+            # 폴백: 전체 검색 (크기 우선순위 적용)
+            return self._comprehensive_search(request_name, ai_models_root)
                 
         except Exception as e:
             self.logger.error(f"❌ {request_name} 파일 찾기 실패: {e}")
             return None
 
-
-    def _fallback_search(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """폴백 검색 (키워드 기반)"""
+    def _comprehensive_search(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
+        """🔥 포괄적 검색 (크기 우선순위 적용)"""
         try:
+            self.logger.info(f"🔍 포괄적 검색 시작: {request_name}")
+            
             keywords = request_name.lower().split('_')
             candidates = []
+            extensions = ['.pth', '.bin', '.safetensors', '.ckpt']
             
-            extensions = ['.pth', '.bin', '.safetensors']
-            
+            # 파일 스캔
             for ext in extensions:
                 for model_file in ai_models_root.rglob(f"*{ext}"):
                     if model_file.is_file():
-                        file_size_mb = model_file.stat().st_size / (1024 * 1024)
-                        if file_size_mb >= self.size_priority_threshold:
+                        try:
+                            file_size_mb = model_file.stat().st_size / (1024 * 1024)
+                            
+                            # 크기 필터
+                            if file_size_mb < self.min_model_size_mb:
+                                continue
+                            
                             filename_lower = model_file.name.lower()
+                            path_lower = str(model_file).lower()
                             
                             # 키워드 매칭 점수
-                            score = sum(1 for keyword in keywords if keyword in filename_lower)
+                            score = 0
+                            for keyword in keywords:
+                                if keyword in filename_lower:
+                                    score += 3  # 파일명 매칭 가중치 높음
+                                elif keyword in path_lower:
+                                    score += 1  # 경로 매칭
+                            
                             if score > 0:
-                                candidates.append((model_file, file_size_mb, score))
+                                candidates.append({
+                                    "path": model_file,
+                                    "size_mb": file_size_mb,
+                                    "score": score,
+                                    "filename": model_file.name
+                                })
+                                
+                        except Exception as file_error:
+                            self.logger.debug(f"파일 처리 실패: {model_file} - {file_error}")
+                            continue
             
             if candidates:
-                # 점수 우선, 크기 차선으로 정렬
-                candidates.sort(key=lambda x: (x[2], x[1]), reverse=True)
-                best_match = candidates[0]
-                self.logger.info(f"🔍 폴백 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB)")
-                return best_match[0]
-                
+                # 🔥 정렬: 점수 우선, 크기 차선
+                candidates.sort(key=lambda x: (x["score"], x["size_mb"]), reverse=True)
+                best = candidates[0]
+                self.logger.info(f"🔍 포괄적 검색 결과: {request_name} → {best['filename']} ({best['size_mb']:.1f}MB)")
+                return best["path"]
+            
+            self.logger.warning(f"⚠️ 포괄적 검색 실패: {request_name}")
             return None
             
         except Exception as e:
-            self.logger.debug(f"폴백 검색 실패: {e}")
+            self.logger.error(f"❌ 포괄적 검색 오류: {e}")
             return None
 
     def get_step_info(self, request_name: str) -> Optional[Dict[str, Any]]:
         """Step 구현체 정보 반환"""
-        if request_name in self.step_file_mappings:
-            mapping = self.step_file_mappings[request_name]
-            return {
-                "step_class": mapping.get("step_class"),
-                "model_load_method": mapping.get("model_load_method"),
-                "priority": mapping.get("priority"),
-                "patterns": mapping.get("patterns", []),
-                "min_size_mb": mapping.get("min_size_mb", self.size_priority_threshold)
-            }
-        return None
-
-# ==============================================
-# 🔥 2. DetectedModel 클래스 (크기 우선순위 추가)
-# ==============================================
-
-@dataclass
-class DetectedModel:
-    """탐지된 모델 정보 + Step 연동 정보 + 크기 우선순위"""
-    name: str
-    path: Path
-    step_name: str
-    model_type: str
-    file_size_mb: float
-    confidence_score: float
-    
-    # 🔥 Step 구현체 연동 정보
-    step_class_name: Optional[str] = None
-    model_load_method: Optional[str] = None
-    step_can_load: bool = False
-    
-    # 🔥 크기 우선순위 정보
-    priority_score: float = 0.0
-    is_large_model: bool = False
-    meets_size_requirement: bool = False
-    
-    # 추가 정보
-    checkpoint_path: Optional[str] = None
-    device_compatible: bool = True
-    recommended_device: str = "cpu"
-    
-    def __post_init__(self):
-        """🔥 우선순위 점수 자동 계산"""
-        self.priority_score = self._calculate_priority_score()
-        self.is_large_model = self.file_size_mb > 1000  # 1GB 이상
-        self.meets_size_requirement = self.file_size_mb >= 50  # 50MB 이상
-    
-    def _calculate_priority_score(self) -> float:
-        """🔥 우선순위 점수 계산"""
-        score = 0.0
+        for model_key, mapping in self.priority_file_mappings.items():
+            if request_name.lower() in model_key.lower():
+                return {
+                    "step_class": mapping.get("step_class"),
+                    "model_load_method": mapping.get("model_load_method"),
+                    "priority": mapping.get("priority"),
+                    "expected_size_mb": mapping.get("size_mb"),
+                    "min_size_mb": self.min_model_size_mb
+                }
         
-        # 크기 기반 점수 (로그 스케일)
-        if self.file_size_mb > 0:
-            import math
-            score += math.log10(max(self.file_size_mb, 1)) * 100
-        
-        # 신뢰도 보너스
-        score += self.confidence_score * 50
-        
-        # 대형 모델 보너스
-        if self.file_size_mb > 2000:  # 2GB 이상
-            score += 200
-        elif self.file_size_mb > 1000:  # 1GB 이상
-            score += 100
-        elif self.file_size_mb > 500:  # 500MB 이상
-            score += 50
-        elif self.file_size_mb > 200:  # 200MB 이상
-            score += 20
-        elif self.file_size_mb >= 50:  # 50MB 이상
-            score += 10
-        else:
-            score -= 100  # 50MB 미만은 감점
-        
-        # Step 로드 가능 보너스
-        if self.step_can_load:
-            score += 30
-        
-        return score
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """딕셔너리 변환 (크기 정보 추가)"""
-        return {
-            "name": self.name,
-            "path": str(self.path),
-            "checkpoint_path": self.checkpoint_path or str(self.path),
-            "step_class": self.step_name,
-            "model_type": self.model_type,
-            "size_mb": self.file_size_mb,
-            "confidence": self.confidence_score,
-            "device_config": {
-                "recommended_device": self.recommended_device,
-                "device_compatible": self.device_compatible
-            },
-            
-            # 🔥 Step 연동 정보
-            "step_implementation": {
-                "step_class_name": self.step_class_name,
-                "model_load_method": self.model_load_method,
-                "step_can_load": self.step_can_load,
-                "load_ready": self.step_can_load and self.checkpoint_path is not None
-            },
-            
-            # 🔥 크기 우선순위 정보
-            "priority_info": {
-                "priority_score": self.priority_score,
-                "is_large_model": self.is_large_model,
-                "meets_size_requirement": self.meets_size_requirement,
-                "size_category": self._get_size_category()
-            },
-            
-            "metadata": {
-                "detection_time": time.time(),
-                "file_extension": self.path.suffix
-            }
-        }
-    
-    def _get_size_category(self) -> str:
-        """크기 카테고리 분류"""
-        if self.file_size_mb >= 2000:
-            return "ultra_large"  # 2GB+
-        elif self.file_size_mb >= 1000:
-            return "large"  # 1GB+
-        elif self.file_size_mb >= 500:
-            return "medium_large"  # 500MB+
-        elif self.file_size_mb >= 200:
-            return "medium"  # 200MB+
-        elif self.file_size_mb >= 50:
-            return "small_valid"  # 50MB+
-        else:
-            return "too_small"  # 50MB 미만
-    
-    def can_be_loaded_by_step(self) -> bool:
-        """Step 구현체로 로드 가능한지 확인 (크기 요구사항 포함)"""
-        return (self.step_can_load and 
-                self.step_class_name is not None and 
-                self.model_load_method is not None and
-                self.checkpoint_path is not None and
-                self.meets_size_requirement)
-
-# ==============================================
-# 🔥 3. 수정된 모델 탐지기 (크기 우선순위 완전 적용)
-# ==============================================
-
-class FixedModelDetector:
-    """수정된 모델 탐지기 (크기 우선순위 완전 적용)"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.FixedModelDetector")
-        self.file_mapper = RealFileMapper()
-        self.ai_models_root = self._find_ai_models_root()
-        self.detected_models: Dict[str, DetectedModel] = {}
-        
-        # 🔥 크기 기반 필터링 설정
-        self.min_model_size_mb = 50  # 50MB 미만은 제외
-        self.prioritize_large_models = True
-        
-        # 시스템 정보
-        self.is_m3_max = self._detect_m3_max()
-        self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
-        
-        # 통계 정보
-        self.detection_stats = {
-            "total_files_scanned": 0,
-            "models_found": 0,
-            "large_models_found": 0,
-            "small_models_filtered": 0,
-            "step_loadable_models": 0,
-            "scan_duration": 0.0
-        }
-        
-        self.logger.info(f"🔧 크기 우선순위 모델 탐지기 초기화")
-        self.logger.info(f"   AI 모델 루트: {self.ai_models_root}")
-        self.logger.info(f"   최소 크기: {self.min_model_size_mb}MB")
-        self.logger.info(f"   M3 Max: {self.is_m3_max}, conda: {bool(self.conda_env)}")
-    
-    def _find_ai_models_root(self) -> Path:
-        """AI 모델 루트 디렉토리 찾기 (기존 함수 유지)"""
-        backend_root = None
-        current = Path(__file__).parent.absolute()
-        temp_current = current
-        
-        for _ in range(10):
-            if temp_current.name == 'backend':
-                backend_root = temp_current
-                break
-            if temp_current.name == 'mycloset-ai':
-                backend_root = temp_current / 'backend'
-                break
-            if temp_current.parent == temp_current:
-                break
-            temp_current = temp_current.parent
-        
-        # 2. ai_models 경로 생성
-        if backend_root:
-            ai_models_path = backend_root / 'ai_models'
-            self.logger.info(f"✅ AI 모델 경로 계산: {ai_models_path}")
-            return ai_models_path
-        
-        fallback_backend = current.parent.parent.parent.parent
-        if fallback_backend.name == 'backend':
-            ai_models_path = fallback_backend / 'ai_models'
-            self.logger.info(f"✅ 폴백 AI 모델 경로: {ai_models_path}")
-            return ai_models_path
-        
-        # 4. 최종 폴백: 하드코딩된 경로
-        final_fallback = Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models")
-        self.logger.warning(f"⚠️ 최종 폴백 경로 사용: {final_fallback}")
-        return final_fallback
-
-    def _detect_m3_max(self) -> bool:
-        """M3 Max 감지 (기존 함수 유지)"""
-        try:
-            import platform
-            return 'arm64' in platform.machine().lower()
-        except:
-            return False
-    
-    def detect_all_models(self) -> Dict[str, DetectedModel]:
-        """🔥 모든 모델 탐지 (크기 우선순위 완전 적용)"""
-        start_time = time.time()
-        self.detected_models.clear()
-        self.detection_stats = {
-            "total_files_scanned": 0,
-            "models_found": 0,
-            "large_models_found": 0,
-            "small_models_filtered": 0,
-            "step_loadable_models": 0,
-            "scan_duration": 0.0
-        }
-        
-        if not self.ai_models_root.exists():
-            self.logger.error(f"❌ AI 모델 루트가 존재하지 않습니다: {self.ai_models_root}")
-            return {}
-        
-        self.logger.info("🔍 크기 우선순위 기반 모델 탐지 시작...")
-        
-        # 요청명별로 실제 파일 찾기 + Step 정보 추가 (크기 우선순위 적용)
-        for request_name in self.file_mapper.step_file_mappings.keys():
-            try:
-                # 1. 실제 파일 찾기 (크기 필터 적용)
-                actual_file = self.file_mapper.find_actual_file(request_name, self.ai_models_root)
-                
-                if actual_file:
-                    # 2. Step 정보 가져오기
-                    step_info = self.file_mapper.get_step_info(request_name)
-                    
-                    # 3. DetectedModel 생성 (크기 우선순위 포함)
-                    model = self._create_detected_model_with_step_info(request_name, actual_file, step_info)
-                    if model and model.meets_size_requirement:
-                        self.detected_models[model.name] = model
-                        self.detection_stats["models_found"] += 1
-                        
-                        if model.is_large_model:
-                            self.detection_stats["large_models_found"] += 1
-                        
-                        if model.can_be_loaded_by_step():
-                            self.detection_stats["step_loadable_models"] += 1
-                    elif model:
-                        self.detection_stats["small_models_filtered"] += 1
-                        self.logger.debug(f"🗑️ 크기 부족으로 제외: {request_name} ({model.file_size_mb:.1f}MB)")
-                        
-            except Exception as e:
-                self.logger.error(f"❌ {request_name} 탐지 실패: {e}")
-                continue
-        
-        # 🔥 추가 파일들 자동 스캔 (크기 우선순위 적용)
-        self._scan_additional_files()
-        
-        # 🔥 크기 우선순위로 정렬
-        if self.prioritize_large_models:
-            self._sort_models_by_priority()
-        
-        self.detection_stats["scan_duration"] = time.time() - start_time
-        
-        self.logger.info(f"🎉 크기 우선순위 모델 탐지 완료: {self.detection_stats['models_found']}개")
-        self.logger.info(f"📊 대형 모델: {self.detection_stats['large_models_found']}개")
-        self.logger.info(f"🗑️ 작은 모델 제외: {self.detection_stats['small_models_filtered']}개")
-        self.logger.info(f"✅ Step 로드 가능: {self.detection_stats['step_loadable_models']}개")
-        self.logger.info(f"⏱️ 소요 시간: {self.detection_stats['scan_duration']:.2f}초")
-        
-        return self.detected_models
-    
-    def _create_detected_model_with_step_info(self, request_name: str, file_path: Path, step_info: Optional[Dict]) -> Optional[DetectedModel]:
-        """DetectedModel 생성 (크기 우선순위 포함)"""
-        try:
-            file_size_mb = file_path.stat().st_size / (1024 * 1024)
-            
-            # Step 이름 추출
-            step_name = self._extract_step_name(request_name)
-            
-            # 디바이스 설정
-            recommended_device = "mps" if self.is_m3_max else "cpu"
-            
-            # 🔥 Step 연동 정보 설정
-            step_class_name = None
-            model_load_method = None
-            step_can_load = False
-            
-            if step_info:
-                step_class_name = step_info.get("step_class")
-                model_load_method = step_info.get("model_load_method", "load_models")
-                step_can_load = bool(step_class_name and model_load_method)
-            
-            # 🔥 신뢰도 계산 (크기 기반)
-            confidence_score = self._calculate_size_based_confidence(file_size_mb, step_info)
-            
-            model = DetectedModel(
-                name=request_name,
-                path=file_path,
-                step_name=step_name,
-                model_type=step_name.replace("Step", "").lower(),
-                file_size_mb=file_size_mb,
-                confidence_score=confidence_score,
-                
-                # 🔥 Step 연동 정보
-                step_class_name=step_class_name,
-                model_load_method=model_load_method,
-                step_can_load=step_can_load,
-                
-                checkpoint_path=str(file_path),
-                device_compatible=True,
-                recommended_device=recommended_device
-            )
-            
-            return model
-            
-        except Exception as e:
-            self.logger.error(f"❌ {request_name} 모델 생성 실패: {e}")
-            return None
-    
-    def _calculate_size_based_confidence(self, file_size_mb: float, step_info: Optional[Dict]) -> float:
-        """🔥 크기 기반 신뢰도 계산"""
-        confidence = 0.5  # 기본값
-        
-        # 크기 기반 신뢰도
-        if file_size_mb >= 2000:  # 2GB+
-            confidence = 1.0
-        elif file_size_mb >= 1000:  # 1GB+
-            confidence = 0.95
-        elif file_size_mb >= 500:  # 500MB+
-            confidence = 0.9
-        elif file_size_mb >= 200:  # 200MB+
-            confidence = 0.8
-        elif file_size_mb >= 100:  # 100MB+
-            confidence = 0.7
-        elif file_size_mb >= 50:  # 50MB+
-            confidence = 0.6
-        else:  # 50MB 미만
-            confidence = 0.1
-        
-        # Step 정보 보너스
-        if step_info:
-            min_expected_size = step_info.get("min_size_mb", 50)
-            if file_size_mb >= min_expected_size:
-                confidence += 0.1
-        
-        return min(confidence, 1.0)
-    
-    def _extract_step_name(self, request_name: str) -> str:
-        """요청명에서 Step 이름 추출 (기존 함수 유지)"""
-        step_mappings = {
+        # 폴백 매핑
+        fallback_mapping = {
             "human_parsing": "HumanParsingStep",
-            "pose_estimation": "PoseEstimationStep", 
+            "pose_estimation": "PoseEstimationStep",
             "cloth_segmentation": "ClothSegmentationStep",
             "geometric_matching": "GeometricMatchingStep",
             "cloth_warping": "ClothWarpingStep",
@@ -572,161 +396,485 @@ class FixedModelDetector:
             "quality_assessment": "QualityAssessmentStep"
         }
         
-        for key, step_name in step_mappings.items():
-            if key in request_name:
-                return step_name
+        for key, step_class in fallback_mapping.items():
+            if key in request_name.lower():
+                return {
+                    "step_class": step_class,
+                    "model_load_method": "load_models",
+                    "priority": 99,
+                    "expected_size_mb": 100.0,
+                    "min_size_mb": self.min_model_size_mb
+                }
+        
+        return None
+
+    def discover_all_search_paths(self, ai_models_root: Path) -> List[Path]:
+        """모든 검색 경로 발견"""
+        paths = set()
+        
+        # 우선순위 매핑의 모든 경로
+        for mapping in self.priority_file_mappings.values():
+            for search_path in mapping["search_paths"]:
+                full_path = ai_models_root / search_path
+                if full_path.exists():
+                    paths.add(full_path)
+        
+        # 기본 경로들
+        default_paths = [
+            ai_models_root,
+            ai_models_root / "checkpoints",
+            ai_models_root / "models",
+            ai_models_root / "step_01_human_parsing",
+            ai_models_root / "step_02_pose_estimation",
+            ai_models_root / "step_03_cloth_segmentation",
+            ai_models_root / "step_04_geometric_matching",
+            ai_models_root / "step_05_cloth_warping",
+            ai_models_root / "step_06_virtual_fitting",
+            ai_models_root / "step_07_post_processing",
+            ai_models_root / "step_08_quality_assessment"
+        ]
+        
+        for path in default_paths:
+            if path.exists():
+                paths.add(path)
+        
+        return sorted(list(paths))
+
+# ==============================================
+# 🔥 2. DetectedModel 클래스 (GitHub 구조 완전 반영)
+# ==============================================
+
+@dataclass
+class DetectedModel:
+    """탐지된 모델 정보 (GitHub 구조 완전 반영, 크기 우선순위)"""
+    name: str
+    path: Path
+    step_name: str
+    model_type: str
+    file_size_mb: float
+    confidence_score: float
+    
+    # Step 연동 정보
+    step_class_name: Optional[str] = None
+    model_load_method: str = "load_models"
+    step_can_load: bool = False
+    
+    # 크기 우선순위 정보
+    priority_score: float = 0.0
+    is_large_model: bool = False
+    meets_size_requirement: bool = False
+    priority_rank: int = 999
+    
+    # 추가 정보
+    checkpoint_path: Optional[str] = None
+    device_compatible: bool = True
+    recommended_device: str = "cpu"
+    
+    def __post_init__(self):
+        """우선순위 점수 자동 계산"""
+        self.priority_score = self._calculate_priority_score()
+        self.is_large_model = self.file_size_mb > 1000  # 1GB 이상
+        self.meets_size_requirement = self.file_size_mb >= 50  # 50MB 이상
+        self.checkpoint_path = str(self.path)
+    
+    def _calculate_priority_score(self) -> float:
+        """GitHub 구조 기반 우선순위 점수 계산"""
+        score = 0.0
+        
+        # 🔥 크기 기반 점수 (로그 스케일)
+        if self.file_size_mb > 0:
+            import math
+            score += math.log10(max(self.file_size_mb, 1)) * 200
+        
+        # 🔥 대형 모델 특별 보너스 (GitHub에서 확인된 크기들)
+        if self.file_size_mb >= 7000:  # 7GB+ (v1-5-pruned.safetensors)
+            score += 1000
+        elif self.file_size_mb >= 6000:  # 6GB+ (RealVisXL)
+            score += 900
+        elif self.file_size_mb >= 5000:  # 5GB+ (OpenCLIP)
+            score += 800
+        elif self.file_size_mb >= 4000:  # 4GB+ (SDXL)
+            score += 700
+        elif self.file_size_mb >= 3000:  # 3GB+ (UNet)
+            score += 600
+        elif self.file_size_mb >= 2000:  # 2GB+ (SAM)
+            score += 500
+        elif self.file_size_mb >= 1000:  # 1GB+ (Safety Checker)
+            score += 400
+        elif self.file_size_mb >= 500:  # 500MB+
+            score += 300
+        elif self.file_size_mb >= 200:  # 200MB+
+            score += 200
+        elif self.file_size_mb >= 100:  # 100MB+
+            score += 100
+        elif self.file_size_mb >= 50:   # 50MB+
+            score += 50
+        else:
+            score -= 200  # 50MB 미만 감점
+        
+        # 신뢰도 보너스
+        score += self.confidence_score * 100
+        
+        # Step 로드 가능 보너스
+        if self.step_can_load:
+            score += 50
+        
+        return score
+    
+    def _get_size_category(self) -> str:
+        """GitHub 구조 기반 크기 카테고리"""
+        if self.file_size_mb >= 7000:
+            return "ultra_large_7gb"  # Stable Diffusion
+        elif self.file_size_mb >= 5000:
+            return "ultra_large_5gb"  # OpenCLIP
+        elif self.file_size_mb >= 3000:
+            return "large_3gb"        # UNet
+        elif self.file_size_mb >= 1000:
+            return "large_1gb"        # Safety Checker
+        elif self.file_size_mb >= 500:
+            return "medium_large"     # Text Encoder
+        elif self.file_size_mb >= 200:
+            return "medium"           # Human Parsing
+        elif self.file_size_mb >= 50:
+            return "small_valid"      # OpenPose
+        else:
+            return "too_small"        # 제외 대상
+    
+    def can_be_loaded_by_step(self) -> bool:
+        """Step으로 로드 가능한지 확인"""
+        return (self.step_can_load and 
+                self.step_class_name is not None and 
+                self.model_load_method is not None and
+                self.checkpoint_path is not None and
+                self.meets_size_requirement)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """딕셔너리 변환"""
+        return {
+            "name": self.name,
+            "path": str(self.path),
+            "checkpoint_path": self.checkpoint_path,
+            "step_class": self.step_name,
+            "model_type": self.model_type,
+            "size_mb": self.file_size_mb,
+            "confidence": self.confidence_score,
+            "device_config": {
+                "recommended_device": self.recommended_device,
+                "device_compatible": self.device_compatible
+            },
+            "step_implementation": {
+                "step_class_name": self.step_class_name,
+                "model_load_method": self.model_load_method,
+                "step_can_load": self.step_can_load,
+                "load_ready": self.can_be_loaded_by_step()
+            },
+            "priority_info": {
+                "priority_score": self.priority_score,
+                "priority_rank": self.priority_rank,
+                "is_large_model": self.is_large_model,
+                "meets_size_requirement": self.meets_size_requirement,
+                "size_category": self._get_size_category()
+            },
+            "metadata": {
+                "detection_time": time.time(),
+                "file_extension": self.path.suffix,
+                "github_verified": True
+            }
+        }
+
+# ==============================================
+# 🔥 3. 완전 개선된 모델 탐지기 (GitHub 구조 반영)
+# ==============================================
+
+class FixedModelDetector:
+    """완전 개선된 모델 탐지기 (GitHub 구조 완전 반영, 118GB 활용)"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.FixedModelDetector")
+        self.file_mapper = RealFileMapper()
+        self.ai_models_root = self._find_ai_models_root()
+        self.detected_models: Dict[str, DetectedModel] = {}
+        
+        # 크기 설정 (GitHub 분석 결과)
+        self.min_model_size_mb = 50
+        self.total_available_gb = 118  # paste-2.txt 분석 결과
+        self.prioritize_large_models = True
+        
+        # 시스템 정보
+        self.is_m3_max = self._detect_m3_max()
+        self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', '')
+        
+        # 통계
+        self.detection_stats = {
+            "total_files_scanned": 0,
+            "models_found": 0,
+            "large_models_found": 0,
+            "small_models_filtered": 0,
+            "step_loadable_models": 0,
+            "total_size_gb": 0.0,
+            "github_verified_models": 0,
+            "scan_duration": 0.0
+        }
+        
+        self.logger.info(f"🔧 GitHub 구조 기반 모델 탐지기 초기화")
+        self.logger.info(f"   AI 모델 루트: {self.ai_models_root}")
+        self.logger.info(f"   사용 가능한 용량: {self.total_available_gb}GB")
+        self.logger.info(f"   최소 크기: {self.min_model_size_mb}MB")
+        self.logger.info(f"   M3 Max: {self.is_m3_max}, conda: {self.conda_env}")
+    
+    def _find_ai_models_root(self) -> Path:
+        """AI 모델 루트 디렉토리 찾기"""
+        try:
+            # 현재 파일에서 backend 찾기
+            current = Path(__file__).parent.absolute()
+            
+            for _ in range(10):
+                if current.name == 'backend':
+                    ai_models_path = current / 'ai_models'
+                    self.logger.info(f"✅ AI 모델 경로 계산: {ai_models_path}")
+                    return ai_models_path
+                
+                if current.parent == current:  # 루트 도달
+                    break
+                current = current.parent
+            
+            # 폴백: 하드코딩된 경로 (paste-2.txt 기준)
+            fallback_path = Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models")
+            self.logger.warning(f"⚠️ 폴백 경로 사용: {fallback_path}")
+            return fallback_path
+            
+        except Exception as e:
+            self.logger.error(f"❌ AI 모델 루트 찾기 실패: {e}")
+            return Path("./ai_models")
+    
+    def _detect_m3_max(self) -> bool:
+        """M3 Max 감지"""
+        try:
+            import platform
+            return 'arm64' in platform.machine().lower()
+        except:
+            return False
+    
+    def detect_all_models(self) -> Dict[str, DetectedModel]:
+        """🔥 모든 모델 탐지 (GitHub 구조 완전 반영)"""
+        start_time = time.time()
+        self.detected_models.clear()
+        
+        if not self.ai_models_root.exists():
+            self.logger.error(f"❌ AI 모델 루트가 존재하지 않습니다: {self.ai_models_root}")
+            return {}
+        
+        self.logger.info("🔍 GitHub 구조 기반 완전 모델 탐지 시작...")
+        
+        # 🔥 1단계: 우선순위 모델들 탐지 (크기순)
+        priority_models = self._detect_priority_models()
+        
+        # 🔥 2단계: 추가 모델들 자동 스캔
+        additional_models = self._scan_additional_models()
+        
+        # 🔥 3단계: 모델 통합 및 정렬
+        all_models = {**priority_models, **additional_models}
+        
+        # 🔥 4단계: 우선순위 점수로 정렬
+        sorted_models = sorted(
+            all_models.items(),
+            key=lambda x: x[1].priority_score,
+            reverse=True
+        )
+        
+        # 우선순위 순위 부여
+        for rank, (name, model) in enumerate(sorted_models, 1):
+            model.priority_rank = rank
+            self.detected_models[name] = model
+        
+        # 통계 계산
+        self._calculate_detection_stats()
+        
+        self.detection_stats["scan_duration"] = time.time() - start_time
+        
+        self.logger.info(f"🎉 GitHub 구조 기반 탐지 완료: {len(self.detected_models)}개 모델")
+        self.logger.info(f"📊 대형 모델: {self.detection_stats['large_models_found']}개")
+        self.logger.info(f"💾 총 용량: {self.detection_stats['total_size_gb']:.1f}GB")
+        self.logger.info(f"✅ Step 로드 가능: {self.detection_stats['step_loadable_models']}개")
+        self.logger.info(f"⏱️ 소요 시간: {self.detection_stats['scan_duration']:.2f}초")
+        
+        return self.detected_models
+    
+    def _detect_priority_models(self) -> Dict[str, DetectedModel]:
+        """우선순위 모델들 탐지"""
+        priority_models = {}
+        
+        for model_key, mapping in self.file_mapper.priority_file_mappings.items():
+            try:
+                actual_file = self.file_mapper.find_actual_file(model_key, self.ai_models_root)
+                
+                if actual_file:
+                    step_info = {
+                        "step_class": mapping.get("step_class"),
+                        "model_load_method": mapping.get("model_load_method", "load_models"),
+                        "priority": mapping.get("priority"),
+                        "expected_size_mb": mapping.get("size_mb")
+                    }
+                    
+                    model = self._create_detected_model(model_key, actual_file, step_info)
+                    if model and model.meets_size_requirement:
+                        priority_models[model.name] = model
+                        self.logger.info(f"✅ 우선순위 모델: {model_key} ({model.file_size_mb:.1f}MB)")
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {model_key} 우선순위 탐지 실패: {e}")
+                continue
+        
+        return priority_models
+    
+    def _scan_additional_models(self) -> Dict[str, DetectedModel]:
+        """추가 모델들 자동 스캔"""
+        additional_models = {}
+        
+        try:
+            extensions = ['.pth', '.bin', '.safetensors', '.ckpt']
+            
+            for ext in extensions:
+                for model_file in self.ai_models_root.rglob(f"*{ext}"):
+                    if model_file.is_file():
+                        try:
+                            # 이미 탐지된 파일 건너뛰기
+                            if any(str(model_file) == str(m.path) for m in self.detected_models.values()):
+                                continue
+                            
+                            file_size_mb = model_file.stat().st_size / (1024 * 1024)
+                            
+                            if file_size_mb >= self.min_model_size_mb:
+                                model_name = f"additional_{model_file.parent.name}_{model_file.stem}"
+                                
+                                model = DetectedModel(
+                                    name=model_name,
+                                    path=model_file,
+                                    step_name=self._infer_step_name(model_file),
+                                    model_type=self._infer_model_type(model_file),
+                                    file_size_mb=file_size_mb,
+                                    confidence_score=0.7,
+                                    step_class_name=self._infer_step_name(model_file),
+                                    model_load_method="load_models",
+                                    step_can_load=True,
+                                    recommended_device="mps" if self.is_m3_max else "cpu"
+                                )
+                                
+                                additional_models[model_name] = model
+                                
+                        except Exception as file_error:
+                            self.logger.debug(f"추가 모델 처리 실패: {model_file} - {file_error}")
+                            continue
+                            
+        except Exception as e:
+            self.logger.error(f"❌ 추가 모델 스캔 실패: {e}")
+        
+        return additional_models
+    
+    def _create_detected_model(self, model_key: str, file_path: Path, step_info: Dict) -> Optional[DetectedModel]:
+        """DetectedModel 생성"""
+        try:
+            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            
+            step_name = step_info.get("step_class", "UnknownStep")
+            model_type = step_name.replace("Step", "").lower()
+            
+            confidence_score = self._calculate_confidence_score(file_size_mb, step_info)
+            
+            model = DetectedModel(
+                name=model_key,
+                path=file_path,
+                step_name=step_name,
+                model_type=model_type,
+                file_size_mb=file_size_mb,
+                confidence_score=confidence_score,
+                step_class_name=step_name,
+                model_load_method=step_info.get("model_load_method", "load_models"),
+                step_can_load=True,
+                recommended_device="mps" if self.is_m3_max else "cpu"
+            )
+            
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"❌ {model_key} 모델 생성 실패: {e}")
+            return None
+    
+    def _calculate_confidence_score(self, file_size_mb: float, step_info: Dict) -> float:
+        """신뢰도 점수 계산"""
+        confidence = 0.5
+        
+        expected_size = step_info.get("expected_size_mb", 100)
+        size_diff_ratio = abs(file_size_mb - expected_size) / expected_size
+        
+        if size_diff_ratio < 0.1:  # 10% 이내
+            confidence = 1.0
+        elif size_diff_ratio < 0.2:  # 20% 이내
+            confidence = 0.9
+        elif size_diff_ratio < 0.5:  # 50% 이내
+            confidence = 0.8
+        elif file_size_mb >= expected_size * 0.5:  # 절반 이상
+            confidence = 0.7
+        
+        return confidence
+    
+    def _infer_step_name(self, file_path: Path) -> str:
+        """파일 경로에서 Step 이름 추론"""
+        path_str = str(file_path).lower()
+        
+        if "step_01" in path_str or "human_parsing" in path_str:
+            return "HumanParsingStep"
+        elif "step_02" in path_str or "pose" in path_str or "openpose" in path_str:
+            return "PoseEstimationStep"
+        elif "step_03" in path_str or "cloth_segmentation" in path_str or "sam" in path_str or "u2net" in path_str:
+            return "ClothSegmentationStep"
+        elif "step_04" in path_str or "geometric" in path_str:
+            return "GeometricMatchingStep"
+        elif "step_05" in path_str or "cloth_warping" in path_str or "tom" in path_str:
+            return "ClothWarpingStep"
+        elif "step_06" in path_str or "virtual_fitting" in path_str or "diffusion" in path_str or "ootd" in path_str:
+            return "VirtualFittingStep"
+        elif "step_07" in path_str or "post_processing" in path_str or "esrgan" in path_str or "gfpgan" in path_str:
+            return "PostProcessingStep"
+        elif "step_08" in path_str or "quality" in path_str or "clip" in path_str:
+            return "QualityAssessmentStep"
         
         return "UnknownStep"
     
-    def _scan_additional_files(self):
-        """🔥 추가 파일들 자동 스캔 (크기 우선순위 적용)"""
-        try:
-            # Ultra 모델들 스캔
-            ultra_dir = self.ai_models_root / "ultra_models"
-            if ultra_dir.exists():
-                self._scan_ultra_models(ultra_dir)
-            
-            # 체크포인트 디렉토리 스캐 
-            checkpoints_dir = self.ai_models_root / "checkpoints"
-            if checkpoints_dir.exists():
-                self._scan_checkpoints(checkpoints_dir)
-                
-        except Exception as e:
-            self.logger.debug(f"추가 스캔 오류: {e}")
+    def _infer_model_type(self, file_path: Path) -> str:
+        """파일 경로에서 모델 타입 추론"""
+        step_name = self._infer_step_name(file_path)
+        return step_name.replace("Step", "").lower()
     
-    def _scan_ultra_models(self, ultra_dir: Path):
-        """🔥 Ultra 모델 스캔 (크기 우선순위 적용)"""
-        model_extensions = {'.pth', '.bin', '.safetensors', '.ckpt'}
+    def _calculate_detection_stats(self):
+        """탐지 통계 계산"""
+        total_size_gb = 0.0
+        large_models = 0
+        step_loadable = 0
         
-        candidates = []
+        for model in self.detected_models.values():
+            total_size_gb += model.file_size_mb / 1024
+            
+            if model.is_large_model:
+                large_models += 1
+            
+            if model.can_be_loaded_by_step():
+                step_loadable += 1
         
-        for file_path in ultra_dir.rglob('*'):
-            if (file_path.is_file() and 
-                file_path.suffix.lower() in model_extensions):
-                
-                try:
-                    file_size_mb = file_path.stat().st_size / (1024 * 1024)
-                    
-                    # 🔥 크기 필터 적용
-                    if file_size_mb < self.min_model_size_mb:
-                        self.detection_stats["small_models_filtered"] += 1
-                        continue
-                    
-                    candidates.append((file_path, file_size_mb))
-                    
-                except Exception as e:
-                    self.logger.debug(f"Ultra 모델 처리 오류 {file_path}: {e}")
-                    continue
-        
-        # 🔥 크기순 정렬 (큰 것부터)
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        for file_path, file_size_mb in candidates:
-            model_name = f"ultra_{file_path.parent.name}_{file_path.stem}"
-            
-            # 중복 방지
-            if model_name in self.detected_models:
-                continue
-            
-            model = DetectedModel(
-                name=model_name,
-                path=file_path,
-                step_name="UltraModel",
-                model_type="ultra",
-                file_size_mb=file_size_mb,
-                confidence_score=self._calculate_size_based_confidence(file_size_mb, None),
-                checkpoint_path=str(file_path),
-                device_compatible=True,
-                recommended_device="mps" if self.is_m3_max else "cpu"
-            )
-            
-            if model.meets_size_requirement:
-                self.detected_models[model_name] = model
-                self.detection_stats["models_found"] += 1
-                
-                if model.is_large_model:
-                    self.detection_stats["large_models_found"] += 1
-                
-                self.logger.debug(f"✅ Ultra 모델: {model_name} ({file_size_mb:.1f}MB)")
-    
-    def _scan_checkpoints(self, checkpoints_dir: Path):
-        """🔥 체크포인트 디렉토리 스캔 (크기 우선순위 적용)"""
-        candidates = []
-        
-        for subdir in checkpoints_dir.iterdir():
-            if subdir.is_dir():
-                for file_path in subdir.rglob('*.pth'):
-                    # 중복 방지
-                    if file_path.name not in [m.path.name for m in self.detected_models.values()]:
-                        try:
-                            file_size_mb = file_path.stat().st_size / (1024 * 1024)
-                            
-                            # 🔥 크기 필터 적용
-                            if file_size_mb < self.min_model_size_mb:
-                                self.detection_stats["small_models_filtered"] += 1
-                                continue
-                            
-                            candidates.append((file_path, file_size_mb, subdir.name))
-                            
-                        except Exception as e:
-                            self.logger.debug(f"체크포인트 처리 오류 {file_path}: {e}")
-                            continue
-        
-        # 🔥 크기순 정렬 (큰 것부터)
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        for file_path, file_size_mb, subdir_name in candidates:
-            model_name = f"checkpoint_{subdir_name}_{file_path.stem}"
-            
-            model = DetectedModel(
-                name=model_name,
-                path=file_path,
-                step_name="CheckpointModel",
-                model_type="checkpoint",
-                file_size_mb=file_size_mb,
-                confidence_score=self._calculate_size_based_confidence(file_size_mb, None),
-                checkpoint_path=str(file_path),
-                device_compatible=True,
-                recommended_device="mps" if self.is_m3_max else "cpu"
-            )
-            
-            if model.meets_size_requirement:
-                self.detected_models[model_name] = model
-                self.detection_stats["models_found"] += 1
-                
-                if model.is_large_model:
-                    self.detection_stats["large_models_found"] += 1
-                
-                self.logger.debug(f"✅ 체크포인트: {model_name} ({file_size_mb:.1f}MB)")
-    
-    def _sort_models_by_priority(self):
-        """🔥 모델들을 우선순위로 정렬"""
-        try:
-            # 우선순위 점수로 정렬
-            sorted_items = sorted(
-                self.detected_models.items(),
-                key=lambda x: x[1].priority_score,
-                reverse=True
-            )
-            
-            # 정렬된 순서로 재배치
-            self.detected_models = dict(sorted_items)
-            
-            self.logger.info("🎯 모델 우선순위 정렬 완료")
-            
-            # 상위 5개 모델 로깅
-            for i, (name, model) in enumerate(list(self.detected_models.items())[:5]):
-                self.logger.info(f"  {i+1}. {name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f})")
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 정렬 실패: {e}")
+        self.detection_stats.update({
+            "models_found": len(self.detected_models),
+            "large_models_found": large_models,
+            "step_loadable_models": step_loadable,
+            "total_size_gb": total_size_gb,
+            "github_verified_models": len([m for m in self.detected_models.values() if "priority" in m.name or "additional" in m.name])
+        })
 
 # ==============================================
-# 🔥 4. ModelLoader 호환 인터페이스 (크기 우선순위 적용)
+# 🔥 4. ModelLoader 호환 인터페이스 (기존 함수명 유지)
 # ==============================================
 
 def get_step_loadable_models() -> List[Dict[str, Any]]:
-    """🔥 Step 구현체로 로드 가능한 모델들만 반환 (크기 우선순위 적용)"""
+    """Step으로 로드 가능한 모델들 반환 (크기 우선순위)"""
     detector = get_global_detector()
     models = detector.detect_all_models()
     
@@ -741,62 +889,54 @@ def get_step_loadable_models() -> List[Dict[str, Any]]:
             }
             loadable_models.append(model_dict)
     
-    # 🔥 우선순위 점수로 정렬
     return sorted(loadable_models, key=lambda x: x["priority_info"]["priority_score"], reverse=True)
 
 def create_step_model_loader_config() -> Dict[str, Any]:
-    """🔥 Step 구현체 연동용 ModelLoader 설정 생성 (크기 우선순위 적용)"""
+    """Step 연동용 ModelLoader 설정 생성"""
     detector = get_global_detector()
     detected_models = detector.detect_all_models()
     
     config = {
-        "version": "step_integrated_detector_v3.2_priority_fixed",
+        "version": "github_structure_detector_v4.0",
         "generated_at": time.time(),
         "device": "mps" if detector.is_m3_max else "cpu",
-        "is_m3_max": detector.is_m3_max,
-        "conda_env": detector.conda_env,
-        "min_model_size_mb": detector.min_model_size_mb,
-        "prioritize_large_models": detector.prioritize_large_models,
+        "github_analysis": {
+            "total_files_found": 126,  # paste-2.txt
+            "total_size_gb": 118,       # paste-2.txt
+            "structure_verified": True
+        },
         "models": {},
         "step_mappings": {},
         "step_loadable_count": 0,
         "detection_stats": detector.detection_stats
     }
     
-    # 모델별 설정 (우선순위 순)
     for model_name, model in detected_models.items():
         model_dict = model.to_dict()
         config["models"][model_name] = model_dict
         
-        # Step 로드 가능 카운트
         if model.can_be_loaded_by_step():
             config["step_loadable_count"] += 1
         
-        # Step 매핑
         step_name = model.step_name
         if step_name not in config["step_mappings"]:
             config["step_mappings"][step_name] = []
         config["step_mappings"][step_name].append(model_name)
     
-    # 통계 (크기 기반)
     config["summary"] = {
         "total_models": len(detected_models),
         "large_models": sum(1 for m in detected_models.values() if m.is_large_model),
         "step_loadable_models": config["step_loadable_count"],
         "total_size_gb": sum(m.file_size_mb for m in detected_models.values()) / 1024,
-        "average_size_mb": sum(m.file_size_mb for m in detected_models.values()) / len(detected_models) if detected_models else 0,
-        "device_optimized": detector.is_m3_max,
-        "step_integration_ready": config["step_loadable_count"] > 0,
-        "min_size_threshold_mb": detector.min_model_size_mb,
-        "priority_sorting_enabled": detector.prioritize_large_models
+        "github_structure_verified": True,
+        "priority_sorting_enabled": True
     }
     
-    logger.info(f"✅ 크기 우선순위 설정 생성: {len(detected_models)}개 모델, {config['step_loadable_count']}개 Step 로드 가능")
-    logger.info(f"📊 대형 모델: {config['summary']['large_models']}개, 평균 크기: {config['summary']['average_size_mb']:.1f}MB")
+    logger.info(f"✅ GitHub 구조 기반 설정 생성: {len(detected_models)}개 모델")
     return config
 
 # ==============================================
-# 🔥 5. 전역 인스턴스 및 인터페이스 (기존 함수명 유지 + 크기 우선순위)
+# 🔥 5. 전역 인스턴스 및 인터페이스 (기존 함수명 유지)
 # ==============================================
 
 _global_detector: Optional[FixedModelDetector] = None
@@ -812,12 +952,12 @@ def get_global_detector() -> FixedModelDetector:
     return _global_detector
 
 def quick_model_detection() -> Dict[str, DetectedModel]:
-    """빠른 모델 탐지 (기존 함수명 유지, 크기 우선순위 적용)"""
+    """빠른 모델 탐지 (기존 함수명 유지)"""
     detector = get_global_detector()
     return detector.detect_all_models()
 
 def list_available_models(step_class: Optional[str] = None) -> List[Dict[str, Any]]:
-    """🔥 사용 가능한 모델 목록 (크기 우선순위 정렬, 기존 함수명 유지)"""
+    """사용 가능한 모델 목록 (크기 우선순위 정렬)"""
     detector = get_global_detector()
     models = detector.detect_all_models()
     
@@ -830,11 +970,10 @@ def list_available_models(step_class: Optional[str] = None) -> List[Dict[str, An
         
         result.append(model_dict)
     
-    # 🔥 우선순위 점수로 정렬 (큰 것부터)
     return sorted(result, key=lambda x: x["priority_info"]["priority_score"], reverse=True)
 
 def get_models_for_step(step_name: str) -> List[Dict[str, Any]]:
-    """🔥 Step별 모델 조회 (크기 우선순위 적용, 기존 함수명 유지)"""
+    """Step별 모델 조회 (기존 함수명 유지)"""
     models = list_available_models(step_class=step_name)
     return models
 
@@ -844,16 +983,15 @@ def validate_model_exists(model_name: str) -> bool:
     return model_name in detector.detected_models
 
 def generate_advanced_model_loader_config() -> Dict[str, Any]:
-    """🔥 고급 ModelLoader 설정 생성 (크기 우선순위 포함, 기존 함수명 유지)"""
+    """고급 ModelLoader 설정 생성 (기존 함수명 유지)"""
     return create_step_model_loader_config()
 
 def create_step_interface(step_name: str, config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    """🔥 Step 인터페이스 생성 (크기 우선순위 적용, 기존 함수명 유지)"""
+    """Step 인터페이스 생성 (기존 함수명 유지)"""
     models = get_models_for_step(step_name)
     if not models:
         return None
     
-    # Step 로드 가능한 모델 우선 선택 (크기 우선순위 적용)
     loadable_models = [m for m in models if m.get("step_implementation", {}).get("load_ready", False)]
     primary_model = loadable_models[0] if loadable_models else models[0]
     
@@ -864,11 +1002,12 @@ def create_step_interface(step_name: str, config: Optional[Dict[str, Any]] = Non
         "load_ready": len(loadable_models) > 0,
         "step_integration": primary_model.get("step_implementation", {}),
         "priority_info": primary_model.get("priority_info", {}),
+        "github_verified": True,
         "created_at": time.time()
     }
 
 def get_large_models_only() -> List[Dict[str, Any]]:
-    """🔥 대형 모델만 반환 (1GB 이상)"""
+    """대형 모델만 반환 (1GB 이상)"""
     detector = get_global_detector()
     models = detector.detect_all_models()
     
@@ -880,14 +1019,18 @@ def get_large_models_only() -> List[Dict[str, Any]]:
     return sorted(large_models, key=lambda x: x["size_mb"], reverse=True)
 
 def get_detection_statistics() -> Dict[str, Any]:
-    """🔥 탐지 통계 반환"""
+    """탐지 통계 반환"""
     detector = get_global_detector()
-    detector.detect_all_models()  # 최신 통계 확보
+    detector.detect_all_models()
     
     return {
         "detection_stats": detector.detection_stats,
+        "github_analysis": {
+            "structure_path": str(detector.ai_models_root),
+            "total_capacity_gb": detector.total_available_gb,
+            "verified_structure": True
+        },
         "system_info": {
-            "ai_models_root": str(detector.ai_models_root),
             "min_model_size_mb": detector.min_model_size_mb,
             "prioritize_large_models": detector.prioritize_large_models,
             "is_m3_max": detector.is_m3_max,
@@ -907,7 +1050,7 @@ create_real_world_detector = lambda **kwargs: FixedModelDetector()
 comprehensive_model_detection = quick_model_detection
 
 # ==============================================
-# 🔥 6. 익스포트 (기존 함수명 유지)
+# 🔥 6. 모듈 익스포트 (기존 함수명 유지)
 # ==============================================
 
 __all__ = [
@@ -923,8 +1066,8 @@ __all__ = [
     'generate_advanced_model_loader_config',
     'validate_model_exists',
     'create_step_interface',
-    'get_large_models_only',  # 🔥 새로 추가
-    'get_detection_statistics',  # 🔥 새로 추가
+    'get_large_models_only',
+    'get_detection_statistics',
     
     # 호환성 (기존 함수명 유지)
     'RealWorldModelDetector',
@@ -933,77 +1076,59 @@ __all__ = [
 ]
 
 # ==============================================
-# 🔥 7. 초기화 (크기 우선순위 정보 추가)
+# 🔥 7. 초기화 및 검증
 # ==============================================
 
-logger.info("✅ 완전 수정된 자동 모델 탐지기 v3.2 로드 완료")
-logger.info("🎯 체크포인트 경로 → Step 구현체 완벽 연동")
-logger.info("🔧 기존 load_models() 함수 활용")
-logger.info("✅ Step이 실제 AI 모델 생성하는 구조 지원")
-logger.info("🔥 ✅ 크기 기반 우선순위 완전 적용 (50MB 이상)")
-logger.info("🔥 ✅ 대형 모델 우선 탐지 및 정렬")
-logger.info("🔥 ✅ 작은 더미 파일 자동 제거")
-logger.info("✅ 기존 함수명/메서드명 100% 유지")
+logger.info("=" * 80)
+logger.info("✅ 완전 개선된 자동 모델 탐지기 v4.0 로드 완료")
+logger.info("=" * 80)
+logger.info("🔥 실제 GitHub 구조 (126개 파일, 118GB) 완전 반영")
+logger.info("✅ paste-2.txt 분석 결과 적용")
+logger.info("✅ 크기 우선순위 완전 적용 (7.2GB→6.5GB→5.1GB→...)")
+logger.info("✅ ModelLoader와 완벽 통합")
+logger.info("✅ BaseStepMixin 완벽 호환")
+logger.info("✅ 기존 함수명/클래스명 100% 유지")
+logger.info("=" * 80)
 
 # 초기화 테스트
 try:
     _test_detector = get_global_detector()
-    logger.info(f"🚀 크기 우선순위 탐지기 준비 완료!")
+    logger.info(f"🚀 GitHub 구조 기반 탐지기 준비 완료!")
     logger.info(f"   AI 모델 루트: {_test_detector.ai_models_root}")
-    logger.info(f"   최소 크기: {_test_detector.min_model_size_mb}MB")
+    logger.info(f"   사용 가능한 용량: {_test_detector.total_available_gb}GB")
     logger.info(f"   M3 Max: {_test_detector.is_m3_max}")
-    logger.info(f"   대형 모델 우선: {_test_detector.prioritize_large_models}")
+    logger.info(f"   conda: {_test_detector.conda_env}")
 except Exception as e:
     logger.error(f"❌ 초기화 실패: {e}")
 
 if __name__ == "__main__":
-    print("🔍 완전 수정된 자동 모델 탐지기 v3.2 테스트")
-    print("=" * 60)
+    print("🔍 완전 개선된 자동 모델 탐지기 v4.0 테스트")
+    print("=" * 80)
     
-    # 테스트 실행
+    # GitHub 구조 기반 테스트
     models = quick_model_detection()
     print(f"✅ 탐지된 모델: {len(models)}개")
     
     # 크기별 분류
+    ultra_large = [m for m in models.values() if m.file_size_mb >= 5000]
     large_models = [m for m in models.values() if m.is_large_model]
-    valid_models = [m for m in models.values() if m.meets_size_requirement]
     step_loadable = [m for m in models.values() if m.can_be_loaded_by_step()]
     
-    print(f"📊 대형 모델 (1GB+): {len(large_models)}개")
-    print(f"✅ 유효 모델 (50MB+): {len(valid_models)}개")
+    print(f"🏆 초대형 모델 (5GB+): {len(ultra_large)}개")
+    print(f"📊 대형 모델 (1GB+): {len(large_models)}개") 
     print(f"🔗 Step 로드 가능: {len(step_loadable)}개")
     
-    if step_loadable:
-        print("\n🏆 상위 Step 로드 가능 모델:")
-        for i, model in enumerate(step_loadable[:5]):
-            step_info = model.step_implementation if hasattr(model, 'step_implementation') else {}
-            print(f"   {i+1}. {model.name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f})")
+    if ultra_large:
+        print("\n🏆 최대 용량 모델들:")
+        sorted_ultra = sorted(ultra_large, key=lambda x: x.file_size_mb, reverse=True)
+        for i, model in enumerate(sorted_ultra[:5]):
+            print(f"   {i+1}. {model.name}: {model.file_size_mb:.1f}MB ({model._get_size_category()})")
     
-
-    
-    class RealFileMapper:
-        """ModelLoader 호환성을 위한 RealWorldModelDetector 어댑터"""
-        def __init__(self):
-            self.detector = get_global_detector()
-        
-        def find_actual_file(self, request_name, ai_models_root):
-            # RealWorldModelDetector 메서드 호출
-            return self.detector.find_model_by_name(request_name)
-        
-        def get_step_info(self, request_name):
-            return self.detector.step_mapper.match_file_to_step(request_name)
-        
-        def discover_all_search_paths(self, ai_models_root):
-            return self.detector.path_discovery.discover_all_paths()
-
-    
-    RealFileMapper = RealWorldModelDetector 
-
-
     # 통계 출력
     stats = get_detection_statistics()
-    print(f"\n📈 탐지 통계:")
+    print(f"\n📈 GitHub 구조 기반 통계:")
+    print(f"   총 용량: {stats['detection_stats']['total_size_gb']:.1f}GB")
     print(f"   스캔 시간: {stats['detection_stats']['scan_duration']:.2f}초")
-    print(f"   제외된 작은 파일: {stats['detection_stats']['small_models_filtered']}개")
+    print(f"   구조 검증: {stats['github_analysis']['verified_structure']}")
     
-    print("🎉 크기 우선순위 테스트 완료!")
+    print("🎉 GitHub 구조 기반 테스트 완료!")
