@@ -437,7 +437,7 @@ class RealAIContainer:
                     # 🔥 전역 초기화 함수 먼저 호출
                     if MODEL_LOADER_INIT_AVAILABLE:
                         success = initialize_global_model_loader(
-                            model_cache_dir=str(Path(path_info['backend_dir']) / 'ai_models'),
+                        model_cache_dir=Path(path_info['backend_dir']) / 'ai_models',
                             use_fp16=IS_M3_MAX,
                             max_cached_models=16 if IS_M3_MAX else 8,
                             lazy_loading=True,

@@ -43,6 +43,7 @@ from functools import lru_cache, wraps
 from contextlib import asynccontextmanager, contextmanager
 from collections import defaultdict
 from abc import ABC, abstractmethod
+from app.core.model_paths import get_model_path, is_model_available, get_all_available_models
 
 # ==============================================
 # 🔥 1단계: 기본 로깅 설정
@@ -683,323 +684,413 @@ class SafeAsyncContextManager:
 # ==============================================
 
 class StepModelInterface:
-    """Step별 모델 인터페이스 - BaseStepMixin에서 직접 사용"""
-    
-    def __init__(self, model_loader: 'ModelLoader', step_name: str):
-        self.model_loader = model_loader
-        self.step_name = step_name
-        self.logger = logging.getLogger(f"StepInterface.{step_name}")
-        
-        # 모델 캐시 및 상태 (안전한 구조)
-        self.loaded_models: Dict[str, Any] = {}
-        self.model_cache: Dict[str, SafeModelCacheEntry] = {}
-        self.model_status: Dict[str, LoadingStatus] = {}
-        self._lock = threading.RLock()
-        
-        # Step 요청 정보 로드
-        self.step_request = self._get_step_request()
-        self.recommended_models = self._get_recommended_models()
-        
-        # 추가 속성들
-        self.step_requirements: Dict[str, Any] = {}
-        self.available_models: List[str] = []
-        self.creation_time = time.time()
-        self.error_count = 0
-        self.last_error = None
-        
-        self.logger.info(f"🔗 {step_name} 인터페이스 초기화 완료")
-    
-    def _get_step_request(self):
-        """Step별 요청 정보 가져오기"""
-        try:
-            # model_loader에서 요청 정보 가져오기
-            if hasattr(self.model_loader, 'step_requirements'):
-                step_req = self.model_loader.step_requirements.get(self.step_name)
-                if step_req:
-                    return step_req
-            
-            # 기본 요청 정보
-            return {
-                "model_name": f"{self.step_name.lower()}_model",
-                "model_type": "BaseModel",
-                "input_size": (512, 512),
-                "priority": 5
-            }
-        except Exception as e:
-            self.logger.warning(f"⚠️ Step 요청 정보 로드 실패: {e}")
-            return {}
-    
-    def _get_recommended_models(self) -> List[str]:
-        """Step별 권장 모델 목록"""
-        try:
-            if self.step_request:
-                if isinstance(self.step_request, dict):
-                    model_name = self.step_request.get("model_name", "default_model")
-                else:
-                    model_name = getattr(self.step_request, "model_name", "default_model")
-                return [model_name]
-            
-            # 기본 매핑
-            model_mapping = {
-                "HumanParsingStep": ["human_parsing_schp_atr", "human_parsing_graphonomy"],
-                "PoseEstimationStep": ["pose_estimation_openpose", "openpose"],
-                "ClothSegmentationStep": ["cloth_segmentation_u2net", "u2net"],
-                "GeometricMatchingStep": ["geometric_matching_model"],
-                "ClothWarpingStep": ["cloth_warping_net"],
-                "VirtualFittingStep": ["virtual_fitting_diffusion", "pytorch_model"],
-                "PostProcessingStep": ["post_processing_enhance"],
-                "QualityAssessmentStep": ["quality_assessment_clip"]
-            }
-            return model_mapping.get(self.step_name, ["default_model"])
-        except Exception as e:
-            self.logger.warning(f"⚠️ 권장 모델 목록 생성 실패: {e}")
-            return ["default_model"]
-    
-    # ==============================================
-    # 🔥 BaseStepMixin에서 호출하는 핵심 메서드들
-    # ==============================================
-    
-    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """비동기 모델 로드 - BaseStepMixin에서 await interface.get_model() 호출"""
-        async with SafeAsyncContextManager(f"GetModel.{self.step_name}"):
-            try:
-                if not model_name:
-                    model_name = self.recommended_models[0] if self.recommended_models else "default_model"
-                
-                # 캐시 확인
-                with self._lock:
-                    if model_name in self.model_cache:
-                        cache_entry = self.model_cache[model_name]
-                        if cache_entry.is_healthy:
-                            cache_entry.last_access = time.time()
-                            cache_entry.access_count += 1
-                            self.logger.debug(f"✅ 캐시된 모델 반환: {model_name}")
-                            return cache_entry.model
-                        else:
-                            self.logger.warning(f"⚠️ 비정상 캐시 엔트리 제거: {model_name}")
-                            del self.model_cache[model_name]
-                
-                # 로딩 상태 설정
-                self.model_status[model_name] = LoadingStatus.LOADING
-                
-                # ModelLoader를 통한 안전한 체크포인트 로드
-                checkpoint = await self._safe_load_checkpoint(model_name)
-                
-                if checkpoint:
-                    # 안전한 캐시 엔트리 생성
-                    cache_entry = SafeModelCacheEntry(
-                        model=checkpoint,
-                        load_time=time.time(),
-                        last_access=time.time(),
-                        access_count=1,
-                        memory_usage_mb=self._estimate_checkpoint_size(checkpoint),
-                        device=getattr(checkpoint, 'device', DEFAULT_DEVICE) if hasattr(checkpoint, 'device') else DEFAULT_DEVICE,
-                        step_name=self.step_name,
-                        is_healthy=True,
-                        error_count=0
-                    )
-                    
-                    with self._lock:
-                        self.model_cache[model_name] = cache_entry
-                        self.loaded_models[model_name] = checkpoint
-                        self.model_status[model_name] = LoadingStatus.LOADED
-                    
-                    self.logger.info(f"✅ 체크포인트 로드 성공: {model_name}")
-                    return checkpoint
-                
-                self.model_status[model_name] = LoadingStatus.ERROR
-                self.logger.warning(f"⚠️ 체크포인트 로드 실패: {model_name}")
-                return None
-                
-            except Exception as e:
-                self.error_count += 1
-                self.last_error = str(e)
-                self.model_status[model_name] = LoadingStatus.ERROR
-                self.logger.error(f"❌ 모델 로드 실패 {model_name}: {e}")
-                return None
-    
-    async def _safe_load_checkpoint(self, model_name: str) -> Optional[Any]:
-        """안전한 체크포인트 로딩"""
-        try:
-            # ModelLoader에서 체크포인트 로드
-            if hasattr(self.model_loader, 'load_model_async'):
-                return await self.model_loader.load_model_async(model_name)
-            elif hasattr(self.model_loader, 'load_model'):
-                # 동기 메서드를 비동기로 실행
-                loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(
-                    None, 
-                    self.model_loader.load_model, 
-                    model_name
-                )
-            else:
-                self.logger.error(f"❌ ModelLoader에 로딩 메서드 없음")
-                return None
-        except Exception as e:
-            self.logger.error(f"❌ 안전한 체크포인트 로딩 실패: {e}")
-            return None
-    
-    def get_model_sync(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """동기 모델 로드 - BaseStepMixin에서 interface.get_model_sync() 호출"""
-        try:
-            if not model_name:
-                model_name = self.recommended_models[0] if self.recommended_models else "default_model"
-            
-            # 캐시 확인
-            with self._lock:
-                if model_name in self.model_cache:
-                    cache_entry = self.model_cache[model_name]
-                    if cache_entry.is_healthy:
-                        cache_entry.last_access = time.time()
-                        cache_entry.access_count += 1
-                        return cache_entry.model
-                    else:
-                        del self.model_cache[model_name]
-            
-            # ModelLoader를 통한 체크포인트 로드
-            checkpoint = None
-            if hasattr(self.model_loader, 'load_model'):
-                checkpoint = self.model_loader.load_model(model_name)
-            
-            if checkpoint:
-                with self._lock:
-                    cache_entry = SafeModelCacheEntry(
-                        model=checkpoint,
-                        load_time=time.time(),
-                        last_access=time.time(),
-                        access_count=1,
-                        memory_usage_mb=self._estimate_checkpoint_size(checkpoint),
-                        device=getattr(checkpoint, 'device', DEFAULT_DEVICE) if hasattr(checkpoint, 'device') else DEFAULT_DEVICE,
-                        step_name=self.step_name,
-                        is_healthy=True,
-                        error_count=0
-                    )
-                    
-                    self.model_cache[model_name] = cache_entry
-                    self.loaded_models[model_name] = checkpoint
-                    self.model_status[model_name] = LoadingStatus.LOADED
-                return checkpoint
-            
-            self.model_status[model_name] = LoadingStatus.ERROR
-            return None
-            
-        except Exception as e:
-            self.error_count += 1
-            self.last_error = str(e)
-            self.logger.error(f"❌ 동기 모델 로드 실패 {model_name}: {e}")
-            return None
-    
-    def _estimate_checkpoint_size(self, checkpoint) -> float:
-        """체크포인트 크기 추정 (MB)"""
-        try:
-            if TORCH_AVAILABLE and checkpoint is not None:
-                if isinstance(checkpoint, dict):
-                    # state_dict인 경우
-                    total_params = 0
-                    for param in checkpoint.values():
-                        if hasattr(param, 'numel'):
-                            total_params += param.numel()
-                    return total_params * 4 / (1024 * 1024)  # float32 기준
-                elif hasattr(checkpoint, 'parameters'):
-                    # 모델 객체인 경우
-                    total_params = sum(p.numel() for p in checkpoint.parameters())
-                    return total_params * 4 / (1024 * 1024)
-            return 0.0
-        except:
-            return 0.0
-    
-    def get_model_status(self, model_name: Optional[str] = None) -> Dict[str, Any]:
-        """모델 상태 조회 - BaseStepMixin에서 interface.get_model_status() 호출"""
-        try:
-            if not model_name:
-                # 전체 모델 상태 반환
-                models_status = {}
-                with self._lock:
-                    for name, cache_entry in self.model_cache.items():
-                        models_status[name] = {
-                            "status": self.model_status.get(name, LoadingStatus.NOT_LOADED).value,
-                            "device": cache_entry.device,
-                            "memory_usage_mb": cache_entry.memory_usage_mb,
-                            "last_access": cache_entry.last_access,
-                            "access_count": cache_entry.access_count,
-                            "load_time": cache_entry.load_time,
-                            "is_healthy": cache_entry.is_healthy,
-                            "error_count": cache_entry.error_count
-                        }
-                
-                return {
-                    "step_name": self.step_name,
-                    "models": models_status,
-                    "loaded_count": len(self.loaded_models),
-                    "total_memory_mb": sum(entry.memory_usage_mb for entry in self.model_cache.values()),
-                    "recommended_models": self.recommended_models,
-                    "interface_error_count": self.error_count,
-                    "last_error": self.last_error
-                }
-            
-            # 특정 모델 상태
-            with self._lock:
-                if model_name in self.model_cache:
-                    cache_entry = self.model_cache[model_name]
-                    return {
-                        "status": self.model_status.get(model_name, LoadingStatus.NOT_LOADED).value,
-                        "device": cache_entry.device,
-                        "memory_usage_mb": cache_entry.memory_usage_mb,
-                        "last_access": cache_entry.last_access,
-                        "access_count": cache_entry.access_count,
-                        "load_time": cache_entry.load_time,
-                        "model_type": type(cache_entry.model).__name__,
-                        "loaded": True,
-                        "is_healthy": cache_entry.is_healthy,
-                        "error_count": cache_entry.error_count
-                    }
-                else:
-                    return {
-                        "status": LoadingStatus.NOT_LOADED.value,
-                        "device": None,
-                        "memory_usage_mb": 0.0,
-                        "last_access": 0,
-                        "access_count": 0,
-                        "load_time": 0,
-                        "model_type": None,
-                        "loaded": False,
-                        "is_healthy": False,
-                        "error_count": 0
-                    }
-        except Exception as e:
-            self.logger.error(f"❌ 모델 상태 조회 실패: {e}")
-            return {"status": "error", "error": str(e)}
+   """Step별 모델 인터페이스 - BaseStepMixin에서 직접 사용"""
+   
+   def __init__(self, model_loader: 'ModelLoader', step_name: str):
+       self.model_loader = model_loader
+       self.step_name = step_name
+       self.logger = logging.getLogger(f"StepInterface.{step_name}")
+       
+       # 모델 캐시 및 상태 (안전한 구조)
+       self.loaded_models: Dict[str, Any] = {}
+       self.model_cache: Dict[str, SafeModelCacheEntry] = {}
+       self.model_status: Dict[str, LoadingStatus] = {}
+       self._lock = threading.RLock()
+       
+       # Step 요청 정보 로드
+       self.step_request = self._get_step_request()
+       self.recommended_models = self._get_recommended_models()
+       
+       # 추가 속성들
+       self.step_requirements: Dict[str, Any] = {}
+       self.available_models: List[str] = []
+       self.creation_time = time.time()
+       self.error_count = 0
+       self.last_error = None
+       
+       self.logger.info(f"🔗 {step_name} 인터페이스 초기화 완료")
+   
+   def _get_step_request(self):
+       """Step별 요청 정보 가져오기"""
+       try:
+           # model_loader에서 요청 정보 가져오기
+           if hasattr(self.model_loader, 'step_requirements'):
+               step_req = self.model_loader.step_requirements.get(self.step_name)
+               if step_req:
+                   return step_req
+           
+           # 기본 요청 정보
+           return {
+               "model_name": f"{self.step_name.lower()}_model",
+               "model_type": "BaseModel",
+               "input_size": (512, 512),
+               "priority": 5
+           }
+       except Exception as e:
+           self.logger.warning(f"⚠️ Step 요청 정보 로드 실패: {e}")
+           return {}
+   
+   def _get_recommended_models(self) -> List[str]:
+       """Step별 권장 모델 목록"""
+       try:
+           if self.step_request:
+               if isinstance(self.step_request, dict):
+                   model_name = self.step_request.get("model_name", "default_model")
+               else:
+                   model_name = getattr(self.step_request, "model_name", "default_model")
+               return [model_name]
+           
+           # 기본 매핑
+           model_mapping = {
+               "HumanParsingStep": ["human_parsing_schp_atr", "human_parsing_graphonomy"],
+               "PoseEstimationStep": ["pose_estimation_openpose", "openpose"],
+               "ClothSegmentationStep": ["cloth_segmentation_u2net", "u2net"],
+               "GeometricMatchingStep": ["geometric_matching_model"],
+               "ClothWarpingStep": ["cloth_warping_net"],
+               "VirtualFittingStep": ["virtual_fitting_diffusion", "pytorch_model"],
+               "PostProcessingStep": ["post_processing_enhance"],
+               "QualityAssessmentStep": ["quality_assessment_clip"]
+           }
+           return model_mapping.get(self.step_name, ["default_model"])
+       except Exception as e:
+           self.logger.warning(f"⚠️ 권장 모델 목록 생성 실패: {e}")
+           return ["default_model"]
+   
+   # 🔥 BaseStepMixin 호환성을 위한 핵심 메서드 추가
+   def register_model_requirement(
+       self, 
+       model_name: str, 
+       model_type: str = "BaseModel",
+       **kwargs
+   ) -> bool:
+       """
+       🔥 모델 요구사항 등록 메서드 (BaseStepMixin 호환성)
+       ✅ QualityAssessmentStep 오류 해결
+       """
+       try:
+           with self._lock:
+               self.logger.info(f"📝 모델 요구사항 등록 시작: {model_name}")
+               
+               # ModelLoader의 register_model_requirement 호출
+               if hasattr(self.model_loader, 'register_model_requirement'):
+                   success = self.model_loader.register_model_requirement(
+                       model_name=model_name,
+                       model_type=model_type,
+                       step_name=self.step_name,
+                       **kwargs
+                   )
+                   if success:
+                       # 로컬 요구사항에도 저장
+                       self.step_requirements[model_name] = {
+                           "model_name": model_name,
+                           "model_type": model_type,
+                           "step_name": self.step_name,
+                           "registered_at": time.time(),
+                           **kwargs
+                       }
+                       self.logger.info(f"✅ 모델 요구사항 등록 완료: {model_name}")
+                       return True
+                   else:
+                       self.logger.warning(f"⚠️ ModelLoader 등록 실패: {model_name}")
+                       return False
+               else:
+                   # ModelLoader에 메서드가 없는 경우 직접 처리
+                   self.step_requirements[model_name] = {
+                       "model_name": model_name,
+                       "model_type": model_type,
+                       "step_name": self.step_name,
+                       "registered_at": time.time(),
+                       **kwargs
+                   }
+                   self.logger.info(f"✅ 로컬 모델 요구사항 등록 완료: {model_name}")
+                   return True
+               
+       except Exception as e:
+           self.error_count += 1
+           self.last_error = str(e)
+           self.logger.error(f"❌ 모델 요구사항 등록 실패: {model_name} - {e}")
+           return False
 
-    def list_available_models(self) -> List[Dict[str, Any]]:
-        """🔥 사용 가능한 모델 목록 (크기순 정렬) - BaseStepMixin 호출용"""
-        models = []
-        
-        # 권장 모델들 추가
-        for model_name in self.recommended_models:
-            is_loaded = model_name in self.loaded_models
-            cache_entry = self.model_cache.get(model_name)
-            
-            models.append({
-                "name": model_name,
-                "path": f"recommended/{model_name}",
-                "size_mb": cache_entry.memory_usage_mb if cache_entry else 100.0,
-                "model_type": self.step_name.lower(),
-                "step_class": self.step_name,
-                "loaded": is_loaded,
-                "device": cache_entry.device if cache_entry else "auto",
-                "metadata": {
-                    "recommended": True,
-                    "step_name": self.step_name,
-                    "access_count": cache_entry.access_count if cache_entry else 0
-                }
-            })
-        
-        # 🔥 핵심 수정: 크기순 정렬 (큰 것부터)
-        models.sort(key=lambda x: x["size_mb"], reverse=True)
-        
-        return models
-    
-    
+   def register_model_config(self, model_name: str, config: Dict[str, Any]) -> bool:
+       """모델 설정 등록 (BaseStepMixin 호환성)"""
+       try:
+           with self._lock:
+               # ModelLoader를 통한 등록
+               if hasattr(self.model_loader, 'register_model_config'):
+                   success = self.model_loader.register_model_config(model_name, config)
+                   if success:
+                       self.logger.info(f"✅ 모델 설정 등록 완료: {model_name}")
+                       return True
+               
+               # 폴백: 로컬 저장
+               self.step_requirements[model_name] = config
+               self.logger.info(f"✅ 로컬 모델 설정 등록 완료: {model_name}")
+               return True
+               
+       except Exception as e:
+           self.logger.error(f"❌ 모델 설정 등록 실패: {model_name} - {e}")
+           return False
+
+   def get_registered_requirements(self) -> Dict[str, Any]:
+       """등록된 요구사항 조회"""
+       try:
+           with self._lock:
+               return {
+                   "step_name": self.step_name,
+                   "requirements": dict(self.step_requirements),
+                   "recommended_models": self.recommended_models,
+                   "error_count": self.error_count,
+                   "last_error": self.last_error,
+                   "creation_time": self.creation_time
+               }
+       except Exception as e:
+           self.logger.error(f"❌ 요구사항 조회 실패: {e}")
+           return {"error": str(e)}
+   
+   # ==============================================
+   # 🔥 BaseStepMixin에서 호출하는 핵심 메서드들
+   # ==============================================
+   
+   async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+       """비동기 모델 로드 - BaseStepMixin에서 await interface.get_model() 호출"""
+       async with SafeAsyncContextManager(f"GetModel.{self.step_name}"):
+           try:
+               if not model_name:
+                   model_name = self.recommended_models[0] if self.recommended_models else "default_model"
+               
+               # 캐시 확인
+               with self._lock:
+                   if model_name in self.model_cache:
+                       cache_entry = self.model_cache[model_name]
+                       if cache_entry.is_healthy:
+                           cache_entry.last_access = time.time()
+                           cache_entry.access_count += 1
+                           self.logger.debug(f"✅ 캐시된 모델 반환: {model_name}")
+                           return cache_entry.model
+                       else:
+                           self.logger.warning(f"⚠️ 비정상 캐시 엔트리 제거: {model_name}")
+                           del self.model_cache[model_name]
+               
+               # 로딩 상태 설정
+               self.model_status[model_name] = LoadingStatus.LOADING
+               
+               # ModelLoader를 통한 안전한 체크포인트 로드
+               checkpoint = await self._safe_load_checkpoint(model_name)
+               
+               if checkpoint:
+                   # 안전한 캐시 엔트리 생성
+                   cache_entry = SafeModelCacheEntry(
+                       model=checkpoint,
+                       load_time=time.time(),
+                       last_access=time.time(),
+                       access_count=1,
+                       memory_usage_mb=self._estimate_checkpoint_size(checkpoint),
+                       device=getattr(checkpoint, 'device', DEFAULT_DEVICE) if hasattr(checkpoint, 'device') else DEFAULT_DEVICE,
+                       step_name=self.step_name,
+                       is_healthy=True,
+                       error_count=0
+                   )
+                   
+                   with self._lock:
+                       self.model_cache[model_name] = cache_entry
+                       self.loaded_models[model_name] = checkpoint
+                       self.model_status[model_name] = LoadingStatus.LOADED
+                   
+                   self.logger.info(f"✅ 체크포인트 로드 성공: {model_name}")
+                   return checkpoint
+               
+               self.model_status[model_name] = LoadingStatus.ERROR
+               self.logger.warning(f"⚠️ 체크포인트 로드 실패: {model_name}")
+               return None
+               
+           except Exception as e:
+               self.error_count += 1
+               self.last_error = str(e)
+               self.model_status[model_name] = LoadingStatus.ERROR
+               self.logger.error(f"❌ 모델 로드 실패 {model_name}: {e}")
+               return None
+   
+   async def _safe_load_checkpoint(self, model_name: str) -> Optional[Any]:
+       """안전한 체크포인트 로딩"""
+       try:
+           # ModelLoader에서 체크포인트 로드
+           if hasattr(self.model_loader, 'load_model_async'):
+               return await self.model_loader.load_model_async(model_name)
+           elif hasattr(self.model_loader, 'load_model'):
+               # 동기 메서드를 비동기로 실행
+               loop = asyncio.get_event_loop()
+               return await loop.run_in_executor(
+                   None, 
+                   self.model_loader.load_model, 
+                   model_name
+               )
+           else:
+               self.logger.error(f"❌ ModelLoader에 로딩 메서드 없음")
+               return None
+       except Exception as e:
+           self.logger.error(f"❌ 안전한 체크포인트 로딩 실패: {e}")
+           return None
+   
+   def get_model_sync(self, model_name: Optional[str] = None) -> Optional[Any]:
+       """동기 모델 로드 - BaseStepMixin에서 interface.get_model_sync() 호출"""
+       try:
+           if not model_name:
+               model_name = self.recommended_models[0] if self.recommended_models else "default_model"
+           
+           # 캐시 확인
+           with self._lock:
+               if model_name in self.model_cache:
+                   cache_entry = self.model_cache[model_name]
+                   if cache_entry.is_healthy:
+                       cache_entry.last_access = time.time()
+                       cache_entry.access_count += 1
+                       return cache_entry.model
+                   else:
+                       del self.model_cache[model_name]
+           
+           # ModelLoader를 통한 체크포인트 로드
+           checkpoint = None
+           if hasattr(self.model_loader, 'load_model'):
+               checkpoint = self.model_loader.load_model(model_name)
+           
+           if checkpoint:
+               with self._lock:
+                   cache_entry = SafeModelCacheEntry(
+                       model=checkpoint,
+                       load_time=time.time(),
+                       last_access=time.time(),
+                       access_count=1,
+                       memory_usage_mb=self._estimate_checkpoint_size(checkpoint),
+                       device=getattr(checkpoint, 'device', DEFAULT_DEVICE) if hasattr(checkpoint, 'device') else DEFAULT_DEVICE,
+                       step_name=self.step_name,
+                       is_healthy=True,
+                       error_count=0
+                   )
+                   
+                   self.model_cache[model_name] = cache_entry
+                   self.loaded_models[model_name] = checkpoint
+                   self.model_status[model_name] = LoadingStatus.LOADED
+               return checkpoint
+           
+           self.model_status[model_name] = LoadingStatus.ERROR
+           return None
+           
+       except Exception as e:
+           self.error_count += 1
+           self.last_error = str(e)
+           self.logger.error(f"❌ 동기 모델 로드 실패 {model_name}: {e}")
+           return None
+   
+   def _estimate_checkpoint_size(self, checkpoint) -> float:
+       """체크포인트 크기 추정 (MB)"""
+       try:
+           if TORCH_AVAILABLE and checkpoint is not None:
+               if isinstance(checkpoint, dict):
+                   # state_dict인 경우
+                   total_params = 0
+                   for param in checkpoint.values():
+                       if hasattr(param, 'numel'):
+                           total_params += param.numel()
+                   return total_params * 4 / (1024 * 1024)  # float32 기준
+               elif hasattr(checkpoint, 'parameters'):
+                   # 모델 객체인 경우
+                   total_params = sum(p.numel() for p in checkpoint.parameters())
+                   return total_params * 4 / (1024 * 1024)
+           return 0.0
+       except:
+           return 0.0
+   
+   def get_model_status(self, model_name: Optional[str] = None) -> Dict[str, Any]:
+       """모델 상태 조회 - BaseStepMixin에서 interface.get_model_status() 호출"""
+       try:
+           if not model_name:
+               # 전체 모델 상태 반환
+               models_status = {}
+               with self._lock:
+                   for name, cache_entry in self.model_cache.items():
+                       models_status[name] = {
+                           "status": self.model_status.get(name, LoadingStatus.NOT_LOADED).value,
+                           "device": cache_entry.device,
+                           "memory_usage_mb": cache_entry.memory_usage_mb,
+                           "last_access": cache_entry.last_access,
+                           "access_count": cache_entry.access_count,
+                           "load_time": cache_entry.load_time,
+                           "is_healthy": cache_entry.is_healthy,
+                           "error_count": cache_entry.error_count
+                       }
+               
+               return {
+                   "step_name": self.step_name,
+                   "models": models_status,
+                   "loaded_count": len(self.loaded_models),
+                   "total_memory_mb": sum(entry.memory_usage_mb for entry in self.model_cache.values()),
+                   "recommended_models": self.recommended_models,
+                   "interface_error_count": self.error_count,
+                   "last_error": self.last_error
+               }
+           
+           # 특정 모델 상태
+           with self._lock:
+               if model_name in self.model_cache:
+                   cache_entry = self.model_cache[model_name]
+                   return {
+                       "status": self.model_status.get(model_name, LoadingStatus.NOT_LOADED).value,
+                       "device": cache_entry.device,
+                       "memory_usage_mb": cache_entry.memory_usage_mb,
+                       "last_access": cache_entry.last_access,
+                       "access_count": cache_entry.access_count,
+                       "load_time": cache_entry.load_time,
+                       "model_type": type(cache_entry.model).__name__,
+                       "loaded": True,
+                       "is_healthy": cache_entry.is_healthy,
+                       "error_count": cache_entry.error_count
+                   }
+               else:
+                   return {
+                       "status": LoadingStatus.NOT_LOADED.value,
+                       "device": None,
+                       "memory_usage_mb": 0.0,
+                       "last_access": 0,
+                       "access_count": 0,
+                       "load_time": 0,
+                       "model_type": None,
+                       "loaded": False,
+                       "is_healthy": False,
+                       "error_count": 0
+                   }
+       except Exception as e:
+           self.logger.error(f"❌ 모델 상태 조회 실패: {e}")
+           return {"status": "error", "error": str(e)}
+
+   def list_available_models(self) -> List[Dict[str, Any]]:
+       """🔥 사용 가능한 모델 목록 (크기순 정렬) - BaseStepMixin 호출용"""
+       models = []
+       
+       # 권장 모델들 추가
+       for model_name in self.recommended_models:
+           is_loaded = model_name in self.loaded_models
+           cache_entry = self.model_cache.get(model_name)
+           
+           models.append({
+               "name": model_name,
+               "path": f"recommended/{model_name}",
+               "size_mb": cache_entry.memory_usage_mb if cache_entry else 100.0,
+               "model_type": self.step_name.lower(),
+               "step_class": self.step_name,
+               "loaded": is_loaded,
+               "device": cache_entry.device if cache_entry else "auto",
+               "metadata": {
+                   "recommended": True,
+                   "step_name": self.step_name,
+                   "access_count": cache_entry.access_count if cache_entry else 0
+               }
+           })
+       
+       # 🔥 핵심 수정: 크기순 정렬 (큰 것부터)
+       models.sort(key=lambda x: x["size_mb"], reverse=True)
+       
+       return models
+
 
 # ==============================================
 # 🔥 10단계: 메인 ModelLoader 클래스
@@ -1007,13 +1098,13 @@ class StepModelInterface:
 
 class ModelLoader:
     """완전 개선된 ModelLoader v20.1 (우선순위 문제 해결)"""
-
+    
     def __init__(
-        self,
-        device: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ):
+    self,
+    device: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs
+):
         """개선된 ModelLoader 생성자 - 경로 처리 오류 해결"""
         
         # 기본 설정
@@ -1034,25 +1125,56 @@ class ModelLoader:
         
         # 🔥 ModelLoader 특화 파라미터 (경로 처리 완전 수정)
         model_cache_dir_raw = kwargs.get('model_cache_dir', './ai_models')
-        
-        # 🔥 안전한 경로 변환
+
+        # 🔥 안전한 경로 변환 (str object has no attribute 'exists' 오류 해결)
         try:
             if model_cache_dir_raw is None:
                 self.model_cache_dir = Path('./ai_models')
+                self.logger.info("⚠️ model_cache_dir이 None - 기본값 사용: ./ai_models")
+                
             elif isinstance(model_cache_dir_raw, str):
                 self.model_cache_dir = Path(model_cache_dir_raw).resolve()
+                self.logger.debug(f"✅ 문자열 경로 변환: {model_cache_dir_raw}")
+                
             elif isinstance(model_cache_dir_raw, Path):
                 self.model_cache_dir = model_cache_dir_raw.resolve()
+                self.logger.debug(f"✅ Path 객체 정규화: {model_cache_dir_raw}")
+                
             else:
-                # 예상치 못한 타입인 경우 기본값
+                # 예상치 못한 타입인 경우
                 self.logger.warning(f"⚠️ 예상치 못한 model_cache_dir 타입: {type(model_cache_dir_raw)}")
-                self.model_cache_dir = Path('./ai_models').resolve()
+                self.logger.warning(f"   값: {repr(model_cache_dir_raw)}")
                 
+                # 문자열 변환 시도
+                try:
+                    self.model_cache_dir = Path(str(model_cache_dir_raw)).resolve()
+                    self.logger.info(f"✅ 강제 문자열 변환 성공: {self.model_cache_dir}")
+                except Exception as str_error:
+                    self.logger.error(f"❌ 강제 변환 실패: {str_error}")
+                    self.model_cache_dir = Path('./ai_models').resolve()
+                    self.logger.info("✅ 최종 폴백 경로 사용: ./ai_models")
+                    
             # 경로 존재 확인 및 생성
-            if not self.model_cache_dir.exists():
-                self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-                self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
-                
+            try:
+                if not self.model_cache_dir.exists():
+                    self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+                    self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
+                else:
+                    self.logger.debug(f"📁 AI 모델 디렉토리 확인: {self.model_cache_dir}")
+            except Exception as mkdir_error:
+                self.logger.error(f"❌ 디렉토리 생성 실패: {mkdir_error}")
+                # 폴백 디렉토리 시도
+                try:
+                    fallback_path = Path('./ai_models_fallback').resolve()
+                    fallback_path.mkdir(parents=True, exist_ok=True)
+                    self.model_cache_dir = fallback_path
+                    self.logger.warning(f"⚠️ 폴백 디렉토리 사용: {self.model_cache_dir}")
+                except Exception as fallback_error:
+                    self.logger.error(f"❌ 폴백 디렉토리도 실패: {fallback_error}")
+                    # 현재 디렉토리 사용
+                    self.model_cache_dir = Path('.').resolve()
+                    self.logger.warning(f"🚨 현재 디렉토리 사용: {self.model_cache_dir}")
+                    
         except Exception as path_error:
             self.logger.error(f"❌ 모델 경로 처리 실패: {path_error}")
             # 완전 폴백
@@ -1061,7 +1183,8 @@ class ModelLoader:
                 self.model_cache_dir.mkdir(parents=True, exist_ok=True)
             except Exception as mkdir_error:
                 self.logger.error(f"❌ 폴백 디렉토리 생성 실패: {mkdir_error}")
-                
+                                
+        # 나머지 초기화 계속...
         self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
         self.max_cached_models = kwargs.get('max_cached_models', 30 if self.is_m3_max else 15)
         self.lazy_loading = kwargs.get('lazy_loading', True)
@@ -1116,14 +1239,6 @@ class ModelLoader:
         self.logger.info(f"🎯 최소 모델 크기: {self.min_model_size_mb}MB")
         self.logger.info(f"📁 모델 캐시 디렉토리: {self.model_cache_dir}")
 
-        # AutoModelDetector 자동 통합 시도
-        try:
-            if AUTO_DETECTOR_AVAILABLE:
-                self.integrate_auto_detector()
-                self.logger.info("🎉 AutoModelDetector 자동 통합 완료")
-        except Exception as e:
-            self.logger.warning(f"⚠️ AutoModelDetector 자동 통합 실패: {e}")
-        
     def _initialize_file_mapper(self):
         """🔥 지연 초기화로 file_mapper 설정"""
         try:
@@ -2473,6 +2588,84 @@ class ModelLoader:
             # 폴백 인터페이스 생성
             return StepModelInterface(self, step_name)
     
+    def register_model_requirement(
+        self, 
+        model_name: str, 
+        model_type: str = "BaseModel",
+        **kwargs
+    ) -> bool:
+        """
+        🔥 모델 요구사항 등록 메서드 (StepModelInterface 호환)
+        ✅ QualityAssessmentStep 오류 해결
+        """
+        try:
+            with self._lock:
+                self.logger.info(f"📝 모델 요구사항 등록 시작: {model_name}")
+                
+                # ModelConfig 생성 (안전한 처리)
+                try:
+                    model_config = ModelConfig(
+                        name=model_name,
+                        model_type=kwargs.get("model_type", model_type),
+                        model_class=kwargs.get("model_class", model_type),
+                        device=kwargs.get("device", "auto"),
+                        precision=kwargs.get("precision", "fp16"),
+                        input_size=tuple(kwargs.get("input_size", (512, 512))),
+                        num_classes=kwargs.get("num_classes"),
+                        file_size_mb=kwargs.get("file_size_mb", 0.0),
+                        metadata=kwargs.get("metadata", {
+                            "source": "requirement_registration",
+                            "registered_at": time.time()
+                        })
+                    )
+                except Exception as config_error:
+                    self.logger.warning(f"⚠️ ModelConfig 생성 실패, 딕셔너리로 대체: {config_error}")
+                    # 폴백으로 딕셔너리 사용
+                    model_config = {
+                        "name": model_name,
+                        "model_type": kwargs.get("model_type", model_type),
+                        "model_class": kwargs.get("model_class", model_type),
+                        "device": kwargs.get("device", "auto"),
+                        "precision": kwargs.get("precision", "fp16"),
+                        "input_size": tuple(kwargs.get("input_size", (512, 512))),
+                        "num_classes": kwargs.get("num_classes"),
+                        "file_size_mb": kwargs.get("file_size_mb", 0.0),
+                        "metadata": kwargs.get("metadata", {})
+                    }
+                
+                # model_configs에 저장
+                self.model_configs[model_name] = model_config
+                
+                # available_models에도 추가
+                self.available_models[model_name] = {
+                    "name": model_name,
+                    "path": f"requirements/{model_name}",
+                    "size_mb": kwargs.get("file_size_mb", 0.0),
+                    "model_type": str(kwargs.get("model_type", model_type)),
+                    "step_class": kwargs.get("model_class", model_type),
+                    "loaded": False,
+                    "device": kwargs.get("device", "auto"),
+                    "metadata": {
+                        "source": "requirement_registration",
+                        "registered_at": time.time(),
+                        "step_name": kwargs.get("step_name", "unknown"),
+                        **kwargs.get("metadata", {})
+                    }
+                }
+                
+                # 성능 통계 업데이트
+                if 'requirements_registered' not in self.performance_stats:
+                    self.performance_stats['requirements_registered'] = 0
+                self.performance_stats['requirements_registered'] += 1
+                
+                self.logger.info(f"✅ 모델 요구사항 등록 완료: {model_name} ({model_type})")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"❌ 모델 요구사항 등록 실패: {model_name} - {e}")
+            return False
+
+
     def register_model_config(self, name: str, config: Union[ModelConfig, Dict[str, Any]]) -> bool:
         """🔥 모델 설정 등록 - BaseStepMixin에서 호출하는 핵심 메서드"""
         try:

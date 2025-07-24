@@ -8,10 +8,17 @@
     "virtual-tryon",
     "m3-max",
     "react",
-    "typescript"
+    "typescript",
+    "fastapi",
+    "pytorch",
+    "computer-vision"
   ],
   "author": "MyCloset AI Team",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc && vite build",
@@ -21,17 +28,30 @@
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "clean": "rm -rf dist node_modules/.vite",
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "install:clean": "rm -rf node_modules package-lock.json && npm install"
   },
   "dependencies": {
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.1",
+    "axios": "^1.6.0",
+    "react-query": "^3.39.3",
+    "zustand": "^4.4.6",
+    "react-dropzone": "^14.2.3",
+    "react-hot-toast": "^2.4.1",
+    "framer-motion": "^10.16.5",
+    "lucide-react": "^0.294.0",
+    "clsx": "^2.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
     "@tailwindcss/typography": "^0.5.16",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
+    "@types/node": "^20.8.10",
     "@typescript-eslint/eslint-plugin": "^7.2.0",
     "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react": "^4.2.1",
@@ -43,11 +63,12 @@
     "prettier": "^3.2.5",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.2.2",
-    "vite": "^7.0.5"
-  },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "vite": "^7.0.5",
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "jsdom": "^23.0.0",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^6.1.5"
   },
   "browserslist": {
     "production": [
@@ -63,10 +84,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/eunjuhyun88/mycloset-ai.git"
+    "url": "https://github.com/eunjuhyun88/mycloset-ai.git",
+    "directory": "frontend"
   },
   "homepage": "https://mycloset-ai.vercel.app",
   "bugs": {
     "url": "https://github.com/eunjuhyun88/mycloset-ai/issues"
+  },
+  "volta": {
+    "node": "18.18.0",
+    "npm": "9.8.1"
   }
 }

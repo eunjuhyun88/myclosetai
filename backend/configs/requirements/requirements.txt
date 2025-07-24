@@ -1,75 +1,182 @@
-aiofiles==24.1.0
-albucore==0.0.24
-albumentations==2.0.8
-annotated-types @ file:///home/conda/feedstock_root/build_artifacts/annotated-types_1733247046149/work
-anyio @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_anyio_1742243108/work
-Brotli @ file:///Users/runner/miniforge3/conda-bld/brotli-split_1749229914644/work
-certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1752493286596/work/certifi
-cffi @ file:///Users/runner/miniforge3/conda-bld/cffi_1725560574711/work
-charset-normalizer @ file:///home/conda/feedstock_root/build_artifacts/charset-normalizer_1746214863626/work
-click @ file:///home/conda/feedstock_root/build_artifacts/click_1747811314515/work
-dnspython @ file:///home/conda/feedstock_root/build_artifacts/dnspython_1733256735222/work
-email_validator @ file:///home/conda/feedstock_root/build_artifacts/email-validator-meta_1733300719943/work
-exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1746947292760/work
-fastapi @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_fastapi-core_1752617909/work
-fastapi-cli @ file:///home/conda/feedstock_root/build_artifacts/fastapi-cli_1751972066250/work
-filelock @ file:///home/conda/feedstock_root/build_artifacts/filelock_1741969488311/work
-fsspec @ file:///home/conda/feedstock_root/build_artifacts/fsspec_1752608696525/work
-gmpy2 @ file:///Users/runner/miniforge3/conda-bld/gmpy2_1745509430606/work
-h11 @ file:///home/conda/feedstock_root/build_artifacts/h11_1745526374115/work
-h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1738578511449/work
-hpack @ file:///home/conda/feedstock_root/build_artifacts/hpack_1737618293087/work
-httpcore @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_httpcore_1745602916/work
-httptools @ file:///Users/runner/miniforge3/conda-bld/httptools_1732707750405/work
-httpx @ file:///home/conda/feedstock_root/build_artifacts/httpx_1733663348460/work
-hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1737618333194/work
-idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1733211830134/work
-imageio==2.37.0
-Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/jinja2_1741263328855/work
-lazy_loader==0.4
-markdown-it-py @ file:///home/conda/feedstock_root/build_artifacts/markdown-it-py_1733250460757/work
-MarkupSafe @ file:///Users/runner/miniforge3/conda-bld/markupsafe_1733219705194/work
-mdurl @ file:///home/conda/feedstock_root/build_artifacts/mdurl_1733255585584/work
-mpmath @ file:///home/conda/feedstock_root/build_artifacts/mpmath_1733302684489/work
-networkx @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_networkx_1731521053/work
-numpy @ file:///Users/runner/miniforge3/conda-bld/numpy_1747544633931/work/dist/numpy-2.2.6-cp310-cp310-macosx_11_0_arm64.whl#sha256=50a17562ef677de6531058e998e32487919c216e19ca4e1bdd86b0e1262251c1
-opencv-python==4.12.0
-opencv-python-headless==4.12.0
-packaging==25.0
-pillow @ file:///Users/runner/miniforge3/conda-bld/pillow_1751482042721/work
-psutil @ file:///Users/runner/miniforge3/conda-bld/psutil_1740663218114/work
-pybind11 @ file:///D:/bld/bld/rattler-build_pybind11_1752769966/work
-pybind11-global @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pybind11-global_1752769938/work
-pycparser @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pycparser_1733195786/work
-pydantic @ file:///home/conda/feedstock_root/build_artifacts/pydantic_1749927112905/work
-pydantic_core @ file:///Users/runner/miniforge3/conda-bld/bld/rattler-build_pydantic-core_1746625311/work
-Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1750615794071/work
-PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1733217236728/work
-python-dotenv @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dotenv_1750789290/work
-python-multipart @ file:///home/conda/feedstock_root/build_artifacts/python-multipart_1734420773152/work
-PyYAML @ file:///Users/runner/miniforge3/conda-bld/pyyaml_1737454694375/work
-requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1749498106507/work
-rich @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_rich_1743371105/work/dist
-rich-toolkit @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_rich-toolkit_1751941286/work
-scikit-image==0.25.2
-scipy==1.15.3
-shellingham @ file:///home/conda/feedstock_root/build_artifacts/shellingham_1733300899265/work
-simsimd==6.5.0
-sniffio @ file:///home/conda/feedstock_root/build_artifacts/sniffio_1733244044561/work
-starlette @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_starlette_1751323809/work
-stringzilla==3.12.5
-sympy @ file:///home/conda/feedstock_root/build_artifacts/sympy_1745946051654/work
-tifffile==2025.5.10
-torch @ file:///Users/runner/miniforge3/conda-bld/libtorch_1741997233193/work
-torchaudio==2.5.1
-torchvision==0.20.1
-typer==0.16.0
-typer-slim==0.16.0
-typing-inspection @ file:///home/conda/feedstock_root/build_artifacts/typing-inspection_1747870647094/work
-typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1751643513/work
-urllib3 @ file:///home/conda/feedstock_root/build_artifacts/urllib3_1750271362675/work
-uvicorn @ file:///home/conda/feedstock_root/build_artifacts/uvicorn_1751201600733/work
-uvloop @ file:///Users/runner/miniforge3/conda-bld/uvloop_1730214414718/work
-watchfiles @ file:///Users/runner/miniforge3/conda-bld/watchfiles_1750053877128/work
-websockets @ file:///Users/runner/miniforge3/conda-bld/websockets_1741285557173/work
-zstandard==0.23.0
+# ============================================================================
+# MyCloset AI Backend - Python 패키지 의존성
+# ============================================================================
+# 파일명: backend/requirements.txt
+# 설명: 백엔드 Python 패키지 의존성 정의
+# 설치명령: pip install -r requirements.txt
+# 권장: conda 환경과 함께 사용 (environment.yml 먼저 설치)
+# ============================================================================
+
+# ============================================================================
+# 🔥 AI/ML 핵심 패키지 (정확한 버전)
+# ============================================================================
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
+numpy==1.24.3
+
+# ============================================================================
+# 🌐 웹 프레임워크 (FastAPI 스택)
+# ============================================================================
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# ============================================================================
+# 🖼️ 이미지 처리
+# ============================================================================
+Pillow==10.0.1
+opencv-python==4.8.0.76
+scikit-image==0.21.0
+imageio==2.31.5
+imageio-ffmpeg==0.4.9
+albumentations==1.3.1
+
+# ============================================================================
+# 🤖 AI/ML 모델 라이브러리
+# ============================================================================
+transformers==4.35.0
+diffusers==0.21.4
+accelerate==0.24.0
+tokenizers==0.14.1
+timm==0.9.8
+segment-anything==1.0
+xformers==0.0.22
+controlnet-aux==0.0.7
+
+# CLIP 모델
+clip-by-openai==1.0
+open-clip-torch==2.23.0
+
+# ONNX 런타임
+onnxruntime==1.16.1
+
+# ============================================================================
+# 📊 과학 계산 및 데이터 처리
+# ============================================================================
+scipy==1.11.0
+scikit-learn==1.3.0
+pandas==2.1.3
+matplotlib==3.8.0
+seaborn==0.12.2
+
+# ============================================================================
+# 🌐 HTTP 및 네트워킹
+# ============================================================================
+httpx==0.25.0
+requests==2.31.0
+aiohttp==3.9.0
+websockets==12.0
+python-socketio==5.10.0
+
+# ============================================================================
+# 🗄️ 데이터베이스
+# ============================================================================
+sqlalchemy==2.0.23
+alembic==1.12.1
+redis==5.0.1
+
+# ============================================================================
+# 🛠️ 유틸리티 및 시스템
+# ============================================================================
+psutil==5.9.5
+python-dotenv==1.0.0
+pyyaml==6.0.1
+pytz==2023.3
+ujson==5.8.0
+aiofiles==23.2.1
+
+# ============================================================================
+# 🔐 보안 및 인증
+# ============================================================================
+cryptography==41.0.7
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+
+# ============================================================================
+# 📝 로깅 및 모니터링
+# ============================================================================
+structlog==23.2.0
+colorlog==6.7.0
+
+# ============================================================================
+# 🚀 성능 최적화
+# ============================================================================
+numba==0.58.1
+cython==3.0.5
+memory-profiler==0.61.0
+line-profiler==4.1.1
+
+# ============================================================================
+# 🧪 테스트 및 개발 도구
+# ============================================================================
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.10.1
+isort==5.12.0
+mypy==1.7.0
+flake8==6.1.0
+
+# ============================================================================
+# 📁 파일 처리
+# ============================================================================
+python-magic==0.4.27
+
+# ============================================================================
+# 🔄 비동기 처리
+# ============================================================================
+asyncio-pool==0.6.0
+
+# ============================================================================
+# 🎨 AI 모델 특화 패키지
+# ============================================================================
+# Hugging Face 허브
+huggingface-hub==0.17.3
+
+# Stable Diffusion 관련
+omegaconf==2.3.0
+safetensors==0.4.0
+
+# ============================================================================
+# 📊 메트릭 및 모니터링
+# ============================================================================
+prometheus-client==0.19.0
+
+# ============================================================================
+# 🔧 특수 도구
+# ============================================================================
+# 모델 최적화
+torch-optimizer==0.3.0
+
+# 이미지 품질 평가
+lpips==0.1.4
+
+# ============================================================================
+# 📄 주의사항 및 설치 가이드
+# ============================================================================
+#
+# 🍎 M3 Max 사용자:
+# 1. conda 환경 먼저 생성: conda env create -f environment.yml
+# 2. conda activate mycloset-ai-clean
+# 3. pip install -r requirements.txt
+#
+# 🐧 Linux/Windows 사용자:
+# 1. Python 3.10.18 설치
+# 2. pip install -r requirements.txt
+# 3. GPU 드라이버 설치 (CUDA/ROCm)
+#
+# 🔧 환경 변수 설정:
+# export PYTORCH_ENABLE_MPS_FALLBACK=1
+# export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
+# export DEVICE=mps  # M3 Max
+# export DEVICE=cuda  # NVIDIA GPU
+# export DEVICE=cpu   # CPU만 사용
+#
+# 🚨 버전 충돌 해결:
+# pip install --force-reinstall --no-deps [패키지명]
+#
+# ============================================================================
