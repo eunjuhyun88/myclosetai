@@ -45,7 +45,7 @@ from io import BytesIO
 # 🔧 TYPE_CHECKING으로 순환참조 방지
 # ==============================================
 if TYPE_CHECKING:
-    from ..utils.model_loader import ModelLoader
+    from app.ai_pipeline.utils.model_loader import ModelLoader
     from ..factories.step_factory import StepFactory
 
 # ==============================================

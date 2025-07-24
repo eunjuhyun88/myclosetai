@@ -56,7 +56,7 @@ import numpy as np
 import base64
 import io
 # 파일 상단 import 섹션에
-from ..utils.pytorch_safe_ops import (
+from app.ai_pipeline.utils.pytorch_safe_ops import (
     safe_max, safe_amax, safe_argmax,
     extract_keypoints_from_heatmaps,
     tensor_to_pil_conda_optimized
@@ -164,7 +164,7 @@ except ImportError as e:
 
 # 2. ModelLoader 인터페이스 임포트 (핵심)
 try:
-    from ..utils.model_loader import ModelLoader, get_global_model_loader
+    from app.ai_pipeline.utils.model_loader import ModelLoader, get_global_model_loader
     MODEL_LOADER_AVAILABLE = True
     logger.info("✅ ModelLoader 임포트 성공")
 except ImportError as e:

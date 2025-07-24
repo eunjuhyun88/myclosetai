@@ -86,16 +86,23 @@ class UnifiedFileManager:
     ✅ .bak 파일 생성 방지
     ✅ 자동 정리 시스템
     """
-    
     def __init__(self, base_dir: Optional[str] = None, backup_config: Optional[BackupConfig] = None):
-        """초기화 - 기존 FileManager와 완전 호환"""
-        # 기본 디렉토리 설정 (기존과 동일)
-        if base_dir is None:
-            base_dir = os.getcwd()
+        """초기화 - 기존 FileManager와 완전 호환 + backend/backend 문제 해결"""
+        
+        # 🔥 기본 디렉토리 설정 - backend/backend 문제 완전 해결
+        if base_dir is None:            
+            # ✅ 해결된 코드: 파일 위치 기반으로 backend 경로 계산
+            current_file = Path(__file__).absolute()  # /path/to/backend/app/utils/file_manager.py
+            backend_root = current_file.parent.parent.parent  # /path/to/backend/
+            base_dir = str(backend_root)
+            
+            print(f"🔧 UnifiedFileManager 자동 경로 설정: {base_dir}")
         
         self.base_dir = Path(base_dir)
-        self.upload_dir = self.base_dir / "uploads"
-        self.results_dir = self.base_dir / "results" 
+        
+        # 디렉토리 구조를 static 하위로 정리 (더 깔끔한 구조)
+        self.upload_dir = self.base_dir / "static" / "uploads"
+        self.results_dir = self.base_dir / "static" / "results" 
         self.temp_dir = self.base_dir / "temp"
         self.static_dir = self.base_dir / "static"
         
@@ -122,7 +129,19 @@ class UnifiedFileManager:
         # 시작 시 기존 백업 파일 정리
         asyncio.create_task(self._initial_cleanup())
         
-        logger.info(f"📁 UnifiedFileManager 초기화 - M3 Max: {self.is_m3_max}, 백업 정책: {self.backup_config.policy.value}")
+        logger.info(f"📁 UnifiedFileManager 초기화 완료")
+        logger.info(f"   Base 경로: {self.base_dir}")
+        logger.info(f"   Upload 경로: {self.upload_dir}")  
+        logger.info(f"   Results 경로: {self.results_dir}")
+        logger.info(f"   M3 Max: {self.is_m3_max}")
+        logger.info(f"   백업 정책: {self.backup_config.policy.value}")
+
+
+    # 🎯 핵심 변경사항 요약:
+    # 2. uploads → static/uploads (기존 프로젝트 구조와 일치)
+    # 3. results → static/results (기존 프로젝트 구조와 일치)
+    # 4. 상세한 로그 출력으로 경로 확인 가능
+
 
     def _ensure_directories(self):
         """필요한 디렉토리들 생성 (기존 + 백업)"""
@@ -1011,9 +1030,13 @@ async def save_base64_image(
 async def cleanup_all_bak_files(base_dir: Optional[str] = None) -> int:
     """프로젝트 전체의 .bak 파일들 정리"""
     try:
+        # ✅ 수정된 코드
         if base_dir is None:
-            base_dir = os.getcwd()
-        
+            # 파일 위치 기반으로 backend 경로 자동 계산
+            current_file = Path(__file__).absolute()  # file_manager.py 위치
+            backend_root = current_file.parent.parent.parent  # backend/ 경로
+            base_dir = str(backend_root)
+            print(f"🔧 UnifiedFileManager 경로 고정: {base_dir}")
         base_path = Path(base_dir)
         cleaned_count = 0
         

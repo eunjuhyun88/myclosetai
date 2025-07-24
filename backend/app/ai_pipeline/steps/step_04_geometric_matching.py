@@ -47,9 +47,9 @@ import base64
 
 # 타입 체킹 시에만 import (런타임에는 import 안됨)
 if TYPE_CHECKING:
-    from ..utils.model_loader import ModelLoader
-    from ..utils.memory_manager import MemoryManager
-    from ..utils.data_converter import DataConverter
+    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.utils.memory_manager import MemoryManager
+    from app.ai_pipeline.utils.data_converter import DataConverter
     from app.core.di_container import DIContainer
 
 # ==============================================
@@ -131,7 +131,7 @@ except ImportError:
 
 # 파일 상단 import 섹션에 안전한 utils import 추가
 try:
-    from ..utils.pytorch_safe_ops import (
+    from app.ai_pipeline.utils.pytorch_safe_ops import (
         safe_max, safe_amax, safe_argmax,
         extract_keypoints_from_heatmaps,
         tensor_to_pil_conda_optimized
@@ -163,7 +163,7 @@ def get_model_loader():
     """ModelLoader를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..utils.model_loader', package=__name__)
+        module = importlib.import_module('app.ai_pipeline.utils.model_loader', package=__name__)
         get_global_fn = getattr(module, 'get_global_model_loader', None)
         if get_global_fn:
             return get_global_fn()
@@ -176,7 +176,7 @@ def get_memory_manager():
     """MemoryManager를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..utils.memory_manager', package=__name__)
+        module = importlib.import_module('app.ai_pipeline.utils.memory_manager', package=__name__)
         get_global_fn = getattr(module, 'get_global_memory_manager', None)
         if get_global_fn:
             return get_global_fn()
@@ -189,7 +189,7 @@ def get_data_converter():
     """DataConverter를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..utils.data_converter', package=__name__)
+        module = importlib.import_module('app.ai_pipeline.utils.data_converter', package=__name__)
         get_global_fn = getattr(module, 'get_global_data_converter', None)
         if get_global_fn:
             return get_global_fn()

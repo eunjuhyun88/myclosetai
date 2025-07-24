@@ -449,6 +449,40 @@ class StepFactory:
         self.config = config or StepFactoryConfig()
         self.logger = logging.getLogger(f"{__name__}.StepFactory")
         
+        try:
+            from app.ai_pipeline.utils.model_loader import get_global_model_loader
+            
+            self.model_loader = get_global_model_loader()
+            if self.model_loader:
+                # 🔥 추가 초기화 확인
+                if hasattr(self.model_loader, 'initialize') and not getattr(self.model_loader, '_is_initialized', False):
+                    success = self.model_loader.initialize()
+                    if success:
+                        print("✅ 실제 ModelLoader 초기화 완료")
+                    else:
+                        print("⚠️ ModelLoader 초기화 실패")
+                else:
+                    print("✅ 실제 ModelLoader 초기화 완료")
+            else:
+                print("⚠️ ModelLoader 인스턴스 가져오기 실패")
+                
+        except Exception as e:
+            print(f"❌ ModelLoader 처리 실패: {e}")
+            self.model_loader = None
+
+        # 🔥 StepModelInterface 생성
+        if self.model_loader:
+            try:
+                self.model_interface = self.model_loader.create_step_interface("HumanParsingStep")
+                if self.model_interface:
+                    print("✅ StepModelInterface 생성 완료")
+                else:
+                    print("⚠️ StepModelInterface 생성 실패")
+            except Exception as interface_error:
+                print(f"❌ StepModelInterface 생성 실패: {interface_error}")
+                self.model_interface = None
+        else:
+            self.model_interface = None
         # 의존성 해결기
         self.resolver = _global_resolver
         
@@ -570,6 +604,7 @@ class StepFactory:
             return "cpu"
         except:
             return "cpu"
+    
     
     # ==============================================
     # 🔥 8. 핵심 생성 메서드들

@@ -473,7 +473,13 @@ class SessionManager:
     
     def __init__(self, base_path: Optional[Path] = None):
         # 기본 경로 설정
-        self.base_path = base_path or Path("backend/static/sessions")
+                # 파일 위치 기반으로 backend 경로 계산
+        if base_path is None:
+            current_file = Path(__file__).absolute()  # session_manager.py 위치
+            backend_root = current_file.parent.parent.parent  # backend/ 경로
+            base_path = backend_root / "static" / "sessions"
+        self.base_path = base_path
+
         self.base_path.mkdir(parents=True, exist_ok=True)
         
         # 세션 저장소

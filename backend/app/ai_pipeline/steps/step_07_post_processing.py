@@ -59,7 +59,7 @@ from contextlib import asynccontextmanager
 
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:
-    from ..utils.model_loader import ModelLoader
+    from app.ai_pipeline.utils.model_loader import ModelLoader
     from ..factories.step_factory import StepFactory
     from ..steps.base_step_mixin import BaseStepMixin
 
@@ -213,7 +213,7 @@ def dynamic_import_base_step_mixin():
 def dynamic_import_model_loader():
     """ModelLoader 동적 import (순환참조 방지)"""
     try:
-        from ..utils.model_loader import ModelLoader, get_global_model_loader
+        from app.ai_pipeline.utils.model_loader import ModelLoader, get_global_model_loader
         return ModelLoader, get_global_model_loader
     except ImportError as e:
         logger.warning(f"ModelLoader import 실패: {e}")
@@ -222,7 +222,7 @@ def dynamic_import_model_loader():
 def dynamic_import_pytorch_safe_ops():
     """PyTorch 안전 연산 동적 import"""
     try:
-        from ..utils.pytorch_safe_ops import (
+        from app.ai_pipeline.utils.pytorch_safe_ops import (
             safe_max, safe_amax, safe_argmax,
             extract_keypoints_from_heatmaps,
             tensor_to_pil_conda_optimized
@@ -481,7 +481,10 @@ class PostProcessingStep:
         )
         
         # === 10. 모델 경로 ===
-        self.model_base_path = Path("backend/app/ai_pipeline/models/ai_models")
+        # 파일 위치 기반으로 backend 경로 계산
+        current_file = Path(__file__).absolute()  # step_07_post_processing.py 위치
+        backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
+        self.model_base_path = backend_root / "app" / "ai_pipeline" / "models" / "ai_models"
         self.checkpoint_path = self.model_base_path / "checkpoints" / "step_07_post_processing"
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
         

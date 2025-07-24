@@ -43,7 +43,7 @@ import subprocess
 
 if TYPE_CHECKING:
     # 타입 체킹 시에만 import (런타임에는 import 안됨) 
-    from ..utils.model_loader import ModelLoader, StepModelInterface
+    from app.ai_pipeline.utils.model_loader import ModelLoader, StepModelInterface
     from ..steps.base_step_mixin import BaseStepMixin, ClothSegmentationMixin
     from ..factories.step_factory import StepFactory
     from app.core.di_container import DIContainer
@@ -166,7 +166,7 @@ def get_model_loader():
     """ModelLoader를 안전하게 가져오기 (TYPE_CHECKING 패턴)"""
     try:
         import importlib
-        module = importlib.import_module('..utils.model_loader', package=__package__)
+        module = importlib.import_module('app.ai_pipeline.utils.model_loader', package=__package__)
         get_global_loader = getattr(module, 'get_global_model_loader', None)
         if get_global_loader:
             return get_global_loader()

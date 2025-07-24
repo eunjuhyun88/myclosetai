@@ -1124,14 +1124,18 @@ class ModelLoader:
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         
         # 🔥 ModelLoader 특화 파라미터 (경로 처리 완전 수정)
-        model_cache_dir_raw = kwargs.get('model_cache_dir', './ai_models')
+        current_file = Path(__file__)  # backend/app/ai_pipeline/utils/model_loader.py
+        backend_root = current_file.parents[3]  # backend/ 디렉토리로 이동
+        default_ai_models_path = backend_root / "ai_models"
+
+        model_cache_dir_raw = kwargs.get('model_cache_dir', str(default_ai_models_path))
 
         # 🔥 안전한 경로 변환 (str object has no attribute 'exists' 오류 해결)
         try:
             if model_cache_dir_raw is None:
-                self.model_cache_dir = Path('./ai_models')
-                self.logger.info("⚠️ model_cache_dir이 None - 기본값 사용: ./ai_models")
-                
+                self.model_cache_dir = default_ai_models_path
+                self.logger.info(f"⚠️ model_cache_dir이 None - 기본값 사용: {default_ai_models_path}")
+                    
             elif isinstance(model_cache_dir_raw, str):
                 self.model_cache_dir = Path(model_cache_dir_raw).resolve()
                 self.logger.debug(f"✅ 문자열 경로 변환: {model_cache_dir_raw}")
@@ -1151,7 +1155,9 @@ class ModelLoader:
                     self.logger.info(f"✅ 강제 문자열 변환 성공: {self.model_cache_dir}")
                 except Exception as str_error:
                     self.logger.error(f"❌ 강제 변환 실패: {str_error}")
-                    self.model_cache_dir = Path('./ai_models').resolve()
+                    current_file = Path(__file__).absolute()
+                    backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
+                    self.model_cache_dir = backend_root / "ai_models"
                     self.logger.info("✅ 최종 폴백 경로 사용: ./ai_models")
                     
             # 경로 존재 확인 및 생성
@@ -1165,20 +1171,26 @@ class ModelLoader:
                 self.logger.error(f"❌ 디렉토리 생성 실패: {mkdir_error}")
                 # 폴백 디렉토리 시도
                 try:
-                    fallback_path = Path('./ai_models_fallback').resolve()
+                    current_file = Path(__file__).absolute()
+                    backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
+                    fallback_path = backend_root / "ai_models_fallback"
                     fallback_path.mkdir(parents=True, exist_ok=True)
                     self.model_cache_dir = fallback_path
                     self.logger.warning(f"⚠️ 폴백 디렉토리 사용: {self.model_cache_dir}")
                 except Exception as fallback_error:
                     self.logger.error(f"❌ 폴백 디렉토리도 실패: {fallback_error}")
                     # 현재 디렉토리 사용
-                    self.model_cache_dir = Path('.').resolve()
+                    current_file = Path(__file__).absolute()
+                    backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
+                    self.model_cache_dir = backend_root
                     self.logger.warning(f"🚨 현재 디렉토리 사용: {self.model_cache_dir}")
                     
         except Exception as path_error:
             self.logger.error(f"❌ 모델 경로 처리 실패: {path_error}")
             # 완전 폴백
-            self.model_cache_dir = Path('./ai_models').resolve()
+            current_file = Path(__file__).absolute()
+            backend_root = current_file.parent.parent.parent.parent  # backend/ 경로
+            self.model_cache_dir = backend_root / "ai_models"            
             try:
                 self.model_cache_dir.mkdir(parents=True, exist_ok=True)
             except Exception as mkdir_error:
@@ -1281,21 +1293,32 @@ class ModelLoader:
                         def discover_all_search_paths(self, ai_models_root):
                             """모든 검색 경로 반환"""
                             try:
-                                # 기본 경로들
+                            # ai_models_root가 상대경로인 경우 절대경로로 변환
+                                if isinstance(ai_models_root, str):
+                                    base_path = Path(ai_models_root)
+                                else:
+                                    base_path = ai_models_root
+                                    
+                                # 상대경로인 경우 현재 파일 기준으로 절대경로 생성
+                                if not base_path.is_absolute():
+                                    current_file = Path(__file__)
+                                    backend_root = current_file.parents[3]  # backend/
+                                    base_path = backend_root / base_path
+                                    
                                 return [
-                                    Path(ai_models_root),
-                                    Path(ai_models_root) / "checkpoints",
-                                    Path(ai_models_root) / "models",
-                                    Path(ai_models_root) / "step_01",
-                                    Path(ai_models_root) / "step_02",
-                                    Path(ai_models_root) / "step_03",
-                                    Path(ai_models_root) / "step_04",
-                                    Path(ai_models_root) / "step_05",
-                                    Path(ai_models_root) / "step_06",
-                                    Path(ai_models_root) / "step_07",
-                                    Path(ai_models_root) / "step_08",
-                                    Path(ai_models_root) / "ultra_models"
-                                ]
+                                        Path(ai_models_root),
+                                        Path(ai_models_root) / "checkpoints",
+                                        Path(ai_models_root) / "models",
+                                        Path(ai_models_root) / "step_01",
+                                        Path(ai_models_root) / "step_02",
+                                        Path(ai_models_root) / "step_03",
+                                        Path(ai_models_root) / "step_04",
+                                        Path(ai_models_root) / "step_05",
+                                        Path(ai_models_root) / "step_06",
+                                        Path(ai_models_root) / "step_07",
+                                        Path(ai_models_root) / "step_08",
+                                        Path(ai_models_root) / "ultra_models"
+                                    ]
                             except Exception:
                                 return [Path(ai_models_root)]
                     
@@ -1881,7 +1904,15 @@ class ModelLoader:
                     actual_size_mb = 0.0
                     
                     for relative_file_path in mapping_info["actual_files"]:
-                        full_path = self.model_cache_dir / relative_file_path
+                        # 절대경로 확보
+                        if not self.model_cache_dir.is_absolute():
+                            current_file = Path(__file__)
+                            backend_root = current_file.parents[3]  # backend/
+                            base_dir = backend_root / self.model_cache_dir
+                        else:
+                            base_dir = self.model_cache_dir
+                            
+                        full_path = base_dir / relative_file_path
                         if full_path.exists():
                             try:
                                 size_mb = full_path.stat().st_size / (1024 * 1024)
@@ -2047,8 +2078,14 @@ class ModelLoader:
         try:
             self.logger.info("🔍 완전 동적 체크포인트 스캔 시작...")
             
+            if not self.model_cache_dir.is_absolute():
+                current_file = Path(__file__)
+                backend_root = current_file.parents[3]  # backend/
+                self.model_cache_dir = backend_root / self.model_cache_dir
+                
             if not self.model_cache_dir.exists():
                 self.logger.warning(f"⚠️ 모델 디렉토리 없음: {self.model_cache_dir}")
+                self.logger.info(f"💡 생성 명령어: mkdir -p {self.model_cache_dir}")
                 return
             
             # ✅ file_mapper 안전성 체크 강화
@@ -3456,25 +3493,62 @@ class ModelLoader:
 _global_model_loader: Optional[ModelLoader] = None
 _loader_lock = threading.Lock()
 
-@lru_cache(maxsize=1)
+# 🔥 수정된 get_global_model_loader 함수
+
+_global_model_loader: Optional[ModelLoader] = None
+_loader_lock = threading.Lock()
+
 def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoader:
-    """전역 ModelLoader 인스턴스 반환"""
+    """전역 ModelLoader 인스턴스 반환 - @lru_cache 제거"""
     global _global_model_loader
     
     with _loader_lock:
         if _global_model_loader is None:
-            _global_model_loader = ModelLoader(
-                config=config,
-                device="auto",
-                use_fp16=True,
-                optimization_enabled=True,
-                enable_fallback=True,
-                min_model_size_mb=50,  # 🔥 50MB 이상만
-                prioritize_large_models=True  # 🔥 대형 모델 우선
-            )
-            logger.info("🌐 완전 개선된 ModelLoader v20.1 인스턴스 생성 (우선순위 수정)")
-        
+            # 올바른 AI 모델 경로 계산
+            current_file = Path(__file__)
+            backend_root = current_file.parents[3]  # backend/
+            ai_models_path = backend_root / "ai_models"
+            
+            try:
+                _global_model_loader = ModelLoader(
+                    config=config,
+                    device="auto",
+                    model_cache_dir=str(ai_models_path),
+                    use_fp16=True,
+                    optimization_enabled=True,
+                    enable_fallback=True,
+                    min_model_size_mb=50,
+                    prioritize_large_models=True
+                )
+                logger.info("✅ 전역 ModelLoader 생성 성공")
+                
+            except Exception as e:
+                logger.error(f"❌ 전역 ModelLoader 생성 실패: {e}")
+                # 최소한의 폴백 생성
+                _global_model_loader = ModelLoader(device="cpu")
+                
         return _global_model_loader
+
+# 🔥 추가: 안전한 초기화 함수
+def ensure_global_model_loader_initialized(**kwargs) -> bool:
+    """전역 ModelLoader 강제 초기화 및 검증"""
+    try:
+        loader = get_global_model_loader()
+        if loader and hasattr(loader, 'initialize'):
+            success = loader.initialize(**kwargs)
+            if success:
+                logger.info("✅ 전역 ModelLoader 초기화 검증 완료")
+                return True
+            else:
+                logger.error("❌ ModelLoader 초기화 실패")
+                return False
+        else:
+            logger.error("❌ ModelLoader 인스턴스가 없거나 initialize 메서드 없음")
+            return False
+    except Exception as e:
+        logger.error(f"❌ ModelLoader 초기화 검증 실패: {e}")
+        return False
+
 
 def initialize_global_model_loader(**kwargs) -> bool:
     """전역 ModelLoader 동기 초기화 - main.py 호환"""

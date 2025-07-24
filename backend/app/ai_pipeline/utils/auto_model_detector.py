@@ -116,8 +116,24 @@ class RealFileMapper:
         self.logger.info(f"✅ 실제 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴")
 
     def find_actual_file(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """🔥 실제 파일 구조 기반 파일 찾기 (5번 파일 구조 반영)"""
+        """🔥 실제 파일 구조 기반 파일 찾기 (경로 검증 추가)"""
         try:
+            # 🔥 경로 검증 및 자동 수정
+            if not ai_models_root.exists():
+                self.logger.warning(f"⚠️ AI 모델 루트 없음: {ai_models_root}")
+                
+                # backend/backend 패턴 자동 수정
+                if "backend/backend" in str(ai_models_root):
+                    corrected_path = Path(str(ai_models_root).replace("backend/backend", "backend"))
+                    if corrected_path.exists():
+                        self.logger.info(f"✅ 경로 자동 수정: {ai_models_root} -> {corrected_path}")
+                        ai_models_root = corrected_path
+                    else:
+                        self.logger.error(f"❌ 수정된 경로도 없음: {corrected_path}")
+                        return None
+                else:
+                    return None
+            
             # 직접 매핑 확인
             if request_name in self.step_file_mappings:
                 mapping = self.step_file_mappings[request_name]
@@ -149,6 +165,7 @@ class RealFileMapper:
         except Exception as e:
             self.logger.error(f"❌ {request_name} 파일 찾기 실패: {e}")
             return None
+
 
     def _fallback_search(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
         """폴백 검색 (키워드 기반)"""
@@ -361,23 +378,38 @@ class FixedModelDetector:
     
     def _find_ai_models_root(self) -> Path:
         """AI 모델 루트 디렉토리 찾기 (기존 함수 유지)"""
-        current = Path(__file__).resolve()
+        backend_root = None
+        current = Path(__file__).parent.absolute()
+        temp_current = current
         
-        # 프로젝트 루트 찾기
         for _ in range(10):
-            if current.name == 'mycloset-ai' or (current / 'backend').exists():
-                return current / 'backend' / 'ai_models'
-            if current.name == 'backend':
-                return current / 'ai_models'
-            if current.parent == current:
+            if temp_current.name == 'backend':
+                backend_root = temp_current
                 break
-            current = current.parent
+            if temp_current.name == 'mycloset-ai':
+                backend_root = temp_current / 'backend'
+                break
+            if temp_current.parent == temp_current:
+                break
+            temp_current = temp_current.parent
         
-        # 폴백
-        fallback_path = Path(__file__).resolve().parent.parent.parent.parent / 'ai_models'
-        self.logger.warning(f"⚠️ 폴백 경로 사용: {fallback_path}")
-        return fallback_path
-    
+        # 2. ai_models 경로 생성
+        if backend_root:
+            ai_models_path = backend_root / 'ai_models'
+            self.logger.info(f"✅ AI 모델 경로 계산: {ai_models_path}")
+            return ai_models_path
+        
+        fallback_backend = current.parent.parent.parent.parent
+        if fallback_backend.name == 'backend':
+            ai_models_path = fallback_backend / 'ai_models'
+            self.logger.info(f"✅ 폴백 AI 모델 경로: {ai_models_path}")
+            return ai_models_path
+        
+        # 4. 최종 폴백: 하드코딩된 경로
+        final_fallback = Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models")
+        self.logger.warning(f"⚠️ 최종 폴백 경로 사용: {final_fallback}")
+        return final_fallback
+
     def _detect_m3_max(self) -> bool:
         """M3 Max 감지 (기존 함수 유지)"""
         try:

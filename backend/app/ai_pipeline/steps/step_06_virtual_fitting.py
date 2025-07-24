@@ -76,7 +76,7 @@ setup_conda_optimization()
 # ==============================================
 
 if TYPE_CHECKING:
-    from ..utils.model_loader import ModelLoader, IModelLoader
+    from app.ai_pipeline.utils.model_loader import ModelLoader, IModelLoader
     from ..steps.base_step_mixin import BaseStepMixin, VirtualFittingMixin
     from ..factories.step_factory import StepFactory, StepFactoryResult
 

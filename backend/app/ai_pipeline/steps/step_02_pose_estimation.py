@@ -105,7 +105,7 @@ except ImportError:
 
 # PyTorch 안전 연산 import
 try:
-    from ..utils.pytorch_safe_ops import (
+    from app.ai_pipeline.utils.pytorch_safe_ops import (
         safe_max, safe_amax, safe_argmax,
         extract_keypoints_from_heatmaps,
         tensor_to_pil_conda_optimized
@@ -168,7 +168,7 @@ def get_model_loader():
     """ModelLoader를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..utils.model_loader', package=__package__)
+        module = importlib.import_module('app.ai_pipeline.utils.model_loader', package=__package__)
         get_global_loader = getattr(module, 'get_global_model_loader', None)
         if get_global_loader:
             return get_global_loader()
@@ -185,7 +185,7 @@ def get_memory_manager():
     """MemoryManager를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..utils.memory_manager', package=__package__)
+        module = importlib.import_module('app.ai_pipeline.utils.memory_manager', package=__package__)
         get_global_manager = getattr(module, 'get_global_memory_manager', None)
         if get_global_manager:
             return get_global_manager()
@@ -198,7 +198,7 @@ def get_data_converter():
     """DataConverter를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..utils.data_converter', package=__package__)
+        module = importlib.import_module('app.ai_pipeline.utils.data_converter', package=__package__)
         get_global_converter = getattr(module, 'get_global_data_converter', None)
         if get_global_converter:
             return get_global_converter()
