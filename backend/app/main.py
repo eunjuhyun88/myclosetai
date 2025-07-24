@@ -233,6 +233,7 @@ except ImportError as e:
             "http://127.0.0.1:3000",
             "http://localhost:5173",
             "http://127.0.0.1:5173"
+
         ]
         DEVICE = DEVICE
         USE_GPU = TORCH_AVAILABLE
@@ -417,15 +418,20 @@ class RealAIContainer:
                     print(f"⚠️ DI Container 초기화 실패: {e}")
             
             # 2. ModelLoader 초기화  
+            # main.py에서 수정
             if AI_PIPELINE_AVAILABLE['model_loader']:
                 try:
                     self.model_loader = get_global_model_loader()
                     if self.model_loader:
-                        await self.model_loader.initialize()
-                    print("✅ 실제 ModelLoader 초기화 완료")
+                        # 🔥 await 제거하고 동기 호출
+                        success = self.model_loader.initialize()
+                        if success:
+                            print("✅ 실제 ModelLoader 초기화 완료")
+                        else:
+                            print("⚠️ ModelLoader 초기화 실패")
                 except Exception as e:
                     print(f"⚠️ ModelLoader 초기화 실패: {e}")
-            
+
             # 3. StepFactory 초기화
             if AI_PIPELINE_AVAILABLE['step_factory']:
                 try:

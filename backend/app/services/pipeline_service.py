@@ -25,6 +25,7 @@ from PIL import Image
 from fastapi import UploadFile
 
 # PipelineManager import (서비스 레이어 핵심)
+
 try:
     from app.ai_pipeline.pipeline_manager import (
         PipelineManager, 
