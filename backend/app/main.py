@@ -321,7 +321,7 @@ AI_PIPELINE_AVAILABLE = {}
 
 # RealAIDIContainer (실제 DI Container)
 try:
-    from app.ai_pipeline.core.real_ai_di_container import RealAIDIContainer, get_global_container
+    from app.core.di_container import DIContainer as RealAIDIContainer, get_di_container as get_global_container
     AI_PIPELINE_AVAILABLE['di_container'] = True
     print("✅ 실제 AI DI Container 연동 성공")
 except ImportError as e:
@@ -348,7 +348,7 @@ except ImportError as e:
 
 # PipelineManager (실제 AI 통합)
 try:
-    from app.ai_pipeline.managers.pipeline_manager import PipelineManager, get_global_pipeline_manager
+    from app.ai_pipeline.pipeline_manager import PipelineManager, get_global_pipeline_manager
     AI_PIPELINE_AVAILABLE['pipeline_manager'] = True
     print("✅ 실제 PipelineManager 연동 성공")
 except ImportError as e:

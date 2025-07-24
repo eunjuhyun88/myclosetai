@@ -18,7 +18,7 @@
 ✅ 🔥 작은 더미 파일 자동 제거
 
 Author: MyCloset AI Team
-Date: 2025-07-23
+Date: 2025-07-24
 Version: 20.1 (Priority Fix)
 ===============================================================================
 """
@@ -44,21 +44,8 @@ from contextlib import asynccontextmanager, contextmanager
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-# 파일 최상단 import 섹션에 추가
-try:
-    from .auto_model_detector import (
-        get_global_detector, 
-        get_step_loadable_models,
-        create_step_model_loader_config,
-        apply_size_priority_fix_to_global_loader
-    )
-    AUTO_DETECTOR_AVAILABLE = True
-except ImportError as e:
-    AUTO_DETECTOR_AVAILABLE = False
-    logger.warning(f"⚠️ AutoModelDetector 사용 불가: {e}")
-
 # ==============================================
-# 🔥 1단계: 기본 로깅 설정 (개선)
+# 🔥 1단계: 기본 로깅 설정
 # ==============================================
 
 logger = logging.getLogger(__name__)
@@ -75,7 +62,34 @@ if not logger.handlers:
     logger.propagate = False
 
 # ==============================================
-# 🔥 2단계: TYPE_CHECKING으로 순환참조 해결 (강화)
+# 🔥 2단계: Auto Model Detector Import (안전한 처리)
+# ==============================================
+
+# auto_model_detector 임포트 시도
+try:
+    from .auto_model_detector import (
+        get_global_detector, 
+        get_step_loadable_models,
+        create_step_model_loader_config
+    )
+    AUTO_DETECTOR_AVAILABLE = True
+    logger.debug("✅ AutoModelDetector import 성공")
+except ImportError as e:
+    AUTO_DETECTOR_AVAILABLE = False
+    logger.warning(f"⚠️ AutoModelDetector 사용 불가: {e}")
+    
+    # 더미 함수들 정의 (안전한 폴백)
+    def get_global_detector():
+        return None
+    
+    def get_step_loadable_models():
+        return {}
+    
+    def create_step_model_loader_config():
+        return {}
+
+# ==============================================
+# 🔥 3단계: TYPE_CHECKING으로 순환참조 해결
 # ==============================================
 
 from typing import TYPE_CHECKING
@@ -94,7 +108,7 @@ except ImportError:
     PIL_AVAILABLE = False
 
 # ==============================================
-# 🔥 3단계: 라이브러리 호환성 관리자 (완전 개선)
+# 🔥 4단계: 라이브러리 호환성 관리자
 # ==============================================
 
 class LibraryCompatibilityManager:
@@ -112,7 +126,6 @@ class LibraryCompatibilityManager:
         self._check_libraries()
         self._optimize_environment()
     
-
     def _detect_conda_env(self) -> str:
         """conda 환경 탐지 개선"""
         # 1순위: CONDA_DEFAULT_ENV
@@ -138,7 +151,7 @@ class LibraryCompatibilityManager:
         return ""
 
     def _check_libraries(self):
-        """conda 환경 우선 라이브러리 호환성 체크 (개선)"""
+        """conda 환경 우선 라이브러리 호환성 체크"""
         # NumPy 체크 (conda 최적화)
         try:
             import numpy as np
@@ -243,7 +256,7 @@ IS_M3_MAX = _compat.is_m3_max
 CONDA_ENV = _compat.conda_env
 
 # ==============================================
-# 🔥 4단계: 안전한 메모리 관리 함수들 (강화)
+# 🔥 5단계: 안전한 메모리 관리 함수들
 # ==============================================
 
 def safe_mps_empty_cache():
@@ -269,7 +282,7 @@ def safe_mps_empty_cache():
         return False
 
 def safe_torch_cleanup():
-    """안전한 PyTorch 메모리 정리 (강화)"""
+    """안전한 PyTorch 메모리 정리"""
     try:
         # 가비지 컬렉션 강제 실행
         gc.collect()
@@ -344,7 +357,7 @@ def get_enhanced_memory_info() -> Dict[str, Any]:
         }
 
 # ==============================================
-# 🔥 5단계: 데이터 구조 정의 (강화)
+# 🔥 6단계: 데이터 구조 정의
 # ==============================================
 
 class StepPriority(IntEnum):
@@ -394,7 +407,7 @@ class CheckpointValidation:
 
 @dataclass
 class ModelConfig:
-    """모델 설정 정보 (강화)"""
+    """모델 설정 정보"""
     name: str
     model_type: Union[ModelType, str]
     model_class: str
@@ -425,7 +438,7 @@ class SafeModelCacheEntry:
     error_count: int = 0
 
 # ==============================================
-# 🔥 6단계: 안전한 체크포인트 검증기
+# 🔥 7단계: 안전한 체크포인트 검증기
 # ==============================================
 
 class CheckpointValidator:
@@ -627,64 +640,8 @@ class CheckpointValidator:
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
 
-    # 📍 ModelLoader 클래스 내부에 추가 (약 600번째 줄 근처)
-def register_model_config(self, name: str, config: Union[ModelConfig, Dict[str, Any]]) -> bool:
-    """🔥 모델 설정 등록 - 누락된 메서드 추가"""
-    try:
-        with self._lock:
-            if isinstance(config, dict):
-                # 딕셔너리에서 ModelConfig 생성
-                model_config = ModelConfig(
-                    name=name,
-                    model_type=config.get("model_type", "unknown"),
-                    model_class=config.get("model_class", "BaseModel"),
-                    checkpoint_path=config.get("checkpoint_path"),
-                    config_path=config.get("config_path"),
-                    device=config.get("device", "auto"),
-                    precision=config.get("precision", "fp16"),
-                    input_size=tuple(config.get("input_size", (512, 512))),
-                    num_classes=config.get("num_classes"),
-                    file_size_mb=config.get("file_size_mb", 0.0),
-                    metadata=config.get("metadata", {})
-                )
-            else:
-                model_config = config
-            
-            # 체크포인트 검증
-            if model_config.checkpoint_path:
-                validation = self.validator.validate_checkpoint_file(model_config.checkpoint_path)
-                model_config.validation = validation
-                model_config.last_validated = time.time()
-                
-                if not validation.is_valid:
-                    self.logger.warning(f"⚠️ 체크포인트 검증 실패: {name} - {validation.error_message}")
-            
-            self.model_configs[name] = model_config
-            
-            # available_models에도 추가
-            self.available_models[name] = {
-                "name": name,
-                "path": model_config.checkpoint_path or f"config/{name}",
-                "size_mb": model_config.file_size_mb,
-                "model_type": str(model_config.model_type),
-                "step_class": model_config.model_class,
-                "loaded": False,
-                "device": model_config.device,
-                "validation": model_config.validation,
-                "is_valid": model_config.validation.is_valid if model_config.validation else True,
-                "metadata": model_config.metadata
-            }
-            
-            self.logger.info(f"✅ 모델 설정 등록 완료: {name}")
-            return True
-            
-    except Exception as e:
-        self.logger.error(f"❌ 모델 설정 등록 실패 {name}: {e}")
-        return False
-
-
 # ==============================================
-# 🔥 7단계: 안전한 비동기 컨텍스트 매니저 (핵심 수정!)
+# 🔥 8단계: 안전한 비동기 컨텍스트 매니저
 # ==============================================
 
 class SafeAsyncContextManager:
@@ -722,11 +679,11 @@ class SafeAsyncContextManager:
             return False
 
 # ==============================================
-# 🔥 8단계: 개선된 Step 인터페이스 클래스
+# 🔥 9단계: StepModelInterface 클래스
 # ==============================================
 
 class StepModelInterface:
-    """Step별 모델 인터페이스 - BaseStepMixin에서 직접 사용 (개선)"""
+    """Step별 모델 인터페이스 - BaseStepMixin에서 직접 사용"""
     
     def __init__(self, model_loader: 'ModelLoader', step_name: str):
         self.model_loader = model_loader
@@ -753,7 +710,7 @@ class StepModelInterface:
         self.logger.info(f"🔗 {step_name} 인터페이스 초기화 완료")
     
     def _get_step_request(self):
-        """Step별 요청 정보 가져오기 (개선)"""
+        """Step별 요청 정보 가져오기"""
         try:
             # model_loader에서 요청 정보 가져오기
             if hasattr(self.model_loader, 'step_requirements'):
@@ -773,7 +730,7 @@ class StepModelInterface:
             return {}
     
     def _get_recommended_models(self) -> List[str]:
-        """Step별 권장 모델 목록 (개선)"""
+        """Step별 권장 모델 목록"""
         try:
             if self.step_request:
                 if isinstance(self.step_request, dict):
@@ -799,7 +756,7 @@ class StepModelInterface:
             return ["default_model"]
     
     # ==============================================
-    # 🔥 BaseStepMixin에서 호출하는 핵심 메서드들 (개선)
+    # 🔥 BaseStepMixin에서 호출하는 핵심 메서드들
     # ==============================================
     
     async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
@@ -1041,21 +998,23 @@ class StepModelInterface:
         models.sort(key=lambda x: x["size_mb"], reverse=True)
         
         return models
+    
+    
 
 # ==============================================
-# 🔥 9단계: 메인 ModelLoader 클래스 (완전 개선 + 우선순위 수정)
+# 🔥 10단계: 메인 ModelLoader 클래스
 # ==============================================
 
 class ModelLoader:
     """완전 개선된 ModelLoader v20.1 (우선순위 문제 해결)"""
-    
+
     def __init__(
         self,
         device: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
-        """개선된 ModelLoader 생성자"""
+        """개선된 ModelLoader 생성자 - 경로 처리 오류 해결"""
         
         # 기본 설정
         self.config = config or {}
@@ -1073,8 +1032,36 @@ class ModelLoader:
         self.conda_env = CONDA_ENV
         self.optimization_enabled = kwargs.get('optimization_enabled', True)
         
-        # ModelLoader 특화 파라미터
-        self.model_cache_dir = Path(kwargs.get('model_cache_dir', './ai_models'))
+        # 🔥 ModelLoader 특화 파라미터 (경로 처리 완전 수정)
+        model_cache_dir_raw = kwargs.get('model_cache_dir', './ai_models')
+        
+        # 🔥 안전한 경로 변환
+        try:
+            if model_cache_dir_raw is None:
+                self.model_cache_dir = Path('./ai_models')
+            elif isinstance(model_cache_dir_raw, str):
+                self.model_cache_dir = Path(model_cache_dir_raw).resolve()
+            elif isinstance(model_cache_dir_raw, Path):
+                self.model_cache_dir = model_cache_dir_raw.resolve()
+            else:
+                # 예상치 못한 타입인 경우 기본값
+                self.logger.warning(f"⚠️ 예상치 못한 model_cache_dir 타입: {type(model_cache_dir_raw)}")
+                self.model_cache_dir = Path('./ai_models').resolve()
+                
+            # 경로 존재 확인 및 생성
+            if not self.model_cache_dir.exists():
+                self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+                self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
+                
+        except Exception as path_error:
+            self.logger.error(f"❌ 모델 경로 처리 실패: {path_error}")
+            # 완전 폴백
+            self.model_cache_dir = Path('./ai_models').resolve()
+            try:
+                self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as mkdir_error:
+                self.logger.error(f"❌ 폴백 디렉토리 생성 실패: {mkdir_error}")
+                
         self.use_fp16 = kwargs.get('use_fp16', True and self.device != 'cpu')
         self.max_cached_models = kwargs.get('max_cached_models', 30 if self.is_m3_max else 15)
         self.lazy_loading = kwargs.get('lazy_loading', True)
@@ -1084,15 +1071,15 @@ class ModelLoader:
         self.min_model_size_mb = kwargs.get('min_model_size_mb', 50)  # 50MB 이상만
         self.prioritize_large_models = kwargs.get('prioritize_large_models', True)
         
-        # 🔥 BaseStepMixin이 요구하는 핵심 속성들
+        # 🔥 BaseStepMixin이 요구하는 핵심 속성들 (타입 힌트 수정)
         self.loaded_models: Dict[str, Any] = {}
-        self.model_configs: Dict[str, ModelConfig] = {}
-        self.model_cache: Dict[str, SafeModelCacheEntry] = {}
+        self.model_configs: Dict[str, Any] = {}  # ModelConfig → Any로 수정
+        self.model_cache: Dict[str, Any] = {}    # SafeModelCacheEntry → Any로 수정
         self.available_models: Dict[str, Any] = {}
         self.step_requirements: Dict[str, Dict[str, Any]] = {}
-        self.step_interfaces: Dict[str, StepModelInterface] = {}
+        self.step_interfaces: Dict[str, Any] = {}  # StepModelInterface → Any로 수정
         self._loaded_models = self.loaded_models
-        self._is_initialized = True
+        self._is_initialized = False
 
         # 성능 추적
         self.load_times: Dict[str, float] = {}
@@ -1119,75 +1106,67 @@ class ModelLoader:
         # 체크포인트 검증기
         self.validator = CheckpointValidator()
         
-        # 🔥 안전한 초기화 실행
+        # 🔥 안전한 초기화 실행 (file_mapper 먼저)
+        self._safe_initialize_file_mapper()
         self._safe_initialize_components()
-        self._safe_initialize_components()
-        self._initialize_file_mapper()  # 🔥 새로 추가할 메서드
 
         self.logger.info(f"🎯 완전 개선된 ModelLoader v20.1 초기화 완료")
         self.logger.info(f"🔧 Device: {self.device}, conda: {self.conda_env}, M3 Max: {self.is_m3_max}")
         self.logger.info(f"💾 Memory: {self.memory_gb:.1f}GB")
         self.logger.info(f"🎯 최소 모델 크기: {self.min_model_size_mb}MB")
- 
-    # backend/app/ai_pipeline/utils/model_loader.py 수정
-    # 🔥 누락된 initialize 메서드 추가
-        # ModelLoader.__init__ 메서드 끝에 추가
-    try:
-        # AutoModelDetector 자동 통합
-        if AUTO_DETECTOR_AVAILABLE:
-            self.integrate_auto_detector()
-            self.logger.info("🎉 AutoModelDetector 자동 통합 완료")
-    except Exception as e:
-        self.logger.warning(f"⚠️ AutoModelDetector 자동 통합 실패: {e}")
+        self.logger.info(f"📁 모델 캐시 디렉토리: {self.model_cache_dir}")
+
+        # AutoModelDetector 자동 통합 시도
+        try:
+            if AUTO_DETECTOR_AVAILABLE:
+                self.integrate_auto_detector()
+                self.logger.info("🎉 AutoModelDetector 자동 통합 완료")
+        except Exception as e:
+            self.logger.warning(f"⚠️ AutoModelDetector 자동 통합 실패: {e}")
         
     def _initialize_file_mapper(self):
-        """🔥 지연 초기화로 file_mapper 설정 - 완전 수정 버전"""
+        """🔥 지연 초기화로 file_mapper 설정"""
         try:
             self.logger.info("🔄 file_mapper 초기화 시작...")
             
-            # ✅ 올바른 import: RealWorldModelDetector 사용
+            # ✅ 올바른 import: auto_model_detector 사용
             try:
-                from .auto_model_detector import get_global_detector, RealWorldModelDetector
+                from .auto_model_detector import get_global_detector
                 
-                # RealWorldModelDetector를 file_mapper로 사용
+                # detector를 file_mapper로 사용
                 detector = get_global_detector()
                 
-                # file_mapper에 필요한 메서드들을 detector로 매핑
-                class FileMapperAdapter:
-                    def __init__(self, detector):
-                        self.detector = detector
-                        
-                    def find_actual_file(self, request_name, ai_models_root):
-                        """요청명으로 실제 파일 찾기"""
-                        try:
-                            # 탐지된 모델에서 찾기
-                            if hasattr(self.detector, 'detected_models'):
-                                for model in self.detector.detected_models.values():
-                                    if request_name.lower() in model.path.name.lower():
-                                        return model.path
-                            return None
-                        except Exception as e:
-                            return None
+                if detector:
+                    # file_mapper에 필요한 메서드들을 detector로 매핑
+                    class FileMapperAdapter:
+                        def __init__(self, detector):
+                            self.detector = detector
                             
-                    def get_step_info(self, request_name):
-                        """Step 정보 반환"""
-                        try:
-                            if hasattr(self.detector, 'step_mapper'):
-                                return self.detector.step_mapper.match_file_to_step(request_name)
-                            return None
-                        except Exception:
-                            return None
-                            
-                    def discover_all_search_paths(self, ai_models_root):
-                        """모든 검색 경로 반환"""
-                        try:
-                            if hasattr(self.detector, 'path_discovery'):
-                                return self.detector.path_discovery.discover_all_paths()
-                            elif hasattr(self.detector, 'search_paths'):
-                                return self.detector.search_paths
-                            else:
-                                # 폴백: 기본 경로들
-                                from pathlib import Path
+                        def find_actual_file(self, request_name, ai_models_root):
+                            """요청명으로 실제 파일 찾기"""
+                            try:
+                                # 탐지된 모델에서 찾기
+                                if hasattr(self.detector, 'detected_models'):
+                                    for model in self.detector.detected_models.values():
+                                        if request_name.lower() in str(model.path).lower():
+                                            return model.path
+                                return None
+                            except Exception:
+                                return None
+                                
+                        def get_step_info(self, request_name):
+                            """Step 정보 반환"""
+                            try:
+                                if hasattr(self.detector, 'step_mapper'):
+                                    return self.detector.step_mapper.match_file_to_step(request_name)
+                                return None
+                            except Exception:
+                                return None
+                                
+                        def discover_all_search_paths(self, ai_models_root):
+                            """모든 검색 경로 반환"""
+                            try:
+                                # 기본 경로들
                                 return [
                                     Path(ai_models_root),
                                     Path(ai_models_root) / "checkpoints",
@@ -1202,14 +1181,12 @@ class ModelLoader:
                                     Path(ai_models_root) / "step_08",
                                     Path(ai_models_root) / "ultra_models"
                                 ]
-                        except Exception as e:
-                            # 완전 폴백
-                            from pathlib import Path
-                            return [Path(ai_models_root)]
-                
-                self.file_mapper = FileMapperAdapter(detector)
-                self.logger.info("✅ FileMapperAdapter 초기화 완료")
-                return
+                            except Exception:
+                                return [Path(ai_models_root)]
+                    
+                    self.file_mapper = FileMapperAdapter(detector)
+                    self.logger.info("✅ FileMapperAdapter 초기화 완료")
+                    return
                 
             except ImportError as import_error:
                 self.logger.warning(f"⚠️ auto_model_detector import 실패: {import_error}")
@@ -1225,7 +1202,6 @@ class ModelLoader:
                 def get_step_info(self, request_name):
                     return None
                 def discover_all_search_paths(self, ai_models_root):
-                    from pathlib import Path
                     return [
                         Path(ai_models_root),
                         Path(ai_models_root) / "checkpoints",
@@ -1251,13 +1227,708 @@ class ModelLoader:
                 def get_step_info(self, request_name):
                     return None
                 def discover_all_search_paths(self, ai_models_root):
-                    from pathlib import Path
                     return [Path(ai_models_root)]
             self.file_mapper = EmergencyFileMapper()
             self.logger.warning("🚨 EmergencyFileMapper 최종 폴백 사용")
 
+    def _safe_initialize_file_mapper(self):
+        """🔥 안전한 file_mapper 초기화 (오류 해결)"""
+        try:
+            self.logger.info("🔄 file_mapper 안전 초기화 시작...")
+            
+            # 1차 시도: auto_model_detector 사용
+            try:
+                from .auto_model_detector import get_global_detector
+                
+                detector = get_global_detector()
+                
+                if detector:
+                    # file_mapper에 필요한 메서드들을 detector로 매핑
+                    class FileMapperAdapter:
+                        def __init__(self, detector):
+                            self.detector = detector
+                            
+                        def find_actual_file(self, request_name, ai_models_root):
+                            """요청명으로 실제 파일 찾기"""
+                            try:
+                                if hasattr(self.detector, 'detected_models'):
+                                    for model in self.detector.detected_models.values():
+                                        if request_name.lower() in str(model.path).lower():
+                                            return model.path
+                                return None
+                            except Exception:
+                                return None
+                                
+                        def get_step_info(self, request_name):
+                            """Step 정보 반환"""
+                            try:
+                                if hasattr(self.detector, 'step_mapper'):
+                                    return self.detector.step_mapper.match_file_to_step(request_name)
+                                return None
+                            except Exception:
+                                return None
+                                
+                        def discover_all_search_paths(self, ai_models_root):
+                            """모든 검색 경로 반환"""
+                            try:
+                                base_path = Path(ai_models_root)
+                                return [
+                                    base_path,
+                                    base_path / "checkpoints",
+                                    base_path / "models",
+                                    base_path / "step_01",
+                                    base_path / "step_02",
+                                    base_path / "step_03",
+                                    base_path / "step_04",
+                                    base_path / "step_05",
+                                    base_path / "step_06",
+                                    base_path / "step_07",
+                                    base_path / "step_08",
+                                    base_path / "ultra_models"
+                                ]
+                            except Exception:
+                                return [Path(ai_models_root)]
+                    
+                    self.file_mapper = FileMapperAdapter(detector)
+                    self.logger.info("✅ FileMapperAdapter 초기화 완료")
+                    return
+                    
+            except ImportError as import_error:
+                self.logger.warning(f"⚠️ auto_model_detector import 실패: {import_error}")
+            except Exception as detector_error:
+                self.logger.warning(f"⚠️ detector 처리 실패: {detector_error}")
+                
+        except Exception as main_error:
+            self.logger.error(f"❌ file_mapper 주 초기화 실패: {main_error}")
+        
+        # 2차 시도: 안전한 더미 클래스 생성
+        try:
+            class SafeFileMapper:
+                def __init__(self, model_cache_dir):
+                    self.model_cache_dir = Path(model_cache_dir) if model_cache_dir else Path('./ai_models')
+                    
+                def find_actual_file(self, request_name, ai_models_root):
+                    """안전한 파일 찾기"""
+                    try:
+                        ai_models_path = Path(ai_models_root) if ai_models_root else self.model_cache_dir
+                        if not ai_models_path.exists():
+                            return None
+                            
+                        # 기본 패턴 매칭
+                        patterns = [f"*{request_name}*.pth", f"*{request_name}*.pt", f"*{request_name}*.bin"]
+                        for pattern in patterns:
+                            for file_path in ai_models_path.rglob(pattern):
+                                if file_path.is_file() and file_path.stat().st_size > 50 * 1024 * 1024:  # 50MB 이상
+                                    return file_path
+                        return None
+                    except Exception:
+                        return None
+                        
+                def get_step_info(self, request_name):
+                    """Step 정보 반환"""
+                    try:
+                        # Human Parsing 관련 매핑
+                        request_lower = request_name.lower()
+                        if "human" in request_lower or "parsing" in request_lower or "schp" in request_lower:
+                            return {"step_name": "HumanParsingStep", "step_id": 1}
+                        elif "pose" in request_lower or "openpose" in request_lower:
+                            return {"step_name": "PoseEstimationStep", "step_id": 2}
+                        elif "cloth" in request_lower or "segment" in request_lower or "u2net" in request_lower:
+                            return {"step_name": "ClothSegmentationStep", "step_id": 3}
+                        elif "geometric" in request_lower or "matching" in request_lower:
+                            return {"step_name": "GeometricMatchingStep", "step_id": 4}
+                        elif "warp" in request_lower or "tom" in request_lower:
+                            return {"step_name": "ClothWarpingStep", "step_id": 5}
+                        elif "virtual" in request_lower or "fitting" in request_lower or "diffusion" in request_lower:
+                            return {"step_name": "VirtualFittingStep", "step_id": 6}
+                        elif "post" in request_lower or "process" in request_lower or "esrgan" in request_lower:
+                            return {"step_name": "PostProcessingStep", "step_id": 7}
+                        elif "quality" in request_lower or "assessment" in request_lower or "clip" in request_lower:
+                            return {"step_name": "QualityAssessmentStep", "step_id": 8}
+                        else:
+                            return {"step_name": "UnknownStep", "step_id": 0}
+                    except Exception:
+                        return None
+                        
+                def discover_all_search_paths(self, ai_models_root):
+                    """안전한 검색 경로 반환"""
+                    try:
+                        base_path = Path(ai_models_root) if ai_models_root else self.model_cache_dir
+                        paths = []
+                        
+                        # 기본 경로들
+                        default_paths = [
+                            "",  # 루트
+                            "checkpoints",
+                            "models", 
+                            "step_01_human_parsing",
+                            "step_02_pose_estimation",
+                            "step_03_cloth_segmentation",
+                            "step_04_geometric_matching",
+                            "step_05_cloth_warping",
+                            "step_06_virtual_fitting",
+                            "step_07_post_processing",
+                            "step_08_quality_assessment",
+                            "checkpoints/human_parsing",
+                            "checkpoints/step_01_human_parsing",
+                            "checkpoints/pose_estimation",
+                            "checkpoints/step_02_pose_estimation",
+                            "checkpoints/cloth_segmentation",
+                            "checkpoints/step_03_cloth_segmentation",
+                            "ultra_models",
+                            "Self-Correction-Human-Parsing",
+                            "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing"
+                        ]
+                        
+                        for sub_path in default_paths:
+                            full_path = base_path / sub_path if sub_path else base_path
+                            if full_path.exists():
+                                paths.append(full_path)
+                        
+                        return paths if paths else [base_path]
+                    except Exception:
+                        return [Path(ai_models_root) if ai_models_root else Path('./ai_models')]
+            
+            self.file_mapper = SafeFileMapper(self.model_cache_dir)
+            self.logger.info("✅ SafeFileMapper 폴백 사용")
+            
+        except Exception as safe_error:
+            self.logger.error(f"❌ SafeFileMapper 생성 실패: {safe_error}")
+            
+            # 3차 시도: 최종 폴백
+            try:
+                class EmergencyFileMapper:
+                    def __init__(self):
+                        pass
+                        
+                    def find_actual_file(self, request_name, ai_models_root):
+                        return None
+                        
+                    def get_step_info(self, request_name):
+                        return None
+                        
+                    def discover_all_search_paths(self, ai_models_root):
+                        try:
+                            return [Path(ai_models_root) if ai_models_root else Path('./ai_models')]
+                        except:
+                            return [Path('./ai_models')]
+                        
+                self.file_mapper = EmergencyFileMapper()
+                self.logger.warning("🚨 EmergencyFileMapper 최종 폴백 사용")
+                
+            except Exception as emergency_error:
+                self.logger.error(f"❌ EmergencyFileMapper도 실패: {emergency_error}")
+                self.file_mapper = None
+
+
+    def _resolve_device(self, device: str) -> str:
+        """디바이스 해결"""
+        if device == "auto":
+            return DEFAULT_DEVICE
+        return device
+    
+    def _safe_initialize_components(self):
+        """안전한 모든 구성 요소 초기화 (오류 해결)"""
+        try:
+            # 캐시 디렉토리 확인 및 생성 (안전한 처리)
+            try:
+                if not self.model_cache_dir.exists():
+                    self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+                    self.logger.info(f"📁 AI 모델 캐시 디렉토리 생성: {self.model_cache_dir}")
+                else:
+                    self.logger.debug(f"📁 AI 모델 캐시 디렉토리 존재 확인: {self.model_cache_dir}")
+            except Exception as dir_error:
+                self.logger.error(f"❌ 캐시 디렉토리 처리 실패: {dir_error}")
+                # 폴백 디렉토리 시도
+                try:
+                    fallback_dir = Path('./ai_models_fallback')
+                    fallback_dir.mkdir(parents=True, exist_ok=True)
+                    self.model_cache_dir = fallback_dir
+                    self.logger.warning(f"⚠️ 폴백 디렉토리 사용: {fallback_dir}")
+                except Exception as fallback_error:
+                    self.logger.error(f"❌ 폴백 디렉토리도 실패: {fallback_error}")
+            
+            # Step 요구사항 로드 (안전한 처리)
+            try:
+                self._load_step_requirements()
+            except Exception as req_error:
+                self.logger.error(f"❌ Step 요구사항 로드 실패: {req_error}")
+                # 최소한의 기본 요구사항
+                self.step_requirements = {
+                    "HumanParsingStep": {
+                        "model_name": "human_parsing_fallback",
+                        "model_type": "BaseModel",
+                        "priority": 1
+                    }
+                }
+            
+            # 기본 모델 레지스트리 초기화 (안전한 처리)
+            try:
+                self._initialize_model_registry()
+            except Exception as reg_error:
+                self.logger.error(f"❌ 모델 레지스트리 초기화 실패: {reg_error}")
+                # 빈 레지스트리라도 초기화
+                if not hasattr(self, 'model_configs'):
+                    self.model_configs = {}
+                if not hasattr(self, 'available_models'):
+                    self.available_models = {}
+            
+            # 🔥 사용 가능한 모델 스캔 (안전한 처리)
+            try:
+                self._scan_available_models()
+            except Exception as scan_error:
+                self.logger.error(f"❌ 모델 스캔 실패: {scan_error}")
+                # 기본 스캔이라도 시도
+                try:
+                    self._emergency_model_scan()
+                except Exception as emergency_error:
+                    self.logger.error(f"❌ 비상 모델 스캔도 실패: {emergency_error}")
+            
+            # 메모리 최적화 (안전한 처리)
+            if self.optimization_enabled:
+                try:
+                    safe_torch_cleanup()
+                except Exception as cleanup_error:
+                    self.logger.warning(f"⚠️ 메모리 최적화 실패 (무시): {cleanup_error}")
+            
+            self.logger.info(f"📦 ModelLoader 구성 요소 안전 초기화 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 구성 요소 초기화 완전 실패: {e}")
+            # 최소한의 속성이라도 설정
+            if not hasattr(self, 'model_configs'):
+                self.model_configs = {}
+            if not hasattr(self, 'available_models'):
+                self.available_models = {}
+            if not hasattr(self, 'step_requirements'):
+                self.step_requirements = {}
+
+    def _emergency_model_scan(self):
+        """비상 모델 스캔 (최소한의 기능)"""
+        try:
+            self.logger.info("🚨 비상 모델 스캔 시작...")
+            
+            if not self.model_cache_dir.exists():
+                self.logger.warning("⚠️ 모델 디렉토리가 존재하지 않음")
+                return
+            
+            # 기본 확장자로 스캔
+            extensions = [".pth", ".pt", ".bin"]
+            found_count = 0
+            
+            for ext in extensions:
+                try:
+                    for model_file in self.model_cache_dir.rglob(f"*{ext}"):
+                        try:
+                            if model_file.is_file():
+                                size_mb = model_file.stat().st_size / (1024 * 1024)
+                                if size_mb >= 50:  # 50MB 이상만
+                                    model_info = {
+                                        "name": model_file.stem,
+                                        "path": str(model_file.relative_to(self.model_cache_dir)),
+                                        "size_mb": round(size_mb, 2),
+                                        "model_type": "unknown",
+                                        "step_class": "UnknownStep",
+                                        "loaded": False,
+                                        "device": self.device,
+                                        "is_valid": True,
+                                        "metadata": {
+                                            "emergency_scan": True,
+                                            "full_path": str(model_file)
+                                        }
+                                    }
+                                    self.available_models[model_file.stem] = model_info
+                                    found_count += 1
+                                    
+                                    if found_count <= 5:  # 처음 5개만 로깅
+                                        self.logger.info(f"🚨 비상 발견: {model_file.stem} ({size_mb:.1f}MB)")
+                        except Exception as file_error:
+                            continue
+                except Exception as ext_error:
+                    continue
+            
+            self.logger.info(f"🚨 비상 스캔 완료: {found_count}개 모델 발견")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비상 스캔 실패: {e}")
+
+    def _load_step_requirements(self):
+        """Step 요구사항 로드 (개선)"""
+        try:
+            # 기본 Step 요구사항 정의 (실제 GitHub 구조 기반)
+            default_requirements = {
+                "HumanParsingStep": {
+                    "model_name": "human_parsing_schp_atr",
+                    "model_type": "SCHPModel",
+                    "input_size": (512, 512),
+                    "num_classes": 20,
+                    "checkpoint_patterns": ["*schp*.pth", "*atr*.pth", "*exp-schp*.pth"],
+                    "priority": 1,
+                    "min_size_mb": 200  # 🔥 최소 크기 설정
+                },
+                "PoseEstimationStep": {
+                    "model_name": "pose_estimation_openpose",
+                    "model_type": "OpenPoseModel",
+                    "input_size": (368, 368),
+                    "num_classes": 18,
+                    "checkpoint_patterns": ["*openpose*.pth", "*pose*.pth"],
+                    "priority": 2,
+                    "min_size_mb": 150
+                },
+                "ClothSegmentationStep": {
+                    "model_name": "cloth_segmentation_u2net",
+                    "model_type": "U2NetModel",
+                    "input_size": (320, 320),
+                    "num_classes": 1,
+                    "checkpoint_patterns": ["*u2net*.pth", "*cloth*.pth"],
+                    "priority": 3,
+                    "min_size_mb": 100
+                },
+                "VirtualFittingStep": {
+                    "model_name": "virtual_fitting_diffusion",
+                    "model_type": "StableDiffusionPipeline",
+                    "input_size": (512, 512),
+                    "checkpoint_patterns": ["*pytorch_model*.bin", "*diffusion*.bin"],
+                    "priority": 6,
+                    "min_size_mb": 500
+                }
+            }
+            
+            self.step_requirements = default_requirements
+            
+            loaded_steps = len(self.step_requirements)
+            for step_name, request_info in self.step_requirements.items():
+                try:
+                    step_config = ModelConfig(
+                        name=request_info.get("model_name", step_name.lower()),
+                        model_type=request_info.get("model_type", "BaseModel"),
+                        model_class=request_info.get("model_type", "BaseModel"),
+                        device="auto",
+                        precision="fp16",
+                        input_size=tuple(request_info.get("input_size", (512, 512))),
+                        num_classes=request_info.get("num_classes", None),
+                        file_size_mb=request_info.get("min_size_mb", 50.0)
+                    )
+                    
+                    self.model_configs[request_info.get("model_name", step_name)] = step_config
+                    
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {step_name} 요청사항 로드 실패: {e}")
+                    continue
+            
+            self.logger.info(f"📝 {loaded_steps}개 Step 요청사항 로드 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step 요청사항 로드 실패: {e}")
+
+    def _initialize_model_registry(self):
+        """기본 모델 레지스트리 초기화 (동적 실제 파일 기반으로 완전 수정)"""
+        try:
+            self.logger.info("📝 실제 파일 기반 모델 레지스트리 초기화...")
+            
+            # 🔥 실제 탐지된 파일들을 기반으로 동적 모델 설정
+            real_model_mappings = {
+                # Human Parsing 모델들 - 실제 존재하는 파일들
+                "human_parsing_schp_atr": {
+                    "actual_files": [
+                        "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
+                    ],
+                    "model_type": ModelType.HUMAN_PARSING,
+                    "model_class": "HumanParsingModel",
+                    "input_size": (512, 512),
+                    "num_classes": 20,
+                    "expected_size_mb": 255.0
+                },
+                
+                # Pose Estimation 모델들 - 실제 존재하는 파일들  
+                "pose_estimation_openpose": {
+                    "actual_files": [
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+                        "checkpoints/step_02_pose_estimation/openpose.pth",  # 199.6MB
+                        "checkpoints/step_02_pose_estimation/yolov8n-pose.pt",  # 6.5MB
+                        "checkpoints/pose_estimation/sk_model.pth",  # 16.4MB
+                        "checkpoints/pose_estimation/upernet_global_small.pth",  # 196.8MB
+                        "checkpoints/pose_estimation/latest_net_G.pth",  # 303.5MB
+                        "openpose.pth"
+                    ],
+                    "model_type": ModelType.POSE_ESTIMATION,
+                    "model_class": "OpenPoseModel",
+                    "input_size": (368, 368),
+                    "num_classes": 18,
+                    "expected_size_mb": 200.0
+                },
+                
+                # Cloth Segmentation 모델들 - 실제 존재하는 파일들
+                "cloth_segmentation_u2net": {
+                    "actual_files": [
+                        "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",  # 2400MB+ (SAM)
+                        "step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth", 
+                        "step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth",
+                        "checkpoints/cloth_segmentation/u2net.pth",
+                        "checkpoints/step_03_cloth_segmentation/mask_anything.pth",
+                        "ai_models/u2net/u2net.pth",
+                        "models/sam/sam_vit_h_4b8939.pth"
+                    ],
+                    "model_type": ModelType.CLOTH_SEGMENTATION,
+                    "model_class": "U2NetModel", 
+                    "input_size": (320, 320),
+                    "num_classes": 1,
+                    "expected_size_mb": 2400.0  # SAM 모델 크기
+                },
+                
+                # Geometric Matching 모델 (실제 파일들 추가)
+                "geometric_matching_model": {
+                    "actual_files": [
+                        "checkpoints/step_04_geometric_matching/gmm_model.pth",
+                        "checkpoints/step_04_geometric_matching/tps_model.pth", 
+                        "ai_models/geometric_matching/gmm.pth",
+                        "models/tps/tps_model.pth"
+                    ],
+                    "model_type": ModelType.GEOMETRIC_MATCHING,
+                    "model_class": "GeometricMatchingModel",
+                    "input_size": (512, 384),
+                    "expected_size_mb": 150.0
+                },
+                
+                # Cloth Warping 모델 (실제 파일들 추가)
+                "cloth_warping_model": {
+                    "actual_files": [
+                        "checkpoints/step_05_cloth_warping/cloth_warp.pth",
+                        "checkpoints/step_05_cloth_warping/tps_warp.pth",
+                        "ai_models/cloth_warping/warp_model.pth" 
+                    ],
+                    "model_type": ModelType.CLOTH_WARPING,
+                    "model_class": "ClothWarpingModel", 
+                    "input_size": (512, 384),
+                    "expected_size_mb": 200.0
+                },
+                
+                # Virtual Fitting 모델 (실제 파일들 추가)
+                "virtual_fitting_diffusion": {
+                    "actual_files": [
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+                        "checkpoints/step_06_virtual_fitting/pytorch_model.bin",
+                        "checkpoints/step_06_virtual_fitting/diffusion_model.pth",
+                        "ai_models/virtual_fitting/ootd_model.pth"
+                    ],
+                    "model_type": ModelType.VIRTUAL_FITTING,
+                    "model_class": "VirtualFittingModel",
+                    "input_size": (512, 512), 
+                    "expected_size_mb": 1500.0
+                },
+                
+                # Post Processing 모델 (실제 파일들 추가)
+                "post_processing_model": {
+                    "actual_files": [
+                        "checkpoints/step_07_post_processing/esrgan_model.pth",
+                        "checkpoints/step_07_post_processing/enhancement.pth",
+                        "ai_models/post_processing/enhance.pth"
+                    ],
+                    "model_type": ModelType.POST_PROCESSING,
+                    "model_class": "PostProcessingModel",
+                    "input_size": (512, 512),
+                    "expected_size_mb": 100.0
+                },
+                
+                # Quality Assessment 모델 (실제 파일들 추가)
+                "quality_assessment_model": {
+                    "actual_files": [
+                        "checkpoints/step_08_quality_assessment/quality_clip.pth",
+                        "checkpoints/step_08_quality_assessment/lpips_model.pth",
+                        "ai_models/quality_assessment/clip_model.pth"
+                    ],
+                    "model_type": ModelType.QUALITY_ASSESSMENT,
+                    "model_class": "QualityAssessmentModel",
+                    "input_size": (224, 224),
+                    "expected_size_mb": 80.0
+                },
+                
+                # Virtual Fitting 모델 (폴백용) - 수정
+                "virtual_fitting_fallback": {
+                    "actual_files": [
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
+                    ],
+                    "model_type": ModelType.VIRTUAL_FITTING,
+                    "model_class": "StableDiffusionPipeline",
+                    "input_size": (512, 512),
+                    "expected_size_mb": 255.0
+                }
+            }
+            
+            registered_count = 0
+            
+            for model_name, mapping_info in real_model_mappings.items():
+                try:
+                    # 실제 존재하는 파일 찾기
+                    actual_checkpoint_path = None
+                    actual_size_mb = 0.0
+                    
+                    for relative_file_path in mapping_info["actual_files"]:
+                        full_path = self.model_cache_dir / relative_file_path
+                        if full_path.exists():
+                            try:
+                                size_mb = full_path.stat().st_size / (1024 * 1024)
+                                if size_mb >= self.min_model_size_mb:  # 50MB 이상만
+                                    actual_checkpoint_path = str(full_path)
+                                    actual_size_mb = size_mb
+                                    self.logger.info(f"✅ 실제 파일 발견: {model_name} → {relative_file_path} ({size_mb:.1f}MB)")
+                                    break
+                            except Exception as size_error:
+                                self.logger.debug(f"파일 크기 확인 실패: {full_path} - {size_error}")
+                                continue
+                    
+                    # 실제 파일이 없으면 이 모델은 건너뛰기
+                    if not actual_checkpoint_path:
+                        self.logger.warning(f"⚠️ {model_name} 실제 파일 없음 - 건너뛰기")
+                        continue
+                    
+                    # ModelConfig 생성 (실제 파일 기반)
+                    model_config = ModelConfig(
+                        name=model_name,
+                        model_type=mapping_info["model_type"],
+                        model_class=mapping_info["model_class"],
+                        checkpoint_path=actual_checkpoint_path,
+                        device="auto",
+                        precision="fp16",
+                        input_size=mapping_info["input_size"],
+                        num_classes=mapping_info.get("num_classes"),
+                        file_size_mb=actual_size_mb,
+                        metadata={
+                            "source": "dynamic_real_file_detection",
+                            "expected_size_mb": mapping_info["expected_size_mb"],
+                            "actual_size_mb": actual_size_mb,
+                            "relative_path": str(Path(actual_checkpoint_path).relative_to(self.model_cache_dir))
+                        }
+                    )
+                    
+                    # 체크포인트 검증
+                    validation = self.validator.validate_checkpoint_file(actual_checkpoint_path)
+                    model_config.validation = validation
+                    model_config.last_validated = time.time()
+                    
+                    if validation.is_valid:
+                        self.model_configs[model_name] = model_config
+                        registered_count += 1
+                        self.logger.info(f"✅ 실제 모델 등록: {model_name} ({actual_size_mb:.1f}MB)")
+                    else:
+                        self.logger.warning(f"⚠️ {model_name} 검증 실패: {validation.error_message}")
+                    
+                except Exception as model_error:
+                    self.logger.warning(f"⚠️ {model_name} 등록 실패: {model_error}")
+                    continue
+            
+            self.logger.info(f"📝 실제 파일 기반 모델 등록 완료: {registered_count}개")
+            
+            # 등록된 모델이 없으면 폴백 처리
+            if registered_count == 0:
+                self.logger.warning("⚠️ 등록된 실제 모델이 없음 - 폴백 처리")
+                self._initialize_fallback_models()
+            
+        except Exception as e:
+            self.logger.error(f"❌ 모델 레지스트리 초기화 실패: {e}")
+            # 완전 실패 시 폴백
+            self._initialize_fallback_models()
+
+    def _initialize_fallback_models(self):
+        """폴백 모델 등록 (실제 파일이 없을 때)"""
+        try:
+            self.logger.info("🔄 폴백 모델 등록 시작...")
+            
+            # 기본 더미 모델들
+            fallback_models = {
+                "fallback_human_parsing": ModelConfig(
+                    name="fallback_human_parsing",
+                    model_type=ModelType.HUMAN_PARSING,
+                    model_class="DummyModel",
+                    device="auto",
+                    precision="fp16",
+                    input_size=(512, 512),
+                    num_classes=20,
+                    file_size_mb=0.0,
+                    metadata={"fallback": True}
+                ),
+                "fallback_pose_estimation": ModelConfig(
+                    name="fallback_pose_estimation", 
+                    model_type=ModelType.POSE_ESTIMATION,
+                    model_class="DummyModel",
+                    device="auto",
+                    precision="fp16",
+                    input_size=(368, 368),
+                    num_classes=18,
+                    file_size_mb=0.0,
+                    metadata={"fallback": True}
+                ),
+                "fallback_cloth_segmentation": ModelConfig(
+                    name="fallback_cloth_segmentation",
+                    model_type=ModelType.CLOTH_SEGMENTATION,
+                    model_class="DummyModel", 
+                    device="auto",
+                    precision="fp16",
+                    input_size=(320, 320),
+                    num_classes=1,
+                    file_size_mb=0.0,
+                    metadata={"fallback": True}
+                )
+            }
+            
+            for name, config in fallback_models.items():
+                self.model_configs[name] = config
+            
+            self.logger.info(f"✅ 폴백 모델 등록 완료: {len(fallback_models)}개")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 폴백 모델 등록 실패: {e}")
+
+    def integrate_auto_detector(self):
+        """🔥 AutoModelDetector 통합 - 핵심 기능"""
+        if not AUTO_DETECTOR_AVAILABLE:
+            self.logger.warning("⚠️ AutoModelDetector 사용 불가능")
+            return False
+        
+        try:
+            # 탐지된 모델들 가져오기
+            detector = get_global_detector()
+            if not detector:
+                self.logger.warning("⚠️ global detector가 None")
+                return False
+                
+            detected_models = detector.detect_all_models() if hasattr(detector, 'detect_all_models') else {}
+            
+            # available_models에 통합
+            for model_name, detected_model in detected_models.items():
+                model_info = {
+                    "name": model_name,
+                    "path": str(detected_model.checkpoint_path or detected_model.path),
+                    "size_mb": detected_model.file_size_mb,
+                    "model_type": detected_model.model_type,
+                    "step_class": detected_model.step_name,
+                    "loaded": False,
+                    "device": self.device,
+                    "priority_score": getattr(detected_model, 'priority_score', 0),
+                    "is_large_model": getattr(detected_model, 'is_large_model', False),
+                    "can_load_by_step": getattr(detected_model, 'can_be_loaded_by_step', lambda: False)(),
+                    "metadata": {
+                        "detection_source": "auto_detector",
+                        "confidence": getattr(detected_model, 'confidence_score', 0.5),
+                        "step_class_name": getattr(detected_model, 'step_class_name', 'UnknownStep'),
+                        "model_load_method": getattr(detected_model, 'model_load_method', 'default'),
+                        "full_path": str(detected_model.path),
+                        "size_category": getattr(detected_model, '_get_size_category', lambda: 'medium')()
+                    }
+                }
+                self.available_models[model_name] = model_info
+            
+            self.logger.info(f"✅ AutoModelDetector 통합 완료: {len(detected_models)}개 모델")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ AutoModelDetector 통합 실패: {e}")
+            return False
+
     def _scan_available_models(self):
-        """🔥 사용 가능한 체크포인트 파일들 스캔 (완전 동적 + 크기 우선순위) - 안전성 강화"""
+        """🔥 사용 가능한 체크포인트 파일들 스캔 (완전 동적 + 크기 우선순위)"""
         try:
             self.logger.info("🔍 완전 동적 체크포인트 스캔 시작...")
             
@@ -1430,7 +2101,6 @@ class ModelLoader:
             # 예외 발생 시에도 기본 경로에서 스캔 시도
             try:
                 self.logger.info("🔄 예외 상황 - 기본 경로 스캔 시도")
-                basic_paths = [self.model_cache_dir]
                 for model_file in self.model_cache_dir.rglob("*.pth"):
                     size_mb = model_file.stat().st_size / (1024 * 1024) 
                     if size_mb >= 50:  # 50MB 이상만
@@ -1450,681 +2120,7 @@ class ModelLoader:
                         }
                 self.logger.info(f"🚨 비상 스캔으로 {len(self.available_models)}개 모델 발견")
             except Exception as emergency_error:
-                self.logger.error(f"❌ 비상 스캔도 실패: {emergency_error}")    
-
-
-    def initialize(self, **kwargs) -> bool:
-        """ModelLoader 초기화 메서드 - main.py 호환성"""
-        try:
-            if self._is_initialized:
-                self.logger.info("✅ ModelLoader 이미 초기화됨")
-                return True
-            
-            self.logger.info("🔄 ModelLoader 초기화 시작...")
-            
-            # 1. 설정 업데이트
-            if kwargs:
-                for key, value in kwargs.items():
-                    if hasattr(self, key):
-                        setattr(self, key, value)
-                        self.logger.debug(f"   설정 업데이트: {key} = {value}")
-            
-            # 2. AI 모델 디렉토리 확인
-            if not self.model_cache_dir.exists():
-                self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-                self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
-            
-            # 3. Step 요구사항 재로드 (혹시 누락된 것들)
-            self._load_step_requirements()
-            
-            # 4. 모델 레지스트리 재초기화
-            self._initialize_model_registry()
-            
-            # 5. 사용 가능한 모델 재스캔 (크기 우선순위 적용)
-            self._scan_available_models()
-            
-            # 6. 메모리 최적화
-            if self.optimization_enabled:
-                safe_torch_cleanup()
-            
-            # 7. 전체 검증 실행
-            validation_results = self.validate_all_models()
-            valid_count = sum(1 for v in validation_results.values() if v.is_valid)
-            total_count = len(validation_results)
-            
-            self._is_initialized = True
-            
-            self.logger.info(f"✅ ModelLoader 초기화 완료")
-            self.logger.info(f"📊 등록된 모델: {len(self.available_models)}개")
-            self.logger.info(f"🔍 검증 결과: {valid_count}/{total_count} 성공")
-            self.logger.info(f"💾 메모리: {self.memory_gb:.1f}GB, 디바이스: {self.device}")
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
-            self._is_initialized = False
-            return False
-    
-    # 🔥 비동기 초기화 메서드도 추가
-    async def initialize_async(self, **kwargs) -> bool:
-        """비동기 ModelLoader 초기화"""
-        try:
-            # 동기 초기화 실행
-            result = self.initialize(**kwargs)
-            
-            if result:
-                # 추가 비동기 작업들
-                await self._async_model_validation()
-                self.logger.info("✅ ModelLoader 비동기 초기화 완료")
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 비동기 초기화 실패: {e}")
-            return False
-    
-    async def _async_model_validation(self):
-        """비동기 모델 검증"""
-        try:
-            # 검증이 오래 걸리는 대형 모델들 비동기 처리
-            tasks = []
-            for model_name, model_info in self.available_models.items():
-                if model_info.get("size_mb", 0) > 500:  # 500MB 이상
-                    task = asyncio.create_task(self._validate_large_model_async(model_name))
-                    tasks.append(task)
-            
-            if tasks:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                success_count = sum(1 for r in results if r and not isinstance(r, Exception))
-                self.logger.info(f"🔍 대형 모델 비동기 검증: {success_count}/{len(tasks)} 성공")
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ 비동기 모델 검증 실패: {e}")
-    
-    async def _validate_large_model_async(self, model_name: str) -> bool:
-        """대형 모델 비동기 검증"""
-        try:
-            if model_name in self.model_configs:
-                config = self.model_configs[model_name]
-                if config.checkpoint_path:
-                    validation = await asyncio.get_event_loop().run_in_executor(
-                        None, 
-                        self.validator.validate_checkpoint_file, 
-                        config.checkpoint_path
-                    )
-                    config.validation = validation
-                    config.last_validated = time.time()
-                    return validation.is_valid
-            return False
-        except Exception:
-            return False
-    
-    # 🔥 초기화 상태 확인 메서드
-    def is_initialized(self) -> bool:
-        """초기화 상태 확인"""
-        return getattr(self, '_is_initialized', False)
-    
-    # 🔥 재초기화 메서드
-    def reinitialize(self, **kwargs) -> bool:
-        """ModelLoader 재초기화"""
-        try:
-            self.logger.info("🔄 ModelLoader 재초기화 시작...")
-            
-            # 기존 캐시 정리
-            self.cleanup()
-            
-            # 초기화 상태 리셋
-            self._is_initialized = False
-            
-            # 재초기화 실행
-            return self.initialize(**kwargs)
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 재초기화 실패: {e}")
-            return False
-        
-    def _resolve_device(self, device: str) -> str:
-        """디바이스 해결"""
-        if device == "auto":
-            return DEFAULT_DEVICE
-        return device
-    
-    def _safe_initialize_components(self):
-        """안전한 모든 구성 요소 초기화"""
-        try:
-            # 캐시 디렉토리 생성
-            self.model_cache_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Step 요청사항 로드
-            self._load_step_requirements()
-            
-            # 기본 모델 레지스트리 초기화
-            self._initialize_model_registry()
-            
-            # 🔥 사용 가능한 모델 스캔 (크기 우선순위 적용)
-            self._scan_available_models()
-            
-            # 메모리 최적화
-            if self.optimization_enabled:
-                safe_torch_cleanup()
-            
-            self.logger.info(f"📦 ModelLoader 구성 요소 안전 초기화 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ 구성 요소 초기화 실패: {e}")
-            # 실패해도 기본 기능은 동작하도록 함
-    
-    def _load_step_requirements(self):
-        """Step 요청사항 로드 (개선)"""
-        try:
-            # 기본 Step 요청사항 정의 (실제 GitHub 구조 기반)
-            default_requirements = {
-                "HumanParsingStep": {
-                    "model_name": "human_parsing_schp_atr",
-                    "model_type": "SCHPModel",
-                    "input_size": (512, 512),
-                    "num_classes": 20,
-                    "checkpoint_patterns": ["*schp*.pth", "*atr*.pth", "*exp-schp*.pth"],
-                    "priority": 1,
-                    "min_size_mb": 200  # 🔥 최소 크기 설정
-                },
-                "PoseEstimationStep": {
-                    "model_name": "pose_estimation_openpose",
-                    "model_type": "OpenPoseModel",
-                    "input_size": (368, 368),
-                    "num_classes": 18,
-                    "checkpoint_patterns": ["*openpose*.pth", "*pose*.pth"],
-                    "priority": 2,
-                    "min_size_mb": 150
-                },
-                "ClothSegmentationStep": {
-                    "model_name": "cloth_segmentation_u2net",
-                    "model_type": "U2NetModel",
-                    "input_size": (320, 320),
-                    "num_classes": 1,
-                    "checkpoint_patterns": ["*u2net*.pth", "*cloth*.pth"],
-                    "priority": 3,
-                    "min_size_mb": 100
-                },
-                "VirtualFittingStep": {
-                    "model_name": "virtual_fitting_diffusion",
-                    "model_type": "StableDiffusionPipeline",
-                    "input_size": (512, 512),
-                    "checkpoint_patterns": ["*pytorch_model*.bin", "*diffusion*.bin"],
-                    "priority": 6,
-                    "min_size_mb": 500
-                }
-            }
-            
-            self.step_requirements = default_requirements
-            
-            loaded_steps = len(self.step_requirements)
-            for step_name, request_info in self.step_requirements.items():
-                try:
-                    step_config = ModelConfig(
-                        name=request_info.get("model_name", step_name.lower()),
-                        model_type=request_info.get("model_type", "BaseModel"),
-                        model_class=request_info.get("model_type", "BaseModel"),
-                        device="auto",
-                        precision="fp16",
-                        input_size=tuple(request_info.get("input_size", (512, 512))),
-                        num_classes=request_info.get("num_classes", None),
-                        file_size_mb=request_info.get("min_size_mb", 50.0)
-                    )
-                    
-                    self.model_configs[request_info.get("model_name", step_name)] = step_config
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️ {step_name} 요청사항 로드 실패: {e}")
-                    continue
-            
-            self.logger.info(f"📝 {loaded_steps}개 Step 요청사항 로드 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Step 요청사항 로드 실패: {e}")
-
-    def _initialize_model_registry(self):
-        """기본 모델 레지스트리 초기화 (동적 실제 파일 기반으로 완전 수정)"""
-        try:
-            self.logger.info("📝 실제 파일 기반 모델 레지스트리 초기화...")
-            
-            # 🔥 실제 탐지된 파일들을 기반으로 동적 모델 설정
-            real_model_mappings = {
-                # Human Parsing 모델들 - 실제 존재하는 파일들
-                "human_parsing_schp_atr": {
-                    "actual_files": [
-                        "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
-                    ],
-                    "model_type": ModelType.HUMAN_PARSING,
-                    "model_class": "HumanParsingModel",
-                    "input_size": (512, 512),
-                    "num_classes": 20,
-                    "expected_size_mb": 255.0
-                },
-                
-                # Pose Estimation 모델들 - 실제 존재하는 파일들  
-                "pose_estimation_openpose": {
-                    "actual_files": [
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
-                        "openpose.pth"
-                    ],
-                    "model_type": ModelType.POSE_ESTIMATION,
-                    "model_class": "OpenPoseModel",
-                    "input_size": (368, 368),
-                    "num_classes": 18,
-                    "expected_size_mb": 200.0
-                },
-                
-                # Cloth Segmentation 모델들 - 실제 존재하는 파일들
-                "cloth_segmentation_u2net": {
-                    "actual_files": [
-                        "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                        "step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth", 
-                        "step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth"
-                    ],
-                    "model_type": ModelType.CLOTH_SEGMENTATION,
-                    "model_class": "U2NetModel", 
-                    "input_size": (320, 320),
-                    "num_classes": 1,
-                    "expected_size_mb": 2400.0  # SAM 모델 크기
-                },
-                
-                # Virtual Fitting 모델 (폴백용)
-                "virtual_fitting_diffusion": {
-                    "actual_files": [
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
-                    ],
-                    "model_type": ModelType.VIRTUAL_FITTING,
-                    "model_class": "StableDiffusionPipeline",
-                    "input_size": (512, 512),
-                    "expected_size_mb": 255.0
-                }
-            }
-            
-            registered_count = 0
-            
-            for model_name, mapping_info in real_model_mappings.items():
-                try:
-                    # 실제 존재하는 파일 찾기
-                    actual_checkpoint_path = None
-                    actual_size_mb = 0.0
-                    
-                    for relative_file_path in mapping_info["actual_files"]:
-                        full_path = self.model_cache_dir / relative_file_path
-                        if full_path.exists():
-                            try:
-                                size_mb = full_path.stat().st_size / (1024 * 1024)
-                                if size_mb >= self.min_model_size_mb:  # 50MB 이상만
-                                    actual_checkpoint_path = str(full_path)
-                                    actual_size_mb = size_mb
-                                    self.logger.info(f"✅ 실제 파일 발견: {model_name} → {relative_file_path} ({size_mb:.1f}MB)")
-                                    break
-                            except Exception as size_error:
-                                self.logger.debug(f"파일 크기 확인 실패: {full_path} - {size_error}")
-                                continue
-                    
-                    # 실제 파일이 없으면 이 모델은 건너뛰기
-                    if not actual_checkpoint_path:
-                        self.logger.warning(f"⚠️ {model_name} 실제 파일 없음 - 건너뛰기")
-                        continue
-                    
-                    # ModelConfig 생성 (실제 파일 기반)
-                    model_config = ModelConfig(
-                        name=model_name,
-                        model_type=mapping_info["model_type"],
-                        model_class=mapping_info["model_class"],
-                        checkpoint_path=actual_checkpoint_path,
-                        device="auto",
-                        precision="fp16",
-                        input_size=mapping_info["input_size"],
-                        num_classes=mapping_info.get("num_classes"),
-                        file_size_mb=actual_size_mb,
-                        metadata={
-                            "source": "dynamic_real_file_detection",
-                            "expected_size_mb": mapping_info["expected_size_mb"],
-                            "actual_size_mb": actual_size_mb,
-                            "relative_path": str(Path(actual_checkpoint_path).relative_to(self.model_cache_dir))
-                        }
-                    )
-                    
-                    # 체크포인트 검증
-                    validation = self.validator.validate_checkpoint_file(actual_checkpoint_path)
-                    model_config.validation = validation
-                    model_config.last_validated = time.time()
-                    
-                    if validation.is_valid:
-                        self.model_configs[model_name] = model_config
-                        registered_count += 1
-                        self.logger.info(f"✅ 실제 모델 등록: {model_name} ({actual_size_mb:.1f}MB)")
-                    else:
-                        self.logger.warning(f"⚠️ {model_name} 검증 실패: {validation.error_message}")
-                    
-                except Exception as model_error:
-                    self.logger.warning(f"⚠️ {model_name} 등록 실패: {model_error}")
-                    continue
-            
-            self.logger.info(f"📝 실제 파일 기반 모델 등록 완료: {registered_count}개")
-            
-            # 등록된 모델이 없으면 폴백 처리
-            if registered_count == 0:
-                self.logger.warning("⚠️ 등록된 실제 모델이 없음 - 폴백 처리")
-                self._initialize_fallback_models()
-            
-        except Exception as e:
-            self.logger.error(f"❌ 모델 레지스트리 초기화 실패: {e}")
-            # 완전 실패 시 폴백
-            self._initialize_fallback_models()
-
-    def _initialize_fallback_models(self):
-        """폴백 모델 등록 (실제 파일이 없을 때)"""
-        try:
-            self.logger.info("🔄 폴백 모델 등록 시작...")
-            
-            # 기본 더미 모델들
-            fallback_models = {
-                "fallback_human_parsing": ModelConfig(
-                    name="fallback_human_parsing",
-                    model_type=ModelType.HUMAN_PARSING,
-                    model_class="DummyModel",
-                    device="auto",
-                    precision="fp16",
-                    input_size=(512, 512),
-                    num_classes=20,
-                    file_size_mb=0.0,
-                    metadata={"fallback": True}
-                ),
-                "fallback_pose_estimation": ModelConfig(
-                    name="fallback_pose_estimation", 
-                    model_type=ModelType.POSE_ESTIMATION,
-                    model_class="DummyModel",
-                    device="auto",
-                    precision="fp16",
-                    input_size=(368, 368),
-                    num_classes=18,
-                    file_size_mb=0.0,
-                    metadata={"fallback": True}
-                ),
-                "fallback_cloth_segmentation": ModelConfig(
-                    name="fallback_cloth_segmentation",
-                    model_type=ModelType.CLOTH_SEGMENTATION,
-                    model_class="DummyModel", 
-                    device="auto",
-                    precision="fp16",
-                    input_size=(320, 320),
-                    num_classes=1,
-                    file_size_mb=0.0,
-                    metadata={"fallback": True}
-                )
-            }
-            
-            for name, config in fallback_models.items():
-                self.model_configs[name] = config
-            
-            self.logger.info(f"✅ 폴백 모델 등록 완료: {len(fallback_models)}개")
-            
-        except Exception as e:
-            self.logger.error(f"❌ 폴백 모델 등록 실패: {e}")
-
-    def integrate_auto_detector(self):
-        """🔥 AutoModelDetector 통합 - 핵심 기능"""
-        if not AUTO_DETECTOR_AVAILABLE:
-            self.logger.warning("⚠️ AutoModelDetector 사용 불가능")
-            return False
-        
-        try:
-            # 크기 우선순위 수정 적용
-            apply_size_priority_fix_to_global_loader()
-            
-            # 탐지된 모델들 가져오기
-            detector = get_global_detector()
-            detected_models = detector.detect_all_models()
-            
-            # available_models에 통합
-            for model_name, detected_model in detected_models.items():
-                model_info = {
-                    "name": model_name,
-                    "path": str(detected_model.checkpoint_path or detected_model.path),
-                    "size_mb": detected_model.file_size_mb,
-                    "model_type": detected_model.model_type,
-                    "step_class": detected_model.step_name,
-                    "loaded": False,
-                    "device": self.device,
-                    "priority_score": detected_model.priority_score,
-                    "is_large_model": detected_model.is_large_model,
-                    "can_load_by_step": detected_model.can_be_loaded_by_step(),
-                    "metadata": {
-                        "detection_source": "auto_detector",
-                        "confidence": detected_model.confidence_score,
-                        "step_class_name": detected_model.step_class_name,
-                        "model_load_method": detected_model.model_load_method,
-                        "full_path": str(detected_model.path),
-                        "size_category": detected_model._get_size_category()
-                    }
-                }
-                self.available_models[model_name] = model_info
-            
-            self.logger.info(f"✅ AutoModelDetector 통합 완료: {len(detected_models)}개 모델")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ AutoModelDetector 통합 실패: {e}")
-            return False
-
-    def list_available_models(self, step_class: Optional[str] = None, model_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """🔥 main.py 호환 - 사용 가능한 모델 목록 반환"""
-        try:
-            # AutoDetector와 먼저 동기화
-            if AUTO_DETECTOR_AVAILABLE:
-                self.integrate_auto_detector()
-            
-            # 필터링
-            result = []
-            for model_name, model_info in self.available_models.items():
-                # Step 클래스 필터
-                if step_class and model_info.get("step_class") != step_class:
-                    continue
-                
-                # 모델 타입 필터  
-                if model_type and model_info.get("model_type") != model_type:
-                    continue
-                    
-                result.append(model_info)
-            
-            # 우선순위 점수로 정렬 (큰 것부터)
-            return sorted(result, key=lambda x: x.get("priority_score", 0), reverse=True)
-            
-        except Exception as e:
-            self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
-            return []
-
-    def register_step_requirements(self, step_name: str, requirements: Dict[str, Any]) -> bool:
-        """🔥 Step 요구사항 등록"""
-        try:
-            if not hasattr(self, 'step_requirements'):
-                self.step_requirements = {}
-            
-            self.step_requirements[step_name] = requirements
-            self.logger.info(f"✅ {step_name} 요구사항 등록 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 요구사항 등록 실패: {e}")
-            return False
-
-    def create_step_interface(self, step_name: str) -> 'StepModelInterface':
-        """🔥 Step 인터페이스 생성"""
-        try:
-            # AutoDetector 활용
-            if AUTO_DETECTOR_AVAILABLE:
-                from .auto_model_detector import create_step_interface
-                interface_info = create_step_interface(step_name)
-                
-                if interface_info and interface_info.get("load_ready"):
-                    return StepModelInterface(step_name, self, interface_info)
-            
-            # 기본 인터페이스
-            return StepModelInterface(step_name, self)
-            
-        except Exception as e:
-            self.logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
-            return StepModelInterface(step_name, self)
-    def _scan_available_models(self):
-        """🔥 사용 가능한 체크포인트 파일들 스캔 (완전 동적 + 크기 우선순위) - 안전성 강화"""
-        try:
-            self.logger.info("🔍 완전 동적 체크포인트 스캔 시작...")
-            
-            if not self.model_cache_dir.exists():
-                self.logger.warning(f"⚠️ 모델 디렉토리 없음: {self.model_cache_dir}")
-                return
-            
-            # ✅ file_mapper 안전성 체크 강화
-            search_paths = []
-            if self.file_mapper and hasattr(self.file_mapper, 'discover_all_search_paths'):
-                try:
-                    search_paths = self.file_mapper.discover_all_search_paths(self.model_cache_dir)
-                    self.logger.debug(f"📁 file_mapper로 검색 경로 획득: {len(search_paths)}개")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ file_mapper 검색 실패: {e}")
-                    search_paths = []
-            
-            # 폴백: 기본 검색 경로 사용
-            if not search_paths:
-                search_paths = [
-                    self.model_cache_dir,
-                    self.model_cache_dir / "checkpoints",
-                    self.model_cache_dir / "models",
-                    self.model_cache_dir / "step_01",
-                    self.model_cache_dir / "step_02",
-                    self.model_cache_dir / "step_03",
-                    self.model_cache_dir / "step_04",
-                    self.model_cache_dir / "step_05",
-                    self.model_cache_dir / "step_06",
-                    self.model_cache_dir / "step_07",
-                    self.model_cache_dir / "step_08",
-                    self.model_cache_dir / "ultra_models"
-                ]
-                # 존재하는 경로만 필터링
-                search_paths = [p for p in search_paths if p.exists()]
-                self.logger.info(f"📁 기본 검색 경로 사용: {len(search_paths)}개")
-            
-            # 임시 리스트에 저장 후 크기순 정렬
-            scanned_models = []
-            scanned_count = 0
-            validated_count = 0
-            large_models_count = 0
-            small_models_filtered = 0
-            total_size_gb = 0.0
-            
-            # 체크포인트 확장자 지원
-            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt", ".pkl", ".pickle"]
-            
-            # 🔥 동적 경로 스캔
-            for search_path in search_paths:
-                self.logger.debug(f"📁 스캔 중: {search_path}")
-                
-                for ext in extensions:
-                    for model_file in search_path.rglob(f"*{ext}"):
-                        if any(exclude in str(model_file) for exclude in ["cleanup_backup", "__pycache__", ".git"]):
-                            continue
-                            
-                        try:
-                            size_mb = model_file.stat().st_size / (1024 * 1024)
-                            total_size_gb += size_mb / 1024
-                            
-                            # 🔥 크기 필터링 (50MB 미만 제거)
-                            if size_mb < self.min_model_size_mb:
-                                small_models_filtered += 1
-                                continue
-                            
-                            if size_mb > 1000:  # 1GB 이상
-                                large_models_count += 1
-                            
-                            # 🔥 체크포인트 검증
-                            validation = self.validator.validate_checkpoint_file(model_file)
-                            self.performance_stats['validation_count'] += 1
-                            
-                            if validation.is_valid:
-                                self.performance_stats['validation_success'] += 1
-                                validated_count += 1
-                            else:
-                                # 검증 실패한 파일은 제외
-                                self.logger.debug(f"⚠️ 검증 실패: {model_file.name}")
-                                continue
-                            
-                            relative_path = model_file.relative_to(self.model_cache_dir)
-                            
-                            # 🔥 동적 모델 타입 및 Step 클래스 탐지
-                            model_type = self._detect_model_type_dynamic(model_file)
-                            step_class = self._detect_step_class_dynamic(model_file)
-                            
-                            model_info = {
-                                "name": model_file.stem,
-                                "path": str(relative_path),
-                                "size_mb": round(size_mb, 2),
-                                "model_type": model_type,
-                                "step_class": step_class,
-                                "loaded": False,
-                                "device": self.device,
-                                "validation": validation,
-                                "is_valid": validation.is_valid,
-                                "metadata": {
-                                    "extension": ext,
-                                    "parent_dir": model_file.parent.name,
-                                    "full_path": str(model_file),
-                                    "is_large": size_mb > 1000,
-                                    "last_modified": model_file.stat().st_mtime,
-                                    "validation_time": validation.validation_time,
-                                    "priority_score": self._calculate_priority_score(size_mb, validation.is_valid),
-                                    "search_path": str(search_path)  # 🔥 탐지 경로 추가
-                                }
-                            }
-                            
-                            scanned_models.append(model_info)
-                            scanned_count += 1
-                            
-                            # 처음 10개만 상세 로깅
-                            if scanned_count <= 10:
-                                status = "✅" if validation.is_valid else "⚠️"
-                                self.logger.info(f"📦 {status} 발견: {model_info['name']} ({size_mb:.1f}MB) @ {search_path.name}")
-                            
-                        except Exception as e:
-                            self.logger.debug(f"⚠️ 모델 스캔 실패 {model_file}: {e}")
-            
-            # 🔥 크기 우선순위로 정렬
-            if self.prioritize_large_models:
-                scanned_models.sort(key=lambda x: x["metadata"]["priority_score"], reverse=True)
-                self.logger.info("🎯 대형 모델 우선순위 정렬 적용")
-            
-            # 정렬된 순서로 available_models에 등록
-            for model_info in scanned_models:
-                self.available_models[model_info["name"]] = model_info
-            
-            # 통계 업데이트
-            self.performance_stats.update({
-                'total_models_found': scanned_count,
-                'large_models_found': large_models_count,
-                'small_models_filtered': small_models_filtered
-            })
-            
-            validation_rate = validated_count / scanned_count if scanned_count > 0 else 0
-            
-            self.logger.info(f"✅ 완전 동적 스캔 완료: {scanned_count}개 등록")
-            self.logger.info(f"🔍 검증 성공: {validated_count}개 ({validation_rate:.1%})")
-            self.logger.info(f"📊 대용량 모델(1GB+): {large_models_count}개")
-            self.logger.info(f"🗑️ 작은 파일 제외: {small_models_filtered}개 ({self.min_model_size_mb}MB 미만)")
-            self.logger.info(f"💾 총 모델 크기: {total_size_gb:.1f}GB")
-            
-            # 상위 5개 모델 출력
-            if scanned_models:
-                self.logger.info("🏆 우선순위 상위 모델들:")
-                for i, model in enumerate(scanned_models[:5]):
-                    self.logger.info(f"  {i+1}. {model['name']}: {model['size_mb']:.1f}MB")
-            
-        except Exception as e:
-            self.logger.error(f"❌ 완전 동적 모델 스캔 실패: {e}")
+                self.logger.error(f"❌ 비상 스캔도 실패: {emergency_error}")
 
     def _detect_model_type_dynamic(self, model_file: Path) -> str:
         """🔥 동적 모델 타입 감지 (실제 파일명 + 경로 기반)"""
@@ -2198,59 +2194,197 @@ class ModelLoader:
             score += 20
         
         return score
-    
-    def _detect_model_type(self, model_file: Path) -> str:
-        """모델 타입 감지 - 실제 파일명 기반 (개선)"""
-        filename = model_file.name.lower()
-        
-        type_keywords = {
-            "human_parsing": ["schp", "atr", "lip", "graphonomy", "parsing", "exp-schp"],
-            "pose_estimation": ["pose", "openpose", "body_pose", "hand_pose"],
-            "cloth_segmentation": ["u2net", "sam", "segment", "cloth"],
-            "geometric_matching": ["gmm", "geometric", "matching", "tps"],
-            "cloth_warping": ["warp", "tps", "deformation"],
-            "virtual_fitting": ["viton", "hrviton", "ootd", "diffusion", "vae", "pytorch_model"],
-            "post_processing": ["esrgan", "enhancement", "super_resolution"],
-            "quality_assessment": ["lpips", "quality", "metric", "clip"]
-        }
-        
-        for model_type, keywords in type_keywords.items():
-            if any(keyword in filename for keyword in keywords):
-                return model_type
-                
-        return "unknown"
-        
-    def _detect_step_class(self, model_file: Path) -> str:
-        """Step 클래스 감지 (개선)"""
-        parent_dir = model_file.parent.name.lower()
-        filename = model_file.name.lower()
-        
-        # 파일명 기반 매핑 (Human Parsing 우선)
-        if "exp-schp" in filename or "schp" in filename or "atr" in filename:
-            return "HumanParsingStep"
-        elif "graphonomy" in filename or "parsing" in filename:
-            return "HumanParsingStep"
-        elif "openpose" in filename or "pose" in filename:
-            return "PoseEstimationStep"
-        elif "u2net" in filename or ("cloth" in filename and "segment" in filename):
-            return "ClothSegmentationStep"
-        elif "sam" in filename and "vit" in filename:
-            return "ClothSegmentationStep"
-        elif "pytorch_model" in filename or "diffusion" in filename:
-            return "VirtualFittingStep"
-        elif "gmm" in filename or "geometric" in filename:
-            return "GeometricMatchingStep"
-        elif "warp" in filename or "tps" in filename:
-            return "ClothWarpingStep"
-        elif "enhance" in filename or "sr" in filename:
-            return "PostProcessingStep"
-        elif "clip" in filename or "quality" in filename:
-            return "QualityAssessmentStep"
-        
-        return "UnknownStep"
-    
+
     # ==============================================
-    # 🔥 BaseStepMixin이 호출하는 핵심 메서드들 (개선)
+    # 🔥 초기화 메서드들 (main.py 호환성)
+    # ==============================================
+    
+    def initialize(self, **kwargs) -> bool:
+        """ModelLoader 초기화 메서드 - main.py 호환성 (오류 해결)"""
+        try:
+            if self._is_initialized:
+                self.logger.info("✅ ModelLoader 이미 초기화됨")
+                return True
+            
+            self.logger.info("🔄 ModelLoader 초기화 시작...")
+            
+            # 1. 설정 업데이트 (안전한 처리)
+            if kwargs:
+                for key, value in kwargs.items():
+                    try:
+                        if hasattr(self, key):
+                            setattr(self, key, value)
+                            self.logger.debug(f"   설정 업데이트: {key} = {value}")
+                    except Exception as attr_error:
+                        self.logger.warning(f"⚠️ 설정 업데이트 실패: {key} - {attr_error}")
+            
+            # 2. AI 모델 디렉토리 확인 (안전한 처리)
+            try:
+                if not self.model_cache_dir:
+                    self.model_cache_dir = Path('./ai_models')
+                    
+                if not self.model_cache_dir.exists():
+                    self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+                    self.logger.info(f"📁 AI 모델 디렉토리 생성: {self.model_cache_dir}")
+                
+                # 디렉토리 접근 권한 확인
+                test_file = self.model_cache_dir / ".test_access"
+                test_file.touch()
+                test_file.unlink()
+                
+            except Exception as dir_error:
+                self.logger.error(f"❌ 모델 디렉토리 처리 실패: {dir_error}")
+                # 폴백 디렉토리
+                try:
+                    self.model_cache_dir = Path('./ai_models_fallback')
+                    self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+                    self.logger.warning(f"⚠️ 폴백 디렉토리 사용: {self.model_cache_dir}")
+                except Exception as fallback_error:
+                    self.logger.error(f"❌ 폴백 디렉토리도 실패: {fallback_error}")
+                    return False
+            
+            # 3. file_mapper 재초기화 (필요시)
+            try:
+                if not self.file_mapper or not hasattr(self.file_mapper, 'discover_all_search_paths'):
+                    self._safe_initialize_file_mapper()
+            except Exception as mapper_error:
+                self.logger.warning(f"⚠️ file_mapper 재초기화 실패: {mapper_error}")
+            
+            # 4. Step 요구사항 재로드 (안전한 처리)
+            try:
+                self._load_step_requirements()
+            except Exception as req_error:
+                self.logger.warning(f"⚠️ Step 요구사항 재로드 실패: {req_error}")
+            
+            # 5. 모델 레지스트리 재초기화 (안전한 처리)
+            try:
+                self._initialize_model_registry()
+            except Exception as reg_error:
+                self.logger.warning(f"⚠️ 모델 레지스트리 재초기화 실패: {reg_error}")
+            
+            # 6. 사용 가능한 모델 재스캔 (안전한 처리)
+            try:
+                self._scan_available_models()
+            except Exception as scan_error:
+                self.logger.warning(f"⚠️ 모델 재스캔 실패: {scan_error}")
+                # 비상 스캔 시도
+                try:
+                    self._emergency_model_scan()
+                except Exception as emergency_error:
+                    self.logger.warning(f"⚠️ 비상 스캔도 실패: {emergency_error}")
+            
+            # 7. 메모리 최적화 (안전한 처리)
+            if self.optimization_enabled:
+                try:
+                    safe_torch_cleanup()
+                except Exception as cleanup_error:
+                    self.logger.debug(f"메모리 최적화 실패 (무시): {cleanup_error}")
+            
+            # 8. 전체 검증 실행 (안전한 처리)
+            validation_results = {}
+            try:
+                validation_results = self.validate_all_models()
+            except Exception as validation_error:
+                self.logger.warning(f"⚠️ 모델 검증 실패: {validation_error}")
+            
+            valid_count = sum(1 for v in validation_results.values() if v.is_valid) if validation_results else 0
+            total_count = len(validation_results) if validation_results else 0
+            
+            self._is_initialized = True
+            
+            self.logger.info(f"✅ ModelLoader 초기화 완료")
+            self.logger.info(f"📊 등록된 모델: {len(self.available_models)}개")
+            self.logger.info(f"🔍 검증 결과: {valid_count}/{total_count} 성공")
+            self.logger.info(f"💾 메모리: {self.memory_gb:.1f}GB, 디바이스: {self.device}")
+            self.logger.info(f"📁 모델 경로: {self.model_cache_dir}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
+            self.logger.error(f"📋 오류 스택 추적:")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            self._is_initialized = False
+            return False
+
+    async def initialize_async(self, **kwargs) -> bool:
+        """비동기 ModelLoader 초기화"""
+        try:
+            # 동기 초기화 실행
+            result = self.initialize(**kwargs)
+            
+            if result:
+                # 추가 비동기 작업들
+                await self._async_model_validation()
+                self.logger.info("✅ ModelLoader 비동기 초기화 완료")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 비동기 초기화 실패: {e}")
+            return False
+    
+    async def _async_model_validation(self):
+        """비동기 모델 검증"""
+        try:
+            # 검증이 오래 걸리는 대형 모델들 비동기 처리
+            tasks = []
+            for model_name, model_info in self.available_models.items():
+                if model_info.get("size_mb", 0) > 500:  # 500MB 이상
+                    task = asyncio.create_task(self._validate_large_model_async(model_name))
+                    tasks.append(task)
+            
+            if tasks:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                success_count = sum(1 for r in results if r and not isinstance(r, Exception))
+                self.logger.info(f"🔍 대형 모델 비동기 검증: {success_count}/{len(tasks)} 성공")
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 비동기 모델 검증 실패: {e}")
+    
+    async def _validate_large_model_async(self, model_name: str) -> bool:
+        """대형 모델 비동기 검증"""
+        try:
+            if model_name in self.model_configs:
+                config = self.model_configs[model_name]
+                if config.checkpoint_path:
+                    validation = await asyncio.get_event_loop().run_in_executor(
+                        None, 
+                        self.validator.validate_checkpoint_file, 
+                        config.checkpoint_path
+                    )
+                    config.validation = validation
+                    config.last_validated = time.time()
+                    return validation.is_valid
+            return False
+        except Exception:
+            return False
+    
+    def is_initialized(self) -> bool:
+        """초기화 상태 확인"""
+        return getattr(self, '_is_initialized', False)
+    
+    def reinitialize(self, **kwargs) -> bool:
+        """ModelLoader 재초기화"""
+        try:
+            self.logger.info("🔄 ModelLoader 재초기화 시작...")
+            
+            # 기존 캐시 정리
+            self.cleanup()
+            
+            # 초기화 상태 리셋
+            self._is_initialized = False
+            
+            # 재초기화 실행
+            return self.initialize(**kwargs)
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 재초기화 실패: {e}")
+            return False
+
+    # ==============================================
+    # 🔥 BaseStepMixin이 호출하는 핵심 메서드들
     # ==============================================
     
     def register_step_requirements(
@@ -2258,7 +2392,7 @@ class ModelLoader:
         step_name: str, 
         requirements: Union[Dict[str, Any], List[Dict[str, Any]]]
     ) -> bool:
-        """🔥 Step별 모델 요구사항 등록 - BaseStepMixin에서 호출하는 핵심 메서드 (개선)"""
+        """🔥 Step별 모델 요구사항 등록 - BaseStepMixin에서 호출하는 핵심 메서드"""
         try:
             with self._lock:
                 self.logger.info(f"📝 {step_name} Step 요청사항 등록 시작...")
@@ -2316,7 +2450,7 @@ class ModelLoader:
             return False
     
     def create_step_interface(self, step_name: str, step_requirements: Optional[Dict[str, Any]] = None) -> StepModelInterface:
-        """🔥 Step 인터페이스 생성 - BaseStepMixin에서 호출하는 핵심 메서드 (개선)"""
+        """🔥 Step 인터페이스 생성 - BaseStepMixin에서 호출하는 핵심 메서드"""
         try:
             with self._interface_lock:
                 # Step 요구사항이 있으면 등록
@@ -2340,7 +2474,7 @@ class ModelLoader:
             return StepModelInterface(self, step_name)
     
     def register_model_config(self, name: str, config: Union[ModelConfig, Dict[str, Any]]) -> bool:
-        """🔥 모델 설정 등록 - BaseStepMixin에서 호출하는 핵심 메서드 (개선)"""
+        """🔥 모델 설정 등록 - BaseStepMixin에서 호출하는 핵심 메서드"""
         try:
             with self._lock:
                 if isinstance(config, dict):
@@ -2395,7 +2529,7 @@ class ModelLoader:
     
     def list_available_models(self, step_class: Optional[str] = None, 
                             model_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """🔥 사용 가능한 모델 목록 반환 (크기순 정렬) - BaseStepMixin에서 호출하는 핵심 메서드 (완전 수정)"""
+        """🔥 사용 가능한 모델 목록 반환 (크기순 정렬) - BaseStepMixin에서 호출하는 핵심 메서드"""
         try:
             models = []
             
@@ -2428,7 +2562,7 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 모델 목록 조회 실패: {e}")
             return []
-    
+
     # ==============================================
     # 🔥 체크포인트 로딩 메서드들 (완전 개선)
     # ==============================================
@@ -2519,8 +2653,6 @@ class ModelLoader:
             self.logger.error(f"❌ 체크포인트 로딩 실패 {model_name}: {e}")
             return None
     
-    # ModelLoader 클래스 내부에 추가/교체할 메서드들
-
     def _safe_load_checkpoint_sync(self, model_name: str, kwargs: Dict[str, Any]) -> Optional[Any]:
         """안전한 동기 체크포인트 로딩 (Human Parsing 오류 핵심 해결)"""
         try:
@@ -2735,123 +2867,6 @@ class ModelLoader:
             self.logger.error(f"❌ Human Parsing PyTorch 로딩 실패: {e}")
             return None
 
-
-    def _load_human_parsing_checkpoint_special(self, model_name: str, kwargs: Dict[str, Any], start_time: float) -> Optional[Any]:
-        """Human Parsing 전용 특별 체크포인트 로딩"""
-        try:
-            self.logger.info(f"🎯 Human Parsing 특별 로딩 시작: {model_name}")
-            
-            # Human Parsing 체크포인트 우선순위 파일들
-            human_parsing_files = [
-                "exp-schp-201908301523-atr.pth",  # 255.1MB
-                "graphonomy_lip.pth",             # 255.1MB  
-                "densepose_rcnn_R_50_FPN_s1x.pkl", # 243.9MB
-                "graphonomy.pth",
-                "human_parsing.pth"
-            ]
-            
-            checkpoint_path = None
-            for filename in human_parsing_files:
-                for candidate in self.model_cache_dir.rglob(filename):
-                    if candidate.exists():
-                        file_size_mb = candidate.stat().st_size / (1024 * 1024)
-                        if file_size_mb > 50:  # 50MB 이상만
-                            checkpoint_path = candidate
-                            self.logger.info(f"✅ Human Parsing 파일 발견: {filename} ({file_size_mb:.1f}MB)")
-                            break
-                if checkpoint_path:
-                    break
-            
-            if not checkpoint_path:
-                self.logger.warning("⚠️ Human Parsing 체크포인트 파일을 찾을 수 없음")
-                return None
-            
-            # 검증
-            validation = self.validator.validate_checkpoint_file(checkpoint_path)
-            if not validation.is_valid:
-                self.logger.warning(f"⚠️ Human Parsing 체크포인트 검증 실패: {validation.error_message}")
-                # Human Parsing은 검증 실패해도 로딩 시도
-            
-            # 특별 로딩 (Human Parsing 전용)
-            checkpoint = self._safe_pytorch_load_human_parsing(checkpoint_path)
-            if checkpoint is None:
-                return None
-            
-            # 후처리
-            processed_checkpoint = self._post_process_checkpoint(checkpoint, model_name)
-            
-            # 캐시 엔트리 생성
-            load_time = time.time() - start_time
-            cache_entry = SafeModelCacheEntry(
-                model=processed_checkpoint,
-                load_time=load_time,
-                last_access=time.time(),
-                access_count=1,
-                memory_usage_mb=self._get_checkpoint_memory_usage(processed_checkpoint),
-                device=str(self.device),
-                validation=validation,
-                is_healthy=True,
-                error_count=0
-            )
-            
-            self.model_cache[model_name] = cache_entry
-            self.loaded_models[model_name] = processed_checkpoint
-            
-            if model_name in self.available_models:
-                self.available_models[model_name]["loaded"] = True
-            
-            self.performance_stats['models_loaded'] += 1
-            self.performance_stats['checkpoint_loads'] += 1
-            
-            self.logger.info(f"✅ Human Parsing 특별 로딩 성공: {model_name} ({load_time:.2f}초)")
-            return processed_checkpoint
-            
-        except Exception as e:
-            self.logger.error(f"❌ Human Parsing 특별 로딩 실패: {e}")
-            return None
-
-    def _safe_pytorch_load_human_parsing(self, checkpoint_path: Path) -> Optional[Any]:
-        """Human Parsing 전용 PyTorch 로딩"""
-        try:
-            import torch
-            
-            # 메모리 정리
-            if self.device in ["mps", "cuda"]:
-                safe_mps_empty_cache()
-            
-            checkpoint = None
-            
-            # 1차 시도: weights_only=True
-            try:
-                checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
-                self.logger.debug("✅ Human Parsing weights_only=True 성공")
-                return checkpoint
-            except Exception as e1:
-                self.logger.debug(f"⚠️ Human Parsing weights_only=True 실패: {e1}")
-            
-            # 2차 시도: weights_only=False  
-            try:
-                checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
-                self.logger.debug("✅ Human Parsing weights_only=False 성공")
-                return checkpoint
-            except Exception as e2:
-                self.logger.debug(f"⚠️ Human Parsing weights_only=False 실패: {e2}")
-            
-            # 3차 시도: CPU로 로딩 후 디바이스 이동
-            try:
-                checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
-                self.logger.debug("✅ Human Parsing CPU 로딩 성공")
-                return checkpoint
-            except Exception as e3:
-                self.logger.error(f"❌ Human Parsing 모든 로딩 방법 실패: {e3}")
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ Human Parsing PyTorch 로딩 실패: {e}")
-            return None
-
-
     def _post_process_checkpoint(self, checkpoint: Any, model_name: str) -> Any:
         """체크포인트 후처리 (Human Parsing 특화 처리)"""
         try:
@@ -2944,19 +2959,26 @@ class ModelLoader:
         try:
             # 스마트 매핑 적용
             smart_mapping = {
-                "human_parsing_schp_atr": "exp-schp-201908301523-atr.pth",
-                "human_parsing_graphonomy": "graphonomy.pth", 
-                "cloth_segmentation_u2net": "u2net.pth",
-                "pose_estimation_openpose": "openpose.pth",
-                "virtual_fitting_diffusion": "pytorch_model.bin"
+                "human_parsing_schp_atr": ["exp-schp-201908301523-atr.pth", "schp_atr.pth", "graphonomy_lip.pth"],
+                "human_parsing_graphonomy": ["graphonomy.pth", "graphonomy_lip.pth"], 
+                "cloth_segmentation_u2net": ["u2net.pth", "sam_vit_h_4b8939.pth"],
+                "pose_estimation_openpose": ["openpose.pth", "body_pose_model.pth", "yolov8n-pose.pt"],
+                "virtual_fitting_diffusion": ["pytorch_model.bin", "diffusion_model.pth"],
+                "geometric_matching_model": ["gmm_model.pth", "tps_model.pth"],
+                "cloth_warping_model": ["cloth_warp.pth", "tps_warp.pth"],
+                "post_processing_model": ["esrgan_model.pth", "enhancement.pth"],
+                "quality_assessment_model": ["quality_clip.pth", "lpips_model.pth"]
             }
             
             if model_name in smart_mapping:
-                target_file = smart_mapping[model_name]
-                for candidate in self.model_cache_dir.rglob(target_file):
-                    if candidate.exists():
-                        self.logger.info(f"🔧 스마트 매핑: {model_name} → {target_file}")
-                        return candidate
+                target_files = smart_mapping[model_name]
+                for target_file in target_files:
+                    for candidate in self.model_cache_dir.rglob(target_file):
+                        if candidate.exists():
+                            size_mb = candidate.stat().st_size / (1024 * 1024)
+                            if size_mb >= self.min_model_size_mb:
+                                self.logger.info(f"🔧 스마트 매핑: {model_name} → {target_file}")
+                                return candidate
             
             # 일반 패턴 매칭 (크기 우선순위)
             candidates = []
@@ -2983,7 +3005,7 @@ class ModelLoader:
             return None
     
     def _get_checkpoint_memory_usage(self, checkpoint) -> float:
-        """체크포인트 메모리 사용량 추정 (MB) (개선)"""
+        """체크포인트 메모리 사용량 추정 (MB)"""
         try:
             if TORCH_AVAILABLE and checkpoint is not None:
                 if isinstance(checkpoint, dict):
@@ -3000,13 +3022,13 @@ class ModelLoader:
             return 0.0
         except:
             return 0.0
-    
+
     # ==============================================
-    # 🔥 고급 모델 관리 메서드들 (개선)
+    # 🔥 고급 모델 관리 메서드들
     # ==============================================
     
     def get_model_status(self, model_name: str) -> Dict[str, Any]:
-        """모델 상태 조회 - BaseStepMixin에서 self.model_loader.get_model_status() 호출 (개선)"""
+        """모델 상태 조회 - BaseStepMixin에서 self.model_loader.get_model_status() 호출"""
         try:
             if model_name in self.model_cache:
                 cache_entry = self.model_cache[model_name]
@@ -3058,7 +3080,7 @@ class ModelLoader:
             return {"status": "error", "error": str(e)}
 
     def get_step_model_status(self, step_name: str) -> Dict[str, Any]:
-        """Step별 모델 상태 일괄 조회 - BaseStepMixin에서 호출 (개선)"""
+        """Step별 모델 상태 일괄 조회 - BaseStepMixin에서 호출"""
         try:
             step_models = {}
             if step_name in self.step_requirements:
@@ -3083,7 +3105,6 @@ class ModelLoader:
             self.logger.error(f"❌ Step 모델 상태 조회 실패 {step_name}: {e}")
             return {"step_name": step_name, "error": str(e)}
 
-    
     def unload_model(self, model_name: str) -> bool:
         """모델 언로드 (안전한 버전)"""
         try:
@@ -3114,11 +3135,11 @@ class ModelLoader:
             return True  # 오류가 있어도 성공으로 처리
 
     # ==============================================
-    # 🔥 성능 모니터링 및 진단 메서드들 (개선)
+    # 🔥 성능 모니터링 및 진단 메서드들
     # ==============================================
 
     def get_performance_metrics(self) -> Dict[str, Any]:
-        """모델 로더 성능 메트릭 조회 - BaseStepMixin에서 성능 모니터링 (개선)"""
+        """모델 로더 성능 메트릭 조회 - BaseStepMixin에서 성능 모니터링"""
         try:
             # 메모리 사용량 계산
             total_memory = sum(cache_entry.memory_usage_mb for cache_entry in self.model_cache.values())
@@ -3203,7 +3224,7 @@ class ModelLoader:
             return validation_results
 
     def cleanup(self):
-        """리소스 정리 (개선)"""
+        """리소스 정리"""
         self.logger.info("🧹 ModelLoader 리소스 정리 중...")
         
         try:
@@ -3235,56 +3256,8 @@ class ModelLoader:
             pass
 
 
-class StepModelInterface:
-    """🔥 Step용 ModelLoader 인터페이스 (main.py 완전 호환)"""
-    
-    def __init__(self, step_name: str, model_loader: ModelLoader, interface_info: Dict = None):
-        self.step_name = step_name
-        self.model_loader = model_loader
-        self.interface_info = interface_info or {}
-        self.logger = logging.getLogger(f"StepInterface.{step_name}")
-    
-    async def register_step_requirements(self, step_name: str, requirements: Dict[str, Any]) -> bool:
-        """비동기 Step 요구사항 등록"""
-        return self.model_loader.register_step_requirements(step_name, requirements)
-    
-    def get_model(self, model_name: str) -> Optional[Any]:
-        """모델 가져오기"""
-        try:
-            if model_name in self.model_loader.available_models:
-                model_info = self.model_loader.available_models[model_name]
-                
-                # Step이 로드 가능한 모델인지 확인
-                if model_info.get("can_load_by_step", False):
-                    return {
-                        "checkpoint_path": model_info["path"],
-                        "metadata": model_info.get("metadata", {}),
-                        "step_class_name": model_info.get("metadata", {}).get("step_class_name"),
-                        "model_load_method": model_info.get("metadata", {}).get("model_load_method"),
-                        "size_mb": model_info.get("size_mb", 0),
-                        "device_compatible": True
-                    }
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ {model_name} 모델 가져오기 실패: {e}")
-            return None
-    
-    def list_available_models(self, step_class: Optional[str] = None) -> List[Dict[str, Any]]:
-        """사용 가능한 모델 목록"""
-        return self.model_loader.list_available_models(step_class or self.step_name)
-    
-    def unload_models(self):
-        """모델 언로드"""
-        try:
-            if hasattr(self.model_loader, 'cleanup'):
-                self.model_loader.cleanup()
-        except Exception as e:
-            self.logger.warning(f"⚠️ 모델 언로드 실패: {e}")
-
 # ==============================================
-# 🔥 전역 ModelLoader 관리 (순환참조 방지, 개선)
+# 🔥 11단계: 전역 ModelLoader 관리 (순환참조 방지)
 # ==============================================
 
 _global_model_loader: Optional[ModelLoader] = None
@@ -3292,7 +3265,7 @@ _loader_lock = threading.Lock()
 
 @lru_cache(maxsize=1)
 def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoader:
-    """전역 ModelLoader 인스턴스 반환 (개선)"""
+    """전역 ModelLoader 인스턴스 반환"""
     global _global_model_loader
     
     with _loader_lock:
@@ -3310,23 +3283,27 @@ def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoa
         
         return _global_model_loader
 
+def initialize_global_model_loader(**kwargs) -> bool:
+    """전역 ModelLoader 동기 초기화 - main.py 호환"""
+    try:
+        loader = get_global_model_loader()
+        return loader.initialize(**kwargs)
+    except Exception as e:
+        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
+        return False
+
 async def initialize_global_model_loader_async(**kwargs) -> ModelLoader:
-    """전역 ModelLoader 비동기 초기화 (개선)"""
+    """전역 ModelLoader 비동기 초기화"""
     try:
         loader = get_global_model_loader()
         
-        # 비동기 검증 실행
-        validation_results = await asyncio.get_event_loop().run_in_executor(
-            None, loader.validate_all_models
-        )
+        # initialize 메서드 사용
+        success = await loader.initialize_async(**kwargs)
         
-        valid_count = sum(1 for v in validation_results.values() if v.is_valid)
-        total_count = len(validation_results)
-        
-        if total_count > 0:
-            logger.info(f"✅ 전역 ModelLoader 비동기 초기화 완료 - 검증: {valid_count}/{total_count}")
+        if success:
+            logger.info(f"✅ 전역 ModelLoader 비동기 초기화 완료")
         else:
-            logger.info("✅ 전역 ModelLoader 비동기 초기화 완료")
+            logger.warning(f"⚠️ 전역 ModelLoader 초기화 일부 실패")
             
         return loader
             
@@ -3335,11 +3312,11 @@ async def initialize_global_model_loader_async(**kwargs) -> ModelLoader:
         raise
 
 # ==============================================
-# 🔥 유틸리티 함수들 (BaseStepMixin 호환, 개선)
+# 🔥 12단계: 유틸리티 함수들 (BaseStepMixin 호환)
 # ==============================================
 
 def create_step_interface(step_name: str, step_requirements: Optional[Dict[str, Any]] = None) -> StepModelInterface:
-    """Step 인터페이스 생성 - 동기 버전 (개선)"""
+    """Step 인터페이스 생성 - 동기 버전"""
     try:
         loader = get_global_model_loader()
         
@@ -3389,46 +3366,16 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
         logger.error(f"❌ 안전한 체크포인트 로딩 실패: {e}")
         return None
 
-# 기존 호환성을 위한 함수들 (개선)
+# 기존 호환성을 위한 함수들
 def get_model(model_name: str) -> Optional[Any]:
-    """전역 모델 가져오기 함수 - 기존 호환 (개선)"""
+    """전역 모델 가져오기 함수 - 기존 호환"""
     loader = get_global_model_loader()
     return loader.load_model(model_name)
 
 async def get_model_async(model_name: str) -> Optional[Any]:
-    """전역 비동기 모델 가져오기 함수 - 기존 호환 (개선)"""
+    """전역 비동기 모델 가져오기 함수 - 기존 호환"""
     loader = get_global_model_loader()
     return await loader.load_model_async(model_name)
-# backend/app/ai_pipeline/utils/model_loader.py 하단에 추가
-
-def initialize_global_model_loader(**kwargs) -> bool:
-    """전역 ModelLoader 동기 초기화 - main.py 호환"""
-    try:
-        loader = get_global_model_loader()
-        return loader.initialize(**kwargs)
-    except Exception as e:
-        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
-        return False
-
-# 기존 함수도 호환성 강화
-async def initialize_global_model_loader_async(**kwargs) -> ModelLoader:
-    """전역 ModelLoader 비동기 초기화 (개선)"""
-    try:
-        loader = get_global_model_loader()
-        
-        # initialize 메서드 사용
-        success = await loader.initialize_async(**kwargs)
-        
-        if success:
-            logger.info(f"✅ 전역 ModelLoader 비동기 초기화 완료")
-        else:
-            logger.warning(f"⚠️ 전역 ModelLoader 초기화 일부 실패")
-            
-        return loader
-            
-    except Exception as e:
-        logger.error(f"❌ 전역 ModelLoader 비동기 초기화 실패: {e}")
-        raise
 
 def get_step_model_interface(step_name: str, model_loader_instance=None) -> StepModelInterface:
     """🔥 main.py 호환 - Step 모델 인터페이스 생성"""
@@ -3441,7 +3388,7 @@ def get_step_model_interface(step_name: str, model_loader_instance=None) -> Step
     except Exception as e:
         logger.error(f"❌ {step_name} 인터페이스 생성 실패: {e}")
         # 폴백 인터페이스
-        return StepModelInterface(step_name, model_loader_instance or None)
+        return StepModelInterface(model_loader_instance or get_global_model_loader(), step_name)
 
 def apply_auto_detector_integration():
     """🔥 전역 ModelLoader에 AutoDetector 통합 적용"""
@@ -3463,13 +3410,11 @@ if __name__ != "__main__":
         logger.debug(f"모듈 로드 시 AutoDetector 통합 실패: {e}")
 
 # ==============================================
-# 🔥 모듈 내보내기 정의 (개선)
+# 🔥 13단계: 모듈 내보내기 정의
 # ==============================================
 
 __all__ = [
     # 핵심 클래스들
-    'initialize_global_model_loader',  # 🔥 추가
-
     'ModelLoader',
     'StepModelInterface',
     'CheckpointValidator',
@@ -3486,12 +3431,15 @@ __all__ = [
     
     # 전역 함수들
     'get_global_model_loader',
+    'initialize_global_model_loader',  # 🔥 추가
     'initialize_global_model_loader_async',
     
     # 유틸리티 함수들
     'create_step_interface',
     'validate_checkpoint_file',
     'safe_load_checkpoint',
+    'get_step_model_interface',  # 🔥 추가
+    'apply_auto_detector_integration',  # 🔥 추가
     
     # 기존 호환성 함수들
     'get_model',
@@ -3512,7 +3460,7 @@ __all__ = [
 ]
 
 # ==============================================
-# 🔥 모듈 로드 확인 메시지 (개선)
+# 🔥 14단계: 모듈 로드 확인 메시지
 # ==============================================
 
 logger.info("=" * 80)

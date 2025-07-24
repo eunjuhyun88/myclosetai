@@ -1,4 +1,51 @@
-# Python
+# ============================================================================
+# 🧹 MyCloset AI - 최종 통합 .gitignore v3.0
+# ============================================================================
+# ✅ 모든 백업 파일 완전 차단
+# ✅ AI 모델 파일 제외 유지
+# ✅ conda 환경 최적화
+# ✅ M3 Max 개발 환경 고려
+# ✅ 프로덕션 배포 준비
+# ✅ 중복 제거 및 통합 정리
+
+# ============================================================================
+# 🔥 백업 파일들 (완전 차단 - 최우선)
+# ============================================================================
+
+# 모든 백업 파일 패턴
+*.bak
+*.backup
+*_backup
+*_backup.*
+*.orig
+*.original
+*_original
+*_original.*
+
+# 에디터 백업 파일들
+*~
+*.swp
+*.swo
+*.swn
+.#*
+#*#
+.*.swp
+.*.swo
+
+# 임시 파일들
+*.tmp
+*.temp
+*_temp
+*_temp.*
+*.cache
+*_cache
+*_cache.*
+
+# ============================================================================
+# 🐍 Python 환경 및 패키지 관리
+# ============================================================================
+
+# Python 기본
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,139 +69,354 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# 설치 스크립트들
-*.sh
-Miniconda3-latest-MacOSX-arm64.sh
-
-# 백업 파일들
-*.backup
-fix.sh
-python311_fix.sh
-
-# Virtual Environments
-venv/
+# Virtual environments
 env/
+venv/
 ENV/
 env.bak/
 venv.bak/
+.venv/
+venv_py311/
+backend/venv_py311/
 
-# Conda
+# conda 환경
+mycloset_env/
+backend/mycloset_env/
 .conda/
+.conda-bld/
+conda-bld/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Python 버전 관리
+.python-version
+backend/.python-version
 
-# OS
+# ============================================================================
+# 🤖 AI 모델 파일들 (용량이 큰 파일들)
+# ============================================================================
+
+# AI 모델 디렉토리 전체 제외
+ai_models/
+backend/ai_models/
+models/
+checkpoints/
+weights/
+
+# 모델 파일 확장자들
+*.pth
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.tflite
+*.safetensors
+*.bin
+*.pt
+*.pkl
+*.model
+*.weights
+
+# Hugging Face 캐시
+**/cache/
+**/.cache/
+**/blobs/
+.huggingface/
+
+# PyTorch 캐시
+**/torch/
+.torch/
+
+# 특정 모델 디렉토리들
+OOTDiffusion/
+ootdiffusion_hf/
+VITON-HD/
+HR-VITON/
+Graphonomy/
+Self-Correction-Human-Parsing/
+openpose/
+detectron2/
+stable-diffusion*/
+sam/
+clip-vit*/
+
+# 체크포인트 디렉토리들
+**/checkpoints/
+!**/checkpoints/.gitkeep
+
+# 임시 모델 파일들
+**/temp/
+!**/temp/.gitkeep
+
+# ============================================================================
+# 💻 개발 환경 및 운영체제
+# ============================================================================
+
+# macOS 시스템 파일들
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+.AppleDouble
+.LSOverride
+
+# Windows 시스템 파일들
 ehthumbs.db
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
-# Logs
-logs/
-*.log
-*.pid
+# IDE 설정
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 
-# AI Models (large files)
-ai_models/
-*.pth
-*.pt
-*.ckpt
-*.safetensors
-*.bin
-*.onnx
-*.pkl
-*.h5
+# ============================================================================
+# 🔧 설치 및 스크립트 파일들 (보안상 제외)
+# ============================================================================
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# 설치 스크립트들
+*.sh
+Miniconda3-latest-MacOSX-arm64.sh
+backend/Miniconda3-latest-MacOSX-arm64.sh
+
+# 수정/픽스 스크립트들
+fix.sh
+backend/fix.sh
+python311_fix.sh
+backend/python311_fix.sh
+install.sh
+setup.sh
+
+# 개발용 활성화 스크립트
+activate_env.sh
+run_dev.sh
+
+# ============================================================================
+# 🌐 웹 개발 환경
+# ============================================================================
 
 # Node.js
 node_modules/
+frontend/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Frontend build
+# Frontend 빌드
 frontend/dist/
 frontend/build/
 frontend/.next/
 
-# Backend uploads and results
+# package-lock.json (프로젝트 정책에 따라)
+frontend/package-lock.json
+
+# ============================================================================
+# 🔐 환경 변수 및 설정
+# ============================================================================
+
+# 환경 변수
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.envrc
+
+# ============================================================================
+# 📁 프로젝트 데이터 파일들
+# ============================================================================
+
+# 업로드/결과 파일들
+static/uploads/*
+static/results/*
+uploads/*
+results/*
 backend/static/uploads/*
 backend/static/results/*
-!backend/static/uploads/.gitkeep
-!backend/static/results/.gitkeep
 
-# Database
+# 로그 파일들
+logs/
+*.log
+*.log.*
+*.pid
+
+# 데이터베이스
 *.db
 *.sqlite
 *.sqlite3
 
-# Cache
+# 백업 디렉토리 (스마트 백업 시스템용)
+.smart_backups/
+backend/.smart_backups/
+.backups/
+backend/.backups/
+backups/
+
+# ============================================================================
+# 🧪 테스트 및 개발
+# ============================================================================
+
+# 테스트 관련
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 테스트 이미지들
+test_*.jpg
+test_*.png
+test_*.jpeg
+backend/test_*
+frontend/test_*
+
+# ============================================================================
+# 🚀 배포 및 프로덕션
+# ============================================================================
+
+# Docker
+.dockerignore
+Dockerfile.bak
+docker-compose.override.yml
+
+# Kubernetes
+*.yaml.bak
+*.yml.bak
+
+# 서버 관련
+*.access.log
+*.error.log
+gunicorn.pid
+celery.pid
+
+# ============================================================================
+# 🔄 캐시 및 임시 파일들
+# ============================================================================
+
+# 일반 캐시
 cache/
 .cache/
 *.cache
 
-# Temporary files
+# 임시 파일
 temp/
 tmp/
 *.tmp
 *.temp
 
-# Reports and backups
-reports/*.json
-backup_*/
+# 락 파일
+*.lock
+*.pid.lock
 
-# MacOS specific
-.AppleDouble
-.LSOverride
+# ============================================================================
+# 📊 보고서 및 분석
+# ============================================================================
 
-# 정리된 디렉토리들
-backups/
-logs/
+# 보고서
 reports/
-temp/
-cache/
+*.report
+analysis/
 
-# AI 모델 파일들
-backend/ai_models/individual_models/
-*.pth
-*.bin
-*.safetensors
-*.ckpt
-*.h5
+# 성능 분석
+*.prof
+*.profile
 
-# 시스템 파일들
-.DS_Store
-Thumbs.db
-*.pyc
-__pycache__/
+# ============================================================================
+# 🍎 M3 Max 특화 설정
+# ============================================================================
 
-# 로그 파일들
-*.log
-pipeline.log
+# Apple 개발 도구 관련
+.Xcode/
+*.xcworkspace
+*.xcuserdata
 
-# 백업 파일들
-*.backup*
-*.bak
-*~
+# Metal 성능 도구
+*.mtlp-json
 
-# 🧹 정리 스크립트 추가
-*.old
-*.orig
-*.pyo
-*.pyd
+# Core ML 모델 (용량이 큰 경우)
+*.mlmodel
+*.mlpackage
+
+# ============================================================================
+# 📦 패키지 관리자 파일들
+# ============================================================================
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# conda 관련
+.condarc.bak
+environment.yml.bak
+environment.yaml.bak
+requirements.txt.backup
+
+# ============================================================================
+# ✅ 포함할 파일들 (예외 처리)
+# ============================================================================
+
+# 중요한 설정 파일들은 포함
+!*.yaml
+!*.yml
+!*.json
+!*.md
+!*.txt
+!*.toml
+!.gitkeep
+!requirements.txt
+!environment.yml
+
+# 하지만 특정 대용량 파일들은 제외
+*.config.json.bak
+**/pytorch_model.bin
+**/diffusion_pytorch_model.bin
+**/diffusion_pytorch_model.safetensors
+
+# ============================================================================
+# 🎯 프로젝트별 추가 설정
+# ============================================================================
+
+# MyCloset AI 특화 제외 항목
+my_closet_config_backup.*
+pipeline_backup.*
+model_config_backup.*
+
+# 개발 중 생성되는 임시 결과물
+dev_results/
+debug_images/
+temp_outputs/
+
+# 사용자별 개발 설정
+.personal_config
+user_settings.*
+
+# 정리 관련
 cleanup.log
 mycloset_backup_*.tar.gz
+*.old
+
+# ============================================================================
+# 📝 문서화
+# ============================================================================
+# 
+# 이 .gitignore 파일의 목적:
+# 1. .bak 파일 생성 완전 방지
+# 2. AI 모델 대용량 파일 제외
+# 3. conda 환경 최적화
+# 4. M3 Max 개발 환경 지원
+# 5. 프로덕션 배포 준비
+#
+# 주요 변경사항:
+# - 모든 백업 파일 패턴 완전 차단
+# - 스마트 백업 디렉토리 지원
+# - conda 환경 파일들 정리
+# - M3 Max 특화 항목 추가
+# - 중복 항목 제거 및 재정리
+#
+# 마지막 업데이트: 2025-07-24
+# 버전: v3.0 (통합 완료)
+# ============================================================================

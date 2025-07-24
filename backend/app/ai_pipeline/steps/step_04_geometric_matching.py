@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from ..utils.model_loader import ModelLoader
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
-    from ..core.di_container import DIContainer
+    from app.core.di_container import DIContainer
 
 # ==============================================
 # 🔥 2. 환경 최적화 (M3 Max + conda)
@@ -202,7 +202,7 @@ def get_di_container():
     """DI Container를 안전하게 가져오기"""
     try:
         import importlib
-        module = importlib.import_module('..core.di_container', package=__name__)
+        module = importlib.import_module('app.core.di_container')
         get_global_fn = getattr(module, 'get_global_di_container', None)
         if get_global_fn:
             return get_global_fn()

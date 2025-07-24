@@ -129,7 +129,7 @@ if TYPE_CHECKING:
     from ..factories.step_factory import StepFactory, StepFactoryResult
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
-    from ...core.di_container import DIContainer
+    from app.core.di_container import DIContainer
 
 # ==============================================
 # 🔥 4. 로거 설정

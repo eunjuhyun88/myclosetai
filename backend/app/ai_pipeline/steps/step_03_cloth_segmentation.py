@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from ..utils.model_loader import ModelLoader, StepModelInterface
     from ..steps.base_step_mixin import BaseStepMixin, ClothSegmentationMixin
     from ..factories.step_factory import StepFactory
-    from ...core.di_container import DIContainer
+    from app.core.di_container import DIContainer
 
 # ==============================================
 # 🔥 2. 핵심 라이브러리 (conda 환경 우선)
@@ -179,7 +179,7 @@ def get_di_container():
     """DI Container를 안전하게 가져오기 (TYPE_CHECKING 패턴)"""
     try:
         import importlib  
-        module = importlib.import_module('...core.di_container', package=__package__)
+        module = importlib.import_module('app.core.di_container')
         get_container = getattr(module, 'get_di_container', None)
         if get_container:
             return get_container()
