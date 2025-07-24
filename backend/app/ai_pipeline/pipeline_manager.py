@@ -1,4 +1,4 @@
-# app/ai_pipeline/pipeline_manager.py
+# backend/app/ai_pipeline/managers/pipeline_manager.py
 """
 🔥 완전 DI 통합 PipelineManager v9.1 - base_step_mixin.py 기반 완전 개선 + 순환참조 해결
 =====================================================================================

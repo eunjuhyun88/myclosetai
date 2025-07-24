@@ -253,6 +253,18 @@ except ImportError as e:
 # 🔥 5. 모든 API 라우터들 import (완전한 연동)
 # =============================================================================
 
+# 📍 import 섹션에 추가 (약 260번째 줄 근처)
+try:
+    from app.ai_pipeline.utils.model_loader import initialize_global_model_loader
+    MODEL_LOADER_INIT_AVAILABLE = True
+    print("✅ ModelLoader 초기화 함수 import 성공")
+except ImportError as e:
+    print(f"⚠️ ModelLoader 초기화 함수 import 실패: {e}")
+    MODEL_LOADER_INIT_AVAILABLE = False
+    
+    def initialize_global_model_loader(**kwargs):
+        return False
+    
 ROUTERS_AVAILABLE = {}
 
 # 1. Pipeline Routes (통합 파이프라인 API)
@@ -419,19 +431,62 @@ class RealAIContainer:
             
             # 2. ModelLoader 초기화  
             # main.py에서 수정
+            # 2. ModelLoader 초기화  
             if AI_PIPELINE_AVAILABLE['model_loader']:
                 try:
+                    # 🔥 전역 초기화 함수 먼저 호출
+                    if MODEL_LOADER_INIT_AVAILABLE:
+                        success = initialize_global_model_loader(
+                            model_cache_dir=str(Path(path_info['backend_dir']) / 'ai_models'),
+                            use_fp16=IS_M3_MAX,
+                            max_cached_models=16 if IS_M3_MAX else 8,
+                            lazy_loading=True,
+                            optimization_enabled=True,
+                            min_model_size_mb=50,  # 🔥 50MB 이상만
+                            prioritize_large_models=True  # 🔥 대형 모델 우선
+                        )
+                        
+                        if success:
+                            print("✅ 전역 ModelLoader 초기화 성공")
+                    
+                    # 🔥 전역 ModelLoader 인스턴스 가져오기
                     self.model_loader = get_global_model_loader()
                     if self.model_loader:
-                        # 🔥 await 제거하고 동기 호출
-                        success = self.model_loader.initialize()
-                        if success:
-                            print("✅ 실제 ModelLoader 초기화 완료")
+                        # 🔥 추가 초기화 확인
+                        if hasattr(self.model_loader, 'initialize') and not getattr(self.model_loader, '_is_initialized', False):
+                            success = self.model_loader.initialize()
+                            if success:
+                                print("✅ 실제 ModelLoader 초기화 완료")
+                            else:
+                                print("⚠️ ModelLoader 초기화 실패")
                         else:
-                            print("⚠️ ModelLoader 초기화 실패")
+                            print("✅ 실제 ModelLoader 초기화 완료")
+                    else:
+                        print("⚠️ ModelLoader 인스턴스 가져오기 실패")
+                        
                 except Exception as e:
                     print(f"⚠️ ModelLoader 초기화 실패: {e}")
-
+                    # 🔥 폴백: 직접 생성
+                    try:
+                        from app.ai_pipeline.utils.model_loader import ModelLoader
+                        self.model_loader = ModelLoader(
+                            device=DEVICE,
+                            config={
+                                'model_cache_dir': str(Path(path_info['backend_dir']) / 'ai_models'),
+                                'use_fp16': IS_M3_MAX,
+                                'max_cached_models': 16 if IS_M3_MAX else 8,
+                                'lazy_loading': True,
+                                'optimization_enabled': True
+                            }
+                        )
+                        
+                        if hasattr(self.model_loader, 'initialize'):
+                            self.model_loader.initialize()
+                        
+                        print("✅ ModelLoader 폴백 생성 완료")
+                    except Exception as fallback_error:
+                        print(f"❌ ModelLoader 폴백 생성 실패: {fallback_error}")
+                        
             # 3. StepFactory 초기화
             if AI_PIPELINE_AVAILABLE['step_factory']:
                 try:

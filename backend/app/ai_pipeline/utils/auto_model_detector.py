@@ -40,208 +40,151 @@ logger = logging.getLogger(__name__)
 # 🔥 1. 실제 파일 구조 기반 정확한 매핑 테이블 (크기 우선순위 추가)
 # ==============================================
 
+# 📍 기존 RealFileMapper 클래스를 완전히 교체
 class RealFileMapper:
-    """실제 파일 구조 기반 정확한 매핑 시스템 (크기 우선순위 강화)"""
+    """실제 파일 구조 기반 완전 동적 매핑 시스템 (5번 파일 구조 반영)"""
     
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.RealFileMapper")
         
-        # 🔥 실제 파일 구조 기반 완전 정확한 매핑 (크기 필터 강화)
+        # 🔥 5번 파일에서 확인된 실제 파일 구조 반영
         self.step_file_mappings = {
-            # Step 01: Human Parsing
-            "human_parsing_graphonomy": {
-                "actual_files": ["exp-schp-201908301523-atr.pth"],
-                "search_paths": ["step_01_human_parsing", "checkpoints/step_01_human_parsing"],
-                "patterns": [r".*exp-schp.*atr.*\.pth$", r".*graphonomy.*\.pth$"],
-                "size_range": (200, 300),  # 🔥 더 엄격한 크기 범위
-                "min_size_mb": 200,  # 🔥 최소 크기 추가
-                "priority": 1,
-                "step_class": "HumanParsingImplementation",
-                "model_load_method": "load_models",
-            },
+            # Human Parsing (255MB 파일들)
             "human_parsing_schp_atr": {
-                "actual_files": ["exp-schp-201908301523-atr.pth"],
-                "search_paths": ["step_01_human_parsing"],
-                "patterns": [r".*exp-schp.*atr.*\.pth$"],
-                "size_range": (200, 300),
-                "min_size_mb": 200,
+                "actual_files": [
+                    "exp-schp-201908301523-atr.pth",
+                    "exp-schp-201908261155-atr.pth", 
+                    "exp-schp-201908261155-lip.pth"
+                ],
+                "search_paths": [
+                    "step_01_human_parsing",
+                    "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing",
+                    "Self-Correction-Human-Parsing"
+                ],
+                "patterns": [r".*exp-schp.*atr.*\.pth$", r".*exp-schp.*lip.*\.pth$"],
+                "size_range": (250, 260),
+                "min_size_mb": 250,
                 "priority": 1,
                 "step_class": "HumanParsingImplementation",
-                "model_load_method": "load_models",
+                "model_load_method": "load_models"
             },
             
-            # Step 02: Pose Estimation  
-            "pose_estimation_openpose": {
-                "actual_files": ["openpose.pth", "body_pose_model.pth"],
-                "search_paths": ["step_02_pose_estimation", "checkpoints/step_02_pose_estimation"],
-                "patterns": [r".*openpose.*\.pth$", r".*body.*pose.*\.pth$"],
-                "size_range": (150, 250),
-                "min_size_mb": 150,
-                "priority": 1,
-                "step_class": "PoseEstimationImplementation",
-                "model_load_method": "load_models",
-            },
-            
-            # Step 03: Cloth Segmentation
-            "cloth_segmentation_u2net": {
-                "actual_files": ["u2net.pth"],
-                "search_paths": ["step_03_cloth_segmentation", "checkpoints/step_03_cloth_segmentation"],
-                "patterns": [r".*u2net.*\.pth$"],
-                "size_range": (100, 200),
-                "min_size_mb": 100,
-                "priority": 1,
-                "step_class": "ClothSegmentationImplementation",
-                "model_load_method": "load_models",
-            },
+            # Cloth Segmentation (2.4GB SAM + 168MB U2Net)
             "cloth_segmentation_sam": {
                 "actual_files": ["sam_vit_h_4b8939.pth"],
-                "search_paths": ["step_03_cloth_segmentation"],
+                "search_paths": [
+                    "step_03_cloth_segmentation",
+                    "step_03_cloth_segmentation/ultra_models",
+                    "step_04_geometric_matching",
+                    "step_04_geometric_matching/ultra_models"
+                ],
                 "patterns": [r".*sam_vit_h.*\.pth$"],
-                "size_range": (2000, 3000),  # 🔥 SAM은 대용량
-                "min_size_mb": 2000,
-                "priority": 2,
+                "size_range": (2400, 2500),  # 2.4GB
+                "min_size_mb": 2400,
+                "priority": 1,
                 "step_class": "ClothSegmentationImplementation",
-                "model_load_method": "load_models",
+                "model_load_method": "load_models"
             },
             
-            # Step 04: Geometric Matching
-            "geometric_matching_gmm": {
-                "actual_files": ["gmm.pth", "tps_network.pth"],
-                "search_paths": ["step_04_geometric_matching"],
-                "patterns": [r".*gmm.*\.pth$", r".*tps.*\.pth$"],
-                "size_range": (50, 200),  # 🔥 최소 50MB
-                "min_size_mb": 50,
-                "priority": 1,
-                "step_class": "GeometricMatchingImplementation",
-                "model_load_method": "load_models",
-            },
-            
-            # Step 05: Cloth Warping
-            "cloth_warping_tom": {
-                "actual_files": ["cloth_warping_net.pth", "hrviton_final.pth"],
-                "search_paths": ["step_05_cloth_warping"],
-                "patterns": [r".*cloth.*warping.*\.pth$", r".*hrviton.*\.pth$"],
-                "size_range": (100, 800),
-                "min_size_mb": 100,
-                "priority": 1,
-                "step_class": "ClothWarpingImplementation",
-                "model_load_method": "load_models",
-            },
-            
-            # Step 06: Virtual Fitting
+            # Virtual Fitting (3.2GB Diffusion)
             "virtual_fitting_diffusion": {
-                "actual_files": ["diffusion_pytorch_model.bin", "pytorch_model.bin"],
-                "search_paths": ["step_06_virtual_fitting", "checkpoints/ootdiffusion"],
-                "patterns": [r".*diffusion.*pytorch.*model.*\.bin$", r".*pytorch_model\.bin$"],
-                "size_range": (500, 800),
-                "min_size_mb": 500,
+                "actual_files": [
+                    "diffusion_pytorch_model.bin",
+                    "diffusion_pytorch_model.safetensors"
+                ],
+                "search_paths": [
+                    "step_06_virtual_fitting/ootdiffusion",
+                    "checkpoints/step_06_virtual_fitting",
+                    "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton"
+                ],
+                "patterns": [
+                    r".*diffusion_pytorch_model\.bin$",
+                    r".*diffusion_pytorch_model\.safetensors$"
+                ],
+                "size_range": (3100, 3300),  # 3.2GB
+                "min_size_mb": 3100,
                 "priority": 1,
                 "step_class": "VirtualFittingImplementation",
-                "model_load_method": "load_models",
-            },
-            "virtual_fitting_ootd": {
-                "actual_files": ["diffusion_pytorch_model.safetensors"],
-                "search_paths": ["checkpoints/ootdiffusion", "step_06_virtual_fitting/ootdiffusion"],
-                "patterns": [r".*diffusion.*safetensors$", r".*ootd.*\.pth$"],
-                "size_range": (1000, 8000),
-                "min_size_mb": 1000,
-                "priority": 2,
-                "step_class": "VirtualFittingImplementation",
-                "model_load_method": "load_models",
-            },
-            
-            # Step 07: Post Processing
-            "post_processing_enhance": {
-                "actual_files": ["enhance_model.pth", "ESRGAN_x4.pth"],
-                "search_paths": ["step_07_post_processing"],
-                "patterns": [r".*enhance.*\.pth$", r".*ESRGAN.*\.pth$"],
-                "size_range": (50, 200),
-                "min_size_mb": 50,
-                "priority": 1,
-                "step_class": "PostProcessingImplementation",
-                "model_load_method": "load_models",
-            },
-            
-            # Step 08: Quality Assessment
-            "quality_assessment_clip": {
-                "actual_files": ["pytorch_model.bin"],
-                "search_paths": ["step_08_quality_assessment"],
-                "patterns": [r".*pytorch_model\.bin$"],
-                "size_range": (500, 800),
-                "min_size_mb": 500,
-                "priority": 1,
-                "step_class": "QualityAssessmentImplementation",
-                "model_load_method": "load_models",
+                "model_load_method": "load_models"
             }
+            # ... 나머지 매핑들 추가
         }
+
+        # 크기 우선순위 설정
+        self.size_priority_threshold = 50  # 50MB 이상만
         
-        # 🔥 크기 우선순위 설정
-        self.size_priority_threshold = 50  # 50MB 미만은 제외
-    
+        self.logger.info(f"✅ 실제 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴")
+
     def find_actual_file(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """요청명에 대한 실제 파일 찾기 (크기 우선순위 적용)"""
-        if request_name not in self.step_file_mappings:
-            self.logger.debug(f"❓ 알 수 없는 요청명: {request_name}")
-            return None
-        
-        mapping = self.step_file_mappings[request_name]
-        found_candidates = []
-        
-        # 1. 정확한 파일명으로 검색
-        for filename in mapping["actual_files"]:
-            for search_path in mapping["search_paths"]:
-                full_path = ai_models_root / search_path / filename
-                if full_path.exists() and full_path.is_file():
-                    file_size_mb = full_path.stat().st_size / (1024 * 1024)
-                    
-                    # 🔥 크기 필터 적용
-                    if file_size_mb < mapping.get("min_size_mb", self.size_priority_threshold):
-                        self.logger.debug(f"🗑️ 크기 부족: {full_path} ({file_size_mb:.1f}MB < {mapping.get('min_size_mb', self.size_priority_threshold)}MB)")
-                        continue
-                    
-                    min_size, max_size = mapping["size_range"]
-                    if min_size <= file_size_mb <= max_size:
-                        found_candidates.append((full_path, file_size_mb, "exact_match"))
-                        self.logger.debug(f"✅ 정확한 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
-                    else:
-                        self.logger.debug(f"⚠️ 크기 불일치: {full_path} ({file_size_mb:.1f}MB)")
-        
-        # 2. 패턴으로 검색
-        for search_path in mapping["search_paths"]:
-            search_dir = ai_models_root / search_path
-            if not search_dir.exists():
-                continue
+        """🔥 실제 파일 구조 기반 파일 찾기 (5번 파일 구조 반영)"""
+        try:
+            # 직접 매핑 확인
+            if request_name in self.step_file_mappings:
+                mapping = self.step_file_mappings[request_name]
+                found_candidates = []
                 
-            for pattern in mapping["patterns"]:
-                try:
-                    for file_path in search_dir.rglob("*"):
-                        if file_path.is_file() and re.search(pattern, file_path.name, re.IGNORECASE):
-                            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+                # 실제 파일명으로 검색
+                for filename in mapping["actual_files"]:
+                    for search_path in mapping["search_paths"]:
+                        full_path = ai_models_root / search_path / filename
+                        if full_path.exists() and full_path.is_file():
+                            file_size_mb = full_path.stat().st_size / (1024 * 1024)
                             
-                            # 🔥 크기 필터 적용
-                            if file_size_mb < mapping.get("min_size_mb", self.size_priority_threshold):
-                                continue
-                            
+                            # 크기 검증
                             min_size, max_size = mapping["size_range"]
                             if min_size <= file_size_mb <= max_size:
-                                found_candidates.append((file_path, file_size_mb, "pattern_match"))
-                                self.logger.debug(f"✅ 패턴 매칭: {request_name} → {file_path} ({file_size_mb:.1f}MB)")
-                except Exception as e:
-                    self.logger.debug(f"패턴 검색 오류: {e}")
-                    continue
-        
-        # 🔥 크기순 정렬 (큰 것부터)
-        if found_candidates:
-            found_candidates.sort(key=lambda x: x[1], reverse=True)
-            best_match = found_candidates[0]
-            self.logger.info(f"🏆 최적 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB, {best_match[2]})")
-            return best_match[0]
-        
-        self.logger.warning(f"❌ {request_name} 파일을 찾을 수 없습니다 (크기 기준: {mapping.get('min_size_mb', self.size_priority_threshold)}MB 이상)")
-        return None
-    
+                                found_candidates.append((full_path, file_size_mb, "exact_match"))
+                                self.logger.info(f"✅ 정확한 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
+                
+                # 크기순 정렬 후 최적 선택
+                if found_candidates:
+                    found_candidates.sort(key=lambda x: x[1], reverse=True)
+                    best_match = found_candidates[0]
+                    self.logger.info(f"🏆 최적 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB)")
+                    return best_match[0]
+            
+            # 폴백: 전체 검색
+            return self._fallback_search(request_name, ai_models_root)
+                
+        except Exception as e:
+            self.logger.error(f"❌ {request_name} 파일 찾기 실패: {e}")
+            return None
+
+    def _fallback_search(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
+        """폴백 검색 (키워드 기반)"""
+        try:
+            keywords = request_name.lower().split('_')
+            candidates = []
+            
+            extensions = ['.pth', '.bin', '.safetensors']
+            
+            for ext in extensions:
+                for model_file in ai_models_root.rglob(f"*{ext}"):
+                    if model_file.is_file():
+                        file_size_mb = model_file.stat().st_size / (1024 * 1024)
+                        if file_size_mb >= self.size_priority_threshold:
+                            filename_lower = model_file.name.lower()
+                            
+                            # 키워드 매칭 점수
+                            score = sum(1 for keyword in keywords if keyword in filename_lower)
+                            if score > 0:
+                                candidates.append((model_file, file_size_mb, score))
+            
+            if candidates:
+                # 점수 우선, 크기 차선으로 정렬
+                candidates.sort(key=lambda x: (x[2], x[1]), reverse=True)
+                best_match = candidates[0]
+                self.logger.info(f"🔍 폴백 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB)")
+                return best_match[0]
+                
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"폴백 검색 실패: {e}")
+            return None
+
     def get_step_info(self, request_name: str) -> Optional[Dict[str, Any]]:
-        """🔥 Step 구현체 정보 반환 (기존 함수 유지)"""
+        """Step 구현체 정보 반환"""
         if request_name in self.step_file_mappings:
             mapping = self.step_file_mappings[request_name]
             return {
@@ -1004,6 +947,27 @@ if __name__ == "__main__":
             step_info = model.step_implementation if hasattr(model, 'step_implementation') else {}
             print(f"   {i+1}. {model.name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f})")
     
+
+    
+    class RealFileMapper:
+        """ModelLoader 호환성을 위한 RealWorldModelDetector 어댑터"""
+        def __init__(self):
+            self.detector = get_global_detector()
+        
+        def find_actual_file(self, request_name, ai_models_root):
+            # RealWorldModelDetector 메서드 호출
+            return self.detector.find_model_by_name(request_name)
+        
+        def get_step_info(self, request_name):
+            return self.detector.step_mapper.match_file_to_step(request_name)
+        
+        def discover_all_search_paths(self, ai_models_root):
+            return self.detector.path_discovery.discover_all_paths()
+
+    
+    RealFileMapper = RealWorldModelDetector 
+
+
     # 통계 출력
     stats = get_detection_statistics()
     print(f"\n📈 탐지 통계:")
