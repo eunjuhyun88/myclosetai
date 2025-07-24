@@ -1261,7 +1261,7 @@ class ModelLoader:
         self.logger.info(f"📁 모델 캐시 디렉토리: {self.model_cache_dir}")
 
     def _calculate_correct_ai_models_path(self) -> Path:
-        """✅ 실제 프로젝트 구조 기반 AI 모델 경로 자동 계산 (완전 수정)"""
+        """✅ 올바른 AI 모델 경로 자동 계산"""
         try:
             # 방법 1: 현재 파일 기준 정확한 계산
             current_file = Path(__file__).resolve()
@@ -1277,50 +1277,38 @@ class ModelLoader:
                 if current_path.name == 'backend':
                     ai_models_path = current_path / "ai_models"
                     self.logger.info(f"✅ 방법 1 성공: {ai_models_path}")
-                    
-                    # 🔥 실제 구조 검증 추가
-                    if self._verify_ai_models_structure(ai_models_path):
-                        return ai_models_path
-                    else:
-                        self.logger.warning(f"⚠️ 구조 검증 실패, 다음 방법 시도")
+                    return ai_models_path
                 
                 if current_path.parent == current_path:  # 루트 도달
                     break
                 current_path = current_path.parent
             
-            # 방법 2: 실제 파일 구조 기반 직접 확인
+            # 방법 2: conda 환경 기반 추론
+            if self.conda_env == 'mycloset-ai-clean':
+                cwd = Path.cwd()
+                self.logger.debug(f"🐍 conda 환경 감지, 현재 디렉토리: {cwd}")
+                
+                if cwd.name == 'backend':
+                    ai_models_path = cwd / "ai_models"
+                    self.logger.info(f"✅ 방법 2a 성공: {ai_models_path}")
+                    return ai_models_path
+                elif 'mycloset-ai' in str(cwd):
+                    ai_models_path = cwd / "backend" / "ai_models"
+                    self.logger.info(f"✅ 방법 2b 성공: {ai_models_path}")
+                    return ai_models_path
+            
+            # 방법 3: 절대 경로 시도 (paste.txt 패턴)
             potential_paths = [
-                Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"),  # 실제 확인된 경로
+                Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"),
                 Path.home() / "MVP" / "mycloset-ai" / "backend" / "ai_models",
                 Path.cwd() / "backend" / "ai_models",
                 Path.cwd() / "ai_models"
             ]
             
             for path in potential_paths:
-                if path.exists() and self._verify_ai_models_structure(path):
-                    self.logger.info(f"✅ 방법 2 성공: {path}")
+                if path.exists():
+                    self.logger.info(f"✅ 방법 3 성공: {path}")
                     return path
-            
-            # 방법 3: conda 환경 기반 추론
-            if self.conda_env == 'mycloset-ai-clean':
-                cwd = Path.cwd()
-                self.logger.debug(f"🐍 conda 환경 감지, 현재 디렉토리: {cwd}")
-                
-                # 현재 디렉토리가 backend인 경우
-                if cwd.name == 'backend':
-                    ai_models_path = cwd / "ai_models"
-                    if ai_models_path.exists():
-                        self.logger.info(f"✅ 방법 3a 성공: {ai_models_path}")
-                        return ai_models_path
-                        
-                # mycloset-ai 프로젝트 내부인 경우
-                elif 'mycloset-ai' in str(cwd):
-                    for parent in cwd.parents:
-                        if parent.name == 'mycloset-ai':
-                            ai_models_path = parent / "backend" / "ai_models"
-                            if ai_models_path.exists():
-                                self.logger.info(f"✅ 방법 3b 성공: {ai_models_path}")
-                                return ai_models_path
             
             # 방법 4: 최종 폴백
             fallback_path = Path.cwd() / "ai_models"
@@ -1330,66 +1318,6 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 경로 계산 실패: {e}")
             return Path.cwd() / "ai_models"
-
-    def _verify_ai_models_structure(self, ai_models_path: Path) -> bool:
-        """실제 AI 모델 디렉토리 구조 검증"""
-        try:
-            if not ai_models_path.exists():
-                return False
-                
-            # 실제 확인된 필수 디렉토리들
-            required_dirs = [
-                "step_01_human_parsing",
-                "step_02_pose_estimation", 
-                "step_03_cloth_segmentation",
-                "step_04_geometric_matching",
-                "step_05_cloth_warping",
-                "step_06_virtual_fitting",
-                "step_07_post_processing",
-                "step_08_quality_assessment",
-                "checkpoints",
-                "Self-Correction-Human-Parsing"  # 실제 존재하는 디렉토리
-            ]
-            
-            existing_dirs = 0
-            for required_dir in required_dirs:
-                dir_path = ai_models_path / required_dir
-                if dir_path.exists():
-                    existing_dirs += 1
-                    
-            # 70% 이상의 디렉토리가 존재하면 유효한 구조로 판단
-            validity_ratio = existing_dirs / len(required_dirs)
-            is_valid = validity_ratio >= 0.7
-            
-            self.logger.debug(f"🔍 구조 검증 결과: {existing_dirs}/{len(required_dirs)} ({validity_ratio:.1%}) - {'유효' if is_valid else '무효'}")
-            
-            # 추가: 실제 모델 파일 존재 확인
-            if is_valid:
-                key_files = [
-                    "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                    "step_01_human_parsing/exp-schp-201908301523-atr.pth",
-                    "step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
-                ]
-                
-                key_files_found = 0
-                for key_file in key_files:
-                    file_path = ai_models_path / key_file
-                    if file_path.exists():
-                        file_size_mb = file_path.stat().st_size / (1024 * 1024)
-                        if file_size_mb > 50:  # 50MB 이상
-                            key_files_found += 1
-                            
-                if key_files_found > 0:
-                    self.logger.info(f"✅ 핵심 모델 파일 발견: {key_files_found}개")
-                    return True
-            
-            return is_valid
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 구조 검증 실패: {e}")
-            return False
-
-
 
     def _fix_user_path(self, user_path) -> Path:
         """✅ 사용자 지정 경로에서 backend/backend 패턴 제거"""
@@ -1554,7 +1482,7 @@ class ModelLoader:
 # _scan_available_models 메서드를 이 코드로 완전 교체
 
     def _scan_available_models(self):
-        """🔥 실제 디렉토리 구조 기반 모델 스캔 (paste-2.txt 구조 완전 반영)"""
+        """🔥 실제 디렉토리 구조 기반 모델 스캔 (정확한 버전)"""
         try:
             # 🔥 캐시 확인 및 중복 스캔 방지
             current_time = time.time()
@@ -1574,18 +1502,30 @@ class ModelLoader:
                 
                 # 캐시 미스 - 실제 스캔 실행
                 self._optimization_stats["cache_misses"] += 1
-                self.logger.info("🔍 실제 모델 스캔 실행 (paste-2.txt 구조 기반)...")
+                self.logger.info("🔍 실제 모델 스캔 실행 (캐시 없음)...")
             
             if not self.model_cache_dir.exists():
                 self.logger.warning(f"⚠️ 모델 디렉토리 없음: {self.model_cache_dir}")
                 return
             
-            # 🎯 paste-2.txt에서 확인된 실제 디렉토리 구조 기반 검색 경로
+            # 🎯 실제 확인된 디렉토리 구조 기반 검색 경로
             search_paths = [
                 # 루트 디렉토리
                 self.model_cache_dir,
                 
-                # 실제 존재하는 Step 디렉토리들 (메인)
+                # 실제 존재하는 메인 디렉토리들
+                self.model_cache_dir / "cache",
+                self.model_cache_dir / "checkpoints", 
+                self.model_cache_dir / "cloth_segmentation",
+                self.model_cache_dir / "experimental_models",
+                self.model_cache_dir / "future_enhancements",
+                self.model_cache_dir / "Graphonomy",
+                self.model_cache_dir / "human_parsing",
+                self.model_cache_dir / "pose_estimation",
+                self.model_cache_dir / "Self-Correction-Human-Parsing",
+                self.model_cache_dir / "virtual_fitting",
+                
+                # Step 디렉토리들 (실제 확인됨)
                 self.model_cache_dir / "step_01_human_parsing",
                 self.model_cache_dir / "step_02_pose_estimation",
                 self.model_cache_dir / "step_03_cloth_segmentation",
@@ -1596,7 +1536,8 @@ class ModelLoader:
                 self.model_cache_dir / "step_08_quality_assessment",
                 
                 # checkpoints 하위 디렉토리들
-                self.model_cache_dir / "checkpoints",
+                self.model_cache_dir / "checkpoints" / "ootdiffusion",
+                self.model_cache_dir / "checkpoints" / "stable-diffusion-v1-5",
                 self.model_cache_dir / "checkpoints" / "step_01_human_parsing",
                 self.model_cache_dir / "checkpoints" / "step_02_pose_estimation",
                 self.model_cache_dir / "checkpoints" / "step_03_cloth_segmentation",
@@ -1606,41 +1547,11 @@ class ModelLoader:
                 self.model_cache_dir / "checkpoints" / "step_07_post_processing",
                 self.model_cache_dir / "checkpoints" / "step_08_quality_assessment",
                 
-                # 실제 확인된 특수 디렉토리들
-                self.model_cache_dir / "Self-Correction-Human-Parsing",
-                self.model_cache_dir / "Graphonomy",
-                self.model_cache_dir / "human_parsing",
-                self.model_cache_dir / "pose_estimation",
-                self.model_cache_dir / "cloth_segmentation",
-                self.model_cache_dir / "experimental_models",
-                self.model_cache_dir / "future_enhancements",
-                self.model_cache_dir / "cache",
-                
-                # Virtual Fitting 하위 경로들 (실제 존재)
+                # 기타 중요 하위 디렉토리들
                 self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "humanparsing",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "openpose",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "openpose" / "ckpts",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "text_encoder",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "vae",
-                self.model_cache_dir / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd",
-                
-                # ultra_models 경로들 (실제 존재)
+                self.model_cache_dir / "step_06_virtual_fitting" / "idm_vton_ultra",
                 self.model_cache_dir / "step_01_human_parsing" / "ultra_models",
                 self.model_cache_dir / "step_03_cloth_segmentation" / "ultra_models",
-                self.model_cache_dir / "step_04_geometric_matching" / "ultra_models",
-                self.model_cache_dir / "step_05_cloth_warping" / "ultra_models",
-                self.model_cache_dir / "step_07_post_processing" / "ultra_models",
-                self.model_cache_dir / "step_08_quality_assessment" / "ultra_models",
-                
-                # 추가 특수 경로들
-                self.model_cache_dir / "step_08_quality_assessment" / "clip_vit_g14",
-                self.model_cache_dir / "step_07_post_processing" / "esrgan_x8_ultra",
-                self.model_cache_dir / "future_enhancements" / "face_enhancement",
-                self.model_cache_dir / "future_enhancements" / "face_enhancement" / "photomaker_ultra",
-                self.model_cache_dir / "future_enhancements" / "face_enhancement" / "instantid_ultra"
             ]
             
             # 존재하는 경로만 필터링
@@ -1652,7 +1563,7 @@ class ModelLoader:
             self.logger.info(f"📁 존재하는 검색 경로: {len(existing_paths)}개 (총 {len(search_paths)}개 중)")
             
             # 경로들을 3개씩 묶어서 로깅
-            for i in range(0, min(len(existing_paths), 15), 3):
+            for i in range(0, min(len(existing_paths), 12), 3):
                 batch = existing_paths[i:i+3]
                 batch_names = [p.name for p in batch]
                 self.logger.info(f"  📂 경로 {i+1}-{i+len(batch)}: {', '.join(batch_names)}")
@@ -1663,9 +1574,8 @@ class ModelLoader:
             total_size_gb = 0.0
             symlink_count = 0
             large_files = []
-            gb_files = []  # GB급 파일들
             
-            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt", ".pkl", ".onnx"]
+            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt", ".pkl"]
             processed_inodes = set()  # 중복 방지용
             
             for search_path in existing_paths:
@@ -1681,13 +1591,11 @@ class ModelLoader:
                                 if not model_file.is_file():
                                     continue
                                     
-                                # 제외할 파일들 (더 강화)
-                                exclude_patterns = [
+                                # 제외할 파일들
+                                if any(exclude in str(model_file) for exclude in [
                                     "cleanup_backup", "__pycache__", ".git", ".DS_Store", 
-                                    ".lock", ".tmp", "temp_", "backup_", ".metadata",
-                                    ".cache", "download", ".no_exist"
-                                ]
-                                if any(exclude in str(model_file) for exclude in exclude_patterns):
+                                    ".lock", ".tmp", "temp_", "backup_"
+                                ]):
                                     continue
                                 
                                 # 🔥 심볼릭 링크 처리
@@ -1720,14 +1628,12 @@ class ModelLoader:
                                 size_mb = actual_file.stat().st_size / (1024 * 1024)
                                 total_size_gb += size_mb / 1024
                                 
-                                # 🔥 크기 필터링 강화 (50MB 이상만)
-                                if size_mb < self.min_model_size_mb:
+                                # 🔥 크기 필터링 (1MB 이상)
+                                if size_mb < 1:
                                     continue
                                 
                                 # 대형 파일 목록에 추가
-                                if size_mb > 1000:  # 1GB 이상
-                                    gb_files.append((model_file.name, size_mb, str(search_path.name)))
-                                elif size_mb > 100:  # 100MB 이상
+                                if size_mb > 100:  # 100MB 이상
                                     large_files.append((model_file.name, size_mb, str(search_path.name)))
                                 
                                 # 🔥 간단한 검증
@@ -1741,7 +1647,7 @@ class ModelLoader:
                                 model_type, step_class = self._smart_detect_model_info_enhanced(actual_file, search_path)
                                 
                                 model_info = {
-                                    "name": model_file.stem,
+                                    "name": model_file.stem,  # 원본 이름 사용
                                     "path": str(relative_path),
                                     "size_mb": round(size_mb, 2),
                                     "model_type": model_type,
@@ -1752,15 +1658,13 @@ class ModelLoader:
                                     "metadata": {
                                         "extension": ext,
                                         "parent_dir": model_file.parent.name,
-                                        "full_path": str(actual_file),
-                                        "original_path": str(model_file),
+                                        "full_path": str(actual_file),  # 실제 파일 경로
+                                        "original_path": str(model_file),  # 원본 경로 (심볼릭 링크일 수 있음)
                                         "is_symlink": is_symlink,
                                         "is_large": size_mb > 500,
-                                        "is_gb_class": size_mb > 1000,
                                         "priority_score": self._calculate_priority_score_enhanced(size_mb, is_valid, model_type),
                                         "detected_from": str(search_path.name),
-                                        "search_depth": len(relative_path.parts) - 1,
-                                        "size_category": self._get_size_category(size_mb)
+                                        "search_depth": len(relative_path.parts) - 1
                                     }
                                 }
                                 
@@ -1769,8 +1673,8 @@ class ModelLoader:
                                 
                                 # 처음 10개만 상세 로깅
                                 if scanned_count <= 10:
-                                    symlink_status = "🔗" if is_symlink else ""
-                                    size_status = "🔥" if size_mb > 1000 else "📦" if size_mb > 500 else "📁"
+                                    symlink_status = "🔗" if is_symlink else "📦"
+                                    size_status = "🔥" if size_mb > 500 else "📦"
                                     self.logger.info(f"{symlink_status}{size_status} 발견: {model_info['name']} ({size_mb:.1f}MB) @ {search_path.name}")
                                 
                             except Exception as e:
@@ -1781,7 +1685,7 @@ class ModelLoader:
                     self.logger.debug(f"⚠️ 경로 스캔 실패 {search_path}: {path_error}")
                     continue
             
-            # 🔥 크기 우선순위로 정렬 (대형 모델 우선)
+            # 크기 우선순위로 정렬
             scanned_models.sort(key=lambda x: x["metadata"]["priority_score"], reverse=True)
             
             # available_models에 등록
@@ -1791,13 +1695,11 @@ class ModelLoader:
             # 📊 상세한 통계 출력
             valid_models = [m for m in scanned_models if m["is_valid"]]
             large_model_count = len([m for m in scanned_models if m["metadata"]["is_large"]])
-            gb_model_count = len([m for m in scanned_models if m["metadata"]["is_gb_class"]])
             
             self.logger.info(f"✅ 실제 구조 기반 스캔 완료")
             self.logger.info(f"📊 총 모델 파일: {scanned_count}개")
             self.logger.info(f"✅ 유효 모델: {len(valid_models)}개")
-            self.logger.info(f"🔥 GB급 모델(1GB+): {gb_model_count}개")
-            self.logger.info(f"📦 대형 모델(500MB+): {large_model_count}개")
+            self.logger.info(f"🔥 대형 모델(500MB+): {large_model_count}개")
             self.logger.info(f"🔗 심볼릭 링크: {symlink_count}개")
             self.logger.info(f"💾 총 크기: {total_size_gb:.1f}GB")
             
@@ -1806,64 +1708,40 @@ class ModelLoader:
                 self.logger.info("🏆 우선순위 상위 모델들:")
                 for i, model in enumerate(scanned_models[:5]):
                     symlink_mark = "🔗" if model["metadata"]["is_symlink"] else ""
-                    size_mark = "🔥" if model["metadata"]["is_gb_class"] else "📦" if model["metadata"]["is_large"] else ""
+                    size_mark = "🔥" if model["metadata"]["is_large"] else ""
                     self.logger.info(f"  {i+1}. {symlink_mark}{size_mark}{model['name']}: {model['size_mb']:.1f}MB ({model['model_type']})")
             
-            # GB급 파일들 별도 출력
-            if gb_files:
-                gb_files.sort(key=lambda x: x[1], reverse=True)
-                self.logger.info("🔥 GB급 모델 파일들:")
-                for i, (name, size_mb, location) in enumerate(gb_files[:5]):
-                    size_gb = size_mb / 1024
-                    self.logger.info(f"  🔥 {i+1}. {name}: {size_gb:.1f}GB @ {location}")
+            # 대형 파일들 별도 출력
+            if large_files:
+                large_files.sort(key=lambda x: x[1], reverse=True)  # 크기순 정렬
+                self.logger.info("🔥 대형 모델 파일들:")
+                for i, (name, size_mb, location) in enumerate(large_files[:5]):
+                    self.logger.info(f"  🔥 {i+1}. {name}: {size_mb:.1f}MB @ {location}")
             
             # 모델 타입별 통계
             type_stats = {}
             for model in scanned_models:
                 model_type = model["model_type"]
                 if model_type not in type_stats:
-                    type_stats[model_type] = {"count": 0, "total_size_mb": 0}
-                type_stats[model_type]["count"] += 1
-                type_stats[model_type]["total_size_mb"] += model["size_mb"]
+                    type_stats[model_type] = 0
+                type_stats[model_type] += 1
             
             if type_stats:
                 self.logger.info("📊 모델 타입별 분포:")
-                for model_type, stats in sorted(type_stats.items(), key=lambda x: x[1]["total_size_mb"], reverse=True):
-                    size_gb = stats["total_size_mb"] / 1024
-                    self.logger.info(f"  📦 {model_type}: {stats['count']}개 ({size_gb:.1f}GB)")
+                for model_type, count in sorted(type_stats.items(), key=lambda x: x[1], reverse=True):
+                    self.logger.info(f"  📦 {model_type}: {count}개")
             
-            # 캐시 저장
-            with self._concurrent_scan_lock:
-                self._scan_cache[scan_key] = dict(self.available_models)
-                self._scan_timestamps[scan_key] = current_time
-                self._last_full_scan = current_time
-                
-            # 성능 통계 업데이트
-            self.performance_stats['total_models_found'] = scanned_count
-            self.performance_stats['large_models_found'] = gb_model_count
-            self.performance_stats['small_models_filtered'] = 0  # 이미 필터링됨
-            
-            self.logger.info(f"✅ 스캔 완료 및 캐시 저장: {len(self.available_models)}개 모델")
-                                
+                    with self._concurrent_scan_lock:
+                                self._scan_cache[scan_key] = dict(self.available_models)
+                                self._scan_timestamps[scan_key] = current_time
+                                self._last_full_scan = current_time  
+                                self.logger.info(f"✅ 스캔 완료 및 캐시 저장: {len(self.available_models)}개 모델")
+                                               
         except Exception as e:
             self.logger.error(f"❌ 모델 스캔 완전 실패: {e}")
             import traceback
             self.logger.error(f"📋 오류 스택:")
             self.logger.error(traceback.format_exc())
-
-    def _get_size_category(self, size_mb: float) -> str:
-        """파일 크기 카테고리 분류"""
-        if size_mb > 5000:
-            return "huge"    # 5GB+
-        elif size_mb > 1000:
-            return "large"   # 1GB+
-        elif size_mb > 500:
-            return "medium"  # 500MB+
-        elif size_mb > 100:
-            return "small"   # 100MB+
-        else:
-            return "tiny"    # 100MB 미만
-
 
     def _smart_detect_model_info_enhanced(self, model_file: Path, search_path: Path) -> tuple:
         """향상된 모델 타입 및 Step 클래스 감지 (실제 구조 기반)"""
@@ -1920,363 +1798,47 @@ class ModelLoader:
         # 기본값
         return "unknown", "UnknownStep"
 
-
-    def _smart_detect_model_info_enhanced(self, model_file: Path, search_path: Path) -> tuple:
-        """향상된 모델 타입 및 Step 클래스 감지 (paste-2.txt 실제 구조 기반)"""
-        filename = model_file.name.lower()
-        path_str = str(model_file).lower()
-        search_path_name = search_path.name.lower()
-        
-        # 🎯 실제 파일명 기반 우선 감지 (정확성 높음)
-        
-        # Human Parsing 모델들 (255MB)
-        if any(pattern in filename for pattern in ["exp-schp", "schp", "atr", "lip"]):
-            return "human_parsing", "HumanParsingStep"
-        elif "graphonomy" in filename:
-            return "human_parsing", "HumanParsingStep"
-        elif "parsing" in filename and any(ext in filename for ext in [".pth", ".bin"]):
-            return "human_parsing", "HumanParsingStep"
-        
-        # Pose Estimation 모델들 (98MB~200MB)
-        elif any(pattern in filename for pattern in ["openpose", "body_pose", "pose_model"]):
-            return "pose_estimation", "PoseEstimationStep"
-        elif "yolov8n-pose" in filename:
-            return "pose_estimation", "PoseEstimationStep"
-        
-        # Cloth Segmentation 모델들 (168MB~2.4GB)
-        elif "sam_vit_h_4b8939" in filename:  # 2.4GB SAM 모델
-            return "cloth_segmentation", "ClothSegmentationStep"
-        elif "u2net" in filename:  # 168MB U2Net 모델
-            return "cloth_segmentation", "ClothSegmentationStep"
-        elif "deeplabv3_resnet101" in filename:  # 233MB DeepLab 모델
-            return "cloth_segmentation", "ClothSegmentationStep"
-        elif any(pattern in filename for pattern in ["segment", "mask_anything"]):
-            return "cloth_segmentation", "ClothSegmentationStep"
-        
-        # Virtual Fitting 모델들 (대형 모델들)
-        elif "diffusion_pytorch_model" in filename:  # 3.2GB 디퓨전 모델
-            return "virtual_fitting", "VirtualFittingStep"
-        elif filename == "pytorch_model.bin" and ("diffusion" in path_str or "ootd" in path_str):
-            return "virtual_fitting", "VirtualFittingStep"
-        elif any(pattern in filename for pattern in ["hrviton", "ootd", "text_encoder", "vae"]):
-            return "virtual_fitting", "VirtualFittingStep"
-        
-        # Geometric Matching 모델들
-        elif any(pattern in filename for pattern in ["gmm", "tps_network", "geometric"]):
-            return "geometric_matching", "GeometricMatchingStep"
-        elif "raft" in filename:  # RAFT 모델들
-            return "geometric_matching", "GeometricMatchingStep"
-        
-        # Cloth Warping 모델들
-        elif any(pattern in filename for pattern in ["tom_final", "vgg19_warping", "vgg16_warping"]):
-            return "cloth_warping", "ClothWarpingStep"
-        elif "warping" in filename or "warp" in filename:
-            return "cloth_warping", "ClothWarpingStep"
-        
-        # Post Processing 모델들
-        elif any(pattern in filename for pattern in ["gfpgan", "realesrgan", "esrgan", "swinir"]):
-            return "post_processing", "PostProcessingStep"
-        elif any(pattern in filename for pattern in ["enhance", "super_resolution", "x4plus", "x8"]):
-            return "post_processing", "PostProcessingStep"
-        
-        # Quality Assessment 모델들 (대형 모델 포함)
-        elif "open_clip_pytorch_model" in filename:  # 5.1GB CLIP 모델
-            return "quality_assessment", "QualityAssessmentStep"
-        elif any(pattern in filename for pattern in ["lpips", "clip", "quality"]):
-            return "quality_assessment", "QualityAssessmentStep"
-        
-        # 🎯 경로 기반 감지 (폴백)
-        
-        # Step 디렉토리 기반
-        if "step_01" in search_path_name or "human_parsing" in search_path_name:
-            return "human_parsing", "HumanParsingStep"
-        elif "step_02" in search_path_name or "pose_estimation" in search_path_name:
-            return "pose_estimation", "PoseEstimationStep"
-        elif "step_03" in search_path_name or "cloth_segmentation" in search_path_name:
-            return "cloth_segmentation", "ClothSegmentationStep"
-        elif "step_04" in search_path_name or "geometric_matching" in search_path_name:
-            return "geometric_matching", "GeometricMatchingStep"
-        elif "step_05" in search_path_name or "cloth_warping" in search_path_name:
-            return "cloth_warping", "ClothWarpingStep"
-        elif "step_06" in search_path_name or "virtual_fitting" in search_path_name or "ootdiffusion" in search_path_name:
-            return "virtual_fitting", "VirtualFittingStep"
-        elif "step_07" in search_path_name or "post_processing" in search_path_name:
-            return "post_processing", "PostProcessingStep"
-        elif "step_08" in search_path_name or "quality_assessment" in search_path_name:
-            return "quality_assessment", "QualityAssessmentStep"
-        
-        # 특수 디렉토리 기반
-        elif "self-correction" in search_path_name:
-            return "human_parsing", "HumanParsingStep"
-        elif "graphonomy" in search_path_name:
-            return "human_parsing", "HumanParsingStep"
-        elif any(pattern in search_path_name for pattern in ["stable-diffusion", "ootd", "hrviton"]):
-            return "virtual_fitting", "VirtualFittingStep"
-        elif "future_enhancements" in search_path_name:
-            return "post_processing", "PostProcessingStep"
-        elif "experimental" in search_path_name:
-            return "unknown", "ExperimentalStep"
-        
-        # 기본값
-        return "unknown", "UnknownStep"
-
     def _calculate_priority_score_enhanced(self, size_mb: float, is_valid: bool, model_type: str) -> float:
-        """향상된 모델 우선순위 점수 계산 (크기 기반 우선순위 강화)"""
+        """향상된 모델 우선순위 점수 계산"""
         score = 0.0
         
-        # 🔥 크기 기반 점수 (로그 스케일, 대형 모델 대폭 우대)
+        # 크기 기반 점수 (로그 스케일)
         if size_mb > 0:
             import math
-            base_score = math.log10(max(size_mb, 1)) * 100
-            
-            # 크기별 보너스 점수 (기하급수적 증가)
-            if size_mb > 5000:      # 5GB 이상
-                base_score += 1000
-            elif size_mb > 3000:    # 3GB 이상 
-                base_score += 800
-            elif size_mb > 1000:    # 1GB 이상
-                base_score += 600
-            elif size_mb > 500:     # 500MB 이상
-                base_score += 400
-            elif size_mb > 200:     # 200MB 이상
-                base_score += 200
-            elif size_mb > 100:     # 100MB 이상
-                base_score += 100
-            
-            score += base_score
+            score += math.log10(max(size_mb, 1)) * 100
         
         # 검증 성공 보너스
         if is_valid:
-            score += 150
+            score += 100
         
-        # 🔥 모델 타입별 우선순위 보너스 (실제 중요도 기반)
+        # 모델 타입별 우선순위 보너스
         type_priority = {
-            # 핵심 AI 파이프라인 (높은 우선순위)
-            "virtual_fitting": 300,      # 가상 피팅이 가장 중요 (대형 모델)
-            "human_parsing": 250,        # 인간 파싱 (255MB 표준)
-            "cloth_segmentation": 200,   # 의류 분할 (SAM 2.4GB 포함)
-            "quality_assessment": 180,   # 품질 평가 (CLIP 5.1GB 포함)
-            
-            # 보조 파이프라인 (중간 우선순위)
-            "pose_estimation": 150,      # 포즈 추정
-            "post_processing": 120,      # 후처리
-            "geometric_matching": 100,   # 기하학적 매칭
-            "cloth_warping": 80,         # 의류 변형
-            
-            # 기타 (낮은 우선순위)
-            "unknown": 0,                # 알 수 없는 타입
-            "experimental": 20           # 실험적 모델
+            "virtual_fitting": 200,      # 가상 피팅이 가장 중요
+            "human_parsing": 150,        # 인간 파싱도 중요
+            "cloth_segmentation": 120,   # 의류 분할
+            "pose_estimation": 100,      # 포즈 추정
+            "post_processing": 80,       # 후처리
+            "quality_assessment": 60,    # 품질 평가
+            "geometric_matching": 50,    # 기하학적 매칭
+            "cloth_warping": 40,         # 의류 변형
+            "unknown": 0                 # 알 수 없는 타입
         }
         
         score += type_priority.get(model_type, 0)
         
-        # 🔥 특별 모델 보너스 (실제 파일명 기반)
-        special_bonuses = {
-            # GB급 핵심 모델들
-            "sam_vit_h_4b8939": 500,                    # 2.4GB SAM
-            "diffusion_pytorch_model": 500,             # 3.2GB 디퓨전
-            "open_clip_pytorch_model": 500,             # 5.1GB CLIP
-            
-            # 표준 크기 핵심 모델들
-            "exp-schp-201908301523-atr": 300,           # 255MB Human Parsing
-            "exp-schp-201908261155-atr": 300,           # 255MB Human Parsing
-            "body_pose_model": 200,                     # 200MB OpenPose
-            "gfpgan": 200,                              # 332MB GFPGAN
-            "hrviton_final": 150,                       # 230MB HR-VITON
-            
-            # 중요한 보조 모델들
-            "tps_network": 100,                         # 528MB TPS
-            "vgg19_warping": 100,                       # 548MB VGG
-            "lpips_vgg": 80,                            # 528MB LPIPS
-        }
-        
-        # 파일명 기반 특별 보너스 적용
-        for special_name, bonus in special_bonuses.items():
-            if special_name in model_type.lower():  # model_type은 실제로는 파일 경로를 포함할 수 있음
-                score += bonus
-                break
-        
-        # 🔥 확장자별 보너스 (신뢰성 기반)
-        extension_bonuses = {
-            ".pth": 50,         # PyTorch 표준
-            ".bin": 40,         # Binary 표준  
-            ".safetensors": 45, # SafeTensors 표준
-            ".pt": 35,          # PyTorch 축약
-            ".onnx": 30,        # ONNX 표준
-            ".ckpt": 25,        # 체크포인트
-            ".pkl": 20          # Pickle (구형)
-        }
-        
-        # 실제 적용을 위해서는 파일 확장자 정보가 필요하므로 기본값 적용
-        score += 40  # 기본 보너스
+        # 대형 모델 보너스
+        if size_mb > 2000:  # 2GB 이상
+            score += 200
+        elif size_mb > 1000:  # 1GB 이상
+            score += 150
+        elif size_mb > 500:   # 500MB 이상
+            score += 100
+        elif size_mb > 200:   # 200MB 이상
+            score += 50
         
         return score
 
-    def _quick_validate_file(self, file_path: Path) -> bool:
-        """빠른 파일 검증 (크기와 확장자 기반, 강화된 필터링)"""
-        try:
-            if not file_path.exists():
-                return False
-            
-            size_mb = file_path.stat().st_size / (1024 * 1024)
-            
-            # 🔥 더 엄격한 크기 필터링
-            if size_mb < self.min_model_size_mb:  # 50MB 미만 제거
-                return False
-            
-            # 더미 파일 크기 패턴 감지 (정확한 크기)
-            suspicious_sizes = [
-                0.0,     # 0바이트
-                0.001,   # 1KB 미만
-                0.04,    # 40KB (openpose.pth)
-                0.2,     # 200KB (exp-schp-201908301523-atr.pth 더미)
-            ]
-            
-            for suspicious_size in suspicious_sizes:
-                if abs(size_mb - suspicious_size) < 0.1:  # 100KB 오차 범위
-                    self.logger.debug(f"🚫 더미 파일 감지: {file_path.name} ({size_mb:.3f}MB)")
-                    return False
-            
-            # 확장자 확인
-            valid_extensions = {'.pth', '.pt', '.bin', '.safetensors', '.ckpt', '.pkl', '.onnx'}
-            if file_path.suffix.lower() not in valid_extensions:
-                return False
-            
-            # 파일명 패턴 검증 (최소한의 의미 있는 이름)
-            filename = file_path.name.lower()
-            
-            # 너무 일반적이거나 의미 없는 파일명 제외
-            generic_names = [
-                "model.pth", "model.bin", "model.pt",
-                "temp.pth", "test.pth", "backup.pth",
-                "untitled.pth", "new.pth", "old.pth"
-            ]
-            
-            if filename in generic_names and size_mb < 100:  # 100MB 미만의 일반적인 이름
-                return False
-            
-            return True
-            
-        except Exception as e:
-            self.logger.debug(f"⚠️ 파일 검증 오류: {file_path} - {e}")
-            return False
 
-    def _find_via_pattern_matching(self, model_name: str, extensions: List[str]) -> Optional[Path]:
-        """패턴 매칭으로 찾기 (크기 우선순위 적용, 강화된 매핑)"""
-        try:
-            # 🔥 실제 파일 구조 기반 스마트 매핑 (paste-2.txt 반영)
-            smart_mapping = {
-                # Human Parsing (255MB 파일들)
-                "human_parsing_schp_atr": [
-                    "exp-schp-201908301523-atr.pth",
-                    "exp-schp-201908261155-atr.pth", 
-                    "exp-schp-201908261155-lip.pth",
-                    "atr_model.pth",
-                    "lip_model.pth"
-                ],
-                "human_parsing_graphonomy": [
-                    "graphonomy.pth",
-                    "inference.pth"
-                ],
-                
-                # Cloth Segmentation (168MB~2.4GB)
-                "cloth_segmentation_sam": [
-                    "sam_vit_h_4b8939.pth"  # 2.4GB - 최우선
-                ],
-                "cloth_segmentation_u2net": [
-                    "u2net.pth",  # 168MB
-                    "deeplabv3_resnet101_ultra.pth"  # 233MB
-                ],
-                
-                # Pose Estimation (98MB~200MB)
-                "pose_estimation_openpose": [
-                    "body_pose_model.pth",  # 200MB - 최우선
-                    "openpose.pth"  # 98MB
-                ],
-                
-                # Virtual Fitting (230MB~3.2GB)
-                "virtual_fitting_diffusion": [
-                    "diffusion_pytorch_model.bin",  # 3.2GB - 최우선
-                    "text_encoder/pytorch_model.bin",  # 469MB
-                    "vae/diffusion_pytorch_model.bin",  # 319MB
-                    "hrviton_final.pth"  # 230MB
-                ],
-                
-                # Geometric Matching (45MB~528MB)
-                "geometric_matching_model": [
-                    "tps_network.pth",  # 528MB - 최우선
-                    "resnet101_geometric.pth",  # 171MB
-                    "gmm_final.pth"  # 45MB
-                ],
-                
-                # Cloth Warping (83MB~548MB)
-                "cloth_warping_model": [
-                    "vgg19_warping.pth",  # 548MB - 최우선
-                    "vgg16_warping_ultra.pth",  # 528MB
-                    "tom_final.pth"  # 83MB
-                ],
-                
-                # Post Processing (64MB~332MB)
-                "post_processing_model": [
-                    "GFPGAN.pth",  # 332MB - 최우선
-                    "ESRGAN_x8.pth",  # 136MB
-                    "RealESRGAN_x4plus.pth"  # 64MB
-                ],
-                
-                # Quality Assessment (233MB~5.1GB)
-                "quality_assessment_model": [
-                    "open_clip_pytorch_model.bin",  # 5.1GB - 최우선
-                    "lpips_vgg.pth",  # 528MB
-                    "lpips_alex.pth"  # 233MB
-                ]
-            }
-            
-            if model_name in smart_mapping:
-                target_files = smart_mapping[model_name]
-                
-                # 크기 우선순위로 탐색 (큰 파일부터)
-                candidates = []
-                for target_file in target_files:
-                    for candidate in self.model_cache_dir.rglob(target_file):
-                        if candidate.exists():
-                            try:
-                                size_mb = candidate.stat().st_size / (1024 * 1024)
-                                if size_mb >= self.min_model_size_mb:  # 50MB 이상만
-                                    candidates.append((candidate, size_mb, target_file))
-                            except Exception as e:
-                                self.logger.debug(f"파일 크기 확인 실패: {candidate} - {e}")
-                                continue
-                
-                if candidates:
-                    # 크기순 정렬 (큰 것부터)
-                    candidates.sort(key=lambda x: x[1], reverse=True)
-                    best_candidate, best_size, original_name = candidates[0]
-                    self.logger.info(f"🔧 스마트 매핑 (크기 우선): {model_name} → {original_name} ({best_size:.1f}MB)")
-                    return best_candidate
-            
-            # 일반 패턴 매칭 (크기 우선순위)
-            candidates = []
-            for model_file in self.model_cache_dir.rglob("*"):
-                if model_file.is_file() and model_file.suffix.lower() in extensions:
-                    if model_name.lower() in model_file.name.lower():
-                        try:
-                            size_mb = model_file.stat().st_size / (1024 * 1024)
-                            if size_mb >= self.min_model_size_mb:  # 크기 필터 적용
-                                candidates.append((model_file, size_mb))
-                        except:
-                            continue
-            
-            if candidates:
-                # 크기순 정렬 (큰 것부터)
-                candidates.sort(key=lambda x: x[1], reverse=True)
-                best_candidate = candidates[0][0]
-                self.logger.debug(f"🔍 패턴 매칭 (크기 우선): {model_name} → {best_candidate.name}")
-                return best_candidate
-            
-            return None
-        except Exception as e:
-            self.logger.debug(f"패턴 매칭 실패: {e}")
-            return None
 
     def _initialize_file_mapper(self):
         """🔥 지연 초기화로 file_mapper 설정"""
@@ -2397,7 +1959,7 @@ class ModelLoader:
             self.logger.warning("🚨 EmergencyFileMapper 최종 폴백 사용")
 
     def _safe_initialize_file_mapper(self):
-        """🔥 안전한 file_mapper 초기화 (실제 구조 반영)"""
+        """🔥 안전한 file_mapper 초기화 (오류 해결)"""
         try:
             self.logger.info("🔄 file_mapper 안전 초기화 시작...")
             
@@ -2434,77 +1996,23 @@ class ModelLoader:
                                 return None
                                 
                         def discover_all_search_paths(self, ai_models_root):
-                            """모든 검색 경로 반환 (paste-2.txt 구조 반영)"""
+                            """모든 검색 경로 반환"""
                             try:
                                 base_path = Path(ai_models_root)
-                                
-                                # 🔥 실제 확인된 디렉토리 구조 기반 경로
-                                paths = [
-                                    # 루트 경로
+                                return [
                                     base_path,
-                                    
-                                    # 메인 Step 디렉토리들
-                                    base_path / "step_01_human_parsing",
-                                    base_path / "step_02_pose_estimation",
-                                    base_path / "step_03_cloth_segmentation", 
-                                    base_path / "step_04_geometric_matching",
-                                    base_path / "step_05_cloth_warping",
-                                    base_path / "step_06_virtual_fitting",
-                                    base_path / "step_07_post_processing",
-                                    base_path / "step_08_quality_assessment",
-                                    
-                                    # checkpoints 하위 디렉토리들
                                     base_path / "checkpoints",
-                                    base_path / "checkpoints" / "step_01_human_parsing",
-                                    base_path / "checkpoints" / "step_02_pose_estimation",
-                                    base_path / "checkpoints" / "step_03_cloth_segmentation",
-                                    base_path / "checkpoints" / "step_04_geometric_matching",
-                                    base_path / "checkpoints" / "step_05_cloth_warping",
-                                    base_path / "checkpoints" / "step_06_virtual_fitting",
-                                    base_path / "checkpoints" / "step_07_post_processing",
-                                    base_path / "checkpoints" / "step_08_quality_assessment",
-                                    
-                                    # 실제 존재하는 특수 디렉토리들
-                                    base_path / "Self-Correction-Human-Parsing",
-                                    base_path / "Graphonomy",
-                                    base_path / "human_parsing",
-                                    base_path / "pose_estimation",
-                                    base_path / "cloth_segmentation",
-                                    base_path / "experimental_models",
-                                    base_path / "future_enhancements",
-                                    base_path / "cache",
-                                    
-                                    # Virtual Fitting 상세 경로들 (실제 구조)
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "humanparsing",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "openpose",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "openpose" / "ckpts",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "text_encoder",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "vae",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd",
-                                    
-                                    # ultra_models 경로들
-                                    base_path / "step_01_human_parsing" / "ultra_models",
-                                    base_path / "step_03_cloth_segmentation" / "ultra_models",
-                                    base_path / "step_04_geometric_matching" / "ultra_models",
-                                    base_path / "step_05_cloth_warping" / "ultra_models",
-                                    base_path / "step_07_post_processing" / "ultra_models",
-                                    base_path / "step_08_quality_assessment" / "ultra_models",
-                                    
-                                    # 추가 특수 경로들
-                                    base_path / "step_08_quality_assessment" / "clip_vit_g14",
-                                    base_path / "step_07_post_processing" / "esrgan_x8_ultra",
-                                    base_path / "future_enhancements" / "face_enhancement",
-                                    base_path / "future_enhancements" / "face_enhancement" / "photomaker_ultra",
-                                    base_path / "future_enhancements" / "face_enhancement" / "instantid_ultra"
+                                    base_path / "models",
+                                    base_path / "step_01",
+                                    base_path / "step_02",
+                                    base_path / "step_03",
+                                    base_path / "step_04",
+                                    base_path / "step_05",
+                                    base_path / "step_06",
+                                    base_path / "step_07",
+                                    base_path / "step_08",
+                                    base_path / "ultra_models"
                                 ]
-                                
-                                # 존재하는 경로만 반환
-                                existing_paths = [p for p in paths if p.exists()]
-                                return existing_paths
-                                
                             except Exception:
                                 return [Path(ai_models_root)]
                     
@@ -2520,205 +2028,86 @@ class ModelLoader:
         except Exception as main_error:
             self.logger.error(f"❌ file_mapper 주 초기화 실패: {main_error}")
         
-        # 2차 시도: 안전한 더미 클래스 생성 (실제 구조 반영)
+        # 2차 시도: 안전한 더미 클래스 생성
         try:
             class SafeFileMapper:
                 def __init__(self, model_cache_dir):
                     self.model_cache_dir = Path(model_cache_dir) if model_cache_dir else Path('./ai_models')
                     
                 def find_actual_file(self, request_name, ai_models_root):
-                    """안전한 파일 찾기 (실제 파일 우선순위 적용)"""
+                    """안전한 파일 찾기"""
                     try:
                         ai_models_path = Path(ai_models_root) if ai_models_root else self.model_cache_dir
                         if not ai_models_path.exists():
                             return None
-                        
-                        # 🔥 실제 파일 매핑 테이블 (크기 우선순위)
-                        file_priority_mapping = {
-                            # Human Parsing 관련
-                            "human_parsing": [
-                                "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                                "step_01_human_parsing/exp-schp-201908301523-atr.pth",
-                                "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
-                            ],
-                            "schp": [
-                                "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                                "step_01_human_parsing/exp-schp-201908301523-atr.pth"
-                            ],
                             
-                            # Pose Estimation 관련
-                            "pose": [
-                                "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
-                                "step_02_pose_estimation/openpose.pth",
-                                "step_02_pose_estimation/body_pose_model.pth"
-                            ],
-                            "openpose": [
-                                "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
-                                "step_02_pose_estimation/openpose.pth"
-                            ],
-                            
-                            # Cloth Segmentation 관련  
-                            "sam": [
-                                "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                                "step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth"
-                            ],
-                            "u2net": [
-                                "step_03_cloth_segmentation/u2net.pth"
-                            ],
-                            "cloth": [
-                                "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                                "step_03_cloth_segmentation/u2net.pth"
-                            ],
-                            
-                            # Virtual Fitting 관련
-                            "diffusion": [
-                                "step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",
-                                "checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
-                            ],
-                            "virtual": [
-                                "step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",
-                                "checkpoints/step_06_virtual_fitting/hrviton_final.pth"
-                            ]
-                        }
-                        
-                        # 요청명과 매칭되는 파일 찾기
-                        request_lower = request_name.lower()
-                        candidates = []
-                        
-                        for keyword, file_list in file_priority_mapping.items():
-                            if keyword in request_lower:
-                                for file_path in file_list:
-                                    full_path = ai_models_path / file_path
-                                    if full_path.exists():
-                                        try:
-                                            size_mb = full_path.stat().st_size / (1024 * 1024)
-                                            if size_mb >= 50:  # 50MB 이상만
-                                                candidates.append((full_path, size_mb))
-                                        except:
-                                            continue
-                        
-                        # 크기순 정렬해서 가장 큰 파일 반환
-                        if candidates:
-                            candidates.sort(key=lambda x: x[1], reverse=True)
-                            return candidates[0][0]
-                        
-                        # 기본 패턴 매칭 (폴백)
+                        # 기본 패턴 매칭
                         patterns = [f"*{request_name}*.pth", f"*{request_name}*.pt", f"*{request_name}*.bin"]
                         for pattern in patterns:
                             for file_path in ai_models_path.rglob(pattern):
-                                if file_path.is_file():
-                                    try:
-                                        size_mb = file_path.stat().st_size / (1024 * 1024)
-                                        if size_mb >= 50:  # 50MB 이상만
-                                            return file_path
-                                    except:
-                                        continue
-                        
+                                if file_path.is_file() and file_path.stat().st_size > 50 * 1024 * 1024:  # 50MB 이상
+                                    return file_path
                         return None
                     except Exception:
                         return None
                         
                 def get_step_info(self, request_name):
-                    """Step 정보 반환 (실제 구조 기반)"""
+                    """Step 정보 반환"""
                     try:
+                        # Human Parsing 관련 매핑
                         request_lower = request_name.lower()
-                        
-                        # 실제 Step 매핑
-                        step_mappings = {
-                            # Human Parsing
-                            ("human", "parsing", "schp", "atr", "lip", "graphonomy"): {
-                                "step_name": "HumanParsingStep", "step_id": 1
-                            },
-                            # Pose Estimation  
-                            ("pose", "openpose", "body_pose"): {
-                                "step_name": "PoseEstimationStep", "step_id": 2
-                            },
-                            # Cloth Segmentation
-                            ("cloth", "segment", "u2net", "sam", "mask"): {
-                                "step_name": "ClothSegmentationStep", "step_id": 3
-                            },
-                            # Geometric Matching
-                            ("geometric", "matching", "gmm", "tps"): {
-                                "step_name": "GeometricMatchingStep", "step_id": 4
-                            },
-                            # Cloth Warping
-                            ("warp", "warping", "tom", "vgg"): {
-                                "step_name": "ClothWarpingStep", "step_id": 5
-                            },
-                            # Virtual Fitting
-                            ("virtual", "fitting", "diffusion", "hrviton", "ootd", "vae", "text_encoder"): {
-                                "step_name": "VirtualFittingStep", "step_id": 6
-                            },
-                            # Post Processing
-                            ("post", "process", "esrgan", "gfpgan", "enhance"): {
-                                "step_name": "PostProcessingStep", "step_id": 7
-                            },
-                            # Quality Assessment
-                            ("quality", "assessment", "clip", "lpips"): {
-                                "step_name": "QualityAssessmentStep", "step_id": 8
-                            }
-                        }
-                        
-                        for keywords, step_info in step_mappings.items():
-                            if any(keyword in request_lower for keyword in keywords):
-                                return step_info
-                        
-                        return {"step_name": "UnknownStep", "step_id": 0}
+                        if "human" in request_lower or "parsing" in request_lower or "schp" in request_lower:
+                            return {"step_name": "HumanParsingStep", "step_id": 1}
+                        elif "pose" in request_lower or "openpose" in request_lower:
+                            return {"step_name": "PoseEstimationStep", "step_id": 2}
+                        elif "cloth" in request_lower or "segment" in request_lower or "u2net" in request_lower:
+                            return {"step_name": "ClothSegmentationStep", "step_id": 3}
+                        elif "geometric" in request_lower or "matching" in request_lower:
+                            return {"step_name": "GeometricMatchingStep", "step_id": 4}
+                        elif "warp" in request_lower or "tom" in request_lower:
+                            return {"step_name": "ClothWarpingStep", "step_id": 5}
+                        elif "virtual" in request_lower or "fitting" in request_lower or "diffusion" in request_lower:
+                            return {"step_name": "VirtualFittingStep", "step_id": 6}
+                        elif "post" in request_lower or "process" in request_lower or "esrgan" in request_lower:
+                            return {"step_name": "PostProcessingStep", "step_id": 7}
+                        elif "quality" in request_lower or "assessment" in request_lower or "clip" in request_lower:
+                            return {"step_name": "QualityAssessmentStep", "step_id": 8}
+                        else:
+                            return {"step_name": "UnknownStep", "step_id": 0}
                     except Exception:
                         return None
                         
                 def discover_all_search_paths(self, ai_models_root):
-                    """안전한 검색 경로 반환 (실제 구조 반영)"""
+                    """안전한 검색 경로 반환"""
                     try:
                         base_path = Path(ai_models_root) if ai_models_root else self.model_cache_dir
                         paths = []
                         
-                        # 🔥 실제 확인된 경로들 (paste-2.txt 기반)
-                        path_candidates = [
+                        # 기본 경로들
+                        default_paths = [
                             "",  # 루트
                             "checkpoints",
+                            "models", 
                             "step_01_human_parsing",
-                            "step_02_pose_estimation", 
+                            "step_02_pose_estimation",
                             "step_03_cloth_segmentation",
                             "step_04_geometric_matching",
                             "step_05_cloth_warping",
                             "step_06_virtual_fitting",
                             "step_07_post_processing",
                             "step_08_quality_assessment",
-                            "Self-Correction-Human-Parsing",
-                            "Graphonomy",
-                            "human_parsing",
-                            "experimental_models",
-                            "future_enhancements",
-                            "cache",
-                            
-                            # checkpoints 하위
+                            "checkpoints/human_parsing",
                             "checkpoints/step_01_human_parsing",
+                            "checkpoints/pose_estimation",
                             "checkpoints/step_02_pose_estimation",
+                            "checkpoints/cloth_segmentation",
                             "checkpoints/step_03_cloth_segmentation",
-                            "checkpoints/step_04_geometric_matching",
-                            "checkpoints/step_05_cloth_warping",
-                            "checkpoints/step_06_virtual_fitting",
-                            "checkpoints/step_07_post_processing",
-                            "checkpoints/step_08_quality_assessment",
-                            
-                            # Virtual Fitting 상세 경로
-                            "step_06_virtual_fitting/ootdiffusion",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd",
-                            
-                            # ultra_models 경로들
-                            "step_01_human_parsing/ultra_models",
-                            "step_03_cloth_segmentation/ultra_models",
-                            "step_04_geometric_matching/ultra_models",
-                            "step_05_cloth_warping/ultra_models",
-                            "step_07_post_processing/ultra_models",
-                            "step_08_quality_assessment/ultra_models"
+                            "ultra_models",
+                            "Self-Correction-Human-Parsing",
+                            "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing"
                         ]
                         
-                        for sub_path in path_candidates:
+                        for sub_path in default_paths:
                             full_path = base_path / sub_path if sub_path else base_path
                             if full_path.exists():
                                 paths.append(full_path)
@@ -2977,148 +2366,138 @@ class ModelLoader:
             self.logger.error(f"❌ Step 요청사항 로드 실패: {e}")
 
     def _initialize_model_registry(self):
-        """실제 파일 구조 기반 모델 레지스트리 초기화 (paste-2.txt 구조 반영)"""
+        """기본 모델 레지스트리 초기화 (동적 실제 파일 기반으로 완전 수정)"""
         try:
             self.logger.info("📝 실제 파일 기반 모델 레지스트리 초기화...")
             
-            # 🔥 paste-2.txt에서 확인된 실제 파일들 기반 매핑
+            # 🔥 실제 탐지된 파일들을 기반으로 동적 모델 설정
             real_model_mappings = {
-                # Human Parsing 모델들 - 실제 존재하는 255MB 파일들
+                # Human Parsing 모델들 - 실제 존재하는 파일들
                 "human_parsing_schp_atr": {
                     "actual_files": [
                         "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                        "step_01_human_parsing/exp-schp-201908301523-atr.pth",
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth",
-                        "step_01_human_parsing/atr_model.pth",
-                        "step_01_human_parsing/lip_model.pth"
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
                     ],
                     "model_type": ModelType.HUMAN_PARSING,
                     "model_class": "HumanParsingModel",
                     "input_size": (512, 512),
                     "num_classes": 20,
-                    "expected_size_mb": 255.0,
-                    "priority": 1
+                    "expected_size_mb": 255.0
                 },
                 
                 # Pose Estimation 모델들 - 실제 존재하는 파일들  
                 "pose_estimation_openpose": {
                     "actual_files": [
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",  # 200MB
-                        "step_02_pose_estimation/openpose.pth",  # 98MB
-                        "step_02_pose_estimation/body_pose_model.pth",  # 98MB
-                        "openpose.pth"  # 40K (더미 파일)
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+                        "checkpoints/step_02_pose_estimation/openpose.pth",  # 199.6MB
+                        "checkpoints/step_02_pose_estimation/yolov8n-pose.pt",  # 6.5MB
+                        "checkpoints/pose_estimation/sk_model.pth",  # 16.4MB
+                        "checkpoints/pose_estimation/upernet_global_small.pth",  # 196.8MB
+                        "checkpoints/pose_estimation/latest_net_G.pth",  # 303.5MB
+                        "openpose.pth"
                     ],
                     "model_type": ModelType.POSE_ESTIMATION,
                     "model_class": "OpenPoseModel",
                     "input_size": (368, 368),
                     "num_classes": 18,
-                    "expected_size_mb": 200.0,
-                    "priority": 2
+                    "expected_size_mb": 200.0
                 },
                 
-                # Cloth Segmentation 모델들 - 실제 존재하는 대형 파일들
-                "cloth_segmentation_sam": {
-                    "actual_files": [
-                        "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",  # 2.4GB
-                        "step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth",  # 2.4GB
-                        "step_04_geometric_matching/sam_vit_h_4b8939.pth",  # 2.4GB
-                        "step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth"  # 2.4GB
-                    ],
-                    "model_type": ModelType.CLOTH_SEGMENTATION,
-                    "model_class": "SAMModel",
-                    "input_size": (1024, 1024),
-                    "num_classes": 1,
-                    "expected_size_mb": 2400.0,
-                    "priority": 1  # 대형 모델이므로 높은 우선순위
-                },
-                
+                # Cloth Segmentation 모델들 - 실제 존재하는 파일들
                 "cloth_segmentation_u2net": {
                     "actual_files": [
-                        "step_03_cloth_segmentation/u2net.pth",  # 168MB
-                        "step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth"  # 233MB
+                        "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",  # 2400MB+ (SAM)
+                        "step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth", 
+                        "step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth",
+                        "checkpoints/cloth_segmentation/u2net.pth",
+                        "checkpoints/step_03_cloth_segmentation/mask_anything.pth",
+                        "ai_models/u2net/u2net.pth",
+                        "models/sam/sam_vit_h_4b8939.pth"
                     ],
                     "model_type": ModelType.CLOTH_SEGMENTATION,
                     "model_class": "U2NetModel", 
                     "input_size": (320, 320),
                     "num_classes": 1,
-                    "expected_size_mb": 168.0,
-                    "priority": 2
+                    "expected_size_mb": 2400.0  # SAM 모델 크기
                 },
                 
-                # Geometric Matching 모델들
+                # Geometric Matching 모델 (실제 파일들 추가)
                 "geometric_matching_model": {
                     "actual_files": [
-                        "step_04_geometric_matching/gmm_final.pth",  # 45MB
-                        "step_04_geometric_matching/tps_network.pth",  # 528MB
-                        "step_04_geometric_matching/ultra_models/resnet101_geometric.pth",  # 171MB
-                        "step_04_geometric_matching/ultra_models/resnet50_geometric_ultra.pth"  # 98MB
+                        "checkpoints/step_04_geometric_matching/gmm_model.pth",
+                        "checkpoints/step_04_geometric_matching/tps_model.pth", 
+                        "ai_models/geometric_matching/gmm.pth",
+                        "models/tps/tps_model.pth"
                     ],
                     "model_type": ModelType.GEOMETRIC_MATCHING,
                     "model_class": "GeometricMatchingModel",
                     "input_size": (512, 384),
-                    "expected_size_mb": 528.0,
-                    "priority": 3
+                    "expected_size_mb": 150.0
                 },
                 
-                # Cloth Warping 모델들
+                # Cloth Warping 모델 (실제 파일들 추가)
                 "cloth_warping_model": {
                     "actual_files": [
-                        "checkpoints/step_05_cloth_warping/tom_final.pth",  # 83MB
-                        "step_05_cloth_warping/ultra_models/vgg19_warping.pth",  # 548MB
-                        "step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth"  # 528MB
+                        "checkpoints/step_05_cloth_warping/cloth_warp.pth",
+                        "checkpoints/step_05_cloth_warping/tps_warp.pth",
+                        "ai_models/cloth_warping/warp_model.pth" 
                     ],
                     "model_type": ModelType.CLOTH_WARPING,
                     "model_class": "ClothWarpingModel", 
                     "input_size": (512, 384),
-                    "expected_size_mb": 548.0,
-                    "priority": 3
+                    "expected_size_mb": 200.0
                 },
                 
-                # Virtual Fitting 모델들 - 대형 모델들
+                # Virtual Fitting 모델 (실제 파일들 추가)
                 "virtual_fitting_diffusion": {
                     "actual_files": [
-                        "step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",  # 3.2GB
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin",  # 469MB
-                        "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin",  # 319MB
-                        "checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin",  # 3.2GB
-                        "checkpoints/step_06_virtual_fitting/hrviton_final.pth"  # 230MB
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth",
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+                        "checkpoints/step_06_virtual_fitting/pytorch_model.bin",
+                        "checkpoints/step_06_virtual_fitting/diffusion_model.pth",
+                        "ai_models/virtual_fitting/ootd_model.pth"
                     ],
                     "model_type": ModelType.VIRTUAL_FITTING,
                     "model_class": "VirtualFittingModel",
                     "input_size": (512, 512), 
-                    "expected_size_mb": 3200.0,
-                    "priority": 1  # 가장 중요한 대형 모델
+                    "expected_size_mb": 1500.0
                 },
                 
-                # Post Processing 모델들
+                # Post Processing 모델 (실제 파일들 추가)
                 "post_processing_model": {
                     "actual_files": [
-                        "checkpoints/step_07_post_processing/GFPGAN.pth",  # 332MB
-                        "checkpoints/step_07_post_processing/RealESRGAN_x4plus.pth",  # 64MB
-                        "step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth",  # 136MB
-                        "step_07_post_processing/ultra_models/resnet101_enhance_ultra.pth"  # 171MB
+                        "checkpoints/step_07_post_processing/esrgan_model.pth",
+                        "checkpoints/step_07_post_processing/enhancement.pth",
+                        "ai_models/post_processing/enhance.pth"
                     ],
                     "model_type": ModelType.POST_PROCESSING,
                     "model_class": "PostProcessingModel",
                     "input_size": (512, 512),
-                    "expected_size_mb": 332.0,
-                    "priority": 4
+                    "expected_size_mb": 100.0
                 },
                 
-                # Quality Assessment 모델들
+                # Quality Assessment 모델 (실제 파일들 추가)
                 "quality_assessment_model": {
                     "actual_files": [
-                        "step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin",  # 5.1GB
-                        "checkpoints/step_08_quality_assessment/lpips_vgg.pth",  # 528MB
-                        "checkpoints/step_08_quality_assessment/lpips_alex.pth",  # 233MB
-                        "step_08_quality_assessment/ultra_models/pytorch_model.bin"  # 1.6GB
+                        "checkpoints/step_08_quality_assessment/quality_clip.pth",
+                        "checkpoints/step_08_quality_assessment/lpips_model.pth",
+                        "ai_models/quality_assessment/clip_model.pth"
                     ],
                     "model_type": ModelType.QUALITY_ASSESSMENT,
                     "model_class": "QualityAssessmentModel",
                     "input_size": (224, 224),
-                    "expected_size_mb": 5100.0,
-                    "priority": 2  # CLIP 대형 모델
+                    "expected_size_mb": 80.0
+                },
+                
+                # Virtual Fitting 모델 (폴백용) - 수정
+                "virtual_fitting_fallback": {
+                    "actual_files": [
+                        "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
+                    ],
+                    "model_type": ModelType.VIRTUAL_FITTING,
+                    "model_class": "StableDiffusionPipeline",
+                    "input_size": (512, 512),
+                    "expected_size_mb": 255.0
                 }
             }
             
@@ -3126,32 +2505,35 @@ class ModelLoader:
             
             for model_name, mapping_info in real_model_mappings.items():
                 try:
-                    # 실제 존재하는 파일 찾기 (크기 우선순위)
+                    # 실제 존재하는 파일 찾기
                     actual_checkpoint_path = None
                     actual_size_mb = 0.0
-                    best_candidate = None
                     
                     for relative_file_path in mapping_info["actual_files"]:
-                        full_path = self.model_cache_dir / relative_file_path
+                        # 절대경로 확보
+                        if not self.model_cache_dir.is_absolute():
+                            current_file = Path(__file__)
+                            backend_root = current_file.parents[3]  # backend/
+                            base_dir = backend_root / self.model_cache_dir
+                        else:
+                            base_dir = self.model_cache_dir
+                            
+                        full_path = base_dir / relative_file_path
                         if full_path.exists():
                             try:
                                 size_mb = full_path.stat().st_size / (1024 * 1024)
-                                
-                                # 🔥 크기 필터링: 50MB 이상만 고려
-                                if size_mb >= self.min_model_size_mb:
-                                    # 더 큰 파일을 우선 선택
-                                    if size_mb > actual_size_mb:
-                                        actual_checkpoint_path = str(full_path)
-                                        actual_size_mb = size_mb
-                                        best_candidate = relative_file_path
-                                        
+                                if size_mb >= self.min_model_size_mb:  # 50MB 이상만
+                                    actual_checkpoint_path = str(full_path)
+                                    actual_size_mb = size_mb
+                                    self.logger.info(f"✅ 실제 파일 발견: {model_name} → {relative_file_path} ({size_mb:.1f}MB)")
+                                    break
                             except Exception as size_error:
                                 self.logger.debug(f"파일 크기 확인 실패: {full_path} - {size_error}")
                                 continue
                     
                     # 실제 파일이 없으면 이 모델은 건너뛰기
                     if not actual_checkpoint_path:
-                        self.logger.warning(f"⚠️ {model_name} 실제 파일 없음 (50MB 이상) - 건너뛰기")
+                        self.logger.warning(f"⚠️ {model_name} 실제 파일 없음 - 건너뛰기")
                         continue
                     
                     # ModelConfig 생성 (실제 파일 기반)
@@ -3166,14 +2548,10 @@ class ModelLoader:
                         num_classes=mapping_info.get("num_classes"),
                         file_size_mb=actual_size_mb,
                         metadata={
-                            "source": "real_file_detection_v2",
+                            "source": "dynamic_real_file_detection",
                             "expected_size_mb": mapping_info["expected_size_mb"],
                             "actual_size_mb": actual_size_mb,
-                            "relative_path": best_candidate,
-                            "priority": mapping_info["priority"],
-                            "is_large_model": actual_size_mb > 1000,  # 1GB 이상
-                            "file_count_available": len([f for f in mapping_info["actual_files"] 
-                                                    if (self.model_cache_dir / f).exists()])
+                            "relative_path": str(Path(actual_checkpoint_path).relative_to(self.model_cache_dir))
                         }
                     )
                     
@@ -3185,10 +2563,7 @@ class ModelLoader:
                     if validation.is_valid:
                         self.model_configs[model_name] = model_config
                         registered_count += 1
-                        
-                        # 로깅 (크기별 이모지)
-                        size_emoji = "🔥" if actual_size_mb > 1000 else "📦"
-                        self.logger.info(f"✅ {size_emoji} 실제 모델 등록: {model_name} ({actual_size_mb:.1f}MB) ← {best_candidate}")
+                        self.logger.info(f"✅ 실제 모델 등록: {model_name} ({actual_size_mb:.1f}MB)")
                     else:
                         self.logger.warning(f"⚠️ {model_name} 검증 실패: {validation.error_message}")
                     
@@ -3202,22 +2577,11 @@ class ModelLoader:
             if registered_count == 0:
                 self.logger.warning("⚠️ 등록된 실제 모델이 없음 - 폴백 처리")
                 self._initialize_fallback_models()
-            else:
-                # 성공 통계 출력
-                large_models = sum(1 for config in self.model_configs.values() 
-                                if config.metadata.get("is_large_model", False))
-                total_size_gb = sum(config.file_size_mb for config in self.model_configs.values()) / 1024
-                
-                self.logger.info(f"📊 등록 모델 통계:")
-                self.logger.info(f"   - 전체: {registered_count}개")
-                self.logger.info(f"   - 대형 모델(1GB+): {large_models}개")
-                self.logger.info(f"   - 총 크기: {total_size_gb:.1f}GB")
             
         except Exception as e:
             self.logger.error(f"❌ 모델 레지스트리 초기화 실패: {e}")
             # 완전 실패 시 폴백
             self._initialize_fallback_models()
-
 
     def _initialize_fallback_models(self):
         """폴백 모델 등록 (실제 파일이 없을 때)"""
@@ -4300,71 +3664,6 @@ class ModelLoader:
             self.logger.error(f"❌ 체크포인트 로딩 실패 {model_name}: {e}")
             return None
     
-    
-    # backend/app/ai_pipeline/utils/model_loader.py 파일에 추가할 메서드
-
-    def _find_checkpoint_file(self, model_name: str) -> Optional[Path]:
-        """🔥 체크포인트 파일 찾기 (누락된 메서드 추가)"""
-        try:
-            # 🔥 1단계: 모델 설정에서 직접 경로 확인
-            if model_name in self.model_configs:
-                config = self.model_configs[model_name]
-                if hasattr(config, 'checkpoint_path') and config.checkpoint_path:
-                    checkpoint_path = Path(config.checkpoint_path)
-                    if checkpoint_path.exists():
-                        size_mb = checkpoint_path.stat().st_size / (1024 * 1024)
-                        if size_mb >= self.min_model_size_mb:
-                            self.logger.debug(f"📝 모델 설정 경로 사용: {model_name} ({size_mb:.1f}MB)")
-                            return checkpoint_path
-            
-            # 🔥 2단계: available_models에서 찾기
-            if model_name in self.available_models:
-                model_info = self.available_models[model_name]
-                if "full_path" in model_info.get("metadata", {}):
-                    full_path = Path(model_info["metadata"]["full_path"])
-                    if full_path.exists():
-                        size_mb = full_path.stat().st_size / (1024 * 1024)
-                        if size_mb >= self.min_model_size_mb:
-                            self.logger.debug(f"📋 available_models 사용: {model_name}")
-                            return full_path
-            
-            # 🔥 3단계: 직접 파일명 매칭
-            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt"]
-            for ext in extensions:
-                direct_path = self.model_cache_dir / f"{model_name}{ext}"
-                if direct_path.exists():
-                    size_mb = direct_path.stat().st_size / (1024 * 1024)
-                    if size_mb >= self.min_model_size_mb:
-                        self.logger.debug(f"📁 직접 파일명 매칭: {model_name}")
-                        return direct_path
-            
-            # 🔥 4단계: 패턴 매칭으로 찾기
-            candidates = []
-            for model_file in self.model_cache_dir.rglob("*"):
-                if model_file.is_file() and model_file.suffix.lower() in extensions:
-                    if model_name.lower() in model_file.name.lower():
-                        try:
-                            size_mb = model_file.stat().st_size / (1024 * 1024)
-                            if size_mb >= self.min_model_size_mb:
-                                candidates.append((model_file, size_mb))
-                        except:
-                            continue
-            
-            if candidates:
-                # 크기순 정렬 (큰 것부터)
-                candidates.sort(key=lambda x: x[1], reverse=True)
-                best_candidate = candidates[0][0]
-                self.logger.debug(f"🔍 패턴 매칭: {model_name} → {best_candidate.name}")
-                return best_candidate
-            
-            self.logger.warning(f"⚠️ 체크포인트 파일 없음: {model_name}")
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ 체크포인트 파일 찾기 실패 {model_name}: {e}")
-            return None
-
-
     def _safe_load_checkpoint_sync(self, model_name: str, kwargs: Dict[str, Any]) -> Optional[Any]:
         """안전한 동기 체크포인트 로딩 (Human Parsing 오류 핵심 해결)"""
         try:
@@ -4611,369 +3910,60 @@ class ModelLoader:
             self.logger.warning(f"⚠️ 체크포인트 후처리 실패: {e}")
             return checkpoint
     
-    def _safe_initialize_file_mapper(self):
-        """🔥 안전한 file_mapper 초기화 (실제 구조 반영)"""
+    def _find_checkpoint_file(self, model_name: str) -> Optional[Path]:
+        """🔥 체크포인트 파일 찾기 (Human Parsing 오류 해결 핵심)"""
         try:
-            self.logger.info("🔄 file_mapper 안전 초기화 시작...")
+            # 🔥 1단계: 모델 설정에서 직접 경로 확인
+            if model_name in self.model_configs:
+                config = self.model_configs[model_name]
+                if config.checkpoint_path:
+                    checkpoint_path = Path(config.checkpoint_path)
+                    if checkpoint_path.exists():
+                        self.logger.debug(f"📝 모델 설정 경로 사용: {model_name}")
+                        return checkpoint_path
             
-            # 1차 시도: auto_model_detector 사용
-            try:
-                from .auto_model_detector import get_global_detector
+            # 🔥 2단계: Human Parsing 모델 특화 검색
+            if "human_parsing" in model_name.lower() or "schp" in model_name.lower():
+                human_parsing_patterns = [
+                    "exp-schp-201908301523-atr.pth",
+                    "schp_atr.pth",
+                    "human_parsing.pth",
+                    "graphonomy.pth"
+                ]
                 
-                detector = get_global_detector()
-                
-                if detector:
-                    # file_mapper에 필요한 메서드들을 detector로 매핑
-                    class FileMapperAdapter:
-                        def __init__(self, detector):
-                            self.detector = detector
-                            
-                        def find_actual_file(self, request_name, ai_models_root):
-                            """요청명으로 실제 파일 찾기"""
-                            try:
-                                if hasattr(self.detector, 'detected_models'):
-                                    for model in self.detector.detected_models.values():
-                                        if request_name.lower() in str(model.path).lower():
-                                            return model.path
-                                return None
-                            except Exception:
-                                return None
-                                
-                        def get_step_info(self, request_name):
-                            """Step 정보 반환"""
-                            try:
-                                if hasattr(self.detector, 'step_mapper'):
-                                    return self.detector.step_mapper.match_file_to_step(request_name)
-                                return None
-                            except Exception:
-                                return None
-                                
-                        def discover_all_search_paths(self, ai_models_root):
-                            """모든 검색 경로 반환 (paste-2.txt 구조 반영)"""
-                            try:
-                                base_path = Path(ai_models_root)
-                                
-                                # 🔥 실제 확인된 디렉토리 구조 기반 경로
-                                paths = [
-                                    # 루트 경로
-                                    base_path,
-                                    
-                                    # 메인 Step 디렉토리들
-                                    base_path / "step_01_human_parsing",
-                                    base_path / "step_02_pose_estimation",
-                                    base_path / "step_03_cloth_segmentation", 
-                                    base_path / "step_04_geometric_matching",
-                                    base_path / "step_05_cloth_warping",
-                                    base_path / "step_06_virtual_fitting",
-                                    base_path / "step_07_post_processing",
-                                    base_path / "step_08_quality_assessment",
-                                    
-                                    # checkpoints 하위 디렉토리들
-                                    base_path / "checkpoints",
-                                    base_path / "checkpoints" / "step_01_human_parsing",
-                                    base_path / "checkpoints" / "step_02_pose_estimation",
-                                    base_path / "checkpoints" / "step_03_cloth_segmentation",
-                                    base_path / "checkpoints" / "step_04_geometric_matching",
-                                    base_path / "checkpoints" / "step_05_cloth_warping",
-                                    base_path / "checkpoints" / "step_06_virtual_fitting",
-                                    base_path / "checkpoints" / "step_07_post_processing",
-                                    base_path / "checkpoints" / "step_08_quality_assessment",
-                                    
-                                    # 실제 존재하는 특수 디렉토리들
-                                    base_path / "Self-Correction-Human-Parsing",
-                                    base_path / "Graphonomy",
-                                    base_path / "human_parsing",
-                                    base_path / "pose_estimation",
-                                    base_path / "cloth_segmentation",
-                                    base_path / "experimental_models",
-                                    base_path / "future_enhancements",
-                                    base_path / "cache",
-                                    
-                                    # Virtual Fitting 상세 경로들 (실제 구조)
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "humanparsing",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "openpose",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "openpose" / "ckpts",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "text_encoder",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "vae",
-                                    base_path / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd",
-                                    
-                                    # ultra_models 경로들
-                                    base_path / "step_01_human_parsing" / "ultra_models",
-                                    base_path / "step_03_cloth_segmentation" / "ultra_models",
-                                    base_path / "step_04_geometric_matching" / "ultra_models",
-                                    base_path / "step_05_cloth_warping" / "ultra_models",
-                                    base_path / "step_07_post_processing" / "ultra_models",
-                                    base_path / "step_08_quality_assessment" / "ultra_models",
-                                    
-                                    # 추가 특수 경로들
-                                    base_path / "step_08_quality_assessment" / "clip_vit_g14",
-                                    base_path / "step_07_post_processing" / "esrgan_x8_ultra",
-                                    base_path / "future_enhancements" / "face_enhancement",
-                                    base_path / "future_enhancements" / "face_enhancement" / "photomaker_ultra",
-                                    base_path / "future_enhancements" / "face_enhancement" / "instantid_ultra"
-                                ]
-                                
-                                # 존재하는 경로만 반환
-                                existing_paths = [p for p in paths if p.exists()]
-                                return existing_paths
-                                
-                            except Exception:
-                                return [Path(ai_models_root)]
-                    
-                    self.file_mapper = FileMapperAdapter(detector)
-                    self.logger.info("✅ FileMapperAdapter 초기화 완료")
-                    return
-                    
-            except ImportError as import_error:
-                self.logger.warning(f"⚠️ auto_model_detector import 실패: {import_error}")
-            except Exception as detector_error:
-                self.logger.warning(f"⚠️ detector 처리 실패: {detector_error}")
-                
-        except Exception as main_error:
-            self.logger.error(f"❌ file_mapper 주 초기화 실패: {main_error}")
-        
-        # 2차 시도: 안전한 더미 클래스 생성 (실제 구조 반영)
-        try:
-            class SafeFileMapper:
-                def __init__(self, model_cache_dir):
-                    self.model_cache_dir = Path(model_cache_dir) if model_cache_dir else Path('./ai_models')
-                    
-                def find_actual_file(self, request_name, ai_models_root):
-                    """안전한 파일 찾기 (실제 파일 우선순위 적용)"""
-                    try:
-                        ai_models_path = Path(ai_models_root) if ai_models_root else self.model_cache_dir
-                        if not ai_models_path.exists():
-                            return None
-                        
-                        # 🔥 실제 파일 매핑 테이블 (크기 우선순위)
-                        file_priority_mapping = {
-                            # Human Parsing 관련
-                            "human_parsing": [
-                                "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                                "step_01_human_parsing/exp-schp-201908301523-atr.pth",
-                                "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
-                            ],
-                            "schp": [
-                                "Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth",
-                                "step_01_human_parsing/exp-schp-201908301523-atr.pth"
-                            ],
-                            
-                            # Pose Estimation 관련
-                            "pose": [
-                                "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
-                                "step_02_pose_estimation/openpose.pth",
-                                "step_02_pose_estimation/body_pose_model.pth"
-                            ],
-                            "openpose": [
-                                "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
-                                "step_02_pose_estimation/openpose.pth"
-                            ],
-                            
-                            # Cloth Segmentation 관련  
-                            "sam": [
-                                "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                                "step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth"
-                            ],
-                            "u2net": [
-                                "step_03_cloth_segmentation/u2net.pth"
-                            ],
-                            "cloth": [
-                                "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                                "step_03_cloth_segmentation/u2net.pth"
-                            ],
-                            
-                            # Virtual Fitting 관련
-                            "diffusion": [
-                                "step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",
-                                "checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
-                            ],
-                            "virtual": [
-                                "step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",
-                                "checkpoints/step_06_virtual_fitting/hrviton_final.pth"
-                            ]
-                        }
-                        
-                        # 요청명과 매칭되는 파일 찾기
-                        request_lower = request_name.lower()
-                        candidates = []
-                        
-                        for keyword, file_list in file_priority_mapping.items():
-                            if keyword in request_lower:
-                                for file_path in file_list:
-                                    full_path = ai_models_path / file_path
-                                    if full_path.exists():
-                                        try:
-                                            size_mb = full_path.stat().st_size / (1024 * 1024)
-                                            if size_mb >= 50:  # 50MB 이상만
-                                                candidates.append((full_path, size_mb))
-                                        except:
-                                            continue
-                        
-                        # 크기순 정렬해서 가장 큰 파일 반환
-                        if candidates:
-                            candidates.sort(key=lambda x: x[1], reverse=True)
-                            return candidates[0][0]
-                        
-                        # 기본 패턴 매칭 (폴백)
-                        patterns = [f"*{request_name}*.pth", f"*{request_name}*.pt", f"*{request_name}*.bin"]
-                        for pattern in patterns:
-                            for file_path in ai_models_path.rglob(pattern):
-                                if file_path.is_file():
-                                    try:
-                                        size_mb = file_path.stat().st_size / (1024 * 1024)
-                                        if size_mb >= 50:  # 50MB 이상만
-                                            return file_path
-                                    except:
-                                        continue
-                        
-                        return None
-                    except Exception:
-                        return None
-                        
-                def get_step_info(self, request_name):
-                    """Step 정보 반환 (실제 구조 기반)"""
-                    try:
-                        request_lower = request_name.lower()
-                        
-                        # 실제 Step 매핑
-                        step_mappings = {
-                            # Human Parsing
-                            ("human", "parsing", "schp", "atr", "lip", "graphonomy"): {
-                                "step_name": "HumanParsingStep", "step_id": 1
-                            },
-                            # Pose Estimation  
-                            ("pose", "openpose", "body_pose"): {
-                                "step_name": "PoseEstimationStep", "step_id": 2
-                            },
-                            # Cloth Segmentation
-                            ("cloth", "segment", "u2net", "sam", "mask"): {
-                                "step_name": "ClothSegmentationStep", "step_id": 3
-                            },
-                            # Geometric Matching
-                            ("geometric", "matching", "gmm", "tps"): {
-                                "step_name": "GeometricMatchingStep", "step_id": 4
-                            },
-                            # Cloth Warping
-                            ("warp", "warping", "tom", "vgg"): {
-                                "step_name": "ClothWarpingStep", "step_id": 5
-                            },
-                            # Virtual Fitting
-                            ("virtual", "fitting", "diffusion", "hrviton", "ootd", "vae", "text_encoder"): {
-                                "step_name": "VirtualFittingStep", "step_id": 6
-                            },
-                            # Post Processing
-                            ("post", "process", "esrgan", "gfpgan", "enhance"): {
-                                "step_name": "PostProcessingStep", "step_id": 7
-                            },
-                            # Quality Assessment
-                            ("quality", "assessment", "clip", "lpips"): {
-                                "step_name": "QualityAssessmentStep", "step_id": 8
-                            }
-                        }
-                        
-                        for keywords, step_info in step_mappings.items():
-                            if any(keyword in request_lower for keyword in keywords):
-                                return step_info
-                        
-                        return {"step_name": "UnknownStep", "step_id": 0}
-                    except Exception:
-                        return None
-                        
-                def discover_all_search_paths(self, ai_models_root):
-                    """안전한 검색 경로 반환 (실제 구조 반영)"""
-                    try:
-                        base_path = Path(ai_models_root) if ai_models_root else self.model_cache_dir
-                        paths = []
-                        
-                        # 🔥 실제 확인된 경로들 (paste-2.txt 기반)
-                        path_candidates = [
-                            "",  # 루트
-                            "checkpoints",
-                            "step_01_human_parsing",
-                            "step_02_pose_estimation", 
-                            "step_03_cloth_segmentation",
-                            "step_04_geometric_matching",
-                            "step_05_cloth_warping",
-                            "step_06_virtual_fitting",
-                            "step_07_post_processing",
-                            "step_08_quality_assessment",
-                            "Self-Correction-Human-Parsing",
-                            "Graphonomy",
-                            "human_parsing",
-                            "experimental_models",
-                            "future_enhancements",
-                            "cache",
-                            
-                            # checkpoints 하위
-                            "checkpoints/step_01_human_parsing",
-                            "checkpoints/step_02_pose_estimation",
-                            "checkpoints/step_03_cloth_segmentation",
-                            "checkpoints/step_04_geometric_matching",
-                            "checkpoints/step_05_cloth_warping",
-                            "checkpoints/step_06_virtual_fitting",
-                            "checkpoints/step_07_post_processing",
-                            "checkpoints/step_08_quality_assessment",
-                            
-                            # Virtual Fitting 상세 경로
-                            "step_06_virtual_fitting/ootdiffusion",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts",
-                            "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd",
-                            
-                            # ultra_models 경로들
-                            "step_01_human_parsing/ultra_models",
-                            "step_03_cloth_segmentation/ultra_models",
-                            "step_04_geometric_matching/ultra_models",
-                            "step_05_cloth_warping/ultra_models",
-                            "step_07_post_processing/ultra_models",
-                            "step_08_quality_assessment/ultra_models"
-                        ]
-                        
-                        for sub_path in path_candidates:
-                            full_path = base_path / sub_path if sub_path else base_path
-                            if full_path.exists():
-                                paths.append(full_path)
-                        
-                        return paths if paths else [base_path]
-                    except Exception:
-                        return [Path(ai_models_root) if ai_models_root else Path('./ai_models')]
+                for pattern in human_parsing_patterns:
+                    for candidate in self.model_cache_dir.rglob(pattern):
+                        if candidate.exists():
+                            self.logger.info(f"🎯 Human Parsing 모델 발견: {model_name} → {candidate}")
+                            return candidate
             
-            self.file_mapper = SafeFileMapper(self.model_cache_dir)
-            self.logger.info("✅ SafeFileMapper 폴백 사용")
+            # 🔥 3단계: available_models에서 우선순위대로 찾기 (크기순)
+            if model_name in self.available_models:
+                model_info = self.available_models[model_name]
+                if "full_path" in model_info["metadata"]:
+                    full_path = Path(model_info["metadata"]["full_path"])
+                    if full_path.exists():
+                        return full_path
             
-        except Exception as safe_error:
-            self.logger.error(f"❌ SafeFileMapper 생성 실패: {safe_error}")
+            # 🔥 4단계: 직접 파일명 매칭
+            extensions = [".pth", ".pt", ".bin", ".safetensors", ".ckpt"]
+            for ext in extensions:
+                direct_path = self.model_cache_dir / f"{model_name}{ext}"
+                if direct_path.exists():
+                    self.logger.debug(f"📁 직접 파일명 매칭: {model_name}")
+                    return direct_path
             
-            # 3차 시도: 최종 폴백
-            try:
-                class EmergencyFileMapper:
-                    def __init__(self):
-                        pass
-                        
-                    def find_actual_file(self, request_name, ai_models_root):
-                        return None
-                        
-                    def get_step_info(self, request_name):
-                        return None
-                        
-                    def discover_all_search_paths(self, ai_models_root):
-                        try:
-                            return [Path(ai_models_root) if ai_models_root else Path('./ai_models')]
-                        except:
-                            return [Path('./ai_models')]
-                        
-                self.file_mapper = EmergencyFileMapper()
-                self.logger.warning("🚨 EmergencyFileMapper 최종 폴백 사용")
-                
-            except Exception as emergency_error:
-                self.logger.error(f"❌ EmergencyFileMapper도 실패: {emergency_error}")
-                self.file_mapper = None
-
-
+            # 🔥 5단계: 패턴 매칭으로 찾기 (크기 우선순위 적용)
+            pattern_result = self._find_via_pattern_matching(model_name, extensions)
+            if pattern_result:
+                return pattern_result
+            
+            self.logger.warning(f"⚠️ 체크포인트 파일 없음: {model_name}")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ 체크포인트 파일 찾기 실패 {model_name}: {e}")
+            return None
 
     def _find_via_pattern_matching(self, model_name: str, extensions: List[str]) -> Optional[Path]:
         """패턴 매칭으로 찾기 (크기 우선순위 적용)"""
@@ -5477,33 +4467,6 @@ def safe_load_checkpoint(checkpoint_path: Union[str, Path], device: str = "cpu")
     except Exception as e:
         logger.error(f"❌ 안전한 체크포인트 로딩 실패: {e}")
         return None
-
-# backend/app/ai_pipeline/utils/model_loader.py에 추가
-def get_performance_metrics(self) -> Dict[str, Any]:
-    """성능 메트릭 조회 메서드 추가"""
-    try:
-        avg_load_time = (
-            self.performance_stats['total_load_time'] / max(1, self.performance_stats['models_loaded'])
-        )
-        validation_rate = (
-            self.performance_stats['validation_success'] / max(1, self.performance_stats['validation_count']) * 100
-        )
-        
-        return {
-            "performance": {
-                "load_time_sec": avg_load_time,
-                "models_loaded": self.performance_stats['models_loaded'],
-                "validation_rate": validation_rate,
-                "cache_hits": self.performance_stats.get('cache_hits', 0)
-            },
-            "system": {
-                "device": self.device,
-                "memory_gb": self.memory_gb,
-                "is_m3_max": self.is_m3_max
-            }
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 # 기존 호환성을 위한 함수들
 def get_model(model_name: str) -> Optional[Any]:

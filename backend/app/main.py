@@ -1211,6 +1211,50 @@ async def not_found_handler(request: Request, exc):
 # =============================================================================
 
 if __name__ == "__main__":
+
+
+    try:
+        print("🔍 수동으로 AutoDetector 실행 중...")
+        from app.ai_pipeline.utils.auto_model_detector import get_global_detector, quick_model_detection
+        
+        detector = get_global_detector()
+        if detector:
+            print(f"✅ Detector 획득: {detector.__class__.__name__}")
+            print(f"📁 AI 모델 루트: {detector.ai_models_root}")
+            print(f"💾 최소 크기: {detector.min_model_size_mb}MB")
+            
+            # 강제 탐지 실행
+            models = quick_model_detection()
+            print(f"🎯 탐지 결과: {len(models)}개 모델")
+            
+            if models:
+                print("🏆 상위 5개 모델:")
+                sorted_models = sorted(models.values(), key=lambda x: x.file_size_mb, reverse=True)
+                for i, model in enumerate(sorted_models[:5]):
+                    print(f"  {i+1}. {model.name}: {model.file_size_mb:.1f}MB")
+            else:
+                print("❌ 탐지된 모델 없음!")
+                
+            # ModelLoader와 연동 확인
+            print("\n🔗 ModelLoader 연동 확인...")
+            from app.ai_pipeline.utils.model_loader import get_global_model_loader
+            loader = get_global_model_loader()
+            print(f"📊 ModelLoader available_models: {len(loader.available_models)}개")
+            
+            if not loader.available_models:
+                print("🔄 강제 통합 실행...")
+                success = loader.integrate_auto_detector()
+                print(f"✅ 통합 결과: {success}")
+                print(f"📊 통합 후 available_models: {len(loader.available_models)}개")
+                
+        else:
+            print("❌ Detector 없음!")
+            
+    except Exception as e:
+        print(f"❌ 디버깅 실패: {e}")
+        import traceback
+        traceback.print_exc()
+    
     print("\n" + "="*120)
     print("🔥 MyCloset AI 백엔드 서버 - 모든 라우터 + 실제 AI 파이프라인 v20.0")
     print("="*120)

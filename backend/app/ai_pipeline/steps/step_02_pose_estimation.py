@@ -105,7 +105,7 @@ except ImportError:
 
 # PyTorch 안전 연산 import
 try:
-    from app.ai_pipeline.utils.pytorch_safe_ops import (
+    from ..utils.pytorch_safe_ops import (
         safe_max, safe_amax, safe_argmax,
         extract_keypoints_from_heatmaps,
         tensor_to_pil_conda_optimized
