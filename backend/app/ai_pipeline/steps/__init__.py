@@ -149,7 +149,7 @@ class Step01SpecialLoader:
                 step01_class = self._try_standard_loading()
                 if step01_class is not None:
                     self._step01_cache = step01_class
-                    self.logger.info("✅ Step 01 표준 로딩 성공")
+                    self.logger.info("✅ Step 01 표준 로딩 성공 (다른 Step과 동일한 패턴)")
                     return step01_class
                 
                 # 방법 2: 직접 파일 경로로 로딩
@@ -383,8 +383,7 @@ class SimpleStepLoader:
             self.logger.info(f"✅ 로드된 Steps: {', '.join(successful_steps)}")
         
         if failed_steps:
-            self.logger.info(f"⚠️ 구현 대기 Steps: {', '.join(failed_steps)}")
-            self.logger.info("💡 이는 정상적인 상태입니다 (단계적 구현)")
+            self.logger.info(f"⚠️ 실패한 Steps: {', '.join(failed_steps)}")
         
         # conda 환경 특별 메시지
         if IS_CONDA:

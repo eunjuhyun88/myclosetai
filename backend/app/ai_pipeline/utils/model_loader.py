@@ -316,11 +316,11 @@ class BaseRealAIModel(ABC):
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
         self.load_time = 0.0
         self.memory_usage_mb = 0.0
-        self._setup_mps_safety()
 
         # torch 사용 가능 여부 확인
         self.torch_available = TORCH_AVAILABLE and torch is not None
-        
+        self._setup_mps_safety()
+
     def _resolve_device(self, device: str) -> str:
         """디바이스 해결"""
         if device == "auto":
