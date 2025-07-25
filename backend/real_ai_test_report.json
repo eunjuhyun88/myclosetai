@@ -1,0 +1,104 @@
+{
+  "test_timestamp": "2025-07-25 13:52:24",
+  "system_info": {
+    "platform": "Darwin",
+    "python_version": "3.10.18",
+    "torch_version": "2.2.2",
+    "device": "mps",
+    "ai_models_root": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"
+  },
+  "model_discovery": {
+    "total_files_found": 5,
+    "search_paths": [
+      "geometric_matching",
+      "human_parsing",
+      "cloth_segmentation"
+    ]
+  },
+  "test_results": {
+    "step_04": {
+      "step_id": 4,
+      "test_name": "geometric_matching_real_ai",
+      "models_found": 5,
+      "models_loaded": 3,
+      "tests_passed": 4,
+      "inference_results": {
+        "gmm": {
+          "displacement_field_shape": [
+            1,
+            2,
+            256,
+            192
+          ],
+          "matching_score": 0.0632341131567955,
+          "warped_grid_range": [
+            -0.9600886702537537,
+            1.0819259881973267
+          ]
+        },
+        "tps": {
+          "warped_clothing_shape": [
+            1,
+            3,
+            256,
+            192
+          ],
+          "control_points_shape": [
+            1,
+            25,
+            2
+          ],
+          "tps_quality": 0.07144644856452942
+        },
+        "sam": {
+          "mask_shape": [
+            1,
+            1,
+            256,
+            256
+          ],
+          "confidence": 0.5344781875610352,
+          "image_features_shape": [
+            1,
+            256,
+            64,
+            64
+          ]
+        },
+        "pipeline": {
+          "final_warped_shape": [
+            1,
+            3,
+            256,
+            192
+          ],
+          "overall_quality": 0.06765741109848022
+        }
+      },
+      "performance": {
+        "gmm_load_time": 0.13824677467346191,
+        "tps_load_time": 0.4351789951324463,
+        "sam_load_time": 0.404268741607666,
+        "pipeline_time": 0.03549313545227051
+      },
+      "success_rate": 80.0
+    }
+  },
+  "loaded_models": {
+    "gmm": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_04_geometric_matching/gmm_final.pth",
+      "size_mb": 44.658203125,
+      "parameters": 11699112
+    },
+    "tps": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_04_geometric_matching/tps_network.pth",
+      "size_mb": 527.7956781387329,
+      "parameters": 138357544
+    },
+    "sam": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth",
+      "size_mb": 2445.7463064193726,
+      "parameters": 641090864
+    }
+  }
+}
