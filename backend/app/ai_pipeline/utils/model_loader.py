@@ -1714,30 +1714,68 @@ class RealAIModelLoader:
             self.logger.warning(f"⚠️ AI 모델 언로드 중 오류: {model_name} - {e}")
             return True  # 오류가 있어도 성공으로 처리
     
-    def cleanup(self):
-        """리소스 정리"""
-        self.logger.info("🧹 실제 AI ModelLoader 리소스 정리 중...")
-        
+# ==============================================
+# 🔥 호환성 속성 및 메서드 추가
+# ==============================================
+
+    # 기존 코드와의 호환성을 위한 속성들
+    @property
+    def available_models(self) -> Dict[str, Any]:
+        """호환성을 위한 available_models 속성"""
         try:
-            # 모든 AI 모델 언로드
-            for model_name in list(self.model_cache.keys()):
-                self.unload_model(model_name)
+            # 캐시된 모델들이 있으면 반환
+            if hasattr(self, '_available_models_cache') and self._available_models_cache:
+                return self._available_models_cache
             
-            # 캐시 정리
-            self.model_cache.clear()
-            self.loaded_ai_models.clear()
-            self.step_interfaces.clear()
+            # auto_detector에서 가져오기
+            if self.auto_detector:
+                detected_models = self.auto_detector.detect_all_models()
+                available_dict = {}
+                for model_name, detected_model in detected_models.items():
+                    available_dict[model_name] = {
+                        "name": model_name,
+                        "path": str(detected_model.path),
+                        "size_mb": detected_model.file_size_mb,
+                        "ai_class": detected_model.ai_class,
+                        "step_id": detected_model.step_id,
+                        "available": True
+                    }
+                return available_dict
             
-            # 스레드풀 종료
-            self._executor.shutdown(wait=True)
+            # 폴백: list_available_models()에서 변환
+            models_list = self.list_available_models()
+            return {f"model_{i}": model for i, model in enumerate(models_list)}
+        except:
+            return {}
+    
+    @property
+    def loaded_models(self) -> Dict[str, BaseRealAIModel]:
+        """호환성을 위한 loaded_models 속성"""
+        return self.loaded_ai_models
+    
+    def initialize(self, **kwargs) -> bool:
+        """ModelLoader 초기화 (호환성)"""
+        try:
+            if kwargs:
+                for key, value in kwargs.items():
+                    if hasattr(self, key):
+                        setattr(self, key, value)
             
-            # 최종 메모리 정리
-            self._safe_memory_cleanup()
-            
-            self.logger.info("✅ 실제 AI ModelLoader 리소스 정리 완료")
+            self._safe_initialize()
+            return True
             
         except Exception as e:
-            self.logger.error(f"❌ 리소스 정리 실패: {e}")
+            self.logger.error(f"❌ ModelLoader 초기화 실패: {e}")
+            return False
+    
+    async def initialize_async(self, **kwargs) -> bool:
+        """비동기 초기화 (호환성)"""
+        try:
+            result = self.initialize(**kwargs)
+            return result
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 비동기 초기화 실패: {e}")
+            return False
 
 # ==============================================
 # 🔥 실제 AI 기반 Step 인터페이스
@@ -1916,6 +1954,32 @@ def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> RealAIMo
                 
         return _global_real_model_loader
 
+# 전역 초기화 함수들 (호환성)
+def initialize_global_model_loader(**kwargs) -> bool:
+    """전역 ModelLoader 초기화 (호환성 함수)"""
+    try:
+        loader = get_global_model_loader()
+        return loader.initialize(**kwargs)
+    except Exception as e:
+        logger.error(f"❌ 전역 ModelLoader 초기화 실패: {e}")
+        return False
+
+async def initialize_global_model_loader_async(**kwargs) -> RealAIModelLoader:
+    """전역 ModelLoader 비동기 초기화 (호환성 함수)"""
+    try:
+        loader = get_global_model_loader()
+        success = await loader.initialize_async(**kwargs)
+        
+        if success:
+            logger.info(f"✅ 전역 ModelLoader 비동기 초기화 완료")
+        else:
+            logger.warning(f"⚠️ 전역 ModelLoader 초기화 일부 실패")
+            
+        return loader
+    except Exception as e:
+        logger.error(f"❌ 전역 ModelLoader 비동기 초기화 실패: {e}")
+        raise
+
 def create_step_interface(step_name: str, step_requirements: Optional[Dict[str, Any]] = None) -> RealStepModelInterface:
     """Step 인터페이스 생성 (기존 함수명 유지)"""
     try:
@@ -1979,6 +2043,8 @@ __all__ = [
     'RealModelCacheEntry',
     
     # 전역 함수들 (기존 이름 유지)
+    'initialize_global_model_loader',
+    'initialize_global_model_loader_async',
     'get_global_model_loader',
     'create_step_interface',
     'get_model',

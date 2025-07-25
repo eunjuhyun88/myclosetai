@@ -261,11 +261,6 @@ except ImportError as e:
 # 🎯 설정 클래스들 및 Enum
 # ==============================================
 
-class WarpingMethod(Enum):
-    """워핑 방법 열거형"""
-    AI_MODEL = "ai_model"
-    TPS_CLASSICAL = "tps_classical"
-    HYBRID = "hybrid"
 
 class FabricType(Enum):
     """원단 타입 열거형"""
@@ -277,6 +272,35 @@ class FabricType(Enum):
     LINEN = "linen"
     LEATHER = "leather"
 
+class WarpingMethod(Enum):
+    """워핑 방법 열거형 - ai_physics 추가"""
+    AI_MODEL = "ai_model"
+    AI_PHYSICS = "ai_physics"  # 🔥 추가: ai_physics 지원
+    TPS_CLASSICAL = "tps_classical"
+    HYBRID = "hybrid"
+    
+    # 추가 워핑 방법들
+    NEURAL_WARPING = "neural_warping"
+    AUTO = "auto"
+    GEOMETRIC = "geometric"
+    OPTICAL_FLOW = "optical_flow"
+    PHYSICS_BASED = "physics_based"
+    
+    # 기존 호환성
+    TPS = "tps"  # Thin Plate Spline
+    GMM = "gmm"  # Gaussian Mixture Model
+    FLOW = "flow"  # Optical Flow
+    TRADITIONAL = "traditional"  # 전통적 방법
+
+# 기본 워핑 설정
+DEFAULT_WARPING_CONFIG = {
+    "method": WarpingMethod.AI_PHYSICS,
+    "fallback_method": WarpingMethod.TPS_CLASSICAL,
+    "enable_physics": True,
+    "enable_ai": True,
+    "quality": "high",
+    "device": "auto"
+}
 class WarpingQuality(Enum):
     """워핑 품질 레벨"""
     LOW = "low"
