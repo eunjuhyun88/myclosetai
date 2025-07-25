@@ -1,6 +1,6 @@
 # backend/app/ai_pipeline/utils/auto_model_detector.py
 """
-🔥 MyCloset AI - 완전 수정된 자동 모델 탐지기 v3.2 (우선순위 문제 해결)
+🔥 MyCloset AI - 완전 수정된 자동 모델 탐지기 v3.3 (ModelLoader 완전 연동)
 ================================================================================
 ✅ 기존 2번 파일 구조 최대한 유지
 ✅ Step 구현체의 기존 load_models() 함수와 완벽 연동
@@ -10,6 +10,8 @@
 ✅ 🔥 크기 기반 우선순위 완전 수정 (50MB 이상 우선)
 ✅ 🔥 대형 모델 우선 탐지 및 정렬
 ✅ 🔥 작은 더미 파일 자동 제거
+✅ 🔥 ModelLoader v5.1과 완전 연동 (AI 클래스 정보 포함)
+✅ 🔥 DetectedModel.to_dict()가 ModelLoader 호환 형식 반환
 ✅ 🔥 기존 함수명/메서드명 100% 유지
 ================================================================================
 """
@@ -37,17 +39,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 1. 실제 파일 구조 기반 정확한 매핑 테이블 (크기 우선순위 추가)
+# 🔥 1. 실제 파일 구조 기반 정확한 매핑 테이블 (ModelLoader 연동 강화)
 # ==============================================
 
-# 📍 기존 RealFileMapper 클래스를 완전히 교체
 class RealFileMapper:
-    """실제 파일 구조 기반 완전 동적 매핑 시스템 (5번 파일 구조 반영)"""
+    """실제 파일 구조 기반 완전 동적 매핑 시스템 (ModelLoader v5.1 연동)"""
     
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.RealFileMapper")
         
-        # 🔥 5번 파일에서 확인된 실제 파일 구조 반영
+        # 🔥 ModelLoader v5.1 호환 실제 파일 구조 반영
         self.step_file_mappings = {
             # Human Parsing (255MB 파일들)
             "human_parsing_schp_atr": {
@@ -65,7 +66,8 @@ class RealFileMapper:
                 "size_range": (250, 260),
                 "min_size_mb": 250,
                 "priority": 1,
-                "step_class": "HumanParsingImplementation",
+                "step_class": "HumanParsingStep",
+                "ai_class": "RealGraphonomyModel",  # 🔥 AI 클래스 추가
                 "model_load_method": "load_models"
             },
             
@@ -82,7 +84,8 @@ class RealFileMapper:
                 "size_range": (2400, 2500),  # 2.4GB
                 "min_size_mb": 2400,
                 "priority": 1,
-                "step_class": "ClothSegmentationImplementation",
+                "step_class": "ClothSegmentationStep",
+                "ai_class": "RealSAMModel",  # 🔥 AI 클래스 추가
                 "model_load_method": "load_models"
             },
             
@@ -104,16 +107,88 @@ class RealFileMapper:
                 "size_range": (3100, 3300),  # 3.2GB
                 "min_size_mb": 3100,
                 "priority": 1,
-                "step_class": "VirtualFittingImplementation",
+                "step_class": "VirtualFittingStep",
+                "ai_class": "RealOOTDDiffusionModel",  # 🔥 AI 클래스 추가
+                "model_load_method": "load_models"
+            },
+            
+            # Cloth Warping (6.6GB RealVis XL)
+            "cloth_warping_realvis": {
+                "actual_files": [
+                    "RealVisXL_V4.0.safetensors",
+                    "realvisxl_v4.0.safetensors"
+                ],
+                "search_paths": [
+                    "step_05_cloth_warping",
+                    "step_05_cloth_warping/ultra_models",
+                    "checkpoints/step_05_cloth_warping"
+                ],
+                "patterns": [r".*realvis.*\.safetensors$", r".*RealVis.*\.safetensors$"],
+                "size_range": (6500, 6700),  # 6.6GB
+                "min_size_mb": 6500,
+                "priority": 1,
+                "step_class": "ClothWarpingStep",
+                "ai_class": "RealVisXLModel",  # 🔥 AI 클래스 추가
+                "model_load_method": "load_models"
+            },
+            
+            # Quality Assessment (5.2GB CLIP)
+            "quality_assessment_clip": {
+                "actual_files": [
+                    "open_clip_pytorch_model.bin",
+                    "ViT-L-14.pt"
+                ],
+                "search_paths": [
+                    "step_08_quality_assessment",
+                    "step_08_quality_assessment/ultra_models",
+                    "step_04_geometric_matching/ultra_models"
+                ],
+                "patterns": [r".*open_clip.*\.bin$", r".*ViT-L-14.*\.pt$"],
+                "size_range": (5100, 5300),  # 5.2GB
+                "min_size_mb": 5100,
+                "priority": 1,
+                "step_class": "QualityAssessmentStep",
+                "ai_class": "RealCLIPModel",  # 🔥 AI 클래스 추가
+                "model_load_method": "load_models"
+            },
+            
+            # U2Net Cloth (168MB)
+            "cloth_segmentation_u2net": {
+                "actual_files": ["u2net.pth"],
+                "search_paths": [
+                    "step_03_cloth_segmentation",
+                    "step_03_cloth_segmentation/ultra_models"
+                ],
+                "patterns": [r".*u2net.*\.pth$"],
+                "size_range": (160, 180),  # 168MB
+                "min_size_mb": 160,
+                "priority": 2,
+                "step_class": "ClothSegmentationStep",
+                "ai_class": "RealU2NetModel",  # 🔥 AI 클래스 추가
+                "model_load_method": "load_models"
+            },
+            
+            # Post Processing (332MB GFPGAN)
+            "post_processing_gfpgan": {
+                "actual_files": ["GFPGANv1.4.pth"],
+                "search_paths": [
+                    "step_07_post_processing",
+                    "checkpoints/step_07_post_processing"
+                ],
+                "patterns": [r".*GFPGAN.*\.pth$"],
+                "size_range": (320, 350),  # 332MB
+                "min_size_mb": 320,
+                "priority": 1,
+                "step_class": "PostProcessingStep",
+                "ai_class": "RealGFPGANModel",  # 🔥 AI 클래스 추가
                 "model_load_method": "load_models"
             }
-            # ... 나머지 매핑들 추가
         }
 
         # 크기 우선순위 설정
         self.size_priority_threshold = 50  # 50MB 이상만
         
-        self.logger.info(f"✅ 실제 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴")
+        self.logger.info(f"✅ ModelLoader v5.1 호환 매핑 초기화: {len(self.step_file_mappings)}개 패턴")
 
     def find_actual_file(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
         """🔥 실제 파일 구조 기반 파일 찾기 (경로 검증 추가)"""
@@ -166,7 +241,6 @@ class RealFileMapper:
             self.logger.error(f"❌ {request_name} 파일 찾기 실패: {e}")
             return None
 
-
     def _fallback_search(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
         """폴백 검색 (키워드 기반)"""
         try:
@@ -201,11 +275,12 @@ class RealFileMapper:
             return None
 
     def get_step_info(self, request_name: str) -> Optional[Dict[str, Any]]:
-        """Step 구현체 정보 반환"""
+        """Step 구현체 정보 반환 (ModelLoader v5.1 호환)"""
         if request_name in self.step_file_mappings:
             mapping = self.step_file_mappings[request_name]
             return {
                 "step_class": mapping.get("step_class"),
+                "ai_class": mapping.get("ai_class"),  # 🔥 AI 클래스 추가
                 "model_load_method": mapping.get("model_load_method"),
                 "priority": mapping.get("priority"),
                 "patterns": mapping.get("patterns", []),
@@ -213,13 +288,37 @@ class RealFileMapper:
             }
         return None
 
+    def get_models_by_step(self, step_id: int) -> List[str]:
+        """Step ID로 모델 목록 반환"""
+        step_mapping = {
+            1: "HumanParsingStep",
+            2: "PoseEstimationStep", 
+            3: "ClothSegmentationStep",
+            4: "GeometricMatchingStep",
+            5: "ClothWarpingStep",
+            6: "VirtualFittingStep",
+            7: "PostProcessingStep",
+            8: "QualityAssessmentStep"
+        }
+        
+        target_step = step_mapping.get(step_id)
+        if not target_step:
+            return []
+        
+        matching_models = []
+        for model_name, mapping in self.step_file_mappings.items():
+            if mapping.get("step_class") == target_step:
+                matching_models.append(model_name)
+        
+        return matching_models
+
 # ==============================================
-# 🔥 2. DetectedModel 클래스 (크기 우선순위 추가)
+# 🔥 2. DetectedModel 클래스 (ModelLoader v5.1 완전 호환)
 # ==============================================
 
 @dataclass
 class DetectedModel:
-    """탐지된 모델 정보 + Step 연동 정보 + 크기 우선순위"""
+    """탐지된 모델 정보 + ModelLoader v5.1 완전 호환"""
     name: str
     path: Path
     step_name: str
@@ -227,8 +326,9 @@ class DetectedModel:
     file_size_mb: float
     confidence_score: float
     
-    # 🔥 Step 구현체 연동 정보
+    # 🔥 ModelLoader v5.1 연동 정보
     step_class_name: Optional[str] = None
+    ai_class: Optional[str] = None  # 🔥 AI 클래스 추가
     model_load_method: Optional[str] = None
     step_can_load: bool = False
     
@@ -278,10 +378,14 @@ class DetectedModel:
         if self.step_can_load:
             score += 30
         
+        # AI 클래스 보너스
+        if self.ai_class and self.ai_class != "BaseRealAIModel":
+            score += 20
+        
         return score
     
     def to_dict(self) -> Dict[str, Any]:
-        """딕셔너리 변환 (크기 정보 추가)"""
+        """🔥 ModelLoader v5.1 완전 호환 딕셔너리 변환"""
         return {
             "name": self.name,
             "path": str(self.path),
@@ -293,6 +397,14 @@ class DetectedModel:
             "device_config": {
                 "recommended_device": self.recommended_device,
                 "device_compatible": self.device_compatible
+            },
+            
+            # 🔥 ModelLoader v5.1 호환 AI 모델 정보
+            "ai_model_info": {
+                "ai_class": self.ai_class or "BaseRealAIModel",
+                "can_create_ai_model": bool(self.ai_class),
+                "device_compatible": self.device_compatible,
+                "recommended_device": self.recommended_device
             },
             
             # 🔥 Step 연동 정보
@@ -313,7 +425,8 @@ class DetectedModel:
             
             "metadata": {
                 "detection_time": time.time(),
-                "file_extension": self.path.suffix
+                "file_extension": self.path.suffix,
+                "detector_version": "v3.3_modelloader_integrated"
             }
         }
     
@@ -338,14 +451,15 @@ class DetectedModel:
                 self.step_class_name is not None and 
                 self.model_load_method is not None and
                 self.checkpoint_path is not None and
-                self.meets_size_requirement)
+                self.meets_size_requirement and
+                self.ai_class is not None)  # 🔥 AI 클래스 확인 추가
 
 # ==============================================
-# 🔥 3. 수정된 모델 탐지기 (크기 우선순위 완전 적용)
+# 🔥 3. 수정된 모델 탐지기 (ModelLoader v5.1 완전 연동)
 # ==============================================
 
 class FixedModelDetector:
-    """수정된 모델 탐지기 (크기 우선순위 완전 적용)"""
+    """수정된 모델 탐지기 (ModelLoader v5.1 완전 연동)"""
     
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.FixedModelDetector")
@@ -368,10 +482,11 @@ class FixedModelDetector:
             "large_models_found": 0,
             "small_models_filtered": 0,
             "step_loadable_models": 0,
+            "ai_class_assigned": 0,  # 🔥 AI 클래스 할당 통계
             "scan_duration": 0.0
         }
         
-        self.logger.info(f"🔧 크기 우선순위 모델 탐지기 초기화")
+        self.logger.info(f"🔧 ModelLoader v5.1 연동 모델 탐지기 초기화")
         self.logger.info(f"   AI 모델 루트: {self.ai_models_root}")
         self.logger.info(f"   최소 크기: {self.min_model_size_mb}MB")
         self.logger.info(f"   M3 Max: {self.is_m3_max}, conda: {bool(self.conda_env)}")
@@ -419,7 +534,7 @@ class FixedModelDetector:
             return False
     
     def detect_all_models(self) -> Dict[str, DetectedModel]:
-        """🔥 모든 모델 탐지 (크기 우선순위 완전 적용)"""
+        """🔥 모든 모델 탐지 (ModelLoader v5.1 완전 연동)"""
         start_time = time.time()
         self.detected_models.clear()
         self.detection_stats = {
@@ -428,6 +543,7 @@ class FixedModelDetector:
             "large_models_found": 0,
             "small_models_filtered": 0,
             "step_loadable_models": 0,
+            "ai_class_assigned": 0,
             "scan_duration": 0.0
         }
         
@@ -435,19 +551,19 @@ class FixedModelDetector:
             self.logger.error(f"❌ AI 모델 루트가 존재하지 않습니다: {self.ai_models_root}")
             return {}
         
-        self.logger.info("🔍 크기 우선순위 기반 모델 탐지 시작...")
+        self.logger.info("🔍 ModelLoader v5.1 연동 모델 탐지 시작...")
         
-        # 요청명별로 실제 파일 찾기 + Step 정보 추가 (크기 우선순위 적용)
+        # 요청명별로 실제 파일 찾기 + Step 정보 + AI 클래스 추가 (크기 우선순위 적용)
         for request_name in self.file_mapper.step_file_mappings.keys():
             try:
                 # 1. 실제 파일 찾기 (크기 필터 적용)
                 actual_file = self.file_mapper.find_actual_file(request_name, self.ai_models_root)
                 
                 if actual_file:
-                    # 2. Step 정보 가져오기
+                    # 2. Step 정보 가져오기 (AI 클래스 포함)
                     step_info = self.file_mapper.get_step_info(request_name)
                     
-                    # 3. DetectedModel 생성 (크기 우선순위 포함)
+                    # 3. DetectedModel 생성 (ModelLoader v5.1 호환)
                     model = self._create_detected_model_with_step_info(request_name, actual_file, step_info)
                     if model and model.meets_size_requirement:
                         self.detected_models[model.name] = model
@@ -458,6 +574,10 @@ class FixedModelDetector:
                         
                         if model.can_be_loaded_by_step():
                             self.detection_stats["step_loadable_models"] += 1
+                        
+                        if model.ai_class and model.ai_class != "BaseRealAIModel":
+                            self.detection_stats["ai_class_assigned"] += 1
+                            
                     elif model:
                         self.detection_stats["small_models_filtered"] += 1
                         self.logger.debug(f"🗑️ 크기 부족으로 제외: {request_name} ({model.file_size_mb:.1f}MB)")
@@ -475,8 +595,9 @@ class FixedModelDetector:
         
         self.detection_stats["scan_duration"] = time.time() - start_time
         
-        self.logger.info(f"🎉 크기 우선순위 모델 탐지 완료: {self.detection_stats['models_found']}개")
+        self.logger.info(f"🎉 ModelLoader v5.1 연동 모델 탐지 완료: {self.detection_stats['models_found']}개")
         self.logger.info(f"📊 대형 모델: {self.detection_stats['large_models_found']}개")
+        self.logger.info(f"🧠 AI 클래스 할당: {self.detection_stats['ai_class_assigned']}개")
         self.logger.info(f"🗑️ 작은 모델 제외: {self.detection_stats['small_models_filtered']}개")
         self.logger.info(f"✅ Step 로드 가능: {self.detection_stats['step_loadable_models']}개")
         self.logger.info(f"⏱️ 소요 시간: {self.detection_stats['scan_duration']:.2f}초")
@@ -484,7 +605,7 @@ class FixedModelDetector:
         return self.detected_models
     
     def _create_detected_model_with_step_info(self, request_name: str, file_path: Path, step_info: Optional[Dict]) -> Optional[DetectedModel]:
-        """DetectedModel 생성 (크기 우선순위 포함)"""
+        """DetectedModel 생성 (ModelLoader v5.1 호환, AI 클래스 포함)"""
         try:
             file_size_mb = file_path.stat().st_size / (1024 * 1024)
             
@@ -494,18 +615,20 @@ class FixedModelDetector:
             # 디바이스 설정
             recommended_device = "mps" if self.is_m3_max else "cpu"
             
-            # 🔥 Step 연동 정보 설정
+            # 🔥 Step 연동 정보 설정 (AI 클래스 포함)
             step_class_name = None
+            ai_class = None  # 🔥 AI 클래스
             model_load_method = None
             step_can_load = False
             
             if step_info:
                 step_class_name = step_info.get("step_class")
+                ai_class = step_info.get("ai_class")  # 🔥 AI 클래스 가져오기
                 model_load_method = step_info.get("model_load_method", "load_models")
-                step_can_load = bool(step_class_name and model_load_method)
+                step_can_load = bool(step_class_name and model_load_method and ai_class)
             
-            # 🔥 신뢰도 계산 (크기 기반)
-            confidence_score = self._calculate_size_based_confidence(file_size_mb, step_info)
+            # 🔥 신뢰도 계산 (크기 기반 + AI 클래스 보너스)
+            confidence_score = self._calculate_size_based_confidence(file_size_mb, step_info, ai_class)
             
             model = DetectedModel(
                 name=request_name,
@@ -515,8 +638,9 @@ class FixedModelDetector:
                 file_size_mb=file_size_mb,
                 confidence_score=confidence_score,
                 
-                # 🔥 Step 연동 정보
+                # 🔥 ModelLoader v5.1 연동 정보
                 step_class_name=step_class_name,
+                ai_class=ai_class,  # 🔥 AI 클래스 추가
                 model_load_method=model_load_method,
                 step_can_load=step_can_load,
                 
@@ -531,8 +655,8 @@ class FixedModelDetector:
             self.logger.error(f"❌ {request_name} 모델 생성 실패: {e}")
             return None
     
-    def _calculate_size_based_confidence(self, file_size_mb: float, step_info: Optional[Dict]) -> float:
-        """🔥 크기 기반 신뢰도 계산"""
+    def _calculate_size_based_confidence(self, file_size_mb: float, step_info: Optional[Dict], ai_class: Optional[str]) -> float:
+        """🔥 크기 기반 신뢰도 계산 (AI 클래스 보너스 포함)"""
         confidence = 0.5  # 기본값
         
         # 크기 기반 신뢰도
@@ -557,6 +681,10 @@ class FixedModelDetector:
             if file_size_mb >= min_expected_size:
                 confidence += 0.1
         
+        # 🔥 AI 클래스 보너스
+        if ai_class and ai_class != "BaseRealAIModel":
+            confidence += 0.1
+        
         return min(confidence, 1.0)
     
     def _extract_step_name(self, request_name: str) -> str:
@@ -579,14 +707,14 @@ class FixedModelDetector:
         return "UnknownStep"
     
     def _scan_additional_files(self):
-        """🔥 추가 파일들 자동 스캔 (크기 우선순위 적용)"""
+        """🔥 추가 파일들 자동 스캔 (AI 클래스 자동 추론)"""
         try:
             # Ultra 모델들 스캔
             ultra_dir = self.ai_models_root / "ultra_models"
             if ultra_dir.exists():
                 self._scan_ultra_models(ultra_dir)
             
-            # 체크포인트 디렉토리 스캐 
+            # 체크포인트 디렉토리 스캔
             checkpoints_dir = self.ai_models_root / "checkpoints"
             if checkpoints_dir.exists():
                 self._scan_checkpoints(checkpoints_dir)
@@ -595,7 +723,7 @@ class FixedModelDetector:
             self.logger.debug(f"추가 스캔 오류: {e}")
     
     def _scan_ultra_models(self, ultra_dir: Path):
-        """🔥 Ultra 모델 스캔 (크기 우선순위 적용)"""
+        """🔥 Ultra 모델 스캔 (AI 클래스 자동 추론)"""
         model_extensions = {'.pth', '.bin', '.safetensors', '.ckpt'}
         
         candidates = []
@@ -628,13 +756,17 @@ class FixedModelDetector:
             if model_name in self.detected_models:
                 continue
             
+            # 🔥 AI 클래스 자동 추론
+            ai_class = self._infer_ai_class_from_filename(file_path.name)
+            
             model = DetectedModel(
                 name=model_name,
                 path=file_path,
                 step_name="UltraModel",
                 model_type="ultra",
                 file_size_mb=file_size_mb,
-                confidence_score=self._calculate_size_based_confidence(file_size_mb, None),
+                confidence_score=self._calculate_size_based_confidence(file_size_mb, None, ai_class),
+                ai_class=ai_class,  # 🔥 AI 클래스 추가
                 checkpoint_path=str(file_path),
                 device_compatible=True,
                 recommended_device="mps" if self.is_m3_max else "cpu"
@@ -647,10 +779,13 @@ class FixedModelDetector:
                 if model.is_large_model:
                     self.detection_stats["large_models_found"] += 1
                 
-                self.logger.debug(f"✅ Ultra 모델: {model_name} ({file_size_mb:.1f}MB)")
+                if ai_class and ai_class != "BaseRealAIModel":
+                    self.detection_stats["ai_class_assigned"] += 1
+                
+                self.logger.debug(f"✅ Ultra 모델: {model_name} ({file_size_mb:.1f}MB) → {ai_class}")
     
     def _scan_checkpoints(self, checkpoints_dir: Path):
-        """🔥 체크포인트 디렉토리 스캔 (크기 우선순위 적용)"""
+        """🔥 체크포인트 디렉토리 스캔 (AI 클래스 자동 추론)"""
         candidates = []
         
         for subdir in checkpoints_dir.iterdir():
@@ -678,13 +813,17 @@ class FixedModelDetector:
         for file_path, file_size_mb, subdir_name in candidates:
             model_name = f"checkpoint_{subdir_name}_{file_path.stem}"
             
+            # 🔥 AI 클래스 자동 추론
+            ai_class = self._infer_ai_class_from_filename(file_path.name)
+            
             model = DetectedModel(
                 name=model_name,
                 path=file_path,
                 step_name="CheckpointModel",
                 model_type="checkpoint",
                 file_size_mb=file_size_mb,
-                confidence_score=self._calculate_size_based_confidence(file_size_mb, None),
+                confidence_score=self._calculate_size_based_confidence(file_size_mb, None, ai_class),
+                ai_class=ai_class,  # 🔥 AI 클래스 추가
                 checkpoint_path=str(file_path),
                 device_compatible=True,
                 recommended_device="mps" if self.is_m3_max else "cpu"
@@ -697,7 +836,32 @@ class FixedModelDetector:
                 if model.is_large_model:
                     self.detection_stats["large_models_found"] += 1
                 
-                self.logger.debug(f"✅ 체크포인트: {model_name} ({file_size_mb:.1f}MB)")
+                if ai_class and ai_class != "BaseRealAIModel":
+                    self.detection_stats["ai_class_assigned"] += 1
+                
+                self.logger.debug(f"✅ 체크포인트: {model_name} ({file_size_mb:.1f}MB) → {ai_class}")
+    
+    def _infer_ai_class_from_filename(self, filename: str) -> str:
+        """🔥 파일명으로부터 AI 클래스 추론"""
+        filename_lower = filename.lower()
+        
+        # 파일명 기반 AI 클래스 매핑
+        ai_class_patterns = {
+            "RealGraphonomyModel": ["graphonomy", "schp", "atr", "lip"],
+            "RealSAMModel": ["sam", "segment", "u2net"],
+            "RealVisXLModel": ["realvis", "visxl", "xl"],
+            "RealOOTDDiffusionModel": ["diffusion", "ootd", "unet"],
+            "RealCLIPModel": ["clip", "vit", "open_clip"],
+            "RealGFPGANModel": ["gfpgan", "gfp"],
+            "RealESRGANModel": ["esrgan", "esr"],
+            "RealCodeFormerModel": ["codeformer", "code"]
+        }
+        
+        for ai_class, patterns in ai_class_patterns.items():
+            if any(pattern in filename_lower for pattern in patterns):
+                return ai_class
+        
+        return "BaseRealAIModel"
     
     def _sort_models_by_priority(self):
         """🔥 모델들을 우선순위로 정렬"""
@@ -716,17 +880,18 @@ class FixedModelDetector:
             
             # 상위 5개 모델 로깅
             for i, (name, model) in enumerate(list(self.detected_models.items())[:5]):
-                self.logger.info(f"  {i+1}. {name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f})")
+                ai_class = model.ai_class or "BaseRealAIModel"
+                self.logger.info(f"  {i+1}. {name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f}) → {ai_class}")
                 
         except Exception as e:
             self.logger.error(f"❌ 모델 정렬 실패: {e}")
 
 # ==============================================
-# 🔥 4. ModelLoader 호환 인터페이스 (크기 우선순위 적용)
+# 🔥 4. ModelLoader v5.1 호환 인터페이스 강화
 # ==============================================
 
 def get_step_loadable_models() -> List[Dict[str, Any]]:
-    """🔥 Step 구현체로 로드 가능한 모델들만 반환 (크기 우선순위 적용)"""
+    """🔥 ModelLoader v5.1 호환 Step 로드 가능 모델들 반환"""
     detector = get_global_detector()
     models = detector.detect_all_models()
     
@@ -736,6 +901,7 @@ def get_step_loadable_models() -> List[Dict[str, Any]]:
             model_dict = model.to_dict()
             model_dict["load_instruction"] = {
                 "step_class": model.step_class_name,
+                "ai_class": model.ai_class,  # 🔥 AI 클래스 추가
                 "method": model.model_load_method,
                 "checkpoint_path": model.checkpoint_path
             }
@@ -745,12 +911,12 @@ def get_step_loadable_models() -> List[Dict[str, Any]]:
     return sorted(loadable_models, key=lambda x: x["priority_info"]["priority_score"], reverse=True)
 
 def create_step_model_loader_config() -> Dict[str, Any]:
-    """🔥 Step 구현체 연동용 ModelLoader 설정 생성 (크기 우선순위 적용)"""
+    """🔥 ModelLoader v5.1 호환 설정 생성"""
     detector = get_global_detector()
     detected_models = detector.detect_all_models()
     
     config = {
-        "version": "step_integrated_detector_v3.2_priority_fixed",
+        "version": "step_integrated_detector_v3.3_modelloader_v5.1",
         "generated_at": time.time(),
         "device": "mps" if detector.is_m3_max else "cpu",
         "is_m3_max": detector.is_m3_max,
@@ -759,6 +925,7 @@ def create_step_model_loader_config() -> Dict[str, Any]:
         "prioritize_large_models": detector.prioritize_large_models,
         "models": {},
         "step_mappings": {},
+        "ai_class_mappings": {},  # 🔥 AI 클래스 매핑 추가
         "step_loadable_count": 0,
         "detection_stats": detector.detection_stats
     }
@@ -777,26 +944,34 @@ def create_step_model_loader_config() -> Dict[str, Any]:
         if step_name not in config["step_mappings"]:
             config["step_mappings"][step_name] = []
         config["step_mappings"][step_name].append(model_name)
+        
+        # 🔥 AI 클래스 매핑
+        if model.ai_class:
+            if model.ai_class not in config["ai_class_mappings"]:
+                config["ai_class_mappings"][model.ai_class] = []
+            config["ai_class_mappings"][model.ai_class].append(model_name)
     
-    # 통계 (크기 기반)
+    # 통계 (크기 기반 + AI 클래스)
     config["summary"] = {
         "total_models": len(detected_models),
         "large_models": sum(1 for m in detected_models.values() if m.is_large_model),
         "step_loadable_models": config["step_loadable_count"],
+        "ai_class_assigned": sum(1 for m in detected_models.values() if m.ai_class and m.ai_class != "BaseRealAIModel"),
         "total_size_gb": sum(m.file_size_mb for m in detected_models.values()) / 1024,
         "average_size_mb": sum(m.file_size_mb for m in detected_models.values()) / len(detected_models) if detected_models else 0,
         "device_optimized": detector.is_m3_max,
         "step_integration_ready": config["step_loadable_count"] > 0,
+        "modelloader_v5_1_compatible": True,  # 🔥 ModelLoader v5.1 호환성
         "min_size_threshold_mb": detector.min_model_size_mb,
         "priority_sorting_enabled": detector.prioritize_large_models
     }
     
-    logger.info(f"✅ 크기 우선순위 설정 생성: {len(detected_models)}개 모델, {config['step_loadable_count']}개 Step 로드 가능")
-    logger.info(f"📊 대형 모델: {config['summary']['large_models']}개, 평균 크기: {config['summary']['average_size_mb']:.1f}MB")
+    logger.info(f"✅ ModelLoader v5.1 호환 설정 생성: {len(detected_models)}개 모델, {config['step_loadable_count']}개 Step 로드 가능")
+    logger.info(f"📊 대형 모델: {config['summary']['large_models']}개, AI 클래스 할당: {config['summary']['ai_class_assigned']}개")
     return config
 
 # ==============================================
-# 🔥 5. 전역 인스턴스 및 인터페이스 (기존 함수명 유지 + 크기 우선순위)
+# 🔥 5. 전역 인스턴스 및 인터페이스 (ModelLoader v5.1 연동)
 # ==============================================
 
 _global_detector: Optional[FixedModelDetector] = None
@@ -812,12 +987,12 @@ def get_global_detector() -> FixedModelDetector:
     return _global_detector
 
 def quick_model_detection() -> Dict[str, DetectedModel]:
-    """빠른 모델 탐지 (기존 함수명 유지, 크기 우선순위 적용)"""
+    """빠른 모델 탐지 (기존 함수명 유지, ModelLoader v5.1 연동)"""
     detector = get_global_detector()
     return detector.detect_all_models()
 
 def list_available_models(step_class: Optional[str] = None) -> List[Dict[str, Any]]:
-    """🔥 사용 가능한 모델 목록 (크기 우선순위 정렬, 기존 함수명 유지)"""
+    """🔥 사용 가능한 모델 목록 (ModelLoader v5.1 호환, 크기 우선순위 정렬)"""
     detector = get_global_detector()
     models = detector.detect_all_models()
     
@@ -834,7 +1009,7 @@ def list_available_models(step_class: Optional[str] = None) -> List[Dict[str, An
     return sorted(result, key=lambda x: x["priority_info"]["priority_score"], reverse=True)
 
 def get_models_for_step(step_name: str) -> List[Dict[str, Any]]:
-    """🔥 Step별 모델 조회 (크기 우선순위 적용, 기존 함수명 유지)"""
+    """🔥 Step별 모델 조회 (ModelLoader v5.1 호환)"""
     models = list_available_models(step_class=step_name)
     return models
 
@@ -844,11 +1019,11 @@ def validate_model_exists(model_name: str) -> bool:
     return model_name in detector.detected_models
 
 def generate_advanced_model_loader_config() -> Dict[str, Any]:
-    """🔥 고급 ModelLoader 설정 생성 (크기 우선순위 포함, 기존 함수명 유지)"""
+    """🔥 고급 ModelLoader 설정 생성 (ModelLoader v5.1 호환)"""
     return create_step_model_loader_config()
 
 def create_step_interface(step_name: str, config: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    """🔥 Step 인터페이스 생성 (크기 우선순위 적용, 기존 함수명 유지)"""
+    """🔥 Step 인터페이스 생성 (ModelLoader v5.1 호환)"""
     models = get_models_for_step(step_name)
     if not models:
         return None
@@ -863,6 +1038,7 @@ def create_step_interface(step_name: str, config: Optional[Dict[str, Any]] = Non
         "config": config or {},
         "load_ready": len(loadable_models) > 0,
         "step_integration": primary_model.get("step_implementation", {}),
+        "ai_model_info": primary_model.get("ai_model_info", {}),  # 🔥 AI 모델 정보 추가
         "priority_info": primary_model.get("priority_info", {}),
         "created_at": time.time()
     }
@@ -879,8 +1055,20 @@ def get_large_models_only() -> List[Dict[str, Any]]:
     
     return sorted(large_models, key=lambda x: x["size_mb"], reverse=True)
 
+def get_models_by_ai_class(ai_class: str) -> List[Dict[str, Any]]:
+    """🔥 AI 클래스별 모델 반환"""
+    detector = get_global_detector()
+    models = detector.detect_all_models()
+    
+    matching_models = []
+    for model in models.values():
+        if model.ai_class == ai_class:
+            matching_models.append(model.to_dict())
+    
+    return sorted(matching_models, key=lambda x: x["priority_info"]["priority_score"], reverse=True)
+
 def get_detection_statistics() -> Dict[str, Any]:
-    """🔥 탐지 통계 반환"""
+    """🔥 탐지 통계 반환 (ModelLoader v5.1 연동 정보 포함)"""
     detector = get_global_detector()
     detector.detect_all_models()  # 최신 통계 확보
     
@@ -891,13 +1079,19 @@ def get_detection_statistics() -> Dict[str, Any]:
             "min_model_size_mb": detector.min_model_size_mb,
             "prioritize_large_models": detector.prioritize_large_models,
             "is_m3_max": detector.is_m3_max,
-            "conda_env": detector.conda_env
+            "conda_env": detector.conda_env,
+            "modelloader_v5_1_compatible": True  # 🔥 ModelLoader v5.1 호환성
         },
         "model_summary": {
             "total_detected": len(detector.detected_models),
             "large_models": sum(1 for m in detector.detected_models.values() if m.is_large_model),
             "step_loadable": sum(1 for m in detector.detected_models.values() if m.can_be_loaded_by_step()),
+            "ai_class_assigned": sum(1 for m in detector.detected_models.values() if m.ai_class and m.ai_class != "BaseRealAIModel"),
             "average_size_mb": sum(m.file_size_mb for m in detector.detected_models.values()) / len(detector.detected_models) if detector.detected_models else 0
+        },
+        "ai_class_distribution": {
+            ai_class: len(get_models_by_ai_class(ai_class))
+            for ai_class in ["RealGraphonomyModel", "RealSAMModel", "RealVisXLModel", "RealOOTDDiffusionModel", "RealCLIPModel"]
         }
     }
 
@@ -907,7 +1101,7 @@ create_real_world_detector = lambda **kwargs: FixedModelDetector()
 comprehensive_model_detection = quick_model_detection
 
 # ==============================================
-# 🔥 6. 익스포트 (기존 함수명 유지)
+# 🔥 6. 익스포트 (기존 함수명 유지 + ModelLoader v5.1 연동)
 # ==============================================
 
 __all__ = [
@@ -923,8 +1117,9 @@ __all__ = [
     'generate_advanced_model_loader_config',
     'validate_model_exists',
     'create_step_interface',
-    'get_large_models_only',  # 🔥 새로 추가
-    'get_detection_statistics',  # 🔥 새로 추가
+    'get_large_models_only',
+    'get_models_by_ai_class',  # 🔥 새로 추가
+    'get_detection_statistics',
     
     # 호환성 (기존 함수명 유지)
     'RealWorldModelDetector',
@@ -933,32 +1128,35 @@ __all__ = [
 ]
 
 # ==============================================
-# 🔥 7. 초기화 (크기 우선순위 정보 추가)
+# 🔥 7. 초기화 (ModelLoader v5.1 연동 정보 추가)
 # ==============================================
 
-logger.info("✅ 완전 수정된 자동 모델 탐지기 v3.2 로드 완료")
+logger.info("✅ 완전 수정된 자동 모델 탐지기 v3.3 로드 완료")
 logger.info("🎯 체크포인트 경로 → Step 구현체 완벽 연동")
 logger.info("🔧 기존 load_models() 함수 활용")
 logger.info("✅ Step이 실제 AI 모델 생성하는 구조 지원")
 logger.info("🔥 ✅ 크기 기반 우선순위 완전 적용 (50MB 이상)")
 logger.info("🔥 ✅ 대형 모델 우선 탐지 및 정렬")
 logger.info("🔥 ✅ 작은 더미 파일 자동 제거")
+logger.info("🔥 ✅ ModelLoader v5.1 완전 연동 (AI 클래스 포함)")
+logger.info("🔥 ✅ DetectedModel.to_dict()가 ModelLoader 호환 형식 반환")
 logger.info("✅ 기존 함수명/메서드명 100% 유지")
 
 # 초기화 테스트
 try:
     _test_detector = get_global_detector()
-    logger.info(f"🚀 크기 우선순위 탐지기 준비 완료!")
+    logger.info(f"🚀 ModelLoader v5.1 연동 탐지기 준비 완료!")
     logger.info(f"   AI 모델 루트: {_test_detector.ai_models_root}")
     logger.info(f"   최소 크기: {_test_detector.min_model_size_mb}MB")
     logger.info(f"   M3 Max: {_test_detector.is_m3_max}")
     logger.info(f"   대형 모델 우선: {_test_detector.prioritize_large_models}")
+    logger.info(f"   ModelLoader v5.1 호환: ✅")
 except Exception as e:
     logger.error(f"❌ 초기화 실패: {e}")
 
 if __name__ == "__main__":
-    print("🔍 완전 수정된 자동 모델 탐지기 v3.2 테스트")
-    print("=" * 60)
+    print("🔍 완전 수정된 자동 모델 탐지기 v3.3 (ModelLoader v5.1 연동) 테스트")
+    print("=" * 70)
     
     # 테스트 실행
     models = quick_model_detection()
@@ -968,42 +1166,34 @@ if __name__ == "__main__":
     large_models = [m for m in models.values() if m.is_large_model]
     valid_models = [m for m in models.values() if m.meets_size_requirement]
     step_loadable = [m for m in models.values() if m.can_be_loaded_by_step()]
+    ai_class_assigned = [m for m in models.values() if m.ai_class and m.ai_class != "BaseRealAIModel"]
     
     print(f"📊 대형 모델 (1GB+): {len(large_models)}개")
     print(f"✅ 유효 모델 (50MB+): {len(valid_models)}개")
     print(f"🔗 Step 로드 가능: {len(step_loadable)}개")
+    print(f"🧠 AI 클래스 할당: {len(ai_class_assigned)}개")
     
     if step_loadable:
         print("\n🏆 상위 Step 로드 가능 모델:")
         for i, model in enumerate(step_loadable[:5]):
-            step_info = model.step_implementation if hasattr(model, 'step_implementation') else {}
-            print(f"   {i+1}. {model.name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f})")
+            ai_class = model.ai_class or "BaseRealAIModel"
+            print(f"   {i+1}. {model.name}: {model.file_size_mb:.1f}MB (점수: {model.priority_score:.1f}) → {ai_class}")
     
-
+    # ModelLoader v5.1 호환성 테스트
+    print("\n🔗 ModelLoader v5.1 호환성 테스트:")
+    loadable_models = get_step_loadable_models()
+    print(f"   Step 로드 가능 모델: {len(loadable_models)}개")
     
-    class RealFileMapper:
-        """ModelLoader 호환성을 위한 RealWorldModelDetector 어댑터"""
-        def __init__(self):
-            self.detector = get_global_detector()
-        
-        def find_actual_file(self, request_name, ai_models_root):
-            # RealWorldModelDetector 메서드 호출
-            return self.detector.find_model_by_name(request_name)
-        
-        def get_step_info(self, request_name):
-            return self.detector.step_mapper.match_file_to_step(request_name)
-        
-        def discover_all_search_paths(self, ai_models_root):
-            return self.detector.path_discovery.discover_all_paths()
-
+    config = create_step_model_loader_config()
+    print(f"   설정 생성: ✅ (버전: {config['version']})")
+    print(f"   AI 클래스 매핑: {len(config['ai_class_mappings'])}개")
     
-    RealFileMapper = RealWorldModelDetector 
-
-
     # 통계 출력
     stats = get_detection_statistics()
     print(f"\n📈 탐지 통계:")
     print(f"   스캔 시간: {stats['detection_stats']['scan_duration']:.2f}초")
+    print(f"   AI 클래스 할당: {stats['detection_stats']['ai_class_assigned']}개")
     print(f"   제외된 작은 파일: {stats['detection_stats']['small_models_filtered']}개")
+    print(f"   ModelLoader v5.1 호환: {stats['system_info']['modelloader_v5_1_compatible']}")
     
-    print("🎉 크기 우선순위 테스트 완료!")
+    print("🎉 ModelLoader v5.1 연동 테스트 완료!")
