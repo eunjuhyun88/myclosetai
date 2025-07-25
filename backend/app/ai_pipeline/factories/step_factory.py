@@ -1,122 +1,67 @@
 # backend/app/ai_pipeline/factories/step_factory.py
 """
-🔥 StepFactory v1.0 - 의존성 주입 전용 팩토리 (순환참조 완전 해결) - 완전 수정된 버전
-=======================================================================
-✅ initialize/initialize_async 메서드 추가 (main.py 호환)
-✅ StepFactoryConfig 매개변수 불일치 수정 (device_type → device)
-✅ 순환참조 완전 방지 - 한방향 의존성 구조
-✅ 의존성 주입 패턴 완전 구현
-✅ BaseStepMixin과 ModelLoader 안전한 조립
-✅ M3 Max 128GB 최적화
-✅ conda 환경 우선 지원
-✅ 8단계 AI 파이프라인 완전 지원
-✅ 프로덕션 레벨 안정성
-✅ 모든 함수명/클래스명 유지
-✅ 들여쓰기/문법 오류 완전 해결
+🔥 StepFactory v5.0 - 의존성 주입 패턴 + 순환참조 완전 해결
+==============================================================
 
-구조:
-StepFactory → ModelLoader (생성) → BaseStepMixin (생성) → 의존성 주입 → 완성된 Step
-
-핵심 철학:
-- StepFactory가 모든 것을 조립
-- ModelLoader와 BaseStepMixin은 서로 모름
-- 의존성 주입으로 연결
-- 단방향 의존성만 허용
+✅ TYPE_CHECKING 패턴으로 순환참조 완전 방지
+✅ 통합된 의존성 주입 시스템
+✅ 표준화된 Step 생성 패턴
+✅ 모든 Step 클래스 호환성 보장
+✅ 향상된 에러 처리
 
 Author: MyCloset AI Team
-Date: 2025-07-23
-Version: 1.0 (Complete Fixed Version)
+Date: 2025-07-24
+Version: 5.0 (Dependency Injection Pattern)
 """
 
 import os
-import gc
-import time
 import logging
 import asyncio
 import threading
-import traceback
+import time
 import weakref
-import platform
-import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, List, Type, Callable, Tuple, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, Union, Type, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from functools import lru_cache, wraps
-from contextlib import contextmanager
-from concurrent.futures import ThreadPoolExecutor
+from abc import ABC, abstractmethod
 
-# ==============================================
-# 🔥 1. TYPE_CHECKING으로 순환참조 완전 방지
-# ==============================================
-
+# 🔥 TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
-    # 타입 체킹 시에만 임포트 (런타임에는 임포트 안됨)
+    from ..steps.base_step_mixin import BaseStepMixin
     from ..utils.model_loader import ModelLoader
-    from ..steps.base_step_mixin import BaseStepMixin, HumanParsingMixin, PoseEstimationMixin
-    from ..steps.base_step_mixin import ClothSegmentationMixin, GeometricMatchingMixin
-    from ..steps.base_step_mixin import ClothWarpingMixin, VirtualFittingMixin
-    from ..steps.base_step_mixin import PostProcessingMixin, QualityAssessmentMixin
+    from ..utils.memory_manager import MemoryManager
+    from ..utils.data_converter import DataConverter
+    from ..core.di_container import DIContainer
 
 # ==============================================
-# 🔥 2. conda 환경 및 시스템 체크
-# ==============================================
-
-# conda 환경 정보
-CONDA_INFO = {
-    'conda_env': os.environ.get('CONDA_DEFAULT_ENV', 'none'),
-    'conda_prefix': os.environ.get('CONDA_PREFIX', 'none'),
-    'python_path': os.path.dirname(os.__file__)
-}
-
-def detect_m3_max() -> bool:
-    """M3 Max 감지"""
-    try:
-        if platform.system() == 'Darwin':
-            result = subprocess.run(
-                ['sysctl', '-n', 'machdep.cpu.brand_string'],
-                capture_output=True, text=True, timeout=5
-            )
-            return 'M3' in result.stdout
-    except:
-        pass
-    return False
-
-IS_M3_MAX = detect_m3_max()
-
-# 라이브러리 가용성 체크
-TORCH_AVAILABLE = False
-MPS_AVAILABLE = False
-try:
-    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-    
-    import torch
-    TORCH_AVAILABLE = True
-    
-    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        MPS_AVAILABLE = True
-except ImportError:
-    pass
-
-# ==============================================
-# 🔥 3. 로깅 설정
+# 🔥 기본 설정 및 로깅
 # ==============================================
 
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+
+# 환경 정보
+CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
+IS_M3_MAX = False
+
+try:
+    import platform
+    import subprocess
+    if platform.system() == 'Darwin':
+        result = subprocess.run(
+            ['sysctl', '-n', 'machdep.cpu.brand_string'],
+            capture_output=True, text=True, timeout=5
+        )
+        IS_M3_MAX = 'M3' in result.stdout
+except:
+    pass
 
 # ==============================================
-# 🔥 4. 팩토리 설정 및 데이터 구조 (수정된 버전)
+# 🔥 데이터 구조 정의
 # ==============================================
 
 class StepType(Enum):
-    """Step 타입 정의 (8단계 AI 파이프라인)"""
+    """Step 타입 정의"""
     HUMAN_PARSING = "human_parsing"
     POSE_ESTIMATION = "pose_estimation"
     CLOTH_SEGMENTATION = "cloth_segmentation"
@@ -126,130 +71,174 @@ class StepType(Enum):
     POST_PROCESSING = "post_processing"
     QUALITY_ASSESSMENT = "quality_assessment"
 
-class OptimizationLevel(IntEnum):
-    """최적화 레벨"""
-    BASIC = 1
-    STANDARD = 2
-    HIGH = 3
-    M3_MAX = 4
-    PRODUCTION = 5
+class StepPriority(IntEnum):
+    """Step 우선순위"""
+    CRITICAL = 1
+    HIGH = 2
+    MEDIUM = 3
+    LOW = 4
 
 @dataclass
-class StepFactoryConfig:
-    """
-    🔥 StepFactory 설정 (수정된 버전 - device_type 대신 device 사용)
-    """
-    # 시스템 설정 (🔥 device_type 제거, device만 사용)
+class StepConfig:
+    """Step 설정"""
+    step_name: str
+    step_id: int
+    step_type: StepType
     device: str = "auto"
-    optimization_level: OptimizationLevel = OptimizationLevel.STANDARD
-    use_conda_optimization: bool = True
-    
-    # ModelLoader 설정
-    model_cache_dir: Optional[str] = None
     use_fp16: bool = True
-    max_cached_models: int = 30
-    lazy_loading: bool = True
-    
-    # BaseStepMixin 설정
-    auto_warmup: bool = True
+    batch_size: int = 1
+    confidence_threshold: float = 0.8
     auto_memory_cleanup: bool = True
+    auto_warmup: bool = True
+    optimization_enabled: bool = True
+    strict_mode: bool = False
+    priority: StepPriority = StepPriority.MEDIUM
     
-    # Step별 설정
-    step_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    
-    # 의존성 주입 설정
-    enable_dependency_injection: bool = True
-    dependency_injection_mode: str = "runtime"  # "runtime" or "creation"
-    
-    # 디버깅 설정
-    enable_debug_logging: bool = False
-    validate_dependencies: bool = True
-    
-    # 🔥 기존 호환성을 위한 property (device_type을 device로 자동 매핑)
-    @property
-    def device_type(self) -> str:
-        """기존 호환성을 위한 device_type 속성 (device로 매핑)"""
-        return self.device
-    
-    @device_type.setter
-    def device_type(self, value: str):
-        """device_type 설정 시 device로 매핑"""
-        self.device = value
+    # 의존성 설정
+    require_model_loader: bool = True
+    require_memory_manager: bool = False
+    require_data_converter: bool = False
+    auto_inject_dependencies: bool = True
 
 @dataclass
-class StepFactoryResult:
-    """StepFactory 결과"""
-    step_instance: Any
-    model_loader: Any
-    step_config: Dict[str, Any]
-    creation_time: float
+class StepCreationResult:
+    """Step 생성 결과"""
     success: bool
+    step_instance: Optional['BaseStepMixin'] = None
+    step_name: str = ""
+    step_type: Optional[StepType] = None
+    dependencies_injected: Dict[str, bool] = field(default_factory=dict)
+    initialization_time: float = 0.0
     error_message: Optional[str] = None
-    dependencies_injected: bool = False
-    optimization_applied: bool = False
+    warnings: List[str] = field(default_factory=list)
+
+@dataclass
+class DependencyBundle:
+    """의존성 번들"""
+    model_loader: Optional['ModelLoader'] = None
+    memory_manager: Optional['MemoryManager'] = None
+    data_converter: Optional['DataConverter'] = None
+    di_container: Optional['DIContainer'] = None
 
 # ==============================================
-# 🔥 5. 의존성 해결 유틸리티
+# 🔥 의존성 해결기
 # ==============================================
 
 class DependencyResolver:
-    """의존성 해결 도우미 (순환참조 방지)"""
+    """의존성 해결기 (순환참조 방지)"""
     
     def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.DependencyResolver")
-        self._model_loader_cache = None
-        self._step_mixin_classes = {}
-        
-    def resolve_model_loader(self, config: StepFactoryConfig) -> Optional[Any]:
-        """ModelLoader 안전하게 해결 (동적 import)"""
+        self.logger = logging.getLogger("DependencyResolver")
+        self._resolved_cache: Dict[str, Any] = {}
+        self._resolution_lock = threading.Lock()
+    
+    def resolve_model_loader(self, config: Optional[Dict[str, Any]] = None) -> Optional['ModelLoader']:
+        """ModelLoader 해결 (동적 import)"""
         try:
-            if self._model_loader_cache is not None:
-                return self._model_loader_cache
-            
-            # 동적 import로 순환참조 방지
-            import importlib
-            loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-            
-            # ModelLoader 클래스 가져오기
-            ModelLoaderClass = getattr(loader_module, 'ModelLoader', None)
-            if not ModelLoaderClass:
-                self.logger.error("ModelLoader 클래스를 찾을 수 없음")
-                return None
-            
-            # ModelLoader 인스턴스 생성
-            model_loader = ModelLoaderClass(
-                device=config.device,
-                config={
-                    'model_cache_dir': config.model_cache_dir or './ai_models',
-                    'use_fp16': config.use_fp16,
-                    'max_cached_models': config.max_cached_models,
-                    'lazy_loading': config.lazy_loading,
-                    'optimization_enabled': config.optimization_level >= OptimizationLevel.STANDARD
-                }
-            )
-            
-            # 초기화
-            if hasattr(model_loader, 'initialize'):
-                success = model_loader.initialize()
-                if not success:
-                    self.logger.warning("ModelLoader 초기화 실패")
+            with self._resolution_lock:
+                cache_key = "model_loader"
+                if cache_key in self._resolved_cache:
+                    return self._resolved_cache[cache_key]
+                
+                # 동적 import로 순환참조 방지
+                import importlib
+                model_loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
+                get_global_loader = getattr(model_loader_module, 'get_global_model_loader', None)
+                
+                if get_global_loader:
+                    model_loader = get_global_loader(config)
+                    # 초기화 확인
+                    if hasattr(model_loader, 'initialize'):
+                        if not model_loader.is_initialized():
+                            success = model_loader.initialize()
+                            if not success:
+                                self.logger.error("ModelLoader 초기화 실패")
+                                return None
+                    
+                    self._resolved_cache[cache_key] = model_loader
+                    self.logger.info("✅ ModelLoader 해결 완료")
+                    return model_loader
+                else:
+                    self.logger.error("get_global_model_loader 함수를 찾을 수 없음")
                     return None
-            
-            self._model_loader_cache = model_loader
-            self.logger.info("✅ ModelLoader 해결 완료")
-            return model_loader
-            
+                    
         except Exception as e:
             self.logger.error(f"❌ ModelLoader 해결 실패: {e}")
             return None
     
-    def resolve_step_mixin_class(self, step_type: StepType) -> Optional[Type]:
-        """BaseStepMixin 클래스 안전하게 해결 (동적 import)"""
+    def resolve_memory_manager(self) -> Optional['MemoryManager']:
+        """MemoryManager 해결 (동적 import)"""
         try:
-            if step_type.value in self._step_mixin_classes:
-                return self._step_mixin_classes[step_type.value]
+            with self._resolution_lock:
+                cache_key = "memory_manager"
+                if cache_key in self._resolved_cache:
+                    return self._resolved_cache[cache_key]
+                
+                import importlib
+                memory_module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
+                get_global_manager = getattr(memory_module, 'get_global_memory_manager', None)
+                
+                if get_global_manager:
+                    memory_manager = get_global_manager()
+                    self._resolved_cache[cache_key] = memory_manager
+                    self.logger.info("✅ MemoryManager 해결 완료")
+                    return memory_manager
+                    
+        except Exception as e:
+            self.logger.debug(f"MemoryManager 해결 실패: {e}")
+            return None
+    
+    def resolve_data_converter(self) -> Optional['DataConverter']:
+        """DataConverter 해결 (동적 import)"""
+        try:
+            with self._resolution_lock:
+                cache_key = "data_converter"
+                if cache_key in self._resolved_cache:
+                    return self._resolved_cache[cache_key]
+                
+                import importlib
+                converter_module = importlib.import_module('app.ai_pipeline.utils.data_converter')
+                get_global_converter = getattr(converter_module, 'get_global_data_converter', None)
+                
+                if get_global_converter:
+                    data_converter = get_global_converter()
+                    self._resolved_cache[cache_key] = data_converter
+                    self.logger.info("✅ DataConverter 해결 완료")
+                    return data_converter
+                    
+        except Exception as e:
+            self.logger.debug(f"DataConverter 해결 실패: {e}")
+            return None
+    
+    def resolve_di_container(self) -> Optional['DIContainer']:
+        """DI Container 해결 (동적 import)"""
+        try:
+            with self._resolution_lock:
+                cache_key = "di_container"
+                if cache_key in self._resolved_cache:
+                    return self._resolved_cache[cache_key]
+                
+                import importlib
+                di_module = importlib.import_module('app.core.di_container')
+                get_global_container = getattr(di_module, 'get_global_di_container', None)
+                
+                if get_global_container:
+                    di_container = get_global_container()
+                    self._resolved_cache[cache_key] = di_container
+                    self.logger.info("✅ DI Container 해결 완료")
+                    return di_container
+                    
+        except Exception as e:
+            self.logger.debug(f"DI Container 해결 실패: {e}")
+            return None
+    
+    def resolve_step_mixin_class(self, step_type: StepType) -> Optional[Type]:
+        """BaseStepMixin 클래스 해결 (동적 import)"""
+        try:
+            cache_key = f"step_mixin_{step_type.value}"
+            if cache_key in self._resolved_cache:
+                return self._resolved_cache[cache_key]
             
-            # 동적 import로 순환참조 방지
             import importlib
             mixin_module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
             
@@ -272,1129 +261,800 @@ class DependencyResolver:
                 self.logger.error(f"{class_name} 클래스를 찾을 수 없음")
                 return None
             
-            self._step_mixin_classes[step_type.value] = StepClass
+            self._resolved_cache[cache_key] = StepClass
             self.logger.info(f"✅ {class_name} 클래스 해결 완료")
             return StepClass
             
         except Exception as e:
-            self.logger.error(f"❌ Step 클래스 해결 실패 {step_type}: {e}")
+            self.logger.error(f"❌ Step 클래스 해결 실패: {e}")
             return None
     
-    def resolve_memory_manager(self) -> Optional[Any]:
-        """MemoryManager 해결 (옵션)"""
+    def create_dependency_bundle(self, config: StepConfig) -> DependencyBundle:
+        """의존성 번들 생성"""
         try:
-            import importlib
-            memory_module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
-            MemoryManagerClass = getattr(memory_module, 'MemoryManager', None)
+            bundle = DependencyBundle()
             
-            if MemoryManagerClass:
-                return MemoryManagerClass()
-            return None
+            # 필수 의존성부터 해결
+            if config.require_model_loader:
+                bundle.model_loader = self.resolve_model_loader()
             
-        except ImportError:
-            self.logger.debug("MemoryManager 모듈 없음 (옵션)")
-            return None
+            if config.require_memory_manager:
+                bundle.memory_manager = self.resolve_memory_manager()
+            
+            if config.require_data_converter:
+                bundle.data_converter = self.resolve_data_converter()
+            
+            # DI Container는 항상 시도
+            bundle.di_container = self.resolve_di_container()
+            
+            return bundle
+            
         except Exception as e:
-            self.logger.warning(f"MemoryManager 해결 실패: {e}")
-            return None
+            self.logger.error(f"❌ 의존성 번들 생성 실패: {e}")
+            return DependencyBundle()
     
-    def resolve_data_converter(self) -> Optional[Any]:
-        """DataConverter 해결 (옵션)"""
-        try:
-            import importlib
-            converter_module = importlib.import_module('app.ai_pipeline.utils.data_converter')
-            DataConverterClass = getattr(converter_module, 'DataConverter', None)
-            
-            if DataConverterClass:
-                return DataConverterClass()
-            return None
-            
-        except ImportError:
-            self.logger.debug("DataConverter 모듈 없음 (옵션)")
-            return None
-        except Exception as e:
-            self.logger.warning(f"DataConverter 해결 실패: {e}")
-            return None
-
-# 전역 의존성 해결기
-_global_resolver = DependencyResolver()
+    def clear_cache(self):
+        """캐시 정리"""
+        with self._resolution_lock:
+            self._resolved_cache.clear()
+            self.logger.info("🧹 의존성 해결기 캐시 정리 완료")
 
 # ==============================================
-# 🔥 6. 시스템 최적화 관리자
-# ==============================================
-
-class SystemOptimizer:
-    """시스템 최적화 관리자"""
-    
-    def __init__(self, config: StepFactoryConfig):
-        self.config = config
-        self.logger = logging.getLogger(f"{__name__}.SystemOptimizer")
-        
-    def apply_conda_optimization(self):
-        """conda 환경 최적화 적용"""
-        try:
-            if not self.config.use_conda_optimization:
-                return False
-                
-            if CONDA_INFO['conda_env'] == 'none':
-                self.logger.warning("conda 환경이 아닙니다. 일반 최적화 적용")
-                return False
-            
-            # conda 환경별 최적화 설정
-            conda_env = CONDA_INFO['conda_env']
-            
-            if 'mycloset' in conda_env.lower() or 'ai' in conda_env.lower():
-                # MyCloset AI 전용 환경 최적화
-                if TORCH_AVAILABLE:
-                    torch.set_num_threads(8 if IS_M3_MAX else 4)
-                    
-                self.logger.info(f"✅ MyCloset AI conda 환경 최적화 적용: {conda_env}")
-                return True
-            else:
-                # 일반 conda 환경 최적화
-                if TORCH_AVAILABLE:
-                    torch.set_num_threads(4)
-                    
-                self.logger.info(f"✅ 일반 conda 환경 최적화 적용: {conda_env}")
-                return True
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ conda 최적화 적용 실패: {e}")
-            return False
-    
-    def apply_m3_max_optimization(self):
-        """M3 Max 특화 최적화"""
-        try:
-            if not IS_M3_MAX:
-                return False
-            
-            if TORCH_AVAILABLE:
-                # M3 Max 통합 메모리 최적화
-                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-                os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-                
-                # 스레드 수 최적화 (M3 Max 12코어 활용)
-                torch.set_num_threads(12)
-                
-                # MPS 캐시 정리
-                if MPS_AVAILABLE:
-                    try:
-                        if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
-                    except:
-                        pass
-            
-            # 메모리 정리
-            gc.collect()
-            
-            self.logger.info("✅ M3 Max 특화 최적화 적용 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ M3 Max 최적화 실패: {e}")
-            return False
-    
-    def apply_optimization_level(self):
-        """최적화 레벨별 설정 적용"""
-        try:
-            level = self.config.optimization_level
-            
-            if level >= OptimizationLevel.M3_MAX and IS_M3_MAX:
-                self.apply_m3_max_optimization()
-            
-            if level >= OptimizationLevel.STANDARD:
-                self.apply_conda_optimization()
-            
-            if level >= OptimizationLevel.HIGH:
-                # 고성능 최적화
-                if TORCH_AVAILABLE:
-                    torch.backends.cudnn.benchmark = True
-                    torch.backends.cudnn.deterministic = False
-            
-            if level >= OptimizationLevel.PRODUCTION:
-                # 프로덕션 최적화
-                if TORCH_AVAILABLE:
-                    torch.set_float32_matmul_precision('high')
-                
-                # 메모리 최적화
-                gc.set_threshold(100, 10, 10)
-            
-            self.logger.info(f"✅ 최적화 레벨 {level.name} 적용 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ 최적화 레벨 적용 실패: {e}")
-            return False
-
-# ==============================================
-# 🔥 7. 메인 StepFactory 클래스 (완전 수정된 버전)
+# 🔥 메인 StepFactory 클래스
 # ==============================================
 
 class StepFactory:
-    """
-    🔥 StepFactory v1.0 - 의존성 주입 전용 팩토리 (완전 수정된 버전)
+    """의존성 주입 패턴 StepFactory v5.0"""
     
-    핵심 역할:
-    1. ModelLoader 인스턴스 생성
-    2. BaseStepMixin 기반 Step 인스턴스 생성
-    3. 의존성 주입으로 두 개체 연결
-    4. 시스템 최적화 적용
-    
-    순환참조 방지 구조:
-    StepFactory → ModelLoader (생성) → BaseStepMixin (생성) → 의존성 주입 → 완성된 Step
-    """
-    
-    def __init__(self, config: Optional[StepFactoryConfig] = None):
-        """StepFactory 초기화 (완전 수정된 버전)"""
-        self.config = config or StepFactoryConfig()
-        self.logger = logging.getLogger(f"{__name__}.StepFactory")
+    def __init__(self):
+        self.logger = logging.getLogger("StepFactory")
         
-        try:
-            from app.ai_pipeline.utils.model_loader import get_global_model_loader
-            
-            self.model_loader = get_global_model_loader()
-            if self.model_loader:
-                # 🔥 추가 초기화 확인
-                if hasattr(self.model_loader, 'initialize') and not getattr(self.model_loader, '_is_initialized', False):
-                    success = self.model_loader.initialize()
-                    if success:
-                        print("✅ 실제 ModelLoader 초기화 완료")
-                    else:
-                        print("⚠️ ModelLoader 초기화 실패")
-                else:
-                    print("✅ 실제 ModelLoader 초기화 완료")
-            else:
-                print("⚠️ ModelLoader 인스턴스 가져오기 실패")
-                
-        except Exception as e:
-            print(f"❌ ModelLoader 처리 실패: {e}")
-            self.model_loader = None
-
-        # 🔥 StepModelInterface 생성
-        if self.model_loader:
-            try:
-                self.model_interface = self.model_loader.create_step_interface("HumanParsingStep")
-                if self.model_interface:
-                    print("✅ StepModelInterface 생성 완료")
-                else:
-                    print("⚠️ StepModelInterface 생성 실패")
-            except Exception as interface_error:
-                print(f"❌ StepModelInterface 생성 실패: {interface_error}")
-                self.model_interface = None
-        else:
-            self.model_interface = None
         # 의존성 해결기
-        self.resolver = _global_resolver
+        self.dependency_resolver = DependencyResolver()
         
-        # 시스템 최적화기
-        self.optimizer = SystemOptimizer(self.config)
-        
-        # 생성 캐시
-        self.creation_cache: Dict[str, StepFactoryResult] = {}
-        self._cache_lock = threading.RLock()
-        
-        # 초기화 상태
-        self._initialized = False
-        self._initializing = False
-        
-        # 통계
-        self.creation_stats = {
+        # 캐시 및 상태 관리
+        self._step_cache: Dict[str, weakref.ref] = {}
+        self._creation_stats = {
             'total_created': 0,
             'successful_creations': 0,
             'failed_creations': 0,
             'cache_hits': 0,
-            'dependency_injection_success': 0,
-            'optimization_applied': 0
+            'dependencies_resolved': 0
         }
         
-        # 초기화
-        self._initialize()
-    
-    def _initialize(self):
-        """팩토리 내부 초기화 (private)"""
-        try:
-            if self._initialized or self._initializing:
-                return
-                
-            self._initializing = True
-            
-            # 시스템 최적화 적용
-            optimization_success = self.optimizer.apply_optimization_level()
-            if optimization_success:
-                self.creation_stats['optimization_applied'] += 1
-            
-            # 디바이스 해결
-            if self.config.device == "auto":
-                self.config.device = self._detect_optimal_device()
-            
-            self._initialized = True
-            self._initializing = False
-            
-            self.logger.info(f"✅ StepFactory v1.0 초기화 완료")
-            self.logger.info(f"🔧 Device: {self.config.device}")
-            self.logger.info(f"🔧 Optimization: {self.config.optimization_level.name}")
-            self.logger.info(f"🔧 conda 환경: {CONDA_INFO['conda_env']}")
-            self.logger.info(f"🔧 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-            
-        except Exception as e:
-            self._initializing = False
-            self.logger.error(f"❌ StepFactory 초기화 실패: {e}")
-    
-    def initialize(self) -> bool:
-        """
-        🔥 공용 초기화 메서드 (main.py 호환)
+        # 동기화
+        self._lock = threading.RLock()
         
-        Returns:
-            bool: 초기화 성공 여부
-        """
-        try:
-            if self._initialized:
-                return True
-                
-            # _initialize는 이미 __init__에서 호출되었으므로 상태만 확인
-            if not self._initialized and not self._initializing:
-                self._initialize()
-            
-            return self._initialized
-            
-        except Exception as e:
-            self.logger.error(f"❌ StepFactory 공용 초기화 실패: {e}")
-            return False
-    
-    async def initialize_async(self) -> bool:
-        """
-        🔥 비동기 초기화 메서드 (main.py 호환)
-        
-        Returns:
-            bool: 초기화 성공 여부
-        """
-        try:
-            # 동기 초기화를 executor에서 실행
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, self.initialize)
-            
-            # 추가 비동기 초기화 작업이 있다면 여기서 수행
-            if result:
-                # 예: 비동기 모델 프리로딩 등
-                await self._async_post_initialization()
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"❌ StepFactory 비동기 초기화 실패: {e}")
-            return False
-    
-    async def _async_post_initialization(self):
-        """비동기 후처리 초기화 작업"""
-        try:
-            # 필요시 비동기 작업 수행
-            await asyncio.sleep(0.001)  # 최소 비동기 컨텍스트
-            self.logger.debug("✅ StepFactory 비동기 후처리 완료")
-        except Exception as e:
-            self.logger.debug(f"⚠️ 비동기 후처리 실패: {e}")
-    
-    def _detect_optimal_device(self) -> str:
-        """최적 디바이스 감지"""
-        try:
-            if TORCH_AVAILABLE:
-                if MPS_AVAILABLE and IS_M3_MAX:
-                    return "mps"
-                elif torch.cuda.is_available():
-                    return "cuda"
-            return "cpu"
-        except:
-            return "cpu"
-    
-    
-    # ==============================================
-    # 🔥 8. 핵심 생성 메서드들
-    # ==============================================
+        self.logger.info("🏭 StepFactory v5.0 초기화 완료 (의존성 주입 패턴)")
     
     def create_step(
         self, 
         step_type: Union[StepType, str], 
-        step_config: Optional[Dict[str, Any]] = None,
-        use_cache: bool = True
-    ) -> StepFactoryResult:
-        """
-        Step 인스턴스 생성 (동기 버전)
-        
-        Args:
-            step_type: Step 타입 (StepType enum 또는 문자열)
-            step_config: Step별 설정 (옵션)
-            use_cache: 캐시 사용 여부
-            
-        Returns:
-            StepFactoryResult: 생성 결과
-        """
+        config: Optional[StepConfig] = None,
+        use_cache: bool = True,
+        **kwargs
+    ) -> StepCreationResult:
+        """통합 Step 생성 메서드"""
         start_time = time.time()
         
         try:
-            # 초기화 확인
-            if not self._initialized:
-                self.initialize()
-            
             # Step 타입 정규화
             if isinstance(step_type, str):
                 try:
-                    step_type = StepType(step_type)
+                    step_type = StepType(step_type.lower())
                 except ValueError:
-                    return StepFactoryResult(
-                        step_instance=None,
-                        model_loader=None,
-                        step_config={},
-                        creation_time=0,
+                    return StepCreationResult(
                         success=False,
-                        error_message=f"알 수 없는 Step 타입: {step_type}"
+                        error_message=f"지원하지 않는 Step 타입: {step_type}"
                     )
             
+            # 설정 생성
+            if config is None:
+                config = self._create_default_config(step_type, **kwargs)
+            
             # 캐시 확인
-            cache_key = self._generate_cache_key(step_type, step_config)
             if use_cache:
-                cached_result = self._get_from_cache(cache_key)
-                if cached_result:
-                    self.creation_stats['cache_hits'] += 1
-                    return cached_result
+                cached_step = self._get_cached_step(config.step_name)
+                if cached_step:
+                    self._creation_stats['cache_hits'] += 1
+                    return StepCreationResult(
+                        success=True,
+                        step_instance=cached_step,
+                        step_name=config.step_name,
+                        step_type=step_type,
+                        initialization_time=time.time() - start_time
+                    )
             
-            # Step 설정 준비
-            final_step_config = self._prepare_step_config(step_type, step_config)
+            # Step 생성 실행
+            result = self._create_step_instance(step_type, config)
             
-            # 1단계: ModelLoader 생성
-            model_loader = self.resolver.resolve_model_loader(self.config)
-            if not model_loader:
-                return StepFactoryResult(
-                    step_instance=None,
-                    model_loader=None,
-                    step_config=final_step_config,
-                    creation_time=time.time() - start_time,
-                    success=False,
-                    error_message="ModelLoader 생성 실패"
-                )
-            
-            # 2단계: BaseStepMixin 기반 Step 클래스 해결
-            StepClass = self.resolver.resolve_step_mixin_class(step_type)
-            if not StepClass:
-                return StepFactoryResult(
-                    step_instance=None,
-                    model_loader=model_loader,
-                    step_config=final_step_config,
-                    creation_time=time.time() - start_time,
-                    success=False,
-                    error_message=f"{step_type.value} Step 클래스 해결 실패"
-                )
-            
-            # 3단계: Step 인스턴스 생성
-            step_instance = StepClass(**final_step_config)
-            
-            # 4단계: 의존성 주입
-            dependencies_injected = False
-            if self.config.enable_dependency_injection:
-                dependencies_injected = self._inject_dependencies(
-                    step_instance, 
-                    model_loader, 
-                    step_type
-                )
-                
-                if dependencies_injected:
-                    self.creation_stats['dependency_injection_success'] += 1
-            
-            # 5단계: 초기화
-            if hasattr(step_instance, 'initialize'):
-                try:
-                    step_instance.initialize()
-                except Exception as e:
-                    self.logger.warning(f"⚠️ Step 초기화 실패: {e}")
-            
-            # 결과 생성
-            result = StepFactoryResult(
-                step_instance=step_instance,
-                model_loader=model_loader,
-                step_config=final_step_config,
-                creation_time=time.time() - start_time,
-                success=True,
-                dependencies_injected=dependencies_injected,
-                optimization_applied=True
-            )
-            
-            # 캐시 저장
-            if use_cache:
-                self._save_to_cache(cache_key, result)
+            # 성공 시 캐시에 저장
+            if result.success and result.step_instance and use_cache:
+                self._cache_step(config.step_name, result.step_instance)
             
             # 통계 업데이트
-            self.creation_stats['total_created'] += 1
-            self.creation_stats['successful_creations'] += 1
+            self._creation_stats['total_created'] += 1
+            if result.success:
+                self._creation_stats['successful_creations'] += 1
+            else:
+                self._creation_stats['failed_creations'] += 1
             
-            self.logger.info(f"✅ {step_type.value} Step 생성 완료 ({result.creation_time:.3f}초)")
+            result.initialization_time = time.time() - start_time
+            
             return result
             
         except Exception as e:
-            self.creation_stats['total_created'] += 1
-            self.creation_stats['failed_creations'] += 1
-            
-            self.logger.error(f"❌ {step_type} Step 생성 실패: {e}")
-            return StepFactoryResult(
-                step_instance=None,
-                model_loader=None,
-                step_config=step_config or {},
-                creation_time=time.time() - start_time,
+            self.logger.error(f"❌ Step 생성 실패: {e}")
+            return StepCreationResult(
                 success=False,
-                error_message=str(e)
+                error_message=f"Step 생성 중 예외 발생: {str(e)}",
+                initialization_time=time.time() - start_time
             )
     
-    async def create_step_async(
-        self, 
-        step_type: Union[StepType, str], 
-        step_config: Optional[Dict[str, Any]] = None,
-        use_cache: bool = True
-    ) -> StepFactoryResult:
-        """
-        Step 인스턴스 비동기 생성
+    def _create_default_config(self, step_type: StepType, **kwargs) -> StepConfig:
+        """기본 설정 생성"""
+        # Step별 기본 설정
+        step_configs = {
+            StepType.HUMAN_PARSING: {
+                'step_name': 'HumanParsingStep',
+                'step_id': 1,
+                'priority': StepPriority.CRITICAL
+            },
+            StepType.POSE_ESTIMATION: {
+                'step_name': 'PoseEstimationStep',
+                'step_id': 2,
+                'priority': StepPriority.HIGH
+            },
+            StepType.CLOTH_SEGMENTATION: {
+                'step_name': 'ClothSegmentationStep',
+                'step_id': 3,
+                'priority': StepPriority.HIGH
+            },
+            StepType.GEOMETRIC_MATCHING: {
+                'step_name': 'GeometricMatchingStep',
+                'step_id': 4,
+                'priority': StepPriority.MEDIUM
+            },
+            StepType.CLOTH_WARPING: {
+                'step_name': 'ClothWarpingStep',
+                'step_id': 5,
+                'priority': StepPriority.MEDIUM
+            },
+            StepType.VIRTUAL_FITTING: {
+                'step_name': 'VirtualFittingStep',
+                'step_id': 6,
+                'priority': StepPriority.CRITICAL
+            },
+            StepType.POST_PROCESSING: {
+                'step_name': 'PostProcessingStep',
+                'step_id': 7,
+                'priority': StepPriority.LOW
+            },
+            StepType.QUALITY_ASSESSMENT: {
+                'step_name': 'QualityAssessmentStep',
+                'step_id': 8,
+                'priority': StepPriority.LOW
+            }
+        }
         
-        Args:
-            step_type: Step 타입
-            step_config: Step별 설정
-            use_cache: 캐시 사용 여부
-            
-        Returns:
-            StepFactoryResult: 생성 결과
-        """
+        default_config = step_configs.get(step_type, {
+            'step_name': f'{step_type.value.title()}Step',
+            'step_id': 0,
+            'priority': StepPriority.MEDIUM
+        })
+        
+        # kwargs로 덮어쓰기
+        default_config.update(kwargs)
+        
+        return StepConfig(
+            step_type=step_type,
+            **default_config
+        )
+    
+    def _create_step_instance(self, step_type: StepType, config: StepConfig) -> StepCreationResult:
+        """Step 인스턴스 생성"""
         try:
-            # 기본 생성은 동기로 실행
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, 
-                self.create_step,
-                step_type,
-                step_config,
-                use_cache
+            self.logger.info(f"🔄 {config.step_name} 생성 시작...")
+            
+            # 1. Step 클래스 해결
+            StepClass = self.dependency_resolver.resolve_step_mixin_class(step_type)
+            if not StepClass:
+                return StepCreationResult(
+                    success=False,
+                    step_name=config.step_name,
+                    step_type=step_type,
+                    error_message=f"{step_type.value} Step 클래스를 찾을 수 없음"
+                )
+            
+            # 2. 의존성 번들 생성
+            dependency_bundle = self.dependency_resolver.create_dependency_bundle(config)
+            
+            # 3. Step 인스턴스 생성
+            step_kwargs = {
+                'step_name': config.step_name,
+                'step_id': config.step_id,
+                'device': config.device,
+                'use_fp16': config.use_fp16,
+                'batch_size': config.batch_size,
+                'confidence_threshold': config.confidence_threshold,
+                'auto_memory_cleanup': config.auto_memory_cleanup,
+                'auto_warmup': config.auto_warmup,
+                'optimization_enabled': config.optimization_enabled,
+                'strict_mode': config.strict_mode,
+                'auto_inject_dependencies': config.auto_inject_dependencies,
+                'require_model_loader': config.require_model_loader,
+                'require_memory_manager': config.require_memory_manager,
+                'require_data_converter': config.require_data_converter
+            }
+            
+            step_instance = StepClass(**step_kwargs)
+            
+            # 4. 의존성 주입
+            dependencies_injected = self._inject_dependencies(step_instance, dependency_bundle, config)
+            
+            # 5. 초기화 실행
+            initialization_success = self._initialize_step(step_instance, config)
+            
+            if not initialization_success and config.strict_mode:
+                return StepCreationResult(
+                    success=False,
+                    step_name=config.step_name,
+                    step_type=step_type,
+                    error_message="Step 초기화 실패 (Strict Mode)",
+                    dependencies_injected=dependencies_injected
+                )
+            
+            self.logger.info(f"✅ {config.step_name} 생성 완료")
+            
+            return StepCreationResult(
+                success=True,
+                step_instance=step_instance,
+                step_name=config.step_name,
+                step_type=step_type,
+                dependencies_injected=dependencies_injected
             )
-            
-            # 비동기 초기화가 있으면 실행
-            if result.success and result.step_instance:
-                if hasattr(result.step_instance, 'initialize_async'):
-                    try:
-                        await result.step_instance.initialize_async()
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 비동기 초기화 실패: {e}")
-                
-                # 비동기 워밍업
-                if hasattr(result.step_instance, 'warmup_async') and self.config.auto_warmup:
-                    try:
-                        await result.step_instance.warmup_async()
-                        self.logger.info(f"🔥 {step_type} Step 워밍업 완료")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 워밍업 실패: {e}")
-            
-            return result
             
         except Exception as e:
-            self.logger.error(f"❌ {step_type} Step 비동기 생성 실패: {e}")
-            return StepFactoryResult(
-                step_instance=None,
-                model_loader=None,
-                step_config=step_config or {},
-                creation_time=0,
+            self.logger.error(f"❌ {config.step_name} 생성 실패: {e}")
+            return StepCreationResult(
                 success=False,
-                error_message=str(e)
+                step_name=config.step_name,
+                step_type=step_type,
+                error_message=f"Step 인스턴스 생성 실패: {str(e)}"
             )
-    
-    # ==============================================
-    # 🔥 9. 의존성 주입 메서드들
-    # ==============================================
     
     def _inject_dependencies(
         self, 
-        step_instance: Any, 
-        model_loader: Any, 
-        step_type: StepType
-    ) -> bool:
+        step_instance: 'BaseStepMixin', 
+        dependency_bundle: DependencyBundle,
+        config: StepConfig
+    ) -> Dict[str, bool]:
         """의존성 주입 실행"""
+        injection_results = {}
+        
         try:
-            injections_made = 0
-            
-            # 1. ModelLoader 주입 (필수)
-            if hasattr(step_instance, 'set_model_loader'):
-                step_instance.set_model_loader(model_loader)
-                injections_made += 1
-                self.logger.debug(f"✅ ModelLoader 주입 완료")
-            elif hasattr(step_instance, 'model_loader'):
-                step_instance.model_loader = model_loader
-                injections_made += 1
-                self.logger.debug(f"✅ ModelLoader 속성 설정 완료")
-            
-            # 2. MemoryManager 주입 (옵션)
-            memory_manager = self.resolver.resolve_memory_manager()
-            if memory_manager:
-                if hasattr(step_instance, 'set_memory_manager'):
-                    step_instance.set_memory_manager(memory_manager)
-                    injections_made += 1
-                    self.logger.debug(f"✅ MemoryManager 주입 완료")
-                elif hasattr(step_instance, 'memory_manager'):
-                    step_instance.memory_manager = memory_manager
-                    injections_made += 1
-                    self.logger.debug(f"✅ MemoryManager 속성 설정 완료")
-            
-            # 3. DataConverter 주입 (옵션)
-            data_converter = self.resolver.resolve_data_converter()
-            if data_converter:
-                if hasattr(step_instance, 'set_data_converter'):
-                    step_instance.set_data_converter(data_converter)
-                    injections_made += 1
-                    self.logger.debug(f"✅ DataConverter 주입 완료")
-                elif hasattr(step_instance, 'data_converter'):
-                    step_instance.data_converter = data_converter
-                    injections_made += 1
-                    self.logger.debug(f"✅ DataConverter 속성 설정 완료")
-            
-            # 4. Step 인터페이스 생성 (ModelLoader를 통해)
-            if hasattr(model_loader, 'create_step_interface'):
+            # ModelLoader 주입
+            if dependency_bundle.model_loader and hasattr(step_instance, 'set_model_loader'):
                 try:
-                    step_name = self._get_step_name(step_type)
-                    step_interface = model_loader.create_step_interface(step_name)
-                    
-                    if step_interface and hasattr(step_instance, 'set_step_interface'):
-                        step_instance.set_step_interface(step_interface)
-                        injections_made += 1
-                        self.logger.debug(f"✅ Step 인터페이스 생성 및 주입 완료")
-                        
+                    step_instance.set_model_loader(dependency_bundle.model_loader)
+                    injection_results['model_loader'] = True
+                    self._creation_stats['dependencies_resolved'] += 1
                 except Exception as e:
-                    self.logger.debug(f"Step 인터페이스 생성 실패: {e}")
-            
-            # 검증
-            if self.config.validate_dependencies:
-                self._validate_injected_dependencies(step_instance)
-            
-            success = injections_made > 0
-            if success:
-                self.logger.info(f"✅ {step_type.value} 의존성 주입 완료: {injections_made}개")
+                    self.logger.warning(f"⚠️ ModelLoader 주입 실패: {e}")
+                    injection_results['model_loader'] = False
             else:
-                self.logger.warning(f"⚠️ {step_type.value} 의존성 주입 없음")
+                injection_results['model_loader'] = False
             
-            return success
+            # MemoryManager 주입
+            if dependency_bundle.memory_manager and hasattr(step_instance, 'set_memory_manager'):
+                try:
+                    step_instance.set_memory_manager(dependency_bundle.memory_manager)
+                    injection_results['memory_manager'] = True
+                    self._creation_stats['dependencies_resolved'] += 1
+                except Exception as e:
+                    self.logger.warning(f"⚠️ MemoryManager 주입 실패: {e}")
+                    injection_results['memory_manager'] = False
+            else:
+                injection_results['memory_manager'] = False
+            
+            # DataConverter 주입
+            if dependency_bundle.data_converter and hasattr(step_instance, 'set_data_converter'):
+                try:
+                    step_instance.set_data_converter(dependency_bundle.data_converter)
+                    injection_results['data_converter'] = True
+                    self._creation_stats['dependencies_resolved'] += 1
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DataConverter 주입 실패: {e}")
+                    injection_results['data_converter'] = False
+            else:
+                injection_results['data_converter'] = False
+            
+            # DI Container 주입
+            if dependency_bundle.di_container and hasattr(step_instance, 'set_di_container'):
+                try:
+                    step_instance.set_di_container(dependency_bundle.di_container)
+                    injection_results['di_container'] = True
+                    self._creation_stats['dependencies_resolved'] += 1
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DI Container 주입 실패: {e}")
+                    injection_results['di_container'] = False
+            else:
+                injection_results['di_container'] = False
+            
+            # 필수 의존성 검증
+            required_dependencies = []
+            if config.require_model_loader:
+                required_dependencies.append('model_loader')
+            if config.require_memory_manager:
+                required_dependencies.append('memory_manager')
+            if config.require_data_converter:
+                required_dependencies.append('data_converter')
+            
+            missing_dependencies = [
+                dep for dep in required_dependencies 
+                if not injection_results.get(dep, False)
+            ]
+            
+            if missing_dependencies and config.strict_mode:
+                self.logger.error(f"❌ 필수 의존성 누락: {missing_dependencies}")
+                raise RuntimeError(f"필수 의존성이 주입되지 않음: {missing_dependencies}")
+            
+            success_count = sum(1 for success in injection_results.values() if success)
+            self.logger.info(f"💉 의존성 주입 완료: {success_count}/{len(injection_results)} 성공")
+            
+            return injection_results
             
         except Exception as e:
-            self.logger.error(f"❌ {step_type.value} 의존성 주입 실패: {e}")
+            self.logger.error(f"❌ 의존성 주입 실패: {e}")
+            return injection_results
+    
+    def _initialize_step(self, step_instance: 'BaseStepMixin', config: StepConfig) -> bool:
+        """Step 초기화 실행"""
+        try:
+            # BaseStepMixin 초기화
+            if hasattr(step_instance, 'initialize'):
+                success = step_instance.initialize()
+                if not success:
+                    self.logger.error(f"❌ {config.step_name} 초기화 실패")
+                    return False
+            
+            # 워밍업 실행 (설정된 경우)
+            if config.auto_warmup and hasattr(step_instance, 'warmup'):
+                try:
+                    warmup_result = step_instance.warmup()
+                    if warmup_result.get('success', False):
+                        self.logger.info(f"🔥 {config.step_name} 워밍업 완료")
+                    else:
+                        self.logger.warning(f"⚠️ {config.step_name} 워밍업 실패")
+                except Exception as warmup_error:
+                    self.logger.warning(f"⚠️ {config.step_name} 워밍업 오류: {warmup_error}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ {config.step_name} 초기화 실패: {e}")
             return False
     
-    def _validate_injected_dependencies(self, step_instance: Any):
-        """주입된 의존성 검증"""
+    def _get_cached_step(self, step_name: str) -> Optional['BaseStepMixin']:
+        """캐시된 Step 조회"""
         try:
-            validation_results = []
-            
-            # ModelLoader 검증
-            if hasattr(step_instance, 'model_loader') or hasattr(step_instance, 'get_model'):
-                validation_results.append("ModelLoader: ✅")
-            else:
-                validation_results.append("ModelLoader: ❌")
-            
-            # 필수 메서드 검증
-            required_methods = ['initialize', 'get_status']
-            for method in required_methods:
-                if hasattr(step_instance, method):
-                    validation_results.append(f"{method}: ✅")
-                else:
-                    validation_results.append(f"{method}: ❌")
-            
-            self.logger.debug(f"의존성 검증 결과: {', '.join(validation_results)}")
-            
-        except Exception as e:
-            self.logger.debug(f"의존성 검증 실패: {e}")
-    
-    # ==============================================
-    # 🔥 10. 편의 메서드들
-    # ==============================================
-    
-    def create_human_parsing_step(self, **kwargs) -> StepFactoryResult:
-        """Human Parsing Step 생성"""
-        return self.create_step(StepType.HUMAN_PARSING, kwargs)
-    
-    def create_pose_estimation_step(self, **kwargs) -> StepFactoryResult:
-        """Pose Estimation Step 생성"""
-        return self.create_step(StepType.POSE_ESTIMATION, kwargs)
-    
-    def create_cloth_segmentation_step(self, **kwargs) -> StepFactoryResult:
-        """Cloth Segmentation Step 생성"""
-        return self.create_step(StepType.CLOTH_SEGMENTATION, kwargs)
-    
-    def create_geometric_matching_step(self, **kwargs) -> StepFactoryResult:
-        """Geometric Matching Step 생성"""
-        return self.create_step(StepType.GEOMETRIC_MATCHING, kwargs)
-    
-    def create_cloth_warping_step(self, **kwargs) -> StepFactoryResult:
-        """Cloth Warping Step 생성"""
-        return self.create_step(StepType.CLOTH_WARPING, kwargs)
-    
-    def create_virtual_fitting_step(self, **kwargs) -> StepFactoryResult:
-        """Virtual Fitting Step 생성 (핵심)"""
-        return self.create_step(StepType.VIRTUAL_FITTING, kwargs)
-    
-    def create_post_processing_step(self, **kwargs) -> StepFactoryResult:
-        """Post Processing Step 생성"""
-        return self.create_step(StepType.POST_PROCESSING, kwargs)
-    
-    def create_quality_assessment_step(self, **kwargs) -> StepFactoryResult:
-        """Quality Assessment Step 생성"""
-        return self.create_step(StepType.QUALITY_ASSESSMENT, kwargs)
-    
-    # 비동기 버전들
-    async def create_human_parsing_step_async(self, **kwargs) -> StepFactoryResult:
-        """Human Parsing Step 비동기 생성"""
-        return await self.create_step_async(StepType.HUMAN_PARSING, kwargs)
-    
-    async def create_virtual_fitting_step_async(self, **kwargs) -> StepFactoryResult:
-        """Virtual Fitting Step 비동기 생성 (핵심)"""
-        return await self.create_step_async(StepType.VIRTUAL_FITTING, kwargs)
-    
-    # M3 Max 최적화 버전들
-    def create_m3_max_optimized_step(
-        self, 
-        step_type: Union[StepType, str], 
-        **kwargs
-    ) -> StepFactoryResult:
-        """M3 Max 최적화 Step 생성"""
-        # M3 Max 특화 설정 적용
-        m3_max_config = {
-            'device': 'mps' if MPS_AVAILABLE else 'cpu',
-            'use_fp16': True,
-            'auto_memory_cleanup': True,
-            'optimization_level': OptimizationLevel.M3_MAX,
-            **kwargs
-        }
-        
-        return self.create_step(step_type, m3_max_config)
-    
-    # ==============================================
-    # 🔥 11. 유틸리티 메서드들
-    # ==============================================
-    
-    def _prepare_step_config(
-        self, 
-        step_type: StepType, 
-        step_config: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Step 설정 준비"""
-        # 기본 설정
-        final_config = {
-            'step_name': self._get_step_name(step_type),
-            'step_id': self._get_step_id(step_type),
-            'device': self.config.device,
-            'use_fp16': self.config.use_fp16,
-            'auto_warmup': self.config.auto_warmup,
-            'auto_memory_cleanup': self.config.auto_memory_cleanup
-        }
-        
-        # 전역 Step 설정 병합
-        if step_type.value in self.config.step_configs:
-            final_config.update(self.config.step_configs[step_type.value])
-        
-        # 개별 설정 병합
-        if step_config:
-            final_config.update(step_config)
-        
-        return final_config
-    
-    def _get_step_name(self, step_type: StepType) -> str:
-        """Step 이름 반환"""
-        name_mapping = {
-            StepType.HUMAN_PARSING: "HumanParsingStep",
-            StepType.POSE_ESTIMATION: "PoseEstimationStep",
-            StepType.CLOTH_SEGMENTATION: "ClothSegmentationStep",
-            StepType.GEOMETRIC_MATCHING: "GeometricMatchingStep",
-            StepType.CLOTH_WARPING: "ClothWarpingStep",
-            StepType.VIRTUAL_FITTING: "VirtualFittingStep",
-            StepType.POST_PROCESSING: "PostProcessingStep",
-            StepType.QUALITY_ASSESSMENT: "QualityAssessmentStep"
-        }
-        return name_mapping.get(step_type, f"{step_type.value.title()}Step")
-    
-    def _get_step_id(self, step_type: StepType) -> int:
-        """Step ID 반환"""
-        id_mapping = {
-            StepType.HUMAN_PARSING: 1,
-            StepType.POSE_ESTIMATION: 2,
-            StepType.CLOTH_SEGMENTATION: 3,
-            StepType.GEOMETRIC_MATCHING: 4,
-            StepType.CLOTH_WARPING: 5,
-            StepType.VIRTUAL_FITTING: 6,
-            StepType.POST_PROCESSING: 7,
-            StepType.QUALITY_ASSESSMENT: 8
-        }
-        return id_mapping.get(step_type, 0)
-    
-    def _generate_cache_key(
-        self, 
-        step_type: StepType, 
-        step_config: Optional[Dict[str, Any]]
-    ) -> str:
-        """캐시 키 생성"""
-        import hashlib
-        
-        key_data = {
-            'step_type': step_type.value,
-            'device': self.config.device,
-            'optimization_level': self.config.optimization_level.value,
-            'step_config': step_config or {}
-        }
-        
-        key_str = str(key_data)  # json.dumps 대신 str 사용으로 호환성 향상
-        return hashlib.md5(key_str.encode()).hexdigest()
-    
-    def _get_from_cache(self, cache_key: str) -> Optional[StepFactoryResult]:
-        """캐시에서 가져오기"""
-        try:
-            with self._cache_lock:
-                if cache_key in self.creation_cache:
-                    cached_result = self.creation_cache[cache_key]
-                    
-                    # 캐시된 인스턴스가 여전히 유효한지 확인
-                    if (cached_result.step_instance and 
-                        hasattr(cached_result.step_instance, 'is_initialized')):
-                        return cached_result
-                
+            with self._lock:
+                if step_name in self._step_cache:
+                    weak_ref = self._step_cache[step_name]
+                    step_instance = weak_ref()
+                    if step_instance is not None:
+                        self.logger.debug(f"♻️ 캐시된 Step 반환: {step_name}")
+                        return step_instance
+                    else:
+                        # 약한 참조가 해제됨
+                        del self._step_cache[step_name]
                 return None
         except Exception as e:
             self.logger.debug(f"캐시 조회 실패: {e}")
             return None
     
-    def _save_to_cache(self, cache_key: str, result: StepFactoryResult):
-        """캐시에 저장"""
+    def _cache_step(self, step_name: str, step_instance: 'BaseStepMixin'):
+        """Step 캐시에 저장"""
         try:
-            with self._cache_lock:
-                # 캐시 크기 제한 (최대 50개)
-                if len(self.creation_cache) >= 50:
-                    # 가장 오래된 항목 제거
-                    oldest_key = next(iter(self.creation_cache))
-                    del self.creation_cache[oldest_key]
-                
-                self.creation_cache[cache_key] = result
+            with self._lock:
+                self._step_cache[step_name] = weakref.ref(step_instance)
+                self.logger.debug(f"💾 Step 캐시에 저장: {step_name}")
         except Exception as e:
             self.logger.debug(f"캐시 저장 실패: {e}")
     
-    def get_creation_stats(self) -> Dict[str, Any]:
-        """생성 통계 반환"""
-        return {
-            **self.creation_stats,
-            'cache_size': len(self.creation_cache),
-            'success_rate': (
-                self.creation_stats['successful_creations'] / 
-                max(1, self.creation_stats['total_created'])
-            ),
-            'dependency_injection_rate': (
-                self.creation_stats['dependency_injection_success'] / 
-                max(1, self.creation_stats['successful_creations'])
+    # ==============================================
+    # 🔥 비동기 Step 생성
+    # ==============================================
+    
+    async def create_step_async(
+        self, 
+        step_type: Union[StepType, str], 
+        config: Optional[StepConfig] = None,
+        use_cache: bool = True,
+        **kwargs
+    ) -> StepCreationResult:
+        """비동기 Step 생성"""
+        try:
+            # 동기 생성을 executor에서 실행
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                self.create_step,
+                step_type,
+                config,
+                use_cache,
+                **kwargs
             )
-        }
+            
+            # 비동기 초기화 (가능한 경우)
+            if result.success and result.step_instance:
+                if hasattr(result.step_instance, 'initialize_async'):
+                    try:
+                        await result.step_instance.initialize_async()
+                        self.logger.info(f"✅ {result.step_name} 비동기 초기화 완료")
+                    except Exception as async_init_error:
+                        self.logger.warning(f"⚠️ {result.step_name} 비동기 초기화 실패: {async_init_error}")
+                        if not result.warnings:
+                            result.warnings = []
+                        result.warnings.append(f"비동기 초기화 실패: {async_init_error}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 Step 생성 실패: {e}")
+            return StepCreationResult(
+                success=False,
+                error_message=f"비동기 Step 생성 실패: {str(e)}"
+            )
+    
+    # ==============================================
+    # 🔥 편의 메서드들
+    # ==============================================
+    
+    def create_human_parsing_step(self, **kwargs) -> StepCreationResult:
+        """Human Parsing Step 생성"""
+        return self.create_step(StepType.HUMAN_PARSING, **kwargs)
+    
+    def create_pose_estimation_step(self, **kwargs) -> StepCreationResult:
+        """Pose Estimation Step 생성"""
+        return self.create_step(StepType.POSE_ESTIMATION, **kwargs)
+    
+    def create_cloth_segmentation_step(self, **kwargs) -> StepCreationResult:
+        """Cloth Segmentation Step 생성"""
+        return self.create_step(StepType.CLOTH_SEGMENTATION, **kwargs)
+    
+    def create_geometric_matching_step(self, **kwargs) -> StepCreationResult:
+        """Geometric Matching Step 생성"""
+        return self.create_step(StepType.GEOMETRIC_MATCHING, **kwargs)
+    
+    def create_cloth_warping_step(self, **kwargs) -> StepCreationResult:
+        """Cloth Warping Step 생성"""
+        return self.create_step(StepType.CLOTH_WARPING, **kwargs)
+    
+    def create_virtual_fitting_step(self, **kwargs) -> StepCreationResult:
+        """Virtual Fitting Step 생성"""
+        return self.create_step(StepType.VIRTUAL_FITTING, **kwargs)
+    
+    def create_post_processing_step(self, **kwargs) -> StepCreationResult:
+        """Post Processing Step 생성"""
+        return self.create_step(StepType.POST_PROCESSING, **kwargs)
+    
+    def create_quality_assessment_step(self, **kwargs) -> StepCreationResult:
+        """Quality Assessment Step 생성"""
+        return self.create_step(StepType.QUALITY_ASSESSMENT, **kwargs)
+    
+    # 비동기 편의 메서드들
+    async def create_human_parsing_step_async(self, **kwargs) -> StepCreationResult:
+        """비동기 Human Parsing Step 생성"""
+        return await self.create_step_async(StepType.HUMAN_PARSING, **kwargs)
+    
+    async def create_pose_estimation_step_async(self, **kwargs) -> StepCreationResult:
+        """비동기 Pose Estimation Step 생성"""
+        return await self.create_step_async(StepType.POSE_ESTIMATION, **kwargs)
+    
+    async def create_cloth_segmentation_step_async(self, **kwargs) -> StepCreationResult:
+        """비동기 Cloth Segmentation Step 생성"""
+        return await self.create_step_async(StepType.CLOTH_SEGMENTATION, **kwargs)
+    
+    async def create_virtual_fitting_step_async(self, **kwargs) -> StepCreationResult:
+        """비동기 Virtual Fitting Step 생성"""
+        return await self.create_step_async(StepType.VIRTUAL_FITTING, **kwargs)
+    
+    # ==============================================
+    # 🔥 전체 파이프라인 생성
+    # ==============================================
+    
+    def create_full_pipeline(self, device: str = "auto", **kwargs) -> Dict[str, StepCreationResult]:
+        """전체 AI 파이프라인 생성"""
+        try:
+            self.logger.info("🚀 전체 AI 파이프라인 생성 시작...")
+            
+            pipeline_results = {}
+            
+            # 모든 Step 타입에 대해 순차적으로 생성
+            for step_type in StepType:
+                try:
+                    config_kwargs = {
+                        'device': device,
+                        **kwargs
+                    }
+                    
+                    result = self.create_step(step_type, **config_kwargs)
+                    pipeline_results[step_type.value] = result
+                    
+                    if result.success:
+                        self.logger.info(f"✅ {result.step_name} 파이프라인 생성 성공")
+                    else:
+                        self.logger.error(f"❌ {step_type.value} 파이프라인 생성 실패: {result.error_message}")
+                        
+                except Exception as step_error:
+                    self.logger.error(f"❌ {step_type.value} Step 생성 중 예외: {step_error}")
+                    pipeline_results[step_type.value] = StepCreationResult(
+                        success=False,
+                        step_name=f"{step_type.value}Step",
+                        step_type=step_type,
+                        error_message=str(step_error)
+                    )
+            
+            success_count = sum(1 for result in pipeline_results.values() if result.success)
+            total_count = len(pipeline_results)
+            
+            self.logger.info(f"🏁 전체 파이프라인 생성 완료: {success_count}/{total_count} 성공")
+            
+            return pipeline_results
+            
+        except Exception as e:
+            self.logger.error(f"❌ 전체 파이프라인 생성 실패: {e}")
+            return {}
+    
+    async def create_full_pipeline_async(self, device: str = "auto", **kwargs) -> Dict[str, StepCreationResult]:
+        """비동기 전체 AI 파이프라인 생성"""
+        try:
+            self.logger.info("🚀 비동기 전체 AI 파이프라인 생성 시작...")
+            
+            # 모든 Step을 동시에 생성
+            tasks = []
+            for step_type in StepType:
+                config_kwargs = {
+                    'device': device,
+                    **kwargs
+                }
+                task = asyncio.create_task(
+                    self.create_step_async(step_type, **config_kwargs)
+                )
+                tasks.append((step_type, task))
+            
+            # 모든 Task 완료 대기
+            pipeline_results = {}
+            for step_type, task in tasks:
+                try:
+                    result = await task
+                    pipeline_results[step_type.value] = result
+                    
+                    if result.success:
+                        self.logger.info(f"✅ {result.step_name} 비동기 파이프라인 생성 성공")
+                    else:
+                        self.logger.error(f"❌ {step_type.value} 비동기 파이프라인 생성 실패")
+                        
+                except Exception as step_error:
+                    self.logger.error(f"❌ {step_type.value} 비동기 Step 생성 중 예외: {step_error}")
+                    pipeline_results[step_type.value] = StepCreationResult(
+                        success=False,
+                        step_name=f"{step_type.value}Step",
+                        step_type=step_type,
+                        error_message=str(step_error)
+                    )
+            
+            success_count = sum(1 for result in pipeline_results.values() if result.success)
+            total_count = len(pipeline_results)
+            
+            self.logger.info(f"🏁 비동기 전체 파이프라인 생성 완료: {success_count}/{total_count} 성공")
+            
+            return pipeline_results
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 전체 파이프라인 생성 실패: {e}")
+            return {}
+    
+    # ==============================================
+    # 🔥 상태 및 통계 메서드들
+    # ==============================================
+    
+    def get_creation_statistics(self) -> Dict[str, Any]:
+        """생성 통계 조회"""
+        try:
+            with self._lock:
+                total = self._creation_stats['total_created']
+                success_rate = (
+                    self._creation_stats['successful_creations'] / max(1, total) * 100
+                )
+                
+                return {
+                    'total_created': total,
+                    'successful_creations': self._creation_stats['successful_creations'],
+                    'failed_creations': self._creation_stats['failed_creations'],
+                    'success_rate': round(success_rate, 2),
+                    'cache_hits': self._creation_stats['cache_hits'],
+                    'dependencies_resolved': self._creation_stats['dependencies_resolved'],
+                    'cached_steps': len(self._step_cache),
+                    'active_cache_entries': len([
+                        ref for ref in self._step_cache.values() 
+                        if ref() is not None
+                    ])
+                }
+        except Exception as e:
+            self.logger.error(f"❌ 통계 조회 실패: {e}")
+            return {}
     
     def clear_cache(self):
         """캐시 정리"""
         try:
-            with self._cache_lock:
-                self.creation_cache.clear()
-            self.logger.info("✅ StepFactory 캐시 정리 완료")
+            with self._lock:
+                self._step_cache.clear()
+                self.dependency_resolver.clear_cache()
+                self.logger.info("🧹 StepFactory 캐시 정리 완료")
         except Exception as e:
             self.logger.error(f"❌ 캐시 정리 실패: {e}")
     
-    def cleanup(self):
-        """팩토리 정리"""
+    def validate_dependencies(self) -> Dict[str, bool]:
+        """의존성 검증"""
         try:
-            self.clear_cache()
+            validation_results = {}
             
-            # 통계 리셋
-            for key in self.creation_stats:
-                self.creation_stats[key] = 0
+            # ModelLoader 검증
+            model_loader = self.dependency_resolver.resolve_model_loader()
+            validation_results['model_loader'] = model_loader is not None
             
-            self.logger.info("✅ StepFactory 정리 완료")
+            # MemoryManager 검증
+            memory_manager = self.dependency_resolver.resolve_memory_manager()
+            validation_results['memory_manager'] = memory_manager is not None
+            
+            # DataConverter 검증
+            data_converter = self.dependency_resolver.resolve_data_converter()
+            validation_results['data_converter'] = data_converter is not None
+            
+            # DI Container 검증
+            di_container = self.dependency_resolver.resolve_di_container()
+            validation_results['di_container'] = di_container is not None
+            
+            # BaseStepMixin 검증
+            for step_type in StepType:
+                step_class = self.dependency_resolver.resolve_step_mixin_class(step_type)
+                validation_results[f'step_class_{step_type.value}'] = step_class is not None
+            
+            return validation_results
             
         except Exception as e:
-            self.logger.error(f"❌ StepFactory 정리 실패: {e}")
+            self.logger.error(f"❌ 의존성 검증 실패: {e}")
+            return {}
 
 # ==============================================
-# 🔥 12. 전역 팩토리 관리 (수정된 버전)
+# 🔥 전역 StepFactory 관리
 # ==============================================
 
 _global_step_factory: Optional[StepFactory] = None
 _factory_lock = threading.Lock()
 
-@lru_cache(maxsize=1)
-def get_global_step_factory(config: Optional[StepFactoryConfig] = None) -> StepFactory:
+def get_global_step_factory() -> StepFactory:
     """전역 StepFactory 인스턴스 반환"""
     global _global_step_factory
     
     with _factory_lock:
         if _global_step_factory is None:
-            factory_config = config or StepFactoryConfig(
-                optimization_level=OptimizationLevel.M3_MAX if IS_M3_MAX else OptimizationLevel.STANDARD,
-                use_conda_optimization=True,
-                enable_dependency_injection=True,
-                auto_warmup=True,
-                auto_memory_cleanup=True
-            )
-            
-            _global_step_factory = StepFactory(factory_config)
-            logger.info("🌐 전역 StepFactory v1.0 인스턴스 생성")
+            _global_step_factory = StepFactory()
+            logger.info("✅ 전역 StepFactory 생성 완료")
         
         return _global_step_factory
 
-def create_m3_max_step_factory() -> StepFactory:
-    """M3 Max 최적화 StepFactory 생성"""
-    config = StepFactoryConfig(
-        device="mps" if MPS_AVAILABLE else "cpu",
-        optimization_level=OptimizationLevel.M3_MAX,
-        use_conda_optimization=True,
-        use_fp16=True,
-        max_cached_models=50,  # M3 Max 128GB 메모리 활용
-        auto_warmup=True,
-        auto_memory_cleanup=True,
-        enable_dependency_injection=True,
-        dependency_injection_mode="runtime"
-    )
-    return StepFactory(config)
-
-def create_production_step_factory() -> StepFactory:
-    """프로덕션 StepFactory 생성"""
-    config = StepFactoryConfig(
-        optimization_level=OptimizationLevel.PRODUCTION,
-        use_conda_optimization=True,
-        use_fp16=True,
-        lazy_loading=True,
-        auto_warmup=False,  # 프로덕션에서는 수동 워밍업
-        auto_memory_cleanup=True,
-        enable_dependency_injection=True,
-        validate_dependencies=True,
-        enable_debug_logging=False
-    )
-    return StepFactory(config)
-
-def cleanup_global_step_factory():
-    """전역 StepFactory 정리"""
-    global _global_step_factory
-    
-    with _factory_lock:
-        if _global_step_factory:
-            _global_step_factory.cleanup()
-            _global_step_factory = None
-        
-        get_global_step_factory.cache_clear()
-        logger.info("🌐 전역 StepFactory v1.0 정리 완료")
-
 # ==============================================
-# 🔥 13. 편의 함수들 (기존 API 호환)
+# 🔥 편의 함수들
 # ==============================================
 
 def create_step(
     step_type: Union[StepType, str], 
-    step_config: Optional[Dict[str, Any]] = None,
+    config: Optional[StepConfig] = None,
     **kwargs
-) -> StepFactoryResult:
-    """Step 생성 (전역 팩토리 사용)"""
+) -> StepCreationResult:
+    """전역 Step 생성 함수"""
     factory = get_global_step_factory()
-    final_config = {**(step_config or {}), **kwargs}
-    return factory.create_step(step_type, final_config)
+    return factory.create_step(step_type, config, **kwargs)
 
 async def create_step_async(
     step_type: Union[StepType, str], 
-    step_config: Optional[Dict[str, Any]] = None,
+    config: Optional[StepConfig] = None,
     **kwargs
-) -> StepFactoryResult:
-    """Step 비동기 생성 (전역 팩토리 사용)"""
+) -> StepCreationResult:
+    """전역 비동기 Step 생성 함수"""
     factory = get_global_step_factory()
-    final_config = {**(step_config or {}), **kwargs}
-    return await factory.create_step_async(step_type, final_config)
+    return await factory.create_step_async(step_type, config, **kwargs)
 
-# Step별 편의 함수들
-def create_human_parsing_step(**kwargs) -> StepFactoryResult:
+def create_human_parsing_step(**kwargs) -> StepCreationResult:
     """Human Parsing Step 생성"""
-    return create_step(StepType.HUMAN_PARSING, kwargs)
+    return create_step(StepType.HUMAN_PARSING, **kwargs)
 
-def create_virtual_fitting_step(**kwargs) -> StepFactoryResult:
-    """Virtual Fitting Step 생성 (핵심)"""
-    return create_step(StepType.VIRTUAL_FITTING, kwargs)
+def create_pose_estimation_step(**kwargs) -> StepCreationResult:
+    """Pose Estimation Step 생성"""
+    return create_step(StepType.POSE_ESTIMATION, **kwargs)
 
-async def create_virtual_fitting_step_async(**kwargs) -> StepFactoryResult:
-    """Virtual Fitting Step 비동기 생성 (핵심)"""
-    return await create_step_async(StepType.VIRTUAL_FITTING, kwargs)
+def create_cloth_segmentation_step(**kwargs) -> StepCreationResult:
+    """Cloth Segmentation Step 생성"""
+    return create_step(StepType.CLOTH_SEGMENTATION, **kwargs)
 
-def create_m3_max_optimized_step(step_type: Union[StepType, str], **kwargs) -> StepFactoryResult:
-    """M3 Max 최적화 Step 생성"""
+def create_virtual_fitting_step(**kwargs) -> StepCreationResult:
+    """Virtual Fitting Step 생성"""
+    return create_step(StepType.VIRTUAL_FITTING, **kwargs)
+
+def create_full_pipeline(device: str = "auto", **kwargs) -> Dict[str, StepCreationResult]:
+    """전체 파이프라인 생성"""
     factory = get_global_step_factory()
-    return factory.create_m3_max_optimized_step(step_type, **kwargs)
+    return factory.create_full_pipeline(device, **kwargs)
 
-# 파이프라인 전체 생성
-def create_complete_pipeline(**kwargs) -> Dict[str, StepFactoryResult]:
-    """8단계 완전 파이프라인 생성"""
+async def create_full_pipeline_async(device: str = "auto", **kwargs) -> Dict[str, StepCreationResult]:
+    """비동기 전체 파이프라인 생성"""
     factory = get_global_step_factory()
-    
-    pipeline_results = {}
-    for step_type in StepType:
-        try:
-            result = factory.create_step(step_type, kwargs)
-            pipeline_results[step_type.value] = result
-            
-            if result.success:
-                logger.info(f"✅ {step_type.value} Step 생성 완료")
-            else:
-                logger.error(f"❌ {step_type.value} Step 생성 실패: {result.error_message}")
-                
-        except Exception as e:
-            logger.error(f"❌ {step_type.value} Step 생성 오류: {e}")
-            pipeline_results[step_type.value] = StepFactoryResult(
-                step_instance=None,
-                model_loader=None,
-                step_config={},
-                creation_time=0,
-                success=False,
-                error_message=str(e)
-            )
-    
-    return pipeline_results
+    return await factory.create_full_pipeline_async(device, **kwargs)
 
-async def create_complete_pipeline_async(**kwargs) -> Dict[str, StepFactoryResult]:
-    """8단계 완전 파이프라인 비동기 생성"""
+def validate_step_dependencies() -> Dict[str, bool]:
+    """Step 의존성 검증"""
     factory = get_global_step_factory()
-    
-    # 병렬 생성을 위한 태스크 생성
-    tasks = []
-    for step_type in StepType:
-        task = factory.create_step_async(step_type, kwargs)
-        tasks.append((step_type, task))
-    
-    # 병렬 실행
-    pipeline_results = {}
-    for step_type, task in tasks:
-        try:
-            result = await task
-            pipeline_results[step_type.value] = result
-            
-            if result.success:
-                logger.info(f"✅ {step_type.value} Step 비동기 생성 완료")
-            else:
-                logger.error(f"❌ {step_type.value} Step 비동기 생성 실패: {result.error_message}")
-                
-        except Exception as e:
-            logger.error(f"❌ {step_type.value} Step 비동기 생성 오류: {e}")
-            pipeline_results[step_type.value] = StepFactoryResult(
-                step_instance=None,
-                model_loader=None,
-                step_config={},
-                creation_time=0,
-                success=False,
-                error_message=str(e)
-            )
-    
-    return pipeline_results
+    return factory.validate_dependencies()
+
+def get_step_factory_statistics() -> Dict[str, Any]:
+    """StepFactory 통계 조회"""
+    factory = get_global_step_factory()
+    return factory.get_creation_statistics()
+
+def clear_step_factory_cache():
+    """StepFactory 캐시 정리"""
+    factory = get_global_step_factory()
+    factory.clear_cache()
 
 # ==============================================
-# 🔥 14. 모듈 내보내기
+# 🔥 Export
 # ==============================================
 
 __all__ = [
-    # 핵심 클래스들
+    # 메인 클래스들
     'StepFactory',
     'DependencyResolver',
-    'SystemOptimizer',
     
     # 데이터 구조들
     'StepType',
-    'OptimizationLevel',
-    'StepFactoryConfig',
-    'StepFactoryResult',
+    'StepPriority',
+    'StepConfig',
+    'StepCreationResult',
+    'DependencyBundle',
     
     # 전역 함수들
     'get_global_step_factory',
-    'create_m3_max_step_factory',
-    'create_production_step_factory',
-    'cleanup_global_step_factory',
     
     # 편의 함수들
     'create_step',
     'create_step_async',
     'create_human_parsing_step',
+    'create_pose_estimation_step',
+    'create_cloth_segmentation_step',
     'create_virtual_fitting_step',
-    'create_virtual_fitting_step_async',
-    'create_m3_max_optimized_step',
-    'create_complete_pipeline',
-    'create_complete_pipeline_async',
+    'create_full_pipeline',
+    'create_full_pipeline_async',
     
-    # 상수들
-    'IS_M3_MAX',
-    'TORCH_AVAILABLE',
-    'MPS_AVAILABLE',
-    'CONDA_INFO'
+    # 유틸리티 함수들
+    'validate_step_dependencies',
+    'get_step_factory_statistics',
+    'clear_step_factory_cache'
 ]
 
-# ==============================================
-# 🔥 15. 모듈 정리 함수 등록
-# ==============================================
-
-import atexit
-atexit.register(cleanup_global_step_factory)
-
-# ==============================================
-# 🔥 16. 모듈 로드 완료 메시지
-# ==============================================
-
+# 모듈 로드 완료
 logger.info("=" * 80)
-logger.info("✅ StepFactory v1.0 - 완전 수정된 버전 로드 완료")
+logger.info("🏭 StepFactory v5.0 - 의존성 주입 패턴 + 순환참조 완전 해결")
 logger.info("=" * 80)
-logger.info("🔥 핵심 수정사항:")
-logger.info("   ✅ initialize/initialize_async 메서드 추가 (main.py 호환)")
-logger.info("   ✅ device_type → device 매개변수 통일")
-logger.info("   ✅ device_type property 호환성 지원")
-logger.info("   ✅ 순환참조 완전 방지 - 한방향 의존성 구조")
-logger.info("   ✅ 의존성 주입 패턴 완전 구현")
-logger.info("   ✅ BaseStepMixin과 ModelLoader 안전한 조립")
-logger.info("   ✅ M3 Max 128GB 최적화")
-logger.info("   ✅ conda 환경 우선 지원")
-logger.info("   ✅ 8단계 AI 파이프라인 완전 지원")
-logger.info("   ✅ 프로덕션 레벨 안정성")
-logger.info("   ✅ 모든 함수명/클래스명 유지")
-logger.info("   ✅ 들여쓰기/문법 오류 완전 해결")
-logger.info("")
-logger.info("🏗️ 구조:")
-logger.info("   StepFactory → ModelLoader (생성) → BaseStepMixin (생성) → 의존성 주입 → 완성된 Step")
-logger.info("")
-logger.info("🎯 8단계 AI 파이프라인 지원:")
-logger.info("   1️⃣ HumanParsingMixin - 신체 영역 분할")
-logger.info("   2️⃣ PoseEstimationMixin - 포즈 감지") 
-logger.info("   3️⃣ ClothSegmentationMixin - 의류 분할")
-logger.info("   4️⃣ GeometricMatchingMixin - 기하학적 매칭")
-logger.info("   5️⃣ ClothWarpingMixin - 의류 변형")
-logger.info("   6️⃣ VirtualFittingMixin - 가상 피팅 (핵심)")
-logger.info("   7️⃣ PostProcessingMixin - 후처리")
-logger.info("   8️⃣ QualityAssessmentMixin - 품질 평가")
-logger.info("")
-logger.info(f"🔧 시스템 상태:")
-logger.info(f"   - conda 환경: {CONDA_INFO['conda_env']}")
-logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
-logger.info(f"   - MPS: {'✅' if MPS_AVAILABLE else '❌'}")
-logger.info(f"   - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-logger.info("")
-logger.info("🌟 사용 예시:")
-logger.info("   # 기본 사용")
-logger.info("   result = create_virtual_fitting_step()")
-logger.info("   if result.success:")
-logger.info("       step = result.step_instance")
-logger.info("   ")
-logger.info("   # 비동기 사용")
-logger.info("   result = await create_virtual_fitting_step_async()")
-logger.info("   ")
-logger.info("   # M3 Max 최적화")
-logger.info("   result = create_m3_max_optimized_step('virtual_fitting')")
-logger.info("   ")
-logger.info("   # 완전 파이프라인")
-logger.info("   pipeline = await create_complete_pipeline_async()")
-logger.info("")
-logger.info("=" * 80)
-logger.info("🚀 StepFactory v1.0 완전 수정 완료!")
-logger.info("   ✅ initialize 메서드 오류 완전 해결")
-logger.info("   ✅ main.py 호환성 완전 보장")
-logger.info("   ✅ device_type 오류 완전 해결")
-logger.info("   ✅ 기존 호환성 유지")
-logger.info("   ✅ 순환참조 완전 해결")
-logger.info("   ✅ 깔끔한 의존성 주입 패턴")
-logger.info("   ✅ BaseStepMixin + ModelLoader 완벽 조립")
-logger.info("   ✅ M3 Max 128GB 최적화")
-logger.info("   ✅ 프로덕션 레벨 안정성")
-logger.info("   ✅ 모든 함수명/클래스명 유지")
-logger.info("   ✅ 완벽한 문법 및 들여쓰기")
+logger.info("✅ TYPE_CHECKING 패턴으로 순환참조 완전 방지")
+logger.info("✅ 통합된 의존성 주입 시스템")
+logger.info("✅ 표준화된 Step 생성 패턴")
+logger.info("✅ 모든 Step 클래스 호환성 보장")
+logger.info("✅ 향상된 에러 처리")
+logger.info("✅ 비동기 Step 생성 지원")
+logger.info("✅ 전체 파이프라인 생성 기능")
+logger.info("✅ 약한 참조 기반 캐싱")
+logger.info("✅ 프로덕션 레벨 안정성")
 logger.info("=" * 80)
