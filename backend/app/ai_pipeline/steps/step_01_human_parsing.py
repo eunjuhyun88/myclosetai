@@ -24,20 +24,13 @@ StepFactory → ModelLoader → UnifiedDependencyManager → BaseStepMixin → H
 - ai_models/Self-Correction-Human-Parsing/* (대체 경로)
 - ai_models/Graphonomy/* (대체 경로)
 
-처리 흐름:
-1. StepFactory → ModelLoader → UnifiedDependencyManager → 의존성 주입
-2. 동적 경로 매핑으로 실제 AI 모델 체크포인트 자동 탐지
-3. 체크포인트 → AI 모델 클래스 생성 → 실제 가중치 로딩
-4. 직접적인 AI 추론 → 20개 부위 감지 → 품질 분석 → 시각화
-5. BaseStepMixin 표준 응답 반환
-
 Author: MyCloset AI Team
 Date: 2025-07-25
 Version: v20.0 (Project Standard Complete Implementation)
 """
 
 # ==============================================
-# 🔥 1. Import 섹션 (TYPE_CHECKING 패턴)
+# 🔥 1. Import 섹션 (TYPE_CHECKING 패턴으로 순환참조 완전 방지)
 # ==============================================
 
 import os
@@ -64,7 +57,10 @@ from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
 
-# 🔥 TYPE_CHECKING으로 순환참조 완전 방지
+# ==============================================
+# 🔥 2. TYPE_CHECKING으로 순환참조 완전 방지
+# ==============================================
+
 if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader
     from app.ai_pipeline.interfaces.step_interface import StepModelInterface
@@ -75,7 +71,7 @@ if TYPE_CHECKING:
     from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin, UnifiedDependencyManager
 
 # ==============================================
-# 🔥 2. conda 환경 체크 및 시스템 감지 (프로젝트 표준)
+# 🔥 3. conda 환경 체크 및 시스템 감지 (프로젝트 표준)
 # ==============================================
 
 CONDA_INFO = {
@@ -105,47 +101,185 @@ if IS_M3_MAX and CONDA_INFO['is_mycloset_env']:
     os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
 
 # ==============================================
-# 🔥 3. 동적 import 함수들 (순환참조 방지)
+# 🔥 4. BaseStepMixin 동적 import (순환참조 방지)
 # ==============================================
 
-def _import_base_step_mixin():
-    """BaseStepMixin 동적 import (프로젝트 표준)"""
+def get_base_step_mixin_class():
+    """BaseStepMixin 클래스를 동적으로 가져오기 (프로젝트 표준)"""
     try:
         import importlib
-        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
+        module = importlib.import_module('.base_step_mixin', package=__package__)
         return getattr(module, 'BaseStepMixin', None)
-    except Exception:
+    except ImportError as e:
+        logging.error(f"❌ BaseStepMixin 동적 import 실패: {e}")
         return None
 
-def _import_unified_dependency_manager():
+def get_unified_dependency_manager():
     """UnifiedDependencyManager 동적 import (프로젝트 표준)"""
     try:
         import importlib
-        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
+        module = importlib.import_module('.base_step_mixin', package=__package__)
         return getattr(module, 'UnifiedDependencyManager', None)
-    except Exception:
+    except ImportError as e:
+        logging.error(f"❌ UnifiedDependencyManager 동적 import 실패: {e}")
         return None
 
-def _import_model_loader():
+def get_global_model_loader():
     """ModelLoader 동적 import (프로젝트 표준)"""
     try:
         import importlib
         module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-        return getattr(module, 'get_global_model_loader', None)
-    except Exception:
-        return None
+        get_global = getattr(module, 'get_global_model_loader', None)
+        if get_global:
+            return get_global()
+    except ImportError:
+        pass
+    return None
 
-def _import_step_factory():
-    """StepFactory 동적 import (프로젝트 표준)"""
-    try:
-        import importlib
-        module = importlib.import_module('app.ai_pipeline.factories.step_factory')
-        return getattr(module, 'StepFactory', None)
-    except Exception:
-        return None
+# BaseStepMixin 클래스 동적 로딩 (프로젝트 표준)
+BaseStepMixin = get_base_step_mixin_class()
+
+if BaseStepMixin is None:
+    # 폴백 클래스 정의 (프로젝트 표준 완전 호환)
+    class BaseStepMixin:
+        def __init__(self, **kwargs):
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'BaseStep')
+            self.step_id = kwargs.get('step_id', 0)
+            self.device = kwargs.get('device', 'cpu')
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            
+            # BaseStepMixin v16.0 호환 속성들
+            self.config = type('StepConfig', (), kwargs)()
+            
+            # 의존성 주입 인터페이스
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            self.unified_dependency_manager = None
+            
+            # 의존성 관리자 시뮬레이션 (프로젝트 표준)
+            self.dependency_manager = type('DependencyManager', (), {
+                'dependency_status': type('DependencyStatus', (), {
+                    'model_loader': False,
+                    'step_interface': False,
+                    'memory_manager': False,
+                    'data_converter': False,
+                    'di_container': False
+                })(),
+                'auto_inject_dependencies': lambda: self._auto_inject_dependencies()
+            })()
+            
+            # 성능 메트릭 (프로젝트 표준)
+            self.performance_metrics = {
+                'process_count': 0,
+                'total_process_time': 0.0,
+                'average_process_time': 0.0,
+                'error_count': 0,
+                'success_count': 0,
+                'cache_hits': 0
+            }
+        
+        def _auto_inject_dependencies(self):
+            """자동 의존성 주입 (프로젝트 표준)"""
+            try:
+                success_count = 0
+                
+                # ModelLoader 자동 주입
+                if not self.model_loader:
+                    model_loader = get_global_model_loader()
+                    if model_loader:
+                        self.set_model_loader(model_loader)
+                        success_count += 1
+                
+                # UnifiedDependencyManager 자동 주입
+                if not self.unified_dependency_manager:
+                    UnifiedDependencyManagerClass = get_unified_dependency_manager()
+                    if UnifiedDependencyManagerClass:
+                        self.unified_dependency_manager = UnifiedDependencyManagerClass(self.step_name)
+                        self.unified_dependency_manager.inject_dependencies(self)
+                        success_count += 1
+                
+                return success_count > 0
+            except Exception as e:
+                self.logger.warning(f"⚠️ 자동 의존성 주입 실패: {e}")
+                return False
+        
+        async def initialize(self):
+            self.is_initialized = True
+            return True
+        
+        def set_model_loader(self, model_loader):
+            self.model_loader = model_loader
+            self.has_model = True
+            self.model_loaded = True
+        
+        def set_memory_manager(self, memory_manager):
+            self.memory_manager = memory_manager
+        
+        def set_data_converter(self, data_converter):
+            self.data_converter = data_converter
+        
+        def set_di_container(self, di_container):
+            self.di_container = di_container
+        
+        def inject_dependencies(self, unified_dependency_manager):
+            """UnifiedDependencyManager 의존성 주입"""
+            self.unified_dependency_manager = unified_dependency_manager
+            return True
+        
+        def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
+            """모델 가져오기 (프로젝트 표준 BaseStepMixin 인터페이스)"""
+            try:
+                if self.model_loader and hasattr(self.model_loader, 'get_model_sync'):
+                    return self.model_loader.get_model_sync(model_name or "default")
+                elif self.model_loader and hasattr(self.model_loader, 'load_model'):
+                    return self.model_loader.load_model(model_name or "default")
+                return None
+            except Exception:
+                return None
+        
+        async def get_model_async(self, model_name: Optional[str] = None) -> Optional[Any]:
+            """비동기 모델 가져오기 (프로젝트 표준 BaseStepMixin 인터페이스)"""
+            try:
+                if self.model_loader and hasattr(self.model_loader, 'get_model_async'):
+                    return await self.model_loader.get_model_async(model_name or "default")
+                return self.get_model(model_name)
+            except Exception:
+                return None
+        
+        def optimize_memory(self, aggressive: bool = False) -> Dict[str, Any]:
+            """메모리 최적화 (프로젝트 표준 BaseStepMixin 인터페이스)"""
+            try:
+                if self.memory_manager and hasattr(self.memory_manager, 'optimize_memory'):
+                    return self.memory_manager.optimize_memory(aggressive=aggressive)
+                return {"success": True, "method": "fallback"}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+        
+        def get_status(self) -> Dict[str, Any]:
+            """Step 상태 조회 (프로젝트 표준 BaseStepMixin 인터페이스)"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'has_model': self.has_model,
+                'model_loaded': self.model_loaded,
+                'device': self.device,
+                'version': 'v20.0-BaseStepMixin-Fallback'
+            }
+        
+        async def cleanup(self):
+            pass
 
 # ==============================================
-# 🔥 4. 필수 패키지 임포트 및 검증 (conda 환경 우선)
+# 🔥 5. 필수 패키지 임포트 및 검증 (conda 환경 우선)
 # ==============================================
 
 # NumPy (필수)
@@ -206,7 +340,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 # ==============================================
-# 🔥 5. 동적 경로 매핑 시스템 (프로젝트 표준)
+# 🔥 6. 동적 경로 매핑 시스템 (프로젝트 표준)
 # ==============================================
 
 class SmartModelPathMapper:
@@ -256,7 +390,7 @@ class SmartModelPathMapper:
         return found_paths
 
 # ==============================================
-# 🔥 6. 인체 파싱 상수 및 데이터 구조 (프로젝트 표준)
+# 🔥 7. 인체 파싱 상수 및 데이터 구조 (프로젝트 표준)
 # ==============================================
 
 class HumanParsingModel(Enum):
@@ -320,7 +454,7 @@ CLOTHING_CATEGORIES = {
 }
 
 # ==============================================
-# 🔥 7. 파싱 메트릭 데이터 클래스 (프로젝트 표준)
+# 🔥 8. 파싱 메트릭 데이터 클래스 (프로젝트 표준)
 # ==============================================
 
 @dataclass
@@ -385,7 +519,7 @@ class HumanParsingMetrics:
         return asdict(self)
 
 # ==============================================
-# 🔥 8. AI 모델 클래스들 (실제 체크포인트 기반, 프로젝트 표준)
+# 🔥 9. AI 모델 클래스들 (실제 체크포인트 기반, 프로젝트 표준)
 # ==============================================
 
 class RealGraphonomyModel(nn.Module):
@@ -569,7 +703,7 @@ class RealATRModel(nn.Module):
         return {'parsing': output}
 
 # ==============================================
-# 🔥 9. MPS 캐시 정리 유틸리티 (M3 Max 최적화)
+# 🔥 10. MPS 캐시 정리 유틸리티 (M3 Max 최적화)
 # ==============================================
 
 def safe_mps_empty_cache():
@@ -591,10 +725,10 @@ def safe_mps_empty_cache():
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 10. HumanParsingStep 메인 클래스 (v20.0 프로젝트 표준 완전 호환)
+# 🔥 11. HumanParsingStep 메인 클래스 (프로젝트 표준 BaseStepMixin 완전 호환)
 # ==============================================
 
-class HumanParsingStep:
+class HumanParsingStep(BaseStepMixin):
     """
     🔥 Step 01: 완전한 실제 AI 인체 파싱 시스템 v20.0 (프로젝트 표준 완전 호환)
     
@@ -611,6 +745,9 @@ class HumanParsingStep:
     def __init__(self, **kwargs):
         """프로젝트 표준 BaseStepMixin 호환 생성자"""
         try:
+            # 🔥 BaseStepMixin 초기화 (반드시 첫 번째)
+            super().__init__(**kwargs)
+            
             # 🔥 Step 기본 설정 (프로젝트 표준)
             self.step_name = kwargs.get('step_name', 'HumanParsingStep')
             self.step_id = kwargs.get('step_id', 1)
@@ -621,21 +758,6 @@ class HumanParsingStep:
             self.device = kwargs.get('device', 'auto')
             if self.device == 'auto':
                 self.device = self._detect_optimal_device()
-            
-            # 🔥 프로젝트 표준 상태 플래그들
-            self.is_initialized = False
-            self.is_ready = False
-            self.has_model = False
-            self.model_loaded = False
-            self.warmup_completed = False
-            
-            # 🔥 의존성 주입 인터페이스 (프로젝트 표준 BaseStepMixin 호환)
-            self.model_loader: Optional['ModelLoader'] = None
-            self.model_interface: Optional['StepModelInterface'] = None
-            self.memory_manager: Optional['MemoryManager'] = None
-            self.data_converter: Optional['DataConverter'] = None
-            self.di_container: Optional['DIContainer'] = None
-            self.unified_dependency_manager: Optional['UnifiedDependencyManager'] = None
             
             # 🔥 실제 AI 모델 상태
             self.active_ai_models: Dict[str, Any] = {}
@@ -683,7 +805,11 @@ class HumanParsingStep:
             self.last_error = None
             self.total_processing_count = 0
             
-            self.logger.info(f"🎯 {self.step_name} v20.0 생성 완료 (프로젝트 표준 완전 호환)")
+            # 🔥 자동 의존성 주입 시도 (프로젝트 표준)
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                self.dependency_manager.auto_inject_dependencies()
+            
+            self.logger.info(f"🎯 {self.step_name} v20.0 생성 완료 (프로젝트 표준 BaseStepMixin 완전 호환)")
             
         except Exception as e:
             # 🔥 긴급 폴백 초기화
@@ -713,256 +839,21 @@ class HumanParsingStep:
             return "cpu"
     
     # ==============================================
-    # 🔥 11. 프로젝트 표준 BaseStepMixin 의존성 주입 인터페이스
-    # ==============================================
-    
-    def set_model_loader(self, model_loader: 'ModelLoader'):
-        """ModelLoader 의존성 주입 (프로젝트 표준 BaseStepMixin 호환)"""
-        try:
-            self.model_loader = model_loader
-            self.has_model = True
-            self.model_loaded = True
-            
-            # Step 인터페이스 생성 (프로젝트 표준)
-            if hasattr(model_loader, 'create_step_interface'):
-                try:
-                    self.model_interface = model_loader.create_step_interface(self.step_name)
-                    self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
-                except Exception as e:
-                    self.logger.debug(f"Step 인터페이스 생성 실패: {e}")
-                    self.model_interface = model_loader
-            else:
-                self.model_interface = model_loader
-            
-            self.logger.info("✅ ModelLoader 의존성 주입 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
-            if self.strict_mode:
-                raise RuntimeError(f"Strict Mode: ModelLoader 의존성 주입 실패: {e}")
-    
-    def set_memory_manager(self, memory_manager: 'MemoryManager'):
-        """MemoryManager 의존성 주입 (프로젝트 표준 BaseStepMixin 호환)"""
-        try:
-            self.memory_manager = memory_manager
-            self.logger.info("✅ MemoryManager 의존성 주입 완료")
-        except Exception as e:
-            self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
-    
-    def set_data_converter(self, data_converter: 'DataConverter'):
-        """DataConverter 의존성 주입 (프로젝트 표준 BaseStepMixin 호환)"""
-        try:
-            self.data_converter = data_converter
-            self.logger.info("✅ DataConverter 의존성 주입 완료")
-        except Exception as e:
-            self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
-    
-    def set_di_container(self, di_container: 'DIContainer'):
-        """DI Container 의존성 주입 (프로젝트 표준 BaseStepMixin 호환)"""
-        try:
-            self.di_container = di_container
-            self.logger.info("✅ DI Container 의존성 주입 완료")
-        except Exception as e:
-            self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
-    
-    def inject_dependencies(self, unified_dependency_manager: 'UnifiedDependencyManager'):
-        """UnifiedDependencyManager 의존성 주입 (프로젝트 표준 최신)"""
-        try:
-            self.unified_dependency_manager = unified_dependency_manager
-            
-            # 개별 의존성들 자동 주입
-            if hasattr(unified_dependency_manager, 'get_model_loader'):
-                model_loader = unified_dependency_manager.get_model_loader()
-                if model_loader:
-                    self.set_model_loader(model_loader)
-            
-            if hasattr(unified_dependency_manager, 'get_memory_manager'):
-                memory_manager = unified_dependency_manager.get_memory_manager()
-                if memory_manager:
-                    self.set_memory_manager(memory_manager)
-            
-            if hasattr(unified_dependency_manager, 'get_data_converter'):
-                data_converter = unified_dependency_manager.get_data_converter()
-                if data_converter:
-                    self.set_data_converter(data_converter)
-            
-            self.logger.info("✅ UnifiedDependencyManager 의존성 주입 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ UnifiedDependencyManager 의존성 주입 실패: {e}")
-            return False
-    
-    # ==============================================
-    # 🔥 12. 프로젝트 표준 BaseStepMixin 핵심 메서드들
-    # ==============================================
-    
-    def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """모델 가져오기 (프로젝트 표준 BaseStepMixin 인터페이스)"""
-        try:
-            # Step Interface 우선 사용
-            if self.model_interface and hasattr(self.model_interface, 'get_model_sync'):
-                return self.model_interface.get_model_sync(model_name or "default")
-            
-            # ModelLoader 직접 사용
-            if self.model_loader and hasattr(self.model_loader, 'load_model'):
-                return self.model_loader.load_model(model_name or "default")
-            
-            # 로컬 캐시 확인
-            if model_name in self.active_ai_models:
-                return self.active_ai_models[model_name]
-            
-            self.logger.warning("⚠️ 모델 제공자가 주입되지 않음")
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ 모델 가져오기 실패: {e}")
-            return None
-    
-    async def get_model_async(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """비동기 모델 가져오기 (프로젝트 표준 BaseStepMixin 인터페이스)"""
-        try:
-            # Step Interface 우선 사용
-            if self.model_interface and hasattr(self.model_interface, 'get_model_async'):
-                return await self.model_interface.get_model_async(model_name or "default")
-            
-            # ModelLoader 직접 사용
-            if self.model_loader and hasattr(self.model_loader, 'load_model_async'):
-                return await self.model_loader.load_model_async(model_name or "default")
-            
-            # 동기 메서드 폴백
-            return self.get_model(model_name)
-            
-        except Exception as e:
-            self.logger.error(f"❌ 비동기 모델 가져오기 실패: {e}")
-            return None
-    
-    def optimize_memory(self, aggressive: bool = False) -> Dict[str, Any]:
-        """메모리 최적화 (프로젝트 표준 BaseStepMixin 인터페이스)"""
-        try:
-            # 주입된 MemoryManager 우선 사용
-            if self.memory_manager and hasattr(self.memory_manager, 'optimize_memory'):
-                return self.memory_manager.optimize_memory(aggressive=aggressive)
-            
-            # 내장 메모리 최적화
-            return self._builtin_memory_optimize(aggressive)
-            
-        except Exception as e:
-            self.logger.error(f"❌ 메모리 최적화 실패: {e}")
-            return {"success": False, "error": str(e)}
-    
-    def _builtin_memory_optimize(self, aggressive: bool = False) -> Dict[str, Any]:
-        """내장 메모리 최적화 (M3 Max 최적화)"""
-        try:
-            initial_memory = 0
-            if PSUTIL_AVAILABLE:
-                process = psutil.Process()
-                initial_memory = process.memory_info().rss / 1024 / 1024  # MB
-            
-            # 캐시 정리
-            cache_cleared = len(self.prediction_cache)
-            if aggressive:
-                self.prediction_cache.clear()
-            else:
-                # 오래된 캐시만 정리
-                current_time = time.time()
-                keys_to_remove = []
-                for key, value in self.prediction_cache.items():
-                    if isinstance(value, dict) and 'timestamp' in value:
-                        if current_time - value['timestamp'] > 300:  # 5분 이상
-                            keys_to_remove.append(key)
-                for key in keys_to_remove:
-                    del self.prediction_cache[key]
-            
-            # AI 모델 메모리 정리
-            if aggressive:
-                for model_name, model in list(self.active_ai_models.items()):
-                    if hasattr(model, 'cpu'):
-                        model.cpu()
-                self.active_ai_models.clear()
-            
-            # PyTorch 메모리 정리 (M3 Max 최적화)
-            gc.collect()
-            if TORCH_AVAILABLE:
-                if self.device == "mps":
-                    safe_mps_empty_cache()
-                elif self.device == "cuda":
-                    torch.cuda.empty_cache()
-            
-            final_memory = 0
-            if PSUTIL_AVAILABLE:
-                process = psutil.Process()
-                final_memory = process.memory_info().rss / 1024 / 1024  # MB
-            
-            return {
-                "success": True,
-                "cache_cleared": cache_cleared,
-                "memory_before_mb": initial_memory,
-                "memory_after_mb": final_memory,
-                "memory_freed_mb": initial_memory - final_memory,
-                "aggressive": aggressive
-            }
-            
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Step 상태 조회 (프로젝트 표준 BaseStepMixin 인터페이스)"""
-        try:
-            return {
-                'step_name': self.step_name,
-                'step_id': getattr(self, 'step_id', 1),
-                'is_initialized': getattr(self, 'is_initialized', False),
-                'is_ready': getattr(self, 'is_ready', False),
-                'has_model': getattr(self, 'has_model', False),
-                'model_loaded': getattr(self, 'model_loaded', False),
-                'device': self.device,
-                'is_m3_max': getattr(self, 'is_m3_max', False),
-                'is_mycloset_env': getattr(self, 'is_mycloset_env', False),
-                'error_count': getattr(self, 'error_count', 0),
-                'last_error': getattr(self, 'last_error', None),
-                
-                # AI 모델 정보
-                'ai_models_loaded': list(self.active_ai_models.keys()),
-                'model_loader_injected': self.model_loader is not None,
-                'model_interface_available': self.model_interface is not None,
-                
-                # 의존성 상태 (프로젝트 표준)
-                'dependencies_injected': {
-                    'model_loader': self.model_loader is not None,
-                    'memory_manager': self.memory_manager is not None,
-                    'data_converter': self.data_converter is not None,
-                    'di_container': self.di_container is not None,
-                    'unified_dependency_manager': self.unified_dependency_manager is not None
-                },
-                
-                'performance_stats': getattr(self, 'performance_stats', {}),
-                'version': 'v20.0-Project_Standard_Complete',
-                'conda_env': CONDA_INFO['conda_env'],
-                'timestamp': time.time()
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 상태 조회 실패: {e}")
-            return {
-                'step_name': getattr(self, 'step_name', 'HumanParsingStep'),
-                'error': str(e),
-                'version': 'v20.0-Project_Standard_Complete',
-                'timestamp': time.time()
-            }
-    
-    # ==============================================
-    # 🔥 13. 초기화 메서드들 (프로젝트 표준 + 동적 경로 매핑)
+    # 🔥 12. 초기화 메서드들 (프로젝트 표준)
     # ==============================================
     
     async def initialize(self) -> bool:
-        """완전한 초기화 (프로젝트 표준 BaseStepMixin 인터페이스)"""
+        """완전한 초기화 (프로젝트 표준 BaseStepMixin 호환)"""
         try:
             if getattr(self, 'is_initialized', False):
                 return True
             
             self.logger.info(f"🚀 {self.step_name} v20.0 프로젝트 표준 초기화 시작")
             start_time = time.time()
+            
+            # 0. 자동 의존성 주입 (프로젝트 표준)
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                self.dependency_manager.auto_inject_dependencies()
             
             # 1. 동적 경로 매핑으로 실제 AI 모델 경로 탐지
             self.model_paths = self.path_mapper.get_step01_model_paths()
@@ -1173,7 +1064,7 @@ class HumanParsingStep:
             self.logger.warning(f"conda 환경 최적화 실패: {e}")
     
     # ==============================================
-    # 🔥 14. 메인 처리 메서드 (process) - 실제 AI 추론 (프로젝트 표준)
+    # 🔥 13. 메인 처리 메서드 (process) - 실제 AI 추론 (프로젝트 표준)
     # ==============================================
     
     async def process(
@@ -1246,7 +1137,7 @@ class HumanParsingStep:
             return self._create_error_result(error_msg, processing_time)
     
     # ==============================================
-    # 🔥 15. AI 추론 및 처리 메서드들 (직접적인 추론 구조)
+    # 🔥 14. AI 추론 및 처리 메서드들 (직접적인 추론 구조)
     # ==============================================
     
     def _preprocess_image_for_ai(self, image: Union[np.ndarray, Image.Image, torch.Tensor]) -> Optional[Image.Image]:
@@ -1531,7 +1422,7 @@ class HumanParsingStep:
             }
     
     # ==============================================
-    # 🔥 16. 분석 메서드들 (20개 부위 정밀 분석)
+    # 🔥 15. 분석 메서드들 (20개 부위 정밀 분석)
     # ==============================================
     
     def get_detected_parts(self, parsing_map: np.ndarray) -> Dict[str, Any]:
@@ -1737,7 +1628,7 @@ class HumanParsingStep:
             }
     
     # ==============================================
-    # 🔥 17. 시각화 생성 메서드들 (프로젝트 표준)
+    # 🔥 16. 시각화 생성 메서드들 (프로젝트 표준)
     # ==============================================
     
     def _create_visualization(self, image: Image.Image, parsing_map: np.ndarray) -> Dict[str, str]:
@@ -1889,7 +1780,7 @@ class HumanParsingStep:
             return ""
     
     # ==============================================
-    # 🔥 18. 유틸리티 메서드들 (프로젝트 표준)
+    # 🔥 17. 유틸리티 메서드들 (프로젝트 표준)
     # ==============================================
     
     def _generate_cache_key(self, image: Image.Image, kwargs: Dict) -> str:
@@ -2053,7 +1944,7 @@ class HumanParsingStep:
         }
     
     # ==============================================
-    # 🔥 19. 프로젝트 표준 BaseStepMixin 호환 메서드들
+    # 🔥 18. 프로젝트 표준 BaseStepMixin 호환 메서드들
     # ==============================================
     
     def record_processing(self, processing_time: float, success: bool = True):
@@ -2087,7 +1978,7 @@ class HumanParsingStep:
         """성능 요약 (프로젝트 표준 BaseStepMixin 인터페이스)"""
         return self.performance_stats.copy()
     
-    def cleanup_resources(self):
+    async def cleanup(self):
         """리소스 정리 (프로젝트 표준 BaseStepMixin 인터페이스)"""
         try:
             # AI 모델 정리
@@ -2151,7 +2042,7 @@ class HumanParsingStep:
             return False
 
 # ==============================================
-# 🔥 20. 팩토리 함수들 (프로젝트 표준 StepFactory 연동)
+# 🔥 19. 팩토리 함수들 (프로젝트 표준 StepFactory 연동)
 # ==============================================
 
 async def create_human_parsing_step(
@@ -2189,20 +2080,17 @@ async def create_human_parsing_step(
         # 의존성 자동 주입 시도 (프로젝트 표준)
         try:
             # ModelLoader 자동 주입
-            get_global_loader = _import_model_loader()
-            if get_global_loader:
-                model_loader = get_global_loader()
-                if model_loader:
-                    step.set_model_loader(model_loader)
-                    step.logger.info("✅ ModelLoader 자동 주입 성공")
+            model_loader = get_global_model_loader()
+            if model_loader:
+                step.set_model_loader(model_loader)
+                step.logger.info("✅ ModelLoader 자동 주입 성공")
             
             # UnifiedDependencyManager 자동 주입
-            get_unified_manager = _import_unified_dependency_manager()
-            if get_unified_manager:
-                unified_manager = get_unified_manager()
-                if unified_manager:
-                    step.inject_dependencies(unified_manager)
-                    step.logger.info("✅ UnifiedDependencyManager 자동 주입 성공")
+            UnifiedDependencyManagerClass = get_unified_dependency_manager()
+            if UnifiedDependencyManagerClass:
+                unified_manager = UnifiedDependencyManagerClass(step.step_name)
+                step.inject_dependencies(unified_manager)
+                step.logger.info("✅ UnifiedDependencyManager 자동 주입 성공")
                     
         except Exception as e:
             step.logger.warning(f"⚠️ 의존성 자동 주입 실패: {e}")
@@ -2263,7 +2151,7 @@ def create_project_standard_human_parsing_step(**kwargs) -> HumanParsingStep:
     return HumanParsingStep(**project_config)
 
 # ==============================================
-# 🔥 21. 테스트 함수들 (프로젝트 표준 검증)
+# 🔥 20. 테스트 함수들 (프로젝트 표준 검증)
 # ==============================================
 
 async def test_v20_project_standard_integration():
@@ -2285,24 +2173,19 @@ async def test_v20_project_standard_integration():
         print(f"✅ 동적 경로 매핑 시스템: {step.path_mapper is not None}")
         
         # 의존성 자동 주입 시도 (프로젝트 표준)
-        get_global_loader = _import_model_loader()
-        if get_global_loader:
-            model_loader = get_global_loader()
-            if model_loader:
-                step.set_model_loader(model_loader)
-                print("✅ ModelLoader 자동 주입 성공")
-            else:
-                print("⚠️ ModelLoader 인스턴스 없음")
+        model_loader = get_global_model_loader()
+        if model_loader:
+            step.set_model_loader(model_loader)
+            print("✅ ModelLoader 자동 주입 성공")
         else:
-            print("⚠️ ModelLoader 모듈 없음")
+            print("⚠️ ModelLoader 인스턴스 없음")
         
         # UnifiedDependencyManager 주입 시도
-        get_unified_manager = _import_unified_dependency_manager()
-        if get_unified_manager:
-            unified_manager = get_unified_manager()
-            if unified_manager:
-                step.inject_dependencies(unified_manager)
-                print("✅ UnifiedDependencyManager 자동 주입 성공")
+        UnifiedDependencyManagerClass = get_unified_dependency_manager()
+        if UnifiedDependencyManagerClass:
+            unified_manager = UnifiedDependencyManagerClass(step.step_name)
+            step.inject_dependencies(unified_manager)
+            print("✅ UnifiedDependencyManager 자동 주입 성공")
         
         # 초기화 (실제 AI 모델 로딩)
         init_success = await step.initialize()
@@ -2313,10 +2196,10 @@ async def test_v20_project_standard_integration():
         print(f"✅ 프로젝트 표준 시스템 정보:")
         print(f"   - Step명: {status.get('step_name')}")
         print(f"   - 초기화 상태: {status.get('is_initialized')}")
-        print(f"   - 실제 AI 모델: {status.get('ai_models_loaded', [])}")
+        print(f"   - 실제 AI 모델: {getattr(step, 'active_ai_models', {}).keys()}")
         print(f"   - 프로젝트 표준 호환: {True}")
         print(f"   - M3 Max 최적화: {status.get('is_m3_max')}")
-        print(f"   - conda 환경: {status.get('conda_env')}")
+        print(f"   - conda 환경: {CONDA_INFO['conda_env']}")
         print(f"   - 버전: {status.get('version')}")
         
         # 더미 데이터로 처리 테스트 (실제 AI 추론)
@@ -2327,12 +2210,12 @@ async def test_v20_project_standard_integration():
         if result['success']:
             print("✅ 프로젝트 표준 실제 AI 추론 테스트 성공!")
             print(f"   - 처리 시간: {result['processing_time']:.3f}초")
-            print(f"   - 품질 등급: {result['quality_grade']}")
-            print(f"   - AI 신뢰도: {result['parsing_analysis']['ai_confidence']:.3f}")
-            print(f"   - 감지된 부위: {len(result['detected_parts'])}개")
-            print(f"   - 실제 AI 추론: {result['device_info']['real_ai_inference']}")
-            print(f"   - 직접 추론 구조: {result['device_info']['direct_inference_structure']}")
-            print(f"   - 프로젝트 표준 호환: {result['step_info']['project_standard_compatible']}")
+            print(f"   - 품질 등급: {result.get('quality_grade', 'N/A')}")
+            print(f"   - AI 신뢰도: {result.get('parsing_analysis', {}).get('ai_confidence', 0):.3f}")
+            print(f"   - 감지된 부위: {len(result.get('detected_parts', []))}개")
+            print(f"   - 실제 AI 추론: {result.get('device_info', {}).get('real_ai_inference', False)}")
+            print(f"   - 직접 추론 구조: {result.get('device_info', {}).get('direct_inference_structure', False)}")
+            print(f"   - 프로젝트 표준 호환: {result.get('step_info', {}).get('project_standard_compatible', False)}")
             return True
         else:
             print(f"❌ 처리 실패: {result.get('error', '알 수 없는 오류')}")
@@ -2356,13 +2239,13 @@ def test_dynamic_path_mapping():
         
         print(f"✅ 동적 경로 매핑 결과:")
         for model_name, path in model_paths.items():
-            if path:
+            if path and path.exists():
                 file_size = path.stat().st_size / 1024 / 1024  # MB
                 print(f"   ✅ {model_name}: {path} ({file_size:.1f}MB)")
             else:
                 print(f"   ❌ {model_name}: 경로를 찾을 수 없음")
         
-        found_models = [k for k, v in model_paths.items() if v is not None]
+        found_models = [k for k, v in model_paths.items() if v is not None and v.exists()]
         print(f"\n📊 총 발견된 모델: {len(found_models)}개")
         
         return len(found_models) > 0
@@ -2400,8 +2283,8 @@ def test_project_environment_compatibility():
         
         print(f"✅ Step 환경 호환성:")
         print(f"   - 디바이스: {status['device']}")
-        print(f"   - M3 Max 최적화: {status['is_m3_max']}")
-        print(f"   - mycloset 환경: {status['is_mycloset_env']}")
+        print(f"   - M3 Max 최적화: {status.get('is_m3_max', False)}")
+        print(f"   - mycloset 환경: {status.get('is_mycloset_env', False)}")
         
         return True
         
@@ -2410,7 +2293,7 @@ def test_project_environment_compatibility():
         return False
 
 # ==============================================
-# 🔥 22. 모듈 익스포트 (프로젝트 표준)
+# 🔥 21. 모듈 익스포트 (프로젝트 표준)
 # ==============================================
 
 __all__ = [
@@ -2439,11 +2322,16 @@ __all__ = [
     # 테스트 함수들
     'test_v20_project_standard_integration',
     'test_dynamic_path_mapping',
-    'test_project_environment_compatibility'
+    'test_project_environment_compatibility',
+    
+    # 동적 import 함수들
+    'get_base_step_mixin_class',
+    'get_unified_dependency_manager',
+    'get_global_model_loader'
 ]
 
 # ==============================================
-# 🔥 23. 모듈 초기화 로그 (프로젝트 표준)
+# 🔥 22. 모듈 초기화 로그 (프로젝트 표준)
 # ==============================================
 
 logger.info("=" * 80)
@@ -2492,7 +2380,7 @@ logger.info("✨ v20.0 프로젝트 표준 완전 호환! 실제 AI 4.0GB 완전
 logger.info("=" * 80)
 
 # ==============================================
-# 🔥 24. 메인 실행부 (v20.0 프로젝트 표준 검증)
+# 🔥 23. 메인 실행부 (v20.0 프로젝트 표준 검증)
 # ==============================================
 
 if __name__ == "__main__":
@@ -2581,6 +2469,13 @@ if __name__ == "__main__":
    - ai_models/step_01_human_parsing/lip_model.pth (255MB)
    - ai_models/Self-Correction-Human-Parsing/* (대체 경로)
    - ai_models/Graphonomy/* (대체 경로)
+
+🔧 BaseStepMixin 연동 패턴 해결 방안:
+   ✅ TYPE_CHECKING으로 순환참조 완전 방지
+   ✅ 동적 import 함수로 런타임에서 BaseStepMixin 로딩
+   ✅ 폴백 클래스로 BaseStepMixin이 없어도 동작 보장
+   ✅ 자동 의존성 주입으로 ModelLoader/UnifiedDependencyManager 연동
+   ✅ 프로젝트 표준 인터페이스 완전 구현
 
 🎯 결과:
    - 프로젝트 표준 BaseStepMixin 완전 호환 확보
