@@ -49,9 +49,10 @@ class RealFileMapper:
         self.logger = logging.getLogger(f"{__name__}.RealFileMapper")
         
         # 🔥 ModelLoader v5.1 호환 실제 파일 구조 반영
+        # 🔥 ModelLoader v5.1 호환 실제 파일 구조 반영 (Step별 매핑명 수정)
         self.step_file_mappings = {
-            # Human Parsing (255MB 파일들)
-            "human_parsing_schp_atr": {
+            # Step 01: Human Parsing 
+            "human_parsing_schp": {  # ✅ 기존 "human_parsing_schp_atr" → "human_parsing_schp"로 변경
                 "actual_files": [
                     "exp-schp-201908301523-atr.pth",
                     "exp-schp-201908261155-atr.pth", 
@@ -67,11 +68,30 @@ class RealFileMapper:
                 "min_size_mb": 250,
                 "priority": 1,
                 "step_class": "HumanParsingStep",
-                "ai_class": "RealGraphonomyModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealGraphonomyModel",
                 "model_load_method": "load_models"
             },
             
-            # Cloth Segmentation (2.4GB SAM + 168MB U2Net)
+            # ✅ Step 02: Pose Estimation 추가
+            "pose_estimation_openpose": {  # ✅ 새로 추가
+                "actual_files": [
+                    "openpose.pth",
+                    "body_pose_model.pth"
+                ],
+                "search_paths": [
+                    "step_02_pose_estimation",
+                    "checkpoints/step_02_pose_estimation"
+                ],
+                "patterns": [r".*openpose.*\.pth$", r".*body_pose.*\.pth$"],
+                "size_range": (90, 110),
+                "min_size_mb": 90,
+                "priority": 1,
+                "step_class": "PoseEstimationStep",
+                "ai_class": "RealOpenPoseModel",
+                "model_load_method": "load_models"
+            },
+            
+            # Cloth Segmentation (기존 유지)
             "cloth_segmentation_sam": {
                 "actual_files": ["sam_vit_h_4b8939.pth"],
                 "search_paths": [
@@ -85,11 +105,11 @@ class RealFileMapper:
                 "min_size_mb": 2400,
                 "priority": 1,
                 "step_class": "ClothSegmentationStep",
-                "ai_class": "RealSAMModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealSAMModel",
                 "model_load_method": "load_models"
             },
             
-            # Virtual Fitting (3.2GB Diffusion)
+            # Virtual Fitting (기존 유지)
             "virtual_fitting_diffusion": {
                 "actual_files": [
                     "diffusion_pytorch_model.bin",
@@ -108,12 +128,12 @@ class RealFileMapper:
                 "min_size_mb": 3100,
                 "priority": 1,
                 "step_class": "VirtualFittingStep",
-                "ai_class": "RealOOTDDiffusionModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealOOTDDiffusionModel",
                 "model_load_method": "load_models"
             },
             
-            # Cloth Warping (6.6GB RealVis XL)
-            "cloth_warping_realvis": {
+            # ✅ Step 05: Cloth Warping 이름 수정
+            "cloth_warping_model": {  # ✅ 기존 "cloth_warping_realvis" → "cloth_warping_model"로 변경
                 "actual_files": [
                     "RealVisXL_V4.0.safetensors",
                     "realvisxl_v4.0.safetensors"
@@ -128,11 +148,11 @@ class RealFileMapper:
                 "min_size_mb": 6500,
                 "priority": 1,
                 "step_class": "ClothWarpingStep",
-                "ai_class": "RealVisXLModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealVisXLModel",
                 "model_load_method": "load_models"
             },
             
-            # Quality Assessment (5.2GB CLIP)
+            # Quality Assessment (기존 유지)
             "quality_assessment_clip": {
                 "actual_files": [
                     "open_clip_pytorch_model.bin",
@@ -148,11 +168,11 @@ class RealFileMapper:
                 "min_size_mb": 5100,
                 "priority": 1,
                 "step_class": "QualityAssessmentStep",
-                "ai_class": "RealCLIPModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealCLIPModel",
                 "model_load_method": "load_models"
             },
             
-            # U2Net Cloth (168MB)
+            # U2Net Cloth (기존 유지)
             "cloth_segmentation_u2net": {
                 "actual_files": ["u2net.pth"],
                 "search_paths": [
@@ -164,12 +184,12 @@ class RealFileMapper:
                 "min_size_mb": 160,
                 "priority": 2,
                 "step_class": "ClothSegmentationStep",
-                "ai_class": "RealU2NetModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealU2NetModel",
                 "model_load_method": "load_models"
             },
             
-            # Post Processing (332MB GFPGAN)
-            "post_processing_gfpgan": {
+            # ✅ Step 07: Post Processing 이름 수정
+            "post_processing_enhancement": {  # ✅ 기존 "post_processing_gfpgan" → "post_processing_enhancement"로 변경
                 "actual_files": ["GFPGANv1.4.pth"],
                 "search_paths": [
                     "step_07_post_processing",
@@ -180,7 +200,28 @@ class RealFileMapper:
                 "min_size_mb": 320,
                 "priority": 1,
                 "step_class": "PostProcessingStep",
-                "ai_class": "RealGFPGANModel",  # 🔥 AI 클래스 추가
+                "ai_class": "RealGFPGANModel",
+                "model_load_method": "load_models"
+            },
+            
+            # ✅ Step 04: Geometric Matching 추가
+            "geometric_matching_model": {  # ✅ 새로 추가
+                "actual_files": [
+                    "gmm_final.pth",
+                    "tps_network.pth",
+                    "ViT-L-14.pt"
+                ],
+                "search_paths": [
+                    "step_04_geometric_matching",
+                    "checkpoints/step_04_geometric_matching",
+                    "step_08_quality_assessment/ultra_models"  # ViT 공유
+                ],
+                "patterns": [r".*gmm.*\.pth$", r".*tps.*\.pth$", r".*ViT-L-14.*\.pt$"],
+                "size_range": (10, 5300),  # 넓은 범위 (작은 GMM부터 큰 ViT까지)
+                "min_size_mb": 10,
+                "priority": 1,
+                "step_class": "GeometricMatchingStep",
+                "ai_class": "RealGMMModel",
                 "model_load_method": "load_models"
             }
         }
