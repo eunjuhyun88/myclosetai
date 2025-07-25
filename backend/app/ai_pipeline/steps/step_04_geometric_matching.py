@@ -56,8 +56,7 @@ if TYPE_CHECKING:
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
 os.environ['OMP_NUM_THREADS'] = '16'  # M3 Max 16코어
-
-# PyTorch 및 이미지 처리
+# PyTorch 및 이미지 처리 (🔧 torch.mps 오류 수정)
 try:
     import torch
     import torch.nn as nn
@@ -66,10 +65,39 @@ try:
     TORCH_AVAILABLE = True
     DEVICE = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
     
-    # M3 Max 최적화
+    # 🔧 M3 Max 최적화 (안전한 MPS 캐시 처리)
     if DEVICE == "mps":
-        torch.backends.mps.empty_cache()
+        # torch.backends.mps.empty_cache() 안전한 호출
+        try:
+            if hasattr(torch.backends.mps, 'empty_cache'):
+                torch.backends.mps.empty_cache()
+            elif hasattr(torch.mps, 'empty_cache'):
+                torch.mps.empty_cache()
+            else:
+                # MPS 캐시 정리 메서드가 없는 경우 스킵
+                logging.debug("⚠️ MPS empty_cache 메서드 없음 - 스킵")
+        except Exception as e:
+            logging.debug(f"⚠️ MPS 캐시 정리 실패: {e}")
+        
+        # M3 Max 16코어 최적화
         torch.set_num_threads(16)
+        
+        # 🔥 conda 환경 MPS 최적화 설정
+        try:
+            # MPS 메모리 관리 최적화
+            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+            
+            # conda 환경 특화 최적화
+            if 'CONDA_DEFAULT_ENV' in os.environ:
+                conda_env = os.environ['CONDA_DEFAULT_ENV']
+                if 'mycloset' in conda_env.lower():
+                    # MyCloset conda 환경 특화 최적화
+                    os.environ['OMP_NUM_THREADS'] = '16'
+                    os.environ['MKL_NUM_THREADS'] = '16'
+                    logging.info(f"🍎 conda 환경 ({conda_env}) MPS 최적화 완료")
+        except Exception as e:
+            logging.debug(f"⚠️ conda MPS 최적화 실패: {e}")
         
 except ImportError:
     TORCH_AVAILABLE = False
@@ -99,6 +127,89 @@ try:
 except ImportError:
     SCIPY_AVAILABLE = False
 
+# 🔧 추가: 안전한 MPS 메모리 정리 함수
+def safe_mps_empty_cache():
+    """conda 환경에서 안전한 MPS 메모리 정리"""
+    if DEVICE == "mps" and TORCH_AVAILABLE:
+        try:
+            if hasattr(torch.backends.mps, 'empty_cache'):
+                torch.backends.mps.empty_cache()
+            elif hasattr(torch.mps, 'empty_cache'):
+                torch.mps.empty_cache()
+            elif hasattr(torch, 'mps') and hasattr(torch.mps, 'empty_cache'):
+                torch.mps.empty_cache()
+            else:
+                # 수동 메모리 정리 시도
+                import gc
+                gc.collect()
+                return False
+            return True
+        except Exception as e:
+            logging.debug(f"⚠️ MPS 캐시 정리 실패: {e}")
+            import gc
+            gc.collect()
+            return False
+    return False
+
+# 🔧 추가: PyTorch 버전별 호환성 체크
+def check_torch_mps_compatibility():
+    """PyTorch MPS 호환성 체크"""
+    compatibility_info = {
+        'torch_version': torch.__version__ if TORCH_AVAILABLE else 'N/A',
+        'mps_available': torch.backends.mps.is_available() if TORCH_AVAILABLE else False,
+        'mps_empty_cache_available': False,
+        'device': DEVICE,
+        'conda_env': os.environ.get('CONDA_DEFAULT_ENV', 'N/A')
+    }
+    
+    if TORCH_AVAILABLE and DEVICE == "mps":
+        # MPS empty_cache 메서드 존재 여부 확인
+        if hasattr(torch.backends.mps, 'empty_cache'):
+            compatibility_info['mps_empty_cache_available'] = True
+            compatibility_info['empty_cache_method'] = 'torch.backends.mps.empty_cache'
+        elif hasattr(torch.mps, 'empty_cache'):
+            compatibility_info['mps_empty_cache_available'] = True
+            compatibility_info['empty_cache_method'] = 'torch.mps.empty_cache'
+        else:
+            compatibility_info['mps_empty_cache_available'] = False
+            compatibility_info['empty_cache_method'] = 'none'
+    
+    return compatibility_info
+
+# 🔧 추가: conda 환경 최적화 확인
+def validate_conda_optimization():
+    """conda 환경 최적화 상태 확인"""
+    optimization_status = {
+        'conda_env': os.environ.get('CONDA_DEFAULT_ENV', 'N/A'),
+        'omp_threads': os.environ.get('OMP_NUM_THREADS', 'N/A'),
+        'mkl_threads': os.environ.get('MKL_NUM_THREADS', 'N/A'),
+        'mps_high_watermark': os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO', 'N/A'),
+        'mps_fallback': os.environ.get('PYTORCH_ENABLE_MPS_FALLBACK', 'N/A'),
+        'torch_threads': torch.get_num_threads() if TORCH_AVAILABLE else 'N/A'
+    }
+    
+    # MyCloset conda 환경 특화 체크
+    is_mycloset_env = (
+        'mycloset' in optimization_status['conda_env'].lower() 
+        if optimization_status['conda_env'] != 'N/A' else False
+    )
+    optimization_status['is_mycloset_env'] = is_mycloset_env
+    
+    return optimization_status
+
+# 초기 호환성 체크 및 로깅
+if __name__ == "__main__":
+    print("🔧 PyTorch MPS 호환성 체크:")
+    compatibility = check_torch_mps_compatibility()
+    for key, value in compatibility.items():
+        print(f"  {key}: {value}")
+    
+    print("\n🔧 conda 환경 최적화 상태:")
+    optimization = validate_conda_optimization()
+    for key, value in optimization.items():
+        print(f"  {key}: {value}")
+    
+    print(f"\n✅ MPS 메모리 정리 테스트: {safe_mps_empty_cache()}")
 # ==============================================
 # 🔥 3. 동적 import 함수들 (TYPE_CHECKING 패턴)
 # ==============================================
