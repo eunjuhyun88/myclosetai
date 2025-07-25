@@ -48,6 +48,59 @@ from functools import lru_cache, wraps
 from contextlib import asynccontextmanager, contextmanager
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import sys
+
+# ==============================================
+# 🔥 1. 안전한 PyTorch Import (문제 해결 핵심)
+# ==============================================
+
+# PyTorch 먼저 import (런타임에서 실제로 사용)
+TORCH_AVAILABLE = False
+MPS_AVAILABLE = False
+CUDA_AVAILABLE = False
+torch = None
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+    
+    # MPS/CUDA 지원 확인
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+    if torch.cuda.is_available():
+        CUDA_AVAILABLE = True
+        
+    logging.getLogger(__name__).info(f"✅ PyTorch {torch.__version__} 로드 성공 (MPS: {MPS_AVAILABLE})")
+    
+except ImportError as e:
+    logging.getLogger(__name__).error(f"❌ PyTorch import 실패: {e}")
+    # 폴백을 위한 더미 객체
+    class DummyTorch:
+        class Tensor:
+            pass
+        def load(self, *args, **kwargs):
+            raise RuntimeError("PyTorch가 설치되지 않음")
+    torch = DummyTorch()
+
+# NumPy 안전한 import
+NUMPY_AVAILABLE = False
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    logging.getLogger(__name__).error("❌ NumPy import 실패")
+    raise ImportError("NumPy는 필수입니다")
+
+# PIL 안전한 import
+PIL_AVAILABLE = False
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    logging.getLogger(__name__).error("❌ PIL import 실패")
+    raise ImportError("PIL은 필수입니다")
 
 # 🔥 TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
