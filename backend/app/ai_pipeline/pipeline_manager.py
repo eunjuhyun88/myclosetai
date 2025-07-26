@@ -1,4 +1,4 @@
-# backend/app/ai_pipeline/managers/pipeline_manager.py
+# backend/app/ai_pipeline/pipeline_manager.py
 """
 🔥 완전 DI 통합 PipelineManager v9.1 - base_step_mixin.py 기반 완전 개선 + 순환참조 해결
 =====================================================================================
@@ -2140,6 +2140,364 @@ class PipelineManager:
             self.logger.warning(f"⚠️ {step_name} 어댑터 카운트 실패: {e}")
             return 0
     
+    # backend/app/ai_pipeline/pipeline_manager.py에 추가할 코드
+
+# PipelineManager 클래스 내부에 다음 메서드들을 추가:
+
+def register_step(self, step_id: int, step_instance: Any) -> bool:
+    """
+    Step 인스턴스를 파이프라인에 등록
+    
+    Args:
+        step_id: Step ID (1-8)
+        step_instance: Step 인스턴스
+        
+    Returns:
+        bool: 등록 성공 여부
+    """
+    try:
+        # Step ID를 step_name으로 변환
+        step_name_mapping = {
+            1: 'human_parsing',
+            2: 'pose_estimation', 
+            3: 'cloth_segmentation',
+            4: 'geometric_matching',
+            5: 'cloth_warping',
+            6: 'virtual_fitting',
+            7: 'post_processing',
+            8: 'quality_assessment'
+        }
+        
+        step_name = step_name_mapping.get(step_id)
+        if not step_name:
+            self.logger.warning(f"⚠️ 지원하지 않는 Step ID: {step_id}")
+            return False
+        
+        # Step 등록
+        self.steps[step_name] = step_instance
+        
+        # DI 의존성 주입 (있는 경우)
+        if self.config.use_dependency_injection and self.di_container:
+            try:
+                # ModelLoader 어댑터 주입
+                if hasattr(step_instance, 'model_loader') and not step_instance.model_loader:
+                    model_loader = self.di_container.get('IModelLoader') or ModelLoaderAdapter()
+                    step_instance.model_loader = model_loader
+                
+                # MemoryManager 어댑터 주입
+                if hasattr(step_instance, 'memory_manager') and not step_instance.memory_manager:
+                    memory_manager = self.di_container.get('IMemoryManager') or MemoryManagerAdapter()
+                    step_instance.memory_manager = memory_manager
+                
+                # DataConverter 어댑터 주입
+                if hasattr(step_instance, 'data_converter') and not step_instance.data_converter:
+                    data_converter = self.di_container.get('IDataConverter') or DataConverterAdapter(self.device)
+                    step_instance.data_converter = data_converter
+                
+                self.logger.debug(f"✅ Step {step_id} ({step_name}) DI 의존성 주입 완료")
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️ Step {step_id} DI 의존성 주입 실패: {e}")
+        
+        self.logger.info(f"✅ Step {step_id} ({step_name}) 등록 완료")
+        return True
+        
+    except Exception as e:
+        self.logger.error(f"❌ Step {step_id} 등록 실패: {e}")
+        return False
+
+def register_steps_batch(self, steps_dict: Dict[int, Any]) -> Dict[int, bool]:
+    """
+    여러 Step을 일괄 등록
+    
+    Args:
+        steps_dict: {step_id: step_instance} 딕셔너리
+        
+    Returns:
+        Dict[int, bool]: 각 Step의 등록 결과
+    """
+    results = {}
+    
+    try:
+        self.logger.info(f"🔄 {len(steps_dict)}개 Step 일괄 등록 시작...")
+        
+        for step_id, step_instance in steps_dict.items():
+            results[step_id] = self.register_step(step_id, step_instance)
+        
+        success_count = sum(1 for success in results.values() if success)
+        self.logger.info(f"✅ Step 일괄 등록 완료: {success_count}/{len(steps_dict)}")
+        
+        return results
+        
+    except Exception as e:
+        self.logger.error(f"❌ Step 일괄 등록 실패: {e}")
+        return {step_id: False for step_id in steps_dict.keys()}
+
+def unregister_step(self, step_id: int) -> bool:
+    """
+    Step 등록 해제
+    
+    Args:
+        step_id: Step ID (1-8)
+        
+    Returns:
+        bool: 해제 성공 여부
+    """
+    try:
+        # Step ID를 step_name으로 변환
+        step_name_mapping = {
+            1: 'human_parsing',
+            2: 'pose_estimation',
+            3: 'cloth_segmentation', 
+            4: 'geometric_matching',
+            5: 'cloth_warping',
+            6: 'virtual_fitting',
+            7: 'post_processing',
+            8: 'quality_assessment'
+        }
+        
+        step_name = step_name_mapping.get(step_id)
+        if not step_name:
+            self.logger.warning(f"⚠️ 지원하지 않는 Step ID: {step_id}")
+            return False
+        
+        if step_name in self.steps:
+            # Step 정리
+            step_instance = self.steps[step_name]
+            if hasattr(step_instance, 'cleanup'):
+                try:
+                    if asyncio.iscoroutinefunction(step_instance.cleanup):
+                        asyncio.create_task(step_instance.cleanup())
+                    else:
+                        step_instance.cleanup()
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Step {step_id} 정리 중 오류: {e}")
+            
+            # 등록 해제
+            del self.steps[step_name]
+            self.logger.info(f"✅ Step {step_id} ({step_name}) 등록 해제 완료")
+            return True
+        else:
+            self.logger.warning(f"⚠️ Step {step_id} ({step_name})가 등록되어 있지 않음")
+            return False
+            
+    except Exception as e:
+        self.logger.error(f"❌ Step {step_id} 등록 해제 실패: {e}")
+        return False
+
+def get_registered_steps(self) -> Dict[str, Any]:
+    """
+    등록된 Step 목록 반환
+    
+    Returns:
+        Dict[str, Any]: 등록된 Step 정보
+    """
+    try:
+        registered_info = {}
+        
+        # Step name을 ID로 변환하는 매핑
+        name_to_id_mapping = {
+            'human_parsing': 1,
+            'pose_estimation': 2,
+            'cloth_segmentation': 3,
+            'geometric_matching': 4,
+            'cloth_warping': 5,
+            'virtual_fitting': 6,
+            'post_processing': 7,
+            'quality_assessment': 8
+        }
+        
+        for step_name, step_instance in self.steps.items():
+            step_id = name_to_id_mapping.get(step_name, 0)
+            
+            step_info = {
+                'step_id': step_id,
+                'step_name': step_name,
+                'class_name': type(step_instance).__name__,
+                'registered': True,
+                'has_process_method': hasattr(step_instance, 'process'),
+                'has_model_loader': hasattr(step_instance, 'model_loader') and step_instance.model_loader is not None,
+                'has_memory_manager': hasattr(step_instance, 'memory_manager') and step_instance.memory_manager is not None,
+                'has_data_converter': hasattr(step_instance, 'data_converter') and step_instance.data_converter is not None,
+                'di_injected': (hasattr(step_instance, 'model_loader') and step_instance.model_loader is not None) or
+                             (hasattr(step_instance, 'memory_manager') and step_instance.memory_manager is not None),
+                'adapters_used': self._count_step_adapters(step_name)
+            }
+            
+            registered_info[step_name] = step_info
+        
+        return {
+            'total_registered': len(self.steps),
+            'registered_steps': registered_info,
+            'missing_steps': [name for name in name_to_id_mapping.keys() if name not in self.steps],
+            'registration_rate': len(self.steps) / len(name_to_id_mapping) * 100
+        }
+        
+    except Exception as e:
+        self.logger.error(f"❌ 등록된 Step 조회 실패: {e}")
+        return {'error': str(e)}
+
+def is_step_registered(self, step_id: int) -> bool:
+    """
+    Step 등록 여부 확인
+    
+    Args:
+        step_id: Step ID (1-8)
+        
+    Returns:
+        bool: 등록 여부
+    """
+    step_name_mapping = {
+        1: 'human_parsing',
+        2: 'pose_estimation',
+        3: 'cloth_segmentation',
+        4: 'geometric_matching', 
+        5: 'cloth_warping',
+        6: 'virtual_fitting',
+        7: 'post_processing',
+        8: 'quality_assessment'
+    }
+    
+    step_name = step_name_mapping.get(step_id)
+    return step_name in self.steps if step_name else False
+
+def get_step_by_id(self, step_id: int) -> Optional[Any]:
+    """
+    Step ID로 Step 인스턴스 반환
+    
+    Args:
+        step_id: Step ID (1-8)
+        
+    Returns:
+        Optional[Any]: Step 인스턴스 또는 None
+    """
+    step_name_mapping = {
+        1: 'human_parsing',
+        2: 'pose_estimation',
+        3: 'cloth_segmentation',
+        4: 'geometric_matching',
+        5: 'cloth_warping', 
+        6: 'virtual_fitting',
+        7: 'post_processing',
+        8: 'quality_assessment'
+    }
+    
+    step_name = step_name_mapping.get(step_id)
+    return self.steps.get(step_name) if step_name else None
+
+def update_config(self, new_config: Dict[str, Any]) -> bool:
+    """
+    파이프라인 설정 업데이트
+    
+    Args:
+        new_config: 새로운 설정 딕셔너리
+        
+    Returns:
+        bool: 업데이트 성공 여부
+    """
+    try:
+        self.logger.info("🔄 파이프라인 설정 업데이트 시작...")
+        
+        # 기본 설정 업데이트
+        if 'device' in new_config and new_config['device'] != self.device:
+            self.device = new_config['device']
+            self.data_converter = DataConverterAdapter(self.device)
+            self.logger.info(f"✅ 디바이스 변경: {self.device}")
+        
+        # PipelineConfig 업데이트
+        if isinstance(self.config, dict):
+            self.config.update(new_config)
+        else:
+            # PipelineConfig 객체인 경우 속성 업데이트
+            for key, value in new_config.items():
+                if hasattr(self.config, key):
+                    setattr(self.config, key, value)
+        
+        # Step별 설정 업데이트
+        if 'steps' in new_config:
+            steps_config = new_config['steps']
+            for step_config in steps_config:
+                if 'step_name' in step_config:
+                    step_name = step_config['step_name']
+                    if step_name in self.steps:
+                        step_instance = self.steps[step_name]
+                        # Step 인스턴스 설정 업데이트
+                        for config_key, config_value in step_config.items():
+                            if hasattr(step_instance, config_key):
+                                setattr(step_instance, config_key, config_value)
+        
+        self.logger.info("✅ 파이프라인 설정 업데이트 완료")
+        return True
+        
+    except Exception as e:
+        self.logger.error(f"❌ 파이프라인 설정 업데이트 실패: {e}")
+        return False
+
+def configure_from_detection(self, detection_config: Dict[str, Any]) -> bool:
+    """
+    Step 탐지 결과로부터 파이프라인 설정
+    
+    Args:
+        detection_config: Step 탐지 결과 설정
+        
+    Returns:
+        bool: 설정 성공 여부
+    """
+    try:
+        self.logger.info("🎯 Step 탐지 결과로부터 파이프라인 설정 시작...")
+        
+        # 탐지된 Step 정보 추출
+        if 'steps' in detection_config:
+            for step_config in detection_config['steps']:
+                step_name = step_config.get('step_name')
+                step_class = step_config.get('step_class')
+                checkpoint_path = step_config.get('checkpoint_path')
+                
+                if step_name and step_class:
+                    # Step 클래스 동적 로딩 시도
+                    try:
+                        # Step 클래스가 이미 로드되어 있는지 확인
+                        if hasattr(self, 'step_classes') and step_class in self.step_classes:
+                            StepClass = self.step_classes[step_class]
+                            
+                            # Step 인스턴스 생성
+                            step_instance = StepClass(
+                                device=self.device,
+                                checkpoint_path=checkpoint_path,
+                                **step_config
+                            )
+                            
+                            # DI 의존성 주입
+                            if self.config.use_dependency_injection:
+                                step_instance.model_loader = ModelLoaderAdapter()
+                                step_instance.memory_manager = MemoryManagerAdapter()
+                                step_instance.data_converter = DataConverterAdapter(self.device)
+                            
+                            # Step 등록
+                            self.steps[step_name] = step_instance
+                            self.logger.info(f"✅ {step_name} 탐지 결과로부터 설정 완료")
+                            
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {step_name} 탐지 결과 설정 실패: {e}")
+        
+        # 메타데이터 업데이트
+        if 'pipeline_metadata' in detection_config:
+            metadata = detection_config['pipeline_metadata']
+            if hasattr(self, 'performance_metrics'):
+                self.performance_metrics.update({
+                    'detection_based_configuration': True,
+                    'detected_steps_count': metadata.get('total_steps', 0),
+                    'available_steps_count': metadata.get('available_steps', 0),
+                    'configuration_time': time.time()
+                })
+        
+        self.logger.info("✅ Step 탐지 결과로부터 파이프라인 설정 완료")
+        return True
+        
+    except Exception as e:
+        self.logger.error(f"❌ Step 탐지 결과 설정 실패: {e}")
+        return False
+
     async def cleanup(self):
         """리소스 정리 - 완전 DI + 어댑터 포함"""
         try:
