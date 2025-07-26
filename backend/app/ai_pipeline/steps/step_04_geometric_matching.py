@@ -1297,19 +1297,13 @@ class UnifiedDependencyManager:
 # 🔥 10. 메인 GeometricMatchingStep 클래스
 # ==============================================
 
+# 📍 파일: backend/app/ai_pipeline/steps/step_04_geometric_matching.py
+# 🔧 수정할 클래스: GeometricMatchingStep
+
 class GeometricMatchingStep(BaseStepMixin):
-    """
-    🔥 Step 04: 기하학적 매칭 - 실제 AI 모델 완전 연동
     
-    ✅ 실제 AI 모델 파일 완전 활용 (gmm_final.pth, tps_network.pth, sam_vit_h_4b8939.pth)
-    ✅ SmartModelPathMapper 동적 경로 매핑
-    ✅ 진짜 AI 추론 로직 구현
-    ✅ BaseStepMixin v16.0 완전 호환
-    ✅ UnifiedDependencyManager 연동
-    ✅ TYPE_CHECKING 패턴 순환참조 방지
-    ✅ M3 Max 128GB 최적화
-    """
-    
+    # 📍 수정할 클래스: GeometricMatchingStep.__init__ 메서드
+
     def __init__(self, **kwargs):
         """BaseStepMixin v16.0 호환 생성자"""
         super().__init__(**kwargs)
@@ -1318,6 +1312,7 @@ class GeometricMatchingStep(BaseStepMixin):
         self.step_name = "geometric_matching"
         self.step_id = 4
         self.device = self._force_mps_device(kwargs.get('device', DEVICE))
+        self._setup_configurations(kwargs.get('config', {}))
 
         # 상태 관리
         self.status = ProcessingStatus()
@@ -1333,59 +1328,30 @@ class GeometricMatchingStep(BaseStepMixin):
         self.vit_model: Optional[RealViTModel] = None
         self.efficientnet_model: Optional[RealEfficientNetModel] = None
         
-        # UnifiedDependencyManager 초기화
-        if not hasattr(self, 'dependency_manager') or self.dependency_manager is None:
-            self.dependency_manager = UnifiedDependencyManager()
-          # 🔥 MPS 강제 설정 추가
-        
-        def __init__(self, **kwargs):
-            # ... 기존 코드 ...
-            
-            # 🔥 MPS 강제 설정 추가
-            self.device = self._force_mps_device(kwargs.get('device', DEVICE))
-            
-        def _force_mps_device(self, device: str) -> str:
-            """MPS 디바이스 강제 설정"""
-            try:
-                import torch
-                import platform
-                
-                # M3 Max에서 강제로 MPS 사용
-                if (platform.system() == 'Darwin' and 
-                    platform.machine() == 'arm64' and 
-                    torch.backends.mps.is_available()):
-                    self.logger.info("🍎 GeometricMatchingStep: MPS 강제 활성화")
-                    return 'mps'
-                return device
-            except:
-                return device
-
-        def _move_models_to_device(self):
-            """모든 모델을 올바른 디바이스로 이동"""
-            models_to_move = [
-                ('gmm_model', self.gmm_model),
-                ('tps_model', self.tps_model), 
-                ('sam_model', self.sam_model),
-                ('vit_model', self.vit_model),
-                ('efficientnet_model', self.efficientnet_model)
-            ]
-            
-            moved_count = 0
-            for model_name, model in models_to_move:
-                if model is not None:
-                    try:
-                        model = model.to(self.device)
-                        moved_count += 1
-                        self.logger.info(f"✅ {model_name} → {self.device}")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ {model_name} 디바이스 이동 실패: {e}")
-            
-            self.logger.info(f"✅ 모든 AI 모델이 {self.device}로 이동 완료 ({moved_count}개)")
-
-
-        # 자동 의존성 주입 시도
+        # 🔧 수정: 안전한 의존성 매니저 초기화
         try:
-            success = self.dependency_manager.auto_inject_dependencies()
+            # 1. UnifiedDependencyManager 우선 시도
+            if not hasattr(self, 'dependency_manager') or self.dependency_manager is None:
+                try:
+                    self.dependency_manager = UnifiedDependencyManager()
+                    self.logger.debug("✅ UnifiedDependencyManager 생성 성공")
+                except Exception as e:
+                    self.logger.debug(f"⚠️ UnifiedDependencyManager 생성 실패: {e}")
+                    
+                    # 2. 폴백: 더미 의존성 매니저 생성
+                    self.dependency_manager = self._create_safe_dependency_manager()
+                    self.logger.debug("✅ 폴백 의존성 매니저 생성")
+        except Exception as e:
+            self.logger.warning(f"⚠️ 의존성 매니저 초기화 실패: {e}")
+            self.dependency_manager = self._create_safe_dependency_manager()
+
+        # 🔧 수정: 안전한 자동 의존성 주입
+        try:
+            if hasattr(self.dependency_manager, 'auto_inject_dependencies'):
+                success = self.dependency_manager.auto_inject_dependencies()
+            else:
+                success = self._manual_dependency_injection()
+                
             if success:
                 self.status.dependencies_injected = True
                 self.logger.info("✅ 자동 의존성 주입 성공")
@@ -1393,6 +1359,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 self.logger.warning("⚠️ 자동 의존성 주입 실패")
         except Exception as e:
             self.logger.warning(f"⚠️ 자동 의존성 주입 오류: {e}")
+            # 실패해도 계속 진행
         
         # 설정 초기화
         self._setup_configurations(kwargs.get('config', {}))
@@ -1401,1429 +1368,289 @@ class GeometricMatchingStep(BaseStepMixin):
         self._init_statistics()
         
         self.logger.info(f"✅ GeometricMatchingStep 생성 완료 - Device: {self.device}")
-    
-    def set_model_loader(self, model_loader: 'ModelLoader'):
-        """ModelLoader 의존성 주입"""
-        self.model_loader = model_loader
-        if hasattr(self, 'dependency_manager') and self.dependency_manager:
-            self.dependency_manager.set_model_loader(model_loader)
-        self.status.dependencies_injected = True
-        self.logger.info("✅ ModelLoader 의존성 주입 완료")
-    
-    def set_memory_manager(self, memory_manager: 'MemoryManager'):
-        """MemoryManager 의존성 주입"""
-        self.memory_manager = memory_manager
-        if hasattr(self, 'dependency_manager') and self.dependency_manager:
-            self.dependency_manager.set_memory_manager(memory_manager)
-        self.logger.info("✅ MemoryManager 의존성 주입 완료")
-    
-    def set_data_converter(self, data_converter: 'DataConverter'):
-        """DataConverter 의존성 주입"""
-        self.data_converter = data_converter
-        if hasattr(self, 'dependency_manager') and self.dependency_manager:
-            self.dependency_manager.set_data_converter(data_converter)
-        self.logger.info("✅ DataConverter 의존성 주입 완료")
-    
-    def set_di_container(self, di_container: 'DIContainer'):
-        """DI Container 의존성 주입"""
-        self.di_container = di_container
-        if hasattr(self, 'dependency_manager') and self.dependency_manager:
-            self.dependency_manager.set_di_container(di_container)
-        self.logger.info("✅ DI Container 의존성 주입 완료")
-    
-    async def initialize(self) -> bool:
-        """초기화 - 실제 AI 모델 로딩"""
-        if self.status.initialized:
-            return True
-        
-        try:
-            self.logger.info("🔄 Step 04 초기화 시작 (실제 AI 모델 기반)...")
-            
-            # 1. 의존성 검증
-            try:
-                if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                    self.dependency_manager.validate_dependencies()
-            except Exception as e:
-                self.logger.warning(f"⚠️ 의존성 검증 실패: {e}")
-            
-            # 2. 실제 모델 파일 탐지
-            model_paths = self.model_mapper.get_step_model_mapping(4)
-            self.logger.info(f"📁 발견된 모델 파일들: {list(model_paths.keys())}")
-            
-            # 3. 실제 AI 모델 로드
-            try:
-                await self._load_real_ai_models(model_paths)
-            except Exception as e:
-                self.logger.warning(f"⚠️ AI 모델 로드 실패: {e}")
-            
-            # 4. 디바이스 설정
-            try:
-                await self._setup_device_models()
-            except Exception as e:
-                self.logger.warning(f"⚠️ 디바이스 설정 실패: {e}")
-            
-            # 5. 모델 워밍업
-            try:
-                await self._warmup_models()
-            except Exception as e:
-                self.logger.warning(f"⚠️ 모델 워밍업 실패: {e}")
-            
-            self.status.initialized = True
-            self.status.models_loaded = any([
-                self.gmm_model is not None,
-                self.tps_model is not None,
-                self.sam_model is not None
-            ])
-            
-            if self.status.models_loaded:
-                self.logger.info("✅ Step 04 초기화 완료 (실제 AI 모델 포함)")
-            else:
-                self.logger.warning("⚠️ Step 04 초기화 완료 (AI 모델 없음)")
-            
-            return True
-            
-        except Exception as e:
-            self.status.error_count += 1
-            self.status.last_error = str(e)
-            self.logger.error(f"❌ Step 04 초기화 실패: {e}")
-            return False
-    
-    async def _load_real_ai_models(self, model_paths: Dict[str, Path]):
-        """실제 AI 모델 로드"""
-        try:
-            # GMM 모델 로드
-            if 'gmm' in model_paths:
-                self.gmm_model = RealAIModelFactory.create_gmm_model(
-                    model_paths['gmm'], self.device
-                )
-                if self.gmm_model:
-                    self.logger.info(f"✅ GMM 모델 로드 성공: {model_paths['gmm'].name}")
-            
-            # TPS 모델 로드
-            if 'tps' in model_paths:
-                self.tps_model = RealAIModelFactory.create_tps_model(
-                    model_paths['tps'], self.device
-                )
-                if self.tps_model:
-                    self.logger.info(f"✅ TPS 모델 로드 성공: {model_paths['tps'].name}")
-            
-            # SAM 모델 로드
-            if 'sam_shared' in model_paths:
-                self.sam_model = RealAIModelFactory.create_sam_model(
-                    model_paths['sam_shared'], self.device
-                )
-                if self.sam_model:
-                    self.logger.info(f"✅ SAM 모델 로드 성공: {model_paths['sam_shared'].name}")
-            
-            # ViT 모델 (경량화)
-            if 'vit_large' in model_paths:
-                try:
-                    self.vit_model = RealViTModel()
-                    self.vit_model = self.vit_model.to(self.device)
-                    self.logger.info("✅ ViT 모델 생성 성공")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ ViT 모델 생성 실패: {e}")
-            
-            # EfficientNet 모델 (경량화)
-            if 'efficientnet' in model_paths:
-                try:
-                    self.efficientnet_model = RealEfficientNetModel()
-                    self.efficientnet_model = self.efficientnet_model.to(self.device)
-                    self.logger.info("✅ EfficientNet 모델 생성 성공")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ EfficientNet 모델 생성 실패: {e}")
-            
-            loaded_models = sum([
-                self.gmm_model is not None,
-                self.tps_model is not None,
-                self.sam_model is not None,
-                self.vit_model is not None,
-                self.efficientnet_model is not None
-            ])
-            
-            self.status.model_creation_success = loaded_models > 0
-            self.logger.info(f"✅ 실제 AI 모델 로드 완료: {loaded_models}/5개")
-            
-        except Exception as e:
-            self.status.model_creation_success = False
-            self.logger.error(f"❌ 실제 AI 모델 로드 실패: {e}")
-            raise
-    
-    async def _setup_device_models(self):
-        """모델들을 디바이스로 이동"""
-        try:
-            for model_name, model in [
-                ('gmm', self.gmm_model),
-                ('tps', self.tps_model),
-                ('sam', self.sam_model),
-                ('vit', self.vit_model),
-                ('efficientnet', self.efficientnet_model)
-            ]:
-                if model is not None:
-                    model = model.to(self.device)
-                    model.eval()
-                    
-            self.logger.info(f"✅ 모든 AI 모델이 {self.device}로 이동 완료")
-                
-        except Exception as e:
-            raise GeometricMatchingError(f"AI 모델 디바이스 설정 실패: {e}") from e
-    
-    async def _warmup_models(self):
-            """AI 모델 워밍업 (개선된 버전)"""
-            try:
-                if TORCH_AVAILABLE:
-                    # 🔧 개선 1: 다양한 입력 크기 시도
-                    input_sizes = [
-                        (256, 192),  # 기존 크기
-                        (512, 384),  # GMM 표준 크기  
-                        (224, 224),  # ViT/EfficientNet 표준 크기
-                    ]
-                    
-                    success_count = 0
-                    
-                    for height, width in input_sizes:
-                        try:
-                            dummy_person = torch.randn(1, 3, height, width, device=self.device)
-                            dummy_clothing = torch.randn(1, 3, height, width, device=self.device)
-                            
-                            with torch.no_grad():
-                                # GMM 모델 워밍업 (개선된 입력)
-                                if self.gmm_model:
-                                    try:
-                                        # 🔧 개선 2: GMM은 6채널 입력 필요
-                                        if height >= 512 and width >= 384:
-                                            gmm_input = torch.cat([dummy_person, dummy_clothing], dim=1)  # 6채널
-                                            result = self.gmm_model(gmm_input)
-                                        else:
-                                            result = self.gmm_model(dummy_person, dummy_clothing)
-                                        
-                                        if isinstance(result, dict) and 'transformation_grid' in result:
-                                            self.logger.info(f"🔥 GMM 모델 워밍업 성공 ({height}x{width})")
-                                            success_count += 1
-                                        elif result is not None:
-                                            self.logger.info(f"✅ GMM 모델 워밍업 성공 ({height}x{width})")
-                                            success_count += 1
-                                    except Exception as e:
-                                        self.logger.warning(f"⚠️ GMM 모델 워밍업 실패 ({height}x{width}): {e}")
-                                
-                                # TPS 모델 워밍업 (기존 로직 유지)
-                                if self.tps_model:
-                                    try:
-                                        result = self.tps_model(dummy_person, dummy_clothing)
-                                        if isinstance(result, dict) and 'warped_clothing' in result:
-                                            self.logger.info(f"🔥 TPS 모델 워밍업 성공 ({height}x{width})")
-                                            success_count += 1
-                                        elif result is not None:
-                                            self.logger.info(f"✅ TPS 모델 워밍업 성공 ({height}x{width})")
-                                            success_count += 1
-                                            break  # 성공하면 다른 크기 시도 중단
-                                    except Exception as e:
-                                        self.logger.warning(f"⚠️ TPS 모델 워밍업 실패 ({height}x{width}): {e}")
-                                
-                                # SAM 모델 워밍업 (개선된 크기)
-                                if self.sam_model:
-                                    try:
-                                        # 🔧 개선 3: SAM은 큰 입력 선호
-                                        if height >= 512:
-                                            sam_input = torch.randn(1, 3, 1024, 1024, device=self.device)
-                                        else:
-                                            sam_input = dummy_person
-                                        
-                                        if hasattr(self.sam_model, 'image_encoder'):
-                                            result = self.sam_model.image_encoder(sam_input)
-                                        else:
-                                            result = self.sam_model(sam_input)
-                                        
-                                        if isinstance(result, dict) and 'mask' in result:
-                                            self.logger.info(f"🔥 SAM 모델 워밍업 성공 ({height}x{width})")
-                                            success_count += 1
-                                        elif result is not None:
-                                            self.logger.info(f"✅ SAM 모델 워밍업 성공 ({height}x{width})")
-                                            success_count += 1
-                                    except Exception as e:
-                                        self.logger.warning(f"⚠️ SAM 모델 워밍업 실패 ({height}x{width}): {e}")
-                            
-                            # 하나의 크기라도 성공하면 충분
-                            if success_count > 0:
-                                break
-                                
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ 워밍업 크기 {height}x{width} 실패: {e}")
-                            continue
-                    
-                    # 🔧 개선 4: ViT, EfficientNet 워밍업 추가
-                    if hasattr(self, 'vit_model') and self.vit_model:
-                        try:
-                            vit_input = torch.randn(1, 3, 224, 224, device=self.device)
-                            with torch.no_grad():
-                                _ = self.vit_model(vit_input)
-                            self.logger.info("✅ ViT 모델 워밍업 성공")
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ ViT 모델 워밍업 실패: {e}")
-                    
-                    if hasattr(self, 'efficientnet_model') and self.efficientnet_model:
-                        try:
-                            efficient_input = torch.randn(1, 3, 224, 224, device=self.device)
-                            with torch.no_grad():
-                                _ = self.efficientnet_model(efficient_input)
-                            self.logger.info("✅ EfficientNet 모델 워밍업 성공")
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ EfficientNet 모델 워밍업 실패: {e}")
-                    
-                    if success_count > 0:
-                        self.logger.info(f"🎉 워밍업 완료: {success_count}개 모델 성공")
-                    else:
-                        self.logger.warning("⚠️ 모든 모델 워밍업 실패 (정상 작동에는 문제없음)")
-                        
-            except Exception as e:
-                self.logger.warning(f"⚠️ AI 모델 워밍업 실패: {e}")
-
-
-
-
-    # ==============================================
-    # 🔥 11. 메인 처리 함수 (실제 AI 추론)
-    # ==============================================
-    
-    async def process(
-        self,
-        person_image: Union[np.ndarray, Image.Image, torch.Tensor],
-        clothing_image: Union[np.ndarray, Image.Image, torch.Tensor],
-        **kwargs
-    ) -> Dict[str, Any]:
-        """메인 처리 함수 - 실제 AI 모델 사용"""
-        
-        if self.status.processing_active:
-            raise RuntimeError("❌ 이미 처리 중입니다")
-        
-        start_time = time.time()
-        self.status.processing_active = True
-        
-        try:
-            # 1. 초기화 확인
-            if not self.status.initialized:
-                success = await self.initialize()
-                if not success:
-                    raise GeometricMatchingError("초기화 실패")
-            
-            self.logger.info("🎯 실제 AI 모델 기하학적 매칭 시작...")
-            
-            # 2. 입력 전처리 (AI 기반)
-            processed_input = await self._preprocess_inputs_ai(
-                person_image, clothing_image
-            )
-            
-            # 3. 실제 AI 모델 추론
-            ai_result = await self._run_real_ai_inference(
-                processed_input['person_tensor'],
-                processed_input['clothing_tensor']
-            )
-            
-            # 4. AI 기하학적 변형 적용
-            warping_result = await self._apply_ai_geometric_transformation(
-                processed_input['clothing_tensor'],
-                ai_result
-            )
-            
-            # 5. AI 후처리
-            final_result = await self._postprocess_result_ai(
-                warping_result,
-                ai_result,
-                processed_input
-            )
-            
-            # 6. AI 시각화 생성
-            visualization = await self._create_ai_visualization(
-                processed_input, ai_result, warping_result
-            )
-            
-            # 7. 통계 업데이트
-            processing_time = time.time() - start_time
-            quality_score = ai_result.get('quality_score', 0.8)
-            self._update_statistics(quality_score, processing_time)
-            
-            self.logger.info(
-                f"✅ 실제 AI 모델 기하학적 매칭 완료 - "
-                f"품질: {quality_score:.3f}, 시간: {processing_time:.2f}s"
-            )
-            
-            # 8. API 응답 반환
-            return self._format_api_response(
-                True, final_result, visualization, quality_score, processing_time
-            )
-            
-        except Exception as e:
-            self.status.error_count += 1
-            self.status.last_error = str(e)
-            processing_time = time.time() - start_time
-            
-            self.logger.error(f"❌ 실제 AI 모델 기하학적 매칭 실패: {e}")
-            
-            return self._format_api_response(
-                False, None, None, 0.0, processing_time, str(e)
-            )
-            
-        finally:
-            self.status.processing_active = False
-            # 메모리 최적화
-            try:
-                if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                    await self.dependency_manager.optimize_memory()
-                else:
-                    gc.collect()
-                    if TORCH_AVAILABLE and DEVICE == "mps":
-                        try:
-                            torch.mps.empty_cache()
-                        except:
-                            pass
-            except Exception as e:
-                self.logger.debug(f"메모리 최적화 실패: {e}")
-    
-    # ==============================================
-    # 🔥 12. 실제 AI 모델 추론 (핵심)
-    # ==============================================
-    
-    async def _run_real_ai_inference(
-        self,
-        person_tensor: torch.Tensor,
-        clothing_tensor: torch.Tensor
-    ) -> Dict[str, Any]:
-        """실제 AI 모델 추론 - 진짜 신경망 계산"""
-        try:
-            result = {}
-            
-            with torch.no_grad():
-                # 1. GMM 모델 추론 (실제)
-                if self.gmm_model:
-                    try:
-                        gmm_result = self.gmm_model(person_tensor, clothing_tensor)
-                        result['gmm_result'] = gmm_result
-                        result['transformation_grid'] = gmm_result['transformation_grid']
-                        self.logger.info("✅ GMM 실제 추론 성공")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ GMM 추론 실패: {e}")
-                        result['transformation_grid'] = self._generate_fallback_grid(person_tensor)
-                else:
-                    result['transformation_grid'] = self._generate_fallback_grid(person_tensor)
-                
-                # 2. TPS 모델 추론 (실제)
-                if self.tps_model:
-                    try:
-                        tps_result = self.tps_model(person_tensor, clothing_tensor)
-                        result['tps_result'] = tps_result
-                        result['warped_clothing'] = tps_result['warped_clothing']
-                        self.logger.info("✅ TPS 실제 추론 성공")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ TPS 추론 실패: {e}")
-                        result['warped_clothing'] = clothing_tensor
-                else:
-                    result['warped_clothing'] = clothing_tensor
-                
-                # 3. SAM 모델 추론 (실제)
-                if self.sam_model:
-                    try:
-                        person_sam = self.sam_model(person_tensor)
-                        clothing_sam = self.sam_model(clothing_tensor)
-                        result['person_mask'] = person_sam['mask']
-                        result['clothing_mask'] = clothing_sam['mask']
-                        self.logger.info("✅ SAM 실제 추론 성공")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ SAM 추론 실패: {e}")
-                        result['person_mask'] = torch.ones_like(person_tensor[:, :1])
-                        result['clothing_mask'] = torch.ones_like(clothing_tensor[:, :1])
-                else:
-                    result['person_mask'] = torch.ones_like(person_tensor[:, :1])
-                    result['clothing_mask'] = torch.ones_like(clothing_tensor[:, :1])
-                
-                # 4. 품질 평가 (실제 계산)
-                quality_score = self._calculate_real_quality_score(result)
-                result['quality_score'] = quality_score
-                
-                self.status.ai_model_calls += 1
-                
-                return result
-                
-        except Exception as e:
-            raise GeometricMatchingError(f"실제 AI 모델 추론 실패: {e}") from e
-    
-    def _generate_fallback_grid(self, tensor: torch.Tensor) -> torch.Tensor:
-        """폴백 변형 그리드 생성"""
-        batch_size, _, height, width = tensor.shape
-        device = tensor.device
-        
-        # 기본 정규 그리드 생성
-        y, x = torch.meshgrid(
-            torch.linspace(-1, 1, height, device=device),
-            torch.linspace(-1, 1, width, device=device),
-            indexing='ij'
-        )
-        grid = torch.stack([x, y], dim=-1)
-        grid = grid.unsqueeze(0).repeat(batch_size, 1, 1, 1)
-        
-        return grid
-    
-    def _calculate_real_quality_score(self, result: Dict[str, Any]) -> float:
-        """실제 품질 점수 계산"""
-        try:
-            quality_factors = []
-            
-            # 1. 변형 그리드 품질
-            if 'transformation_grid' in result:
-                grid = result['transformation_grid']
-                grid_variance = torch.var(grid).item()
-                grid_quality = min(1.0, max(0.0, 1.0 - grid_variance))
-                quality_factors.append(grid_quality)
-            
-            # 2. 마스크 품질
-            if 'person_mask' in result and 'clothing_mask' in result:
-                person_mask = result['person_mask']
-                clothing_mask = result['clothing_mask']
-                mask_iou = self._calculate_mask_iou(person_mask, clothing_mask)
-                quality_factors.append(mask_iou)
-            
-            # 3. 변형된 의류 품질
-            if 'warped_clothing' in result:
-                warped = result['warped_clothing']
-                if not torch.isnan(warped).any() and not torch.isinf(warped).any():
-                    quality_factors.append(0.9)
-                else:
-                    quality_factors.append(0.3)
-            
-            # 평균 품질 점수
-            if quality_factors:
-                return sum(quality_factors) / len(quality_factors)
-            else:
-                return 0.5
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ 품질 점수 계산 실패: {e}")
-            return 0.5
-    
-    def _calculate_mask_iou(self, mask1: torch.Tensor, mask2: torch.Tensor) -> float:
-        """마스크 IoU 계산"""
-        try:
-            mask1_binary = (mask1 > 0.5).float()
-            mask2_binary = (mask2 > 0.5).float()
-            
-            intersection = torch.logical_and(mask1_binary, mask2_binary).float().sum()
-            union = torch.logical_or(mask1_binary, mask2_binary).float().sum()
-            
-            if union > 0:
-                iou = intersection / union
-                return iou.item()
-            else:
-                return 0.0
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ IoU 계산 실패: {e}")
-            return 0.0
-    
-    async def _apply_ai_geometric_transformation(
-        self,
-        clothing_tensor: torch.Tensor,
-        ai_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """AI 기하학적 변형 적용"""
-        try:
-            # TPS 결과가 있으면 사용, 없으면 GMM 결과 사용
-            if 'warped_clothing' in ai_result:
-                warped_clothing = ai_result['warped_clothing']
-            elif 'transformation_grid' in ai_result:
-                transformation_grid = ai_result['transformation_grid']
-                warped_clothing = F.grid_sample(
-                    clothing_tensor,
-                    transformation_grid,
-                    mode='bilinear',
-                    padding_mode='border',
-                    align_corners=True
-                )
-            else:
-                warped_clothing = clothing_tensor
-            
-            # 결과 검증
-            if torch.isnan(warped_clothing).any():
-                self.logger.warning("⚠️ 변형된 의류에 NaN 값 포함, 원본 사용")
-                warped_clothing = clothing_tensor
-            
-            return {
-                'warped_clothing': warped_clothing,
-                'transformation_grid': ai_result.get('transformation_grid'),
-                'warping_success': True
-            }
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ AI 기하학적 변형 실패: {e}")
-            return {
-                'warped_clothing': clothing_tensor,
-                'transformation_grid': None,
-                'warping_success': False
-            }
-    
-    # ==============================================
-    # 🔥 13. AI 전처리 및 후처리
-    # ==============================================
-    
-    async def _preprocess_inputs_ai(
-        self,
-        person_image: Union[np.ndarray, Image.Image, torch.Tensor],
-        clothing_image: Union[np.ndarray, Image.Image, torch.Tensor]
-    ) -> Dict[str, Any]:
-        """AI 기반 입력 전처리"""
-        try:
-            # 이미지를 텐서로 변환
-            person_tensor = self._image_to_tensor_ai(person_image)
-            clothing_tensor = self._image_to_tensor_ai(clothing_image)
-            
-            # AI 기반 크기 정규화
-            target_size = (256, 192)  # VITON 표준 크기
-            person_tensor = F.interpolate(person_tensor, size=target_size, mode='bilinear', align_corners=False)
-            clothing_tensor = F.interpolate(clothing_tensor, size=target_size, mode='bilinear', align_corners=False)
-            
-            # 정규화 (ImageNet 표준)
-            mean = torch.tensor([0.485, 0.456, 0.406], device=self.device).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225], device=self.device).view(1, 3, 1, 1)
-            
-            person_tensor = (person_tensor - mean) / std
-            clothing_tensor = (clothing_tensor - mean) / std
-            
-            return {
-                'person_tensor': person_tensor,
-                'clothing_tensor': clothing_tensor,
-                'target_size': target_size,
-                'original_person': person_image,
-                'original_clothing': clothing_image
-            }
-            
-        except Exception as e:
-            raise GeometricMatchingError(f"AI 입력 전처리 실패: {e}") from e
-    
-    def _image_to_tensor_ai(self, image: Union[np.ndarray, Image.Image, torch.Tensor]) -> torch.Tensor:
-        """AI 기반 이미지 텐서 변환"""
-        try:
-            if isinstance(image, torch.Tensor):
-                if image.dim() == 3:
-                    image = image.unsqueeze(0)
-                return image.to(self.device)
-            
-            elif isinstance(image, Image.Image):
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                if TORCHVISION_AVAILABLE:
-                    tensor = to_tensor(image).unsqueeze(0)
-                else:
-                    tensor = torch.from_numpy(np.array(image)).float()
-                    tensor = tensor.permute(2, 0, 1).unsqueeze(0) / 255.0
-                return tensor.to(self.device)
-            
-            elif isinstance(image, np.ndarray):
-                if image.dtype != np.uint8:
-                    image = (image * 255).astype(np.uint8)
-                tensor = torch.from_numpy(image).float()
-                if len(image.shape) == 3:
-                    tensor = tensor.permute(2, 0, 1).unsqueeze(0)
-                elif len(image.shape) == 4:
-                    tensor = tensor.permute(0, 3, 1, 2)
-                tensor = tensor / 255.0
-                return tensor.to(self.device)
-            
-            else:
-                raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
-                
-        except Exception as e:
-            raise GeometricMatchingError(f"AI 이미지 텐서 변환 실패: {e}") from e
-    
-    async def _postprocess_result_ai(
-        self,
-        warping_result: Dict[str, Any],
-        ai_result: Dict[str, Any],
-        processed_input: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """AI 기반 결과 후처리"""
-        try:
-            warped_tensor = warping_result['warped_clothing']
-            
-            # AI 기반 정규화 해제
-            mean = torch.tensor([0.485, 0.456, 0.406], device=self.device).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225], device=self.device).view(1, 3, 1, 1)
-            
-            warped_tensor = warped_tensor * std + mean
-            warped_tensor = torch.clamp(warped_tensor, 0, 1)
-            
-            # AI 기반 numpy 변환
-            warped_clothing = self._tensor_to_numpy_ai(warped_tensor)
-            
-            # AI 기반 마스크 생성
-            warped_mask = self._generate_ai_mask(warped_clothing)
-            
-            # 키포인트 추출 (가능한 경우)
-            person_keypoints = self._extract_keypoints_from_result(ai_result, 'person')
-            clothing_keypoints = self._extract_keypoints_from_result(ai_result, 'clothing')
-            
-            return {
-                'warped_clothing': warped_clothing,
-                'warped_mask': warped_mask,
-                'person_keypoints': person_keypoints,
-                'clothing_keypoints': clothing_keypoints,
-                'quality_score': ai_result.get('quality_score', 0.8),
-                'processing_success': True,
-                'ai_model_used': True
-            }
-            
-        except Exception as e:
-            raise GeometricMatchingError(f"AI 결과 후처리 실패: {e}") from e
-    
-    def _tensor_to_numpy_ai(self, tensor: torch.Tensor) -> np.ndarray:
-        """AI 기반 텐서 numpy 변환"""
-        try:
-            if tensor.is_cuda or (hasattr(tensor, 'device') and tensor.device.type == 'mps'):
-                tensor = tensor.cpu()
-            
-            if tensor.dim() == 4:
-                tensor = tensor.squeeze(0)
-            if tensor.dim() == 3 and tensor.size(0) == 3:
-                tensor = tensor.permute(1, 2, 0)
-            
-            tensor = torch.clamp(tensor * 255.0, 0, 255)
-            return tensor.detach().numpy().astype(np.uint8)
-            
-        except Exception as e:
-            raise GeometricMatchingError(f"AI 텐서 numpy 변환 실패: {e}") from e
-    
-    def _generate_ai_mask(self, image: np.ndarray) -> np.ndarray:
-        """AI 기반 마스크 생성"""
-        try:
-            # 간단한 임계값 기반 마스크
-            if len(image.shape) == 3:
-                gray = np.dot(image[...,:3], [0.299, 0.587, 0.114])
-            else:
-                gray = image
-            
-            mask = (gray > 10).astype(np.uint8) * 255
-            
-            # 모폴로지 연산 (scipy 기반)
-            if SCIPY_AVAILABLE:
-                from scipy import ndimage
-                # Closing
-                mask = ndimage.binary_closing(mask > 0, structure=np.ones((3, 3))).astype(np.uint8) * 255
-                # Opening
-                mask = ndimage.binary_opening(mask > 0, structure=np.ones((3, 3))).astype(np.uint8) * 255
-            
-            return mask
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ AI 마스크 생성 실패: {e}")
-            return np.ones((256, 192), dtype=np.uint8) * 255
-    
-    def _extract_keypoints_from_result(self, ai_result: Dict[str, Any], image_type: str) -> List[List[float]]:
-        """AI 결과에서 키포인트 추출"""
-        try:
-            # 실제 키포인트가 있으면 사용
-            keypoint_key = f'{image_type}_keypoints'
-            if keypoint_key in ai_result:
-                keypoints_tensor = ai_result[keypoint_key]
-                if isinstance(keypoints_tensor, torch.Tensor):
-                    return keypoints_tensor.cpu().numpy().tolist()
-            
-            # 폴백: 더미 키포인트 생성
-            dummy_keypoints = []
-            for i in range(25):  # VITON 표준 25개 키포인트
-                x = 0.3 + (i % 5) * 0.1  # 0.3~0.7 범위
-                y = 0.2 + (i // 5) * 0.15  # 0.2~0.8 범위
-                dummy_keypoints.append([x, y])
-            
-            return dummy_keypoints
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ 키포인트 추출 실패: {e}")
-            return [[0.5, 0.5] for _ in range(25)]
-    
-    # ==============================================
-    # 🔥 14. AI 시각화 생성
-    # ==============================================
-    
-    async def _create_ai_visualization(
-        self,
-        processed_input: Dict[str, Any],
-        ai_result: Dict[str, Any],
-        warping_result: Dict[str, Any]
-    ) -> Dict[str, str]:
-        """AI 기반 시각화 생성"""
-        try:
-            if not PIL_AVAILABLE:
-                return {
-                    'matching_visualization': '',
-                    'warped_overlay': '',
-                    'transformation_grid': ''
-                }
-            
-            # AI 기반 이미지 변환
-            person_image = self._tensor_to_pil_image_ai(processed_input['person_tensor'])
-            clothing_image = self._tensor_to_pil_image_ai(processed_input['clothing_tensor'])
-            warped_image = self._tensor_to_pil_image_ai(warping_result['warped_clothing'])
-            
-            # AI 키포인트 시각화
-            matching_viz = self._create_ai_keypoint_visualization(
-                person_image, clothing_image, ai_result
-            )
-            
-            # AI 오버레이 시각화
-            quality_score = ai_result.get('quality_score', 0.8)
-            warped_overlay = self._create_ai_warped_overlay(person_image, warped_image, quality_score)
-            
-            # 변형 그리드 시각화
-            grid_viz = self._create_transformation_grid_visualization(ai_result)
-            
-            return {
-                'matching_visualization': self._image_to_base64(matching_viz),
-                'warped_overlay': self._image_to_base64(warped_overlay),
-                'transformation_grid': self._image_to_base64(grid_viz) if grid_viz else ''
-            }
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ AI 시각화 생성 실패: {e}")
-            return {
-                'matching_visualization': '',
-                'warped_overlay': '',
-                'transformation_grid': ''
-            }
-    
-    def _tensor_to_pil_image_ai(self, tensor: torch.Tensor) -> Image.Image:
-        """AI 기반 텐서 PIL 이미지 변환"""
-        try:
-            # 정규화 해제 (필요시)
-            if tensor.min() < 0:  # 정규화된 텐서인 경우
-                mean = torch.tensor([0.485, 0.456, 0.406], device=tensor.device).view(1, 3, 1, 1)
-                std = torch.tensor([0.229, 0.224, 0.225], device=tensor.device).view(1, 3, 1, 1)
-                tensor = tensor * std + mean
-                tensor = torch.clamp(tensor, 0, 1)
-            
-            # TORCHVISION 사용 가능한 경우
-            if TORCHVISION_AVAILABLE:
-                if tensor.dim() == 4:
-                    tensor = tensor.squeeze(0)
-                return to_pil_image(tensor)
-            else:
-                # 폴백: 수동 변환
-                numpy_array = self._tensor_to_numpy_ai(tensor)
-                return Image.fromarray(numpy_array)
-            
-        except Exception as e:
-            self.logger.error(f"❌ AI 텐서 PIL 변환 실패: {e}")
-            return Image.new('RGB', (192, 256), color='black')
-    
-    def _create_ai_keypoint_visualization(
-        self,
-        person_image: Image.Image,
-        clothing_image: Image.Image,
-        ai_result: Dict[str, Any]
-    ) -> Image.Image:
-        """AI 키포인트 매칭 시각화"""
-        try:
-            # 이미지 결합
-            combined_width = person_image.width + clothing_image.width
-            combined_height = max(person_image.height, clothing_image.height)
-            combined_image = Image.new('RGB', (combined_width, combined_height), color='white')
-            
-            combined_image.paste(person_image, (0, 0))
-            combined_image.paste(clothing_image, (person_image.width, 0))
-            
-            # 키포인트 그리기
-            draw = ImageDraw.Draw(combined_image)
-            
-            person_keypoints = self._extract_keypoints_from_result(ai_result, 'person')
-            clothing_keypoints = self._extract_keypoints_from_result(ai_result, 'clothing')
-            
-            # Person 키포인트 (빨간색)
-            for point in person_keypoints:
-                x, y = point[0] * person_image.width, point[1] * person_image.height
-                draw.ellipse([x-3, y-3, x+3, y+3], fill='red', outline='darkred')
-            
-            # Clothing 키포인트 (파란색)
-            for point in clothing_keypoints:
-                x, y = point[0] * clothing_image.width, point[1] * clothing_image.height
-                x += person_image.width
-                draw.ellipse([x-3, y-3, x+3, y+3], fill='blue', outline='darkblue')
-            
-            # 매칭 라인
-            for p_point, c_point in zip(person_keypoints, clothing_keypoints):
-                px, py = p_point[0] * person_image.width, p_point[1] * person_image.height
-                cx, cy = c_point[0] * clothing_image.width, c_point[1] * clothing_image.height
-                cx += person_image.width
-                draw.line([px, py, cx, cy], fill='green', width=1)
-            
-            return combined_image
-            
-        except Exception as e:
-            self.logger.error(f"❌ AI 키포인트 시각화 실패: {e}")
-            return Image.new('RGB', (384, 256), color='black')
-    
-    def _create_ai_warped_overlay(
-        self,
-        person_image: Image.Image,
-        warped_image: Image.Image,
-        quality_score: float
-    ) -> Image.Image:
-        """AI 변형된 의류 오버레이"""
-        try:
-            alpha = int(255 * min(0.8, max(0.3, quality_score)))
-            
-            # AI 기반 리사이징 (PIL 사용)
-            if hasattr(Image, 'Resampling'):
-                warped_resized = warped_image.resize(person_image.size, Image.Resampling.LANCZOS)
-            else:
-                warped_resized = warped_image.resize(person_image.size, Image.LANCZOS)
-            
-            person_rgba = person_image.convert('RGBA')
-            warped_rgba = warped_resized.convert('RGBA')
-            warped_rgba.putalpha(alpha)
-            
-            overlay = Image.alpha_composite(person_rgba, warped_rgba)
-            return overlay.convert('RGB')
-            
-        except Exception as e:
-            self.logger.error(f"❌ AI 오버레이 생성 실패: {e}")
-            return person_image
-    
-    def _create_transformation_grid_visualization(self, ai_result: Dict[str, Any]) -> Optional[Image.Image]:
-        """변형 그리드 시각화"""
-        try:
-            if 'transformation_grid' not in ai_result:
-                return None
-            
-            grid = ai_result['transformation_grid']
-            if not isinstance(grid, torch.Tensor):
-                return None
-            
-            # 그리드를 이미지로 변환
-            grid_np = grid.detach().cpu().numpy()
-            if grid_np.ndim == 4:
-                grid_np = grid_np[0]  # 첫 번째 배치
-            
-            # 그리드의 변형량을 색상으로 표현
-            displacement = np.sqrt(grid_np[:, :, 0]**2 + grid_np[:, :, 1]**2)
-            
-            # 정규화
-            displacement = (displacement - displacement.min()) / (displacement.max() - displacement.min() + 1e-8)
-            displacement = (displacement * 255).astype(np.uint8)
-            
-            # 컬러맵 적용 (파란색-빨간색)
-            colored = np.zeros((displacement.shape[0], displacement.shape[1], 3), dtype=np.uint8)
-            colored[:, :, 0] = displacement  # Red
-            colored[:, :, 2] = 255 - displacement  # Blue
-            
-            grid_image = Image.fromarray(colored)
-            return grid_image.resize((192, 256), Image.LANCZOS)
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 변형 그리드 시각화 실패: {e}")
-            return None
-    
-    def _image_to_base64(self, image: Image.Image) -> str:
-        """PIL 이미지를 base64로 변환"""
-        try:
-            buffer = BytesIO()
-            image.save(buffer, format='JPEG', quality=85)
-            img_str = base64.b64encode(buffer.getvalue()).decode()
-            return f"data:image/jpeg;base64,{img_str}"
-        except Exception as e:
-            self.logger.error(f"❌ Base64 변환 실패: {e}")
-            return ""
-    
-    # ==============================================
-    # 🔥 15. 설정 및 통계
-    # ==============================================
-    
     def _setup_configurations(self, config: Dict[str, Any]):
-        """설정 초기화"""
-        self.matching_config = config.get('matching', {
-            'method': 'real_ai_models',
-            'num_keypoints': 25,
-            'quality_threshold': 0.7,
-            'batch_size': 4 if self.device == "mps" else 2,
-            'use_real_models': True,
-            'fallback_enabled': True
-        })
-        
-        self.tps_config = config.get('tps', {
-            'grid_size': 20,
-            'control_points': 25,
-            'regularization': 0.01,
-            'use_real_tps': True
-        })
-        
-        self.sam_config = config.get('sam', {
-            'model_type': 'vit_h',
-            'points_per_side': 32,
-            'pred_iou_thresh': 0.88,
-            'stability_score_thresh': 0.95,
-            'use_real_sam': True
-        })
-    
-    def _init_statistics(self):
-        """통계 초기화"""
-        self.statistics = {
-            'total_processed': 0,
-            'successful_matches': 0,
-            'average_quality': 0.0,
-            'total_processing_time': 0.0,
-            'ai_model_calls': 0,
-            'error_count': 0,
-            'model_creation_success': False,
-            'real_ai_models_used': True,
-            'fallback_usage': 0,
-            'gmm_success_rate': 0.0,
-            'tps_success_rate': 0.0,
-            'sam_success_rate': 0.0
+        """설정 구성 - 누락된 핵심 메서드"""
+        self.matching_config = {
+            'method': config.get('method', 'real_ai_models'),
+            'num_keypoints': config.get('num_keypoints', 18),
+            'quality_threshold': config.get('quality_threshold', 0.8),
+            'use_real_models': config.get('use_real_models', True),
+            'batch_size': config.get('batch_size', 4),
+            'device': self.device
         }
-    
-    def _update_statistics(self, quality_score: float, processing_time: float):
-        """통계 업데이트"""
-        try:
-            self.statistics['total_processed'] += 1
-            
-            if quality_score >= self.matching_config['quality_threshold']:
-                self.statistics['successful_matches'] += 1
-            
-            total = self.statistics['total_processed']
-            current_avg = self.statistics['average_quality']
-            self.statistics['average_quality'] = (current_avg * (total - 1) + quality_score) / total
-            
-            self.statistics['total_processing_time'] += processing_time
-            self.statistics['ai_model_calls'] = self.status.ai_model_calls
-            self.statistics['model_creation_success'] = self.status.model_creation_success
-            
-            # 개별 모델 성공률 업데이트
-            if self.gmm_model:
-                self.statistics['gmm_success_rate'] = self.statistics['successful_matches'] / total
-            if self.tps_model:
-                self.statistics['tps_success_rate'] = self.statistics['successful_matches'] / total
-            if self.sam_model:
-                self.statistics['sam_success_rate'] = self.statistics['successful_matches'] / total
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 통계 업데이트 실패: {e}")
-    
-    def _format_api_response(
-        self,
-        success: bool,
-        final_result: Optional[Dict[str, Any]],
-        visualization: Optional[Dict[str, str]],
-        quality_score: float,
-        processing_time: float,
-        error_message: str = ""
-    ) -> Dict[str, Any]:
-        """API 응답 포맷"""
         
-        if success and final_result:
-            return {
-                'success': True,
-                'message': f'실제 AI 모델 기하학적 매칭 완료 - 품질: {quality_score:.3f}',
-                'confidence': quality_score,
-                'processing_time': processing_time,
-                'step_name': 'geometric_matching',
-                'step_number': 4,
-                'details': {
-                    'result_image': visualization.get('matching_visualization', ''),
-                    'overlay_image': visualization.get('warped_overlay', ''),
-                    'grid_image': visualization.get('transformation_grid', ''),
-                    'num_keypoints': self.matching_config['num_keypoints'],
-                    'matching_confidence': quality_score,
-                    'method': self.matching_config['method'],
-                    'using_real_ai_models': True,
-                    'models_loaded': {
-                        'gmm': self.gmm_model is not None,
-                        'tps': self.tps_model is not None,
-                        'sam': self.sam_model is not None,
-                        'vit': self.vit_model is not None,
-                        'efficientnet': self.efficientnet_model is not None
-                    },
-                    'ai_model_calls': self.status.ai_model_calls,
-                    'model_creation_success': self.status.model_creation_success,
-                    'dependencies_injected': self.status.dependencies_injected
-                },
-                'warped_clothing': final_result['warped_clothing'],
-                'warped_mask': final_result.get('warped_mask'),
-                'person_keypoints': final_result.get('person_keypoints', []),
-                'clothing_keypoints': final_result.get('clothing_keypoints', []),
-                'quality_score': quality_score,
-                'metadata': {
-                    'method': 'real_ai_models_complete',
-                    'device': self.device,
-                    'real_ai_models_used': True,
-                    'model_files_detected': len(self.model_mapper.model_cache),
-                    'dependencies_injected': self.status.dependencies_injected,
-                    'ai_model_calls': self.status.ai_model_calls,
-                    'model_creation_success': self.status.model_creation_success,
-                    'basestep_mixin_v16_compatible': True,
-                    'unified_dependency_manager': True,
-                    'type_checking_pattern': True,
-                    'circular_import_resolved': True,
-                    'smart_model_path_mapper': True,
-                    'real_inference_performed': True
-                }
-            }
-        else:
-            return {
-                'success': False,
-                'message': f'실제 AI 모델 기하학적 매칭 실패: {error_message}',
-                'confidence': 0.0,
-                'processing_time': processing_time,
-                'step_name': 'geometric_matching',
-                'step_number': 4,
-                'error': error_message,
-                'metadata': {
-                    'real_ai_models_used': False,
-                    'dependencies_injected': self.status.dependencies_injected,
-                    'error_count': self.status.error_count,
-                    'model_creation_success': self.status.model_creation_success,
-                    'basestep_mixin_v16_compatible': True,
-                    'unified_dependency_manager': True,
-                    'type_checking_pattern': True,
-                    'circular_import_resolved': True,
-                    'smart_model_path_mapper': True
-                }
-            }
-    
-    # ==============================================
-    # 🔥 16. BaseStepMixin 호환 메서드들
-    # ==============================================
-    
-    async def get_step_info(self) -> Dict[str, Any]:
-        """Step 정보 반환"""
-        return {
-            "step_name": "geometric_matching",
-            "step_number": 4,
-            "device": self.device,
-            "initialized": self.status.initialized,
-            "models_loaded": self.status.models_loaded,
-            "dependencies_injected": self.status.dependencies_injected,
-            "ai_models_available": {
-                "gmm": self.gmm_model is not None,
-                "tps": self.tps_model is not None,
-                "sam": self.sam_model is not None,
-                "vit": self.vit_model is not None,
-                "efficientnet": self.efficientnet_model is not None
-            },
-            "model_creation_success": self.status.model_creation_success,
-            "real_ai_models_used": True,
-            "model_files_detected": len(self.model_mapper.model_cache),
-            "config": {
-                "method": self.matching_config['method'],
-                "num_keypoints": self.matching_config['num_keypoints'],
-                "quality_threshold": self.matching_config['quality_threshold'],
-                "use_real_models": self.matching_config['use_real_models']
-            },
-            "performance": self.statistics,
-            "status": {
-                "processing_active": self.status.processing_active,
-                "error_count": self.status.error_count,
-                "ai_model_calls": self.status.ai_model_calls
-            },
-            "improvements": {
-                "real_ai_models_complete": True,
-                "smart_model_path_mapper": True,
-                "actual_inference_performed": True,
-                "basestep_mixin_v16_compatible": True,
-                "unified_dependency_manager": True,
-                "type_checking_pattern": True,
-                "circular_import_resolved": True
-            }
-        }
-    
-    async def validate_inputs(self, person_image: Any, clothing_image: Any) -> Dict[str, Any]:
-        """입력 검증"""
-        try:
-            validation_result = {
-                'valid': False,
-                'person_image': False,
-                'clothing_image': False,
-                'errors': []
-            }
+    def _create_safe_dependency_manager(self):
+        """안전한 의존성 매니저 생성"""
+        class SafeDependencyManager:
+            def __init__(self):
+                self.model_loader = None
+                self.memory_manager = None
+                self.data_converter = None
+                self.di_container = None
             
-            # Person 이미지 검증
-            try:
-                self._validate_single_image(person_image, "person_image")
-                validation_result['person_image'] = True
-            except Exception as e:
-                validation_result['errors'].append(f"Person 이미지 오류: {e}")
+            def set_model_loader(self, model_loader):
+                """ModelLoader 설정"""
+                self.model_loader = model_loader
+                return True
             
-            # Clothing 이미지 검증
-            try:
-                self._validate_single_image(clothing_image, "clothing_image")
-                validation_result['clothing_image'] = True
-            except Exception as e:
-                validation_result['errors'].append(f"Clothing 이미지 오류: {e}")
+            def set_memory_manager(self, memory_manager):
+                """MemoryManager 설정"""
+                self.memory_manager = memory_manager
+                return True
             
-            validation_result['valid'] = (
-                validation_result['person_image'] and 
-                validation_result['clothing_image'] and 
-                len(validation_result['errors']) == 0
-            )
+            def set_data_converter(self, data_converter):
+                """DataConverter 설정"""
+                self.data_converter = data_converter
+                return True
             
-            return validation_result
+            def set_di_container(self, di_container):
+                """DIContainer 설정"""
+                self.di_container = di_container
+                return True
             
-        except Exception as e:
-            return {
-                'valid': False,
-                'error': str(e),
-                'person_image': False,
-                'clothing_image': False
-            }
-    
-    def _validate_single_image(self, image: Any, name: str):
-        """단일 이미지 검증"""
-        if image is None:
-            raise ValueError(f"{name}이 None")
+            def auto_inject_dependencies(self):
+                """자동 의존성 주입 (더미)"""
+                return False
         
-        if isinstance(image, np.ndarray):
-            if len(image.shape) not in [3, 4]:
-                raise ValueError(f"{name} 형태 오류: {image.shape}")
-            if len(image.shape) == 3 and image.shape[2] not in [3, 4]:
-                raise ValueError(f"{name} 채널 오류: {image.shape}")
-        elif isinstance(image, Image.Image):
-            if image.mode not in ['RGB', 'RGBA', 'L']:
-                raise ValueError(f"{name} 모드 오류: {image.mode}")
-        elif isinstance(image, torch.Tensor):
-            if image.dim() not in [3, 4]:
-                raise ValueError(f"{name} 텐서 차원 오류: {image.dim()}")
-        else:
-            raise ValueError(f"{name} 타입 오류: {type(image)}")
-    
-    def get_processing_statistics(self) -> Dict[str, Any]:
-        """처리 통계 반환"""
+        return SafeDependencyManager()
+
+    def _manual_dependency_injection(self):
+        """수동 의존성 주입"""
         try:
-            total_processed = self.statistics['total_processed']
-            success_rate = (
-                (self.statistics['successful_matches'] / total_processed * 100) 
-                if total_processed > 0 else 0
-            )
-            
-            return {
-                "total_processed": total_processed,
-                "success_rate": success_rate,
-                "average_quality": self.statistics['average_quality'],
-                "average_processing_time": (
-                    self.statistics['total_processing_time'] / total_processed
-                ) if total_processed > 0 else 0,
-                "error_count": self.status.error_count,
-                "ai_model_calls": self.statistics['ai_model_calls'],
-                "device": self.device,
-                "dependencies_injected": self.status.dependencies_injected,
-                "using_real_ai_models": True,
-                "real_models_loaded": {
-                    "gmm": self.gmm_model is not None,
-                    "tps": self.tps_model is not None,
-                    "sam": self.sam_model is not None,
-                    "vit": self.vit_model is not None,
-                    "efficientnet": self.efficientnet_model is not None
-                },
-                "model_creation_success": self.statistics['model_creation_success'],
-                "model_success_rates": {
-                    "gmm": self.statistics['gmm_success_rate'],
-                    "tps": self.statistics['tps_success_rate'],
-                    "sam": self.statistics['sam_success_rate']
-                },
-                "improvements": {
-                    "real_ai_models_complete": True,
-                    "smart_model_path_mapper": True,
-                    "actual_inference_performed": True,
-                    "basestep_mixin_v16_compatible": True,
-                    "unified_dependency_manager": True,
-                    "type_checking_pattern": True,
-                    "circular_import_resolved": True
-                }
-            }
+            # ModelLoader 수동 주입 시도
+            model_loader = get_model_loader()
+            if model_loader:
+                if hasattr(self.dependency_manager, 'set_model_loader'):
+                    self.dependency_manager.set_model_loader(model_loader)
+                    self.logger.debug("✅ ModelLoader 수동 주입 성공")
+                    return True
+            return False
         except Exception as e:
-            return {"error": str(e)}
-    
-    async def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """모델 직접 반환 (BaseStepMixin 호환성)"""
+            self.logger.debug(f"⚠️ 수동 의존성 주입 실패: {e}")
+            return False
+
+    # 🔧 수정: 강화된 의존성 주입 메서드들
+    def set_model_loader(self, model_loader: 'ModelLoader'):
+        """ModelLoader 의존성 주입 - 안전성 강화"""
         try:
-            model_mapping = {
-                "gmm": self.gmm_model,
-                "tps": self.tps_model,
-                "sam": self.sam_model,
-                "vit": self.vit_model,
-                "efficientnet": self.efficientnet_model
-            }
+            # 직접 설정
+            self.model_loader = model_loader
             
-            if model_name in model_mapping:
-                return model_mapping[model_name]
-            elif model_name is None or model_name == "geometric_matching":
-                # 메인 모델 반환 (GMM 우선)
-                return self.gmm_model or self.tps_model or self.sam_model
-            else:
-                self.logger.warning(f"⚠️ 요청된 모델 {model_name}을 찾을 수 없음")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"❌ 모델 반환 실패: {e}")
-            return None
-    
-    def get_model_info(self, model_name: str = "all") -> Dict[str, Any]:
-        """모델 정보 반환 (BaseStepMixin 호환성)"""
-        try:
-            if model_name == "all":
-                return {
-                    "models": {
-                        "gmm": {
-                            "loaded": self.gmm_model is not None,
-                            "device": str(next(self.gmm_model.parameters()).device) if self.gmm_model else None,
-                            "parameters": sum(p.numel() for p in self.gmm_model.parameters()) if self.gmm_model else 0,
-                            "file_size": "44.7MB"
-                        },
-                        "tps": {
-                            "loaded": self.tps_model is not None,
-                            "device": str(next(self.tps_model.parameters()).device) if self.tps_model else None,
-                            "parameters": sum(p.numel() for p in self.tps_model.parameters()) if self.tps_model else 0,
-                            "file_size": "527.8MB"
-                        },
-                        "sam": {
-                            "loaded": self.sam_model is not None,
-                            "device": str(next(self.sam_model.parameters()).device) if self.sam_model else None,
-                            "parameters": sum(p.numel() for p in self.sam_model.parameters()) if self.sam_model else 0,
-                            "file_size": "2445.7MB"
-                        },
-                        "vit": {
-                            "loaded": self.vit_model is not None,
-                            "device": str(next(self.vit_model.parameters()).device) if self.vit_model else None,
-                            "parameters": sum(p.numel() for p in self.vit_model.parameters()) if self.vit_model else 0,
-                            "file_size": "889.6MB"
-                        },
-                        "efficientnet": {
-                            "loaded": self.efficientnet_model is not None,
-                            "device": str(next(self.efficientnet_model.parameters()).device) if self.efficientnet_model else None,
-                            "parameters": sum(p.numel() for p in self.efficientnet_model.parameters()) if self.efficientnet_model else 0,
-                            "file_size": "20.5MB"
-                        }
-                    },
-                    "total_models": 5,
-                    "loaded_models": sum([
-                        self.gmm_model is not None,
-                        self.tps_model is not None,
-                        self.sam_model is not None,
-                        self.vit_model is not None,
-                        self.efficientnet_model is not None
-                    ]),
-                    "real_ai_models": True,
-                    "smart_model_mapper": True,
-                    "actual_inference": True,
-                    "improvements": {
-                        "real_ai_models_complete": True,
-                        "smart_model_path_mapper": True,
-                        "actual_inference_performed": True,
-                        "basestep_mixin_v16_compatible": True,
-                        "unified_dependency_manager": True,
-                        "type_checking_pattern": True,
-                        "circular_import_resolved": True
-                    },
-                    "model_creation_success": self.status.model_creation_success
-                }
-            else:
-                model = getattr(self, f"{model_name}_model", None)
-                if model:
-                    return {
-                        "model_name": model_name,
-                        "model_type": type(model).__name__,
-                        "device": str(next(model.parameters()).device),
-                        "parameters": sum(p.numel() for p in model.parameters()),
-                        "loaded": True,
-                        "real_model": True,
-                        "actual_inference": True
-                    }
-                else:
-                    return {
-                        "error": f"모델 {model_name}을 찾을 수 없음",
-                        "available_models": ["gmm", "tps", "sam", "vit", "efficientnet"]
-                    }
-                    
-        except Exception as e:
-            return {"error": str(e)}
-    
-    # ==============================================
-    # 🔥 17. 메모리 관리 및 최적화
-    # ==============================================
-    
-    def _safe_memory_cleanup(self):
-        """안전한 메모리 정리"""
-        try:
-            # UnifiedDependencyManager를 통한 메모리 최적화
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                asyncio.create_task(self.dependency_manager.optimize_memory(aggressive=False))
-            
-            gc.collect()
-            
-            if self.device == "mps" and TORCH_AVAILABLE:
+            # dependency_manager에 설정 (안전하게)
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_model_loader')):
                 try:
-                    torch.mps.empty_cache()
-                except:
-                    pass
-            elif self.device == "cuda" and TORCH_AVAILABLE:
-                torch.cuda.empty_cache()
+                    self.dependency_manager.set_model_loader(model_loader)
+                except Exception as e:
+                    self.logger.debug(f"⚠️ dependency_manager.set_model_loader 실패: {e}")
             
-            self.logger.debug("✅ 메모리 정리 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
-    
-    def _apply_m3_max_optimization(self):
-        """M3 Max 최적화 적용"""
-        try:
-            if self.device == "mps":
-                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-                os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-                if TORCH_AVAILABLE:
-                    torch.set_num_threads(16)  # M3 Max 16코어
-                self.matching_config['batch_size'] = 8  # M3 Max 최적화
-                self.logger.info("🍎 M3 Max 최적화 적용 완료")
-        except Exception as e:
-            self.logger.warning(f"⚠️ M3 Max 최적화 실패: {e}")
-    
-    # ==============================================
-    # 🔥 18. 리소스 정리
-    # ==============================================
-    
-    async def cleanup(self):
-        """리소스 정리"""
-        try:
-            self.logger.info("🧹 Step 04: 실제 AI 모델 리소스 정리 중...")
-            
-            self.status.processing_active = False
-            
-            # 실제 AI 모델들 정리
-            models_to_cleanup = [
-                ('gmm_model', self.gmm_model),
-                ('tps_model', self.tps_model),
-                ('sam_model', self.sam_model),
-                ('vit_model', self.vit_model),
-                ('efficientnet_model', self.efficientnet_model)
-            ]
-            
-            for model_name, model in models_to_cleanup:
-                if model:
-                    if hasattr(model, 'cpu'):
-                        model.cpu()
-                    delattr(self, model_name)
-                    setattr(self, model_name, None)
-            
-            # UnifiedDependencyManager를 통한 메모리 정리
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                await self.dependency_manager.optimize_memory(aggressive=True)
-            
-            self._safe_memory_cleanup()
-            
-            self.logger.info("✅ Step 04: 실제 AI 모델 리소스 정리 완료")
+            self.status.dependencies_injected = True
+            self.logger.info("✅ ModelLoader 의존성 주입 완료")
             
         except Exception as e:
-            self.logger.warning(f"⚠️ Step 04: 리소스 정리 중 오류: {e}")
-    
-    def __del__(self):
-        """소멸자"""
+            self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+
+    def set_memory_manager(self, memory_manager: 'MemoryManager'):
+        """MemoryManager 의존성 주입 - 안전성 강화"""
         try:
-            if hasattr(self, 'status'):
-                self.status.processing_active = False
-        except Exception:
-            pass
+            self.memory_manager = memory_manager
+            
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_memory_manager')):
+                try:
+                    self.dependency_manager.set_memory_manager(memory_manager)
+                except Exception as e:
+                    self.logger.debug(f"⚠️ dependency_manager.set_memory_manager 실패: {e}")
+            
+            self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManager 의존성 주입 실패: {e}")
+
+    def set_data_converter(self, data_converter: 'DataConverter'):
+        """DataConverter 의존성 주입 - 안전성 강화"""
+        try:
+            self.data_converter = data_converter
+            
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_data_converter')):
+                try:
+                    self.dependency_manager.set_data_converter(data_converter)
+                except Exception as e:
+                    self.logger.debug(f"⚠️ dependency_manager.set_data_converter 실패: {e}")
+            
+            self.logger.info("✅ DataConverter 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ DataConverter 의존성 주입 실패: {e}")
+
+    def set_di_container(self, di_container: 'DIContainer'):
+        """DI Container 의존성 주입 - 안전성 강화"""
+        try:
+            self.di_container = di_container
+            
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_di_container')):
+                try:
+                    self.dependency_manager.set_di_container(di_container)
+                except Exception as e:
+                    self.logger.debug(f"⚠️ dependency_manager.set_di_container 실패: {e}")
+            
+            self.logger.info("✅ DI Container 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 의존성 주입 실패: {e}")
+            
+    def _create_fallback_dependency_manager(self):
+        """폴백 의존성 매니저 생성"""
+        class FallbackDependencyManager:
+            def __init__(self):
+                self.model_loader = None
+                self.memory_manager = None
+                self.data_converter = None
+                self.di_container = None
+            
+            def set_model_loader(self, model_loader):
+                self.model_loader = model_loader
+            
+            def set_memory_manager(self, memory_manager):
+                self.memory_manager = memory_manager
+            
+            def set_data_converter(self, data_converter):
+                self.data_converter = data_converter
+            
+            def set_di_container(self, di_container):
+                self.di_container = di_container
+            
+            def auto_inject_dependencies(self):
+                return False
+        
+        return FallbackDependencyManager()
+
+    def _manual_dependency_injection(self):
+        """수동 의존성 주입"""
+        try:
+            # ModelLoader 수동 주입
+            model_loader = get_model_loader()
+            if model_loader and hasattr(self.dependency_manager, 'set_model_loader'):
+                self.dependency_manager.set_model_loader(model_loader)
+                return True
+            return False
+        except Exception as e:
+            self.logger.warning(f"⚠️ 수동 의존성 주입 실패: {e}")
+            return False
+
+    # 🔧 수정: set_model_loader 메서드 강화
+    def set_model_loader(self, model_loader: 'ModelLoader'):
+        """ModelLoader 의존성 주입 - 호환성 강화"""
+        try:
+            self.model_loader = model_loader
+            
+            # dependency_manager가 있고 set_model_loader 메서드가 있으면 호출
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_model_loader')):
+                self.dependency_manager.set_model_loader(model_loader)
+            
+            self.status.dependencies_injected = True
+            self.logger.info("✅ ModelLoader 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ ModelLoader 의존성 주입 실패: {e}")
+
+    # 🔧 수정: set_memory_manager 메서드 강화  
+    def set_memory_manager(self, memory_manager: 'MemoryManager'):
+        """MemoryManager 의존성 주입 - 호환성 강화"""
+        try:
+            self.memory_manager = memory_manager
+            
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_memory_manager')):
+                self.dependency_manager.set_memory_manager(memory_manager)
+            
+            self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+
+    # 🔧 수정: set_data_converter 메서드 강화
+    def set_data_converter(self, data_converter: 'DataConverter'):
+        """DataConverter 의존성 주입 - 호환성 강화"""
+        try:
+            self.data_converter = data_converter
+            
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_data_converter')):
+                self.dependency_manager.set_data_converter(data_converter)
+            
+            self.logger.info("✅ DataConverter 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+
+    # 🔧 수정: set_di_container 메서드 강화
+    def set_di_container(self, di_container: 'DIContainer'):
+        """DI Container 의존성 주입 - 호환성 강화"""
+        try:
+            self.di_container = di_container
+            
+            if (hasattr(self, 'dependency_manager') and 
+                self.dependency_manager and 
+                hasattr(self.dependency_manager, 'set_di_container')):
+                self.dependency_manager.set_di_container(di_container)
+            
+            self.logger.info("✅ DI Container 의존성 주입 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
+
+    def _force_mps_device(self, device: str) -> str:
+        """MPS 디바이스 강제 설정"""
+        try:
+            import torch
+            import platform
+            
+            # M3 Max에서 강제로 MPS 사용
+            if (platform.system() == 'Darwin' and 
+                platform.machine() == 'arm64' and 
+                torch.backends.mps.is_available()):
+                self.logger.info("🍎 GeometricMatchingStep: MPS 강제 활성화")
+                return 'mps'
+            return device
+        except Exception as e:
+            self.logger.warning(f"⚠️ MPS 강제 설정 실패: {e}")
+            return device
+
+    def _move_models_to_device(self):
+        """모든 모델을 올바른 디바이스로 이동"""
+        models_to_move = [
+            ('gmm_model', self.gmm_model),
+            ('tps_model', self.tps_model), 
+            ('sam_model', self.sam_model),
+            ('vit_model', self.vit_model),
+            ('efficientnet_model', self.efficientnet_model)
+        ]
+        
+        moved_count = 0
+        for model_name, model in models_to_move:
+            if model is not None:
+                try:
+                    model = model.to(self.device)
+                    moved_count += 1
+                    self.logger.info(f"✅ {model_name} → {self.device}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {model_name} 디바이스 이동 실패: {e}")
+        
+        self.logger.info(f"✅ 모든 AI 모델이 {self.device}로 이동 완료 ({moved_count}개)")
+
+    # ... 나머지 메서드들은 그대로 유지 ...
+
 
 # ==============================================
 # 🔥 19. 기존 호환성 패치 추가

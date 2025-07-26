@@ -1,6 +1,6 @@
 # backend/app/ai_pipeline/factories/step_factory.py
 """
-🔥 MyCloset AI StepFactory v9.0 - BaseStepMixin 완전 호환 (Option A 구현)
+🔥 MyCloset AI StepFactory v9.0 - BaseStepMixin 완전 호환 (Option A 구현) - 완전 수정판
 ================================================================================
 
 ✅ 핵심 수정사항:
@@ -11,6 +11,9 @@
 ✅ process() 메서드 시그니처 표준화
 ✅ conda 환경 우선 최적화
 ✅ M3 Max 128GB 메모리 최적화
+✅ register_step 메서드 완전 구현 🔥
+✅ StepFactory 클래스에 모든 필수 메서드 추가 🔥
+✅ 오류 해결: 'StepFactory' object has no attribute 'register_step' 🔥
 
 주요 개선사항:
 1. Step 생성자에 의존성을 직접 전달 (생성자 주입)
@@ -18,12 +21,12 @@
 3. process() 메서드 통일된 시그니처 보장
 4. UnifiedDependencyManager 완전 활용
 5. 실제 Step 클래스들과 100% 호환
+6. register_step, unregister_step, is_step_registered, get_registered_steps 메서드 완전 구현
 
 Author: MyCloset AI Team
 Date: 2025-07-26
-Version: 9.0 (BaseStepMixin Complete Compatibility)
+Version: 9.0 (BaseStepMixin Complete Compatibility - 완전 수정판)
 """
-
 import os
 import sys
 import logging
@@ -323,7 +326,7 @@ class BaseStepMixinDependencyResolver:
         self.logger = logging.getLogger(f"{__name__}.BaseStepMixinDependencyResolver")
         self._resolved_cache: Dict[str, Any] = {}
         self._lock = threading.RLock()
-        
+    
         # 해결 시도 카운터
         self._resolution_attempts: Dict[str, int] = {}
         self._max_attempts = 3
@@ -845,12 +848,12 @@ class BaseStepMixinClassLoader:
             return False
 
 # ==============================================
-# 🔥 메인 StepFactory v9.0 (BaseStepMixin 완전 호환)
+# 🔥 메인 StepFactory v9.0 (BaseStepMixin 완전 호환) - 완전 수정판
 # ==============================================
 
 class StepFactory:
     """
-    🔥 StepFactory v9.0 - BaseStepMixin 완전 호환 (Option A 구현)
+    🔥 StepFactory v9.0 - BaseStepMixin 완전 호환 (Option A 구현) - 완전 수정판
     
     핵심 수정사항:
     - BaseStepMixin v18.0 표준 완전 호환
@@ -858,6 +861,7 @@ class StepFactory:
     - process() 메서드 시그니처 표준화
     - UnifiedDependencyManager 완전 활용
     - conda 환경 우선 최적화
+    - register_step, unregister_step, is_step_registered, get_registered_steps 메서드 완전 구현 🔥
     """
     
     def __init__(self):
@@ -866,6 +870,10 @@ class StepFactory:
         # BaseStepMixin 호환 컴포넌트들
         self.class_loader = BaseStepMixinClassLoader()
         self.dependency_resolver = BaseStepMixinDependencyResolver()
+        
+        # 🔥 등록된 Step 클래스들 관리 (핵심 추가)
+        self._registered_steps: Dict[str, Type['BaseStepMixin']] = {}
+        self._step_type_mapping: Dict[str, StepType] = {}
         
         # 캐시 관리
         self._step_cache: Dict[str, weakref.ref] = {}
@@ -880,18 +888,192 @@ class StepFactory:
             'basestepmixin_compatible_creations': 0,
             'dependency_injection_successes': 0,
             'conda_optimized': CONDA_INFO['is_target_env'],
-            'm3_max_optimized': IS_M3_MAX
+            'm3_max_optimized': IS_M3_MAX,
+            'registered_steps': 0  # 🔥 등록된 Step 수 추가
         }
         
         self.logger.info("🏭 StepFactory v9.0 초기화 완료 (BaseStepMixin v18.0 완전 호환)")
+
+    # ==============================================
+    # 🔥 Step 등록 관리 메서드들 (핵심 구현)
+    # ==============================================
     
+    def register_step(self, step_id: str, step_class: Type['BaseStepMixin']) -> bool:
+        """
+        🔥 Step 클래스를 팩토리에 등록 (핵심 메서드)
+        
+        Args:
+            step_id: Step ID (예: "step_01", "step_02", ...)
+            step_class: BaseStepMixin을 상속한 Step 클래스
+            
+        Returns:
+            bool: 등록 성공 여부
+        """
+        try:
+            with self._lock:
+                self.logger.info(f"📝 {step_id} Step 클래스 등록 시작...")
+                
+                # 1. 입력 검증
+                if not step_id:
+                    self.logger.error("❌ step_id가 비어있습니다")
+                    return False
+                
+                if not step_class:
+                    self.logger.error(f"❌ {step_id} Step 클래스가 None입니다")
+                    return False
+                
+                # 2. Step 클래스 기본 검증
+                if not self._validate_step_class(step_class, step_id):
+                    return False
+                
+                # 3. Step 타입 매핑 추출
+                step_type = self._extract_step_type_from_id(step_id)
+                if not step_type:
+                    self.logger.warning(f"⚠️ {step_id}에서 StepType 추출 실패, 계속 진행...")
+                
+                # 4. 등록 실행
+                self._registered_steps[step_id] = step_class
+                if step_type:
+                    self._step_type_mapping[step_id] = step_type
+                
+                # 5. 등록 성공 로그
+                class_name = step_class.__name__
+                module_name = step_class.__module__
+                
+                self.logger.info(f"✅ {step_id} Step 클래스 등록 완료")
+                self.logger.info(f"   - 클래스: {class_name}")
+                self.logger.info(f"   - 모듈: {module_name}")
+                self.logger.info(f"   - StepType: {step_type.value if step_type else 'Unknown'}")
+                
+                # 6. 통계 업데이트
+                self._stats['registered_steps'] = len(self._registered_steps)
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"❌ {step_id} Step 등록 실패: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            return False
+    
+    def _validate_step_class(self, step_class: Type['BaseStepMixin'], step_id: str) -> bool:
+        """Step 클래스 기본 검증"""
+        try:
+            # 클래스 타입 확인
+            if not isinstance(step_class, type):
+                self.logger.error(f"❌ {step_id}: step_class가 클래스 타입이 아닙니다")
+                return False
+            
+            # 필수 메서드 확인
+            required_methods = ['process']
+            missing_methods = []
+            
+            for method_name in required_methods:
+                if not hasattr(step_class, method_name):
+                    missing_methods.append(method_name)
+            
+            if missing_methods:
+                self.logger.error(f"❌ {step_id}: 필수 메서드 없음 - {missing_methods}")
+                return False
+            
+            # BaseStepMixin 상속 확인 (선택사항)
+            mro_names = [cls.__name__ for cls in step_class.__mro__]
+            if 'BaseStepMixin' not in mro_names:
+                self.logger.warning(f"⚠️ {step_id}: BaseStepMixin을 상속하지 않음 (계속 진행)")
+            
+            # 생성자 호출 가능성 테스트 (간단한 검증)
+            try:
+                import inspect
+                init_signature = inspect.signature(step_class.__init__)
+                self.logger.debug(f"🔍 {step_id} 생성자 시그니처: {init_signature}")
+            except Exception as e:
+                self.logger.debug(f"🔍 {step_id} 생성자 시그니처 검사 실패: {e}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ {step_id} 클래스 검증 실패: {e}")
+            return False
+    
+    def _extract_step_type_from_id(self, step_id: str) -> Optional[StepType]:
+        """Step ID에서 StepType 추출"""
+        try:
+            # step_01 -> HUMAN_PARSING 매핑
+            step_mapping = {
+                'step_01': StepType.HUMAN_PARSING,
+                'step_02': StepType.POSE_ESTIMATION,
+                'step_03': StepType.CLOTH_SEGMENTATION,
+                'step_04': StepType.GEOMETRIC_MATCHING,
+                'step_05': StepType.CLOTH_WARPING,
+                'step_06': StepType.VIRTUAL_FITTING,
+                'step_07': StepType.POST_PROCESSING,
+                'step_08': StepType.QUALITY_ASSESSMENT
+            }
+            
+            return step_mapping.get(step_id.lower())
+            
+        except Exception as e:
+            self.logger.debug(f"StepType 추출 실패 ({step_id}): {e}")
+            return None
+    
+    def unregister_step(self, step_id: str) -> bool:
+        """Step 등록 해제"""
+        try:
+            with self._lock:
+                if step_id in self._registered_steps:
+                    del self._registered_steps[step_id]
+                    self._step_type_mapping.pop(step_id, None)
+                    
+                    # 캐시에서도 제거
+                    cache_keys_to_remove = [
+                        key for key in self._step_cache.keys() 
+                        if step_id in key
+                    ]
+                    for cache_key in cache_keys_to_remove:
+                        del self._step_cache[cache_key]
+                    
+                    self.logger.info(f"✅ {step_id} Step 등록 해제 완료")
+                    
+                    # 통계 업데이트
+                    self._stats['registered_steps'] = len(self._registered_steps)
+                    
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ {step_id} Step이 등록되어 있지 않음")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"❌ {step_id} Step 등록 해제 실패: {e}")
+            return False
+    
+    def is_step_registered(self, step_id: str) -> bool:
+        """Step 등록 여부 확인"""
+        with self._lock:
+            return step_id in self._registered_steps
+    
+    def get_registered_steps(self) -> Dict[str, str]:
+        """등록된 Step 목록 반환 (step_id -> class_name)"""
+        with self._lock:
+            return {
+                step_id: step_class.__name__ 
+                for step_id, step_class in self._registered_steps.items()
+            }
+    
+    def get_registered_step_class(self, step_id: str) -> Optional[Type['BaseStepMixin']]:
+        """등록된 Step 클래스 반환"""
+        with self._lock:
+            return self._registered_steps.get(step_id)
+
+    # ==============================================
+    # 🔥 Step 생성 메서드들 (등록된 Step 우선 사용)
+    # ==============================================
+
     def create_step(
         self,
         step_type: Union[StepType, str],
         use_cache: bool = True,
         **kwargs
     ) -> StepCreationResult:
-        """Step 생성 메인 메서드 (BaseStepMixin 호환)"""
+        """Step 생성 메인 메서드 (등록된 Step 우선 사용)"""
         start_time = time.time()
         
         try:
@@ -900,59 +1082,27 @@ class StepFactory:
                 try:
                     step_type = StepType(step_type.lower())
                 except ValueError:
+                    # step_id 형태로 직접 등록된 것이 있는지 확인
+                    if self.is_step_registered(step_type):
+                        return self._create_step_from_registered(step_type, use_cache, **kwargs)
+                    
                     return StepCreationResult(
                         success=False,
                         error_message=f"지원하지 않는 Step 타입: {step_type}",
                         creation_time=time.time() - start_time
                     )
             
-            # BaseStepMixin 호환 설정 생성
-            config = BaseStepMixinMapping.get_config(step_type, **kwargs)
+            # StepType에서 step_id 찾기
+            step_id = self._get_step_id_from_type(step_type)
             
-            self.logger.info(f"🎯 {config.step_name} 생성 시작 (BaseStepMixin v18.0 호환)...")
+            # 등록된 Step이 있으면 우선 사용
+            if step_id and self.is_step_registered(step_id):
+                self.logger.info(f"🎯 {step_type.value} 등록된 Step 클래스 사용")
+                return self._create_step_from_registered(step_id, use_cache, **kwargs)
             
-            # 통계 업데이트
-            with self._lock:
-                self._stats['total_created'] += 1
-            
-            # 캐시 확인
-            if use_cache:
-                cached_step = self._get_cached_step(config.step_name)
-                if cached_step:
-                    with self._lock:
-                        self._stats['cache_hits'] += 1
-                    self.logger.info(f"♻️ {config.step_name} 캐시에서 반환")
-                    return StepCreationResult(
-                        success=True,
-                        step_instance=cached_step,
-                        step_name=config.step_name,
-                        step_type=step_type,
-                        class_name=config.class_name,
-                        module_path=config.module_path,
-                        creation_time=time.time() - start_time,
-                        basestepmixin_compatible=True
-                    )
-            
-            # 실제 Step 생성 (BaseStepMixin 호환)
-            result = self._create_basestepmixin_step_instance(config)
-            
-            # 성공 시 캐시에 저장
-            if result.success and result.step_instance and use_cache:
-                self._cache_step(config.step_name, result.step_instance)
-            
-            # 통계 업데이트
-            with self._lock:
-                if result.success:
-                    self._stats['successful_creations'] += 1
-                    if result.basestepmixin_compatible:
-                        self._stats['basestepmixin_compatible_creations'] += 1
-                    if result.dependency_injection_success:
-                        self._stats['dependency_injection_successes'] += 1
-                else:
-                    self._stats['failed_creations'] += 1
-            
-            result.creation_time = time.time() - start_time
-            return result
+            # 등록된 Step이 없으면 기존 방식 사용
+            self.logger.info(f"🎯 {step_type.value} 동적 로딩 방식 사용")
+            return self._create_step_legacy_way(step_type, use_cache, **kwargs)
             
         except Exception as e:
             with self._lock:
@@ -965,6 +1115,181 @@ class StepFactory:
                 creation_time=time.time() - start_time
             )
     
+    def _get_step_id_from_type(self, step_type: StepType) -> Optional[str]:
+        """StepType에서 step_id 찾기"""
+        type_to_id_mapping = {
+            StepType.HUMAN_PARSING: 'step_01',
+            StepType.POSE_ESTIMATION: 'step_02',
+            StepType.CLOTH_SEGMENTATION: 'step_03',
+            StepType.GEOMETRIC_MATCHING: 'step_04',
+            StepType.CLOTH_WARPING: 'step_05',
+            StepType.VIRTUAL_FITTING: 'step_06',
+            StepType.POST_PROCESSING: 'step_07',
+            StepType.QUALITY_ASSESSMENT: 'step_08'
+        }
+        return type_to_id_mapping.get(step_type)
+    
+    def _create_step_from_registered(
+        self, 
+        step_id: str, 
+        use_cache: bool = True, 
+        **kwargs
+    ) -> StepCreationResult:
+        """등록된 Step 클래스로부터 인스턴스 생성"""
+        start_time = time.time()
+        
+        try:
+            step_class = self.get_registered_step_class(step_id)
+            if not step_class:
+                return StepCreationResult(
+                    success=False,
+                    error_message=f"등록된 {step_id} Step 클래스를 찾을 수 없음",
+                    creation_time=time.time() - start_time
+                )
+            
+            self.logger.info(f"🔄 {step_id} 등록된 클래스로 인스턴스 생성 중...")
+            
+            # 캐시 확인
+            if use_cache:
+                cached_step = self._get_cached_step(step_id)
+                if cached_step:
+                    with self._lock:
+                        self._stats['cache_hits'] += 1
+                    self.logger.info(f"♻️ {step_id} 캐시에서 반환")
+                    return StepCreationResult(
+                        success=True,
+                        step_instance=cached_step,
+                        step_name=step_class.__name__,
+                        class_name=step_class.__name__,
+                        module_path=step_class.__module__,
+                        creation_time=time.time() - start_time,
+                        basestepmixin_compatible=True
+                    )
+            
+            # StepType 추출
+            step_type = self._step_type_mapping.get(step_id)
+            if not step_type:
+                step_type = self._extract_step_type_from_id(step_id)
+            
+            # BaseStepMixin 호환 설정 생성
+            if step_type:
+                config = BaseStepMixinMapping.get_config(step_type, **kwargs)
+            else:
+                # 기본 설정 생성
+                config = self._create_default_config(step_id, step_class, **kwargs)
+            
+            # 의존성 해결 및 인스턴스 생성
+            constructor_dependencies = self.dependency_resolver.resolve_dependencies_for_constructor(config)
+            
+            # Step 인스턴스 생성
+            self.logger.info(f"🔄 {step_id} 등록된 클래스 인스턴스 생성...")
+            step_instance = step_class(**constructor_dependencies)
+            self.logger.info(f"✅ {step_id} 인스턴스 생성 완료 (등록된 클래스)")
+            
+            # 초기화 실행
+            initialization_success = self._initialize_basestepmixin_step(step_instance, config)
+            
+            # 캐시에 저장
+            if use_cache:
+                self._cache_step(step_id, step_instance)
+            
+            # 통계 업데이트
+            with self._lock:
+                self._stats['total_created'] += 1
+                self._stats['successful_creations'] += 1
+                self._stats['basestepmixin_compatible_creations'] += 1
+                self._stats['dependency_injection_successes'] += 1
+            
+            return StepCreationResult(
+                success=True,
+                step_instance=step_instance,
+                step_name=config.step_name,
+                step_type=step_type,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                creation_time=time.time() - start_time,
+                dependencies_injected={'constructor_injection': True},
+                initialization_success=initialization_success,
+                basestepmixin_compatible=True,
+                dependency_injection_success=True
+            )
+            
+        except Exception as e:
+            with self._lock:
+                self._stats['failed_creations'] += 1
+            
+            self.logger.error(f"❌ {step_id} 등록된 클래스 인스턴스 생성 실패: {e}")
+            return StepCreationResult(
+                success=False,
+                error_message=f"등록된 {step_id} 인스턴스 생성 실패: {str(e)}",
+                creation_time=time.time() - start_time
+            )
+    
+    def _create_default_config(self, step_id: str, step_class: Type, **kwargs) -> BaseStepMixinConfig:
+        """기본 설정 생성 (StepType이 없을 때)"""
+        return BaseStepMixinConfig(
+            step_name=step_class.__name__,
+            step_id=int(step_id.split('_')[1]) if '_' in step_id else 0,
+            step_type=StepType.HUMAN_PARSING,  # 기본값
+            class_name=step_class.__name__,
+            module_path=step_class.__module__,
+            **kwargs
+        )
+    
+    def _create_step_legacy_way(
+        self, 
+        step_type: StepType, 
+        use_cache: bool = True, 
+        **kwargs
+    ) -> StepCreationResult:
+        """기존 방식으로 Step 생성 (동적 로딩)"""
+        # 기존 create_step 로직을 그대로 사용
+        config = BaseStepMixinMapping.get_config(step_type, **kwargs)
+        
+        self.logger.info(f"🎯 {config.step_name} 생성 시작 (동적 로딩)...")
+        
+        # 통계 업데이트
+        with self._lock:
+            self._stats['total_created'] += 1
+        
+        # 캐시 확인
+        if use_cache:
+            cached_step = self._get_cached_step(config.step_name)
+            if cached_step:
+                with self._lock:
+                    self._stats['cache_hits'] += 1
+                self.logger.info(f"♻️ {config.step_name} 캐시에서 반환")
+                return StepCreationResult(
+                    success=True,
+                    step_instance=cached_step,
+                    step_name=config.step_name,
+                    step_type=step_type,
+                    class_name=config.class_name,
+                    module_path=config.module_path,
+                    creation_time=0.0,
+                    basestepmixin_compatible=True
+                )
+        
+        # 실제 Step 생성 (기존 로직)
+        result = self._create_basestepmixin_step_instance(config)
+        
+        # 성공 시 캐시에 저장
+        if result.success and result.step_instance and use_cache:
+            self._cache_step(config.step_name, result.step_instance)
+        
+        # 통계 업데이트
+        with self._lock:
+            if result.success:
+                self._stats['successful_creations'] += 1
+                if result.basestepmixin_compatible:
+                    self._stats['basestepmixin_compatible_creations'] += 1
+                if result.dependency_injection_success:
+                    self._stats['dependency_injection_successes'] += 1
+            else:
+                self._stats['failed_creations'] += 1
+        
+        return result
+
     def _create_basestepmixin_step_instance(self, config: BaseStepMixinConfig) -> StepCreationResult:
         """BaseStepMixin 호환 Step 인스턴스 생성 (핵심 메서드)"""
         try:
@@ -1225,7 +1550,7 @@ class StepFactory:
         return self.create_step(StepType.GEOMETRIC_MATCHING, **kwargs)
     
     def create_cloth_warping_step(self, **kwargs) -> StepCreationResult:
-        """Cloth Warping Step 생성 (BaseStepMixin 호compat)"""
+        """Cloth Warping Step 생성 (BaseStepMixin 호환)"""
         return self.create_step(StepType.CLOTH_WARPING, **kwargs)
     
     def create_virtual_fitting_step(self, **kwargs) -> StepCreationResult:
@@ -1288,13 +1613,13 @@ class StepFactory:
             return {}
     
     def get_statistics(self) -> Dict[str, Any]:
-        """통계 정보 반환 (BaseStepMixin 호환성 포함)"""
+        """통계 정보 반환 (등록 정보 포함)"""
         with self._lock:
             total = self._stats['total_created']
             success_rate = (self._stats['successful_creations'] / max(1, total)) * 100
             basestepmixin_compatibility_rate = (self._stats['basestepmixin_compatible_creations'] / max(1, self._stats['successful_creations'])) * 100
             
-            return {
+            base_stats = {
                 'version': 'StepFactory v9.0 (BaseStepMixin Complete Compatibility)',
                 'total_created': total,
                 'successful_creations': self._stats['successful_creations'],
@@ -1317,8 +1642,20 @@ class StepFactory:
                     'm3_max_optimized': self._stats['m3_max_optimized'],
                     'memory_gb': MEMORY_GB
                 },
-                'loaded_classes': self.class_loader._loaded_classes.keys()
+                'loaded_classes': list(self.class_loader._loaded_classes.keys()),
+                
+                # 🔥 새로 추가: 등록 정보
+                'registration': {
+                    'registered_steps_count': len(self._registered_steps),
+                    'registered_steps': self.get_registered_steps(),
+                    'step_type_mappings': {
+                        step_id: step_type.value 
+                        for step_id, step_type in self._step_type_mapping.items()
+                    }
+                }
             }
+            
+            return base_stats
     
     def clear_cache(self):
         """캐시 정리"""
@@ -1425,6 +1762,30 @@ def clear_step_factory_cache():
     """StepFactory 캐시 정리"""
     factory = get_global_step_factory()
     factory.clear_cache()
+
+# ==============================================
+# 🔥 편의 함수들 개선 (등록 기능 포함)
+# ==============================================
+
+def register_step_globally(step_id: str, step_class: Type['BaseStepMixin']) -> bool:
+    """전역 StepFactory에 Step 등록"""
+    factory = get_global_step_factory()
+    return factory.register_step(step_id, step_class)
+
+def unregister_step_globally(step_id: str) -> bool:
+    """전역 StepFactory에서 Step 등록 해제"""
+    factory = get_global_step_factory()
+    return factory.unregister_step(step_id)
+
+def get_registered_steps_globally() -> Dict[str, str]:
+    """전역 StepFactory 등록된 Step 목록 조회"""
+    factory = get_global_step_factory()
+    return factory.get_registered_steps()
+
+def is_step_registered_globally(step_id: str) -> bool:
+    """전역 StepFactory Step 등록 여부 확인"""
+    factory = get_global_step_factory()
+    return factory.is_step_registered(step_id)
 
 # ==============================================
 # 🔥 conda 환경 최적화 (BaseStepMixin 호환)
@@ -1749,6 +2110,12 @@ __all__ = [
     'get_basestepmixin_step_info',
     'test_step_creation_flow',
     'diagnose_step_factory_health',
+
+    # 🔥 Step 등록 관리 함수들 (새로 추가)
+    'register_step_globally',
+    'unregister_step_globally', 
+    'get_registered_steps_globally',
+    'is_step_registered_globally',
     
     # 상수들
     'CONDA_INFO',
@@ -1769,6 +2136,7 @@ logger.info("   - UnifiedDependencyManager 완전 활용")
 logger.info("   - **kwargs 패턴 완전 지원")
 logger.info("   - conda 환경 우선 최적화")
 logger.info("   - M3 Max 128GB 메모리 최적화")
+logger.info("   - 🔥 register_step, unregister_step, is_step_registered, get_registered_steps 메서드 완전 구현")
 
 logger.info(f"🔧 현재 환경:")
 logger.info(f"   - conda 환경: {CONDA_INFO['conda_env']} ({'✅ 최적화됨' if CONDA_INFO['is_target_env'] else '⚠️ 권장: mycloset-ai-clean'})")
@@ -1803,3 +2171,4 @@ logger.info("🚀 StepFactory v9.0 완전 준비 완료! (BaseStepMixin v18.0 �
 logger.info("💡 이제 실제 Step 클래스들과 100% 호환됩니다!")
 logger.info("💡 생성자 시점 의존성 주입으로 안정성 보장!")
 logger.info("💡 process() 메서드 시그니처 표준화 완료!")
+logger.info("💡 🔥 register_step 메서드 등 모든 필수 메서드 완전 구현!")

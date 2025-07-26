@@ -275,12 +275,15 @@ else:
 def get_base_step_mixin():
     """BaseStepMixin 동적 import"""
     try:
-        from ..ai_pipeline.steps.base_step_mixin import BaseStepMixin, UnifiedDependencyManager
+        from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
         logger.info("✅ BaseStepMixin import 성공")
         return BaseStepMixin, UnifiedDependencyManager
     except ImportError as e:
-        logger.warning(f"⚠️ BaseStepMixin import 실패: {e}")
-        return None, None
+        try:
+            from backend.app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+            return BaseStepMixin
+        except ImportError:
+            return None
 
 BASE_STEP_MIXIN_CLASS, UNIFIED_DEPENDENCY_MANAGER = get_base_step_mixin()
 BASE_STEP_MIXIN_AVAILABLE = BASE_STEP_MIXIN_CLASS is not None
