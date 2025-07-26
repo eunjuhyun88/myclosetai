@@ -2736,17 +2736,40 @@ class VirtualFittingStep(BaseStepMixinClass):
             return image
     
     def _encode_image_base64(self, image: np.ndarray) -> str:
-        """이미지를 Base64로 인코딩"""
+        """이미지를 Base64로 인코딩 - 수정된 버전"""
         try:
+            # 1. 입력 검증
+            if image is None or not hasattr(image, 'shape'):
+                self.logger.warning("❌ 잘못된 이미지 입력")
+                return ""
+            
+            # 2. 타입 변환
+            if image.dtype != np.uint8:
+                if image.max() <= 1.0:
+                    image = (image * 255).astype(np.uint8)
+                else:
+                    image = np.clip(image, 0, 255).astype(np.uint8)
+            
+            # 3. PIL 변환
             pil_image = Image.fromarray(image)
+            
+            # 4. RGB 모드 변환
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            
+            # 5. Base64 변환
             buffer = BytesIO()
             pil_image.save(buffer, format='PNG', optimize=True)
             image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            # 6. 데이터 URL 형식으로 반환
             return f"data:image/png;base64,{image_base64}"
+            
         except Exception as e:
-            self.logger.warning(f"Base64 인코딩 실패: {e}")
-            return ""
-    
+            self.logger.error(f"❌ Base64 인코딩 실패: {e}")
+            return "data:image/png;base64,"  # 빈 데이터 URL
+
+
     def _build_real_ai_response(
         self, fitted_image: np.ndarray, visualization: Dict[str, Any], 
         quality_metrics: Dict[str, float], processing_time: float, 

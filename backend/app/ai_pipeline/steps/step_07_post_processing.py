@@ -2052,37 +2052,101 @@ class PostProcessingStep:
             else:
                 return None
     
-    def _numpy_to_base64(self, image) -> str:
-        """numpy 배열을 base64 문자열로 변환"""
+    
+import base64
+import numpy as np
+from io import BytesIO
+from PIL import Image
+import logging
+
+# 🔧 수정된 _numpy_to_base64 함수
+def _numpy_to_base64(self, image) -> str:
+    """numpy 배열을 base64 문자열로 변환 - 완전 수정 버전"""
+    try:
+        # 1. 입력 검증
+        if image is None:
+            self.logger.warning("⚠️ 입력 이미지가 None입니다")
+            return ""
+            
+        if not hasattr(image, 'shape'):
+            self.logger.warning("⚠️ NumPy 배열이 아닙니다")
+            return ""
+        
+        # 2. 이미지 타입 및 범위 정규화
+        if image.dtype != np.uint8:
+            # float 타입인 경우 0-1 범위를 0-255로 변환
+            if image.max() <= 1.0:
+                image = (image * 255).astype(np.uint8)
+            else:
+                image = np.clip(image, 0, 255).astype(np.uint8)
+        
+        # 3. 차원 검증 및 수정
+        if len(image.shape) == 4:  # Batch 차원 제거
+            image = image.squeeze(0)
+        elif len(image.shape) == 2:  # 그레이스케일을 RGB로 변환
+            image = np.stack([image] * 3, axis=-1)
+        elif len(image.shape) == 3 and image.shape[0] in [1, 3]:  # CHW → HWC 변환
+            image = np.transpose(image, (1, 2, 0))
+        
+        # 4. PIL Image로 안전하게 변환
         try:
-            if image is None or not PIL_AVAILABLE:
-                return ""
-                
-            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
-                return ""
-            
-            # PIL 이미지로 변환
             pil_image = Image.fromarray(image)
-            
-            # BytesIO 버퍼에 저장
-            buffer = BytesIO()
-            
-            # 품질 설정
-            quality = 90
+        except Exception as e:
+            self.logger.error(f"❌ PIL 변환 실패: {e}")
+            return ""
+        
+        # 5. RGB 모드 확인 및 변환
+        if pil_image.mode not in ['RGB', 'RGBA']:
+            pil_image = pil_image.convert('RGB')
+        elif pil_image.mode == 'RGBA':
+            # RGBA를 RGB로 변환 (흰색 배경)
+            rgb_image = Image.new('RGB', pil_image.size, (255, 255, 255))
+            rgb_image.paste(pil_image, mask=pil_image.split()[-1])
+            pil_image = rgb_image
+        
+        # 6. BytesIO 버퍼에 저장 (메모리 효율성)
+        buffer = BytesIO()
+        
+        # 7. 품질 설정 - 단계별로 조정
+        quality = 90  # 기본값
+        if hasattr(self, 'post_processing_config'):
             if self.post_processing_config.visualization_quality == 'high':
                 quality = 95
             elif self.post_processing_config.visualization_quality == 'low':
                 quality = 75
-            
-            pil_image.save(buffer, format='JPEG', quality=quality)
-            
-            # base64 인코딩
-            return base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ base64 변환 실패: {e}")
+        
+        # 8. 이미지 저장 (최적화 옵션 포함)
+        pil_image.save(
+            buffer, 
+            format='JPEG', 
+            quality=quality,
+            optimize=True,  # 파일 크기 최적화
+            progressive=True  # 점진적 로딩
+        )
+        
+        # 9. Base64 인코딩 (버퍼 크기 검증)
+        buffer.seek(0)  # 버퍼 포인터를 처음으로
+        image_bytes = buffer.getvalue()
+        
+        if len(image_bytes) == 0:
+            self.logger.error("❌ 이미지 저장 실패 - 빈 버퍼")
             return ""
-    
+        
+        base64_string = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # 10. 결과 검증
+        if len(base64_string) < 100:  # 너무 짧은 경우
+            self.logger.warning(f"⚠️ Base64 문자열이 너무 짧습니다: {len(base64_string)} 문자")
+            return ""
+        
+        self.logger.debug(f"✅ Base64 변환 성공: {len(base64_string)} 문자, 품질: {quality}")
+        return base64_string
+        
+    except Exception as e:
+        self.logger.error(f"❌ Base64 변환 완전 실패: {e}")
+        return ""
+
+
     # ==============================================
     # 🔥 14. 유틸리티 및 관리 메서드들
     # ==============================================
