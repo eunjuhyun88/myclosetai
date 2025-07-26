@@ -545,6 +545,7 @@ class PipelineAPIClient {
       maxReconnectAttempts: options.maxReconnectAttempts || 10,
     };
 
+    
     this.defaultHeaders = {
       'Accept': 'application/json',
       'User-Agent': `MyClosetAI-Client/2.0.0 (${navigator.userAgent})`,
@@ -582,6 +583,10 @@ class PipelineAPIClient {
     });
 
     this.startBackgroundTasks();
+  }
+
+  get baseURL(): string {
+    return this.config.baseURL;
   }
 
   private startBackgroundTasks(): void {
@@ -655,6 +660,7 @@ class PipelineAPIClient {
     return this.executeRequest<T>(url, options, cacheKey);
   }
 
+ 
   private async executeRequest<T>(
     url: string,
     options: RequestInit,
@@ -1260,6 +1266,8 @@ interface StepResult {
   success: boolean;
   message: string;
   processing_time: number;
+  session_id?: string;  // 🔥 추가: 최상위 레벨 session_id
+
   confidence: number;
   error?: string;
   details?: {
@@ -1815,16 +1823,20 @@ const App: React.FC = () => {
   // 🔧 핵심 처리 함수들
   // =================================================================
 
-  // Step 3-8 자동 처리 함수 (TypeScript 오류 수정 버전)
-const autoProcessRemainingSteps = async () => {
-  if (!stepResults[1]?.details?.session_id) {
+  const autoProcessRemainingSteps = async () => {
+  // 세션 ID 추출
+  const sessionId = 
+    stepResults[1]?.session_id ||
+    stepResults[1]?.details?.session_id ||
+    apiClient.getSessionId();
+
+  if (!sessionId) {
     setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
     return;
   }
 
   setAutoProcessing(true);
   setIsProcessing(true);
-  const sessionId = stepResults[1].details.session_id;
 
   try {
     // WebSocket 연결 시도
@@ -1834,47 +1846,114 @@ const autoProcessRemainingSteps = async () => {
       console.warn('WebSocket 연결 실패, HTTP 폴링으로 진행:', error);
     }
 
-    // 🔥 핵심 수정: 모든 단계를 순차적으로 처리하고 상태를 즉시 업데이트
-    const stepsToProcess = [3, 4, 5, 6, 7, 8];
-    const progressSteps = [20, 35, 50, 65, 80, 100];
-    const stepNames = [
-      'AI 인체 파싱 중...',
-      'AI 포즈 추정 중...',
-      'AI 의류 분석 중...',
-      'AI 기하학적 매칭 중...',
-      'AI 가상 피팅 생성 중...',
-      '최종 결과 분석 중...'
+    // 🔥 실제 백엔드 API 스펙에 맞춘 단계 설정 (엔드포인트 직접 포함)
+    const stepsConfig = [
+      {
+        stepId: 3,
+        endpoint: '/api/step/3/human-parsing',
+        progressPercent: 37.5,
+        stepName: 'AI 인체 파싱 중...',
+        params: {
+          session_id: sessionId,
+          enhance_quality: 'true'
+        }
+      },
+      {
+        stepId: 4,
+        endpoint: '/api/step/4/pose-estimation',
+        progressPercent: 50.0,
+        stepName: 'AI 포즈 추정 중...',
+        params: {
+          session_id: sessionId,
+          detection_confidence: '0.5'
+        }
+      },
+      {
+        stepId: 5,
+        endpoint: '/api/step/5/clothing-analysis',
+        progressPercent: 62.5,
+        stepName: 'AI 의류 분석 중...',
+        params: {
+          session_id: sessionId,
+          analysis_detail: 'medium'
+        }
+      },
+      {
+        stepId: 6,
+        endpoint: '/api/step/6/geometric-matching',
+        progressPercent: 75.0,
+        stepName: 'AI 기하학적 매칭 중...',
+        params: {
+          session_id: sessionId,
+          matching_precision: 'high'
+        }
+      },
+      {
+        stepId: 7,
+        endpoint: '/api/step/7/virtual-fitting',
+        progressPercent: 87.5,
+        stepName: 'AI 가상 피팅 생성 중...',
+        params: {
+          session_id: sessionId,
+          fitting_quality: 'high'
+        }
+      },
+      {
+        stepId: 8,
+        endpoint: '/api/step/8/result-analysis',
+        progressPercent: 100.0,
+        stepName: '최종 결과 분석 중...',
+        params: {
+          session_id: sessionId,
+          analysis_depth: 'comprehensive'
+        }
+      }
     ];
     
-    for (let i = 0; i < stepsToProcess.length; i++) {
-      const stepId = stepsToProcess[i];
-      const stepProgress = progressSteps[i];
-      const stepName = stepNames[i];
+    // 🔥 각 단계를 순차 처리 (엔드포인트가 이미 stepsConfig에 포함됨)
+    for (const stepConfig of stepsConfig) {
+      const { stepId, endpoint, progressPercent, stepName, params } = stepConfig;
       
       try {
         // 현재 단계 설정
         setCurrentStep(stepId);
-        setProgress(stepProgress);
+        setProgress(progressPercent);
         setProgressMessage(`Step ${stepId}: ${stepName}`);
         
-        console.log(`🚀 Step ${stepId} 처리 시작`);
+        console.log(`🚀 Step ${stepId} 처리 시작:`, {
+          endpoint,
+          params,
+          sessionId
+        });
         
         // FormData 생성
         const formData = new FormData();
-        formData.append('session_id', sessionId);
+        Object.entries(params).forEach(([key, value]) => {
+          formData.append(key, String(value));
+        });
         
-        // Step 8의 경우 추가 데이터 필요
-        if (stepId === 8) {
-          // 이전 단계들의 결과를 확인
-          const step7Result = stepResults[7];
-          if (step7Result?.fitted_image) {
-            formData.append('fitted_image_base64', step7Result.fitted_image);
-          }
-          formData.append('fit_score', (step7Result?.fit_score || 0.88).toString());
+        console.log(`📋 Step ${stepId} FormData:`, {
+          endpoint,
+          formDataEntries: Object.fromEntries(formData.entries())
+        });
+        
+        // 🔥 API 호출 (하드코딩된 baseURL 사용)
+        const baseUrl = 'http://localhost:8000';
+        const fullUrl = `${baseUrl}${endpoint}`;
+        
+        console.log(`🌐 API 호출 URL: ${fullUrl}`);
+        
+        const response = await fetch(fullUrl, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
         
-        // API 호출
-        const stepResult = await apiClient.callStepAPI(stepId, formData);
+        const stepResult = await response.json();
         
         if (!stepResult.success) {
           throw new Error(stepResult.error || `Step ${stepId} 처리 실패`);
@@ -1882,53 +1961,76 @@ const autoProcessRemainingSteps = async () => {
         
         console.log(`✅ Step ${stepId} 완료:`, stepResult);
         
-        // 🔥 핵심: 상태를 즉시 업데이트
+        // 상태 업데이트
         setStepResults(prev => ({ ...prev, [stepId]: stepResult }));
         setCompletedSteps(prev => [...prev, stepId]);
         
-        // Step 7에서 가상 피팅 결과를 TryOnResult로 변환
+        // Step 7에서 가상 피팅 결과 처리
         if (stepId === 7 && stepResult.success && stepResult.fitted_image) {
-          const newResult: TryOnResult = {
-            success: true,
-            message: stepResult.message,
-            processing_time: stepResult.processing_time,
-            confidence: stepResult.confidence,
-            session_id: sessionId,
-            fitted_image: stepResult.fitted_image, // 🔥 실제 Base64 이미지!
-            fit_score: stepResult.fit_score || 0.88,
-            measurements: {
-              chest: measurements.height * 0.5,
-              waist: measurements.height * 0.45,
-              hip: measurements.height * 0.55,
-              bmi: measurements.weight / ((measurements.height / 100) ** 2)
-            },
-            clothing_analysis: {
-              category: stepResult?.details?.category || "상의",
-              style: stepResult?.details?.style || "캐주얼",
-              dominant_color: [100, 150, 200],
-              color_name: "블루",
-              material: "코튼",
-              pattern: "솔리드"
-            },
-            recommendations: stepResult.recommendations || [
-              "색상이 잘 어울립니다",
-              "사이즈가 적절합니다",
-              "스타일이 매우 잘 맞습니다"
-            ]
-          };
-          
-          setResult(newResult);
+          try {
+            const heightInMeters = measurements.height / 100;
+            const bmi = measurements.weight / (heightInMeters * heightInMeters);
+            
+            const newResult: TryOnResult = {
+              success: true,
+              message: stepResult.message,
+              processing_time: stepResult.processing_time,
+              confidence: stepResult.confidence,
+              session_id: sessionId,
+              fitted_image: stepResult.fitted_image,
+              fit_score: stepResult.fit_score || stepResult.confidence || 0.88,
+              measurements: {
+                chest: measurements.height * 0.5,
+                waist: measurements.height * 0.45,
+                hip: measurements.height * 0.55,
+                bmi: Math.round(bmi * 100) / 100
+              },
+              clothing_analysis: {
+                category: stepResult?.details?.category || "상의",
+                style: stepResult?.details?.style || "캐주얼",
+                dominant_color: [100, 150, 200],
+                color_name: "블루",
+                material: "코튼",
+                pattern: "솔리드"
+              },
+              recommendations: stepResult.recommendations || [
+                "이 의류는 당신의 체형에 잘 맞습니다",
+                "색상이 잘 어울립니다",
+                "사이즈가 적절합니다"
+              ]
+            };
+            
+            setResult(newResult);
+            console.log('🎉 TryOnResult 설정 완료:', newResult);
+            
+          } catch (resultError) {
+            console.error('❌ TryOnResult 생성 실패:', resultError);
+          }
         }
         
-        // 단계별 짧은 지연 (UI 업데이트 시간 확보)
+        // 단계별 지연
         await new Promise(resolve => setTimeout(resolve, 500));
         
-      } catch (stepError: any) { // ✅ TypeScript 오류 수정
+      } catch (stepError: any) {
         console.error(`❌ Step ${stepId} 실패:`, stepError);
-        setError(`Step ${stepId} 실패: ${stepError.message}`); // ✅ TypeScript 오류 수정
+        
+        let errorMessage = `Step ${stepId} 실패`;
+        if (stepError.message) {
+          if (stepError.message.includes('404')) {
+            errorMessage = `Step ${stepId}: 세션을 찾을 수 없습니다.`;
+          } else if (stepError.message.includes('422')) {
+            errorMessage = `Step ${stepId}: 입력 데이터가 올바르지 않습니다.`;
+          } else if (stepError.message.includes('500')) {
+            errorMessage = `Step ${stepId}: 서버 오류가 발생했습니다.`;
+          } else {
+            errorMessage = `Step ${stepId}: ${stepError.message}`;
+          }
+        }
+        
+        setError(errorMessage);
         setIsProcessing(false);
         setAutoProcessing(false);
-        return; // 실패 시 즉시 중단
+        return;
       }
     }
     
@@ -1939,18 +2041,23 @@ const autoProcessRemainingSteps = async () => {
     setTimeout(() => {
       setIsProcessing(false);
       setAutoProcessing(false);
-      setCurrentStep(8); // 최종 결과 단계로 이동
+      setCurrentStep(8);
     }, 1500);
     
-  } catch (error: any) { // ✅ TypeScript 오류 수정
+  } catch (error: any) {
     console.error('❌ 자동 처리 중 오류:', error);
-    setError(`자동 처리 실패: ${error.message}`); // ✅ TypeScript 오류 수정
+    setError(`자동 처리 실패: ${error.message}`);
     setIsProcessing(false);
     setAutoProcessing(false);
   } finally {
-    apiClient.disconnectWebSocket();
+    try {
+      apiClient.disconnectWebSocket();
+    } catch (cleanupError) {
+      console.warn('WebSocket 정리 중 오류:', cleanupError);
+    }
   }
-};
+  };
+
 
   
   // =================================================================
@@ -2099,66 +2206,78 @@ const autoProcessRemainingSteps = async () => {
     }
   }, [personImage, clothingImage, apiClient, goToNextStep]);
 
-  // 2단계: 신체 측정값 검증
+ 
   const processStep2 = useCallback(async () => {
-    if (measurements.height <= 0 || measurements.weight <= 0) {
-      setError('올바른 키와 몸무게를 입력해주세요.');
-      return;
-    }
+  if (measurements.height <= 0 || measurements.weight <= 0) {
+    setError('올바른 키와 몸무게를 입력해주세요.');
+    return;
+  }
 
-    const sessionId = stepResults[1]?.details?.session_id || apiClient.getSessionId();
+  // ✅ 이제 TypeScript 오류 없이 작동
+  const sessionId = 
+    stepResults[1]?.session_id ||           // 최상위 레벨에서 먼저 확인
+    stepResults[1]?.details?.session_id ||  // details에서 확인
+    apiClient.getSessionId();               // API 클라이언트에서 확인
+  
+  console.log('🔍 Step 2 세션 ID 디버깅:', {
+    'stepResults[1]': stepResults[1],
+    'stepResults[1]?.session_id': stepResults[1]?.session_id,
+    'stepResults[1]?.details?.session_id': stepResults[1]?.details?.session_id,
+    'apiClient.getSessionId()': apiClient.getSessionId(),
+    '최종_사용할_세션_ID': sessionId
+  });
+  
+  if (!sessionId) {
+    setError('세션 ID가 없습니다. 1단계부터 다시 시작해주세요.');
+    return;
+  }
+
+  setIsProcessing(true);
+  setProgress(10);
+  setProgressMessage('신체 측정값 검증 중...');
+
+  try {
+    const formData = new FormData();
     
-    if (!sessionId) {
-      setError('세션 ID가 없습니다. 1단계부터 다시 시작해주세요.');
-      return;
+    formData.append('height', measurements.height.toString());
+    formData.append('weight', measurements.weight.toString());
+    formData.append('session_id', sessionId);
+    
+    formData.append('chest', '0');
+    formData.append('waist', '0');
+    formData.append('hips', '0');
+    
+    setProgress(50);
+    const stepResult = await apiClient.callStepAPI(2, formData);
+    
+    if (!stepResult.success) {
+      throw new Error(stepResult.error || '2단계 검증 실패');
     }
-
-    setIsProcessing(true);
-    setProgress(10);
-    setProgressMessage('신체 측정값 검증 중...');
-
-    try {
-      const formData = new FormData();
-      
-      formData.append('height', measurements.height.toString());
-      formData.append('weight', measurements.weight.toString());
-      formData.append('session_id', sessionId);
-      
-      formData.append('chest', '0');
-      formData.append('waist', '0');
-      formData.append('hips', '0');
-      
-      setProgress(50);
-      const stepResult = await apiClient.callStepAPI(2, formData);
-      
-      if (!stepResult.success) {
-        throw new Error(stepResult.error || '2단계 검증 실패');
-      }
-      
-      setStepResults(prev => ({ ...prev, 2: stepResult }));
-      setProgress(100);
-      setProgressMessage('신체 측정값 검증 완료!');
-      
-      setTimeout(() => {
-        setIsProcessing(false);
-        goToNextStep();
-      }, 1500);
-      
-    } catch (error: any) {
-      console.error('❌ 2단계 실패:', error);
-      
-      let errorMessage = error.message;
-      if (error.message.includes('422')) {
-        errorMessage = '입력 데이터 형식이 올바르지 않습니다. 키와 몸무게를 다시 확인해주세요.';
-      } else if (error.message.includes('404')) {
-        errorMessage = '세션을 찾을 수 없습니다. 1단계부터 다시 시작해주세요.';
-      }
-      
-      setError(`2단계 실패: ${errorMessage}`);
+    
+    setStepResults(prev => ({ ...prev, 2: stepResult }));
+    setProgress(100);
+    setProgressMessage('신체 측정값 검증 완료!');
+    
+    setTimeout(() => {
       setIsProcessing(false);
-      setProgress(0);
+      goToNextStep();
+    }, 1500);
+    
+  } catch (error: any) {
+    console.error('❌ 2단계 실패:', error);
+    
+    let errorMessage = error.message;
+    if (error.message.includes('422')) {
+      errorMessage = '입력 데이터 형식이 올바르지 않습니다. 키와 몸무게를 다시 확인해주세요.';
+    } else if (error.message.includes('404')) {
+      errorMessage = '세션을 찾을 수 없습니다. 1단계부터 다시 시작해주세요.';
     }
-  }, [measurements, apiClient, goToNextStep, stepResults]);
+    
+    setError(`2단계 실패: ${errorMessage}`);
+    setIsProcessing(false);
+    setProgress(0);
+  }
+}, [measurements, apiClient, goToNextStep, stepResults]);
 
   // 유효성 검사 함수들
   const canProceedToNext = useCallback(() => {
