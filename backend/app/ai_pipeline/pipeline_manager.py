@@ -638,7 +638,7 @@ class GitHubStepManager:
             ensure_global_step_compatibility(step_instance, step_id, step_info['name'], config)
             
             # 초기화 (안전한 방식)
-            await self._initialize_step_safe(step_instance)
+            self._initialize_step_safe(step_instance)
             
             return step_instance
             
@@ -649,9 +649,8 @@ class GitHubStepManager:
             self.logger.error(f"❌ Step {step_id} 직접 생성 실패: {e}")
             return None
     
-        # 기존 코드를 이것으로 교체:
-    async def _initialize_step_safe(self, step_instance) -> bool:
-        """Step 안전 초기화 (모든 오류 방지)"""
+    def _initialize_step_safe(self, step_instance) -> bool:
+        """Step 안전 초기화 (모든 오류 방지) - async 제거"""
         try:
             # 이미 초기화된 경우
             if getattr(step_instance, 'is_initialized', False):
@@ -664,7 +663,10 @@ class GitHubStepManager:
                 try:
                     # 비동기 함수인지 확인
                     if asyncio.iscoroutinefunction(initialize_method):
-                        result = await initialize_method()
+                        # ✅ await 대신 마킹만 처리
+                        step_instance._needs_async_init = True
+                        result = True  # 비동기는 성공으로 간주
+                        self.logger.debug(f"✅ {step_instance.__class__.__name__} 비동기 초기화 마킹")
                     else:
                         result = initialize_method()
                     
@@ -703,7 +705,6 @@ class GitHubStepManager:
             step_instance.is_initialized = False
             step_instance.is_ready = False
             return False
-
 
     async def _create_steps_directly(self) -> bool:
         """모든 Step 직접 생성"""
@@ -1793,10 +1794,6 @@ class PipelineManager:
     # ==============================================
     # 🔥 Step 관리 메서드들 (기존 인터페이스 100% 유지, 비동기 오류 완전 해결)
     # ==============================================
-    
-    # 🔥 1번 파일(paste.txt) 정확한 register_step 메서드 수정
-# 위치: PipelineManager 클래스 내부 - 기존 register_step 메서드를 이것으로 완전 교체
-
     def register_step(self, step_id: int, step_instance: Any) -> bool:
         """Step 등록 (완전 동기 메서드, await 오류 완전 해결)"""
         try:

@@ -632,7 +632,7 @@ class RealAIContainer:
                 # PipelineManager에 실제 AI Steps 등록
                 for step_id, step_instance in self.ai_steps.items():
                     try:
-                        await self.pipeline_manager.register_step(step_id, step_instance)
+                        self.pipeline_manager.register_step(step_id, step_instance)
                         print(f"✅ {step_id} PipelineManager 등록 완료")
                     except Exception as e:
                         print(f"⚠️ {step_id} PipelineManager 등록 실패: {e}")

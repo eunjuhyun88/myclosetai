@@ -496,8 +496,31 @@ __all__ = [
 # 고급 모듈들 동적 추가
 if ADVANCED_STATUS['model_loader']:
     __all__.append('ModelLoader')
-if ADVANCED_STATUS['auto_detector']:
-    __all__.append('detect_available_models')  
+# 🔧 auto_detector 안전 처리
+
+# ==============================================
+# 🔥 auto_detector 관련 안전 처리
+# ==============================================
+
+# auto_detector 상태 안전 확인
+AUTO_DETECTOR_ENABLED = False
+try:
+    AUTO_DETECTOR_ENABLED = ADVANCED_STATUS.get('auto_detector', False)
+    # 추가 검증: 실제 함수가 존재하는지 확인
+    if AUTO_DETECTOR_ENABLED and 'detect_available_models' not in globals():
+        AUTO_DETECTOR_ENABLED = False
+        print("⚠️ detect_available_models 함수 없음 - auto_detector 비활성화")
+except Exception as e:
+    AUTO_DETECTOR_ENABLED = False
+    print(f"⚠️ auto_detector 상태 확인 실패: {e}")
+
+# 안전한 __all__ 추가
+if AUTO_DETECTOR_ENABLED:
+    __all__.append('detect_available_models')
+    print("✅ detect_available_models 추가됨")
+else:
+    print("ℹ️ auto_detector 비활성화됨")
+
 if ADVANCED_STATUS['step_requirements']:
     __all__.append('StepModelRequestAnalyzer')
 

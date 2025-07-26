@@ -2335,6 +2335,7 @@ class RealAIModelLoader:
         try:
             if AUTO_DETECTOR_AVAILABLE:
                 self.auto_detector = get_global_detector()
+                ootd_models = auto_detector.get_models_for_step("VirtualFittingStep")
                 self.logger.info("✅ auto_model_detector 연동 완료")
             else:
                 self.logger.warning("⚠️ auto_model_detector 없음")

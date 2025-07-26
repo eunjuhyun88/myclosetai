@@ -282,61 +282,181 @@ class SmartModelPathMapper:
         self.step06_path = self.base_path / "step_06_virtual_fitting"
         self.checkpoints_path = self.base_path / "checkpoints"
         
+  
     def get_ootd_model_paths(self) -> Dict[str, Path]:
-        """OOTDiffusion 모델 경로들 탐지 및 반환"""
+        """OOTDiffusion 모델 경로들 탐지 및 반환 (실제 구조 기반 수정)"""
         try:
             model_paths = {}
             
-            # 기본 OOTDiffusion 경로
+            # 🔥 실제 발견된 구조 기반 경로 수정
+            # 기본 OOTDiffusion 경로 (실제 확인된 구조)
             ootd_base = self.step06_path / "ootdiffusion" / "checkpoints" / "ootd"
             
-            # UNet 모델들 (4개)
-            unet_mappings = {
-                "dc_garm": ootd_base / "ootd_dc" / "checkpoint-36000" / "unet_garm",
-                "dc_vton": ootd_base / "ootd_dc" / "checkpoint-36000" / "unet_vton", 
-                "hd_garm": ootd_base / "ootd_hd" / "checkpoint-36000" / "unet_garm",
-                "hd_vton": ootd_base / "ootd_hd" / "checkpoint-36000" / "unet_vton"
+            # 실제 존재하는 파일들 확인
+            self.logger.info(f"🔍 OOTDiffusion 기본 경로 확인: {ootd_base}")
+            
+            # 1. model_index.json 확인 (핵심 설정 파일)
+            model_index = ootd_base / "model_index.json"
+            if model_index.exists():
+                model_paths["model_index"] = model_index
+                self.logger.info(f"✅ model_index.json 발견: {model_index}")
+            
+            # 2. UNet 모델들 (실제 구조에 맞게 수정)
+            unet_search_patterns = [
+                # 패턴 1: 직접 unet 폴더
+                ("ootd_dc", ootd_base / "ootd_dc"),
+                ("ootd_hd", ootd_base / "ootd_hd"),
+                
+                # 패턴 2: checkpoint 하위 폴더
+                ("dc_garm", ootd_base / "ootd_dc" / "checkpoint-36000" / "unet_garm"),
+                ("dc_vton", ootd_base / "ootd_dc" / "checkpoint-36000" / "unet_vton"),
+                ("hd_garm", ootd_base / "ootd_hd" / "checkpoint-36000" / "unet_garm"),
+                ("hd_vton", ootd_base / "ootd_hd" / "checkpoint-36000" / "unet_vton"),
+                
+                # 패턴 3: 루트의 unet 폴더
+                ("unet", ootd_base / "unet"),
+            ]
+            
+            for variant, path in unet_search_patterns:
+                if path.exists():
+                    # diffusion_pytorch_model.safetensors 또는 .bin 파일 찾기
+                    for ext in [".safetensors", ".bin"]:
+                        model_file = path / f"diffusion_pytorch_model{ext}"
+                        if model_file.exists():
+                            model_paths[variant] = model_file
+                            self.logger.info(f"✅ UNet {variant} 발견: {model_file}")
+                            break
+                    else:
+                        self.logger.debug(f"🔍 UNet {variant} 폴더는 있지만 모델 파일 없음: {path}")
+            
+            # 3. Text Encoder (여러 패턴 시도)
+            text_encoder_patterns = [
+                ootd_base / "text_encoder" / "pytorch_model.bin",
+                ootd_base / "text_encoder" / "text_encoder_pytorch_model.bin",
+                ootd_base / "text_encoder" / "model.safetensors",
+                # 상위 디렉토리도 확인
+                self.step06_path / "ootdiffusion" / "text_encoder" / "pytorch_model.bin",
+            ]
+            
+            for text_encoder_path in text_encoder_patterns:
+                if text_encoder_path.exists():
+                    model_paths["text_encoder"] = text_encoder_path
+                    self.logger.info(f"✅ Text Encoder 발견: {text_encoder_path}")
+                    break
+            
+            # 4. VAE (여러 패턴 시도) 
+            vae_patterns = [
+                ootd_base / "vae" / "diffusion_pytorch_model.bin",
+                ootd_base / "vae" / "diffusion_pytorch_model.safetensors",
+                ootd_base / "vae" / "vae_diffusion_pytorch_model.bin",
+                # 상위 디렉토리도 확인
+                self.step06_path / "ootdiffusion" / "vae" / "diffusion_pytorch_model.bin",
+                self.step06_path / "vae" / "diffusion_pytorch_model.bin",
+            ]
+            
+            for vae_path in vae_patterns:
+                if vae_path.exists():
+                    model_paths["vae"] = vae_path
+                    self.logger.info(f"✅ VAE 발견: {vae_path}")
+                    break
+            
+            # 5. Tokenizer 확인
+            tokenizer_patterns = [
+                ootd_base / "tokenizer",
+                self.step06_path / "ootdiffusion" / "tokenizer",
+            ]
+            
+            for tokenizer_path in tokenizer_patterns:
+                if tokenizer_path.exists() and tokenizer_path.is_dir():
+                    model_paths["tokenizer"] = tokenizer_path
+                    self.logger.info(f"✅ Tokenizer 발견: {tokenizer_path}")
+                    break
+            
+            # 6. Scheduler 확인
+            scheduler_patterns = [
+                ootd_base / "scheduler",
+                self.step06_path / "ootdiffusion" / "scheduler",
+            ]
+            
+            for scheduler_path in scheduler_patterns:
+                if scheduler_path.exists() and scheduler_path.is_dir():
+                    model_paths["scheduler"] = scheduler_path
+                    self.logger.info(f"✅ Scheduler 발견: {scheduler_path}")
+                    break
+            
+            # 7. Feature Extractor 확인
+            feature_extractor_patterns = [
+                ootd_base / "feature_extractor",
+                self.step06_path / "ootdiffusion" / "feature_extractor",
+            ]
+            
+            for feature_extractor_path in feature_extractor_patterns:
+                if feature_extractor_path.exists() and feature_extractor_path.is_dir():
+                    model_paths["feature_extractor"] = feature_extractor_path
+                    self.logger.info(f"✅ Feature Extractor 발견: {feature_extractor_path}")
+                    break
+            
+            # 8. 추가 모델들 (HR-VITON, IDM-VTON 등)
+            additional_models = {
+                "hrviton": [
+                    self.checkpoints_path / "step_06_virtual_fitting" / "hrviton_final.pth",
+                    self.step06_path / "hrviton_final.pth",
+                    self.step06_path / "HR-VITON" / "hrviton.pth",
+                ],
+                "idm_vton": [
+                    self.step06_path / "idm_vton_ultra" / "pytorch_model.bin",
+                    self.step06_path / "IDM-VTON" / "pytorch_model.bin",
+                ],
+                "generic": [
+                    self.step06_path / "pytorch_model.bin",
+                ]
             }
             
-            for variant, path in unet_mappings.items():
-                # .safetensors 또는 .bin 파일 찾기
-                safetensors_file = path / "diffusion_pytorch_model.safetensors"
-                bin_file = path / "diffusion_pytorch_model.bin"
-                
-                if safetensors_file.exists():
-                    model_paths[variant] = safetensors_file
-                elif bin_file.exists():
-                    model_paths[variant] = bin_file
-                else:
-                    self.logger.warning(f"UNet {variant} 파일을 찾을 수 없음: {path}")
+            for model_name, paths in additional_models.items():
+                for path in paths:
+                    if path.exists():
+                        model_paths[model_name] = path
+                        self.logger.info(f"✅ {model_name} 발견: {path}")
+                        break
             
-            # Text Encoder
-            text_encoder_path = ootd_base / "text_encoder" / "text_encoder_pytorch_model.bin"
-            if text_encoder_path.exists():
-                model_paths["text_encoder"] = text_encoder_path
+            # 9. 메인 diffusion 모델 (루트에서)
+            main_diffusion_patterns = [
+                self.step06_path / "ootdiffusion" / "diffusion_pytorch_model.bin",
+                self.step06_path / "diffusion_pytorch_model.bin",
+            ]
             
-            # VAE
-            vae_path = ootd_base / "vae" / "vae_diffusion_pytorch_model.bin"
-            if vae_path.exists():
-                model_paths["vae"] = vae_path
+            for main_diffusion_path in main_diffusion_patterns:
+                if main_diffusion_path.exists():
+                    model_paths["main_diffusion"] = main_diffusion_path
+                    self.logger.info(f"✅ 메인 Diffusion 모델 발견: {main_diffusion_path}")
+                    break
             
-            # HR-VITON 추가 모델
-            hrviton_path = self.checkpoints_path / "step_06_virtual_fitting" / "hrviton_final.pth"
-            if hrviton_path.exists():
-                model_paths["hrviton"] = hrviton_path
+            # 결과 요약
+            total_found = len(model_paths)
+            self.logger.info(f"🎯 OOTDiffusion 경로 매핑 완료: {total_found}개 모델")
             
-            # 범용 PyTorch 모델
-            generic_pytorch = self.step06_path / "pytorch_model.bin"
-            if generic_pytorch.exists():
-                model_paths["generic"] = generic_pytorch
-                
-            self.logger.info(f"🎯 OOTDiffusion 경로 매핑 완료: {len(model_paths)}개 모델")
+            if total_found == 0:
+                self.logger.error("❌ OOTDiffusion 모델을 하나도 찾을 수 없습니다")
+                self.logger.info("🔍 디렉토리 구조 확인:")
+                try:
+                    for item in self.step06_path.rglob("*"):
+                        if item.is_file() and any(ext in item.name for ext in ['.pth', '.bin', '.safetensors', '.json']):
+                            self.logger.info(f"   📁 {item}")
+                except:
+                    pass
+            else:
+                self.logger.info("🎯 발견된 모델들:")
+                for model_name, model_path in model_paths.items():
+                    file_size_mb = model_path.stat().st_size / (1024 * 1024) if model_path.exists() else 0
+                    self.logger.info(f"   - {model_name}: {model_path} ({file_size_mb:.1f}MB)")
+            
             return model_paths
             
         except Exception as e:
             self.logger.error(f"❌ OOTDiffusion 경로 매핑 실패: {e}")
+            self.logger.error(f"   스택 트레이스: {traceback.format_exc()}")
             return {}
-    
+
     def verify_model_files(self, model_paths: Dict[str, Path]) -> Dict[str, bool]:
         """모델 파일 존재 여부 검증"""
         verification = {}

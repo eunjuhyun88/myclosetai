@@ -273,21 +273,38 @@ else:
 # ==============================================
 
 def get_base_step_mixin():
-    """BaseStepMixin 동적 import"""
+    """BaseStepMixin 동적 import (안전한 방식)"""
     try:
         from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
         logger.info("✅ BaseStepMixin import 성공")
-        return BaseStepMixin, UnifiedDependencyManager
+        return BaseStepMixin
     except ImportError as e:
+        logger.debug(f"app.ai_pipeline.steps.base_step_mixin import 실패: {e}")
         try:
             from backend.app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+            logger.info("✅ BaseStepMixin import 성공 (대체 경로)")
             return BaseStepMixin
-        except ImportError:
+        except ImportError as e2:
+            logger.debug(f"backend.app.ai_pipeline.steps.base_step_mixin import 실패: {e2}")
+            logger.warning("⚠️ BaseStepMixin import 실패 - 폴백 클래스 사용")
             return None
 
-BASE_STEP_MIXIN_CLASS, UNIFIED_DEPENDENCY_MANAGER = get_base_step_mixin()
+BASE_STEP_MIXIN_CLASS = get_base_step_mixin()
 BASE_STEP_MIXIN_AVAILABLE = BASE_STEP_MIXIN_CLASS is not None
 
+# UnifiedDependencyManager는 별도로 처리 (옵션)
+UNIFIED_DEPENDENCY_MANAGER = None
+try:
+    if BASE_STEP_MIXIN_AVAILABLE:
+        # BaseStepMixin과 함께 UnifiedDependencyManager가 있다면 import
+        from app.ai_pipeline.steps.base_step_mixin import UnifiedDependencyManager
+        logger.info("✅ UnifiedDependencyManager import 성공")
+    else:
+        logger.debug("UnifiedDependencyManager는 선택사항이므로 건너뜀")
+except ImportError:
+    logger.debug("UnifiedDependencyManager import 실패 - 선택사항이므로 계속 진행")
+
+    
 # ==============================================
 # 🔥 기타 의존성들 동적 Import
 # ==============================================
