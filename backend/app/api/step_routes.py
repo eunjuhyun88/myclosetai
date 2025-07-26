@@ -43,6 +43,15 @@ import gc
 from typing import Optional, Dict, Any, List, Tuple, Union
 from datetime import datetime
 from pathlib import Path
+# 🔥 추가할 import:
+from app.models.schemas import (
+    BaseConfigModel, 
+    BodyMeasurements, 
+    APIResponse,
+    DeviceType,
+    ProcessingStatus
+)
+from app.models.schemas import BodyMeasurements
 
 # FastAPI 필수 import
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
@@ -67,6 +76,8 @@ if IS_MYCLOSET_ENV:
     logger.info(f"✅ MyCloset AI 최적화 conda 환경: {CONDA_ENV}")
 else:
     logger.warning(f"⚠️ 권장 conda 환경이 아님: {CONDA_ENV} (권장: mycloset-ai-clean)")
+
+
 
 # =============================================================================
 # 🔥 StepServiceManager Import (핵심!)
@@ -220,6 +231,37 @@ except ImportError as e:
     
     async def broadcast_system_alert(message: str, alert_type: str = "info"):
         logger.info(f"🔔 알림: {message}")
+
+def format_api_response(
+    success: bool = True,
+    message: str = "",
+    step_name: str = "",
+    step_id: int = 0,
+    processing_time: float = 0.0,
+    session_id: str = "",
+    confidence: float = 1.0,
+    details: Dict[str, Any] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """API 응답 포맷팅 함수"""
+    response = {
+        "success": success,
+        "message": message,
+        "step_name": step_name,
+        "step_id": step_id,
+        "processing_time": processing_time,
+        "session_id": session_id,
+        "confidence": confidence,
+        "timestamp": datetime.now().isoformat(),
+        "details": details or {}
+    }
+    
+    # 추가 필드들
+    for key, value in kwargs.items():
+        if key not in response:
+            response[key] = value
+    
+    return response
 
 # =============================================================================
 # 🔥 유틸리티 함수들
@@ -611,6 +653,8 @@ async def step_1_upload_validation(
 # ✅ Step 2: 신체 측정값 검증 (실제 AI)
 # =============================================================================
 
+# backend/app/api/step_routes.py 파일에서 다음 부분을 수정:
+
 @router.post("/2/measurements-validation", response_model=APIResponse)
 async def step_2_measurements_validation(
     height: float = Form(..., description="키 (cm)", ge=100, le=250),
@@ -619,126 +663,258 @@ async def step_2_measurements_validation(
     waist: Optional[float] = Form(0, description="허리둘레 (cm)", ge=0, le=150),
     hips: Optional[float] = Form(0, description="엉덩이둘레 (cm)", ge=0, le=150),
     session_id: str = Form(..., description="세션 ID"),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     session_manager: SessionManager = Depends(get_session_manager_dependency),
     step_service: StepServiceManager = Depends(get_step_service_manager_dependency)
 ):
-    """2단계: 신체 측정값 검증 - 실제 AI 처리"""
+    """2단계: 신체 측정값 검증 API - 수정된 버전"""
     start_time = time.time()
     
     try:
-        with create_performance_monitor("step_2_measurements_validation"):
-            # 1. 세션 검증
-            try:
-                person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
-                logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
-            except Exception as e:
-                logger.error(f"❌ 세션 로드 실패: {e}")
+        # 1. 세션 검증
+        try:
+            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+            logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
+        except Exception as e:
+            logger.error(f"❌ 세션 로드 실패: {e}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"세션을 찾을 수 없습니다: {session_id}. Step 1을 먼저 실행해주세요."
+            )
+        
+        # 2. 🔥 수정: BodyMeasurements 객체 생성 (안전한 방식)
+        try:
+            measurements = BodyMeasurements(
+                height=height,
+                weight=weight,
+                chest=chest,
+                waist=waist,
+                hips=hips
+            )
+            
+            # 🔥 수정: validate_ranges() 메서드 사용 (validate() 대신)
+            is_valid, errors = measurements.validate_ranges()
+            if not is_valid:
                 raise HTTPException(
-                    status_code=404, 
-                    detail=f"세션을 찾을 수 없습니다: {session_id}. Step 1을 먼저 실행해주세요."
+                    status_code=400, 
+                    detail=f"측정값 범위 검증 실패: {', '.join(errors)}"
                 )
             
-            # 2. BodyMeasurements 객체 생성
-            try:
-                measurements = BodyMeasurements(
-                    height=height,
-                    weight=weight,
-                    chest=chest,
-                    waist=waist,
-                    hips=hips
-                )
-                
-                # 유효성 검증
-                is_valid, errors = measurements.validate()
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"측정값 검증 실패: {', '.join(errors)}"
-                    )
-                
-                logger.info(f"💡 BMI 계산: {measurements.bmi}")
-                
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.error(f"❌ 측정값 처리 실패: {e}")
-                raise HTTPException(status_code=400, detail=f"측정값 처리 실패: {str(e)}")
+            logger.info(f"✅ 측정값 검증 통과: BMI {measurements.bmi}")
             
-            # 3. 🔥 실제 StepServiceManager AI 처리
-            try:
-                service_result = await step_service.process_step_2_measurements_validation(
-                    measurements=measurements,
-                    session_id=session_id
-                )
-                logger.info(f"✅ StepServiceManager Step 2 처리 완료: {service_result.get('success', False)}")
-                
-            except Exception as e:
-                logger.error(f"❌ StepServiceManager Step 2 처리 실패: {e}")
-                # 폴백: 기본 성공 응답
-                service_result = {
-                    "success": True,
-                    "confidence": 0.9,
-                    "message": "신체 측정값 검증 완료",
-                    "details": {
-                        "bmi": measurements.bmi,
-                        "bmi_category": "정상" if 18.5 <= measurements.bmi <= 24.9 else "비정상",
-                        "fallback_mode": True
-                    }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ 측정값 처리 실패: {e}")
+            raise HTTPException(status_code=400, detail=f"측정값 처리 실패: {str(e)}")
+        
+        # 3. 🔥 실제 StepServiceManager AI 처리
+        try:
+            service_result = await step_service.process_step_2_measurements_validation(
+                measurements=measurements,
+                session_id=session_id
+            )
+            logger.info(f"✅ StepServiceManager Step 2 처리 완료: {service_result.get('success', False)}")
+            
+        except Exception as e:
+            logger.error(f"❌ StepServiceManager Step 2 처리 실패: {e}")
+            # 폴백: 기본 성공 응답
+            service_result = {
+                "success": True,
+                "confidence": 0.9,
+                "message": "신체 측정값 검증 완료",
+                "details": {
+                    "bmi": measurements.bmi,
+                    "bmi_category": get_bmi_category(measurements.bmi),
+                    "fallback_mode": True
                 }
-            
-            # 4. 세션에 측정값 업데이트
+            }
+        
+        # 4. 세션에 측정값 업데이트
+        try:
+            await session_manager.update_session_measurements(session_id, measurements.to_dict())
+            logger.info(f"✅ 세션 측정값 업데이트 완료: {session_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ 세션 측정값 업데이트 실패: {e}")
+        
+        # 5. 프론트엔드 호환성 강화
+        enhanced_result = enhance_step_result_for_frontend(service_result, 2)
+        
+        # 6. 세션에 결과 저장
+        try:
+            await session_manager.save_step_result(session_id, 2, enhanced_result)
+            logger.info(f"✅ 세션에 Step 2 결과 저장 완료: {session_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ 세션 결과 저장 실패: {e}")
+        
+        # 7. WebSocket 진행률 알림
+        if WEBSOCKET_AVAILABLE:
             try:
-                await session_manager.update_session_measurements(session_id, measurements.to_dict())
-                logger.info(f"✅ 세션 측정값 업데이트 완료: {session_id}")
-            except Exception as e:
-                logger.warning(f"⚠️ 세션 측정값 업데이트 실패: {e}")
-            
-            # 5. 프론트엔드 호환성 강화
-            enhanced_result = enhance_step_result_for_frontend(service_result, 2)
-            
-            # 6. 세션에 결과 저장
-            try:
-                await session_manager.save_step_result(session_id, 2, enhanced_result)
-                logger.info(f"✅ 세션에 Step 2 결과 저장 완료: {session_id}")
-            except Exception as e:
-                logger.warning(f"⚠️ 세션 결과 저장 실패: {e}")
-            
-            # 7. WebSocket 진행률 알림
-            if WEBSOCKET_AVAILABLE:
-                try:
-                    progress_callback = create_progress_callback(session_id)
-                    await progress_callback("Step 2 완료", 25.0)
-                except Exception:
-                    pass
-            
-            # 8. 백그라운드 메모리 최적화
-            background_tasks.add_task(optimize_conda_memory)
-            
-            # 9. 응답 반환
-            processing_time = time.time() - start_time
-            
-            return JSONResponse(content=format_step_api_response(
-                success=True,
-                message="신체 측정값 검증 완료 - 실제 AI 처리",
-                step_name="Measurements Validation",
-                step_id=2,
-                processing_time=processing_time,
-                session_id=session_id,
-                confidence=enhanced_result.get('confidence', 0.9),
-                details={
-                    **enhanced_result.get('details', {}),
-                    "measurements": measurements.to_dict(),
-                    "validation_passed": True,
-                    "ai_processing": True
-                }
-            ))
-    
+                progress_callback = create_progress_callback(session_id)
+                await progress_callback("Step 2 완료", 25.0)  # 2/8 = 25%
+            except Exception:
+                pass
+        
+        # 8. 🔥 수정: format_step_api_response 함수 사용 (format_api_response 대신)
+        processing_time = time.time() - start_time
+        
+        return JSONResponse(content=format_step_api_response(
+            success=True,
+            message="신체 측정값 검증 완료",
+            step_name="측정값 검증",
+            step_id=2,
+            processing_time=processing_time,
+            session_id=session_id,
+            confidence=enhanced_result.get('confidence', 0.9),
+            details={
+                **enhanced_result.get('details', {}),
+                "measurements": measurements.to_dict(),
+                "bmi": measurements.bmi,
+                "validation_passed": is_valid
+            }
+        ))
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Step 2 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# 📁 2. backend/app/api/step_routes.py 수정 (Step 2 함수)
+# =============================================================================
+
+
+async def _process_step_2_validation_fixed(
+    height: float,
+    weight: float,
+    chest: Optional[float],
+    waist: Optional[float],
+    hips: Optional[float],
+    session_id: str,
+    session_manager: SessionManager,
+    step_service: StepServiceManager,
+    start_time: float
+):
+    """Step 2 실제 처리 로직 - 수정된 버전"""
+    
+    # 1. 세션 검증
+    try:
+        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+        logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
+    except Exception as e:
+        logger.error(f"❌ 세션 로드 실패: {e}")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"세션을 찾을 수 없습니다: {session_id}. Step 1을 먼저 실행해주세요."
+        )
+    
+    # 2. 🔥 수정: BodyMeasurements 객체 생성 (자동 검증)
+    try:
+        measurements = BodyMeasurements(
+            height=height,
+            weight=weight,
+            chest=chest,
+            waist=waist,
+            hips=hips
+        )
+        
+        # 🔥 수정: validate() 메서드 대신 validate_ranges() 사용
+        is_valid, errors = measurements.validate_ranges()
+        if not is_valid:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"측정값 범위 검증 실패: {', '.join(errors)}"
+            )
+        
+        logger.info(f"✅ 측정값 검증 통과: BMI {measurements.bmi}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 측정값 처리 실패: {e}")
+        raise HTTPException(status_code=400, detail=f"측정값 처리 실패: {str(e)}")
+    
+    # 3. 🔥 실제 StepServiceManager AI 처리
+    try:
+        service_result = await step_service.process_step_2_measurements_validation(
+            measurements=measurements,
+            session_id=session_id
+        )
+        logger.info(f"✅ StepServiceManager Step 2 처리 완료: {service_result.get('success', False)}")
+        
+    except Exception as e:
+        logger.error(f"❌ StepServiceManager Step 2 처리 실패: {e}")
+        # 폴백: 기본 성공 응답
+        service_result = {
+            "success": True,
+            "confidence": 0.9,
+            "message": "신체 측정값 검증 완료",
+            "details": {
+                "bmi": measurements.bmi,
+                "bmi_category": get_bmi_category(measurements.bmi),
+                "fallback_mode": True
+            }
+        }
+    
+    # 4. 세션에 측정값 업데이트
+    try:
+        await session_manager.update_session_measurements(session_id, measurements.to_dict())
+        logger.info(f"✅ 세션 측정값 업데이트 완료: {session_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ 세션 측정값 업데이트 실패: {e}")
+    
+    # 5. 프론트엔드 호환성 강화
+    enhanced_result = enhance_step_result_for_frontend(service_result, 2)
+    
+    # 6. 세션에 결과 저장
+    try:
+        await session_manager.save_step_result(session_id, 2, enhanced_result)
+        logger.info(f"✅ 세션에 Step 2 결과 저장 완료: {session_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ 세션 결과 저장 실패: {e}")
+    
+    # 7. WebSocket 진행률 알림
+    if WEBSOCKET_AVAILABLE:
+        try:
+            progress_callback = create_progress_callback(session_id)
+            await progress_callback("Step 2 완료", 25.0)  # 2/8 = 25%
+        except Exception:
+            pass
+    
+    # 8. 응답 반환
+    processing_time = time.time() - start_time
+    
+    return JSONResponse(content=format_api_response(
+        success=True,
+        message="신체 측정값 검증 완료",
+        step_name="측정값 검증",
+        step_id=2,
+        processing_time=processing_time,
+        session_id=session_id,
+        confidence=enhanced_result.get('confidence', 0.9),
+        details={
+            **enhanced_result.get('details', {}),
+            "measurements": measurements.to_dict(),
+            "bmi": measurements.bmi,
+            "validation_passed": is_valid
+        }
+    ))
+
+def get_bmi_category(bmi: float) -> str:
+    """BMI 카테고리 반환"""
+    if bmi < 18.5:
+        return "저체중"
+    elif bmi < 23:
+        return "정상"
+    elif bmi < 25:
+        return "과체중"
+    elif bmi < 30:
+        return "비만"
+    else:
+        return "고도비만"
+
+
 
 # =============================================================================
 # ✅ Step 3: 인간 파싱 (실제 AI - 1.2GB Graphonomy)
@@ -1411,6 +1587,12 @@ async def step_8_result_analysis(
 # 🎯 완전한 파이프라인 처리 (실제 AI 229GB 모델)
 # =============================================================================
 
+# 🔧 complete_pipeline_processing 함수 수정
+# ===================================
+# 
+# 문제: is_valid, errors = measurements.validate() 라인
+# 해결: 안전한 검증 방식으로 변경
+
 @router.post("/complete", response_model=APIResponse)
 async def complete_pipeline_processing(
     person_image: UploadFile = File(..., description="사람 이미지"),
@@ -1427,7 +1609,7 @@ async def complete_pipeline_processing(
     session_manager: SessionManager = Depends(get_session_manager_dependency),
     step_service: StepServiceManager = Depends(get_step_service_manager_dependency)
 ):
-    """완전한 8단계 AI 파이프라인 처리 - 229GB 실제 AI 모델"""
+    """완전한 8단계 AI 파이프라인 처리 - 229GB 실제 AI 모델 (수정된 버전)"""
     start_time = time.time()
     
     try:
@@ -1444,28 +1626,53 @@ async def complete_pipeline_processing(
             person_img = Image.open(io.BytesIO(person_data)).convert('RGB')
             clothing_img = Image.open(io.BytesIO(clothing_data)).convert('RGB')
             
-            # 2. BodyMeasurements 객체 생성
-            measurements = BodyMeasurements(
-                height=height,
-                weight=weight,
-                chest=chest,
-                waist=waist,
-                hips=hips
-            )
+            # 2. 🔥 수정: 안전한 측정값 검증 (BodyMeasurements 객체 생성 안함)
+            validation_errors = []
             
-            # 유효성 검증
-            is_valid, errors = measurements.validate()
-            if not is_valid:
+            # 기본 검증
+            if height < 140 or height > 220:
+                validation_errors.append("키는 140-220cm 범위여야 합니다")
+            if weight < 40 or weight > 150:
+                validation_errors.append("몸무게는 40-150kg 범위여야 합니다")
+            
+            # BMI 계산 및 검증
+            try:
+                height_m = height / 100.0
+                bmi = round(weight / (height_m ** 2), 2)
+                
+                if bmi < 16:
+                    validation_errors.append("BMI가 너무 낮습니다 (심각한 저체중)")
+                elif bmi > 35:
+                    validation_errors.append("BMI가 너무 높습니다 (심각한 비만)")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ BMI 계산 실패: {e}")
+                bmi = 22.0  # 기본값
+            
+            # 검증 실패 시 에러 반환
+            if validation_errors:
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"측정값 검증 실패: {', '.join(errors)}"
+                    detail=f"측정값 검증 실패: {', '.join(validation_errors)}"
                 )
+            
+            # 측정값 딕셔너리 생성 (BodyMeasurements 객체 대신)
+            measurements_dict = {
+                "height": height,
+                "weight": weight,
+                "chest": chest or 0,
+                "waist": waist or 0,
+                "hips": hips or 0,
+                "bmi": bmi
+            }
+            
+            logger.info(f"✅ 측정값 검증 통과: 키 {height}cm, 몸무게 {weight}kg, BMI {bmi}")
             
             # 3. 세션 생성 (측정값 포함)
             new_session_id = await session_manager.create_session(
                 person_image=person_img,
                 clothing_image=clothing_img,
-                measurements=measurements.to_dict()
+                measurements=measurements_dict  # 딕셔너리로 전달
             )
             
             logger.info(f"🚀 완전한 8단계 AI 파이프라인 시작: {new_session_id}")
@@ -1475,7 +1682,7 @@ async def complete_pipeline_processing(
                 service_result = await step_service.process_complete_virtual_fitting(
                     person_image=person_img,
                     clothing_image=clothing_img,
-                    measurements=measurements,
+                    measurements=measurements_dict,  # 딕셔너리로 전달
                     clothing_type=clothing_type,
                     quality_target=quality_target,
                     session_id=new_session_id
@@ -1501,7 +1708,7 @@ async def complete_pipeline_processing(
                         "실제 착용시에도 비슷한 효과를 기대할 수 있습니다"
                     ],
                     "details": {
-                        "measurements": measurements.to_dict(),
+                        "measurements": measurements_dict,  # 딕셔너리 사용
                         "clothing_analysis": {
                             "category": "상의",
                             "style": "캐주얼",
@@ -1580,7 +1787,7 @@ async def complete_pipeline_processing(
                         "14GB Virtual Fitting (Core)",
                         "5.2GB CLIP (Result Analysis)"
                     ],
-                    "measurements": measurements.to_dict(),
+                    "measurements": measurements_dict,  # 딕셔너리 사용
                     "conda_optimized": IS_MYCLOSET_ENV
                 }
             ))
@@ -1590,6 +1797,22 @@ async def complete_pipeline_processing(
     except Exception as e:
         logger.error(f"❌ 완전한 AI 파이프라인 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================================================
+# 🔧 적용 방법
+# =============================================================================
+
+"""
+파일 수정:
+backend/app/api/step_routes.py 파일에서
+complete_pipeline_processing 함수를 위 코드로 교체
+
+핵심 변경사항:
+1. measurements.validate() 호출 제거
+2. 직접적인 검증 로직으로 변경  
+3. BodyMeasurements 객체 대신 딕셔너리 사용
+4. 모든 measurements 관련 코드 딕셔너리 기반으로 변경
+"""
 
 # =============================================================================
 # 🔍 모니터링 & 관리 API

@@ -939,12 +939,19 @@ class StepServiceManager:
                     "timestamp": datetime.now().isoformat()
                 }
     
+# 🔧 process_step_2_measurements_validation 메서드 완전 수정
+# ==========================================================
+# 
+# 위치: backend/app/services/step_service.py
+# 문제: is_valid, errors = measurements_obj.validate() 
+# 해결: 안전한 딕셔너리 기반 검증으로 변경
+
     async def process_step_2_measurements_validation(
         self,
         measurements: Union[BodyMeasurements, Dict[str, Any]],
         session_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """2단계: 신체 측정값 검증"""
+        """2단계: 신체 측정값 검증 - 완전 수정된 버전 (is_valid 에러 해결)"""
         request_id = f"step2_{uuid.uuid4().hex[:8]}"
         
         async with self.performance_monitor.monitor_request(2, request_id):
@@ -952,18 +959,60 @@ class StepServiceManager:
                 with self._lock:
                     self.total_requests += 1
                 
-                # BodyMeasurements 객체 처리
+                # 🔥 수정: BodyMeasurements 객체 생성하지 않고 딕셔너리로 처리
                 if isinstance(measurements, dict):
-                    measurements_obj = BodyMeasurements.from_dict(measurements)
+                    measurements_dict = measurements
                 else:
-                    measurements_obj = measurements
+                    # BodyMeasurements 객체인 경우 딕셔너리로 변환
+                    try:
+                        measurements_dict = measurements.to_dict()
+                    except AttributeError:
+                        # to_dict 메서드가 없는 경우 직접 변환
+                        measurements_dict = {
+                            "height": getattr(measurements, 'height', 0),
+                            "weight": getattr(measurements, 'weight', 0),
+                            "chest": getattr(measurements, 'chest', 0),
+                            "waist": getattr(measurements, 'waist', 0),
+                            "hips": getattr(measurements, 'hips', 0),
+                            "bmi": getattr(measurements, 'bmi', 0)
+                        }
                 
-                # 측정값 유효성 검증
-                is_valid, errors = measurements_obj.validate()
-                if not is_valid:
+                # 🔥 수정: 안전한 딕셔너리 기반 검증
+                validation_errors = []
+                
+                height = measurements_dict.get("height", 0)
+                weight = measurements_dict.get("weight", 0)
+                
+                # 기본 검증
+                if height < 100 or height > 250:
+                    validation_errors.append("키는 100-250cm 범위여야 합니다")
+                if weight < 30 or weight > 300:
+                    validation_errors.append("몸무게는 30-300kg 범위여야 합니다")
+                
+                # BMI 계산 및 검증
+                try:
+                    if height > 0 and weight > 0:
+                        height_m = height / 100.0
+                        bmi = round(weight / (height_m ** 2), 2)
+                        measurements_dict["bmi"] = bmi
+                        
+                        if bmi < 14:
+                            validation_errors.append("BMI가 너무 낮습니다 (심각한 저체중)")
+                        elif bmi > 50:
+                            validation_errors.append("BMI가 너무 높습니다 (극도 비만)")
+                    else:
+                        bmi = 0
+                        validation_errors.append("키 또는 몸무게가 올바르지 않습니다")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ BMI 계산 실패: {e}")
+                    bmi = 22.0  # 기본값
+                    measurements_dict["bmi"] = bmi
+                
+                # 검증 실패 시 에러 반환
+                if validation_errors:
                     return {
                         "success": False,
-                        "error": f"잘못된 측정값: {', '.join(errors)}",
+                        "error": f"측정값 검증 실패: {', '.join(validation_errors)}",
                         "step_id": 2,
                         "step_name": "Measurements Validation",
                         "session_id": session_id,
@@ -980,13 +1029,16 @@ class StepServiceManager:
                     "session_id": session_id,
                     "request_id": request_id,
                     "processing_mode": "validation",
-                    "measurements_bmi": getattr(measurements_obj, 'bmi', 0.0),
+                    "measurements_bmi": bmi,
+                    "measurements": measurements_dict,  # 추가: 측정값 정보
                     "timestamp": datetime.now().isoformat()
                 }
                 
                 # 메트릭 업데이트
                 with self._lock:
                     self.successful_requests += 1
+                
+                self.logger.info(f"✅ Step 2 측정값 검증 완료: BMI {bmi}, 세션 {session_id}")
                 
                 return result
                 
@@ -1005,7 +1057,104 @@ class StepServiceManager:
                     "request_id": request_id,
                     "timestamp": datetime.now().isoformat()
                 }
-    
+
+    # =============================================================================
+    # 🔧 추가: 안전한 대체 메서드 (호환성용)
+    # =============================================================================
+
+    async def process_step_2_measurements_validation_safe(
+        self,
+        measurements_dict: Dict[str, Any],
+        session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """2단계: 신체 측정값 검증 - 딕셔너리 전용 안전 버전"""
+        request_id = f"step2_safe_{uuid.uuid4().hex[:8]}"
+        
+        try:
+            with self._lock:
+                self.total_requests += 1
+            
+            # 기본 검증
+            validation_errors = []
+            
+            height = measurements_dict.get("height", 0)
+            weight = measurements_dict.get("weight", 0)
+            bmi = measurements_dict.get("bmi", 0)
+            
+            if height < 100 or height > 250:
+                validation_errors.append("올바르지 않은 키")
+            if weight < 30 or weight > 300:
+                validation_errors.append("올바르지 않은 몸무게")
+            if bmi < 14 or bmi > 50:
+                validation_errors.append("올바르지 않은 BMI")
+            
+            if validation_errors:
+                return {
+                    "success": False,
+                    "error": f"측정값 검증 실패: {', '.join(validation_errors)}",
+                    "step_id": 2,
+                    "step_name": "Measurements Validation",
+                    "session_id": session_id,
+                    "request_id": request_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+            # 검증 성공
+            result = {
+                "success": True,
+                "message": "신체 측정값 검증 완료",
+                "step_id": 2,
+                "step_name": "Measurements Validation",
+                "session_id": session_id,
+                "request_id": request_id,
+                "processing_mode": "validation",
+                "measurements_bmi": bmi,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # 메트릭 업데이트
+            with self._lock:
+                self.successful_requests += 1
+            
+            return result
+            
+        except Exception as e:
+            with self._lock:
+                self.failed_requests += 1
+                self.last_error = str(e)
+            
+            self.logger.error(f"❌ Step 2 안전 처리 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "step_id": 2,
+                "step_name": "Measurements Validation",
+                "session_id": session_id,
+                "request_id": request_id,
+                "timestamp": datetime.now().isoformat()
+            }
+
+    # =============================================================================
+    # 📋 적용 방법
+    # =============================================================================
+
+    """
+    파일: backend/app/services/step_service.py
+
+    수정 방법:
+    1. 기존 process_step_2_measurements_validation 메서드를 찾아서
+    2. 위의 수정된 코드로 완전히 교체
+    3. process_step_2_measurements_validation_safe 메서드도 추가
+
+    핵심 변경사항:
+    - measurements_obj.validate() 호출 제거
+    - BodyMeasurements.from_dict() 호출 제거  
+    - 딕셔너리 기반 직접 검증으로 변경
+    - 안전한 예외 처리 추가
+    - BMI 자동 계산 및 검증
+    """
+
+
     async def process_step_3_human_parsing(
         self,
         session_id: str,
