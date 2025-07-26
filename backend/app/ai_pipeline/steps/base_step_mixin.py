@@ -659,6 +659,79 @@ class EnhancedDependencyManager:
         if dependency_name not in self.dependency_status.injection_errors:
             self.dependency_status.injection_errors[dependency_name] = []
         self.dependency_status.injection_errors[dependency_name].append(error_message)
+    def _record_injection_error(self, dependency_name: str, error_message: str):
+        """의존성 주입 오류 기록"""
+        if dependency_name not in self.dependency_status.injection_errors:
+            self.dependency_status.injection_errors[dependency_name] = []
+        self.dependency_status.injection_errors[dependency_name].append(error_message)
+    
+    # 🔥 여기에 validate_dependencies 메서드 추가
+    def validate_dependencies(self) -> Dict[str, Any]:
+        """의존성 검증 메서드 (GeometricMatchingStep 호환)"""
+        try:
+            with self._lock:
+                self.logger.info(f"🔄 {self.step_name} 의존성 검증 시작...")
+                
+                validation_results = {
+                    "success": True,
+                    "total_dependencies": len(self.dependencies),
+                    "validated_dependencies": 0,
+                    "failed_dependencies": 0,
+                    "required_missing": [],
+                    "optional_missing": [],
+                    "validation_errors": [],
+                    "details": {}
+                }
+                
+                # 각 의존성 검증
+                for dep_name, dep_obj in self.dependencies.items():
+                    if dep_obj is not None:
+                        # 의존성별 검증
+                        if dep_name == 'model_loader':
+                            is_valid = hasattr(dep_obj, 'load_model') and hasattr(dep_obj, 'create_step_interface')
+                        elif dep_name == 'step_interface':
+                            is_valid = hasattr(dep_obj, 'get_model_sync') and hasattr(dep_obj, 'get_model_async')
+                        elif dep_name == 'memory_manager':
+                            is_valid = hasattr(dep_obj, 'optimize_memory') or hasattr(dep_obj, 'optimize')
+                        else:
+                            is_valid = True
+                        
+                        if is_valid:
+                            validation_results["validated_dependencies"] += 1
+                            validation_results["details"][dep_name] = {"success": True, "valid": True}
+                        else:
+                            validation_results["failed_dependencies"] += 1
+                            validation_results["details"][dep_name] = {"success": False, "error": "필수 메서드 누락"}
+                            validation_results["validation_errors"].append(f"{dep_name}: 필수 메서드 누락")
+                    else:
+                        validation_results["failed_dependencies"] += 1
+                        validation_results["details"][dep_name] = {"success": False, "error": "의존성 없음"}
+                        validation_results["required_missing"].append(dep_name)
+                
+                # 전체 검증 결과
+                validation_results["success"] = len(validation_results["required_missing"]) == 0
+                
+                if validation_results["success"]:
+                    self.logger.info(f"✅ {self.step_name} 의존성 검증 성공: {validation_results['validated_dependencies']}/{validation_results['total_dependencies']}")
+                else:
+                    self.logger.warning(f"⚠️ {self.step_name} 의존성 검증 실패: {len(validation_results['required_missing'])}개 누락")
+                
+                return validation_results
+                
+        except Exception as e:
+            error_msg = f"의존성 검증 중 오류: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            return {
+                "success": False,
+                "error": error_msg,
+                "validation_errors": [error_msg],
+                "total_dependencies": 0,
+                "validated_dependencies": 0,
+                "failed_dependencies": 0,
+                "required_missing": [],
+                "optional_missing": [],
+                "details": {}
+            }
     
     def get_status(self) -> Dict[str, Any]:
         """의존성 관리자 상태 조회 (v18.0 강화)"""

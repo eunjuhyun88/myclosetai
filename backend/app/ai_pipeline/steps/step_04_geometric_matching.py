@@ -17,6 +17,7 @@ Author: MyCloset AI Team
 Date: 2025-07-25
 Version: 12.0 (Real AI Models Complete Integration)
 """
+import asyncio  # 전역 import 추가
 
 import os
 import gc
@@ -1316,8 +1317,8 @@ class GeometricMatchingStep(BaseStepMixin):
         # 기본 속성 설정
         self.step_name = "geometric_matching"
         self.step_id = 4
-        self.device = kwargs.get('device', DEVICE)
-        
+        self.device = self._force_mps_device(kwargs.get('device', DEVICE))
+
         # 상태 관리
         self.status = ProcessingStatus()
         
@@ -1335,7 +1336,53 @@ class GeometricMatchingStep(BaseStepMixin):
         # UnifiedDependencyManager 초기화
         if not hasattr(self, 'dependency_manager') or self.dependency_manager is None:
             self.dependency_manager = UnifiedDependencyManager()
+          # 🔥 MPS 강제 설정 추가
         
+        def __init__(self, **kwargs):
+            # ... 기존 코드 ...
+            
+            # 🔥 MPS 강제 설정 추가
+            self.device = self._force_mps_device(kwargs.get('device', DEVICE))
+            
+        def _force_mps_device(self, device: str) -> str:
+            """MPS 디바이스 강제 설정"""
+            try:
+                import torch
+                import platform
+                
+                # M3 Max에서 강제로 MPS 사용
+                if (platform.system() == 'Darwin' and 
+                    platform.machine() == 'arm64' and 
+                    torch.backends.mps.is_available()):
+                    self.logger.info("🍎 GeometricMatchingStep: MPS 강제 활성화")
+                    return 'mps'
+                return device
+            except:
+                return device
+
+        def _move_models_to_device(self):
+            """모든 모델을 올바른 디바이스로 이동"""
+            models_to_move = [
+                ('gmm_model', self.gmm_model),
+                ('tps_model', self.tps_model), 
+                ('sam_model', self.sam_model),
+                ('vit_model', self.vit_model),
+                ('efficientnet_model', self.efficientnet_model)
+            ]
+            
+            moved_count = 0
+            for model_name, model in models_to_move:
+                if model is not None:
+                    try:
+                        model = model.to(self.device)
+                        moved_count += 1
+                        self.logger.info(f"✅ {model_name} → {self.device}")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {model_name} 디바이스 이동 실패: {e}")
+            
+            self.logger.info(f"✅ 모든 AI 모델이 {self.device}로 이동 완료 ({moved_count}개)")
+
+
         # 자동 의존성 주입 시도
         try:
             success = self.dependency_manager.auto_inject_dependencies()
@@ -1522,43 +1569,118 @@ class GeometricMatchingStep(BaseStepMixin):
             raise GeometricMatchingError(f"AI 모델 디바이스 설정 실패: {e}") from e
     
     async def _warmup_models(self):
-        """AI 모델 워밍업"""
-        try:
-            if TORCH_AVAILABLE:
-                dummy_person = torch.randn(1, 3, 256, 192, device=self.device)
-                dummy_clothing = torch.randn(1, 3, 256, 192, device=self.device)
-                
-                with torch.no_grad():
-                    # GMM 모델 워밍업
-                    if self.gmm_model:
-                        try:
-                            result = self.gmm_model(dummy_person, dummy_clothing)
-                            if 'transformation_grid' in result:
-                                self.logger.info("🔥 GMM 모델 워밍업 성공")
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ GMM 모델 워밍업 실패: {e}")
+            """AI 모델 워밍업 (개선된 버전)"""
+            try:
+                if TORCH_AVAILABLE:
+                    # 🔧 개선 1: 다양한 입력 크기 시도
+                    input_sizes = [
+                        (256, 192),  # 기존 크기
+                        (512, 384),  # GMM 표준 크기  
+                        (224, 224),  # ViT/EfficientNet 표준 크기
+                    ]
                     
-                    # TPS 모델 워밍업
-                    if self.tps_model:
-                        try:
-                            result = self.tps_model(dummy_person, dummy_clothing)
-                            if 'warped_clothing' in result:
-                                self.logger.info("🔥 TPS 모델 워밍업 성공")
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ TPS 모델 워밍업 실패: {e}")
+                    success_count = 0
                     
-                    # SAM 모델 워밍업
-                    if self.sam_model:
+                    for height, width in input_sizes:
                         try:
-                            result = self.sam_model(dummy_person)
-                            if 'mask' in result:
-                                self.logger.info("🔥 SAM 모델 워밍업 성공")
+                            dummy_person = torch.randn(1, 3, height, width, device=self.device)
+                            dummy_clothing = torch.randn(1, 3, height, width, device=self.device)
+                            
+                            with torch.no_grad():
+                                # GMM 모델 워밍업 (개선된 입력)
+                                if self.gmm_model:
+                                    try:
+                                        # 🔧 개선 2: GMM은 6채널 입력 필요
+                                        if height >= 512 and width >= 384:
+                                            gmm_input = torch.cat([dummy_person, dummy_clothing], dim=1)  # 6채널
+                                            result = self.gmm_model(gmm_input)
+                                        else:
+                                            result = self.gmm_model(dummy_person, dummy_clothing)
+                                        
+                                        if isinstance(result, dict) and 'transformation_grid' in result:
+                                            self.logger.info(f"🔥 GMM 모델 워밍업 성공 ({height}x{width})")
+                                            success_count += 1
+                                        elif result is not None:
+                                            self.logger.info(f"✅ GMM 모델 워밍업 성공 ({height}x{width})")
+                                            success_count += 1
+                                    except Exception as e:
+                                        self.logger.warning(f"⚠️ GMM 모델 워밍업 실패 ({height}x{width}): {e}")
+                                
+                                # TPS 모델 워밍업 (기존 로직 유지)
+                                if self.tps_model:
+                                    try:
+                                        result = self.tps_model(dummy_person, dummy_clothing)
+                                        if isinstance(result, dict) and 'warped_clothing' in result:
+                                            self.logger.info(f"🔥 TPS 모델 워밍업 성공 ({height}x{width})")
+                                            success_count += 1
+                                        elif result is not None:
+                                            self.logger.info(f"✅ TPS 모델 워밍업 성공 ({height}x{width})")
+                                            success_count += 1
+                                            break  # 성공하면 다른 크기 시도 중단
+                                    except Exception as e:
+                                        self.logger.warning(f"⚠️ TPS 모델 워밍업 실패 ({height}x{width}): {e}")
+                                
+                                # SAM 모델 워밍업 (개선된 크기)
+                                if self.sam_model:
+                                    try:
+                                        # 🔧 개선 3: SAM은 큰 입력 선호
+                                        if height >= 512:
+                                            sam_input = torch.randn(1, 3, 1024, 1024, device=self.device)
+                                        else:
+                                            sam_input = dummy_person
+                                        
+                                        if hasattr(self.sam_model, 'image_encoder'):
+                                            result = self.sam_model.image_encoder(sam_input)
+                                        else:
+                                            result = self.sam_model(sam_input)
+                                        
+                                        if isinstance(result, dict) and 'mask' in result:
+                                            self.logger.info(f"🔥 SAM 모델 워밍업 성공 ({height}x{width})")
+                                            success_count += 1
+                                        elif result is not None:
+                                            self.logger.info(f"✅ SAM 모델 워밍업 성공 ({height}x{width})")
+                                            success_count += 1
+                                    except Exception as e:
+                                        self.logger.warning(f"⚠️ SAM 모델 워밍업 실패 ({height}x{width}): {e}")
+                            
+                            # 하나의 크기라도 성공하면 충분
+                            if success_count > 0:
+                                break
+                                
                         except Exception as e:
-                            self.logger.warning(f"⚠️ SAM 모델 워밍업 실패: {e}")
-                
-        except Exception as e:
-            self.logger.warning(f"⚠️ AI 모델 워밍업 실패: {e}")
-    
+                            self.logger.warning(f"⚠️ 워밍업 크기 {height}x{width} 실패: {e}")
+                            continue
+                    
+                    # 🔧 개선 4: ViT, EfficientNet 워밍업 추가
+                    if hasattr(self, 'vit_model') and self.vit_model:
+                        try:
+                            vit_input = torch.randn(1, 3, 224, 224, device=self.device)
+                            with torch.no_grad():
+                                _ = self.vit_model(vit_input)
+                            self.logger.info("✅ ViT 모델 워밍업 성공")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ ViT 모델 워밍업 실패: {e}")
+                    
+                    if hasattr(self, 'efficientnet_model') and self.efficientnet_model:
+                        try:
+                            efficient_input = torch.randn(1, 3, 224, 224, device=self.device)
+                            with torch.no_grad():
+                                _ = self.efficientnet_model(efficient_input)
+                            self.logger.info("✅ EfficientNet 모델 워밍업 성공")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ EfficientNet 모델 워밍업 실패: {e}")
+                    
+                    if success_count > 0:
+                        self.logger.info(f"🎉 워밍업 완료: {success_count}개 모델 성공")
+                    else:
+                        self.logger.warning("⚠️ 모든 모델 워밍업 실패 (정상 작동에는 문제없음)")
+                        
+            except Exception as e:
+                self.logger.warning(f"⚠️ AI 모델 워밍업 실패: {e}")
+
+
+
+
     # ==============================================
     # 🔥 11. 메인 처리 함수 (실제 AI 추론)
     # ==============================================
@@ -3138,6 +3260,17 @@ if __name__ == "__main__":
         print("\n⛔ 사용자에 의해 중단됨")
     except Exception as e:
         print(f"\n❌ 테스트 실행 실패: {e}")
+
+    # ==============================================
+    # 🔥 클래스명 호환성 별칭 (기존 코드 지원)
+    # ==============================================
+
+    # 기존 코드에서 Step04GeometricMatching을 import하려고 할 때를 대비
+    Step04GeometricMatching = GeometricMatchingStep
+
+    # 다양한 변형들 지원
+    Step04 = GeometricMatchingStep
+    GeometricMatching = GeometricMatchingStep
 
 # ==============================================
 # 🔥 22. END OF FILE - 실제 AI 모델 완전 연동 완료

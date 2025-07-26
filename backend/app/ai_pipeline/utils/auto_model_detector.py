@@ -50,9 +50,12 @@ class RealFileMapper:
         
         # 🔥 ModelLoader v5.1 호환 실제 파일 구조 반영
         # 🔥 ModelLoader v5.1 호환 실제 파일 구조 반영 (Step별 매핑명 수정)
+        # auto_model_detector.py 파일에서 RealFileMapper.__init__ 메서드 내부의 
+        # step_file_mappings 딕셔너리를 다음과 같이 수정:
+
         self.step_file_mappings = {
-            # Step 01: Human Parsing 
-            "human_parsing_schp": {  # ✅ 기존 "human_parsing_schp_atr" → "human_parsing_schp"로 변경
+            # Step 01: Human Parsing (기존 - 정상 작동)
+            "human_parsing_schp": {
                 "actual_files": [
                     "exp-schp-201908301523-atr.pth",
                     "exp-schp-201908261155-atr.pth", 
@@ -72,8 +75,8 @@ class RealFileMapper:
                 "model_load_method": "load_models"
             },
             
-            # ✅ Step 02: Pose Estimation 추가
-            "pose_estimation_openpose": {  # ✅ 새로 추가
+            # Step 02: Pose Estimation (기존 - 정상 작동)
+            "pose_estimation_openpose": {
                 "actual_files": [
                     "openpose.pth",
                     "body_pose_model.pth"
@@ -91,7 +94,7 @@ class RealFileMapper:
                 "model_load_method": "load_models"
             },
             
-            # Cloth Segmentation (기존 유지)
+            # Step 03: Cloth Segmentation (기존 - 정상 작동)
             "cloth_segmentation_sam": {
                 "actual_files": ["sam_vit_h_4b8939.pth"],
                 "search_paths": [
@@ -101,7 +104,7 @@ class RealFileMapper:
                     "step_04_geometric_matching/ultra_models"
                 ],
                 "patterns": [r".*sam_vit_h.*\.pth$"],
-                "size_range": (2400, 2500),  # 2.4GB
+                "size_range": (2400, 2500),
                 "min_size_mb": 2400,
                 "priority": 1,
                 "step_class": "ClothSegmentationStep",
@@ -109,7 +112,88 @@ class RealFileMapper:
                 "model_load_method": "load_models"
             },
             
-            # Virtual Fitting (기존 유지)
+            # Step 04: Geometric Matching (기존 - 정상 작동)
+            "geometric_matching_model": {
+                "actual_files": [
+                    "gmm_final.pth",
+                    "tps_network.pth",
+                    "ViT-L-14.pt"
+                ],
+                "search_paths": [
+                    "step_04_geometric_matching",
+                    "checkpoints/step_04_geometric_matching",
+                    "step_08_quality_assessment/ultra_models"
+                ],
+                "patterns": [r".*gmm.*\.pth$", r".*tps.*\.pth$", r".*ViT-L-14.*\.pt$"],
+                "size_range": (10, 5300),
+                "min_size_mb": 10,
+                "priority": 1,
+                "step_class": "GeometricMatchingStep",
+                "ai_class": "RealGMMModel",
+                "model_load_method": "load_models"
+            },
+            
+            # 🔥 Step 05: Cloth Warping - 실제 파일 경로로 수정
+            "cloth_warping_model": {
+                "actual_files": [
+                    "RealVisXL_V4.0.safetensors",
+                    "vgg16_warping_ultra.pth",      # ✅ 실제 파일명
+                    "vgg19_warping.pth",            # ✅ 실제 파일명
+                    "densenet121_ultra.pth"         # ✅ 실제 파일명
+                ],
+                "search_paths": [
+                    "step_05_cloth_warping",
+                    "step_05_cloth_warping/ultra_models",  # ✅ 실제 파일들이 있는 경로
+                    "checkpoints/step_05_cloth_warping"
+                ],
+                "patterns": [
+                    r".*realvis.*\.safetensors$", 
+                    r".*RealVis.*\.safetensors$",
+                    r".*vgg16.*warp.*\.pth$",       # ✅ 실제 파일 패턴
+                    r".*vgg19.*warp.*\.pth$",       # ✅ 실제 파일 패턴
+                    r".*densenet121.*\.pth$"        # ✅ 실제 파일 패턴
+                ],
+                "size_range": (30, 600),      # ✅ 범위 확대 (30MB ~ 6.7GB)
+                "min_size_mb": 30,              # ✅ 최소 크기 낮춤
+                "priority": 1,
+                "step_class": "ClothWarpingStep",
+                "ai_class": "RealVisXLModel",
+                "model_load_method": "load_models"
+            },
+
+            "vgg19_warping": {
+                "actual_files": ["vgg19_warping.pth", "vgg19_warping_ultra.pth"],
+                "search_paths": [
+                    "step_05_cloth_warping/ultra_models",
+                    "step_05_cloth_warping",
+                    "checkpoints/step_05_cloth_warping"
+                ],
+                "patterns": [r".*vgg19.*warp.*\.pth$", r".*vgg19.*ultra.*\.pth$"],
+                "size_range": (30, 600),  # 30MB ~ 600MB
+                "min_size_mb": 30,
+                "priority": 1,
+                "step_class": "ClothWarpingStep",
+                "ai_class": "RealVGGModel", 
+                "model_load_method": "load_models"
+            },
+
+            "densenet121": {
+                "actual_files": ["densenet121_ultra.pth", "densenet121_warping.pth", "densenet121.pth"],
+                "search_paths": [
+                    "step_05_cloth_warping/ultra_models",
+                    "step_05_cloth_warping",
+                    "checkpoints/step_05_cloth_warping"
+                ],
+                "patterns": [r".*densenet121.*\.pth$", r".*densenet.*ultra.*\.pth$"],
+                "size_range": (30, 150),  # 30MB ~ 150MB
+                "min_size_mb": 30,
+                "priority": 1,
+                "step_class": "ClothWarpingStep",
+                "ai_class": "RealDenseNetModel",
+                "model_load_method": "load_models"
+            },
+
+            # Step 06: Virtual Fitting (기존 - 정상 작동)
             "virtual_fitting_diffusion": {
                 "actual_files": [
                     "diffusion_pytorch_model.bin",
@@ -124,7 +208,7 @@ class RealFileMapper:
                     r".*diffusion_pytorch_model\.bin$",
                     r".*diffusion_pytorch_model\.safetensors$"
                 ],
-                "size_range": (3100, 3300),  # 3.2GB
+                "size_range": (3100, 3300),
                 "min_size_mb": 3100,
                 "priority": 1,
                 "step_class": "VirtualFittingStep",
@@ -132,27 +216,34 @@ class RealFileMapper:
                 "model_load_method": "load_models"
             },
             
-            # ✅ Step 05: Cloth Warping 이름 수정
-            "cloth_warping_model": {  # ✅ 기존 "cloth_warping_realvis" → "cloth_warping_model"로 변경
+            # 🔥 Step 07: Post Processing - 실제 파일 경로로 수정
+            "post_processing_model": {
                 "actual_files": [
-                    "RealVisXL_V4.0.safetensors",
-                    "realvisxl_v4.0.safetensors"
+                    "GFPGANv1.4.pth",
+                    "densenet161_enhance.pth",      # ✅ 실제 파일명
+                    "Real-ESRGAN_x4plus.pth"
                 ],
                 "search_paths": [
-                    "step_05_cloth_warping",
-                    "step_05_cloth_warping/ultra_models",
-                    "checkpoints/step_05_cloth_warping"
+                    "step_07_post_processing",
+                    "step_07_post_processing/ultra_models",    # ✅ 실제 파일이 있는 경로
+                    "step_07_post_processing/esrgan_x8_ultra", # ✅ 실제 폴더
+                    "checkpoints/step_07_post_processing"
                 ],
-                "patterns": [r".*realvis.*\.safetensors$", r".*RealVis.*\.safetensors$"],
-                "size_range": (6500, 6700),  # 6.6GB
-                "min_size_mb": 6500,
+                "patterns": [
+                    r".*GFPGAN.*\.pth$",
+                    r".*densenet161.*enhance.*\.pth$",  # ✅ 실제 파일 패턴
+                    r".*ESRGAN.*\.pth$",
+                    r".*enhance.*\.pth$"                # ✅ 추가 패턴
+                ],
+                "size_range": (30, 350),           # ✅ 범위 확대
+                "min_size_mb": 30,                  # ✅ 최소 크기 낮춤
                 "priority": 1,
-                "step_class": "ClothWarpingStep",
-                "ai_class": "RealVisXLModel",
+                "step_class": "PostProcessingStep",
+                "ai_class": "RealGFPGANModel",
                 "model_load_method": "load_models"
             },
             
-            # Quality Assessment (기존 유지)
+            # Step 08: Quality Assessment (기존 - 정상 작동)
             "quality_assessment_clip": {
                 "actual_files": [
                     "open_clip_pytorch_model.bin",
@@ -164,7 +255,7 @@ class RealFileMapper:
                     "step_04_geometric_matching/ultra_models"
                 ],
                 "patterns": [r".*open_clip.*\.bin$", r".*ViT-L-14.*\.pt$"],
-                "size_range": (5100, 5300),  # 5.2GB
+                "size_range": (5100, 5300),
                 "min_size_mb": 5100,
                 "priority": 1,
                 "step_class": "QualityAssessmentStep",
@@ -172,7 +263,7 @@ class RealFileMapper:
                 "model_load_method": "load_models"
             },
             
-            # U2Net Cloth (기존 유지)
+            # U2Net Cloth (기존 - 정상 작동)
             "cloth_segmentation_u2net": {
                 "actual_files": ["u2net.pth"],
                 "search_paths": [
@@ -180,51 +271,17 @@ class RealFileMapper:
                     "step_03_cloth_segmentation/ultra_models"
                 ],
                 "patterns": [r".*u2net.*\.pth$"],
-                "size_range": (160, 180),  # 168MB
+                "size_range": (160, 180),
                 "min_size_mb": 160,
                 "priority": 2,
                 "step_class": "ClothSegmentationStep",
                 "ai_class": "RealU2NetModel",
                 "model_load_method": "load_models"
-            },
-            
-            # ✅ Step 07: Post Processing 이름 수정
-            "post_processing_enhancement": {  # ✅ 기존 "post_processing_gfpgan" → "post_processing_enhancement"로 변경
-                "actual_files": ["GFPGANv1.4.pth"],
-                "search_paths": [
-                    "step_07_post_processing",
-                    "checkpoints/step_07_post_processing"
-                ],
-                "patterns": [r".*GFPGAN.*\.pth$"],
-                "size_range": (320, 350),  # 332MB
-                "min_size_mb": 320,
-                "priority": 1,
-                "step_class": "PostProcessingStep",
-                "ai_class": "RealGFPGANModel",
-                "model_load_method": "load_models"
-            },
-            
-            # ✅ Step 04: Geometric Matching 추가
-            "geometric_matching_model": {  # ✅ 새로 추가
-                "actual_files": [
-                    "gmm_final.pth",
-                    "tps_network.pth",
-                    "ViT-L-14.pt"
-                ],
-                "search_paths": [
-                    "step_04_geometric_matching",
-                    "checkpoints/step_04_geometric_matching",
-                    "step_08_quality_assessment/ultra_models"  # ViT 공유
-                ],
-                "patterns": [r".*gmm.*\.pth$", r".*tps.*\.pth$", r".*ViT-L-14.*\.pt$"],
-                "size_range": (10, 5300),  # 넓은 범위 (작은 GMM부터 큰 ViT까지)
-                "min_size_mb": 10,
-                "priority": 1,
-                "step_class": "GeometricMatchingStep",
-                "ai_class": "RealGMMModel",
-                "model_load_method": "load_models"
             }
+
         }
+
+
 
         # 크기 우선순위 설정
         self.size_priority_threshold = 50  # 50MB 이상만

@@ -1,29 +1,20 @@
-# backend/app/ai_pipeline/__init__.py
+#!/usr/bin/env python3
 """
-🍎 MyCloset AI 파이프라인 시스템 v7.0 - 단순화된 초기화
+🔥 MyCloset AI 파이프라인 시스템 v7.1 - Step 01 경로 문제 완전 해결
 ================================================================
 
-✅ 단순하고 안정적인 초기화
-✅ 순환참조 완전 방지
-✅ conda 환경 우선 최적화
-✅ M3 Max 128GB 메모리 활용
-✅ 8단계 AI 파이프라인 지원
-✅ 지연 로딩으로 성능 최적화
-✅ 실패 허용적 설계 (Fault Tolerant)
+✅ Step 01 모듈 경로 문제 해결 (human_body_parsing → human_parsing)
+✅ 정확한 파일명 매핑 시스템
+✅ 복잡한 동적 생성 제거
+✅ 직접 매핑으로 단순화
 
-8단계 AI 파이프라인:
-Step 1: HumanParsingStep (SCHP/Graphonomy)
-Step 2: PoseEstimationStep (OpenPose/YOLO)
-Step 3: ClothSegmentationStep (U2Net/SAM)
-Step 4: GeometricMatchingStep (TPS/GMM)
-Step 5: ClothWarpingStep (Advanced Warping)
-Step 6: VirtualFittingStep (OOTDiffusion/IDM-VTON)
-Step 7: PostProcessingStep (Enhancement/SR)
-Step 8: QualityAssessmentStep (CLIP/Quality)
+문제 해결:
+- 기존: step_01_human_body_parsing (잘못된 경로)
+- 수정: step_01_human_parsing (올바른 경로)
 
-작성자: MyCloset AI Team
-날짜: 2025-07-23
-버전: v7.0.0 (Simplified Pipeline Initialization)
+Author: MyCloset AI Team
+Date: 2025-07-25
+Version: v7.1 (Step 01 Path Fix)
 """
 
 import logging
@@ -57,55 +48,63 @@ except ImportError as e:
     DEVICE = 'cpu'
 
 # =============================================================================
-# 🔥 파이프라인 상수 정의
+# 🔥 정확한 Step 매핑 (파일명 기반)
 # =============================================================================
 
-# 8단계 파이프라인 정의
-PIPELINE_STEPS = {
+# Step별 정확한 모듈명과 클래스명 매핑
+STEP_MAPPING = {
     'step_01': {
-        'name': 'HumanParsingStep',
+        'module': 'app.ai_pipeline.steps.step_01_human_parsing',  # 🔥 올바른 경로
+        'class': 'HumanParsingStep',
         'description': '인체 파싱 - Human Body Parsing',
         'models': ['SCHP', 'Graphonomy'],
         'priority': 2
     },
     'step_02': {
-        'name': 'PoseEstimationStep', 
+        'module': 'app.ai_pipeline.steps.step_02_pose_estimation',
+        'class': 'PoseEstimationStep',
         'description': '포즈 추정 - Pose Estimation',
         'models': ['OpenPose', 'YOLO-Pose'],
         'priority': 4
     },
     'step_03': {
-        'name': 'ClothSegmentationStep',
-        'description': '의류 분할 - Cloth Segmentation', 
+        'module': 'app.ai_pipeline.steps.step_03_cloth_segmentation',
+        'class': 'ClothSegmentationStep',
+        'description': '의류 분할 - Cloth Segmentation',
         'models': ['U2Net', 'SAM'],
         'priority': 3
     },
     'step_04': {
-        'name': 'GeometricMatchingStep',
+        'module': 'app.ai_pipeline.steps.step_04_geometric_matching',
+        'class': 'GeometricMatchingStep',
         'description': '기하학적 매칭 - Geometric Matching',
         'models': ['TPS', 'GMM'],
         'priority': 7
     },
     'step_05': {
-        'name': 'ClothWarpingStep',
+        'module': 'app.ai_pipeline.steps.step_05_cloth_warping',
+        'class': 'ClothWarpingStep',
         'description': '의류 변형 - Cloth Warping',
         'models': ['Advanced Warping'],
         'priority': 8
     },
     'step_06': {
-        'name': 'VirtualFittingStep',
+        'module': 'app.ai_pipeline.steps.step_06_virtual_fitting',
+        'class': 'VirtualFittingStep',
         'description': '가상 피팅 - Virtual Fitting',
         'models': ['OOTDiffusion', 'IDM-VTON'],
         'priority': 1  # 가장 중요
     },
     'step_07': {
-        'name': 'PostProcessingStep',
+        'module': 'app.ai_pipeline.steps.step_07_post_processing',
+        'class': 'PostProcessingStep',
         'description': '후처리 - Post Processing',
         'models': ['RealESRGAN', 'Enhancement'],
         'priority': 5
     },
     'step_08': {
-        'name': 'QualityAssessmentStep',
+        'module': 'app.ai_pipeline.steps.step_08_quality_assessment',
+        'class': 'QualityAssessmentStep',
         'description': '품질 평가 - Quality Assessment',
         'models': ['CLIP', 'Quality Metrics'],
         'priority': 6
@@ -113,24 +112,23 @@ PIPELINE_STEPS = {
 }
 
 # conda 환경에서 로딩 우선순위
-LOADING_PRIORITY = sorted(PIPELINE_STEPS.keys(), 
-                         key=lambda x: PIPELINE_STEPS[x]['priority'])
+LOADING_PRIORITY = sorted(STEP_MAPPING.keys(), 
+                         key=lambda x: STEP_MAPPING[x]['priority'])
 
 # =============================================================================
-# 🔥 지연 로딩 매니저 (단순화)
+# 🔥 단순화된 파이프라인 로더 (정확한 경로 사용)
 # =============================================================================
 
-class SimplePipelineLoader:
-    """단순화된 파이프라인 로더"""
+class FixedPipelineLoader:
+    """수정된 파이프라인 로더 - 정확한 경로 사용"""
     
     def __init__(self):
-        self._loaded_modules = {}
         self._loaded_classes = {}
         self._failed_loads = set()
-        self.logger = logging.getLogger(f"{__name__}.SimplePipelineLoader")
+        self.logger = logging.getLogger(f"{__name__}.FixedPipelineLoader")
         
     def safe_import_step(self, step_id: str) -> Optional[Type]:
-        """안전한 Step 클래스 import"""
+        """안전한 Step 클래스 import (정확한 경로 사용)"""
         if step_id in self._loaded_classes:
             return self._loaded_classes[step_id]
             
@@ -138,18 +136,19 @@ class SimplePipelineLoader:
             return None
             
         try:
-            step_info = PIPELINE_STEPS.get(step_id)
+            step_info = STEP_MAPPING.get(step_id)
             if not step_info:
                 self.logger.warning(f"⚠️ 알 수 없는 Step ID: {step_id}")
                 return None
                 
-            # 모듈 이름 생성
-            module_name = f"app.ai_pipeline.steps.{step_id}_{step_info['description'].split(' - ')[1].lower().replace(' ', '_')}"
-            class_name = step_info['name']
+            # 🔥 정확한 모듈명과 클래스명 사용
+            module_name = step_info['module']
+            class_name = step_info['class']
             
             # 동적 import 시도
             import importlib
             try:
+                self.logger.debug(f"🔄 {step_id} 로딩 시도: {module_name}")
                 module = importlib.import_module(module_name)
                 step_class = getattr(module, class_name, None)
                 
@@ -176,39 +175,23 @@ class SimplePipelineLoader:
         loaded_steps = {}
         
         # conda 환경이면 우선순위 순으로 로드
-        load_order = LOADING_PRIORITY if IS_CONDA else PIPELINE_STEPS.keys()
+        load_order = LOADING_PRIORITY if IS_CONDA else STEP_MAPPING.keys()
         
         for step_id in load_order:
             step_class = self.safe_import_step(step_id)
             loaded_steps[step_id] = step_class
             
         available_count = sum(1 for step in loaded_steps.values() if step is not None)
-        total_count = len(PIPELINE_STEPS)
+        total_count = len(STEP_MAPPING)
         
         self.logger.info(f"📊 Step 로딩 완료: {available_count}/{total_count}개")
         if IS_CONDA:
             self.logger.info("🐍 conda 환경: 우선순위 기반 로딩 적용")
             
         return loaded_steps
-        
-    def get_step_info(self, step_id: str) -> Dict[str, Any]:
-        """Step 정보 반환"""
-        step_config = PIPELINE_STEPS.get(step_id, {})
-        step_class = self._loaded_classes.get(step_id)
-        
-        return {
-            'step_id': step_id,
-            'name': step_config.get('name', 'Unknown'),
-            'description': step_config.get('description', ''),
-            'models': step_config.get('models', []),
-            'priority': step_config.get('priority', 10),
-            'available': step_class is not None,
-            'loaded': step_class is not None,
-            'failed': step_id in self._failed_loads
-        }
 
 # 전역 로더 인스턴스
-_pipeline_loader = SimplePipelineLoader()
+_pipeline_loader = FixedPipelineLoader()
 
 # =============================================================================
 # 🔥 유틸리티 모듈 안전한 로딩
@@ -282,11 +265,11 @@ def get_pipeline_status() -> Dict[str, Any]:
         'conda_optimized': IS_CONDA,
         'm3_max_optimized': IS_M3_MAX,
         'device': DEVICE,
-        'total_steps': len(PIPELINE_STEPS),
+        'total_steps': len(STEP_MAPPING),
         'available_steps': len(available_steps),
         'loaded_steps': available_steps,
         'failed_steps': [k for k, v in loaded_steps.items() if v is None],
-        'success_rate': (len(available_steps) / len(PIPELINE_STEPS)) * 100,
+        'success_rate': (len(available_steps) / len(STEP_MAPPING)) * 100,
         'utils_status': UTILS_STATUS,
         'loading_priority': LOADING_PRIORITY if IS_CONDA else None
     }
@@ -297,8 +280,8 @@ def get_step_class(step_name: str) -> Optional[Type]:
         return _pipeline_loader.safe_import_step(step_name)
     else:
         # 클래스명으로 검색
-        for step_id, step_info in PIPELINE_STEPS.items():
-            if step_info['name'] == step_name:
+        for step_id, step_info in STEP_MAPPING.items():
+            if step_info['class'] == step_name:
                 return _pipeline_loader.safe_import_step(step_id)
     return None
 
@@ -332,7 +315,20 @@ def list_available_steps() -> List[str]:
 
 def get_step_info(step_id: str) -> Dict[str, Any]:
     """Step 정보 반환"""
-    return _pipeline_loader.get_step_info(step_id)
+    step_config = STEP_MAPPING.get(step_id, {})
+    step_class = _pipeline_loader._loaded_classes.get(step_id)
+    
+    return {
+        'step_id': step_id,
+        'module': step_config.get('module', ''),
+        'class': step_config.get('class', 'Unknown'),
+        'description': step_config.get('description', ''),
+        'models': step_config.get('models', []),
+        'priority': step_config.get('priority', 10),
+        'available': step_class is not None,
+        'loaded': step_class is not None,
+        'failed': step_id in _pipeline_loader._failed_loads
+    }
 
 async def initialize_pipeline_system() -> bool:
     """파이프라인 시스템 초기화"""
@@ -343,7 +339,7 @@ async def initialize_pipeline_system() -> bool:
         loaded_steps = _pipeline_loader.load_all_available_steps()
         available_count = sum(1 for step in loaded_steps.values() if step is not None)
         
-        logger.info(f"✅ 파이프라인 시스템 초기화 완료: {available_count}/{len(PIPELINE_STEPS)}개 Step")
+        logger.info(f"✅ 파이프라인 시스템 초기화 완료: {available_count}/{len(STEP_MAPPING)}개 Step")
         return available_count > 0
         
     except Exception as e:
@@ -356,7 +352,6 @@ async def cleanup_pipeline_system() -> None:
         logger.info("🧹 파이프라인 시스템 정리 시작")
         
         # 캐시 정리
-        _pipeline_loader._loaded_modules.clear()
         _pipeline_loader._loaded_classes.clear()
         _pipeline_loader._failed_loads.clear()
         
@@ -389,8 +384,8 @@ try:
     # 개별 Step 클래스들을 전역에 추가
     for step_id, step_class in _loaded_steps.items():
         if step_class:
-            step_info = PIPELINE_STEPS[step_id]
-            class_name = step_info['name']
+            step_info = STEP_MAPPING[step_id]
+            class_name = step_info['class']
             globals()[class_name] = step_class
             
     logger.info("✅ Step 클래스들 전역 설정 완료")
@@ -404,7 +399,7 @@ except Exception as e:
 
 __all__ = [
     # 🎯 파이프라인 상수
-    'PIPELINE_STEPS',
+    'STEP_MAPPING',
     'LOADING_PRIORITY',
     'SYSTEM_INFO',
     
@@ -431,8 +426,8 @@ __all__ = [
 ]
 
 # Step 클래스들도 동적으로 추가
-for step_info in PIPELINE_STEPS.values():
-    class_name = step_info['name']
+for step_info in STEP_MAPPING.values():
+    class_name = step_info['class']
     if class_name in globals():
         __all__.append(class_name)
 

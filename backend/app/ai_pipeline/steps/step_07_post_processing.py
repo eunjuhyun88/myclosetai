@@ -686,9 +686,9 @@ class PostProcessingStep:
             try:
                 # ModelLoader를 통해 모델 요청
                 if hasattr(self.model_loader, 'get_model_async'):
-                    sr_checkpoint = await self.model_loader.get_model_async('srresnet_x4')
+                    sr_checkpoint = await self.model_loader.get_model_async('post_processing_model')
                 else:
-                    sr_checkpoint = self.model_loader.get_model('srresnet_x4')
+                    sr_checkpoint = self.model_loader.get_model('post_processing_model')
                 
                 if sr_checkpoint:
                     self.sr_model = self._create_sr_model_from_checkpoint(sr_checkpoint)
@@ -708,9 +708,9 @@ class PostProcessingStep:
             # === Denoising 모델 로드 ===
             try:
                 if hasattr(self.model_loader, 'get_model_async'):
-                    denoise_checkpoint = await self.model_loader.get_model_async('denoising_model')
+                    denoise_checkpoint = await self.model_loader.get_model_async('post_processing_model')
                 else:
-                    denoise_checkpoint = self.model_loader.get_model('denoising_model')
+                    denoise_checkpoint = self.model_loader.get_model('post_processing_model')
                 
                 if denoise_checkpoint:
                     self.denoise_model = self._create_denoise_model_from_checkpoint(denoise_checkpoint)
@@ -724,7 +724,7 @@ class PostProcessingStep:
             except Exception as e:
                 self.logger.warning(f"⚠️ Denoising 모델 로드 실패: {e} - 기본 모델 생성")
                 self.denoise_model = self._create_default_denoise_model()
-            
+
             # M3 Max 최적화 적용
             if IS_M3_MAX:
                 self._optimize_models_for_m3_max()

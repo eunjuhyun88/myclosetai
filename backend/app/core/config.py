@@ -52,17 +52,49 @@ class DeviceManager:
         self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
         self.device = self._detect_device()
     
-    def _detect_device(self):
+    # backend/app/core/config.py에서 _detect_device 메서드 수정
+
+import platform
+import torch
+
+class DeviceManager:
+    def __init__(self):
+        self.conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'mycloset-ai')
+        self.device = self._detect_device_force_mps()  # 새로운 메서드 사용
+    
+    def _detect_device_force_mps(self) -> str:
+        """M3 Max에서 강제로 MPS 사용 (워닝 해결)"""
         try:
             import torch
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            
+            # M3 Max 감지 및 강제 MPS 설정
+            is_m3_max = (
+                platform.system() == 'Darwin' and 
+                platform.machine() == 'arm64'
+            )
+            
+            if is_m3_max and torch.backends.mps.is_available():
+                print("🍎 M3 Max 감지 - MPS 강제 활성화")
                 return 'mps'
             elif torch.cuda.is_available():
                 return 'cuda'
+            else:
+                return 'cpu'
+                
+        except ImportError:
             return 'cpu'
-        except:
-            return 'cpu'
-        
+    
+    def force_mps_globally(self):
+        """전역적으로 MPS 강제 설정"""
+        if self.device == 'mps':
+            # 환경 변수 설정
+            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+            print("✅ MPS 전역 설정 완료")
+            
+# 전역 설정 적용
+device_manager = DeviceManager()
+device_manager.force_mps_globally()
 # ===============================================================
 # 🚨 SafeConfigMixin - get 메서드 문제 완전 해결
 # ===============================================================

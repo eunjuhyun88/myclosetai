@@ -245,6 +245,7 @@ class MemoryManager:
         
         self.logger.debug(f"🎯 MemoryManager 초기화 - 디바이스: {self.device}, 메모리: {self.memory_gb}GB")
 
+
     def _initialize_components(self):
         """구성 요소 초기화"""
         try:
@@ -583,6 +584,76 @@ class MemoryManager:
         except Exception as e:
             self.logger.warning(f"⚠️ conda 최적화 실패: {e}")
 
+    # backend/app/ai_pipeline/utils/memory_manager.py
+  
+    def optimize(self) -> Dict[str, Any]:
+        """
+        메모리 최적화 (optimize_memory의 별칭)
+        
+        VirtualFittingStep과 다른 Step들에서 호출되는 표준 인터페이스
+        """
+        return self.optimize_memory()
+    
+    async def optimize_async(self) -> Dict[str, Any]:
+        """
+        비동기 메모리 최적화 (호환성)
+        """
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            # 별도 스레드에서 실행 (blocking 작업)
+            result = await loop.run_in_executor(None, self.optimize_memory)
+            self.logger.debug("✅ 비동기 메모리 최적화 완료")
+            return result
+        except Exception as e:
+            self.logger.error(f"❌ 비동기 메모리 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "method": "async_fallback"
+            }
+    
+    def get_memory_status(self) -> Dict[str, Any]:
+        """
+        메모리 상태 조회 (Step들에서 사용)
+        """
+        try:
+            stats = self.get_memory_stats()
+            return {
+                "total_optimizations": getattr(self, 'optimization_count', 0),
+                "device": self.device,
+                "is_m3_max": self.is_m3_max,
+                "cpu_used_gb": stats.cpu_used_gb,
+                "cpu_available_gb": stats.cpu_available_gb,
+                "gpu_allocated_gb": stats.gpu_allocated_gb,
+                "last_optimization": getattr(self, 'last_optimization_time', None),
+                "available": True
+            }
+        except Exception as e:
+            return {
+                "error": str(e),
+                "available": False
+            }
+    
+    def cleanup(self) -> bool:
+        """
+        메모리 매니저 정리 (Step들에서 사용)
+        """
+        try:
+            # 마지막 최적화 실행
+            result = self.optimize_memory()
+            
+            # 통계 리셋
+            if hasattr(self, 'optimization_count'):
+                self.optimization_count = 0
+            
+            self.logger.debug("✅ MemoryManager 정리 완료")
+            return result.get('success', True)
+            
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManager 정리 실패: {e}")
+            return False
+    
     def cleanup_memory(self, aggressive: bool = False) -> Dict[str, Any]:
         """🧹 메모리 정리"""
         try:
