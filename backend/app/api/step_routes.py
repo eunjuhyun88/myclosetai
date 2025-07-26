@@ -472,9 +472,28 @@ except ImportError as e:
     STEP_UTILS_AVAILABLE = False
     
     # 폴백: 기본 step_utils
-    async def monitor_performance(operation_name: str):
+    def monitor_performance(operation_name: str):
         """안전한 성능 모니터링"""
         class SafeMetric:
+            def __init__(self, name):
+                self.name = name
+                self.start_time = time.time()
+            
+            def __enter__(self):
+                logger.debug(f"📊 시작: {self.name}")
+                return self
+            
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                duration = time.time() - self.start_time
+                logger.debug(f"📊 완료: {self.name} ({duration:.3f}초)")
+                return False
+        
+        return SafeMetric(operation_name)
+
+        # 추가: 비동기 버전
+    async def monitor_performance_async(operation_name: str):
+        """안전한 성능 모니터링 - 비동기 버전"""
+        class AsyncSafeMetric:
             def __init__(self, name):
                 self.name = name
                 self.start_time = time.time()
@@ -488,8 +507,7 @@ except ImportError as e:
                 logger.debug(f"📊 완료: {self.name} ({duration:.3f}초)")
                 return False
         
-        return SafeMetric(operation_name)
-    
+        return AsyncSafeMetric(operation_name)
     def handle_step_error(error, context):
         return {"error": str(error), "context": context}
     
@@ -877,7 +895,7 @@ async def step_1_upload_validation(
     try:
         # monitor_performance 안전 처리 (1번 + 2번 통합)
         try:
-            async with monitor_performance("step_1_upload_validation") as metric:
+            with monitor_performance("step_1_upload_validation") as metric:
                 result = await _process_step_1_validation(
                     person_image, clothing_image, session_id, 
                     session_manager, service_manager, start_time
@@ -1035,7 +1053,7 @@ async def step_2_measurements_validation(
     try:
         # ✅ monitor_performance를 안전하게 처리
         try:
-            async with monitor_performance("step_2_measurements_validation") as metric:
+            with monitor_performance("step_2_measurements_validation") as metric:
                 result = await _process_step_2_validation(
                     height, weight, chest, waist, hips, session_id,
                     session_manager, service_manager, start_time
@@ -1188,7 +1206,7 @@ async def step_3_human_parsing(
     start_time = time.time()
     
     try:
-        async with monitor_performance("step_3_human_parsing") as metric:
+        with monitor_performance("step_3_human_parsing") as metric:
             # 1. 세션에서 이미지 로드
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             
@@ -1252,7 +1270,7 @@ async def step_4_pose_estimation(
     start_time = time.time()
     
     try:
-        async with monitor_performance("step_4_pose_estimation") as metric:
+        with monitor_performance("step_4_pose_estimation") as metric:
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             
             try:
@@ -1310,7 +1328,7 @@ async def step_5_clothing_analysis(
     start_time = time.time()
     
     try:
-        async with monitor_performance("step_5_clothing_analysis") as metric:
+        with monitor_performance("step_5_clothing_analysis") as metric:
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             
             try:
@@ -1368,7 +1386,7 @@ async def step_6_geometric_matching(
     start_time = time.time()
     
     try:
-        async with monitor_performance("step_6_geometric_matching") as metric:
+        with monitor_performance("step_6_geometric_matching") as metric:
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             
             try:
@@ -1426,7 +1444,7 @@ async def step_7_virtual_fitting(
     start_time = time.time()
     
     try:
-        async with monitor_performance("step_7_virtual_fitting") as metric:
+        with monitor_performance("step_7_virtual_fitting") as metric:
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             
             try:
@@ -1488,7 +1506,7 @@ async def step_8_result_analysis(
     start_time = time.time()
     
     try:
-        async with monitor_performance("step_8_result_analysis") as metric:
+        with monitor_performance("step_8_result_analysis") as metric:
             person_img, clothing_img = await session_manager.get_session_images(session_id)
             
             try:
@@ -1563,7 +1581,7 @@ async def complete_pipeline_processing(
     start_time = time.time()
     
     try:
-        async with monitor_performance("complete_pipeline") as metric:
+        with monitor_performance("complete_pipeline") as metric:
             # 1. 이미지 처리 및 세션 생성 (Step 1과 동일)
             person_valid, person_msg, person_data = await process_uploaded_file(person_image)
             if not person_valid:

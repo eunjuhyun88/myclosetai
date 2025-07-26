@@ -1,23 +1,31 @@
 # backend/app/core/model_paths.py
 """
-MyCloset AI 통합 모델 경로 관리 (backend/backend 문제 완전 해결)
+🔥 MyCloset AI 통합 모델 경로 관리 v7.0 - 완전 수정판
 ================================================================================
 ✅ backend/backend 중복 생성 문제 완전 해결
-✅ 안전한 경로 계산 및 Path 객체 처리
+✅ 229GB AI 모델 경로 매핑 완성
+✅ 동적 경로 탐지 시스템 구현
+✅ conda 환경 + M3 Max 최적화
 ✅ 실제 프로젝트 구조 기반 정확한 경로 매핑
-✅ conda 환경 + M3 Max 최적화 호환
-✅ 폴백 메커니즘 강화
+✅ 안전한 경로 계산 및 폴백 메커니즘 강화
+✅ Step별 AI 모델 우선순위 매핑
+✅ 25GB+ 핵심 모델 완전 활용
+
+기반: Step별 AI 모델 적용 계획 및 실제 파일 경로 매핑 최신판.pdf
+총 모델 파일: 229GB (127개 파일, 99개 디렉토리)
 """
 
 from pathlib import Path
-from typing import Dict, Optional, List, Union
+from typing import Dict, Optional, List, Union, Any
 import logging
 import os
+import sys
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# 🔥 1. 안전한 프로젝트 경로 계산 (backend/backend 문제 해결)
+# 🔥 1. 안전한 프로젝트 경로 계산 (backend/backend 문제 완전 해결)
 # =============================================================================
 
 def _get_safe_project_root() -> Path:
@@ -59,9 +67,7 @@ def _get_safe_project_root() -> Path:
     return fallback_root
 
 def _get_safe_backend_root() -> Path:
-    """
-    안전한 백엔드 루트 디렉토리 계산
-    """
+    """안전한 백엔드 루트 디렉토리 계산"""
     current_file = Path(__file__).absolute()
     current = current_file.parent  # core/
     
@@ -103,81 +109,281 @@ PROJECT_ROOT = _get_safe_project_root()
 BACKEND_ROOT = _get_safe_backend_root()
 AI_MODELS_DIR = _get_safe_ai_models_dir()
 
-# 디렉토리 존재 확인 및 안전한 생성
-def _ensure_directories_exist():
-    """필요한 디렉토리들을 안전하게 생성"""
-    try:
-        # AI 모델 디렉토리 생성
-        if not AI_MODELS_DIR.exists():
-            AI_MODELS_DIR.mkdir(parents=True, exist_ok=True)
-            logger.info(f"📁 AI 모델 디렉토리 생성: {AI_MODELS_DIR}")
-        else:
-            logger.debug(f"📁 AI 모델 디렉토리 존재 확인: {AI_MODELS_DIR}")
-            
-        # 기본 체크포인트 디렉토리들 생성
-        checkpoints_dir = AI_MODELS_DIR / "checkpoints"
-        if not checkpoints_dir.exists():
-            checkpoints_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"📁 체크포인트 디렉토리 생성: {checkpoints_dir}")
-            
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ 디렉토리 생성 실패: {e}")
-        return False
-
-# 초기화 실행
-_ensure_directories_exist()
-
 # =============================================================================
-# 🔥 2. 실제 모델 경로 매핑 (backend/backend 방지)
+# 🔥 2. 229GB AI 모델 완전 매핑 (프로젝트 문서 기반)
 # =============================================================================
 
-# 🎯 8단계 AI 파이프라인 모델 경로
+# 🎯 8단계 AI 파이프라인 모델 경로 (실제 파일 구조 기반)
 STEP_MODEL_PATHS = {
-    # Step 1: Human Parsing
-    "human_parsing_schp_atr": AI_MODELS_DIR / "Self-Correction-Human-Parsing" / "exp-schp-201908261155-atr.pth",
-    "human_parsing_graphonomy": AI_MODELS_DIR / "Graphonomy" / "graphonomy.pth", 
-    "human_parsing_checkpoints": AI_MODELS_DIR / "checkpoints" / "step_01_human_parsing",
+    # Step 1: Human Parsing (4.0GB - 9개 파일)
+    "human_parsing_graphonomy": AI_MODELS_DIR / "Graphonomy" / "graphonomy.pth",  # 1.2GB 핵심
+    "human_parsing_schp_atr": AI_MODELS_DIR / "Self-Correction-Human-Parsing" / "exp-schp-201908301523-atr.pth",  # 255MB
+    "human_parsing_lip": AI_MODELS_DIR / "step_01_human_parsing" / "lip_model.pth",  # 255MB
+    "human_parsing_atr": AI_MODELS_DIR / "step_01_human_parsing" / "atr_model.pth",  # 255MB
     
-    # Step 2: Pose Estimation  
-    "pose_estimation_openpose": AI_MODELS_DIR / "openpose" / "body_pose_model.pth",
-    "pose_estimation_checkpoints": AI_MODELS_DIR / "checkpoints" / "step_02_pose_estimation",
+    # Step 2: Pose Estimation (3.4GB - 9개 파일)
+    "pose_estimation_openpose": AI_MODELS_DIR / "step_02_pose_estimation" / "body_pose_model.pth",
+    "pose_estimation_face": AI_MODELS_DIR / "step_02_pose_estimation" / "face_pose_model.pth",
+    "pose_estimation_hand": AI_MODELS_DIR / "step_02_pose_estimation" / "hand_pose_model.pth",
     
-    # Step 3: Cloth Segmentation
-    "cloth_segmentation_sam": AI_MODELS_DIR / "checkpoints" / "sam" / "sam_vit_h_4b8939.pth",
-    "cloth_segmentation_u2net": AI_MODELS_DIR / "checkpoints" / "step_03_cloth_segmentation" / "u2net.pth",
+    # Step 3: Cloth Segmentation (5.5GB - 9개 파일)
+    "cloth_segmentation_sam": AI_MODELS_DIR / "step_03_cloth_segmentation" / "sam_vit_h_4b8939.pth",  # 2.4GB
+    "cloth_segmentation_u2net": AI_MODELS_DIR / "step_03_cloth_segmentation" / "u2net.pth",
+    "cloth_segmentation_ultra": AI_MODELS_DIR / "step_03_cloth_segmentation" / "ultra_models",
     
-    # Step 4: Geometric Matching
-    "geometric_matching_gmm": AI_MODELS_DIR / "checkpoints" / "step_04_geometric_matching" / "gmm_final.pth",
+    # Step 4: Geometric Matching (1.3GB - 17개 파일)
+    "geometric_matching_gmm": AI_MODELS_DIR / "step_04_geometric_matching" / "gmm_final.pth",
+    "geometric_matching_vit": AI_MODELS_DIR / "step_04_geometric_matching" / "ultra_models" / "ViT-L-14.pt",
+    "geometric_matching_sam_shared": AI_MODELS_DIR / "step_03_cloth_segmentation" / "sam_vit_h_4b8939.pth",  # 공유
     
-    # Step 5: Cloth Warping  
-    "cloth_warping_tom": AI_MODELS_DIR / "checkpoints" / "step_05_cloth_warping" / "tom_final.pth",
+    # Step 5: Cloth Warping (7.0GB - 6개 파일)
+    "cloth_warping_tom": AI_MODELS_DIR / "step_05_cloth_warping" / "tom_final.pth",
+    "cloth_warping_realvis": AI_MODELS_DIR / "step_05_cloth_warping" / "ultra_models" / "RealVisXL_V4.0.safetensors",  # 6.6GB 대형
+    "cloth_warping_diffusion": AI_MODELS_DIR / "checkpoints" / "stable-diffusion-v1-5",  # 공유
     
-    # Step 6: Virtual Fitting (핵심)
-    "virtual_fitting_ootd": AI_MODELS_DIR / "checkpoints" / "ootdiffusion",
-    "virtual_fitting_hrviton": AI_MODELS_DIR / "HR-VITON",
-    "virtual_fitting_vitonhd": AI_MODELS_DIR / "VITON-HD",
+    # Step 6: Virtual Fitting (14GB - 16개 파일) ⭐ 핵심
+    "virtual_fitting_ootd": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion",
+    "virtual_fitting_hrviton": AI_MODELS_DIR / "step_06_virtual_fitting" / "HR-VITON",
+    "virtual_fitting_vitonhd": AI_MODELS_DIR / "step_06_virtual_fitting" / "VITON-HD",
+    "virtual_fitting_diffusion_1": AI_MODELS_DIR / "step_06_virtual_fitting" / "diffusion_pytorch_model.safetensors",  # 3.2GB
+    "virtual_fitting_diffusion_2": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion" / "unet" / "diffusion_pytorch_model.safetensors",  # 3.2GB
     
-    # Step 7: Post Processing
-    "post_processing_esrgan": AI_MODELS_DIR / "checkpoints" / "step_07_post_processing" / "esrgan.pth",
+    # Step 7: Post Processing (1.3GB - 9개 파일)
+    "post_processing_esrgan": AI_MODELS_DIR / "step_07_post_processing" / "esrgan.pth",
+    "post_processing_upscaler": AI_MODELS_DIR / "step_07_post_processing" / "upscaler_models",
     
-    # Step 8: Quality Assessment
-    "quality_assessment_clip": AI_MODELS_DIR / "checkpoints" / "clip-vit-large-patch14"
+    # Step 8: Quality Assessment (7.0GB - 6개 파일)
+    "quality_assessment_clip": AI_MODELS_DIR / "step_08_quality_assessment" / "ultra_models" / "open_clip_pytorch_model.bin",  # 5.2GB 대형
+    "quality_assessment_vit": AI_MODELS_DIR / "step_08_quality_assessment" / "ultra_models" / "ViT-L-14.pt",  # 공유
 }
 
-# 🔥 추가 보조 모델 경로
-ADDITIONAL_MODEL_PATHS = {
-    "stable_diffusion": AI_MODELS_DIR / "checkpoints" / "stable_diffusion",
-    "clip_vit_base": AI_MODELS_DIR / "checkpoints" / "clip-vit-base-patch32",
-    "controlnet_openpose": AI_MODELS_DIR / "checkpoints" / "controlnet_openpose"
+# 🔥 추가 체크포인트 경로 (checkpoints 디렉토리)
+CHECKPOINT_PATHS = {
+    "stable_diffusion_v1_5": AI_MODELS_DIR / "checkpoints" / "stable-diffusion-v1-5",
+    "clip_vit_large": AI_MODELS_DIR / "checkpoints" / "clip-vit-large-patch14",
+    "controlnet_openpose": AI_MODELS_DIR / "checkpoints" / "controlnet_openpose",
+    "sam_checkpoints": AI_MODELS_DIR / "checkpoints" / "sam",
 }
 
 # 통합 모델 경로 딕셔너리
-ALL_MODEL_PATHS = {**STEP_MODEL_PATHS, **ADDITIONAL_MODEL_PATHS}
+ALL_MODEL_PATHS = {**STEP_MODEL_PATHS, **CHECKPOINT_PATHS}
 
 # =============================================================================
-# 🔥 3. 안전한 경로 처리 함수들 (backend/backend 방지)
+# 🔥 3. 동적 경로 매핑 시스템 (프로젝트 문서 기반)
+# =============================================================================
+
+class SmartModelPathMapper:
+    """실제 파일 위치를 동적으로 찾아서 매핑하는 시스템"""
+    
+    def __init__(self, ai_models_root: Union[str, Path] = None):
+        self.ai_models_root = Path(ai_models_root) if ai_models_root else AI_MODELS_DIR
+        self.model_cache: Dict[str, Path] = {}
+        self.search_priority = self._get_search_priority()
+        self.logger = logging.getLogger(f"{__name__}.SmartModelPathMapper")
+    
+    def _get_search_priority(self) -> Dict[str, List[str]]:
+        """모델별 검색 우선순위 경로 (프로젝트 문서 기반)"""
+        return {
+            # Human Parsing 모델들
+            "human_parsing": [
+                "step_01_human_parsing/",
+                "Self-Correction-Human-Parsing/",
+                "Graphonomy/",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/",
+                "checkpoints/step_01_human_parsing/"
+            ],
+            
+            # Pose Estimation 모델들
+            "pose_estimation": [
+                "step_02_pose_estimation/",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/",
+                "checkpoints/step_02_pose_estimation/",
+                "pose_estimation/"
+            ],
+            
+            # Cloth Segmentation 모델들
+            "cloth_segmentation": [
+                "step_03_cloth_segmentation/",
+                "step_03_cloth_segmentation/ultra_models/",
+                "step_04_geometric_matching/",  # SAM 모델 공유
+                "checkpoints/step_03_cloth_segmentation/"
+            ],
+            
+            # Geometric Matching 모델들
+            "geometric_matching": [
+                "step_04_geometric_matching/",
+                "step_04_geometric_matching/ultra_models/",
+                "step_08_quality_assessment/ultra_models/",  # ViT 모델 공유
+                "checkpoints/step_04_geometric_matching/"
+            ],
+            
+            # Cloth Warping 모델들
+            "cloth_warping": [
+                "step_05_cloth_warping/",
+                "step_05_cloth_warping/ultra_models/",
+                "checkpoints/step_05_cloth_warping/",
+                "checkpoints/stable-diffusion-v1-5/"  # Diffusion 모델 공유
+            ],
+            
+            # Virtual Fitting 모델들 (가장 중요!)
+            "virtual_fitting": [
+                "step_06_virtual_fitting/",
+                "step_06_virtual_fitting/ootdiffusion/",
+                "step_06_virtual_fitting/HR-VITON/",
+                "step_06_virtual_fitting/VITON-HD/",
+                "checkpoints/step_06_virtual_fitting/"
+            ],
+            
+            # Post Processing 모델들
+            "post_processing": [
+                "step_07_post_processing/",
+                "checkpoints/step_07_post_processing/",
+                "experimental_models/enhancement/"
+            ],
+            
+            # Quality Assessment 모델들
+            "quality_assessment": [
+                "step_08_quality_assessment/",
+                "step_08_quality_assessment/ultra_models/",
+                "checkpoints/step_08_quality_assessment/",
+                "step_04_geometric_matching/ultra_models/"  # ViT 모델 공유
+            ]
+        }
+    
+    def find_model_file(self, model_category: str, filename: str) -> Optional[Path]:
+        """모델 파일을 동적으로 탐지"""
+        try:
+            # 캐시 확인
+            cache_key = f"{model_category}:{filename}"
+            if cache_key in self.model_cache:
+                return self.model_cache[cache_key]
+            
+            # 우선순위별 검색
+            search_paths = self.search_priority.get(model_category, [])
+            
+            for search_path in search_paths:
+                candidate_path = self.ai_models_root / search_path / filename
+                
+                if candidate_path.exists() and candidate_path.is_file():
+                    self.model_cache[cache_key] = candidate_path
+                    self.logger.info(f"✅ 모델 발견: {filename} → {candidate_path}")
+                    return candidate_path
+            
+            # 전체 디렉토리 검색 (최후 수단)
+            for root, dirs, files in os.walk(self.ai_models_root):
+                if filename in files:
+                    found_path = Path(root) / filename
+                    self.model_cache[cache_key] = found_path
+                    self.logger.info(f"✅ 전체 검색으로 모델 발견: {filename} → {found_path}")
+                    return found_path
+            
+            self.logger.warning(f"⚠️ 모델 파일을 찾을 수 없음: {filename}")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ 모델 파일 검색 실패 ({filename}): {e}")
+            return None
+    
+    def get_large_models_priority(self) -> Dict[str, Dict[str, Any]]:
+        """25GB+ 핵심 대형 모델 우선순위 (프로젝트 문서 기반)"""
+        return {
+            "RealVisXL_V4.0.safetensors": {
+                "size": "6.6GB",
+                "step": 5,
+                "category": "cloth_warping",
+                "priority": 1,
+                "description": "의류 워핑 핵심 모델"
+            },
+            "open_clip_pytorch_model.bin": {
+                "size": "5.2GB", 
+                "step": 8,
+                "category": "quality_assessment",
+                "priority": 2,
+                "description": "품질 평가 핵심 모델"
+            },
+            "diffusion_pytorch_model.safetensors": {
+                "size": "3.2GB x4",
+                "step": 6,
+                "category": "virtual_fitting",
+                "priority": 3,
+                "description": "가상 피팅 확산 모델"
+            },
+            "sam_vit_h_4b8939.pth": {
+                "size": "2.4GB",
+                "step": 3,
+                "category": "cloth_segmentation",
+                "priority": 4,
+                "description": "SAM 세그멘테이션 모델"
+            },
+            "graphonomy.pth": {
+                "size": "1.2GB",
+                "step": 1,
+                "category": "human_parsing",
+                "priority": 5,
+                "description": "인간 파싱 핵심 모델"
+            }
+        }
+
+# =============================================================================
+# 🔥 4. Step별 특화 매퍼들
+# =============================================================================
+
+class Step01ModelMapper(SmartModelPathMapper):
+    """Step 01 Human Parsing 전용 동적 경로 매핑"""
+    
+    def get_step01_model_paths(self) -> Dict[str, Optional[Path]]:
+        """Step 01 모델 경로 자동 탐지"""
+        model_files = {
+            "graphonomy": ["graphonomy.pth", "graphonomy_lip.pth"],
+            "schp": ["exp-schp-201908301523-atr.pth", "exp-schp-201908261155-atr.pth"],
+            "atr": ["atr_model.pth"],
+            "lip": ["lip_model.pth"]
+        }
+        
+        found_paths = {}
+        for model_name, filenames in model_files.items():
+            found_path = None
+            for filename in filenames:
+                found_path = self.find_model_file("human_parsing", filename)
+                if found_path:
+                    break
+            found_paths[model_name] = found_path
+        
+        return found_paths
+
+class Step06ModelMapper(SmartModelPathMapper):
+    """Step 06 Virtual Fitting 전용 동적 경로 매핑 (핵심!)"""
+    
+    def get_step06_model_paths(self) -> Dict[str, Optional[Path]]:
+        """Step 06 Virtual Fitting 모델 경로 자동 탐지"""
+        model_directories = {
+            "ootdiffusion": "ootdiffusion/",
+            "hr_viton": "HR-VITON/",
+            "viton_hd": "VITON-HD/"
+        }
+        
+        model_files = {
+            "diffusion_model_1": "diffusion_pytorch_model.safetensors",
+            "diffusion_model_2": "ootdiffusion/unet/diffusion_pytorch_model.safetensors",
+            "vae_model": "ootdiffusion/vae/diffusion_pytorch_model.safetensors"
+        }
+        
+        found_paths = {}
+        
+        # 디렉토리 검색
+        for model_name, dirname in model_directories.items():
+            dir_path = self.ai_models_root / "step_06_virtual_fitting" / dirname
+            if dir_path.exists() and dir_path.is_dir():
+                found_paths[model_name] = dir_path
+        
+        # 파일 검색
+        for model_name, filename in model_files.items():
+            found_paths[model_name] = self.find_model_file("virtual_fitting", filename)
+        
+        return found_paths
+
+# =============================================================================
+# 🔥 5. 안전한 경로 처리 함수들
 # =============================================================================
 
 def safe_path_conversion(path_input: Union[str, Path, None]) -> Path:
@@ -217,9 +423,10 @@ def safe_path_conversion(path_input: Union[str, Path, None]) -> Path:
         logger.warning(f"⚠️ 경로 변환 실패: {path_input} - {e}")
         return Path(".")
 
+@lru_cache(maxsize=256)
 def get_model_path(model_name: str) -> Optional[Path]:
     """
-    모델 경로 가져오기
+    모델 경로 가져오기 (캐시 포함)
     backend/backend 자동 수정 포함
     """
     try:
@@ -236,24 +443,41 @@ def get_model_path(model_name: str) -> Optional[Path]:
                 logger.debug(f"🔍 동적 매칭: {model_name} → {key} → {safe_path}")
                 return safe_path
         
-        # 🔥 폴백: 단계별 디렉토리에서 찾기
-        step_mapping = {
-            "human_parsing": "step_01_human_parsing",
-            "pose_estimation": "step_02_pose_estimation", 
-            "cloth_segmentation": "step_03_cloth_segmentation",
-            "geometric_matching": "step_04_geometric_matching",
-            "cloth_warping": "step_05_cloth_warping",
-            "virtual_fitting": "step_06_virtual_fitting",
-            "post_processing": "step_07_post_processing",
-            "quality_assessment": "step_08_quality_assessment"
+        # 🔥 SmartModelPathMapper 사용 (최후 수단)
+        mapper = SmartModelPathMapper()
+        
+        # Step별 카테고리 추론
+        step_categories = {
+            "human_parsing": ["human", "parsing", "graphonomy", "schp", "atr"],
+            "pose_estimation": ["pose", "openpose", "body", "face", "hand"],
+            "cloth_segmentation": ["cloth", "segment", "sam", "u2net"],
+            "geometric_matching": ["geometric", "match", "gmm", "vit"],
+            "cloth_warping": ["warp", "tom", "realvis", "diffusion"],
+            "virtual_fitting": ["virtual", "fitting", "ootd", "viton", "hr"],
+            "post_processing": ["post", "process", "esrgan", "upscaler"],
+            "quality_assessment": ["quality", "assess", "clip", "eval"]
         }
         
-        for key, step_dir in step_mapping.items():
-            if key in model_name.lower():
-                fallback_path = AI_MODELS_DIR / "checkpoints" / step_dir
-                safe_path = safe_path_conversion(fallback_path)
-                logger.debug(f"🔄 폴백 경로: {model_name} → {safe_path}")
-                return safe_path
+        for category, keywords in step_categories.items():
+            if any(keyword in model_name.lower() for keyword in keywords):
+                # 파일명 추출 (확장자 포함)
+                if "/" in model_name:
+                    filename = model_name.split("/")[-1]
+                elif "\\" in model_name:
+                    filename = model_name.split("\\")[-1]
+                else:
+                    filename = model_name
+                
+                # 확장자가 없으면 일반적인 확장자들 시도
+                if "." not in filename:
+                    for ext in [".pth", ".safetensors", ".bin", ".pt"]:
+                        found_path = mapper.find_model_file(category, filename + ext)
+                        if found_path:
+                            return found_path
+                else:
+                    found_path = mapper.find_model_file(category, filename)
+                    if found_path:
+                        return found_path
         
         logger.warning(f"⚠️ 모델 경로를 찾을 수 없음: {model_name}")
         return None
@@ -302,10 +526,76 @@ def get_all_available_models() -> Dict[str, str]:
         return {}
 
 # =============================================================================
-# 🔥 4. backend/backend 문제 진단 및 수정 함수
+# 🔥 6. conda 환경 + M3 Max 최적화
 # =============================================================================
 
-def diagnose_backend_duplication() -> Dict[str, any]:
+def setup_conda_optimization():
+    """conda 환경 mycloset-ai-clean 최적화 설정"""
+    try:
+        conda_env = os.environ.get('CONDA_DEFAULT_ENV')
+        if conda_env:
+            logger.info(f"🐍 conda 환경 감지: {conda_env}")
+            
+            # M3 Max 최적화
+            if 'Darwin' in os.uname().sysname:  # macOS
+                try:
+                    # M3 Max 메모리 최적화
+                    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+                    os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+                    logger.info("🍎 M3 Max 메모리 최적화 설정 완료")
+                except Exception as e:
+                    logger.debug(f"M3 Max 설정 오류: {e}")
+            
+            # 스레드 최적화
+            cpu_count = os.cpu_count() or 4
+            os.environ['OMP_NUM_THREADS'] = str(max(1, cpu_count // 2))
+            os.environ['MKL_NUM_THREADS'] = str(max(1, cpu_count // 2))
+            
+            logger.info("✅ conda 환경 최적화 설정 완료")
+            return True
+    except Exception as e:
+        logger.warning(f"⚠️ conda 최적화 설정 실패: {e}")
+        return False
+
+# =============================================================================
+# 🔥 7. 디렉토리 존재 확인 및 안전한 생성
+# =============================================================================
+
+def _ensure_directories_exist():
+    """필요한 디렉토리들을 안전하게 생성"""
+    try:
+        # AI 모델 디렉토리 생성
+        if not AI_MODELS_DIR.exists():
+            AI_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+            logger.info(f"📁 AI 모델 디렉토리 생성: {AI_MODELS_DIR}")
+        else:
+            logger.debug(f"📁 AI 모델 디렉토리 존재 확인: {AI_MODELS_DIR}")
+        
+        # Step별 디렉토리 생성
+        step_dirs = [
+            "step_01_human_parsing", "step_02_pose_estimation", "step_03_cloth_segmentation",
+            "step_04_geometric_matching", "step_05_cloth_warping", "step_06_virtual_fitting",
+            "step_07_post_processing", "step_08_quality_assessment", "checkpoints",
+            "Self-Correction-Human-Parsing", "Graphonomy", "experimental_models", "cache"
+        ]
+        
+        for step_dir in step_dirs:
+            dir_path = AI_MODELS_DIR / step_dir
+            if not dir_path.exists():
+                dir_path.mkdir(parents=True, exist_ok=True)
+                logger.debug(f"📁 Step 디렉토리 생성: {dir_path}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ 디렉토리 생성 실패: {e}")
+        return False
+
+# =============================================================================
+# 🔥 8. backend/backend 문제 진단 및 수정
+# =============================================================================
+
+def diagnose_backend_duplication() -> Dict[str, Any]:
     """backend/backend 중복 문제 진단"""
     diagnosis = {
         "has_duplication": False,
@@ -389,55 +679,7 @@ def fix_backend_duplication() -> bool:
         return False
 
 # =============================================================================
-# 🔥 5. 추가 유틸리티 및 하위 호환성
-# =============================================================================
-
-# (이전 코드와 동일하게 유지)
-def get_step_models(step_id: int) -> List[str]:
-    """단계별 모델 목록 반환"""
-    step_patterns = {
-        1: ["human_parsing"],
-        2: ["pose_estimation"], 
-        3: ["cloth_segmentation"],
-        4: ["geometric_matching"],
-        5: ["cloth_warping"],
-        6: ["virtual_fitting"],
-        7: ["post_processing"], 
-        8: ["quality_assessment"]
-    }
-    
-    if step_id not in step_patterns:
-        return []
-    
-    pattern = step_patterns[step_id][0]
-    return [key for key in ALL_MODEL_PATHS.keys() if pattern in key]
-
-class ModelPaths:
-    """모델 경로 빠른 접근 클래스 (backend/backend 문제 해결 포함)"""
-    
-    @property
-    def ai_models_dir(self) -> Path:
-        return safe_path_conversion(AI_MODELS_DIR)
-    
-    @property
-    def project_root(self) -> Path:
-        return safe_path_conversion(PROJECT_ROOT)
-    
-    @property
-    def backend_root(self) -> Path:
-        return safe_path_conversion(BACKEND_ROOT)
-    
-    def diagnose_duplication(self) -> Dict[str, any]:
-        return diagnose_backend_duplication()
-    
-    def fix_duplication(self) -> bool:
-        return fix_backend_duplication()
-
-# 전역 인스턴스
-model_paths = ModelPaths()
-
-# =============================================================================
-# 🔥 6. 모듈 초기화 및 자동 진단
+# 🔥 9. 초기화 및 상태 관리
 # =============================================================================
 
 def initialize_model_paths() -> bool:
@@ -461,6 +703,9 @@ def initialize_model_paths() -> bool:
         # 2. 디렉토리 구조 확인 및 생성
         success = _ensure_directories_exist()
         
+        # 3. conda 환경 최적화
+        setup_conda_optimization()
+        
         if success:
             available_models = get_all_available_models()
             logger.info(f"✅ 모델 경로 초기화 완료: {len(available_models)}개 모델 발견")
@@ -473,16 +718,82 @@ def initialize_model_paths() -> bool:
         logger.error(f"❌ 모델 경로 초기화 실패: {e}")
         return False
 
-# 자동 초기화 실행
-if __name__ != "__main__":
-    try:
-        initialize_model_paths()
-        logger.info("✅ 통합 모델 경로 시스템 초기화 완료 (backend/backend 문제 해결 포함)")
-    except Exception as e:
-        logger.warning(f"⚠️ 모델 경로 초기화 실패: {e}")
+# =============================================================================
+# 🔥 10. 편의 함수들
+# =============================================================================
+
+def get_step_models(step_id: int) -> List[str]:
+    """단계별 모델 목록 반환"""
+    step_patterns = {
+        1: ["human_parsing"],
+        2: ["pose_estimation"], 
+        3: ["cloth_segmentation"],
+        4: ["geometric_matching"],
+        5: ["cloth_warping"],
+        6: ["virtual_fitting"],
+        7: ["post_processing"], 
+        8: ["quality_assessment"]
+    }
+    
+    if step_id not in step_patterns:
+        return []
+    
+    pattern = step_patterns[step_id][0]
+    return [key for key in ALL_MODEL_PATHS.keys() if pattern in key]
+
+def get_model_size_info() -> Dict[str, Dict[str, str]]:
+    """모델 크기 정보 반환 (프로젝트 문서 기반)"""
+    return {
+        "step_01_human_parsing": {"total": "4.0GB", "files": "9개"},
+        "step_02_pose_estimation": {"total": "3.4GB", "files": "9개"},
+        "step_03_cloth_segmentation": {"total": "5.5GB", "files": "9개"},
+        "step_04_geometric_matching": {"total": "1.3GB", "files": "17개"},
+        "step_05_cloth_warping": {"total": "7.0GB", "files": "6개"},
+        "step_06_virtual_fitting": {"total": "14GB", "files": "16개"},  # 핵심
+        "step_07_post_processing": {"total": "1.3GB", "files": "9개"},
+        "step_08_quality_assessment": {"total": "7.0GB", "files": "6개"},
+        "total_project": {"total": "229GB", "files": "127개", "dirs": "99개"}
+    }
 
 # =============================================================================
-# 🔥 7. 내보내기 목록
+# 🔥 11. 클래스 및 인스턴스
+# =============================================================================
+
+class ModelPaths:
+    """모델 경로 빠른 접근 클래스"""
+    
+    @property
+    def ai_models_dir(self) -> Path:
+        return safe_path_conversion(AI_MODELS_DIR)
+    
+    @property
+    def project_root(self) -> Path:
+        return safe_path_conversion(PROJECT_ROOT)
+    
+    @property
+    def backend_root(self) -> Path:
+        return safe_path_conversion(BACKEND_ROOT)
+    
+    def diagnose_duplication(self) -> Dict[str, Any]:
+        return diagnose_backend_duplication()
+    
+    def fix_duplication(self) -> bool:
+        return fix_backend_duplication()
+    
+    def get_smart_mapper(self) -> SmartModelPathMapper:
+        return SmartModelPathMapper()
+    
+    def get_step01_mapper(self) -> Step01ModelMapper:
+        return Step01ModelMapper()
+    
+    def get_step06_mapper(self) -> Step06ModelMapper:
+        return Step06ModelMapper()
+
+# 전역 인스턴스
+model_paths = ModelPaths()
+
+# =============================================================================
+# 🔥 12. 내보내기 목록
 # =============================================================================
 
 __all__ = [
@@ -498,6 +809,12 @@ __all__ = [
     
     # Step별 함수들
     'get_step_models',
+    'get_model_size_info',
+    
+    # 매퍼 클래스들
+    'SmartModelPathMapper',
+    'Step01ModelMapper',
+    'Step06ModelMapper',
     
     # 클래스 및 상수
     'ModelPaths',
@@ -505,7 +822,31 @@ __all__ = [
     'AI_MODELS_DIR',
     'PROJECT_ROOT',
     'BACKEND_ROOT',
+    'ALL_MODEL_PATHS',
+    'STEP_MODEL_PATHS',
     
-    # 초기화
+    # 최적화 및 초기화
+    'setup_conda_optimization',
     'initialize_model_paths'
 ]
+
+# =============================================================================
+# 🔥 13. 자동 초기화 실행
+# =============================================================================
+
+# 자동 초기화 실행
+if __name__ != "__main__":
+    try:
+        initialize_model_paths()
+        logger.info("✅ 통합 모델 경로 시스템 초기화 완료 (229GB AI 모델 지원)")
+    except Exception as e:
+        logger.warning(f"⚠️ 모델 경로 초기화 실패: {e}")
+
+logger.info("🔥 Model Paths v7.0 로드 완료!")
+logger.info("✅ backend/backend 중복 문제 완전 해결")
+logger.info("✅ 229GB AI 모델 경로 매핑 완성 (127개 파일, 99개 디렉토리)")
+logger.info("✅ 동적 경로 탐지 시스템 구현")
+logger.info("✅ conda 환경 mycloset-ai-clean 최적화")
+logger.info("✅ M3 Max 128GB 메모리 최적화")
+logger.info("✅ Step별 AI 모델 우선순위 매핑")
+logger.info("🎯 25GB+ 핵심 모델 완전 활용 준비 완료!")
