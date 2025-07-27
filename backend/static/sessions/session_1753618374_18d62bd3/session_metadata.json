@@ -1,0 +1,90 @@
+{
+  "metadata": {
+    "session_id": "session_1753618374_18d62bd3",
+    "created_at": "2025-07-27T21:12:54.349252",
+    "last_accessed": "2025-07-27T21:12:54.349982",
+    "measurements": {},
+    "person_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753618374_18d62bd3/person.jpg",
+      "size": [
+        360,
+        706
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 46265
+    },
+    "clothing_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753618374_18d62bd3/clothing.jpg",
+      "size": [
+        2000,
+        2667
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 556419
+    },
+    "total_steps": 8,
+    "completed_steps": [
+      0,
+      1
+    ],
+    "circular_reference_safe": true
+  },
+  "step_results": {
+    "0": {
+      "person_image": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "clothing_image": {
+        "type": "PIL_Image",
+        "size": [
+          2000,
+          2667
+        ],
+        "mode": "RGB"
+      },
+      "primary_output": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "measurements": {},
+      "processing_time": 0.0,
+      "quality_score": 1.0,
+      "timestamp": "2025-07-27T21:12:54.349286",
+      "step_id": 0
+    },
+    "1": {
+      "success": true,
+      "message": "이미지 업로드 검증 완료 (StepImplementationManager v12.0)",
+      "step_id": 1,
+      "step_name": "Upload Validation",
+      "session_id": "session_1753618374_18d62bd3",
+      "request_id": "step1_e6343484",
+      "processing_time": 2.1457672119140625e-06,
+      "stepimpl_manager_used": true,
+      "timestamp": "2025-07-27T21:12:54.349989",
+      "confidence": 0.87,
+      "quality_score": 0.0
+    }
+  },
+  "step_processing_times": {
+    "0": 0.0,
+    "1": 2.1457672119140625e-06
+  },
+  "step_quality_scores": {
+    "0": 1.0,
+    "1": 0.0
+  },
+  "last_saved": "2025-07-27T21:12:54.350012",
+  "circular_reference_safe": true
+}

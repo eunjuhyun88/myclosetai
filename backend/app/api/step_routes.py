@@ -1329,7 +1329,7 @@ async def step_7_virtual_fitting(
     session_manager: SessionManager = Depends(get_session_manager_dependency),
     step_service: StepServiceManager = Depends(get_step_service_manager_dependency)
 ):
-    """7단계: 가상 피팅 생성 (fitted_image 보장)"""
+    """7단계: 가상 피팅 생성 (실제 AI 오류 디버깅 강화)"""
     start_time = time.time()
     
     try:
@@ -1340,6 +1340,7 @@ async def step_7_virtual_fitting(
             try:
                 person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
                 logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
+                logger.info(f"🖼️ 이미지 경로: person={person_img_path}, clothing={clothing_img_path}")
             except Exception as e:
                 logger.error(f"❌ 세션 로드 실패: {e}")
                 raise HTTPException(
@@ -1347,99 +1348,149 @@ async def step_7_virtual_fitting(
                     detail=f"세션을 찾을 수 없습니다: {session_id}"
                 )
             
-            # 2. 🔥 실제 AI 처리 또는 고품질 더미 이미지 생성
+            # 2. 🔥 실제 AI 처리 - 상세한 에러 추적
+            fitted_image = None
+            service_result = None
+            ai_error_details = None
+            
             try:
-                # 실제 StepServiceManager AI 처리 시도
+                logger.info("🧠 StepServiceManager 실제 AI 처리 시작...")
+                
+                # StepServiceManager 상태 확인
+                if not hasattr(step_service, 'process_step_7_virtual_fitting'):
+                    raise AttributeError("StepServiceManager에 process_step_7_virtual_fitting 메서드가 없습니다")
+                
+                # AI 모델 상태 확인
+                if hasattr(step_service, 'ai_manager'):
+                    ai_manager = step_service.ai_manager
+                    logger.info(f"📊 AI Manager 상태: {type(ai_manager).__name__}")
+                    
+                    # AI 모델 파일 존재 확인
+                    if hasattr(ai_manager, 'check_model_file_exists'):
+                        file_exists, file_path = ai_manager.check_model_file_exists(7)
+                        logger.info(f"🔍 Step 7 모델 파일: exists={file_exists}, path={file_path}")
+                    
+                    # AI 모델 초기화 상태 확인
+                    if hasattr(ai_manager, 'is_initialized'):
+                        logger.info(f"🔄 AI Manager 초기화 상태: {ai_manager.is_initialized}")
+                
+                # 실제 AI 처리 호출
                 service_result = await step_service.process_step_7_virtual_fitting(
                     session_id=session_id,
                     fitting_quality=fitting_quality
                 )
                 
-                # fitted_image 확인
-                fitted_image = service_result.get('fitted_image')
+                logger.info(f"✅ StepServiceManager 호출 성공!")
+                logger.info(f"📊 서비스 결과 타입: {type(service_result)}")
+                logger.info(f"📊 서비스 결과 키들: {list(service_result.keys()) if isinstance(service_result, dict) else 'Not Dict'}")
                 
-                if not fitted_image:
-                    logger.warning("⚠️ AI 모델에서 fitted_image 없음 - 고품질 더미 생성")
-                    fitted_image = create_enhanced_dummy_fitted_image()
-                    service_result['fitted_image'] = fitted_image
-                    service_result['fallback_mode'] = True
+                # fitted_image 추출 및 검증
+                if isinstance(service_result, dict):
+                    fitted_image = service_result.get('fitted_image')
+                    logger.info(f"🖼️ fitted_image 상태: {type(fitted_image)} / 길이: {len(fitted_image) if fitted_image else 0}")
+                    
+                    if fitted_image:
+                        # Base64 검증
+                        try:
+                            if fitted_image.startswith('data:image'):
+                                base64_data = fitted_image.split(',')[1]
+                            else:
+                                base64_data = fitted_image
+                            
+                            import base64
+                            decoded_data = base64.b64decode(base64_data)
+                            logger.info(f"✅ fitted_image Base64 검증 성공: {len(decoded_data)} bytes")
+                        except Exception as decode_error:
+                            logger.error(f"❌ fitted_image Base64 검증 실패: {decode_error}")
+                            fitted_image = None
+                    
+                    if not fitted_image:
+                        logger.warning("⚠️ StepServiceManager에서 fitted_image를 얻지 못함")
+                        
+                        # 🔥 실제 AI 처리가 실패한 이유 상세 분석
+                        error_analysis = {
+                            "service_result_success": service_result.get('success', False),
+                            "service_result_message": service_result.get('message', 'No message'),
+                            "service_result_error": service_result.get('error', 'No error'),
+                            "fitted_image_present": bool(fitted_image),
+                            "result_keys": list(service_result.keys())
+                        }
+                        logger.error(f"🔍 AI 처리 실패 분석: {json.dumps(error_analysis, indent=2)}")
+                        ai_error_details = error_analysis
                 
                 logger.info(f"✅ StepServiceManager Step 7 처리 완료")
-                logger.info(f"🖼️ fitted_image 길이: {len(fitted_image) if fitted_image else 0}")
                 
-            except Exception as e:
-                logger.error(f"❌ StepServiceManager Step 7 처리 실패: {e}")
-                # 폴백: 고품질 더미 이미지 생성
+            except Exception as ai_error:
+                # 🔥 실제 AI 처리 에러 상세 로깅
+                error_trace = traceback.format_exc()
+                logger.error(f"❌ StepServiceManager AI 처리 실패:")
+                logger.error(f"   에러 타입: {type(ai_error).__name__}")
+                logger.error(f"   에러 메시지: {str(ai_error)}")
+                logger.error(f"   스택 트레이스:\n{error_trace}")
+                
+                ai_error_details = {
+                    "error_type": type(ai_error).__name__,
+                    "error_message": str(ai_error),
+                    "stack_trace": error_trace,
+                    "step_service_type": type(step_service).__name__,
+                    "has_ai_manager": hasattr(step_service, 'ai_manager'),
+                    "has_process_method": hasattr(step_service, 'process_step_7_virtual_fitting')
+                }
+                
+                # 🔥 여기서 폴백으로 넘어감!
+                logger.warning("🔄 실제 AI 처리 실패로 인한 폴백 모드 진입")
+            
+            # 3. 🔥 fitted_image 확인 및 폴백 처리
+            if not fitted_image:
+                logger.warning("⚠️ 실제 AI에서 fitted_image 없음 - 고품질 더미 생성")
                 fitted_image = create_enhanced_dummy_fitted_image()
+                
+                # 폴백 결과 생성
                 service_result = {
                     "success": True,
-                    "confidence": 0.88,
-                    "message": "가상 피팅 완료 - 14GB 핵심 AI 모델",
+                    "confidence": 0.75,  # 폴백 모드 표시를 위해 낮춤
+                    "message": "가상 피팅 완료 (AI 처리 실패로 인한 폴백 모드)",
                     "fitted_image": fitted_image,
-                    "fit_score": 0.88,
+                    "fit_score": 0.75,
                     "recommendations": [
-                        "이 의류는 당신의 체형에 잘 맞습니다",
-                        "어깨 라인이 자연스럽게 표현되었습니다",
-                        "전체적인 비율이 균형잡혀 보입니다",
-                        "실제 착용시에도 비슷한 효과를 기대할 수 있습니다"
+                        "AI 모델 처리에 문제가 발생했습니다",
+                        "더미 이미지로 대체되었습니다",
+                        "실제 AI 처리를 위해 시스템 점검이 필요합니다"
                     ],
                     "details": {
                         "fitting_quality": fitting_quality,
-                        "color_match": "excellent",
-                        "model_used": "Virtual Fitting 14GB",
-                        "fallback_mode": True
+                        "model_used": "Enhanced Dummy Generator",
+                        "fallback_mode": True,
+                        "ai_error_details": ai_error_details,
+                        "reason": "실제 AI 모델 처리 실패"
                     },
                     "fallback_mode": True
                 }
+            else:
+                # 실제 AI 처리 성공
+                logger.info("🎉 실제 AI에서 fitted_image 성공 생성!")
+                if 'fallback_mode' not in service_result:
+                    service_result['fallback_mode'] = False
             
-            # 3. 🔥 fitted_image 필수 확인 및 검증
-            final_fitted_image = service_result.get('fitted_image')
-            
-            if not final_fitted_image:
-                logger.error("❌ 최종 fitted_image가 여전히 없음 - 강제 생성")
-                final_fitted_image = create_enhanced_dummy_fitted_image()
-                service_result['fitted_image'] = final_fitted_image
-            
-            # 4. fitted_image 유효성 검사
-            try:
-                # Base64 디코딩 테스트
-                if final_fitted_image.startswith('data:image'):
-                    # data URL 형식인 경우 실제 base64 부분만 추출
-                    base64_data = final_fitted_image.split(',')[1]
-                else:
-                    base64_data = final_fitted_image
-                
-                # Base64 디코딩 검증
-                import base64
-                decoded_data = base64.b64decode(base64_data)
-                logger.info(f"✅ fitted_image 유효성 검증 성공: {len(decoded_data)} bytes")
-                
-            except Exception as e:
-                logger.error(f"❌ fitted_image 유효성 검증 실패: {e}")
-                # 다시 생성
-                final_fitted_image = create_enhanced_dummy_fitted_image()
-                service_result['fitted_image'] = final_fitted_image
-            
-            # 5. 프론트엔드 호환성 강화
+            # 4. 프론트엔드 호환성 강화
             enhanced_result = service_result.copy()
             enhanced_result.update({
-                'fitted_image': final_fitted_image,  # 🔥 필수!
-                'fit_score': service_result.get('fit_score', service_result.get('confidence', 0.88)),
+                'fitted_image': fitted_image,  # 🔥 필수!
+                'fit_score': service_result.get('fit_score', service_result.get('confidence', 0.75)),
                 'recommendations': service_result.get('recommendations', [
-                    "이 의류는 당신의 체형에 잘 맞습니다",
-                    "색상이 잘 어울립니다",
-                    "사이즈가 적절합니다"
+                    "가상 피팅이 완료되었습니다",
+                    "결과를 확인해주세요"
                 ])
             })
             
-            # 6. 세션에 결과 저장
+            # 5. 세션에 결과 저장
             try:
                 await session_manager.save_step_result(session_id, 7, enhanced_result)
                 logger.info(f"✅ 세션에 Step 7 결과 저장 완료: {session_id}")
             except Exception as e:
                 logger.warning(f"⚠️ 세션 결과 저장 실패: {e}")
             
-            # 7. WebSocket 진행률 알림
+            # 6. WebSocket 진행률 알림
             if WEBSOCKET_AVAILABLE:
                 try:
                     progress_callback = create_progress_callback(session_id)
@@ -1447,41 +1498,46 @@ async def step_7_virtual_fitting(
                 except Exception:
                     pass
             
-            # 8. 백그라운드 메모리 최적화
+            # 7. 백그라운드 메모리 최적화
             background_tasks.add_task(safe_mps_empty_cache)
             background_tasks.add_task(gc.collect)
             
-            # 9. 응답 반환 (fitted_image 보장)
+            # 8. 응답 반환 (상세한 디버깅 정보 포함)
             processing_time = time.time() - start_time
             
             response_data = format_step_api_response(
                 success=True,
-                message="가상 피팅 완료 - 14GB 핵심 AI 모델",
+                message=enhanced_result.get('message', "가상 피팅 완료"),
                 step_name="Virtual Fitting",
                 step_id=7,
                 processing_time=processing_time,
                 session_id=session_id,
-                confidence=enhanced_result.get('confidence', 0.88),
-                fitted_image=final_fitted_image,  # 🔥 보장된 이미지
-                fit_score=enhanced_result.get('fit_score', 0.88),
+                confidence=enhanced_result.get('confidence', 0.75),
+                fitted_image=fitted_image,  # 🔥 보장된 이미지
+                fit_score=enhanced_result.get('fit_score', 0.75),
                 recommendations=enhanced_result.get('recommendations'),
                 details={
                     **enhanced_result.get('details', {}),
-                    "ai_model": "Virtual Fitting 14GB",
-                    "model_size": "14GB",
-                    "ai_processing": True,
+                    "ai_model": "Virtual Fitting System",
                     "fitting_quality": fitting_quality,
-                    "fitted_image_size": len(final_fitted_image),
-                    "fallback_mode": enhanced_result.get('fallback_mode', False)
+                    "fitted_image_size": len(fitted_image),
+                    "fallback_mode": enhanced_result.get('fallback_mode', False),
+                    "processing_details": {
+                        "ai_error_details": ai_error_details,
+                        "step_service_available": step_service is not None,
+                        "session_images_found": person_img_path is not None and clothing_img_path is not None,
+                        "real_ai_attempted": service_result is not None
+                    }
                 }
             )
             
-            # 🔥 디버깅 로그
-            logger.info(f"📤 Step 7 응답 데이터:")
+            # 🔥 상세 디버깅 로그
+            logger.info(f"📤 Step 7 최종 응답:")
             logger.info(f"  - success: {response_data.get('success')}")
             logger.info(f"  - fitted_image 길이: {len(response_data.get('fitted_image', ''))}")
-            logger.info(f"  - fit_score: {response_data.get('fit_score')}")
+            logger.info(f"  - fallback_mode: {response_data.get('details', {}).get('fallback_mode', 'Unknown')}")
             logger.info(f"  - confidence: {response_data.get('confidence')}")
+            logger.info(f"  - AI 오류 세부사항: {ai_error_details is not None}")
             
             return JSONResponse(content=response_data)
 
@@ -1493,6 +1549,113 @@ async def step_7_virtual_fitting(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def create_enhanced_dummy_fitted_image():
+    """고품질 더미 가상 피팅 이미지 생성 (폴백 모드 표시 포함)"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+        import io
+        import base64
+        
+        # 768x1024 고해상도 이미지 생성
+        img = Image.new('RGB', (768, 1024), color=(250, 245, 240))
+        draw = ImageDraw.Draw(img)
+        
+        # 배경 그라데이션
+        for y in range(1024):
+            gray_value = int(250 - (y / 1024) * 30)
+            draw.line([(0, y), (768, y)], fill=(gray_value, gray_value-5, gray_value-10))
+        
+        # 더 현실적인 사람 실루엣
+        
+        # 머리
+        head_center_x, head_center_y = 384, 120
+        draw.ellipse([324, 60, 444, 180], fill=(255, 220, 177), outline=(0, 0, 0), width=3)
+        
+        # 목
+        draw.rectangle([369, 180, 399, 220], fill=(255, 220, 177), outline=(0, 0, 0), width=2)
+        
+        # 상체 (더 세련된 셔츠)
+        shirt_color = (65, 105, 225)  # 로얄 블루
+        
+        # 셔츠 몸통 (더 현실적인 형태)
+        draw.polygon([
+            (299, 220), (469, 220), (489, 380), (509, 580), 
+            (279, 580), (299, 380)
+        ], fill=shirt_color, outline=(0, 0, 0), width=3)
+        
+        # 셔츠 칼라 (더 디테일함)
+        draw.polygon([
+            (339, 220), (429, 220), (419, 270), (409, 290), 
+            (379, 290), (359, 290), (349, 270)
+        ], fill=(45, 85, 205), outline=(0, 0, 0), width=2)
+        
+        # 셔츠 버튼들 (더 정교함)
+        button_positions = [250, 300, 350, 400, 450, 500]
+        for i, button_y in enumerate(button_positions):
+            draw.ellipse([380, button_y, 388, button_y + 8], 
+                        fill=(255, 255, 255), outline=(0, 0, 0), width=1)
+            draw.ellipse([382, button_y + 2, 386, button_y + 6], 
+                        fill=(240, 240, 240), outline=(0, 0, 0), width=1)
+        
+        # 왼팔 (더 자연스럽게)
+        draw.polygon([
+            (299, 220), (249, 260), (229, 380), (219, 500), 
+            (239, 520), (269, 510), (299, 380)
+        ], fill=shirt_color, outline=(0, 0, 0), width=3)
+        
+        # 오른팔
+        draw.polygon([
+            (469, 220), (519, 260), (539, 380), (549, 500), 
+            (529, 520), (499, 510), (469, 380)
+        ], fill=shirt_color, outline=(0, 0, 0), width=3)
+        
+        # 손 (더 정교함)
+        draw.ellipse([209, 490, 239, 520], fill=(255, 220, 177), outline=(0, 0, 0), width=2)
+        draw.ellipse([529, 490, 559, 520], fill=(255, 220, 177), outline=(0, 0, 0), width=2)
+        
+        # 하체 (바지)
+        pants_color = (25, 25, 25)
+        draw.polygon([
+            (279, 580), (509, 580), (499, 900), (289, 900)
+        ], fill=pants_color, outline=(0, 0, 0), width=3)
+        
+        # 바지 중앙선과 포켓
+        draw.line([(394, 580), (394, 900)], fill=(15, 15, 15), width=2)
+        draw.line([(320, 620), (350, 620)], fill=(15, 15, 15), width=2)
+        draw.line([(438, 620), (468, 620)], fill=(15, 15, 15), width=2)
+        
+        # 신발
+        draw.ellipse([269, 880, 339, 920], fill=(0, 0, 0), outline=(0, 0, 0), width=2)
+        draw.ellipse([449, 880, 519, 920], fill=(0, 0, 0), outline=(0, 0, 0), width=2)
+        
+        # 🔥 폴백 모드 워터마크
+        draw.text((50, 50), "MyCloset AI - Fallback Mode", fill=(255, 0, 0))
+        draw.text((50, 80), "Real AI Processing Failed", fill=(255, 0, 0))
+        draw.text((50, 110), "Enhanced Dummy Generated", fill=(255, 0, 0))
+        draw.text((50, 950), "Check logs for AI error details", fill=(128, 128, 128))
+        
+        # 이미지 품질 향상
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(1.3)
+        
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.1)
+        
+        # Base64로 인코딩
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG", quality=98)
+        img_base64 = base64.b64encode(buffered.getvalue()).decode()
+        
+        logger.info(f"✅ 폴백 모드 더미 이미지 생성 완료: {len(img_base64)} chars")
+        
+        return img_base64
+        
+    except Exception as e:
+        logger.error(f"❌ 폴백 더미 이미지 생성 실패: {e}")
+        # 최소한의 폴백
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    
+    
 def create_enhanced_dummy_fitted_image():
     """고품질 더미 가상 피팅 이미지 생성 (실제 AI 결과처럼)"""
     try:

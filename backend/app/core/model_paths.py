@@ -145,9 +145,17 @@ STEP_MODEL_PATHS = {
     "virtual_fitting_ootd": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion",
     "virtual_fitting_hrviton": AI_MODELS_DIR / "step_06_virtual_fitting" / "HR-VITON",
     "virtual_fitting_vitonhd": AI_MODELS_DIR / "step_06_virtual_fitting" / "VITON-HD",
-    "virtual_fitting_diffusion_1": AI_MODELS_DIR / "step_06_virtual_fitting" / "diffusion_pytorch_model.safetensors",  # 3.2GB
-    "virtual_fitting_diffusion_2": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion" / "unet" / "diffusion_pytorch_model.safetensors",  # 3.2GB
+
+     # Step 6: Virtual Fitting (14GB - 16개 파일) - 🔥 실제 경로로 수정
+    "virtual_fitting_diffusion_1": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd" / "checkpoint-36000" / "unet_vton" / "diffusion_pytorch_model.safetensors",  # 3.2GB
+    "virtual_fitting_diffusion_2": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd" / "checkpoint-36000" / "unet_garm" / "diffusion_pytorch_model.safetensors",  # 3.2GB
+    "virtual_fitting_text_encoder": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "text_encoder" / "pytorch_model.bin",  # 469MB
+    "virtual_fitting_vae": AI_MODELS_DIR / "step_06_virtual_fitting" / "ootdiffusion" / "checkpoints" / "ootd" / "vae" / "diffusion_pytorch_model.bin",  # 319MB
     
+    # 🔥 백업 경로들도 추가
+    "virtual_fitting_backup_1": AI_MODELS_DIR / "checkpoints" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd" / "checkpoint-36000" / "unet_vton" / "diffusion_pytorch_model.safetensors",
+    "virtual_fitting_backup_2": AI_MODELS_DIR / "checkpoints" / "ootdiffusion" / "checkpoints" / "ootd" / "ootd_hd" / "checkpoint-36000" / "unet_garm" / "diffusion_pytorch_model.safetensors",
+     
     # Step 7: Post Processing (1.3GB - 9개 파일)
     "post_processing_esrgan": AI_MODELS_DIR / "step_07_post_processing" / "esrgan.pth",
     "post_processing_upscaler": AI_MODELS_DIR / "step_07_post_processing" / "upscaler_models",
@@ -227,8 +235,13 @@ class SmartModelPathMapper:
             
             # Virtual Fitting 모델들 (가장 중요!)
             "virtual_fitting": [
-                "step_06_virtual_fitting/",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/",
+                "checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/",
+                "checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/",
                 "step_06_virtual_fitting/ootdiffusion/",
+                "step_06_virtual_fitting/",
                 "step_06_virtual_fitting/HR-VITON/",
                 "step_06_virtual_fitting/VITON-HD/",
                 "checkpoints/step_06_virtual_fitting/"
