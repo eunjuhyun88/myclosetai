@@ -1,0 +1,10 @@
+{
+  "timestamp": 1753642063.382849,
+  "quick_diagnostics": {
+    "python_path": [
+      "/Users/gimdudeul/MVP/mycloset-ai/backend",
+      "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai-clean/lib/python310.zip",
+      "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai-clean/lib/python3.10"
+    ],
+    "working_directory": "/Users/gimdudeul/MVP/mycloset-ai/backend",
+    "environment": 

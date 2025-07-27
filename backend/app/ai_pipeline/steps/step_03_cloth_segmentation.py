@@ -6,7 +6,7 @@
 🎯 BaseStepMixin v19.1 완전 준수:
 ✅ _run_ai_inference() 메서드만 구현 (동기 처리)
 ✅ 모든 데이터 변환은 BaseStepMixin에서 자동 처리
-✅ step_model_requirements.py DetailedDataSpec 완전 활용
+✅ step_model_requests.py DetailedDataSpec 완전 활용
 ✅ GitHub 프로젝트 100% 호환성 보장
 ✅ TYPE_CHECKING 패턴으로 순환참조 완전 방지
 
@@ -86,7 +86,7 @@ if BaseStepMixin is None:
 
 if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader, StepModelInterface
-    from app.ai_pipeline.utils.step_model_requirements import (
+    from app.ai_pipeline.utils.step_model_requests import (
         EnhancedRealModelRequest, DetailedDataSpec, get_enhanced_step_request
     )
 
@@ -161,14 +161,14 @@ except ImportError:
     logger.warning("⚠️ ONNX Runtime 없음 - pip install onnxruntime")
 
 # ==============================================
-# 🔥 3. step_model_requirements.py 요구사항 로드
+# 🔥 3. step_model_requests.py 요구사항 로드
 # ==============================================
 
 def get_step_requirements():
-    """step_model_requirements.py에서 ClothSegmentationStep 요구사항 가져오기"""
+    """step_model_requests.py에서 ClothSegmentationStep 요구사항 가져오기"""
     try:
         import importlib
-        requirements_module = importlib.import_module('app.ai_pipeline.utils.step_model_requirements')
+        requirements_module = importlib.import_module('app.ai_pipeline.utils.step_model_requests')
         
         get_enhanced_step_request = getattr(requirements_module, 'get_enhanced_step_request', None)
         if get_enhanced_step_request:
@@ -178,7 +178,7 @@ def get_step_requirements():
         return REAL_STEP_MODEL_REQUESTS.get("ClothSegmentationStep")
         
     except ImportError as e:
-        logger.warning(f"⚠️ step_model_requirements 로드 실패: {e}")
+        logger.warning(f"⚠️ step_model_requests 로드 실패: {e}")
         return None
 
 # ClothSegmentationStep 요구사항 로드
@@ -209,11 +209,11 @@ except:
     pass
 
 # ==============================================
-# 🔥 5. 데이터 구조 정의 (step_model_requirements.py 호환)
+# 🔥 5. 데이터 구조 정의 (step_model_requests.py 호환)
 # ==============================================
 
 class SegmentationMethod(Enum):
-    """세그멘테이션 방법 (step_model_requirements.py 호환)"""
+    """세그멘테이션 방법 (step_model_requests.py 호환)"""
     SAM_HUGE = "sam_huge"           # SAM ViT-Huge (2445.7MB)
     U2NET_CLOTH = "u2net_cloth"     # U2Net 의류 특화 (168.1MB)
     MOBILE_SAM = "mobile_sam"       # Mobile SAM (38.8MB)
@@ -222,7 +222,7 @@ class SegmentationMethod(Enum):
     AUTO_AI = "auto_ai"             # 자동 AI 모델 선택
 
 class ClothingType(Enum):
-    """의류 타입 (step_model_requirements.py 호환)"""
+    """의류 타입 (step_model_requests.py 호환)"""
     SHIRT = "shirt"
     DRESS = "dress"
     PANTS = "pants"
@@ -243,7 +243,7 @@ class QualityLevel(Enum):
 
 @dataclass
 class SegmentationConfig:
-    """세그멘테이션 설정 (step_model_requirements.py 호환)"""
+    """세그멘테이션 설정 (step_model_requests.py 호환)"""
     method: SegmentationMethod = SegmentationMethod.AUTO_AI
     quality_level: QualityLevel = QualityLevel.BALANCED
     input_size: Tuple[int, int] = (1024, 1024)
@@ -893,7 +893,7 @@ class ClothSegmentationStep(BaseStepMixin):
     def _detect_model_paths(self):
         """모델 경로 탐지"""
         try:
-            # step_model_requirements.py 기반 경로 탐지
+            # step_model_requests.py 기반 경로 탐지
             if STEP_REQUIREMENTS:
                 search_paths = STEP_REQUIREMENTS.search_paths + STEP_REQUIREMENTS.fallback_paths
                 
@@ -1132,7 +1132,7 @@ class ClothSegmentationStep(BaseStepMixin):
                     'is_m3_max': self.is_m3_max,
                     'opencv_replaced': True,
                     'ai_inference': True,
-                    'step_model_requirements_compatible': True
+                    'step_model_requests_compatible': True
                 },
                 
                 # Step 간 연동을 위한 추가 데이터
@@ -1430,7 +1430,7 @@ class ClothSegmentationStep(BaseStepMixin):
             else:
                 raise ValueError("지원하지 않는 이미지 형식")
             
-            # step_model_requirements.py 호환 전처리
+            # step_model_requests.py 호환 전처리
             if STEP_REQUIREMENTS and STEP_REQUIREMENTS.data_spec.normalization_mean:
                 mean = STEP_REQUIREMENTS.data_spec.normalization_mean
                 std = STEP_REQUIREMENTS.data_spec.normalization_std
@@ -1978,7 +1978,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 'device': self.device,
                 'opencv_replaced': True,
                 'ai_inference': True,
-                'step_model_requirements_compatible': True,
+                'step_model_requests_compatible': True,
                 'basestepmixin_v19_compatible': True
             }
             
@@ -2115,7 +2115,7 @@ logger.info("=" * 120)
 logger.info("🎯 BaseStepMixin v19.1 완전 준수:")
 logger.info("   ✅ _run_ai_inference() 메서드만 구현 (동기 처리)")
 logger.info("   ✅ 모든 데이터 변환은 BaseStepMixin에서 자동 처리")
-logger.info("   ✅ step_model_requirements.py DetailedDataSpec 완전 활용")
+logger.info("   ✅ step_model_requests.py DetailedDataSpec 완전 활용")
 logger.info("   ✅ GitHub 프로젝트 100% 호환성 보장")
 logger.info("🧠 AI 강화 사항 (100% 보존):")
 logger.info("   ✅ 실제 SAM, U2Net, ISNet, Mobile SAM AI 추론 로직")
@@ -2134,7 +2134,7 @@ logger.info(f"   - SAM: {SAM_AVAILABLE}")
 logger.info(f"   - ONNX: {ONNX_AVAILABLE}")
 
 if STEP_REQUIREMENTS:
-    logger.info("✅ step_model_requirements.py 요구사항 로드 성공")
+    logger.info("✅ step_model_requests.py 요구사항 로드 성공")
     logger.info(f"   - 모델명: {STEP_REQUIREMENTS.model_name}")
     logger.info(f"   - Primary 파일: {STEP_REQUIREMENTS.primary_file} ({STEP_REQUIREMENTS.primary_size_mb}MB)")
 

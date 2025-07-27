@@ -51,12 +51,12 @@ logger = logging.getLogger(__name__)
 # ==============================================
 
 class RealFileMapper:
-    """실제 파일 구조 기반 완전 동적 매핑 시스템 (터미널 출력 기반)"""
+    """실제 파일 구조 기반 완전 동적 매핑 시스템 (터미널 출력 기반 + 체크포인트 완전 지원)"""
     
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.RealFileMapper")
         
-        # 🔥 터미널 출력에서 확인된 실제 파일 구조 반영
+        # 🔥 터미널 출력에서 확인된 실제 파일 구조 반영 + 체크포인트 완전 지원
         self.step_file_mappings = {
             # Step 01: Human Parsing (실제 확인됨)
             "human_parsing_schp": {
@@ -68,14 +68,26 @@ class RealFileMapper:
                     "lip_model.pth",
                     "graphonomy.pth"
                 ],
+                "checkpoint_files": [
+                    "checkpoint.pth",
+                    "model_checkpoint.pth",
+                    "human_parsing_checkpoint.pth",
+                    "schp_checkpoint.pth",
+                    "latest_checkpoint.pth",
+                    "best_checkpoint.pth"
+                ],
                 "search_paths": [
                     "step_01_human_parsing",
                     "step_01_human_parsing/ultra_models",
+                    "step_01_human_parsing/checkpoints",
                     "step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing",
                     "Self-Correction-Human-Parsing",
-                    "Graphonomy"
+                    "Self-Correction-Human-Parsing/checkpoints",
+                    "Graphonomy",
+                    "Graphonomy/checkpoints",
+                    "checkpoints/step_01_human_parsing"
                 ],
-                "patterns": [r".*exp-schp.*atr.*\.pth$", r".*exp-schp.*lip.*\.pth$", r".*graphonomy.*\.pth$"],
+                "patterns": [r".*exp-schp.*atr.*\.pth$", r".*exp-schp.*lip.*\.pth$", r".*graphonomy.*\.pth$", r".*checkpoint.*\.pth$"],
                 "size_range": (50, 260),
                 "min_size_mb": 50,
                 "priority": 1,
@@ -93,13 +105,23 @@ class RealFileMapper:
                     "diffusion_pytorch_model.safetensors",
                     "diffusion_pytorch_model.bin"
                 ],
+                "checkpoint_files": [
+                    "pose_checkpoint.pth",
+                    "openpose_checkpoint.pth",
+                    "body_pose_checkpoint.pth",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth",
+                    "latest_checkpoint.pth"
+                ],
                 "search_paths": [
                     "step_02_pose_estimation",
                     "step_02_pose_estimation/ultra_models",
+                    "step_02_pose_estimation/checkpoints",
                     "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts",
-                    "checkpoints/step_02_pose_estimation"
+                    "checkpoints/step_02_pose_estimation",
+                    "openpose/checkpoints"
                 ],
-                "patterns": [r".*openpose.*\.pth$", r".*body_pose.*\.pth$", r".*yolov8.*pose.*\.pt$"],
+                "patterns": [r".*openpose.*\.pth$", r".*body_pose.*\.pth$", r".*yolov8.*pose.*\.pt$", r".*checkpoint.*\.pth$"],
                 "size_range": (6, 1400),
                 "min_size_mb": 6,
                 "priority": 1,
@@ -115,13 +137,25 @@ class RealFileMapper:
                     "u2net.pth",
                     "deeplabv3_resnet101_ultra.pth"
                 ],
+                "checkpoint_files": [
+                    "cloth_seg_checkpoint.pth",
+                    "sam_checkpoint.pth",
+                    "u2net_checkpoint.pth",
+                    "segmentation_checkpoint.pth",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth"
+                ],
                 "search_paths": [
                     "step_03_cloth_segmentation",
                     "step_03_cloth_segmentation/ultra_models",
+                    "step_03_cloth_segmentation/checkpoints",
                     "step_04_geometric_matching",
-                    "step_04_geometric_matching/ultra_models"
+                    "step_04_geometric_matching/ultra_models",
+                    "step_04_geometric_matching/checkpoints",
+                    "checkpoints/step_03_cloth_segmentation",
+                    "sam/checkpoints"
                 ],
-                "patterns": [r".*sam_vit_h.*\.pth$", r".*u2net.*\.pth$", r".*deeplabv3.*\.pth$"],
+                "patterns": [r".*sam_vit_h.*\.pth$", r".*u2net.*\.pth$", r".*deeplabv3.*\.pth$", r".*checkpoint.*\.pth$"],
                 "size_range": (100, 2500),
                 "min_size_mb": 100,
                 "priority": 1,
@@ -139,12 +173,23 @@ class RealFileMapper:
                     "diffusion_pytorch_model.safetensors",
                     "diffusion_pytorch_model.bin"
                 ],
+                "checkpoint_files": [
+                    "geometric_checkpoint.pth",
+                    "gmm_checkpoint.pth",
+                    "tps_checkpoint.pth",
+                    "matching_checkpoint.pth",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth"
+                ],
                 "search_paths": [
                     "step_04_geometric_matching",
                     "step_04_geometric_matching/ultra_models",
-                    "checkpoints/step_04_geometric_matching"
+                    "step_04_geometric_matching/checkpoints",
+                    "checkpoints/step_04_geometric_matching",
+                    "gmm/checkpoints",
+                    "tps/checkpoints"
                 ],
-                "patterns": [r".*resnet101.*geometric.*\.pth$", r".*tps.*network.*\.pth$"],
+                "patterns": [r".*resnet101.*geometric.*\.pth$", r".*tps.*network.*\.pth$", r".*checkpoint.*\.pth$"],
                 "size_range": (10, 2500),
                 "min_size_mb": 10,
                 "priority": 1,
@@ -161,17 +206,28 @@ class RealFileMapper:
                     "vgg16_warping_ultra.pth",
                     "densenet121_ultra.pth"
                 ],
+                "checkpoint_files": [
+                    "warping_checkpoint.pth",
+                    "realvisxl_checkpoint.safetensors",
+                    "cloth_warping_checkpoint.pth",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth",
+                    "vgg_checkpoint.pth"
+                ],
                 "search_paths": [
                     "step_05_cloth_warping",
                     "step_05_cloth_warping/ultra_models",
                     "step_05_cloth_warping/ultra_models/unet",
-                    "checkpoints/step_05_cloth_warping"
+                    "step_05_cloth_warping/checkpoints",
+                    "checkpoints/step_05_cloth_warping",
+                    "realvisxl/checkpoints"
                 ],
                 "patterns": [
                     r".*realvis.*\.safetensors$", 
                     r".*RealVis.*\.safetensors$",
                     r".*vgg.*warp.*\.pth$",
-                    r".*densenet.*\.pth$"
+                    r".*densenet.*\.pth$",
+                    r".*checkpoint.*\.(pth|safetensors)$"
                 ],
                 "size_range": (30, 7000),  # RealVisXL은 6.6GB
                 "min_size_mb": 30,
@@ -189,21 +245,34 @@ class RealFileMapper:
                     "pytorch_model.bin",
                     "hrviton_final.pth"
                 ],
+                "checkpoint_files": [
+                    "ootd_checkpoint.safetensors",
+                    "virtual_fitting_checkpoint.pth",
+                    "hrviton_checkpoint.pth",
+                    "diffusion_checkpoint.safetensors",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth",
+                    "unet_checkpoint.safetensors"
+                ],
                 "search_paths": [
                     "step_06_virtual_fitting",
                     "step_06_virtual_fitting/ootdiffusion",
+                    "step_06_virtual_fitting/ootdiffusion/checkpoints",
                     "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton",
                     "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton",
                     "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm",
                     "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm",
                     "step_06_virtual_fitting/unet",
                     "step_06_virtual_fitting/vae",
-                    "checkpoints/step_06_virtual_fitting"
+                    "step_06_virtual_fitting/checkpoints",
+                    "checkpoints/step_06_virtual_fitting",
+                    "ootd/checkpoints"
                 ],
                 "patterns": [
                     r".*diffusion_pytorch_model\.safetensors$",
                     r".*diffusion_pytorch_model\.bin$",
-                    r".*hrviton.*\.pth$"
+                    r".*hrviton.*\.pth$",
+                    r".*checkpoint.*\.(pth|safetensors|bin)$"
                 ],
                 "size_range": (100, 3300),
                 "min_size_mb": 100,
@@ -223,17 +292,29 @@ class RealFileMapper:
                     "ESRGAN_x8.pth",
                     "pytorch_model.bin"
                 ],
+                "checkpoint_files": [
+                    "gfpgan_checkpoint.pth",
+                    "post_processing_checkpoint.pth",
+                    "esrgan_checkpoint.pth",
+                    "enhance_checkpoint.pth",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth"
+                ],
                 "search_paths": [
                     "step_07_post_processing",
                     "step_07_post_processing/ultra_models",
                     "step_07_post_processing/esrgan_x8_ultra",
-                    "checkpoints/step_07_post_processing"
+                    "step_07_post_processing/checkpoints",
+                    "checkpoints/step_07_post_processing",
+                    "gfpgan/checkpoints",
+                    "esrgan/checkpoints"
                 ],
                 "patterns": [
                     r".*GFPGAN.*\.pth$",
                     r".*densenet161.*enhance.*\.pth$",
                     r".*ESRGAN.*\.pth$",
-                    r".*enhance.*\.pth$"
+                    r".*enhance.*\.pth$",
+                    r".*checkpoint.*\.pth$"
                 ],
                 "size_range": (30, 350),
                 "min_size_mb": 30,
@@ -251,18 +332,56 @@ class RealFileMapper:
                     "lpips_alex.pth",
                     "pytorch_model.bin"
                 ],
+                "checkpoint_files": [
+                    "clip_checkpoint.bin",
+                    "quality_assessment_checkpoint.pth",
+                    "lpips_checkpoint.pth",
+                    "checkpoint.pth",
+                    "model_checkpoint.pth",
+                    "open_clip_checkpoint.bin"
+                ],
                 "search_paths": [
                     "step_08_quality_assessment",
                     "step_08_quality_assessment/ultra_models",
                     "step_08_quality_assessment/clip_vit_g14",
-                    "checkpoints/step_08_quality_assessment"
+                    "step_08_quality_assessment/checkpoints",
+                    "checkpoints/step_08_quality_assessment",
+                    "clip/checkpoints",
+                    "lpips/checkpoints"
                 ],
-                "patterns": [r".*open_clip.*\.bin$", r".*lpips.*\.pth$"],
+                "patterns": [r".*open_clip.*\.bin$", r".*lpips.*\.pth$", r".*checkpoint.*\.(pth|bin)$"],
                 "size_range": (100, 5300),
                 "min_size_mb": 100,
                 "priority": 1,
                 "step_class": "QualityAssessmentStep",
                 "ai_class": "RealCLIPModel",
+                "model_load_method": "load_models"
+            },
+
+            # 🔥 추가 체크포인트 전용 모델들
+            "cloth_segmentation_u2net": {
+                "actual_files": [
+                    "u2net.pth",
+                    "u2netp.pth",
+                    "u2net_cloth_seg.pth"
+                ],
+                "checkpoint_files": [
+                    "u2net_checkpoint.pth",
+                    "cloth_u2net_checkpoint.pth",
+                    "checkpoint.pth"
+                ],
+                "search_paths": [
+                    "step_03_cloth_segmentation",
+                    "step_03_cloth_segmentation/checkpoints",
+                    "u2net/checkpoints",
+                    "checkpoints/u2net"
+                ],
+                "patterns": [r".*u2net.*\.pth$", r".*checkpoint.*\.pth$"],
+                "size_range": (50, 200),
+                "min_size_mb": 50,
+                "priority": 2,
+                "step_class": "ClothSegmentationStep",
+                "ai_class": "RealU2NetModel",
                 "model_load_method": "load_models"
             }
         }
@@ -270,10 +389,21 @@ class RealFileMapper:
         # 크기 우선순위 설정
         self.size_priority_threshold = 50  # 50MB 이상만
         
-        self.logger.info(f"✅ 실제 파일 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴")
+        # 체크포인트 전용 검색 패턴
+        self.checkpoint_patterns = [
+            r".*checkpoint.*\.pth$",
+            r".*checkpoint.*\.safetensors$",
+            r".*checkpoint.*\.bin$",
+            r".*ckpt.*\.pth$",
+            r".*model_checkpoint.*",
+            r".*latest_checkpoint.*",
+            r".*best_checkpoint.*"
+        ]
+        
+        self.logger.info(f"✅ 실제 파일 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴 (체크포인트 완전 지원)")
 
     def find_actual_file(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """🔥 실제 파일 구조 기반 파일 찾기 (터미널 확인 결과 반영)"""
+        """🔥 실제 파일 구조 기반 파일 찾기 (터미널 확인 결과 반영 + 체크포인트 우선 지원)"""
         try:
             # 🔥 경로 검증 및 자동 수정
             if not ai_models_root.exists():
@@ -285,7 +415,20 @@ class RealFileMapper:
                 mapping = self.step_file_mappings[request_name]
                 found_candidates = []
                 
-                # 실제 파일명으로 검색
+                # 🔥 1. 체크포인트 파일 우선 검색
+                for filename in mapping.get("checkpoint_files", []):
+                    for search_path in mapping["search_paths"]:
+                        full_path = ai_models_root / search_path / filename
+                        if full_path.exists() and full_path.is_file():
+                            file_size_mb = full_path.stat().st_size / (1024 * 1024)
+                            
+                            # 크기 검증
+                            min_size, max_size = mapping["size_range"]
+                            if min_size <= file_size_mb <= max_size:
+                                found_candidates.append((full_path, file_size_mb, "checkpoint_match"))
+                                self.logger.info(f"✅ 체크포인트 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
+                
+                # 🔥 2. 실제 모델 파일 검색
                 for filename in mapping["actual_files"]:
                     for search_path in mapping["search_paths"]:
                         full_path = ai_models_root / search_path / filename
@@ -298,27 +441,35 @@ class RealFileMapper:
                                 found_candidates.append((full_path, file_size_mb, "exact_match"))
                                 self.logger.info(f"✅ 정확한 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
                 
-                # 크기순 정렬 후 최적 선택
+                # 🔥 3. 우선순위 정렬: 체크포인트 > 크기 > 정확도
                 if found_candidates:
-                    found_candidates.sort(key=lambda x: x[1], reverse=True)
+                    # 체크포인트를 우선으로, 그 다음 크기 순
+                    def sort_priority(candidate):
+                        path, size, match_type = candidate
+                        if match_type == "checkpoint_match":
+                            return (1, size)  # 체크포인트 최우선
+                        else:
+                            return (0, size)  # 일반 파일은 크기순
+                    
+                    found_candidates.sort(key=sort_priority, reverse=True)
                     best_match = found_candidates[0]
-                    self.logger.info(f"🏆 최적 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB)")
+                    self.logger.info(f"🏆 최적 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB, {best_match[2]})")
                     return best_match[0]
             
             # 폴백: 전체 검색
-            return self._fallback_search(request_name, ai_models_root)
+            return self._fallback_search_with_checkpoints(request_name, ai_models_root)
                 
         except Exception as e:
             self.logger.error(f"❌ {request_name} 파일 찾기 실패: {e}")
             return None
 
-    def _fallback_search(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """폴백 검색 (키워드 기반)"""
+    def _fallback_search_with_checkpoints(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
+        """폴백 검색 (키워드 기반 + 체크포인트 우선)"""
         try:
             keywords = request_name.lower().split('_')
             candidates = []
             
-            extensions = ['.pth', '.bin', '.safetensors', '.pt']
+            extensions = ['.pth', '.bin', '.safetensors', '.pt', '.ckpt']
             
             for ext in extensions:
                 for model_file in ai_models_root.rglob(f"*{ext}"):
@@ -329,20 +480,72 @@ class RealFileMapper:
                             
                             # 키워드 매칭 점수
                             score = sum(1 for keyword in keywords if keyword in filename_lower)
+                            
+                            # 체크포인트 보너스 점수
+                            is_checkpoint = any(pattern.replace(r'.*', '').replace(r'\.', '.').replace('$', '') in filename_lower 
+                                              for pattern in self.checkpoint_patterns)
+                            checkpoint_bonus = 10 if is_checkpoint else 0
+                            
                             if score > 0:
-                                candidates.append((model_file, file_size_mb, score))
+                                total_score = score + checkpoint_bonus
+                                match_type = "checkpoint_fallback" if is_checkpoint else "keyword_fallback"
+                                candidates.append((model_file, file_size_mb, total_score, match_type))
             
             if candidates:
-                # 점수 우선, 크기 차선으로 정렬
+                # 총점 우선, 크기 차선으로 정렬
                 candidates.sort(key=lambda x: (x[2], x[1]), reverse=True)
                 best_match = candidates[0]
-                self.logger.info(f"🔍 폴백 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB)")
+                self.logger.info(f"🔍 폴백 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB, {best_match[3]})")
                 return best_match[0]
                 
             return None
             
         except Exception as e:
             self.logger.debug(f"폴백 검색 실패: {e}")
+            return None
+
+    def find_checkpoint_file(self, model_key: str) -> Optional[str]:
+        """
+        🔥 체크포인트 파일 전용 검색 메서드 (기존 코드 호환성)
+        
+        Args:
+            model_key: 모델 키 (예: "human_parsing_schp")
+            
+        Returns:
+            체크포인트 파일의 절대 경로 또는 None
+        """
+        try:
+            # ai_models 디렉토리 자동 감지
+            possible_roots = [
+                Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"),
+                Path("./backend/ai_models"),
+                Path("./ai_models"),
+                Path("../ai_models"),
+                Path.cwd() / "ai_models",
+                Path.cwd() / "backend" / "ai_models"
+            ]
+            
+            ai_models_root = None
+            for root in possible_roots:
+                if root.exists():
+                    ai_models_root = root.resolve()
+                    break
+            
+            if not ai_models_root:
+                self.logger.error("❌ ai_models 디렉토리를 찾을 수 없습니다")
+                return None
+            
+            # 기존 find_actual_file 메서드 활용
+            found_file = self.find_actual_file(model_key, ai_models_root)
+            
+            if found_file:
+                return str(found_file)
+            else:
+                self.logger.warning(f"❌ 체크포인트 파일 없음: {model_key}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ 체크포인트 검색 실패 ({model_key}): {e}")
             return None
 
     def get_step_info(self, request_name: str) -> Optional[Dict[str, Any]]:
@@ -355,7 +558,10 @@ class RealFileMapper:
                 "model_load_method": mapping.get("model_load_method"),
                 "priority": mapping.get("priority"),
                 "patterns": mapping.get("patterns", []),
-                "min_size_mb": mapping.get("min_size_mb", self.size_priority_threshold)
+                "min_size_mb": mapping.get("min_size_mb", self.size_priority_threshold),
+                "has_checkpoints": len(mapping.get("checkpoint_files", [])) > 0,
+                "checkpoint_count": len(mapping.get("checkpoint_files", [])),
+                "actual_file_count": len(mapping.get("actual_files", []))
             }
         return None
 
@@ -382,6 +588,84 @@ class RealFileMapper:
                 matching_models.append(model_name)
         
         return matching_models
+
+    def get_all_checkpoint_files(self, ai_models_root: Path = None) -> Dict[str, List[str]]:
+        """모든 체크포인트 파일 목록 반환"""
+        if not ai_models_root:
+            # 기본 경로 사용
+            ai_models_root = Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models")
+        
+        if not ai_models_root.exists():
+            return {}
+        
+        checkpoint_map = {}
+        
+        for model_name, mapping in self.step_file_mappings.items():
+            found_checkpoints = []
+            
+            for checkpoint_file in mapping.get("checkpoint_files", []):
+                for search_path in mapping["search_paths"]:
+                    full_path = ai_models_root / search_path / checkpoint_file
+                    if full_path.exists():
+                        found_checkpoints.append(str(full_path))
+            
+            if found_checkpoints:
+                checkpoint_map[model_name] = found_checkpoints
+        
+        return checkpoint_map
+
+    def validate_model_files(self, ai_models_root: Path = None) -> Dict[str, Any]:
+        """모델 파일 유효성 검증"""
+        if not ai_models_root:
+            ai_models_root = Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models")
+        
+        validation_results = {
+            "total_models": len(self.step_file_mappings),
+            "found_models": 0,
+            "missing_models": [],
+            "found_checkpoints": 0,
+            "model_details": {}
+        }
+        
+        for model_name, mapping in self.step_file_mappings.items():
+            model_found = False
+            checkpoint_found = False
+            
+            # 실제 파일 확인
+            for filename in mapping["actual_files"]:
+                for search_path in mapping["search_paths"]:
+                    full_path = ai_models_root / search_path / filename
+                    if full_path.exists():
+                        model_found = True
+                        break
+                if model_found:
+                    break
+            
+            # 체크포인트 파일 확인
+            for filename in mapping.get("checkpoint_files", []):
+                for search_path in mapping["search_paths"]:
+                    full_path = ai_models_root / search_path / filename
+                    if full_path.exists():
+                        checkpoint_found = True
+                        break
+                if checkpoint_found:
+                    break
+            
+            if model_found or checkpoint_found:
+                validation_results["found_models"] += 1
+                if checkpoint_found:
+                    validation_results["found_checkpoints"] += 1
+            else:
+                validation_results["missing_models"].append(model_name)
+            
+            validation_results["model_details"][model_name] = {
+                "model_found": model_found,
+                "checkpoint_found": checkpoint_found,
+                "step_class": mapping.get("step_class"),
+                "priority": mapping.get("priority")
+            }
+        
+        return validation_results
 
 # ==============================================
 # 🔥 2. DetectedModel 클래스 (ModelLoader v5.1 완전 호환)

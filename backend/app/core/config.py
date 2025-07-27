@@ -93,8 +93,10 @@ class DeviceManager:
             print("✅ MPS 전역 설정 완료")
             
 # 전역 설정 적용
-device_manager = DeviceManager()
-device_manager.force_mps_globally()
+memory_manager = DeviceManager()
+memory_manager.force_mps_globally()
+
+
 # ===============================================================
 # 🚨 SafeConfigMixin - get 메서드 문제 완전 해결
 # ===============================================================

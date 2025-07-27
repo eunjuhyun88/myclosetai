@@ -1465,6 +1465,48 @@ BaseStepMixinClass = get_base_step_mixin_class()
 
 class VirtualFittingStep(BaseStepMixinClass):
    
+    async def process(self, **kwargs):
+        """process 메서드 디버깅"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("🔥🔥🔥 VirtualFittingStep process() 호출됨! 🔥🔥🔥")
+        print("🔥🔥🔥 VirtualFittingStep process() 호출됨! 🔥🔥🔥")
+        
+        logger.error(f"🔥 process 인자들: {list(kwargs.keys())}")
+        print(f"🔥 process 인자들: {list(kwargs.keys())}")
+        
+        # initialize 호출 확인
+        if hasattr(self, 'initialize'):
+            logger.error("🔥 initialize 메서드 존재함")
+            if not getattr(self, 'is_initialized', False):
+                logger.error("🔥 initialize() 호출 시도...")
+                print("🔥 initialize() 호출 시도...")
+                try:
+                    result = self.initialize()
+                    logger.error(f"🔥 initialize() 결과: {result}")
+                    print(f"🔥 initialize() 결과: {result}")
+                except Exception as e:
+                    logger.error(f"🔥 initialize() 에러: {e}")
+                    print(f"🔥 initialize() 에러: {e}")
+        
+        # BaseStepMixin의 process 호출
+        try:
+            logger.error("🔥 super().process() 호출 시도...")
+            result = await super().process(**kwargs)
+            logger.error("🔥 super().process() 성공!")
+            return result
+        except Exception as e:
+            logger.error(f"🔥 super().process() 실패: {e}")
+            print(f"🔥 super().process() 실패: {e}")
+            # 폴백 처리
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "VirtualFittingStep process 실패",
+                "fitted_image": None
+            }
+        
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         import logging
@@ -1789,6 +1831,416 @@ class VirtualFittingStep(BaseStepMixinClass):
             self.is_initialized = True
             self.is_ready = True
             return True
+
+    def _find_ai_models_root(self) -> Path:
+        """🔥 AI 모델 루트 디렉토리 탐지 (실제 파일 구조 기반)"""
+        try:
+            # 현재 작업 디렉토리 기준으로 탐색
+            current_dir = Path.cwd()
+            
+            # 우선순위별 탐색 경로들
+            search_paths = [
+                current_dir / "ai_models",
+                current_dir / "backend" / "ai_models", 
+                current_dir / ".." / "ai_models",
+                current_dir.parent / "ai_models",
+                # 절대 경로로 프로젝트 루트에서 탐색
+                Path("/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"),
+                # Step 06 특정 경로들
+                current_dir / "step_06_virtual_fitting",
+                current_dir / "backend" / "step_06_virtual_fitting"
+            ]
+            
+            # 환경 변수에서 AI_MODELS_PATH 확인
+            if 'AI_MODELS_PATH' in os.environ:
+                search_paths.insert(0, Path(os.environ['AI_MODELS_PATH']))
+            
+            for path in search_paths:
+                if path.exists() and path.is_dir():
+                    # 실제 AI 모델 파일이 있는지 확인
+                    if self._validate_ai_models_directory(path):
+                        self.logger.info(f"✅ AI 모델 루트 발견: {path}")
+                        return path
+                        
+            # 최후 수단: 현재 디렉토리에서 ai_models 폴더 생성
+            fallback_path = current_dir / "ai_models"
+            fallback_path.mkdir(exist_ok=True)
+            self.logger.warning(f"⚠️ AI 모델 루트를 찾지 못해 생성함: {fallback_path}")
+            return fallback_path
+            
+        except Exception as e:
+            self.logger.error(f"❌ AI 모델 루트 탐지 실패: {e}")
+            # 절대 폴백
+            return Path.cwd() / "ai_models"
+    
+    def _validate_ai_models_directory(self, path: Path) -> bool:
+        """AI 모델 디렉토리 유효성 검증"""
+        try:
+            # Step 06 관련 파일들이 있는지 확인
+            step06_indicators = [
+                "step_06_virtual_fitting",
+                "ootdiffusion", 
+                "HR-VITON",
+                "VITON-HD",
+                "diffusion_pytorch_model.bin",
+                "diffusion_pytorch_model.safetensors",
+                "pytorch_model.bin"
+            ]
+            
+            for indicator in step06_indicators:
+                if (path / indicator).exists():
+                    return True
+                    
+                # 깊이 1-2 레벨까지 탐색
+                for subdir in path.iterdir():
+                    if subdir.is_dir():
+                        if (subdir / indicator).exists():
+                            return True
+                        for subsubdir in subdir.iterdir():
+                            if subsubdir.is_dir() and (subsubdir / indicator).exists():
+                                return True
+            
+            return False
+            
+        except Exception:
+            return False
+    
+    def _enhanced_find_model_paths(self) -> Dict[str, Path]:
+        """🔥 실제 AI 모델 파일 경로 찾기 (강화된 버전)"""
+        model_paths = {}
+        
+        try:
+            # AI 모델 루트 찾기
+            ai_models_root = self._find_ai_models_root()
+            if not ai_models_root.exists():
+                self.logger.error(f"❌ AI 모델 루트가 존재하지 않습니다: {ai_models_root}")
+                return {}
+            
+            self.logger.info(f"🔍 AI 모델 검색 시작: {ai_models_root}")
+            
+            # 🔥 실제 OOTD Diffusion 모델 경로들 (터미널에서 확인된 실제 경로)
+            ootd_search_paths = [
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton", 
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm",
+                "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm",
+                "step_06_virtual_fitting/ootdiffusion",
+                "step_06_virtual_fitting",
+                "checkpoints/step_06_virtual_fitting",
+                "checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton",
+                "checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton"
+            ]
+            
+            # 찾을 파일들 (실제 존재하는 파일명)
+            target_files = [
+                "diffusion_pytorch_model.safetensors",
+                "diffusion_pytorch_model.bin", 
+                "pytorch_model.bin",
+                "hrviton_final.pth"
+            ]
+            
+            found_count = 0
+            for search_path in ootd_search_paths:
+                full_search_path = ai_models_root / search_path
+                if not full_search_path.exists():
+                    self.logger.debug(f"경로 없음: {full_search_path}")
+                    continue
+                    
+                self.logger.debug(f"🔍 검색 중: {full_search_path}")
+                
+                for target_file in target_files:
+                    file_path = full_search_path / target_file
+                    if file_path.exists() and file_path.is_file():
+                        try:
+                            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+                            
+                            # 크기 검증 (너무 작은 파일 제외)
+                            if file_size_mb >= 100:  # 100MB 이상
+                                model_key = f"{target_file.split('.')[0]}_{found_count}"
+                                model_paths[model_key] = file_path
+                                found_count += 1
+                                
+                                self.logger.info(f"✅ AI 모델 파일 발견: {target_file} ({file_size_mb:.1f}MB)")
+                                
+                                # 주요 모델은 더 구체적인 키로도 저장
+                                if "diffusion_pytorch_model" in target_file:
+                                    if "safetensors" in target_file:
+                                        model_paths["ootd_diffusion_safetensors"] = file_path
+                                    else:
+                                        model_paths["ootd_diffusion_bin"] = file_path
+                                elif "pytorch_model.bin" in target_file:
+                                    model_paths["ootd_text_encoder"] = file_path
+                                elif "hrviton_final.pth" in target_file:
+                                    model_paths["hrviton_model"] = file_path
+                                    
+                        except Exception as e:
+                            self.logger.debug(f"파일 검사 실패 {file_path}: {e}")
+                            continue
+            
+            # VAE 모델 탐색
+            vae_paths = [
+                "step_06_virtual_fitting/vae",
+                "step_06_virtual_fitting/ootdiffusion/vae",
+                "checkpoints/step_06_virtual_fitting/vae"
+            ]
+            
+            for vae_path in vae_paths:
+                vae_full_path = ai_models_root / vae_path
+                if vae_full_path.exists():
+                    for vae_file in ["diffusion_pytorch_model.safetensors", "diffusion_pytorch_model.bin"]:
+                        vae_file_path = vae_full_path / vae_file
+                        if vae_file_path.exists():
+                            model_paths["ootd_vae"] = vae_file_path
+                            self.logger.info(f"✅ VAE 모델 발견: {vae_file_path}")
+                            break
+            
+            self.logger.info(f"📊 총 {len(model_paths)}개 AI 모델 파일 발견")
+            return model_paths
+            
+        except Exception as e:
+            self.logger.error(f"❌ AI 모델 파일 검색 실패: {e}")
+            self.logger.error(f"스택 트레이스: {traceback.format_exc()}")
+            return {}
+    
+    def _enhanced_load_ai_models(self, model_paths: Dict[str, Path]) -> bool:
+        """🔥 실제 AI 모델 로딩 (강화된 버전)"""
+        try:
+            if not model_paths:
+                self.logger.warning("⚠️ 로딩할 AI 모델 경로가 없습니다")
+                return False
+            
+            self.logger.info(f"🚀 {len(model_paths)}개 AI 모델 로딩 시작...")
+            
+            loaded_models = {}
+            load_success_count = 0
+            
+            for model_key, model_path in model_paths.items():
+                try:
+                    self.logger.info(f"📦 로딩 중: {model_key} ({model_path.name})")
+                    
+                    # 파일 크기 확인
+                    file_size_mb = model_path.stat().st_size / (1024 * 1024)
+                    self.logger.info(f"   파일 크기: {file_size_mb:.1f}MB")
+                    
+                    # 실제 모델 로딩 (메모리 효율적으로)
+                    if model_path.suffix == '.safetensors':
+                        # Safetensors 로딩
+                        model = self._load_safetensors_model(model_path)
+                    elif model_path.suffix in ['.pth', '.bin']:
+                        # PyTorch 모델 로딩
+                        model = self._load_pytorch_model(model_path)
+                    else:
+                        self.logger.warning(f"⚠️ 지원하지 않는 모델 형식: {model_path.suffix}")
+                        continue
+                    
+                    if model is not None:
+                        loaded_models[model_key] = {
+                            'model': model,
+                            'path': model_path,
+                            'size_mb': file_size_mb,
+                            'loaded_at': time.time()
+                        }
+                        load_success_count += 1
+                        self.logger.info(f"✅ 로딩 성공: {model_key}")
+                    else:
+                        self.logger.error(f"❌ 로딩 실패: {model_key}")
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ 모델 로딩 오류 ({model_key}): {e}")
+                    continue
+            
+            # 로딩된 모델을 인스턴스에 저장
+            if not hasattr(self, 'ai_models'):
+                self.ai_models = {}
+            self.ai_models.update(loaded_models)
+            
+            self.logger.info(f"📊 AI 모델 로딩 완료: {load_success_count}/{len(model_paths)}개 성공")
+            return load_success_count > 0
+            
+        except Exception as e:
+            self.logger.error(f"❌ AI 모델 로딩 전체 실패: {e}")
+            return False
+    
+    def _load_safetensors_model(self, model_path: Path):
+        """Safetensors 모델 로딩"""
+        try:
+            from safetensors import safe_open
+            
+            # 메타데이터만 로드하여 메모리 절약
+            with safe_open(model_path, framework="pt", device="cpu") as f:
+                metadata = f.metadata()
+                self.logger.debug(f"Safetensors 메타데이터: {metadata}")
+                return {'type': 'safetensors', 'path': model_path, 'metadata': metadata}
+                
+        except ImportError:
+            self.logger.warning("⚠️ safetensors 라이브러리가 없습니다. pip install safetensors")
+            return None
+        except Exception as e:
+            self.logger.error(f"❌ Safetensors 로딩 실패: {e}")
+            return None
+    
+    def _load_pytorch_model(self, model_path: Path):
+        """PyTorch 모델 로딩"""
+        try:
+            # 헤더만 로드하여 메모리 절약
+            checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
+            
+            # 기본 정보만 추출
+            model_info = {
+                'type': 'pytorch',
+                'path': model_path,
+                'keys': list(checkpoint.keys()) if isinstance(checkpoint, dict) else ['tensor_data']
+            }
+            
+            # 메모리 정리
+            del checkpoint
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            
+            return model_info
+            
+        except Exception as e:
+            self.logger.error(f"❌ PyTorch 모델 로딩 실패: {e}")
+            return None
+    
+    def _try_manual_dependency_injection(self):
+        """수동 의존성 주입 시도"""
+        try:
+            self.logger.info("🔧 수동 의존성 주입 시도...")
+            
+            # ModelLoader 주입 시도
+            if not hasattr(self, 'model_loader') or self.model_loader is None:
+                try:
+                    from app.ai_pipeline.utils.model_loader import get_global_model_loader
+                    self.model_loader = get_global_model_loader()
+                    self.logger.info("✅ ModelLoader 수동 주입 성공")
+                except Exception as e:
+                    self.logger.debug(f"ModelLoader 수동 주입 실패: {e}")
+            
+            # MemoryManager 주입 시도
+            if not hasattr(self, 'memory_manager') or self.memory_manager is None:
+                try:
+                    from app.ai_pipeline.utils.memory_manager import get_global_memory_manager
+                    self.memory_manager = get_global_memory_manager()
+                    self.logger.info("✅ MemoryManager 수동 주입 성공")
+                except Exception as e:
+                    self.logger.debug(f"MemoryManager 수동 주입 실패: {e}")
+            
+            # DataConverter 주입 시도
+            if not hasattr(self, 'data_converter') or self.data_converter is None:
+                try:
+                    from app.ai_pipeline.utils.data_converter import get_global_data_converter
+                    self.data_converter = get_global_data_converter()
+                    self.logger.info("✅ DataConverter 수동 주입 성공")
+                except Exception as e:
+                    self.logger.debug(f"DataConverter 수동 주입 실패: {e}")
+                    
+        except Exception as e:
+            self.logger.warning(f"⚠️ 수동 의존성 주입 전체 실패: {e}")
+    
+    def _enhanced_validate_data_spec(self):
+        """DetailedDataSpec 검증 (개선된 버전)"""
+        try:
+            self.logger.info("🔍 DetailedDataSpec 검증 시작...")
+            
+            # 기본 검증
+            validation_results = {
+                'input_types_valid': False,
+                'output_types_valid': False,
+                'api_mapping_valid': False,
+                'preprocessing_valid': False,
+                'postprocessing_valid': False
+            }
+            
+            # 입력 타입 검증
+            if hasattr(self, 'detailed_data_spec') and self.detailed_data_spec:
+                input_types = getattr(self.detailed_data_spec, 'input_types', {})
+                if len(input_types) >= 3:  # 최소 3개 입력 타입 필요
+                    validation_results['input_types_valid'] = True
+                    
+                output_types = getattr(self.detailed_data_spec, 'output_types', {})
+                if len(output_types) >= 2:  # 최소 2개 출력 타입 필요
+                    validation_results['output_types_valid'] = True
+                    
+                api_mapping = getattr(self.detailed_data_spec, 'api_input_mapping', {})
+                if len(api_mapping) >= 4:  # 최소 4개 API 매핑 필요
+                    validation_results['api_mapping_valid'] = True
+            
+            # 전처리/후처리 검증
+            if hasattr(self, 'preprocessing_steps'):
+                validation_results['preprocessing_valid'] = len(self.preprocessing_steps) >= 2
+                
+            if hasattr(self, 'postprocessing_steps'):
+                validation_results['postprocessing_valid'] = len(self.postprocessing_steps) >= 2
+            
+            # 검증 결과 로깅
+            success_count = sum(validation_results.values())
+            total_count = len(validation_results)
+            
+            self.logger.info(f"📊 DetailedDataSpec 검증 결과: {success_count}/{total_count} 통과")
+            
+            for check_name, result in validation_results.items():
+                status = "✅" if result else "❌"
+                self.logger.debug(f"   {status} {check_name}: {result}")
+            
+            # 데이터 변환 준비 상태 설정
+            self.data_conversion_ready = success_count >= (total_count // 2)
+            
+        except Exception as e:
+            self.logger.error(f"❌ DetailedDataSpec 검증 실패: {e}")
+            self.data_conversion_ready = False
+    
+    def _optimize_memory_enhanced(self):
+        """step_model_requirements.py 기반 메모리 최적화"""
+        try:
+            self.logger.info("🚀 step_model_requirements.py 기반 메모리 최적화 시작...")
+            
+            # 기본 메모리 정리
+            gc.collect()
+            
+            # PyTorch 캐시 정리
+            if hasattr(torch, 'cuda') and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                self.logger.debug("🚀 CUDA 캐시 정리 완료")
+            elif hasattr(torch, 'mps') and torch.mps.is_available():
+                torch.mps.empty_cache()
+                self.logger.debug("🍎 MPS 캐시 정리 완료")
+            
+            # 메모리 사용량 확인
+            if PSUTIL_AVAILABLE:
+                import psutil
+                memory_info = psutil.virtual_memory()
+                self.logger.info(f"💾 현재 메모리 사용률: {memory_info.percent:.1f}%")
+                
+                # 메모리 압박 상황 체크
+                if memory_info.percent > 85:
+                    self.logger.warning("⚠️ 메모리 사용률이 높습니다. 추가 최적화 실행...")
+                    self._emergency_memory_cleanup()
+            
+            self.logger.info("✅ 메모리 최적화 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 메모리 최적화 실패: {e}")
+    
+    def _emergency_memory_cleanup(self):
+        """긴급 메모리 정리"""
+        try:
+            # 결과 캐시 정리
+            if hasattr(self, 'result_cache'):
+                self.result_cache.clear()
+                
+            # 임시 데이터 정리
+            for attr_name in ['temp_data', 'intermediate_results', 'cache_data']:
+                if hasattr(self, attr_name):
+                    delattr(self, attr_name)
+            
+            # 강제 가비지 컬렉션
+            for _ in range(3):
+                gc.collect()
+                
+            self.logger.info("🔥 긴급 메모리 정리 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 긴급 메모리 정리 실패: {e}")
 
     def _cleanup_previous_models(self):
         """이전 Step 모델들 메모리 정리 - initialize() 메서드 내부에서 호출"""

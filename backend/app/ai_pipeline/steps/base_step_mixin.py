@@ -318,13 +318,32 @@ class GitHubPerformanceMetrics:
 class GitHubDependencyManager:
     """GitHub 프로젝트 완전 호환 의존성 관리자 v19.1"""
     
-    def __init__(self, step_name: str):
+    def __init__(self, step_name: str, **kwargs):  # 🔥 **kwargs 추가!
         self.step_name = step_name
         self.logger = logging.getLogger(f"GitHubDependencyManager.{step_name}")
         self.injected_dependencies = {}
-        self.injected_dependencies = {}  # 🔥 추가 필요
         self.step_instance = None        # 🔥 추가 필요
         
+
+         # 🔥 dependency_status 속성 추가 (오류 해결!)
+        self.dependency_status = GitHubDependencyStatus()
+        self.dependencies = {}
+        self.injection_attempts = {}
+        self.injection_errors = {}
+        self.last_injection_time = time.time()
+
+        # 선택적 매개변수 처리
+        self.memory_gb = kwargs.get('memory_gb', 4)
+        self.quality_level = kwargs.get('quality_level', 'balanced')
+        self.auto_inject_dependencies = kwargs.get('auto_inject_dependencies', True)
+        self.dependency_timeout = kwargs.get('dependency_timeout', 30.0)
+        self.dependency_retry_count = kwargs.get('dependency_retry_count', 3)
+        
+        # 성능 메트릭
+        self.dependencies_injected = 0
+        self.injection_failures = 0
+        self.validation_attempts = 0
+       
     def set_step_instance(self, step_instance):
         """Step 인스턴스 설정"""
         self.step_instance = step_instance
@@ -347,12 +366,17 @@ class GitHubDependencyManager:
                         self.step_instance.model_loader = model_loader
                         self.injected_dependencies['model_loader'] = model_loader
                         success_count += 1
+                        self.dependencies_injected += 1
+
                         self.logger.info("✅ ModelLoader 자동 주입 성공")
                     else:
                         self.logger.warning("⚠️ ModelLoader 해결 실패")
+                        self.injection_failures += 1
+
                 except Exception as e:
                     self.logger.warning(f"⚠️ ModelLoader 자동 주입 실패: {e}")
-            
+                    self.injection_failures += 1
+
             # MemoryManager 자동 주입  
             if not hasattr(self.step_instance, 'memory_manager') or self.step_instance.memory_manager is None:
                 total_dependencies += 1
@@ -361,10 +385,15 @@ class GitHubDependencyManager:
                     if memory_manager:
                         self.step_instance.memory_manager = memory_manager
                         self.injected_dependencies['memory_manager'] = memory_manager
+                        self.dependency_status.memory_manager = True  # 🔥 상태 업데이트
                         success_count += 1
+                        self.dependencies_injected += 1
+
                         self.logger.info("✅ MemoryManager 자동 주입 성공")
                     else:
                         self.logger.warning("⚠️ MemoryManager 해결 실패")
+                        self.injection_failures += 1
+
                 except Exception as e:
                     self.logger.warning(f"⚠️ MemoryManager 자동 주입 실패: {e}")
             
@@ -376,13 +405,20 @@ class GitHubDependencyManager:
                     if data_converter:
                         self.step_instance.data_converter = data_converter
                         self.injected_dependencies['data_converter'] = data_converter
+                        self.dependency_status.data_converter = True  # 🔥 상태 업데이트
+
                         success_count += 1
+                        self.dependencies_injected += 1
+
                         self.logger.info("✅ DataConverter 자동 주입 성공")
                     else:
                         self.logger.warning("⚠️ DataConverter 해결 실패")
+                        self.injection_failures += 1
+
                 except Exception as e:
                     self.logger.warning(f"⚠️ DataConverter 자동 주입 실패: {e}")
-            
+                    self.injection_failures += 1
+
             # 성공 여부 판단
             if total_dependencies == 0:
                 self.logger.info("✅ 모든 의존성이 이미 주입되어 있음")
@@ -421,6 +457,15 @@ class GitHubDependencyManager:
     def _resolve_memory_manager(self):
         """MemoryManager 해결"""
         try:
+            # memory_manager에서 가져오기 시도
+            from app.ai_pipeline.utils.memory_manager import get_global_memory_manager
+            memory_manager = get_global_memory_manager()
+            if memory_manager:
+                return memory_manager
+                
+        except Exception:
+            pass
+        try:
             # 기본 MemoryManager 구현
             class BasicMemoryManager:
                 def __init__(self):
@@ -439,13 +484,14 @@ class GitHubDependencyManager:
                             import torch
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
-                                
-                        return True
+                        return {"success": True, "method": "basic_cleanup"}
                     except Exception:
                         return False
                         
                 def get_memory_stats(self):
                     return {"available": True, "optimized": True}
+                def cleanup_memory(self, aggressive=False):
+                    return self.optimize_memory()
             
             return BasicMemoryManager()
             
@@ -479,36 +525,63 @@ class GitHubDependencyManager:
     def inject_model_loader(self, model_loader):
         """ModelLoader 주입"""
         try:
-            self.step_instance.model_loader = model_loader
+            if self.step_instance:
+                self.step_instance.model_loader = model_loader
             self.injected_dependencies['model_loader'] = model_loader
+            self.dependency_status.model_loader = True
+            self.dependency_status.base_initialized = True
+
+            self.dependencies_injected += 1
             return True
         except Exception as e:
             self.logger.error(f"ModelLoader 주입 실패: {e}")
+            self.injection_failures += 1
             return False
     
     def inject_memory_manager(self, memory_manager):
         """MemoryManager 주입"""
         try:
-            self.step_instance.memory_manager = memory_manager
+            if self.step_instance:
+                self.step_instance.memory_manager = memory_manager
             self.injected_dependencies['memory_manager'] = memory_manager
+            self.dependency_status.memory_manager = True
+            self.dependencies_injected += 1
             return True
         except Exception as e:
             self.logger.error(f"MemoryManager 주입 실패: {e}")
+            self.injection_failures += 1
+
             return False
     
     def inject_data_converter(self, data_converter):
         """DataConverter 주입"""
         try:
-            self.step_instance.data_converter = data_converter
+            if self.step_instance:
+                self.step_instance.data_converter = data_converter
             self.injected_dependencies['data_converter'] = data_converter
+            self.dependency_status.data_converter = True
+            self.dependencies_injected += 1
             return True
         except Exception as e:
             self.logger.error(f"DataConverter 주입 실패: {e}")
+            self.injection_failures += 1
+
             return False
-    
+    def inject_di_container(self, di_container):
+        """DI Container 의존성 주입"""
+        try:
+            self.dependencies['di_container'] = di_container
+            self.dependency_status.di_container = True
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 주입 실패: {e}")
+            return False
+        
     def validate_dependencies_github_format(self, format_type=None):
         """GitHub 형식 의존성 검증"""
         try:
+            self.validation_attempts += 1
+
             dependencies = {
                 'model_loader': hasattr(self.step_instance, 'model_loader') and self.step_instance.model_loader is not None,
                 'memory_manager': hasattr(self.step_instance, 'memory_manager') and self.step_instance.memory_manager is not None,
@@ -516,14 +589,24 @@ class GitHubDependencyManager:
                 'step_interface': True,  # 기본값
             }
             
-            if format_type and hasattr(format_type, 'BOOLEAN_DICT'):
+            if format_type and hasattr(format_type, 'value') and format_type.value == 'boolean_dict':
+                return dependencies
+            elif format_type and str(format_type).upper() == 'BOOLEAN_DICT':
                 return dependencies
             else:
+                # 상세 정보 반환
                 return {
                     'success': all(dependencies.values()),
                     'dependencies': dependencies,
                     'github_compatible': True,
-                    'injected_count': len(self.injected_dependencies)
+                    'injected_count': len(self.injected_dependencies),
+                    'step_name': self.step_name,
+                    'metrics': {
+                        'injected': self.dependencies_injected,
+                        'failures': self.injection_failures,
+                        'validation_attempts': self.validation_attempts
+                    },
+                    'timestamp': time.time()
                 }
                 
         except Exception as e:
