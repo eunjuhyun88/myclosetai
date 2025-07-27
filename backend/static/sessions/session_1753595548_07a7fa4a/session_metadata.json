@@ -1,0 +1,211 @@
+{
+  "metadata": {
+    "session_id": "session_1753595548_07a7fa4a",
+    "created_at": "2025-07-27T14:52:28.103971",
+    "last_accessed": "2025-07-27T14:52:30.757914",
+    "measurements": {},
+    "person_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753595548_07a7fa4a/person.jpg",
+      "size": [
+        360,
+        706
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 46265
+    },
+    "clothing_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753595548_07a7fa4a/clothing.jpg",
+      "size": [
+        2000,
+        2667
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 556419
+    },
+    "total_steps": 8,
+    "completed_steps": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "circular_reference_safe": true
+  },
+  "step_results": {
+    "0": {
+      "person_image": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "clothing_image": {
+        "type": "PIL_Image",
+        "size": [
+          2000,
+          2667
+        ],
+        "mode": "RGB"
+      },
+      "primary_output": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "measurements": {},
+      "processing_time": 0.0,
+      "quality_score": 1.0,
+      "timestamp": "2025-07-27T14:52:28.103998",
+      "step_id": 0
+    },
+    "1": {
+      "success": true,
+      "message": "이미지 업로드 검증 완료",
+      "step_id": 1,
+      "step_name": "Upload Validation",
+      "session_id": "session_1753595548_07a7fa4a",
+      "request_id": "step1_29720734",
+      "processing_mode": "validation",
+      "timestamp": "2025-07-27T14:52:28.104555",
+      "confidence": 0.87,
+      "processing_time": 0.0,
+      "quality_score": 0.0
+    },
+    "2": {
+      "success": true,
+      "message": "신체 측정값 검증 완료",
+      "step_id": 2,
+      "step_name": "Measurements Validation",
+      "session_id": "session_1753595548_07a7fa4a",
+      "request_id": "step2_ffb750fd",
+      "processing_mode": "validation",
+      "measurements_bmi": 22.49,
+      "measurements": {
+        "height": 170.0,
+        "weight": 65.0,
+        "chest": 0.0,
+        "waist": 0.0,
+        "hips": 0.0,
+        "bmi": 22.49
+      },
+      "timestamp": "2025-07-27T14:52:28.168259",
+      "confidence": 0.89,
+      "processing_time": 0.0,
+      "quality_score": 0.0
+    },
+    "3": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.HUMAN_PARSING",
+      "timestamp": "2025-07-27T14:52:28.174506",
+      "request_id": "step3_27fb40bd",
+      "confidence": 0.9099999999999999,
+      "processing_time": 0.0,
+      "step_id": 3,
+      "step_name": "Human Parsing",
+      "quality_score": 0.0
+    },
+    "4": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.POSE_ESTIMATION",
+      "timestamp": "2025-07-27T14:52:28.688883",
+      "request_id": "step4_fa6ff251",
+      "confidence": 0.9299999999999999,
+      "processing_time": 0.0,
+      "step_id": 4,
+      "step_name": "Pose Estimation",
+      "quality_score": 0.0
+    },
+    "5": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.CLOTH_SEGMENTATION",
+      "timestamp": "2025-07-27T14:52:29.208095",
+      "request_id": "step5_9f29708f",
+      "confidence": 0.95,
+      "processing_time": 0.0,
+      "step_id": 5,
+      "step_name": "Clothing Analysis",
+      "quality_score": 0.0
+    },
+    "6": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.GEOMETRIC_MATCHING",
+      "timestamp": "2025-07-27T14:52:29.723143",
+      "request_id": "step6_69dff958",
+      "confidence": 0.97,
+      "processing_time": 0.0,
+      "step_id": 6,
+      "step_name": "Geometric Matching",
+      "quality_score": 0.0
+    },
+    "7": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.VIRTUAL_FITTING",
+      "timestamp": "2025-07-27T14:52:30.241661",
+      "request_id": "step7_cc32eb0c",
+      "confidence": 0.99,
+      "processing_time": 0.0,
+      "step_id": 7,
+      "step_name": "Virtual Fitting",
+      "fit_score": 0.99,
+      "recommendations": [
+        "이 의류는 당신의 체형에 잘 맞습니다",
+        "어깨 라인이 자연스럽게 표현되었습니다",
+        "전체적인 비율이 균형잡혀 보입니다"
+      ],
+      "quality_score": 0.0
+    },
+    "8": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.QUALITY_ASSESSMENT",
+      "timestamp": "2025-07-27T14:52:30.757945",
+      "request_id": "step8_be4f3ffa",
+      "confidence": 1.01,
+      "processing_time": 0.0,
+      "step_id": 8,
+      "step_name": "Result Analysis",
+      "quality_score": 0.0
+    }
+  },
+  "step_processing_times": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "step_quality_scores": {
+    "0": 1.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "last_saved": "2025-07-27T14:52:30.758203",
+  "circular_reference_safe": true
+}
