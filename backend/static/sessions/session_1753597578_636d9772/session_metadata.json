@@ -1,0 +1,212 @@
+{
+  "metadata": {
+    "session_id": "session_1753597578_636d9772",
+    "created_at": "2025-07-27T15:26:18.174717",
+    "last_accessed": "2025-07-27T15:26:20.839475",
+    "measurements": {},
+    "person_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753597578_636d9772/person.jpg",
+      "size": [
+        360,
+        706
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 46265
+    },
+    "clothing_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753597578_636d9772/clothing.jpg",
+      "size": [
+        2000,
+        2667
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 556419
+    },
+    "total_steps": 8,
+    "completed_steps": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "circular_reference_safe": true
+  },
+  "step_results": {
+    "0": {
+      "person_image": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "clothing_image": {
+        "type": "PIL_Image",
+        "size": [
+          2000,
+          2667
+        ],
+        "mode": "RGB"
+      },
+      "primary_output": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "measurements": {},
+      "processing_time": 0.0,
+      "quality_score": 1.0,
+      "timestamp": "2025-07-27T15:26:18.174749",
+      "step_id": 0
+    },
+    "1": {
+      "success": true,
+      "message": "이미지 업로드 검증 완료",
+      "step_id": 1,
+      "step_name": "Upload Validation",
+      "session_id": "session_1753597578_636d9772",
+      "request_id": "step1_f4cf393c",
+      "processing_mode": "validation",
+      "timestamp": "2025-07-27T15:26:18.175388",
+      "confidence": 0.87,
+      "processing_time": 0.0,
+      "quality_score": 0.0
+    },
+    "2": {
+      "success": true,
+      "message": "신체 측정값 검증 완료",
+      "step_id": 2,
+      "step_name": "Measurements Validation",
+      "session_id": "session_1753597578_636d9772",
+      "request_id": "step2_cedefcc1",
+      "processing_mode": "validation",
+      "measurements_bmi": 22.49,
+      "measurements": {
+        "height": 170.0,
+        "weight": 65.0,
+        "chest": 0.0,
+        "waist": 0.0,
+        "hips": 0.0,
+        "bmi": 22.49
+      },
+      "timestamp": "2025-07-27T15:26:18.245437",
+      "confidence": 0.89,
+      "processing_time": 0.0,
+      "quality_score": 0.0
+    },
+    "3": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.HUMAN_PARSING",
+      "timestamp": "2025-07-27T15:26:18.250775",
+      "request_id": "step3_144b930a",
+      "confidence": 0.9099999999999999,
+      "processing_time": 0.0,
+      "step_id": 3,
+      "step_name": "Human Parsing",
+      "quality_score": 0.0
+    },
+    "4": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.POSE_ESTIMATION",
+      "timestamp": "2025-07-27T15:26:18.761660",
+      "request_id": "step4_7cd4765f",
+      "confidence": 0.9299999999999999,
+      "processing_time": 0.0,
+      "step_id": 4,
+      "step_name": "Pose Estimation",
+      "quality_score": 0.0
+    },
+    "5": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.CLOTH_SEGMENTATION",
+      "timestamp": "2025-07-27T15:26:19.272899",
+      "request_id": "step5_3469e7f7",
+      "confidence": 0.95,
+      "processing_time": 0.0,
+      "step_id": 5,
+      "step_name": "Clothing Analysis",
+      "quality_score": 0.0
+    },
+    "6": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.GEOMETRIC_MATCHING",
+      "timestamp": "2025-07-27T15:26:19.793245",
+      "request_id": "step6_0e32acff",
+      "confidence": 0.97,
+      "processing_time": 0.0,
+      "step_id": 6,
+      "step_name": "Geometric Matching",
+      "quality_score": 0.0
+    },
+    "7": {
+      "success": false,
+      "error": "'NoneType' object has no attribute 'get_session_data'",
+      "step_id": 7,
+      "step_name": "Virtual Fitting",
+      "session_id": "session_1753597578_636d9772",
+      "fitted_image": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAIAAgADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD69oooroOcKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKK5T4uTalB8ONZfR7PUbvUDCEto9PkkScOzqodTH83y53kDghSDwTXl9zc+KRoOi6Le2vjdL3SvE7QXtzA9/KbvTDIzPIZo0QSDBVQQN2EyoUNiuOvi1Rny8rel/x22+fyPoMryCWYUPbKrGPvctna9uVvmtzLS6Udt5Lpe3vdFVtU8n+zLr7R9p8nyX8z7P5nm7dpzs8v592Omz5s4xzivEfh/D8RbT4faxrt9qviKC9TTXggsp4Li7u5b1ZWeOXy5422KVaOMiMMpUlmKsvy3WxHspqPK3dN6eRhl2ULG0J1faxg4yjFJ31ctrWfTrpZdWj3eivFda1T4qQeHtK1i21DVZRqVtcS3dvBoKibT7pYpWhgWNkZzE0hSMs6sf3YbeokrZstY+Iz+OLK21a0vbKBksP9Hs9NSe0lDwubsyzF/3RSQALiTOAuI5N2TmsdFu3K+nTudc+GasYOar03bm+1r7u6s7Pf5Ws9U0eo0V4z4d134pzWGvHWZv7PvPscvkRPolzP8AZbkTlV8ryoNjxlGHR5z8ofld61SbxN8Tn8IoUj1631K1v28+STR2d9ShSNci3K2v7gM33fOh/jH7w7HUT/aELX5Zfd2/r+nobLhOu5uHt6ejS+LTVXvfquml9WnpHVe50V46dQ8Qaj4z8F3M1p4mtxLbTJqH2vQ4pX0ySS2VY3jnW2wpdzuY5wOjqgBQZ2n+KPjE/h+6l/sm9lv5fD32lFn0zy/IukujCwQbVy7QDzvLbcS2No2kIT6/FN+6/kvK4lwrWklatBN2veSX2nHu9rX9LNaNHudFcH8Htd1TxDF4jutRv7m5js9Yk061Sa2WErFCiYdl2Kwkfdlw2ADwFQcVjeG7DWL74zeI3uLvxFDoltNDNZR3J1BIJWC/vRE/mLFtEpB2srqy8IAoJrX60nGEoxvzO356/gcTySVOriKVaooujFSejd78ui1WvvLv17XPVaK8V8H+LvHV3rV9b+Jo/E1hplzbPLBdQeHJPOtphcnZGqCBwoaHGQxmxgYkBJAwdaguNY/Z8i0a/wDCOot4sg3eRFF4Xli8jddhm8spCI03RgE7SM98msHmMXFyjF7N66bdNuvT/hz04cI1I1o061WNnKEW4tNJST97WSVotWlrp80fRFFeVXPiPx5d/EyAWENzaeGWmtRCtzpFyBcwtuWcviBnjkD9C7xKAqkqysWrF+FqeJpPjE+ueKNI1G2v73R57a8kGltHbR3C3RKRrKqbWUQxph2d88DeeAL+vJzUYxertfp6nMuGpxw861SrBcsOeyabv/K1dWe97Xs1a1z2+iiiu4+ZCiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAormvGfjLTPCt3p1rfwzySah5vklJIY0Xywpbc8siKv3hjnnp1xmw3i3QotXt9Hu7v7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FFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAH//2Q==",
+      "processing_time": 0.008292675018310547,
+      "request_id": "step7_3004a5e8",
+      "timestamp": "2025-07-27T15:26:20.318828",
+      "confidence": 0.99,
+      "fit_score": 0.99,
+      "recommendations": [
+        "이 의류는 당신의 체형에 잘 맞습니다",
+        "어깨 라인이 자연스럽게 표현되었습니다",
+        "전체적인 비율이 균형잡혀 보입니다"
+      ],
+      "quality_score": 0.0
+    },
+    "8": {
+      "success": false,
+      "error": "Step 인스턴스 생성 실패: Step 생성 예외: StepFactory v9.0을 사용할 수 없습니다",
+      "step_type": "StepType.QUALITY_ASSESSMENT",
+      "timestamp": "2025-07-27T15:26:20.839495",
+      "request_id": "step8_f82a417a",
+      "confidence": 1.01,
+      "processing_time": 0.0,
+      "step_id": 8,
+      "step_name": "Result Analysis",
+      "quality_score": 0.0
+    }
+  },
+  "step_processing_times": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.008292675018310547,
+    "8": 0.0
+  },
+  "step_quality_scores": {
+    "0": 1.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "last_saved": "2025-07-27T15:26:20.839654",
+  "circular_reference_safe": true
+}

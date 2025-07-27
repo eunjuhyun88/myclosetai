@@ -67,13 +67,18 @@ const VirtualFittingResultVisualization = ({ result }: { result: TryOnResult }) 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ position: 'relative' }}>
                 <img 
-                  src={result.fitted_image} 
+                  src={result.fitted_image?.startsWith('data:') ? result.fitted_image : `data:image/jpeg;base64,${result.fitted_image}`}
                   alt="Virtual Fitting Result"
                   style={{
                     width: '100%',
                     borderRadius: '1rem',
                     boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
                     border: '3px solid #10b981'
+                  }}
+                  onError={(e) => {
+                    console.error('이미지 로드 실패:', e);
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
                   }}
                 />
                 <div style={{
@@ -412,7 +417,7 @@ class PipelineUtils {
 
   static warn(message: string, data?: any): void {
     console.warn(`⚠️ ${message}`, data ? data : '');
-  }
+  } 
 
   static error(message: string, data?: any): void {
     console.error(`❌ ${message}`, data ? data : '');
