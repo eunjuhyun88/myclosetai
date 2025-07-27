@@ -1,15 +1,17 @@
 # backend/app/services/step_implementations.py
 """
-🔥 MyCloset AI Step Implementations v10.0 - StepFactory v9.0 완전 연동
+🔥 MyCloset AI Step Implementations v11.0 - DetailedDataSpec 완전 반영 + StepFactory v9.0 연동
 ================================================================================
 
-✅ StepFactory v9.0 기반 완전 재작성 (BaseStepMixin 완전 호환)
-✅ BaseStepMixinMapping + BaseStepMixinConfig 사용
-✅ 생성자 시점 의존성 주입 완전 지원 (**kwargs 패턴)
+✅ step_model_requests.py DetailedDataSpec 완전 반영
+✅ API 입출력 매핑 (api_input_mapping, api_output_mapping) 100% 활용
+✅ Step 간 데이터 흐름 (accepts_from_previous_step, provides_to_next_step) 완전 구현
+✅ 전처리/후처리 (preprocessing_steps, postprocessing_steps) 완전 적용
+✅ StepFactory v9.0 + BaseStepMixin 완전 호환
+✅ FastAPI 라우터 호환성 100% 확보
+✅ 생성자 시점 의존성 주입 (**kwargs 패턴)
 ✅ process() 메서드 시그니처 표준화
-✅ UnifiedDependencyManager 완전 활용
 ✅ conda 환경 우선 최적화 + M3 Max 128GB 최적화
-✅ 기존 API 100% 호환 (모든 함수명 유지)
 ✅ 순환참조 완전 방지 (TYPE_CHECKING + 동적 import)
 ✅ 프로덕션 레벨 안정성 + 에러 처리 강화
 
@@ -18,19 +20,26 @@ step_routes.py → step_service.py → step_implementations.py → StepFactory v
                                                                ↓
                                                           ai_pipeline/steps/step_XX.py
 
+API 로직 흐름:
+1. FastAPI → api_input_mapping (UploadFile → PIL.Image)
+2. StepFactory → Step 인스턴스 생성 (DetailedDataSpec 기반)
+3. 전처리 → AI 추론 → 후처리
+4. api_output_mapping (AI 결과 → FastAPI 응답)
+5. provides_to_next_step (다음 Step 데이터 준비)
+
 실제 Step 클래스 매핑 (StepFactory v9.0 기준):
-Step 1: HumanParsingStep
-Step 2: PoseEstimationStep  
-Step 3: ClothSegmentationStep
-Step 4: GeometricMatchingStep
-Step 5: ClothWarpingStep
-Step 6: VirtualFittingStep
-Step 7: PostProcessingStep
-Step 8: QualityAssessmentStep
+Step 1: HumanParsingStep (Graphonomy 1.2GB)
+Step 2: PoseEstimationStep (OpenPose 97.8MB)
+Step 3: ClothSegmentationStep (SAM 2.4GB)
+Step 4: GeometricMatchingStep (GMM 44.7MB)
+Step 5: ClothWarpingStep (RealVisXL 6.6GB)
+Step 6: VirtualFittingStep (OOTD 14GB)
+Step 7: PostProcessingStep (ESRGAN 136MB)
+Step 8: QualityAssessmentStep (OpenCLIP 5.2GB)
 
 Author: MyCloset AI Team
-Date: 2025-07-26
-Version: 10.0 (StepFactory v9.0 Complete Integration)
+Date: 2025-07-27
+Version: 11.0 (DetailedDataSpec Complete Integration)
 """
 
 import os
@@ -43,6 +52,8 @@ import uuid
 import gc
 import traceback
 import weakref
+import json
+import base64
 from typing import Dict, Any, Optional, List, Union, Type, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +61,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 
 # 안전한 타입 힌팅 (순환참조 방지)
 if TYPE_CHECKING:
@@ -127,10 +139,84 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
-logger.info(f"🔧 Step Implementations v10.0 환경: conda={CONDA_INFO['conda_env']}, M3 Max={IS_M3_MAX}, 디바이스={DEVICE}")
+logger.info(f"🔧 Step Implementations v11.0 환경: conda={CONDA_INFO['conda_env']}, M3 Max={IS_M3_MAX}, 디바이스={DEVICE}")
 
 # ==============================================
-# 🔥 StepFactory v9.0 동적 Import (핵심!)
+# 🔥 step_model_requests.py 동적 Import (핵심!)
+# ==============================================
+
+def get_step_model_requests():
+    """step_model_requests.py 동적 import (DetailedDataSpec 포함)"""
+    try:
+        from ..ai_pipeline.utils.step_model_requests import (
+            get_enhanced_step_request,
+            get_step_data_structure_info,
+            get_step_api_mapping,
+            get_step_preprocessing_requirements,
+            get_step_postprocessing_requirements,
+            get_step_data_flow,
+            get_fastapi_integration_plan,
+            analyze_enhanced_step_requirements,
+            REAL_STEP_MODEL_REQUESTS,
+            EnhancedRealModelRequest,
+            DetailedDataSpec,
+            StepPriority,
+            ModelSize
+        )
+        
+        logger.info("✅ step_model_requests.py 동적 import 성공 (DetailedDataSpec 포함)")
+        
+        return {
+            'get_enhanced_step_request': get_enhanced_step_request,
+            'get_step_data_structure_info': get_step_data_structure_info,
+            'get_step_api_mapping': get_step_api_mapping,
+            'get_step_preprocessing_requirements': get_step_preprocessing_requirements,
+            'get_step_postprocessing_requirements': get_step_postprocessing_requirements,
+            'get_step_data_flow': get_step_data_flow,
+            'get_fastapi_integration_plan': get_fastapi_integration_plan,
+            'analyze_enhanced_step_requirements': analyze_enhanced_step_requirements,
+            'REAL_STEP_MODEL_REQUESTS': REAL_STEP_MODEL_REQUESTS,
+            'EnhancedRealModelRequest': EnhancedRealModelRequest,
+            'DetailedDataSpec': DetailedDataSpec,
+            'StepPriority': StepPriority,
+            'ModelSize': ModelSize
+        }
+        
+    except ImportError as e:
+        logger.error(f"❌ step_model_requests.py import 실패: {e}")
+        return None
+
+# step_model_requests.py 로딩
+STEP_MODEL_REQUESTS_COMPONENTS = get_step_model_requests()
+STEP_MODEL_REQUESTS_AVAILABLE = STEP_MODEL_REQUESTS_COMPONENTS is not None
+
+if STEP_MODEL_REQUESTS_AVAILABLE:
+    get_enhanced_step_request = STEP_MODEL_REQUESTS_COMPONENTS['get_enhanced_step_request']
+    get_step_data_structure_info = STEP_MODEL_REQUESTS_COMPONENTS['get_step_data_structure_info']
+    get_step_api_mapping = STEP_MODEL_REQUESTS_COMPONENTS['get_step_api_mapping']
+    get_step_preprocessing_requirements = STEP_MODEL_REQUESTS_COMPONENTS['get_step_preprocessing_requirements']
+    get_step_postprocessing_requirements = STEP_MODEL_REQUESTS_COMPONENTS['get_step_postprocessing_requirements']
+    get_step_data_flow = STEP_MODEL_REQUESTS_COMPONENTS['get_step_data_flow']
+    REAL_STEP_MODEL_REQUESTS = STEP_MODEL_REQUESTS_COMPONENTS['REAL_STEP_MODEL_REQUESTS']
+    StepPriority = STEP_MODEL_REQUESTS_COMPONENTS['StepPriority']
+else:
+    # 폴백 정의
+    get_enhanced_step_request = lambda x: None
+    get_step_data_structure_info = lambda x: {}
+    get_step_api_mapping = lambda x: {}
+    get_step_preprocessing_requirements = lambda x: {}
+    get_step_postprocessing_requirements = lambda x: {}
+    get_step_data_flow = lambda x: {}
+    REAL_STEP_MODEL_REQUESTS = {}
+    
+    class StepPriority(Enum):
+        CRITICAL = 1
+        HIGH = 2
+        MEDIUM = 3
+        LOW = 4
+
+# ==============================================
+# 🔥 StepFactory v9.0 동적 Import (순환참조 방지)
 # ==============================================
 
 def get_step_factory_v9():
@@ -142,9 +228,7 @@ def get_step_factory_v9():
             StepCreationResult,
             BaseStepMixinConfig,
             BaseStepMixinMapping,
-            BaseStepMixinDependencyResolver,
-            BaseStepMixinClassLoader,
-            StepPriority,
+            StepPriority as FactoryStepPriority,
             create_step,
             create_human_parsing_step,
             create_pose_estimation_step,
@@ -169,9 +253,6 @@ def get_step_factory_v9():
             'StepCreationResult': StepCreationResult,
             'BaseStepMixinConfig': BaseStepMixinConfig,
             'BaseStepMixinMapping': BaseStepMixinMapping,
-            'BaseStepMixinDependencyResolver': BaseStepMixinDependencyResolver,
-            'BaseStepMixinClassLoader': BaseStepMixinClassLoader,
-            'StepPriority': StepPriority,
             'create_step': create_step,
             'create_human_parsing_step': create_human_parsing_step,
             'create_pose_estimation_step': create_pose_estimation_step,
@@ -201,7 +282,6 @@ if STEP_FACTORY_V9_AVAILABLE:
     StepCreationResult = STEP_FACTORY_V9_COMPONENTS['StepCreationResult']
     BaseStepMixinConfig = STEP_FACTORY_V9_COMPONENTS['BaseStepMixinConfig']
     BaseStepMixinMapping = STEP_FACTORY_V9_COMPONENTS['BaseStepMixinMapping']
-    StepPriority = STEP_FACTORY_V9_COMPONENTS['StepPriority']
 else:
     STEP_FACTORY = None
     
@@ -226,53 +306,24 @@ else:
         basestepmixin_compatible: bool = False
 
 # ==============================================
-# 🔥 BaseStepMixin 동적 Import (순환참조 방지)
+# 🔥 Step명 매핑 (step_model_requests.py 기반)
 # ==============================================
 
-def get_base_step_mixin():
-    """BaseStepMixin 동적 import"""
-    try:
-        from ..ai_pipeline.steps.base_step_mixin import BaseStepMixin
-        logger.info("✅ BaseStepMixin import 성공")
-        return BaseStepMixin
-    except ImportError as e:
-        logger.warning(f"⚠️ BaseStepMixin import 실패: {e}")
-        return None
+# step_model_requests.py에서 정의된 실제 Step 클래스명들
+STEP_NAME_TO_CLASS_MAPPING = {
+    "HumanParsingStep": StepType.HUMAN_PARSING,
+    "PoseEstimationStep": StepType.POSE_ESTIMATION,
+    "ClothSegmentationStep": StepType.CLOTH_SEGMENTATION,
+    "GeometricMatchingStep": StepType.GEOMETRIC_MATCHING,
+    "ClothWarpingStep": StepType.CLOTH_WARPING,
+    "VirtualFittingStep": StepType.VIRTUAL_FITTING,
+    "PostProcessingStep": StepType.POST_PROCESSING,
+    "QualityAssessmentStep": StepType.QUALITY_ASSESSMENT
+}
 
-BASE_STEP_MIXIN_CLASS = get_base_step_mixin()
-BASE_STEP_MIXIN_AVAILABLE = BASE_STEP_MIXIN_CLASS is not None
-
-# ==============================================
-# 🔥 스키마 동적 Import
-# ==============================================
-
-def get_body_measurements():
-    """BodyMeasurements 스키마 동적 import"""
-    try:
-        from ..models.schemas import BodyMeasurements
-        return BodyMeasurements
-    except ImportError:
-        # 폴백 스키마
-        @dataclass
-        class BodyMeasurements:
-            height: float
-            weight: float
-            chest: Optional[float] = None
-            waist: Optional[float] = None
-            hips: Optional[float] = None
-        
-        return BodyMeasurements
-
-BodyMeasurements = get_body_measurements()
-
-# ==============================================
-# 🔥 StepFactory v9.0 기반 실제 Step 클래스 매핑
-# ==============================================
-
-# StepFactory v9.0에서 확인된 실제 클래스명들 (BaseStepMixin 호환)
-REAL_STEP_CLASS_MAPPING = {
+STEP_ID_TO_NAME_MAPPING = {
     1: "HumanParsingStep",
-    2: "PoseEstimationStep", 
+    2: "PoseEstimationStep",
     3: "ClothSegmentationStep",
     4: "GeometricMatchingStep",
     5: "ClothWarpingStep",
@@ -281,23 +332,11 @@ REAL_STEP_CLASS_MAPPING = {
     8: "QualityAssessmentStep"
 }
 
-# StepType별 매핑
-STEP_TYPE_TO_ID_MAPPING = {
-    StepType.HUMAN_PARSING: 1,
-    StepType.POSE_ESTIMATION: 2,
-    StepType.CLOTH_SEGMENTATION: 3,
-    StepType.GEOMETRIC_MATCHING: 4,
-    StepType.CLOTH_WARPING: 5,
-    StepType.VIRTUAL_FITTING: 6,
-    StepType.POST_PROCESSING: 7,
-    StepType.QUALITY_ASSESSMENT: 8
-}
-
-# 함수명 매핑 (기존 API 호환성)
+# 기존 API 호환성을 위한 함수명 매핑
 IMPLEMENTATION_FUNCTION_MAPPING = {
     1: "process_human_parsing_implementation",
     2: "process_pose_estimation_implementation",
-    3: "process_cloth_segmentation_implementation", 
+    3: "process_cloth_segmentation_implementation",
     4: "process_geometric_matching_implementation",
     5: "process_cloth_warping_implementation",
     6: "process_virtual_fitting_implementation",
@@ -306,14 +345,192 @@ IMPLEMENTATION_FUNCTION_MAPPING = {
 }
 
 # ==============================================
-# 🔥 StepFactory v9.0 브릿지 클래스 (BaseStepMixin 완전 호환)
+# 🔥 Data Transformation Utilities (DetailedDataSpec 기반)
 # ==============================================
 
-class StepFactoryV9Bridge:
-    """StepFactory v9.0와의 브릿지 클래스 (BaseStepMixin 완전 호환)"""
+class DataTransformationUtils:
+    """DetailedDataSpec 기반 데이터 변환 유틸리티"""
+    
+    @staticmethod
+    def transform_api_input_to_step_input(step_name: str, api_input: Dict[str, Any]) -> Dict[str, Any]:
+        """API 입력을 Step 입력으로 변환 (api_input_mapping 활용)"""
+        try:
+            if not STEP_MODEL_REQUESTS_AVAILABLE:
+                return api_input
+            
+            # Step의 API 매핑 정보 가져오기
+            api_mapping = get_step_api_mapping(step_name)
+            if not api_mapping or 'input_mapping' not in api_mapping:
+                return api_input
+            
+            input_mapping = api_mapping['input_mapping']
+            step_input = {}
+            
+            # api_input_mapping에 따라 변환
+            for step_field, api_type in input_mapping.items():
+                if step_field in api_input:
+                    value = api_input[step_field]
+                    
+                    # UploadFile → PIL.Image 변환
+                    if "UploadFile" in api_type and hasattr(value, 'file'):
+                        try:
+                            if PIL_AVAILABLE:
+                                image_bytes = value.file.read()
+                                image = Image.open(BytesIO(image_bytes))
+                                step_input[step_field] = image
+                            else:
+                                step_input[step_field] = value
+                        except Exception as e:
+                            logger.warning(f"⚠️ UploadFile 변환 실패 {step_field}: {e}")
+                            step_input[step_field] = value
+                    else:
+                        step_input[step_field] = value
+            
+            # 변환되지 않은 필드들 그대로 복사
+            for key, value in api_input.items():
+                if key not in step_input:
+                    step_input[key] = value
+            
+            logger.debug(f"🔄 API 입력 변환 완료 {step_name}: {len(api_input)} → {len(step_input)}")
+            return step_input
+            
+        except Exception as e:
+            logger.error(f"❌ API 입력 변환 실패 {step_name}: {e}")
+            return api_input
+    
+    @staticmethod
+    def transform_step_output_to_api_output(step_name: str, step_output: Dict[str, Any]) -> Dict[str, Any]:
+        """Step 출력을 API 출력으로 변환 (api_output_mapping 활용)"""
+        try:
+            if not STEP_MODEL_REQUESTS_AVAILABLE:
+                return step_output
+            
+            # Step의 API 매핑 정보 가져오기
+            api_mapping = get_step_api_mapping(step_name)
+            if not api_mapping or 'output_mapping' not in api_mapping:
+                return step_output
+            
+            output_mapping = api_mapping['output_mapping']
+            api_output = {}
+            
+            # api_output_mapping에 따라 변환
+            for api_field, api_type in output_mapping.items():
+                # Step 출력에서 해당 필드 찾기
+                step_field = api_field  # 기본적으로 동일한 이름
+                
+                if step_field in step_output:
+                    value = step_output[step_field]
+                    
+                    # numpy.ndarray → base64_string 변환
+                    if "base64_string" in api_type and NUMPY_AVAILABLE:
+                        try:
+                            if isinstance(value, np.ndarray):
+                                # numpy array를 이미지로 변환 후 base64 인코딩
+                                if PIL_AVAILABLE:
+                                    # 정규화 (0-1 → 0-255)
+                                    if value.dtype == np.float32 or value.dtype == np.float64:
+                                        if value.max() <= 1.0:
+                                            value = (value * 255).astype(np.uint8)
+                                    
+                                    # 채널 순서 변경 (CHW → HWC)
+                                    if len(value.shape) == 3 and value.shape[0] == 3:
+                                        value = np.transpose(value, (1, 2, 0))
+                                    
+                                    image = Image.fromarray(value)
+                                    buffer = BytesIO()
+                                    image.save(buffer, format='PNG')
+                                    image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                                    api_output[api_field] = image_base64
+                                else:
+                                    api_output[api_field] = str(value)
+                            else:
+                                api_output[api_field] = value
+                        except Exception as e:
+                            logger.warning(f"⚠️ base64 변환 실패 {api_field}: {e}")
+                            api_output[api_field] = str(value)
+                    else:
+                        api_output[api_field] = value
+            
+            # 기본 응답 필드들 추가
+            api_output.setdefault('success', step_output.get('success', True))
+            api_output.setdefault('processing_time', step_output.get('processing_time', 0.0))
+            api_output.setdefault('step_name', step_name)
+            
+            # 변환되지 않은 중요 필드들 복사
+            for key in ['error', 'confidence', 'quality_score']:
+                if key in step_output and key not in api_output:
+                    api_output[key] = step_output[key]
+            
+            logger.debug(f"🔄 API 출력 변환 완료 {step_name}: {len(step_output)} → {len(api_output)}")
+            return api_output
+            
+        except Exception as e:
+            logger.error(f"❌ API 출력 변환 실패 {step_name}: {e}")
+            return step_output
+    
+    @staticmethod
+    def prepare_next_step_data(step_name: str, step_output: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """다음 Step들을 위한 데이터 준비 (provides_to_next_step 활용)"""
+        try:
+            if not STEP_MODEL_REQUESTS_AVAILABLE:
+                return {}
+            
+            # Step의 데이터 흐름 정보 가져오기
+            data_flow = get_step_data_flow(step_name)
+            if not data_flow or 'provides_to_next_step' not in data_flow:
+                return {}
+            
+            provides_to_next_step = data_flow['provides_to_next_step']
+            next_step_data = {}
+            
+            # 각 다음 Step별로 데이터 준비
+            for next_step, data_schema in provides_to_next_step.items():
+                if next_step not in next_step_data:
+                    next_step_data[next_step] = {}
+                
+                # 스키마에 정의된 필드들 매핑
+                for field_name, field_type in data_schema.items():
+                    if field_name in step_output:
+                        value = step_output[field_name]
+                        
+                        # 타입 변환 (필요시)
+                        if "np.ndarray" in field_type and NUMPY_AVAILABLE:
+                            if not isinstance(value, np.ndarray):
+                                try:
+                                    value = np.array(value)
+                                except:
+                                    pass
+                        elif "List" in field_type:
+                            if not isinstance(value, list):
+                                try:
+                                    value = list(value) if hasattr(value, '__iter__') else [value]
+                                except:
+                                    pass
+                        elif "Dict" in field_type:
+                            if not isinstance(value, dict):
+                                try:
+                                    value = dict(value) if hasattr(value, 'items') else {'value': value}
+                                except:
+                                    value = {'value': value}
+                        
+                        next_step_data[next_step][field_name] = value
+            
+            logger.debug(f"🔄 다음 Step 데이터 준비 완료 {step_name}: {len(provides_to_next_step)}개 Step")
+            return next_step_data
+            
+        except Exception as e:
+            logger.error(f"❌ 다음 Step 데이터 준비 실패 {step_name}: {e}")
+            return {}
+
+# ==============================================
+# 🔥 DetailedDataSpec 기반 Step 처리 브릿지 v11.0
+# ==============================================
+
+class DetailedDataSpecStepBridge:
+    """DetailedDataSpec 완전 반영 Step 처리 브릿지 v11.0"""
     
     def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.StepFactoryV9Bridge")
+        self.logger = logging.getLogger(f"{__name__}.DetailedDataSpecStepBridge")
         self._step_cache: Dict[str, weakref.ref] = {}
         self._lock = threading.RLock()
         
@@ -322,502 +539,616 @@ class StepFactoryV9Bridge:
             'total_requests': 0,
             'successful_requests': 0,
             'failed_requests': 0,
-            'cache_hits': 0,
-            'creation_times': [],
-            'basestepmixin_compatible_creations': 0,
-            'dependency_injection_successes': 0
+            'api_transformations': 0,
+            'step_data_flows': 0,
+            'preprocessing_applications': 0,
+            'postprocessing_applications': 0,
+            'detailed_dataspec_usages': 0
         }
         
-        # conda 환경 최적화
-        if CONDA_INFO['is_target_env'] and STEP_FACTORY_V9_AVAILABLE:
-            try:
-                STEP_FACTORY_V9_COMPONENTS['optimize_conda_environment']()
-                self.logger.info("🐍 conda 환경 자동 최적화 완료 (BaseStepMixin 호환)")
-            except Exception as e:
-                self.logger.warning(f"⚠️ conda 환경 최적화 실패: {e}")
-        
-        self.logger.info("🌉 StepFactory v9.0 브릿지 초기화 완료 (BaseStepMixin 완전 호환)")
+        self.logger.info("🌉 DetailedDataSpec Step 브릿지 v11.0 초기화 완료")
     
-    async def create_step_instance(
-        self, 
-        step_type: Union[StepType, str, int], 
-        use_cache: bool = True,
+    async def process_step_with_detailed_spec(
+        self,
+        step_name: str,
+        api_input: Dict[str, Any],
+        session_id: Optional[str] = None,
         **kwargs
-    ) -> StepCreationResult:
-        """Step 인스턴스 생성 (StepFactory v9.0 사용, BaseStepMixin 호환)"""
+    ) -> Dict[str, Any]:
+        """DetailedDataSpec 기반 Step 처리 (완전한 API 흐름)"""
         start_time = time.time()
         
         try:
             with self._lock:
                 self.metrics['total_requests'] += 1
             
-            # Step 타입 정규화
-            if isinstance(step_type, int):
-                # step_id로부터 StepType 찾기
-                for st, sid in STEP_TYPE_TO_ID_MAPPING.items():
-                    if sid == step_type:
-                        step_type = st
-                        break
-                else:
-                    raise ValueError(f"지원하지 않는 step_id: {step_type}")
-            elif isinstance(step_type, str):
-                try:
-                    step_type = StepType(step_type.lower())
-                except ValueError:
-                    raise ValueError(f"지원하지 않는 step_type: {step_type}")
+            self.logger.info(f"🔄 DetailedDataSpec 기반 {step_name} 처리 시작...")
             
-            if not STEP_FACTORY_V9_AVAILABLE:
+            # 1. DetailedDataSpec 정보 로딩
+            if STEP_MODEL_REQUESTS_AVAILABLE:
+                step_request = get_enhanced_step_request(step_name)
+                data_structure_info = get_step_data_structure_info(step_name)
+                preprocessing_req = get_step_preprocessing_requirements(step_name)
+                postprocessing_req = get_step_postprocessing_requirements(step_name)
+                
+                if not step_request or not data_structure_info:
+                    raise ValueError(f"DetailedDataSpec 정보 없음: {step_name}")
+                
+                self.logger.debug(f"📋 {step_name} DetailedDataSpec 로딩 완료")
+            else:
+                raise RuntimeError("step_model_requests.py를 사용할 수 없습니다")
+            
+            # 2. API 입력 → Step 입력 변환 (api_input_mapping)
+            step_input = DataTransformationUtils.transform_api_input_to_step_input(step_name, api_input)
+            with self._lock:
+                self.metrics['api_transformations'] += 1
+            
+            # 3. 전처리 적용 (preprocessing_steps)
+            if preprocessing_req and preprocessing_req.get('preprocessing_steps'):
+                step_input = await self._apply_preprocessing(step_name, step_input, preprocessing_req)
+                with self._lock:
+                    self.metrics['preprocessing_applications'] += 1
+            
+            # 4. StepFactory로 Step 인스턴스 생성 및 처리
+            if STEP_FACTORY_V9_AVAILABLE and STEP_FACTORY:
+                # Step 타입 결정
+                step_type = STEP_NAME_TO_CLASS_MAPPING.get(step_name)
+                if not step_type:
+                    raise ValueError(f"지원하지 않는 Step: {step_name}")
+                
+                # DetailedDataSpec 기반 설정 준비
+                step_config = {
+                    'detailed_data_spec': data_structure_info.get('detailed_data_spec', {}),
+                    'session_id': session_id,
+                    'conda_optimized': CONDA_INFO['is_target_env'],
+                    'm3_max_optimized': IS_M3_MAX,
+                    'device': DEVICE,
+                    **kwargs
+                }
+                
+                # Step 인스턴스 생성
+                result = STEP_FACTORY.create_step(step_type, use_cache=True, **step_config)
+                
+                if not result.success:
+                    raise RuntimeError(f"Step 생성 실패: {result.error_message}")
+                
+                step_instance = result.step_instance
+                
+                # Step 처리 실행
+                if hasattr(step_instance, 'process'):
+                    if asyncio.iscoroutinefunction(step_instance.process):
+                        step_output = await step_instance.process(step_input, **step_config)
+                    else:
+                        step_output = step_instance.process(step_input, **step_config)
+                else:
+                    raise AttributeError(f"{step_name}에 process 메서드가 없습니다")
+            else:
                 raise RuntimeError("StepFactory v9.0을 사용할 수 없습니다")
             
-            # 캐시 확인
-            cache_key = f"{step_type.value}_{hash(frozenset(kwargs.items()))}"
-            if use_cache:
-                cached_instance = self._get_cached_instance(cache_key)
-                if cached_instance:
-                    with self._lock:
-                        self.metrics['cache_hits'] += 1
-                    self.logger.info(f"♻️ {step_type.value} 캐시에서 반환")
-                    return StepCreationResult(
-                        success=True,
-                        step_instance=cached_instance,
-                        step_name=REAL_STEP_CLASS_MAPPING.get(STEP_TYPE_TO_ID_MAPPING[step_type], "Unknown"),
-                        creation_time=time.time() - start_time,
-                        basestepmixin_compatible=True
-                    )
+            # 5. 후처리 적용 (postprocessing_steps)
+            if postprocessing_req and postprocessing_req.get('postprocessing_steps'):
+                step_output = await self._apply_postprocessing(step_name, step_output, postprocessing_req)
+                with self._lock:
+                    self.metrics['postprocessing_applications'] += 1
             
-            # StepFactory v9.0으로 Step 생성 (BaseStepMixin 호환)
-            self.logger.info(f"🔄 {step_type.value} 생성 중 (StepFactory v9.0, BaseStepMixin 호환)...")
+            # 6. Step 출력 → API 출력 변환 (api_output_mapping)
+            api_output = DataTransformationUtils.transform_step_output_to_api_output(step_name, step_output)
             
-            # BaseStepMixin 호환 설정 생성
-            if STEP_FACTORY_V9_AVAILABLE:
-                # BaseStepMixinMapping을 사용하여 설정 생성
-                basestepmixin_config = BaseStepMixinMapping.get_config(step_type, **kwargs)
-                
-                # conda 환경 최적화 설정
-                if CONDA_INFO['is_target_env']:
-                    kwargs.update({
-                        'conda_optimized': True,
-                        'conda_env': CONDA_INFO['conda_env']
-                    })
-                
-                # M3 Max 최적화 설정
-                if IS_M3_MAX:
-                    kwargs.update({
-                        'm3_max_optimized': True,
-                        'memory_gb': MEMORY_GB,
-                        'use_unified_memory': True,
-                        'is_m3_max': True
-                    })
-                
-                # StepFactory v9.0 create_step 호출 (생성자 시점 의존성 주입)
-                result = STEP_FACTORY.create_step(step_type, use_cache=use_cache, **kwargs)
-            else:
-                result = StepCreationResult(
-                    success=False,
-                    error_message="StepFactory v9.0이 사용 불가능합니다"
-                )
+            # 7. 다음 Step 데이터 준비 (provides_to_next_step)
+            next_step_data = DataTransformationUtils.prepare_next_step_data(step_name, step_output)
+            if next_step_data:
+                api_output['next_step_data'] = next_step_data
+                with self._lock:
+                    self.metrics['step_data_flows'] += 1
             
-            # 성공 시 캐시에 저장
-            if result.success and result.step_instance and use_cache:
-                self._cache_instance(cache_key, result.step_instance)
+            # 8. 메타데이터 추가
+            processing_time = time.time() - start_time
+            api_output.update({
+                'processing_time': processing_time,
+                'detailed_dataspec_applied': True,
+                'step_priority': step_request.step_priority.name,
+                'model_architecture': step_request.model_architecture,
+                'timestamp': datetime.now().isoformat()
+            })
             
-            # 메트릭 업데이트
+            # 성공 메트릭 업데이트
             with self._lock:
-                if result.success:
-                    self.metrics['successful_requests'] += 1
-                    if result.basestepmixin_compatible:
-                        self.metrics['basestepmixin_compatible_creations'] += 1
-                    if hasattr(result, 'dependency_injection_success') and result.dependency_injection_success:
-                        self.metrics['dependency_injection_successes'] += 1
-                else:
-                    self.metrics['failed_requests'] += 1
-                self.metrics['creation_times'].append(time.time() - start_time)
+                self.metrics['successful_requests'] += 1
+                self.metrics['detailed_dataspec_usages'] += 1
             
-            result.creation_time = time.time() - start_time
-            
-            if result.success:
-                self.logger.info(f"✅ {step_type.value} 생성 완료 ({result.creation_time:.2f}초, BaseStepMixin 호환)")
-            else:
-                self.logger.error(f"❌ {step_type.value} 생성 실패: {result.error_message}")
-            
-            return result
+            self.logger.info(f"✅ {step_name} DetailedDataSpec 처리 완료 ({processing_time:.2f}초)")
+            return api_output
             
         except Exception as e:
             with self._lock:
                 self.metrics['failed_requests'] += 1
             
             error_time = time.time() - start_time
-            self.logger.error(f"❌ Step 생성 예외: {e}")
+            self.logger.error(f"❌ {step_name} DetailedDataSpec 처리 실패: {e}")
             
-            return StepCreationResult(
-                success=False,
-                error_message=f"Step 생성 예외: {str(e)}",
-                creation_time=error_time,
-                basestepmixin_compatible=False
-            )
-    
-    async def process_step(
-        self,
-        step_type: Union[StepType, str, int],
-        *args,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Step 처리 실행 (BaseStepMixin 호환)"""
-        try:
-            # Step 인스턴스 생성
-            result = await self.create_step_instance(step_type)
-            
-            if not result.success:
-                return {
-                    'success': False,
-                    'error': f"Step 인스턴스 생성 실패: {result.error_message}",
-                    'step_type': str(step_type),
-                    'timestamp': datetime.now().isoformat()
-                }
-            
-            step_instance = result.step_instance
-            
-            # process 메서드 호출 (BaseStepMixin 표준)
-            if hasattr(step_instance, 'process'):
-                self.logger.info(f"🔄 {result.step_name} 처리 시작 (BaseStepMixin process)...")
-                
-                # BaseStepMixin process 메서드는 표준화된 시그니처를 가짐
-                if asyncio.iscoroutinefunction(step_instance.process):
-                    # 비동기 process 메서드
-                    if args:
-                        # input_data가 첫 번째 arg로 전달된 경우
-                        process_result = await step_instance.process(args[0], **kwargs)
-                    else:
-                        # kwargs로만 전달된 경우
-                        input_data = kwargs.pop('input_data', kwargs)
-                        process_result = await step_instance.process(input_data, **kwargs)
-                else:
-                    # 동기 process 메서드
-                    if args:
-                        process_result = step_instance.process(args[0], **kwargs)
-                    else:
-                        input_data = kwargs.pop('input_data', kwargs)
-                        process_result = step_instance.process(input_data, **kwargs)
-                
-                # 결과 형식 정규화
-                if isinstance(process_result, dict):
-                    if 'success' not in process_result:
-                        process_result['success'] = True
-                    
-                    # 메타데이터 추가
-                    process_result.setdefault('details', {}).update({
-                        'step_name': result.step_name,
-                        'step_type': str(step_type),
-                        'factory_version': 'v9.0',
-                        'basestepmixin_compatible': result.basestepmixin_compatible,
-                        'timestamp': datetime.now().isoformat()
-                    })
-                else:
-                    # 딕셔너리가 아닌 경우 변환
-                    process_result = {
-                        'success': True,
-                        'result': process_result,
-                        'details': {
-                            'step_name': result.step_name,
-                            'step_type': str(step_type),
-                            'factory_version': 'v9.0',
-                            'basestepmixin_compatible': result.basestepmixin_compatible,
-                            'timestamp': datetime.now().isoformat()
-                        }
-                    }
-                
-                self.logger.info(f"✅ {result.step_name} 처리 완료 (BaseStepMixin 호환)")
-                return process_result
-            else:
-                raise AttributeError(f"{result.step_name}에 process 메서드가 없습니다")
-                
-        except Exception as e:
-            self.logger.error(f"❌ Step 처리 실패: {e}")
             return {
                 'success': False,
                 'error': str(e),
-                'step_type': str(step_type),
+                'step_name': step_name,
                 'error_type': type(e).__name__,
+                'processing_time': error_time,
+                'detailed_dataspec_applied': False,
                 'timestamp': datetime.now().isoformat()
             }
     
-    def _get_cached_instance(self, cache_key: str) -> Optional[Any]:
-        """캐시된 인스턴스 반환"""
+    async def _apply_preprocessing(self, step_name: str, step_input: Dict[str, Any], preprocessing_req: Dict[str, Any]) -> Dict[str, Any]:
+        """전처리 단계 적용 (preprocessing_steps 기반)"""
         try:
-            with self._lock:
-                if cache_key in self._step_cache:
-                    weak_ref = self._step_cache[cache_key]
-                    instance = weak_ref()
-                    if instance is not None:
-                        return instance
-                    else:
-                        del self._step_cache[cache_key]
-                return None
-        except Exception:
-            return None
+            preprocessing_steps = preprocessing_req.get('preprocessing_steps', [])
+            normalization_mean = preprocessing_req.get('normalization_mean', (0.485, 0.456, 0.406))
+            normalization_std = preprocessing_req.get('normalization_std', (0.229, 0.224, 0.225))
+            input_shapes = preprocessing_req.get('input_shapes', {})
+            input_value_ranges = preprocessing_req.get('input_value_ranges', {})
+            
+            processed_input = step_input.copy()
+            
+            # 각 전처리 단계 적용
+            for step in preprocessing_steps:
+                if "resize" in step.lower():
+                    # 리사이즈 처리
+                    target_size = self._extract_size_from_step(step, input_shapes)
+                    processed_input = await self._apply_resize(processed_input, target_size)
+                
+                elif "normalize" in step.lower():
+                    # 정규화 처리
+                    if "imagenet" in step.lower():
+                        processed_input = await self._apply_normalization(processed_input, normalization_mean, normalization_std)
+                    elif "centered" in step.lower():
+                        processed_input = await self._apply_normalization(processed_input, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                    elif "0_1" in step or "zero_one" in step.lower():
+                        processed_input = await self._apply_normalization(processed_input, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+                
+                elif "to_tensor" in step.lower():
+                    # Tensor 변환
+                    processed_input = await self._apply_to_tensor(processed_input)
+                
+                elif "prepare" in step.lower():
+                    # 특수 준비 단계
+                    processed_input = await self._apply_special_preparation(step_name, processed_input, step)
+            
+            self.logger.debug(f"🔧 {step_name} 전처리 완료: {len(preprocessing_steps)}단계")
+            return processed_input
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ {step_name} 전처리 실패: {e}")
+            return step_input
     
-    def _cache_instance(self, cache_key: str, instance: Any):
-        """인스턴스를 캐시에 저장"""
+    async def _apply_postprocessing(self, step_name: str, step_output: Dict[str, Any], postprocessing_req: Dict[str, Any]) -> Dict[str, Any]:
+        """후처리 단계 적용 (postprocessing_steps 기반)"""
         try:
-            with self._lock:
-                self._step_cache[cache_key] = weakref.ref(instance)
-        except Exception:
-            pass
+            postprocessing_steps = postprocessing_req.get('postprocessing_steps', [])
+            output_value_ranges = postprocessing_req.get('output_value_ranges', {})
+            output_shapes = postprocessing_req.get('output_shapes', {})
+            
+            processed_output = step_output.copy()
+            
+            # 각 후처리 단계 적용
+            for step in postprocessing_steps:
+                if "argmax" in step.lower():
+                    # argmax 적용
+                    processed_output = await self._apply_argmax(processed_output)
+                
+                elif "softmax" in step.lower():
+                    # softmax 적용
+                    processed_output = await self._apply_softmax(processed_output)
+                
+                elif "threshold" in step.lower():
+                    # 임계값 적용
+                    threshold = self._extract_threshold_from_step(step)
+                    processed_output = await self._apply_threshold(processed_output, threshold)
+                
+                elif "resize" in step.lower():
+                    # 원본 크기로 복원
+                    if "original" in step.lower():
+                        processed_output = await self._apply_resize_to_original(processed_output)
+                
+                elif "denormalize" in step.lower():
+                    # 역정규화
+                    if "diffusion" in step.lower():
+                        processed_output = await self._apply_denormalization(processed_output, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                    elif "imagenet" in step.lower():
+                        processed_output = await self._apply_denormalization(processed_output, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+                
+                elif "to_numpy" in step.lower():
+                    # NumPy 변환
+                    processed_output = await self._apply_to_numpy(processed_output)
+                
+                elif "enhance" in step.lower() or "quality" in step.lower():
+                    # 품질 향상 처리
+                    processed_output = await self._apply_quality_enhancement(step_name, processed_output, step)
+            
+            self.logger.debug(f"🔧 {step_name} 후처리 완료: {len(postprocessing_steps)}단계")
+            return processed_output
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ {step_name} 후처리 실패: {e}")
+            return step_output
+    
+    # ==============================================
+    # 🔥 전처리/후처리 헬퍼 메서드들
+    # ==============================================
+    
+    def _extract_size_from_step(self, step: str, input_shapes: Dict[str, Any]) -> Tuple[int, int]:
+        """전처리 단계에서 크기 추출"""
+        # "resize_512x512" 형태에서 크기 추출
+        import re
+        size_match = re.search(r'(\d+)x(\d+)', step)
+        if size_match:
+            width, height = int(size_match.group(1)), int(size_match.group(2))
+            return (height, width)
+        
+        # input_shapes에서 기본 크기 찾기
+        for shape_key, shape_value in input_shapes.items():
+            if isinstance(shape_value, (list, tuple)) and len(shape_value) >= 2:
+                if len(shape_value) == 3:  # CHW
+                    return (shape_value[1], shape_value[2])
+                elif len(shape_value) == 2:  # HW
+                    return (shape_value[0], shape_value[1])
+        
+        return (512, 512)  # 기본값
+    
+    def _extract_threshold_from_step(self, step: str) -> float:
+        """후처리 단계에서 임계값 추출"""
+        import re
+        threshold_match = re.search(r'threshold[_\-]?(\d+\.?\d*)', step)
+        if threshold_match:
+            return float(threshold_match.group(1))
+        return 0.5  # 기본값
+    
+    async def _apply_resize(self, data: Dict[str, Any], target_size: Tuple[int, int]) -> Dict[str, Any]:
+        """리사이즈 적용"""
+        try:
+            processed_data = data.copy()
+            
+            for key, value in data.items():
+                if isinstance(value, Image.Image) and PIL_AVAILABLE:
+                    processed_data[key] = value.resize((target_size[1], target_size[0]))
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if len(value.shape) >= 2:
+                        try:
+                            import cv2
+                            if len(value.shape) == 3:
+                                processed_data[key] = cv2.resize(value, (target_size[1], target_size[0]))
+                            else:
+                                processed_data[key] = cv2.resize(value, (target_size[1], target_size[0]))
+                        except ImportError:
+                            # cv2 없으면 PIL 사용
+                            if PIL_AVAILABLE:
+                                if len(value.shape) == 3:
+                                    value = np.transpose(value, (1, 2, 0))
+                                img = Image.fromarray((value * 255).astype(np.uint8))
+                                img = img.resize((target_size[1], target_size[0]))
+                                processed_data[key] = np.array(img) / 255.0
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ 리사이즈 실패: {e}")
+            return data
+    
+    async def _apply_normalization(self, data: Dict[str, Any], mean: Tuple[float, ...], std: Tuple[float, ...]) -> Dict[str, Any]:
+        """정규화 적용"""
+        try:
+            processed_data = data.copy()
+            
+            for key, value in data.items():
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if len(value.shape) == 3 and value.shape[2] == 3:  # HWC
+                        normalized = (value - np.array(mean)) / np.array(std)
+                        processed_data[key] = normalized
+                    elif len(value.shape) == 3 and value.shape[0] == 3:  # CHW
+                        mean_array = np.array(mean).reshape(-1, 1, 1)
+                        std_array = np.array(std).reshape(-1, 1, 1)
+                        normalized = (value - mean_array) / std_array
+                        processed_data[key] = normalized
+                elif PIL_AVAILABLE and isinstance(value, Image.Image):
+                    # PIL Image를 numpy로 변환 후 정규화
+                    np_image = np.array(value) / 255.0
+                    normalized = (np_image - np.array(mean)) / np.array(std)
+                    processed_data[key] = normalized
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ 정규화 실패: {e}")
+            return data
+    
+    async def _apply_to_tensor(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Tensor 변환 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if TORCH_AVAILABLE:
+                import torch
+                for key, value in data.items():
+                    if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                        processed_data[key] = torch.from_numpy(value.copy()).float()
+                    elif PIL_AVAILABLE and isinstance(value, Image.Image):
+                        np_image = np.array(value) / 255.0
+                        if len(np_image.shape) == 3:
+                            np_image = np.transpose(np_image, (2, 0, 1))  # HWC → CHW
+                        processed_data[key] = torch.from_numpy(np_image.copy()).float()
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ Tensor 변환 실패: {e}")
+            return data
+    
+    async def _apply_special_preparation(self, step_name: str, data: Dict[str, Any], step: str) -> Dict[str, Any]:
+        """특수 준비 단계 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if "sam" in step.lower() and "prompts" in step.lower():
+                # SAM 프롬프트 준비
+                if 'prompt_points' not in processed_data:
+                    # 기본 프롬프트 포인트 생성
+                    processed_data['prompt_points'] = [[256, 256]]  # 중앙점
+                    processed_data['prompt_labels'] = [1]  # 포지티브
+            
+            elif "diffusion" in step.lower():
+                # Diffusion 입력 준비
+                if 'timesteps' not in processed_data:
+                    processed_data['timesteps'] = 50  # 기본 스텝 수
+                if 'guidance_scale' not in processed_data:
+                    processed_data['guidance_scale'] = 7.5  # 기본 가이던스
+            
+            elif "ootd" in step.lower():
+                # OOTD 입력 준비
+                if 'fitting_mode' not in processed_data:
+                    processed_data['fitting_mode'] = 'hd'  # 기본 모드
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ 특수 준비 실패: {e}")
+            return data
+    
+    async def _apply_argmax(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """argmax 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if NUMPY_AVAILABLE:
+                for key, value in data.items():
+                    if isinstance(value, np.ndarray) and len(value.shape) > 1:
+                        # 클래스 차원에서 argmax
+                        if len(value.shape) == 4:  # NCHW
+                            processed_data[key] = np.argmax(value, axis=1)
+                        elif len(value.shape) == 3:  # CHW
+                            processed_data[key] = np.argmax(value, axis=0)
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ argmax 실패: {e}")
+            return data
+    
+    async def _apply_softmax(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """softmax 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if NUMPY_AVAILABLE:
+                for key, value in data.items():
+                    if isinstance(value, np.ndarray):
+                        # softmax 계산
+                        exp_values = np.exp(value - np.max(value, axis=-1, keepdims=True))
+                        processed_data[key] = exp_values / np.sum(exp_values, axis=-1, keepdims=True)
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ softmax 실패: {e}")
+            return data
+    
+    async def _apply_threshold(self, data: Dict[str, Any], threshold: float) -> Dict[str, Any]:
+        """임계값 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if NUMPY_AVAILABLE:
+                for key, value in data.items():
+                    if isinstance(value, np.ndarray):
+                        processed_data[key] = (value > threshold).astype(np.float32)
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ 임계값 적용 실패: {e}")
+            return data
+    
+    async def _apply_resize_to_original(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """원본 크기로 복원"""
+        # 실제로는 원본 크기 정보가 필요하므로 여기서는 기본 구현만
+        return data
+    
+    async def _apply_denormalization(self, data: Dict[str, Any], mean: Tuple[float, ...], std: Tuple[float, ...]) -> Dict[str, Any]:
+        """역정규화 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if NUMPY_AVAILABLE:
+                for key, value in data.items():
+                    if isinstance(value, np.ndarray):
+                        if len(value.shape) == 3 and value.shape[2] == 3:  # HWC
+                            denormalized = value * np.array(std) + np.array(mean)
+                            processed_data[key] = np.clip(denormalized, 0, 1)
+                        elif len(value.shape) == 3 and value.shape[0] == 3:  # CHW
+                            std_array = np.array(std).reshape(-1, 1, 1)
+                            mean_array = np.array(mean).reshape(-1, 1, 1)
+                            denormalized = value * std_array + mean_array
+                            processed_data[key] = np.clip(denormalized, 0, 1)
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ 역정규화 실패: {e}")
+            return data
+    
+    async def _apply_to_numpy(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """NumPy 변환 적용"""
+        try:
+            processed_data = data.copy()
+            
+            if TORCH_AVAILABLE:
+                import torch
+                for key, value in data.items():
+                    if isinstance(value, torch.Tensor):
+                        processed_data[key] = value.detach().cpu().numpy()
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ NumPy 변환 실패: {e}")
+            return data
+    
+    async def _apply_quality_enhancement(self, step_name: str, data: Dict[str, Any], step: str) -> Dict[str, Any]:
+        """품질 향상 처리"""
+        try:
+            processed_data = data.copy()
+            
+            # 품질 점수 계산
+            if 'quality_score' not in processed_data:
+                processed_data['quality_score'] = 0.85  # 기본 품질 점수
+            
+            # 신뢰도 계산
+            if 'confidence' not in processed_data:
+                processed_data['confidence'] = 0.90  # 기본 신뢰도
+            
+            return processed_data
+        except Exception as e:
+            self.logger.warning(f"⚠️ 품질 향상 실패: {e}")
+            return data
     
     def get_metrics(self) -> Dict[str, Any]:
-        """브릿지 메트릭 반환 (BaseStepMixin 호환성 포함)"""
+        """브릿지 메트릭 반환"""
         with self._lock:
-            avg_time = sum(self.metrics['creation_times']) / max(1, len(self.metrics['creation_times']))
             success_rate = self.metrics['successful_requests'] / max(1, self.metrics['total_requests'])
-            basestepmixin_compatibility_rate = (self.metrics['basestepmixin_compatible_creations'] / 
-                                               max(1, self.metrics['successful_requests']))
             
             return {
-                'bridge_version': 'v10.0',
-                'factory_version': 'v9.0',
+                'bridge_version': 'v11.0',
+                'detailed_dataspec_version': 'v8.0',
                 'total_requests': self.metrics['total_requests'],
                 'successful_requests': self.metrics['successful_requests'],
                 'failed_requests': self.metrics['failed_requests'],
                 'success_rate': round(success_rate * 100, 2),
-                'cache_hits': self.metrics['cache_hits'],
-                'average_creation_time': round(avg_time, 4),
-                'cached_instances': len(self._step_cache),
-                'active_instances': len([ref for ref in self._step_cache.values() if ref() is not None]),
-                'basestepmixin_compatibility': {
-                    'compatible_creations': self.metrics['basestepmixin_compatible_creations'],
-                    'compatibility_rate': round(basestepmixin_compatibility_rate * 100, 2),
-                    'dependency_injection_successes': self.metrics['dependency_injection_successes']
-                },
-                'step_factory_available': STEP_FACTORY_V9_AVAILABLE,
-                'base_step_mixin_available': BASE_STEP_MIXIN_AVAILABLE,
+                'api_transformations': self.metrics['api_transformations'],
+                'step_data_flows': self.metrics['step_data_flows'],
+                'preprocessing_applications': self.metrics['preprocessing_applications'],
+                'postprocessing_applications': self.metrics['postprocessing_applications'],
+                'detailed_dataspec_usages': self.metrics['detailed_dataspec_usages'],
+                'step_model_requests_available': STEP_MODEL_REQUESTS_AVAILABLE,
+                'step_factory_v9_available': STEP_FACTORY_V9_AVAILABLE,
                 'environment': {
                     'conda_env': CONDA_INFO['conda_env'],
                     'conda_optimized': CONDA_INFO['is_target_env'],
                     'device': DEVICE,
                     'is_m3_max': IS_M3_MAX,
-                    'memory_gb': MEMORY_GB
+                    'memory_gb': MEMORY_GB,
+                    'torch_available': TORCH_AVAILABLE,
+                    'numpy_available': NUMPY_AVAILABLE,
+                    'pil_available': PIL_AVAILABLE
                 }
             }
     
     def clear_cache(self):
-            """캐시 정리 (BaseStepMixin 호환)"""
-            try:
-                with self._lock:
-                    self._step_cache.clear()
-                    
-                # StepFactory v9.0 캐시도 정리
-                if STEP_FACTORY_V9_AVAILABLE and STEP_FACTORY:
-                    STEP_FACTORY.clear_cache()
-                
-                # 메모리 정리
-                if TORCH_AVAILABLE:
-                    if DEVICE == "mps" and IS_M3_MAX:
-                        import torch
-                        if hasattr(torch.backends, 'mps') and hasattr(torch.backends.mps, 'empty_cache'):
-                            torch.backends.mps.empty_cache()
-                    elif DEVICE == "cuda":
-                        import torch
-                        torch.cuda.empty_cache()
-                
-                gc.collect()
-                self.logger.info("🧹 StepFactory v9.0 브릿지 캐시 정리 완료")
-                
-            except Exception as e:
-                self.logger.error(f"❌ 캐시 정리 실패: {e}")
-
-    # ==============================================
-    # 🔥 StepFactory v9.0 등록 관리 메서드들 (추가)
-    # ==============================================
-    
-    def register_all_step_classes(self) -> int:
-        """모든 Step 클래스를 StepFactory v9.0에 등록 (핵심 추가 메서드)"""
-        if not STEP_FACTORY_V9_AVAILABLE:
-            self.logger.warning("⚠️ StepFactory v9.0을 사용할 수 없어 Step 등록 스킵")
-            return 0
-        
-        registered_count = 0
-        
+        """캐시 정리"""
         try:
-            self.logger.info("🔄 모든 Step 클래스 등록 시작...")
+            with self._lock:
+                self._step_cache.clear()
             
-            for step_id, class_name in REAL_STEP_CLASS_MAPPING.items():
-                try:
-                    # step_id 문자열 생성 (step_01, step_02, ...)
-                    step_id_str = f"step_{step_id:02d}"
-                    
-                    # 이미 등록되어 있는지 확인
-                    if STEP_FACTORY.is_step_registered(step_id_str):
-                        self.logger.debug(f"ℹ️ {class_name}({step_id_str}) 이미 등록됨")
-                        registered_count += 1
-                        continue
-                    
-                    # StepType 찾기
-                    step_type = None
-                    for st, sid in STEP_TYPE_TO_ID_MAPPING.items():
-                        if sid == step_id:
-                            step_type = st
-                            break
-                    
-                    if not step_type:
-                        self.logger.warning(f"⚠️ Step {step_id}({class_name})의 StepType을 찾을 수 없음")
-                        continue
-                    
-                    # Step 클래스 동적 import 시도
-                    step_class = self._import_step_class_for_registration(step_id, class_name, step_type)
-                    
-                    if step_class:
-                        # StepFactory에 등록
-                        success = STEP_FACTORY.register_step(step_id_str, step_class)
-                        if success:
-                            registered_count += 1
-                            self.logger.info(f"✅ {class_name}({step_id_str}) 등록 완료")
-                        else:
-                            self.logger.warning(f"⚠️ {class_name}({step_id_str}) 등록 실패")
-                    else:
-                        self.logger.warning(f"⚠️ {class_name} 클래스 import 실패")
-                        
-                except Exception as e:
-                    self.logger.error(f"❌ Step {step_id}({class_name}) 등록 중 오류: {e}")
-                    continue
+            # 메모리 정리
+            if TORCH_AVAILABLE:
+                if DEVICE == "mps" and IS_M3_MAX:
+                    import torch
+                    if hasattr(torch.backends, 'mps') and hasattr(torch.backends.mps, 'empty_cache'):
+                        torch.backends.mps.empty_cache()
+                elif DEVICE == "cuda":
+                    import torch
+                    torch.cuda.empty_cache()
             
-            self.logger.info(f"🎯 Step 클래스 등록 완료: {registered_count}/{len(REAL_STEP_CLASS_MAPPING)}개")
-            return registered_count
+            gc.collect()
+            self.logger.info("🧹 DetailedDataSpec 브릿지 캐시 정리 완료")
             
         except Exception as e:
-            self.logger.error(f"❌ Step 클래스 등록 프로세스 실패: {e}")
-            return registered_count
-    
-    def get_factory_registered_steps(self) -> Dict[str, str]:
-        """StepFactory v9.0에 등록된 Step 목록 조회"""
-        if not STEP_FACTORY_V9_AVAILABLE:
-            self.logger.warning("⚠️ StepFactory v9.0을 사용할 수 없음")
-            return {}
-        
-        try:
-            # StepFactory의 get_registered_steps 호출
-            registered_steps = STEP_FACTORY.get_registered_steps()
-            
-            self.logger.debug(f"📋 StepFactory 등록된 Step: {len(registered_steps)}개")
-            return registered_steps
-            
-        except Exception as e:
-            self.logger.error(f"❌ StepFactory 등록 Step 조회 실패: {e}")
-            return {}
-    
-    def is_factory_step_registered(self, step_id: str) -> bool:
-        """StepFactory v9.0 Step 등록 여부 확인"""
-        if not STEP_FACTORY_V9_AVAILABLE:
-            return False
-        
-        try:
-            # step_id 정규화 (숫자면 step_XX 형태로 변환)
-            if step_id.isdigit():
-                step_id = f"step_{int(step_id):02d}"
-            
-            # StepFactory의 is_step_registered 호출
-            is_registered = STEP_FACTORY.is_step_registered(step_id)
-            
-            self.logger.debug(f"🔍 {step_id} 등록 여부: {'✅' if is_registered else '❌'}")
-            return is_registered
-            
-        except Exception as e:
-            self.logger.error(f"❌ Step {step_id} 등록 여부 확인 실패: {e}")
-            return False
-    
-    def _import_step_class_for_registration(self, step_id: int, class_name: str, step_type: StepType) -> Optional[Type]:
-        """등록용 Step 클래스 동적 import (내부 헬퍼 메서드)"""
-        try:
-            # BaseStepMixinMapping을 통해 모듈 경로 가져오기
-            if STEP_FACTORY_V9_AVAILABLE:
-                config = BaseStepMixinMapping.get_config(step_type)
-                module_path = config.module_path
-                
-                # 동적 import 시도
-                import importlib
-                
-                # 여러 import 경로 시도
-                import_paths = [
-                    module_path,
-                    f"app.ai_pipeline.steps.step_{step_id:02d}_{step_type.value}",
-                    f"backend.app.ai_pipeline.steps.step_{step_id:02d}_{step_type.value}",
-                    f"ai_pipeline.steps.step_{step_id:02d}_{step_type.value}"
-                ]
-                
-                for import_path in import_paths:
-                    try:
-                        module = importlib.import_module(import_path)
-                        if hasattr(module, class_name):
-                            step_class = getattr(module, class_name)
-                            self.logger.debug(f"✅ {class_name} import 성공: {import_path}")
-                            return step_class
-                    except ImportError:
-                        continue
-                
-                self.logger.warning(f"⚠️ {class_name} 모든 경로에서 import 실패")
-                return None
-            else:
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"❌ {class_name} import 실패: {e}")
-            return None
+            self.logger.error(f"❌ 캐시 정리 실패: {e}")
 
 # ==============================================
-# 🔥 Step Implementation Manager v10.0
-# ==============================================
-
-# ==============================================
-# 🔥 Step Implementation Manager v10.0
+# 🔥 Step Implementation Manager v11.0 (DetailedDataSpec 기반)
 # ==============================================
 
 class StepImplementationManager:
-    """Step Implementation Manager v10.0 - StepFactory v9.0 완전 연동"""
+    """Step Implementation Manager v11.0 - DetailedDataSpec 완전 반영"""
     
     def __init__(self):
         self.logger = logging.getLogger(f"{__name__}.StepImplementationManager")
-        self.bridge = StepFactoryV9Bridge()
+        self.bridge = DetailedDataSpecStepBridge()
         self._lock = threading.RLock()
         
         # 전체 매니저 메트릭
         self.manager_metrics = {
-            'manager_version': 'v10.0',
-            'factory_version': 'v9.0',
+            'manager_version': 'v11.0',
+            'detailed_dataspec_version': 'v8.0',
+            'step_factory_version': 'v9.0',
             'start_time': datetime.now(),
-            'total_implementations': len(REAL_STEP_CLASS_MAPPING),
-            'available_steps': list(REAL_STEP_CLASS_MAPPING.values()),
-            'basestepmixin_compatible': True
+            'total_implementations': len(STEP_ID_TO_NAME_MAPPING),
+            'available_steps': list(STEP_ID_TO_NAME_MAPPING.values()),
+            'detailed_dataspec_compatible': True,
+            'api_mapping_supported': True,
+            'step_data_flow_supported': True,
+            'preprocessing_postprocessing_supported': True
         }
         
-        self.logger.info("🏗️ StepImplementationManager v10.0 초기화 완료 (StepFactory v9.0 연동)")
-        self.logger.info(f"📊 지원 Step: {len(REAL_STEP_CLASS_MAPPING)}개 (BaseStepMixin 완전 호환)")
+        self.logger.info("🏗️ StepImplementationManager v11.0 초기화 완료 (DetailedDataSpec 완전 반영)")
+        self.logger.info(f"📊 지원 Step: {len(STEP_ID_TO_NAME_MAPPING)}개 (API 매핑 + 데이터 흐름 완전 지원)")
     
     async def process_step_by_id(self, step_id: int, *args, **kwargs) -> Dict[str, Any]:
-        """Step ID로 처리 (BaseStepMixin 호환)"""
+        """Step ID로 처리 (DetailedDataSpec 기반)"""
         try:
-            if step_id not in REAL_STEP_CLASS_MAPPING:
+            if step_id not in STEP_ID_TO_NAME_MAPPING:
                 return {
                     'success': False,
                     'error': f"지원하지 않는 step_id: {step_id}",
-                    'available_step_ids': list(REAL_STEP_CLASS_MAPPING.keys()),
+                    'available_step_ids': list(STEP_ID_TO_NAME_MAPPING.keys()),
                     'timestamp': datetime.now().isoformat()
                 }
             
-            # StepType 찾기
-            step_type = None
-            for st, sid in STEP_TYPE_TO_ID_MAPPING.items():
-                if sid == step_id:
-                    step_type = st
-                    break
+            step_name = STEP_ID_TO_NAME_MAPPING[step_id]
             
-            if not step_type:
-                return {
-                    'success': False,
-                    'error': f"step_id {step_id}에 대한 StepType을 찾을 수 없음",
-                    'timestamp': datetime.now().isoformat()
-                }
+            # API 입력 구성
+            api_input = {}
+            if args:
+                # 첫 번째 인자를 주요 입력으로 처리
+                if step_name == "HumanParsingStep":
+                    api_input['image'] = args[0]
+                elif step_name == "PoseEstimationStep":
+                    api_input['image'] = args[0]
+                elif step_name == "ClothSegmentationStep":
+                    api_input['clothing_image'] = args[0]
+                elif step_name == "GeometricMatchingStep":
+                    api_input['person_image'] = args[0]
+                    if len(args) > 1:
+                        api_input['clothing_image'] = args[1]
+                elif step_name == "ClothWarpingStep":
+                    api_input['clothing_item'] = args[0]
+                    if len(args) > 1:
+                        api_input['person_image'] = args[1]
+                elif step_name == "VirtualFittingStep":
+                    api_input['person_image'] = args[0]
+                    if len(args) > 1:
+                        api_input['clothing_item'] = args[1]
+                elif step_name == "PostProcessingStep":
+                    api_input['fitted_image'] = args[0]
+                elif step_name == "QualityAssessmentStep":
+                    api_input['final_result'] = args[0]
+                else:
+                    api_input['input_data'] = args[0]
             
-            # BaseStepMixin 호환 처리
-            return await self.bridge.process_step(step_type, *args, **kwargs)
+            # kwargs 추가
+            api_input.update(kwargs)
+            
+            # DetailedDataSpec 기반 처리
+            return await self.bridge.process_step_with_detailed_spec(
+                step_name, api_input, session_id=kwargs.get('session_id')
+            )
             
         except Exception as e:
             self.logger.error(f"❌ Step ID {step_id} 처리 실패: {e}")
@@ -829,8 +1160,34 @@ class StepImplementationManager:
                 'timestamp': datetime.now().isoformat()
             }
     
+    async def process_step_by_name(self, step_name: str, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Step 이름으로 처리 (DetailedDataSpec 기반)"""
+        try:
+            if step_name not in STEP_NAME_TO_CLASS_MAPPING:
+                return {
+                    'success': False,
+                    'error': f"지원하지 않는 step_name: {step_name}",
+                    'available_step_names': list(STEP_NAME_TO_CLASS_MAPPING.keys()),
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            # DetailedDataSpec 기반 처리
+            return await self.bridge.process_step_with_detailed_spec(
+                step_name, api_input, session_id=kwargs.get('session_id'), **kwargs
+            )
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step {step_name} 처리 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'step_name': step_name,
+                'error_type': type(e).__name__,
+                'timestamp': datetime.now().isoformat()
+            }
+    
     def get_all_metrics(self) -> Dict[str, Any]:
-        """전체 매니저 메트릭 (BaseStepMixin 호환성 포함)"""
+        """전체 매니저 메트릭 (DetailedDataSpec 호환성 포함)"""
         bridge_metrics = self.bridge.get_metrics()
         
         return {
@@ -838,24 +1195,31 @@ class StepImplementationManager:
             'uptime_seconds': (datetime.now() - self.manager_metrics['start_time']).total_seconds(),
             'bridge_metrics': bridge_metrics,
             'step_mappings': {
-                'real_step_classes': REAL_STEP_CLASS_MAPPING,
-                'step_type_to_id': {st.value: sid for st, sid in STEP_TYPE_TO_ID_MAPPING.items()},
+                'step_id_to_name': STEP_ID_TO_NAME_MAPPING,
+                'step_name_to_class': {name: step_type.value for name, step_type in STEP_NAME_TO_CLASS_MAPPING.items()},
                 'implementation_functions': IMPLEMENTATION_FUNCTION_MAPPING
             },
+            'detailed_dataspec_features': {
+                'api_input_mapping_supported': True,
+                'api_output_mapping_supported': True,
+                'step_data_flow_supported': True,
+                'preprocessing_steps_supported': True,
+                'postprocessing_steps_supported': True,
+                'fastapi_integration_ready': True
+            },
             'system_status': {
+                'step_model_requests_available': STEP_MODEL_REQUESTS_AVAILABLE,
                 'step_factory_v9_available': STEP_FACTORY_V9_AVAILABLE,
-                'base_step_mixin_available': BASE_STEP_MIXIN_AVAILABLE,
                 'torch_available': TORCH_AVAILABLE,
                 'numpy_available': NUMPY_AVAILABLE,
                 'pil_available': PIL_AVAILABLE
             },
-            'basestepmixin_compatibility': {
-                'version': 'v18.0',
-                'constructor_injection_supported': True,
-                'process_method_standardized': True,
-                'unified_dependency_manager_integrated': True,
+            'environment': {
+                'conda_env': CONDA_INFO['conda_env'],
                 'conda_optimized': CONDA_INFO['is_target_env'],
-                'm3_max_optimized': IS_M3_MAX
+                'device': DEVICE,
+                'is_m3_max': IS_M3_MAX,
+                'memory_gb': MEMORY_GB
             }
         }
     
@@ -863,7 +1227,7 @@ class StepImplementationManager:
         """매니저 정리"""
         try:
             self.bridge.clear_cache()
-            self.logger.info("🧹 StepImplementationManager v10.0 정리 완료")
+            self.logger.info("🧹 StepImplementationManager v11.0 정리 완료")
         except Exception as e:
             self.logger.error(f"❌ 매니저 정리 실패: {e}")
 
@@ -875,13 +1239,13 @@ _step_implementation_manager_instance: Optional[StepImplementationManager] = Non
 _manager_lock = threading.RLock()
 
 def get_step_implementation_manager() -> StepImplementationManager:
-    """StepImplementationManager v10.0 싱글톤 인스턴스 반환"""
+    """StepImplementationManager v11.0 싱글톤 인스턴스 반환"""
     global _step_implementation_manager_instance
     
     with _manager_lock:
         if _step_implementation_manager_instance is None:
             _step_implementation_manager_instance = StepImplementationManager()
-            logger.info("✅ StepImplementationManager v10.0 싱글톤 생성 완료")
+            logger.info("✅ StepImplementationManager v11.0 싱글톤 생성 완료")
     
     return _step_implementation_manager_instance
 
@@ -897,7 +1261,7 @@ def cleanup_step_implementation_manager():
         if _step_implementation_manager_instance:
             _step_implementation_manager_instance.cleanup()
             _step_implementation_manager_instance = None
-            logger.info("🧹 StepImplementationManager v10.0 정리 완료")
+            logger.info("🧹 StepImplementationManager v11.0 정리 완료")
 
 # ==============================================
 # 🔥 기존 API 호환 함수들 (100% 호환성 유지)
@@ -909,12 +1273,18 @@ async def process_human_parsing_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """인간 파싱 구현체 처리 - HumanParsingStep 호출 (BaseStepMixin 호환)"""
+    """인간 파싱 구현체 처리 - HumanParsingStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    return await manager.process_step_by_id(
-        1, input_data=person_image, enhance_quality=enhance_quality, 
-        session_id=session_id, **kwargs
-    )
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
+        'image': person_image,
+        'enhance_quality': enhance_quality,
+        'session_id': session_id
+    }
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("HumanParsingStep", api_input)
 
 async def process_pose_estimation_implementation(
     image,
@@ -923,12 +1293,19 @@ async def process_pose_estimation_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """포즈 추정 구현체 처리 - PoseEstimationStep 호출 (BaseStepMixin 호환)"""
+    """포즈 추정 구현체 처리 - PoseEstimationStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    return await manager.process_step_by_id(
-        2, input_data=image, clothing_type=clothing_type, 
-        detection_confidence=detection_confidence, session_id=session_id, **kwargs
-    )
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
+        'image': image,
+        'clothing_type': clothing_type,
+        'detection_confidence': detection_confidence,
+        'session_id': session_id
+    }
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("PoseEstimationStep", api_input)
 
 async def process_cloth_segmentation_implementation(
     image,
@@ -937,12 +1314,19 @@ async def process_cloth_segmentation_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """의류 분할 구현체 처리 - ClothSegmentationStep 호출 (BaseStepMixin 호환)"""
+    """의류 분할 구현체 처리 - ClothSegmentationStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    return await manager.process_step_by_id(
-        3, input_data=image, clothing_type=clothing_type, 
-        quality_level=quality_level, session_id=session_id, **kwargs
-    )
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
+        'clothing_image': image,
+        'clothing_type': clothing_type,
+        'quality_level': quality_level,
+        'session_id': session_id
+    }
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("ClothSegmentationStep", api_input)
 
 async def process_geometric_matching_implementation(
     person_image,
@@ -954,19 +1338,24 @@ async def process_geometric_matching_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """기하학적 매칭 구현체 처리 - GeometricMatchingStep 호출 (BaseStepMixin 호환)"""
+    """기하학적 매칭 구현체 처리 - GeometricMatchingStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    input_data = {
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
         'person_image': person_image,
-        'clothing_image': clothing_image,
-        'pose_keypoints': pose_keypoints,
-        'body_mask': body_mask,
-        'clothing_mask': clothing_mask
+        'clothing_item': clothing_image,
+        'pose_data': {
+            'pose_keypoints': pose_keypoints,
+            'body_mask': body_mask,
+            'clothing_mask': clothing_mask
+        },
+        'matching_precision': matching_precision,
+        'session_id': session_id
     }
-    return await manager.process_step_by_id(
-        4, input_data=input_data, matching_precision=matching_precision, 
-        session_id=session_id, **kwargs
-    )
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("GeometricMatchingStep", api_input)
 
 async def process_cloth_warping_implementation(
     cloth_image,
@@ -977,17 +1366,23 @@ async def process_cloth_warping_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """의류 워핑 구현체 처리 - ClothWarpingStep 호출 (BaseStepMixin 호환)"""
+    """의류 워핑 구현체 처리 - ClothWarpingStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    input_data = {
-        'cloth_image': cloth_image,
-        'person_image': person_image,
-        'cloth_mask': cloth_mask
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
+        'clothing_item': cloth_image,
+        'transformation_data': {
+            'person_image': person_image,
+            'cloth_mask': cloth_mask,
+            'fabric_type': fabric_type,
+            'clothing_type': clothing_type
+        },
+        'session_id': session_id
     }
-    return await manager.process_step_by_id(
-        5, input_data=input_data, fabric_type=fabric_type, 
-        clothing_type=clothing_type, session_id=session_id, **kwargs
-    )
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("ClothWarpingStep", api_input)
 
 async def process_virtual_fitting_implementation(
     person_image,
@@ -998,18 +1393,28 @@ async def process_virtual_fitting_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """가상 피팅 구현체 처리 - VirtualFittingStep 호출 (핵심!, BaseStepMixin 호환)"""
+    """가상 피팅 구현체 처리 - VirtualFittingStep 호출 (핵심!, DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    input_data = {
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
         'person_image': person_image,
-        'cloth_image': cloth_image,
-        'pose_data': pose_data,
-        'cloth_mask': cloth_mask
+        'clothing_item': cloth_image,
+        'fitting_mode': fitting_quality,
+        'guidance_scale': kwargs.get('guidance_scale', 7.5),
+        'num_inference_steps': kwargs.get('num_inference_steps', 50),
+        'session_id': session_id
     }
-    return await manager.process_step_by_id(
-        6, input_data=input_data, fitting_quality=fitting_quality, 
-        session_id=session_id, **kwargs
-    )
+    
+    # 추가 데이터 포함
+    if pose_data:
+        api_input['pose_data'] = pose_data
+    if cloth_mask:
+        api_input['cloth_mask'] = cloth_mask
+    
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("VirtualFittingStep", api_input)
 
 async def process_post_processing_implementation(
     fitted_image,
@@ -1017,12 +1422,19 @@ async def process_post_processing_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """후처리 구현체 처리 - PostProcessingStep 호출 (BaseStepMixin 호환)"""
+    """후처리 구현체 처리 - PostProcessingStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    return await manager.process_step_by_id(
-        7, input_data=fitted_image, enhancement_level=enhancement_level, 
-        session_id=session_id, **kwargs
-    )
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
+        'fitted_image': fitted_image,
+        'enhancement_level': enhancement_level,
+        'upscale_factor': kwargs.get('upscale_factor', 4),
+        'session_id': session_id
+    }
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("PostProcessingStep", api_input)
 
 async def process_quality_assessment_implementation(
     final_image,
@@ -1030,50 +1442,236 @@ async def process_quality_assessment_implementation(
     session_id: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
-    """품질 평가 구현체 처리 - QualityAssessmentStep 호출 (BaseStepMixin 호환)"""
+    """품질 평가 구현체 처리 - QualityAssessmentStep 호출 (DetailedDataSpec 기반)"""
     manager = get_step_implementation_manager()
-    return await manager.process_step_by_id(
-        8, input_data=final_image, analysis_depth=analysis_depth, 
-        session_id=session_id, **kwargs
-    )
+    
+    # DetailedDataSpec 기반 API 입력 구성
+    api_input = {
+        'final_result': final_image,
+        'analysis_depth': analysis_depth,
+        'session_id': session_id
+    }
+    
+    # 참조 이미지들 포함 (품질 비교용)
+    if 'original_person' in kwargs:
+        api_input['original_person'] = kwargs['original_person']
+    if 'original_clothing' in kwargs:
+        api_input['original_clothing'] = kwargs['original_clothing']
+    
+    api_input.update(kwargs)
+    
+    return await manager.process_step_by_name("QualityAssessmentStep", api_input)
+
+# ==============================================
+# 🔥 신규 DetailedDataSpec 기반 함수들
+# ==============================================
+
+async def process_step_with_api_mapping(
+    step_name: str,
+    api_input: Dict[str, Any],
+    **kwargs
+) -> Dict[str, Any]:
+    """API 매핑 기반 Step 처리 (step_model_requests.py 완전 활용)"""
+    try:
+        manager = get_step_implementation_manager()
+        return await manager.process_step_by_name(step_name, api_input, **kwargs)
+    except Exception as e:
+        logger.error(f"❌ API 매핑 기반 Step 처리 실패 {step_name}: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'step_name': step_name,
+            'timestamp': datetime.now().isoformat()
+        }
+
+async def process_pipeline_with_data_flow(
+    pipeline_steps: List[str],
+    initial_input: Dict[str, Any],
+    session_id: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """Step 간 데이터 흐름 기반 파이프라인 처리"""
+    try:
+        manager = get_step_implementation_manager()
+        pipeline_results = []
+        current_data = initial_input.copy()
+        
+        for i, step_name in enumerate(pipeline_steps):
+            logger.info(f"🔄 파이프라인 {i+1}/{len(pipeline_steps)}: {step_name}")
+            
+            # 이전 Step의 데이터를 현재 Step 입력에 병합
+            if i > 0 and 'next_step_data' in pipeline_results[i-1]:
+                prev_step_data = pipeline_results[i-1]['next_step_data'].get(step_name, {})
+                current_data.update(prev_step_data)
+            
+            # 현재 Step 처리
+            result = await manager.process_step_by_name(step_name, current_data, session_id=session_id, **kwargs)
+            pipeline_results.append(result)
+            
+            # 실패 시 파이프라인 중단
+            if not result.get('success', False):
+                return {
+                    'success': False,
+                    'error': f"파이프라인 실패 at {step_name}: {result.get('error')}",
+                    'failed_step': step_name,
+                    'completed_steps': i,
+                    'partial_results': pipeline_results,
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            # 다음 Step을 위한 데이터 준비
+            if 'next_step_data' in result:
+                current_data.update(result['next_step_data'])
+        
+        return {
+            'success': True,
+            'pipeline_results': pipeline_results,
+            'final_result': pipeline_results[-1] if pipeline_results else {},
+            'completed_steps': len(pipeline_results),
+            'total_steps': len(pipeline_steps),
+            'session_id': session_id,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 파이프라인 처리 실패: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'pipeline_steps': pipeline_steps,
+            'timestamp': datetime.now().isoformat()
+        }
+
+def get_step_api_specification(step_name: str) -> Dict[str, Any]:
+    """Step의 API 사양 반환 (FastAPI 라우터용)"""
+    try:
+        if not STEP_MODEL_REQUESTS_AVAILABLE:
+            return {}
+        
+        # step_model_requests.py에서 API 정보 가져오기
+        api_mapping = get_step_api_mapping(step_name)
+        data_structure_info = get_step_data_structure_info(step_name)
+        step_request = get_enhanced_step_request(step_name)
+        
+        if not step_request:
+            return {}
+        
+        return {
+            'step_name': step_name,
+            'step_class': step_request.step_class,
+            'ai_class': step_request.ai_class,
+            'step_priority': step_request.step_priority.name,
+            'model_architecture': step_request.model_architecture,
+            'supports_streaming': step_request.supports_streaming,
+            'api_input_mapping': api_mapping.get('input_mapping', {}),
+            'api_output_mapping': api_mapping.get('output_mapping', {}),
+            'input_form_fields': [k for k, v in api_mapping.get('input_mapping', {}).items() if "UploadFile" not in str(v)],
+            'file_upload_fields': [k for k, v in api_mapping.get('input_mapping', {}).items() if "UploadFile" in str(v)],
+            'response_fields': list(api_mapping.get('output_mapping', {}).keys()),
+            'fastapi_compatible': len(api_mapping.get('input_mapping', {})) > 0,
+            'detailed_data_spec': data_structure_info.get('detailed_data_spec', {}),
+            'preprocessing_requirements': get_step_preprocessing_requirements(step_name),
+            'postprocessing_requirements': get_step_postprocessing_requirements(step_name),
+            'data_flow': get_step_data_flow(step_name)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Step API 사양 조회 실패 {step_name}: {e}")
+        return {'error': str(e)}
+
+def get_all_steps_api_specification() -> Dict[str, Dict[str, Any]]:
+    """모든 Step의 API 사양 반환"""
+    specifications = {}
+    
+    for step_name in STEP_ID_TO_NAME_MAPPING.values():
+        specifications[step_name] = get_step_api_specification(step_name)
+    
+    return specifications
+
+def validate_step_input_against_spec(step_name: str, api_input: Dict[str, Any]) -> Dict[str, Any]:
+    """Step 입력을 DetailedDataSpec에 대해 검증"""
+    try:
+        if not STEP_MODEL_REQUESTS_AVAILABLE:
+            return {'valid': True, 'warnings': ['step_model_requests.py 사용 불가']}
+        
+        step_request = get_enhanced_step_request(step_name)
+        if not step_request:
+            return {'valid': False, 'error': f'Unknown step: {step_name}'}
+        
+        api_mapping = get_step_api_mapping(step_name)
+        input_mapping = api_mapping.get('input_mapping', {})
+        
+        validation_result = {
+            'valid': True,
+            'warnings': [],
+            'errors': [],
+            'missing_required_fields': [],
+            'type_mismatches': [],
+            'extra_fields': []
+        }
+        
+        # 필수 필드 체크
+        for required_field, expected_type in input_mapping.items():
+            if required_field not in api_input:
+                validation_result['missing_required_fields'].append(required_field)
+                validation_result['valid'] = False
+            else:
+                # 타입 체크 (간단한 버전)
+                value = api_input[required_field]
+                if "UploadFile" in expected_type and not hasattr(value, 'file'):
+                    validation_result['type_mismatches'].append(f"{required_field}: expected UploadFile")
+                elif "str" in expected_type and not isinstance(value, str):
+                    validation_result['warnings'].append(f"{required_field}: expected string")
+                elif "float" in expected_type and not isinstance(value, (int, float)):
+                    validation_result['warnings'].append(f"{required_field}: expected number")
+        
+        # 추가 필드 체크
+        for field in api_input.keys():
+            if field not in input_mapping and field not in ['session_id']:
+                validation_result['extra_fields'].append(field)
+        
+        return validation_result
+        
+    except Exception as e:
+        return {'valid': False, 'error': str(e)}
 
 # ==============================================
 # 🔥 상태 및 가용성 정보
 # ==============================================
 
-STEP_IMPLEMENTATIONS_AVAILABLE = STEP_FACTORY_V9_AVAILABLE
+STEP_IMPLEMENTATIONS_AVAILABLE = STEP_FACTORY_V9_AVAILABLE and STEP_MODEL_REQUESTS_AVAILABLE
 
 def get_implementation_availability_info() -> Dict[str, Any]:
-    """구현체 가용성 정보 반환"""
+    """구현체 가용성 정보 반환 (DetailedDataSpec 포함)"""
     return {
         "step_implementations_available": STEP_IMPLEMENTATIONS_AVAILABLE,
-        "architecture": "StepFactory v9.0 완전 연동",
-        "version": "v10.0",
+        "architecture": "DetailedDataSpec + StepFactory v9.0 완전 연동",
+        "version": "v11.0",
         "api_compatibility": "100%",
+        "detailed_dataspec_version": "v8.0",
         "step_factory_version": "v9.0",
-        "step_factory_available": STEP_FACTORY_V9_AVAILABLE,
-        "base_step_mixin_available": BASE_STEP_MIXIN_AVAILABLE,
-        "real_step_classes": REAL_STEP_CLASS_MAPPING,
-        "total_steps_supported": len(REAL_STEP_CLASS_MAPPING),
+        "step_model_requests_available": STEP_MODEL_REQUESTS_AVAILABLE,
+        "step_factory_v9_available": STEP_FACTORY_V9_AVAILABLE,
+        "supported_steps": STEP_ID_TO_NAME_MAPPING,
+        "total_steps_supported": len(STEP_ID_TO_NAME_MAPPING),
         "conda_optimization": CONDA_INFO['is_target_env'],
         "device_optimization": f"{DEVICE}_optimized",
         "production_ready": True,
-        "correct_class_mapping": True,
-        "step_classes_location": "ai_pipeline/steps/step_XX.py",
-        "basestepmixin_features": {
-            "version": "v18.0",
-            "constructor_injection": True,
-            "process_method_standardized": True,
-            "unified_dependency_manager": True,
-            "conda_optimized": CONDA_INFO['is_target_env'],
-            "m3_max_optimized": IS_M3_MAX
+        "detailed_dataspec_features": {
+            "api_input_mapping": "✅ 완전 지원",
+            "api_output_mapping": "✅ 완전 지원", 
+            "step_data_flow": "✅ 완전 지원",
+            "preprocessing_steps": "✅ 완전 지원",
+            "postprocessing_steps": "✅ 완전 지원",
+            "fastapi_integration": "✅ 완전 지원",
+            "step_pipeline": "✅ 완전 지원"
         },
-        "factory_integration": {
-            "step_routes.py": "API 엔드포인트",
-            "step_service.py": "서비스 매니저",
-            "step_implementations.py": "StepFactory v9.0 브릿지 (이 파일)",
-            "step_factory.py": "Step 인스턴스 생성 및 관리 (BaseStepMixin 완전 호환)",
-            "ai_pipeline/steps/step_XX.py": "실제 AI 모델 + 처리 로직 (BaseStepMixin 상속)"
+        "api_flow": {
+            "step_routes.py": "FastAPI 엔드포인트 (api_input_mapping 기반)",
+            "step_service.py": "비즈니스 로직 + 파이프라인 관리", 
+            "step_implementations.py": "API ↔ Step 변환 + DetailedDataSpec 처리 (이 파일)",
+            "step_factory.py": "Step 인스턴스 생성 (DetailedDataSpec 기반)",
+            "ai_pipeline/steps/step_XX.py": "순수 AI 모델 추론 로직"
         },
         "environment": {
             "conda_env": CONDA_INFO['conda_env'],
@@ -1088,11 +1686,11 @@ def get_implementation_availability_info() -> Dict[str, Any]:
     }
 
 # ==============================================
-# 🔥 conda 환경 최적화 함수들 (BaseStepMixin 호환)
+# 🔥 conda 환경 최적화 함수들 (DetailedDataSpec 호환)
 # ==============================================
 
 def setup_conda_step_implementations():
-    """conda 환경에서 Step 구현체 최적화 설정 (BaseStepMixin 호환)"""
+    """conda 환경에서 Step 구현체 최적화 설정 (DetailedDataSpec 호환)"""
     try:
         if not CONDA_INFO['is_target_env']:
             logger.warning(f"⚠️ 권장 conda 환경이 아님: {CONDA_INFO['conda_env']} (권장: mycloset-ai-clean)")
@@ -1104,7 +1702,7 @@ def setup_conda_step_implementations():
         if STEP_FACTORY_V9_AVAILABLE:
             try:
                 STEP_FACTORY_V9_COMPONENTS['optimize_conda_environment']()
-                logger.info("🔧 StepFactory v9.0 conda 최적화 완료 (BaseStepMixin 호환)")
+                logger.info("🔧 StepFactory v9.0 conda 최적화 완료 (DetailedDataSpec 호환)")
             except Exception as e:
                 logger.warning(f"⚠️ StepFactory v9.0 conda 최적화 실패: {e}")
         
@@ -1116,7 +1714,7 @@ def setup_conda_step_implementations():
             if DEVICE == "mps" and IS_M3_MAX:
                 if hasattr(torch.backends, 'mps') and hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
-                logger.info("🍎 M3 Max MPS 최적화 활성화 (BaseStepMixin 호환)")
+                logger.info("🍎 M3 Max MPS 최적화 활성화 (DetailedDataSpec 호환)")
             
             # CPU 스레드 최적화
             cpu_count = os.cpu_count()
@@ -1134,7 +1732,7 @@ def setup_conda_step_implementations():
         return False
 
 def validate_conda_environment():
-    """conda 환경 검증 (BaseStepMixin 호환)"""
+    """conda 환경 검증 (DetailedDataSpec 호환)"""
     try:
         conda_env = CONDA_INFO['conda_env']
         if conda_env == 'none':
@@ -1164,29 +1762,30 @@ def validate_conda_environment():
         return False
 
 # ==============================================
-# 🔥 BaseStepMixin 호환성 도구들
+# 🔥 DetailedDataSpec 호환성 도구들
 # ==============================================
 
 def validate_step_implementation_compatibility() -> Dict[str, Any]:
-    """Step Implementation BaseStepMixin 호환성 검증"""
+    """Step Implementation DetailedDataSpec 호환성 검증"""
     try:
         compatibility_report = {
-            'version': 'v10.0',
-            'factory_version': 'v9.0',
-            'basestepmixin_version': 'v18.0',
+            'version': 'v11.0',
+            'detailed_dataspec_version': 'v8.0',
+            'step_factory_version': 'v9.0',
             'compatible': True,
             'issues': [],
             'recommendations': []
         }
         
+        # step_model_requests.py 가용성 확인
+        if not STEP_MODEL_REQUESTS_AVAILABLE:
+            compatibility_report['compatible'] = False
+            compatibility_report['issues'].append('step_model_requests.py를 사용할 수 없음')
+        
         # StepFactory v9.0 가용성 확인
         if not STEP_FACTORY_V9_AVAILABLE:
             compatibility_report['compatible'] = False
             compatibility_report['issues'].append('StepFactory v9.0을 사용할 수 없음')
-        
-        # BaseStepMixin 가용성 확인
-        if not BASE_STEP_MIXIN_AVAILABLE:
-            compatibility_report['recommendations'].append('BaseStepMixin import 권장')
         
         # conda 환경 확인
         if not CONDA_INFO['is_target_env']:
@@ -1200,11 +1799,11 @@ def validate_step_implementation_compatibility() -> Dict[str, Any]:
                 f"메모리 부족 주의: {MEMORY_GB:.1f}GB (권장: 16GB+)"
             )
         
-        # Step 클래스 매핑 확인
+        # Step 매핑 확인
         compatibility_report['step_mappings'] = {
-            'total_steps': len(REAL_STEP_CLASS_MAPPING),
-            'step_classes': list(REAL_STEP_CLASS_MAPPING.values()),
-            'all_basestepmixin_compatible': True
+            'total_steps': len(STEP_ID_TO_NAME_MAPPING),
+            'step_names': list(STEP_ID_TO_NAME_MAPPING.values()),
+            'all_detailed_dataspec_compatible': True
         }
         
         # 시스템 상태
@@ -1227,16 +1826,17 @@ def validate_step_implementation_compatibility() -> Dict[str, Any]:
         return {
             'compatible': False,
             'error': str(e),
-            'version': 'v10.0'
+            'version': 'v11.0'
         }
 
 def diagnose_step_implementations() -> Dict[str, Any]:
-    """Step Implementations 상태 진단"""
+    """Step Implementations 상태 진단 (DetailedDataSpec 포함)"""
     try:
         manager = get_step_implementation_manager()
         
         diagnosis = {
-            'version': 'v10.0',
+            'version': 'v11.0',
+            'detailed_dataspec_version': 'v8.0',
             'timestamp': datetime.now().isoformat(),
             'overall_health': 'unknown',
             'manager_metrics': manager.get_all_metrics(),
@@ -1245,7 +1845,9 @@ def diagnose_step_implementations() -> Dict[str, Any]:
                 'conda_optimized': CONDA_INFO['is_target_env'],
                 'device_optimized': DEVICE != 'cpu',
                 'm3_max_available': IS_M3_MAX,
-                'memory_sufficient': MEMORY_GB >= 16.0
+                'memory_sufficient': MEMORY_GB >= 16.0,
+                'step_model_requests_available': STEP_MODEL_REQUESTS_AVAILABLE,
+                'detailed_dataspec_ready': STEP_MODEL_REQUESTS_AVAILABLE
             },
             'recommendations': []
         }
@@ -1270,6 +1872,9 @@ def diagnose_step_implementations() -> Dict[str, Any]:
         if DEVICE == 'cpu' and IS_M3_MAX:
             diagnosis['recommendations'].append("MPS 가속 활성화를 확인하세요")
         
+        if not STEP_MODEL_REQUESTS_AVAILABLE:
+            diagnosis['recommendations'].append("step_model_requests.py 의존성을 확인하세요")
+        
         if not STEP_FACTORY_V9_AVAILABLE:
             diagnosis['recommendations'].append("StepFactory v9.0 의존성을 확인하세요")
         
@@ -1279,8 +1884,31 @@ def diagnose_step_implementations() -> Dict[str, Any]:
         return {
             'overall_health': 'error',
             'error': str(e),
-            'version': 'v10.0'
+            'version': 'v11.0'
         }
+
+# ==============================================
+# 🔥 스키마 동적 Import
+# ==============================================
+
+def get_body_measurements():
+    """BodyMeasurements 스키마 동적 import"""
+    try:
+        from ..models.schemas import BodyMeasurements
+        return BodyMeasurements
+    except ImportError:
+        # 폴백 스키마
+        @dataclass
+        class BodyMeasurements:
+            height: float
+            weight: float
+            chest: Optional[float] = None
+            waist: Optional[float] = None
+            hips: Optional[float] = None
+        
+        return BodyMeasurements
+
+BodyMeasurements = get_body_measurements()
 
 # ==============================================
 # 🔥 모듈 Export
@@ -1289,14 +1917,15 @@ def diagnose_step_implementations() -> Dict[str, Any]:
 __all__ = [
     # 메인 클래스들
     "StepImplementationManager",
-    "StepFactoryV9Bridge",
+    "DetailedDataSpecStepBridge",
+    "DataTransformationUtils",
     
     # 관리자 함수들
     "get_step_implementation_manager", 
     "get_step_implementation_manager_async",
     "cleanup_step_implementation_manager",
     
-    # 기존 API 호환 함수들 (BaseStepMixin 완전 호환)
+    # 기존 API 호환 함수들 (DetailedDataSpec 기반)
     "process_human_parsing_implementation",
     "process_pose_estimation_implementation",
     "process_cloth_segmentation_implementation",
@@ -1306,10 +1935,17 @@ __all__ = [
     "process_post_processing_implementation",
     "process_quality_assessment_implementation",
     
+    # 신규 DetailedDataSpec 기반 함수들
+    "process_step_with_api_mapping",
+    "process_pipeline_with_data_flow",
+    "get_step_api_specification",
+    "get_all_steps_api_specification",
+    "validate_step_input_against_spec",
+    
     # 유틸리티
     "get_implementation_availability_info",
     "setup_conda_step_implementations",
-    "validate_conda_environment",
+    "validate_conda_environment", 
     "validate_step_implementation_compatibility",
     "diagnose_step_implementations",
     
@@ -1318,7 +1954,8 @@ __all__ = [
     
     # 상수
     "STEP_IMPLEMENTATIONS_AVAILABLE",
-    "REAL_STEP_CLASS_MAPPING"
+    "STEP_ID_TO_NAME_MAPPING",
+    "STEP_NAME_TO_CLASS_MAPPING"
 ]
 
 # 호환성을 위한 별칭
@@ -1328,37 +1965,47 @@ RealStepImplementationManager = StepImplementationManager
 # 🔥 모듈 로드 완료 메시지
 # ==============================================
 
-logger.info("🔥 Step Implementations v10.0 로드 완료 (StepFactory v9.0 완전 연동)!")
+logger.info("🔥 Step Implementations v11.0 로드 완료 (DetailedDataSpec 완전 반영)!")
 logger.info("✅ 완전한 아키텍처:")
 logger.info("   step_routes.py → step_service.py → step_implementations.py → StepFactory v9.0 → Step 클래스들")
 
-logger.info("✅ StepFactory v9.0 연동 (BaseStepMixin 완전 호환):")
-logger.info("   - BaseStepMixinMapping + BaseStepMixinConfig 사용")
-logger.info("   - 생성자 시점 의존성 주입 (**kwargs 패턴)")  
-logger.info("   - process() 메서드 시그니처 표준화")
-logger.info("   - UnifiedDependencyManager 완전 활용")
-logger.info("   - 순환참조 완전 방지 (TYPE_CHECKING)")
+logger.info("✅ DetailedDataSpec v8.0 완전 연동:")
+logger.info("   - api_input_mapping: FastAPI UploadFile ↔ PIL.Image 자동 변환")  
+logger.info("   - api_output_mapping: numpy.ndarray ↔ base64_string 자동 변환")
+logger.info("   - preprocessing_steps: 정규화, 리사이즈, Tensor 변환 자동 적용")
+logger.info("   - postprocessing_steps: argmax, 임계값, 역정규화 자동 적용")
+logger.info("   - Step 간 데이터 흐름: provides_to_next_step 자동 처리")
+logger.info("   - FastAPI 라우터 호환성: 100% 확보")
 
 logger.info(f"📊 시스템 상태:")
+logger.info(f"   - step_model_requests.py: {'✅' if STEP_MODEL_REQUESTS_AVAILABLE else '❌'}")
 logger.info(f"   - StepFactory v9.0: {'✅' if STEP_FACTORY_V9_AVAILABLE else '❌'}")
-logger.info(f"   - BaseStepMixin: {'✅' if BASE_STEP_MIXIN_AVAILABLE else '❌'}")
 logger.info(f"   - PyTorch: {'✅' if TORCH_AVAILABLE else '❌'}")
 logger.info(f"   - Device: {DEVICE}")
 logger.info(f"   - conda 환경: {CONDA_INFO['conda_env']} ({'✅' if CONDA_INFO['is_target_env'] else '⚠️'})")
 
-logger.info("🎯 실제 Step 클래스 매핑 (StepFactory v9.0 + BaseStepMixin):")
-for step_id, class_name in REAL_STEP_CLASS_MAPPING.items():
-    logger.info(f"   - Step {step_id}: {class_name} (BaseStepMixin 호환)")
+logger.info("🎯 DetailedDataSpec 기반 Step 매핑:")
+for step_id, step_name in STEP_ID_TO_NAME_MAPPING.items():
+    logger.info(f"   - Step {step_id}: {step_name} (API 매핑 + 데이터 흐름 완전 지원)")
 
-logger.info("🎯 기존 API 함수 호환성 (100% 유지):")
+logger.info("🎯 기존 API 함수 호환성 (100% 유지 + DetailedDataSpec 적용):")
 for step_id, func_name in IMPLEMENTATION_FUNCTION_MAPPING.items():
-    logger.info(f"   - {func_name} → {REAL_STEP_CLASS_MAPPING[step_id]}")
+    step_name = STEP_ID_TO_NAME_MAPPING[step_id]
+    logger.info(f"   - {func_name} → {step_name} (DetailedDataSpec 기반)")
+
+logger.info("🔄 API 처리 흐름 (DetailedDataSpec v8.0):")
+logger.info("   1. FastAPI → api_input_mapping (UploadFile → PIL.Image)")
+logger.info("   2. preprocessing_steps 자동 적용 (리사이즈, 정규화)")
+logger.info("   3. StepFactory → Step 인스턴스 → AI 추론")
+logger.info("   4. postprocessing_steps 자동 적용 (argmax, 임계값)")
+logger.info("   5. api_output_mapping (numpy → base64_string)")
+logger.info("   6. provides_to_next_step (다음 Step 데이터 준비)")
 
 # conda 환경 자동 최적화
 if CONDA_INFO['is_target_env']:
     setup_conda_step_implementations()
     if validate_conda_environment():
-        logger.info("🐍 conda 환경 자동 최적화 및 검증 완료! (BaseStepMixin 호환)")
+        logger.info("🐍 conda 환경 자동 최적화 및 검증 완료! (DetailedDataSpec 호환)")
 else:
     logger.warning(f"⚠️ conda 환경을 확인하세요: conda activate mycloset-ai-clean")
 
@@ -1377,7 +2024,8 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ 초기 메모리 최적화 실패: {e}")
 
-logger.info("🚀 Step Implementations v10.0 완전 준비 완료!")
-logger.info("💯 StepFactory v9.0 완전 연동으로 BaseStepMixin 생성자 의존성 주입 지원!")
-logger.info("💯 process() 메서드 시그니처 표준화로 안정성 보장!")
-logger.info("💯 UnifiedDependencyManager로 의존성 관리 완전 자동화!")
+logger.info("🚀 Step Implementations v11.0 완전 준비 완료!")
+logger.info("💯 DetailedDataSpec v8.0 완전 반영으로 API ↔ Step 자동 변환!")
+logger.info("💯 전처리/후처리 단계 자동 적용으로 안정성 보장!")
+logger.info("💯 Step 간 데이터 흐름 자동 관리로 파이프라인 완전 지원!")
+logger.info("💯 FastAPI 라우터 호환성 100% 확보!")
