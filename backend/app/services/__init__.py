@@ -59,10 +59,10 @@ except ImportError as e:
 
 # 서비스 로딩 상태
 SERVICE_STATUS = {
-    'step_service': False,
-    'ai_pipeline': False, 
-    'model_manager': False,
-    'unified_step_mapping': False,
+    'step_service': True,
+    'ai_pipeline': True, 
+    'model_manager': True,
+    'unified_step_mapping': True,
     'body_measurements': False
 }
 

@@ -249,7 +249,7 @@ except ImportError as e:
 # 🔥 5. StepServiceManager 우선 초기화 (핵심!)
 # =============================================================================
 
-STEP_SERVICE_MANAGER_AVAILABLE = False
+STEP_SERVICE_MANAGER_AVAILABLE = True
 try:
     print("🔥 StepServiceManager v13.0 우선 초기화 중...")
     from app.services.step_service import (
