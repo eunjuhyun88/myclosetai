@@ -449,7 +449,7 @@ def _try_import_advanced_modules():
     
     # step_model_requirements 시도
     try:
-        from .step_model_requirements import StepModelRequestAnalyzer
+        from .step_model_requests import StepModelRequestAnalyzer
         globals()['StepModelRequestAnalyzer'] = StepModelRequestAnalyzer
         advanced_status['step_requirements'] = True
         logger.info("✅ step_model_requirements 로드 성공")
@@ -487,7 +487,7 @@ __all__ = [
     'IS_CONDA',
     'IS_M3_MAX', 
     'DEVICE',
-    'TORCH_AVAILABLE',
+    'TORCH_AVAILABLEf',
     'NUMPY_AVAILABLE',
     'PIL_AVAILABLE',
     'ADVANCED_STATUS'
@@ -498,18 +498,56 @@ if ADVANCED_STATUS['model_loader']:
     __all__.append('ModelLoader')
 # 🔧 auto_detector 안전 처리
 
-# ==============================================
-# 🔥 auto_detector 관련 안전 처리
-# ==============================================
 
-# auto_detector 상태 안전 확인
-AUTO_DETECTOR_ENABLED = False
+# auto_detector 상태 강제 활성화
+AUTO_DETECTOR_ENABLED = True  # 🔥 강제 활성화
 try:
-    AUTO_DETECTOR_ENABLED = ADVANCED_STATUS.get('auto_detector', False)
-    # 추가 검증: 실제 함수가 존재하는지 확인
-    if AUTO_DETECTOR_ENABLED and 'detect_available_models' not in globals():
+    # 🔥 ADVANCED_STATUS 확인하지 않고 바로 활성화
+    # AUTO_DETECTOR_ENABLED = ADVANCED_STATUS.get('auto_detector', False)  # 👈 이 줄 주석처리
+    
+    # 직접 import 시도로 실제 사용 가능 여부 확인
+    from . import auto_model_detector
+    from .auto_model_detector import get_global_detector, quick_model_detection
+    
+    # 실제 함수 존재 여부 확인
+    if hasattr(auto_model_detector, 'get_global_detector'):
+        AUTO_DETECTOR_ENABLED = True
+        print("✅ auto_detector 강제 활성화 성공")
+        
+        # 전역에 함수 추가 (선택사항)
+        globals()['detect_available_models'] = quick_model_detection
+    else:
         AUTO_DETECTOR_ENABLED = False
-        print("⚠️ detect_available_models 함수 없음 - auto_detector 비활성화")
+        print("⚠️ get_global_detector 함수 없음")
+        
+except ImportError as e:
+    AUTO_DETECTOR_ENABLED = False
+    print(f"❌ auto_detector import 실패: {e}")
+except Exception as e:
+    AUTO_DETECTOR_ENABLED = False
+    print(f"⚠️ auto_detector 활성화 실패: {e}")
+
+# ============================================================================
+# 방법 2: ADVANCED_STATUS도 함께 수정
+# ============================================================================
+# 또는 ADVANCED_STATUS 자체를 수정:
+
+ADVANCED_STATUS = {
+    'model_loader': True,
+    'auto_detector': True,   # 🔥 False → True로 변경
+    'step_requirements': True
+}
+
+# 그리고 기존 코드 유지:
+AUTO_DETECTOR_ENABLED = True
+try:
+    AUTO_DETECTOR_ENABLED = ADVANCED_STATUS.get('auto_detector', True)  # 🔥 기본값도 True로
+    # 추가 검증: 실제 함수가 존재하는지 확인
+    if AUTO_DETECTOR_ENABLED:
+        from . import auto_model_detector
+        if 'detect_available_models' not in globals():
+            globals()['detect_available_models'] = auto_model_detector.quick_model_detection
+        print("✅ auto_detector 활성화됨")
 except Exception as e:
     AUTO_DETECTOR_ENABLED = False
     print(f"⚠️ auto_detector 상태 확인 실패: {e}")

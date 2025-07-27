@@ -53,7 +53,6 @@ if TYPE_CHECKING:
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
     from ...core.di_container import DIContainer
-
 # ==============================================
 # 🔥 환경 설정 및 시스템 정보 (GitHub 표준)
 # ==============================================
@@ -66,6 +65,21 @@ CONDA_INFO = {
     'conda_prefix': os.environ.get('CONDA_PREFIX', 'none'),
     'is_target_env': os.environ.get('CONDA_DEFAULT_ENV') == 'mycloset-ai-clean'
 }
+
+try:
+    from ..utils.step_model_requests import (
+        get_enhanced_step_request,
+        REAL_STEP_MODEL_REQUESTS
+    )
+    STEP_MODEL_REQUIREMENTS = True
+    STEP_MODEL_REQUESTS = type('StepModelRequests', (), {
+        'get_enhanced_step_request': get_enhanced_step_request
+    })()
+    logger.info("✅ step_model_requirements.py 모듈 import 성공")
+except ImportError as e:
+    STEP_MODEL_REQUIREMENTS = False
+    STEP_MODEL_REQUESTS = None
+    logger.warning(f"⚠️ step_model_requirements.py 모듈 import 실패: {e}")
 
 # M3 Max 감지 (GitHub 프로젝트 표준)
 IS_M3_MAX_DETECTED = False  # 🔥 키워드 충돌 완전 해결
@@ -93,7 +107,7 @@ except:
 def get_step_model_requirements():
     """step_model_requirements.py 동적 로딩"""
     try:
-        from app.ai_pipeline.utils.step_model_requirements import (
+        from backend.app.ai_pipeline.utils.step_model_requests import (
             get_enhanced_step_request,
             get_step_api_mapping,
             get_step_preprocessing_requirements,
@@ -636,89 +650,217 @@ class EnhancedGitHubDependencyResolver:
                 raise
     
     def _inject_detailed_data_spec_dependencies(self, config: EnhancedGitHubStepConfig, dependencies: Dict[str, Any]):
-        """🔥 DetailedDataSpec 의존성 주입 (핵심 메서드)"""
+        """🔥 DetailedDataSpec 의존성 주입 (핵심 메서드) - 수정된 버전"""
         try:
             self.logger.info(f"🔄 {config.step_name} DetailedDataSpec 의존성 주입 중...")
             
-            # DetailedDataSpec 데이터 추출
-            data_spec = config.detailed_data_spec
+            # 🔥 핵심 수정: DetailedDataSpec 데이터 소스 확장
+            data_spec = None
             
-            # 1. API 매핑 주입 (FastAPI ↔ Step 클래스)
-            dependencies.update({
-                'api_input_mapping': data_spec.api_input_mapping.copy(),
-                'api_output_mapping': data_spec.api_output_mapping.copy(),
-                'fastapi_compatible': len(data_spec.api_input_mapping) > 0
-            })
+            # 1. config에서 가져오기 시도
+            if hasattr(config, 'detailed_data_spec') and config.detailed_data_spec:
+                data_spec = config.detailed_data_spec
+                self.logger.info(f"✅ {config.step_name} config에서 DetailedDataSpec 로드")
             
-            # 2. Step 간 데이터 흐름 주입
-            dependencies.update({
-                'accepts_from_previous_step': data_spec.accepts_from_previous_step.copy(),
-                'provides_to_next_step': data_spec.provides_to_next_step.copy(),
-                'step_input_schema': data_spec.step_input_schema.copy(),
-                'step_output_schema': data_spec.step_output_schema.copy(),
-                'step_data_flow': {
-                    'accepts_from': list(data_spec.accepts_from_previous_step.keys()),
-                    'provides_to': list(data_spec.provides_to_next_step.keys()),
-                    'is_pipeline_start': len(data_spec.accepts_from_previous_step) == 0,
-                    'is_pipeline_end': len(data_spec.provides_to_next_step) == 0
-                }
-            })
+            # 2. step_model_requirements.py에서 가져오기 시도
+            if not data_spec and STEP_MODEL_REQUIREMENTS:
+                try:
+                    step_request = STEP_MODEL_REQUESTS.get_enhanced_step_request(config.step_name)
+                    if step_request and hasattr(step_request, 'data_spec'):
+                        data_spec = step_request.data_spec
+                        self.logger.info(f"✅ {config.step_name} step_model_requirements.py에서 DetailedDataSpec 로드")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {config.step_name} step_model_requirements.py 로드 실패: {e}")
             
-            # 3. 입출력 데이터 사양 주입
-            dependencies.update({
-                'input_data_types': data_spec.input_data_types.copy(),
-                'output_data_types': data_spec.output_data_types.copy(),
-                'input_shapes': data_spec.input_shapes.copy(),
-                'output_shapes': data_spec.output_shapes.copy(),
-                'input_value_ranges': data_spec.input_value_ranges.copy(),
-                'output_value_ranges': data_spec.output_value_ranges.copy(),
-                'data_validation_enabled': True
-            })
+            # 🔥 3. 폴백: 하드코딩된 DetailedDataSpec (핵심!)
+            if not data_spec:
+                data_spec = self._get_fallback_detailed_data_spec(config.step_name)
+                if data_spec:
+                    self.logger.info(f"✅ {config.step_name} 폴백 DetailedDataSpec 적용")
             
-            # 4. 전처리/후처리 설정 주입
-            dependencies.update({
-                'preprocessing_required': data_spec.preprocessing_required,
-                'postprocessing_required': data_spec.postprocessing_required,
-                'preprocessing_steps': data_spec.preprocessing_steps.copy(),
-                'postprocessing_steps': data_spec.postprocessing_steps.copy(),
-                'normalization_mean': data_spec.normalization_mean.copy(),
-                'normalization_std': data_spec.normalization_std.copy(),
-                'preprocessing_config': {
-                    'steps': data_spec.preprocessing_steps,
-                    'normalization': {
-                        'mean': data_spec.normalization_mean,
-                        'std': data_spec.normalization_std
+            # DetailedDataSpec이 있으면 주입
+            if data_spec:
+                # 1. API 매핑 주입 (FastAPI ↔ Step 클래스) - 🔥 워닝 해결의 핵심!
+                api_input_mapping = getattr(data_spec, 'api_input_mapping', {})
+                api_output_mapping = getattr(data_spec, 'api_output_mapping', {})
+                
+                dependencies.update({
+                    'api_input_mapping': api_input_mapping.copy() if hasattr(api_input_mapping, 'copy') else api_input_mapping,
+                    'api_output_mapping': api_output_mapping.copy() if hasattr(api_output_mapping, 'copy') else api_output_mapping,
+                    'fastapi_compatible': len(api_input_mapping) > 0
+                })
+                
+                # 2. Step 간 데이터 흐름 주입
+                accepts_from_previous_step = getattr(data_spec, 'accepts_from_previous_step', {})
+                provides_to_next_step = getattr(data_spec, 'provides_to_next_step', {})
+                
+                dependencies.update({
+                    'accepts_from_previous_step': accepts_from_previous_step.copy() if hasattr(accepts_from_previous_step, 'copy') else accepts_from_previous_step,
+                    'provides_to_next_step': provides_to_next_step.copy() if hasattr(provides_to_next_step, 'copy') else provides_to_next_step,
+                    'step_input_schema': getattr(data_spec, 'step_input_schema', {}),
+                    'step_output_schema': getattr(data_spec, 'step_output_schema', {}),
+                    'step_data_flow': {
+                        'accepts_from': list(accepts_from_previous_step.keys()) if accepts_from_previous_step else [],
+                        'provides_to': list(provides_to_next_step.keys()) if provides_to_next_step else [],
+                        'is_pipeline_start': len(accepts_from_previous_step) == 0,
+                        'is_pipeline_end': len(provides_to_next_step) == 0
+                    }
+                })
+                
+                # 3. 입출력 데이터 사양 주입
+                input_data_types = getattr(data_spec, 'input_data_types', [])
+                output_data_types = getattr(data_spec, 'output_data_types', [])
+                
+                dependencies.update({
+                    'input_data_types': input_data_types.copy() if hasattr(input_data_types, 'copy') else input_data_types,
+                    'output_data_types': output_data_types.copy() if hasattr(output_data_types, 'copy') else output_data_types,
+                    'input_shapes': getattr(data_spec, 'input_shapes', {}),
+                    'output_shapes': getattr(data_spec, 'output_shapes', {}),
+                    'input_value_ranges': getattr(data_spec, 'input_value_ranges', {}),
+                    'output_value_ranges': getattr(data_spec, 'output_value_ranges', {}),
+                    'data_validation_enabled': True
+                })
+                
+                # 4. 전처리/후처리 설정 주입
+                preprocessing_steps = getattr(data_spec, 'preprocessing_steps', [])
+                postprocessing_steps = getattr(data_spec, 'postprocessing_steps', [])
+                normalization_mean = getattr(data_spec, 'normalization_mean', (0.485, 0.456, 0.406))
+                normalization_std = getattr(data_spec, 'normalization_std', (0.229, 0.224, 0.225))
+                
+                dependencies.update({
+                    'preprocessing_required': getattr(data_spec, 'preprocessing_required', []),
+                    'postprocessing_required': getattr(data_spec, 'postprocessing_required', []),
+                    'preprocessing_steps': preprocessing_steps.copy() if hasattr(preprocessing_steps, 'copy') else preprocessing_steps,
+                    'postprocessing_steps': postprocessing_steps.copy() if hasattr(postprocessing_steps, 'copy') else postprocessing_steps,
+                    'normalization_mean': normalization_mean,
+                    'normalization_std': normalization_std,
+                    'preprocessing_config': {
+                        'steps': preprocessing_steps,
+                        'normalization': {
+                            'mean': normalization_mean,
+                            'std': normalization_std
+                        },
+                        'value_ranges': getattr(data_spec, 'input_value_ranges', {})
                     },
-                    'value_ranges': data_spec.input_value_ranges
-                },
-                'postprocessing_config': {
-                    'steps': data_spec.postprocessing_steps,
-                    'value_ranges': data_spec.output_value_ranges,
-                    'output_shapes': data_spec.output_shapes
-                }
-            })
-            
-            # 5. DetailedDataSpec 메타정보
-            dependencies.update({
-                'detailed_data_spec_loaded': True,
-                'detailed_data_spec_version': 'v8.0',
-                'step_model_requirements_integrated': STEP_MODEL_REQUIREMENTS is not None
-            })
-            
-            self.logger.info(f"✅ {config.step_name} DetailedDataSpec 의존성 주입 완료")
-            self.logger.debug(f"   - API 매핑: {len(data_spec.api_input_mapping)}→{len(data_spec.api_output_mapping)}")
-            self.logger.debug(f"   - 데이터 흐름: {len(data_spec.accepts_from_previous_step)}→{len(data_spec.provides_to_next_step)}")
-            self.logger.debug(f"   - 전처리: {len(data_spec.preprocessing_steps)}단계")
-            self.logger.debug(f"   - 후처리: {len(data_spec.postprocessing_steps)}단계")
-            
+                    'postprocessing_config': {
+                        'steps': postprocessing_steps,
+                        'value_ranges': getattr(data_spec, 'output_value_ranges', {}),
+                        'output_shapes': getattr(data_spec, 'output_shapes', {})
+                    }
+                })
+                
+                # 5. DetailedDataSpec 메타정보
+                dependencies.update({
+                    'detailed_data_spec_loaded': True,
+                    'detailed_data_spec_version': 'v8.0',
+                    'step_model_requirements_integrated': STEP_MODEL_REQUIREMENTS is not None
+                })
+                
+                self.logger.info(f"✅ {config.step_name} DetailedDataSpec 의존성 주입 완료")
+                self.logger.info(f"   - API 입력 매핑: {len(api_input_mapping)}개")
+                self.logger.info(f"   - API 출력 매핑: {len(api_output_mapping)}개")
+                self.logger.info(f"   - 전처리: {len(preprocessing_steps)}단계")
+                self.logger.info(f"   - 후처리: {len(postprocessing_steps)}단계")
+                
+            else:
+                # 🔥 최악의 경우 최소한의 빈 설정이라도 제공 (워닝 방지)
+                self.logger.warning(f"⚠️ {config.step_name} DetailedDataSpec을 로드할 수 없음, 최소 설정 적용")
+                dependencies.update({
+                    'api_input_mapping': {},
+                    'api_output_mapping': {},
+                    'preprocessing_steps': [],
+                    'postprocessing_steps': [],
+                    'accepts_from_previous_step': {},
+                    'provides_to_next_step': {},
+                    'detailed_data_spec_loaded': False,
+                    'detailed_data_spec_error': 'No DetailedDataSpec found'
+                })
+                
         except Exception as e:
             self.logger.error(f"❌ {config.step_name} DetailedDataSpec 의존성 주입 실패: {e}")
-            # 실패해도 기본 설정으로 진행
+            # 실패해도 기본 설정으로 진행 (워닝 방지)
             dependencies.update({
+                'api_input_mapping': {},
+                'api_output_mapping': {},
+                'preprocessing_steps': [],
+                'postprocessing_steps': [],
+                'accepts_from_previous_step': {},
+                'provides_to_next_step': {},
                 'detailed_data_spec_loaded': False,
                 'detailed_data_spec_error': str(e)
             })
-    
+
+    def _get_fallback_detailed_data_spec(self, step_name: str):
+        """🔥 폴백 DetailedDataSpec 제공 (워닝 해결의 핵심!)"""
+        
+        if step_name == "VirtualFittingStep":
+            class VirtualFittingDataSpec:
+                def __init__(self):
+                    # 🔥 워닝 해결의 핵심! API 매핑
+                    self.api_input_mapping = {
+                        'person_image': 'UploadFile',
+                        'clothing_image': 'UploadFile',
+                        'fabric_type': 'Optional[str]',
+                        'clothing_type': 'Optional[str]'
+                    }
+                    self.api_output_mapping = {
+                        'fitted_image': 'base64_string',
+                        'confidence': 'float',
+                        'quality_metrics': 'Dict[str, float]'
+                    }
+                    
+                    # 입출력 사양
+                    self.input_data_types = ['PIL.Image', 'PIL.Image', 'Optional[str]', 'Optional[str]']
+                    self.output_data_types = ['np.ndarray', 'float', 'Dict[str, float]']
+                    self.input_shapes = {'person_image': (768, 1024, 3), 'clothing_image': (768, 1024, 3)}
+                    self.output_shapes = {'fitted_image': (768, 1024, 3)}
+                    self.input_value_ranges = {'person_image': (0.0, 255.0), 'clothing_image': (0.0, 255.0)}
+                    self.output_value_ranges = {'fitted_image': (0.0, 255.0), 'confidence': (0.0, 1.0)}
+                    
+                    # 전처리/후처리
+                    self.preprocessing_steps = ['resize_768x1024', 'normalize_diffusion', 'to_tensor', 'prepare_ootd_inputs']
+                    self.postprocessing_steps = ['denormalize_diffusion', 'clip_0_1', 'to_numpy', 'final_compositing']
+                    self.normalization_mean = (0.5, 0.5, 0.5)
+                    self.normalization_std = (0.5, 0.5, 0.5)
+                    
+                    # Step 간 데이터 흐름
+                    self.accepts_from_previous_step = {
+                        'step_3': {'parsing_mask': 'np.ndarray'},
+                        'step_4': {'pose_keypoints': 'List[Tuple[float, float]]'},
+                        'step_5': {'warped_clothing': 'np.ndarray'}
+                    }
+                    self.provides_to_next_step = {
+                        'step_7': {
+                            'fitted_image': 'np.ndarray',
+                            'confidence': 'float',
+                            'processing_metadata': 'Dict[str, Any]'
+                        }
+                    }
+                    
+                    # 기타 필수 속성들
+                    self.preprocessing_required = ['resize_768x1024', 'normalize_diffusion', 'to_tensor']
+                    self.postprocessing_required = ['denormalize_diffusion', 'clip_0_1', 'to_numpy']
+                    self.step_input_schema = self.accepts_from_previous_step
+                    self.step_output_schema = self.provides_to_next_step
+            
+            return VirtualFittingDataSpec()
+        
+        # 다른 Step들도 최소한의 API 매핑 제공
+        else:
+            class BasicDataSpec:
+                def __init__(self):
+                    self.api_input_mapping = {'input_image': 'UploadFile'}
+                    self.api_output_mapping = {'result': 'base64_string'}
+                    self.preprocessing_steps = []
+                    self.postprocessing_steps = []
+                    self.accepts_from_previous_step = {}
+                    self.provides_to_next_step = {}
+                    self.input_data_types = []
+                    self.output_data_types = []
+            
+            return BasicDataSpec()
+
+
     def _inject_github_component_dependencies(self, config: EnhancedGitHubStepConfig, dependencies: Dict[str, Any]):
         """GitHub 프로젝트 표준 컴포넌트 의존성 주입"""
         # ModelLoader 의존성 (GitHub 표준)

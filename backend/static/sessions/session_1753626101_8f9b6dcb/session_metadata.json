@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "session_id": "session_1753626101_8f9b6dcb",
+    "created_at": "2025-07-27T23:21:41.675730",
+    "last_accessed": "2025-07-27T23:21:44.709700",
+    "measurements": {},
+    "person_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753626101_8f9b6dcb/person.jpg",
+      "size": [
+        360,
+        706
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 46265
+    },
+    "clothing_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753626101_8f9b6dcb/clothing.jpg",
+      "size": [
+        2000,
+        2667
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 556419
+    },
+    "total_steps": 8,
+    "completed_steps": [
+      0,
+      1,
+      2
+    ],
+    "circular_reference_safe": true
+  },
+  "step_results": {
+    "0": {
+      "person_image": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "clothing_image": {
+        "type": "PIL_Image",
+        "size": [
+          2000,
+          2667
+        ],
+        "mode": "RGB"
+      },
+      "primary_output": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "measurements": {},
+      "processing_time": 0.0,
+      "quality_score": 1.0,
+      "timestamp": "2025-07-27T23:21:41.675753",
+      "step_id": 0
+    },
+    "1": {
+      "success": true,
+      "message": "이미지 업로드 검증 완료 (StepImplementationManager v12.0)",
+      "step_id": 1,
+      "step_name": "Upload Validation",
+      "session_id": "session_1753626101_8f9b6dcb",
+      "request_id": "step1_47a5b358",
+      "processing_time": 2.1457672119140625e-06,
+      "stepimpl_manager_used": true,
+      "timestamp": "2025-07-27T23:21:41.676438",
+      "confidence": 0.87,
+      "quality_score": 0.0
+    },
+    "2": {
+      "success": true,
+      "message": "신체 측정값 검증 완료 (StepImplementationManager v12.0)",
+      "step_id": 2,
+      "step_name": "Measurements Validation",
+      "session_id": "session_1753626101_8f9b6dcb",
+      "request_id": "step2_bb044519",
+      "processing_time": 5.3882598876953125e-05,
+      "measurements_bmi": 22.49,
+      "measurements": {
+        "height": 170.0,
+        "weight": 65.0,
+        "chest": 0.0,
+        "waist": 0.0,
+        "hips": 0.0,
+        "bmi": 22.49
+      },
+      "stepimpl_manager_used": true,
+      "timestamp": "2025-07-27T23:21:44.709773",
+      "confidence": 0.89,
+      "quality_score": 0.0
+    }
+  },
+  "step_processing_times": {
+    "0": 0.0,
+    "1": 2.1457672119140625e-06,
+    "2": 5.3882598876953125e-05
+  },
+  "step_quality_scores": {
+    "0": 1.0,
+    "1": 0.0,
+    "2": 0.0
+  },
+  "last_saved": "2025-07-27T23:21:44.709954",
+  "circular_reference_safe": true
+}

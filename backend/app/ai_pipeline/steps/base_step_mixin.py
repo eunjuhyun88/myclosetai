@@ -312,92 +312,228 @@ class GitHubPerformanceMetrics:
 # 🔥 GitHub 호환 의존성 관리자 v19.1 (축약 버전)
 # ==============================================
 
+# backend/app/ai_pipeline/steps/base_step_mixin.py에 추가할 코드
+# GitHubDependencyManager 클래스에 다음 메서드들을 추가하세요
+
 class GitHubDependencyManager:
     """GitHub 프로젝트 완전 호환 의존성 관리자 v19.1"""
     
     def __init__(self, step_name: str):
         self.step_name = step_name
         self.logger = logging.getLogger(f"GitHubDependencyManager.{step_name}")
+        self.injected_dependencies = {}
+        self.injected_dependencies = {}  # 🔥 추가 필요
+        self.step_instance = None        # 🔥 추가 필요
         
-        # 의존성 저장
-        self.dependencies: Dict[str, Any] = {}
-        self.dependency_status = GitHubDependencyStatus()
-        
-        # 환경 정보
-        self.conda_info = CONDA_INFO
-        self.is_m3_max = IS_M3_MAX
-        self.memory_gb = MEMORY_GB
-        
-        # 동기화
-        self._lock = threading.RLock()
-        
-        # 환경 최적화 설정
-        self._setup_environment_optimization()
+    def set_step_instance(self, step_instance):
+        """Step 인스턴스 설정"""
+        self.step_instance = step_instance
+
     
-    def _setup_environment_optimization(self):
-        """환경 최적화 설정"""
+    def auto_inject_dependencies(self) -> bool:
+        """🔥 누락된 메서드 - 자동 의존성 주입"""
         try:
-            if self.conda_info['is_target_env']:
-                self.dependency_status.conda_optimized = True
-                self.logger.debug(f"✅ conda 환경 최적화 활성화: {self.conda_info['conda_env']}")
+            self.logger.info("🔄 GitHubDependencyManager 자동 의존성 주입 시작...")
             
-            if self.is_m3_max:
-                self.dependency_status.m3_max_optimized = True
-                self.logger.debug(f"✅ M3 Max 최적화 활성화: {self.memory_gb:.1f}GB")
+            success_count = 0
+            total_dependencies = 0
+            
+            # ModelLoader 자동 주입
+            if not hasattr(self.step_instance, 'model_loader') or self.step_instance.model_loader is None:
+                total_dependencies += 1
+                try:
+                    model_loader = self._resolve_model_loader()
+                    if model_loader:
+                        self.step_instance.model_loader = model_loader
+                        self.injected_dependencies['model_loader'] = model_loader
+                        success_count += 1
+                        self.logger.info("✅ ModelLoader 자동 주입 성공")
+                    else:
+                        self.logger.warning("⚠️ ModelLoader 해결 실패")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ ModelLoader 자동 주입 실패: {e}")
+            
+            # MemoryManager 자동 주입  
+            if not hasattr(self.step_instance, 'memory_manager') or self.step_instance.memory_manager is None:
+                total_dependencies += 1
+                try:
+                    memory_manager = self._resolve_memory_manager()
+                    if memory_manager:
+                        self.step_instance.memory_manager = memory_manager
+                        self.injected_dependencies['memory_manager'] = memory_manager
+                        success_count += 1
+                        self.logger.info("✅ MemoryManager 자동 주입 성공")
+                    else:
+                        self.logger.warning("⚠️ MemoryManager 해결 실패")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ MemoryManager 자동 주입 실패: {e}")
+            
+            # DataConverter 자동 주입
+            if not hasattr(self.step_instance, 'data_converter') or self.step_instance.data_converter is None:
+                total_dependencies += 1
+                try:
+                    data_converter = self._resolve_data_converter()
+                    if data_converter:
+                        self.step_instance.data_converter = data_converter
+                        self.injected_dependencies['data_converter'] = data_converter
+                        success_count += 1
+                        self.logger.info("✅ DataConverter 자동 주입 성공")
+                    else:
+                        self.logger.warning("⚠️ DataConverter 해결 실패")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DataConverter 자동 주입 실패: {e}")
+            
+            # 성공 여부 판단
+            if total_dependencies == 0:
+                self.logger.info("✅ 모든 의존성이 이미 주입되어 있음")
+                return True
+            
+            success_rate = success_count / total_dependencies if total_dependencies > 0 else 1.0
+            
+            if success_rate >= 0.5:  # 50% 이상 성공하면 OK
+                self.logger.info(f"✅ 자동 의존성 주입 완료: {success_count}/{total_dependencies} ({success_rate*100:.1f}%)")
+                return True
+            else:
+                self.logger.warning(f"⚠️ 자동 의존성 주입 부분 실패: {success_count}/{total_dependencies} ({success_rate*100:.1f}%)")
+                return False
                 
         except Exception as e:
-            self.logger.debug(f"환경 최적화 설정 실패: {e}")
-    
-    def inject_model_loader(self, model_loader) -> bool:
-        """GitHub 호환 ModelLoader 의존성 주입"""
-        try:
-            with self._lock:
-                self.dependencies['model_loader'] = model_loader
-                self.dependency_status.model_loader = True
-                self.logger.info(f"✅ {self.step_name} ModelLoader 의존성 주입 완료")
-                return True
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} ModelLoader 주입 실패: {e}")
+            self.logger.error(f"❌ 자동 의존성 주입 중 오류: {e}")
             return False
     
-    def inject_memory_manager(self, memory_manager) -> bool:
-        """GitHub 호환 MemoryManager 의존성 주입"""
+    def _resolve_model_loader(self):
+        """ModelLoader 해결"""
         try:
-            with self._lock:
-                self.dependencies['memory_manager'] = memory_manager
-                self.dependency_status.memory_manager = True
-                return True
+            # 글로벌 ModelLoader 인스턴스 찾기
+            from app.ai_pipeline.utils.model_loader import ModelLoader
+            
+            # 싱글톤 패턴으로 ModelLoader 가져오기
+            if hasattr(ModelLoader, '_instance') and ModelLoader._instance:
+                return ModelLoader._instance
+            
+            # 새 인스턴스 생성
+            return ModelLoader()
+            
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} MemoryManager 주입 실패: {e}")
+            self.logger.debug(f"ModelLoader 해결 실패: {e}")
+            return None
+    
+    def _resolve_memory_manager(self):
+        """MemoryManager 해결"""
+        try:
+            # 기본 MemoryManager 구현
+            class BasicMemoryManager:
+                def __init__(self):
+                    self.device = getattr(self.step_instance, 'device', 'cpu')
+                    
+                def optimize_memory(self):
+                    try:
+                        import gc
+                        gc.collect()
+                        
+                        if self.device == 'mps':
+                            import torch
+                            if hasattr(torch.mps, 'empty_cache'):
+                                torch.mps.empty_cache()
+                        elif self.device == 'cuda':
+                            import torch
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                                
+                        return True
+                    except Exception:
+                        return False
+                        
+                def get_memory_stats(self):
+                    return {"available": True, "optimized": True}
+            
+            return BasicMemoryManager()
+            
+        except Exception as e:
+            self.logger.debug(f"MemoryManager 해결 실패: {e}")
+            return None
+    
+    def _resolve_data_converter(self):
+        """DataConverter 해결"""
+        try:
+            # 기본 DataConverter 구현
+            class BasicDataConverter:
+                def __init__(self):
+                    pass
+                    
+                def convert_input(self, data):
+                    return data
+                    
+                def convert_output(self, data):
+                    return data
+                    
+                def validate_data(self, data):
+                    return True
+            
+            return BasicDataConverter()
+            
+        except Exception as e:
+            self.logger.debug(f"DataConverter 해결 실패: {e}")
+            return None
+    
+    def inject_model_loader(self, model_loader):
+        """ModelLoader 주입"""
+        try:
+            self.step_instance.model_loader = model_loader
+            self.injected_dependencies['model_loader'] = model_loader
+            return True
+        except Exception as e:
+            self.logger.error(f"ModelLoader 주입 실패: {e}")
             return False
     
-    def get_dependency(self, name: str) -> Optional[Any]:
-        """의존성 조회"""
-        with self._lock:
-            return self.dependencies.get(name)
-    
-    def validate_dependencies_github_format(self, format_type: DependencyValidationFormat = None) -> Union[Dict[str, bool], Dict[str, Any]]:
-        """GitHub 프로젝트 호환 의존성 검증"""
+    def inject_memory_manager(self, memory_manager):
+        """MemoryManager 주입"""
         try:
-            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
-                return {
-                    'model_loader': self.dependency_status.model_loader,
-                    'step_interface': self.dependency_status.step_interface,
-                    'memory_manager': self.dependency_status.memory_manager,
-                    'data_converter': self.dependency_status.data_converter
-                }
+            self.step_instance.memory_manager = memory_manager
+            self.injected_dependencies['memory_manager'] = memory_manager
+            return True
+        except Exception as e:
+            self.logger.error(f"MemoryManager 주입 실패: {e}")
+            return False
+    
+    def inject_data_converter(self, data_converter):
+        """DataConverter 주입"""
+        try:
+            self.step_instance.data_converter = data_converter
+            self.injected_dependencies['data_converter'] = data_converter
+            return True
+        except Exception as e:
+            self.logger.error(f"DataConverter 주입 실패: {e}")
+            return False
+    
+    def validate_dependencies_github_format(self, format_type=None):
+        """GitHub 형식 의존성 검증"""
+        try:
+            dependencies = {
+                'model_loader': hasattr(self.step_instance, 'model_loader') and self.step_instance.model_loader is not None,
+                'memory_manager': hasattr(self.step_instance, 'memory_manager') and self.step_instance.memory_manager is not None,
+                'data_converter': hasattr(self.step_instance, 'data_converter') and self.step_instance.data_converter is not None,
+                'step_interface': True,  # 기본값
+            }
+            
+            if format_type and hasattr(format_type, 'BOOLEAN_DICT'):
+                return dependencies
             else:
                 return {
-                    'success': self.dependency_status.model_loader,
-                    'details': {
-                        'model_loader': self.dependency_status.model_loader,
-                        'github_compatible': self.dependency_status.github_compatible,
-                        'detailed_data_spec_ready': self.dependency_status.detailed_data_spec_loaded
-                    }
+                    'success': all(dependencies.values()),
+                    'dependencies': dependencies,
+                    'github_compatible': True,
+                    'injected_count': len(self.injected_dependencies)
                 }
+                
         except Exception as e:
-            self.logger.error(f"❌ GitHub 의존성 검증 실패: {e}")
-            return {'model_loader': False} if format_type == DependencyValidationFormat.BOOLEAN_DICT else {'success': False}
+            return {
+                'success': False,
+                'error': str(e),
+                'github_compatible': False
+            }
+
+
 
 # ==============================================
 # 🔥 BaseStepMixin v19.1 - DetailedDataSpec 완전 통합
@@ -415,16 +551,15 @@ class BaseStepMixin:
     ✅ 전처리/후처리 요구사항 자동 적용
     ✅ GitHub 프로젝트 Step 클래스들과 100% 호환
     """
-    
     def __init__(self, **kwargs):
-        """DetailedDataSpec 완전 통합 초기화 (v19.1)"""
+        """DetailedDataSpec 완전 통합 초기화 (v19.1) - 순서 개선"""
         try:
             # 기본 설정
             self.config = self._create_github_config(**kwargs)
             self.step_name = kwargs.get('step_name', self.__class__.__name__)
             self.step_id = kwargs.get('step_id', 0)
             
-            # Logger 설정
+            # Logger 설정 (제일 먼저)
             self.logger = logging.getLogger(f"steps.{self.step_name}")
             if not self.logger.handlers:
                 handler = logging.StreamHandler()
@@ -433,13 +568,14 @@ class BaseStepMixin:
                 self.logger.addHandler(handler)
                 self.logger.setLevel(logging.INFO)
             
-            # 🔥 DetailedDataSpec 정보 저장 (StepFactory에서 주입받음)
+            # 🔥 DetailedDataSpec 정보 저장 (검증보다 먼저!!)
             self.detailed_data_spec = self._load_detailed_data_spec_from_kwargs(**kwargs)
             
-            # 🔥 GitHub 호환 의존성 관리자
+            # 🔥 GitHub 호환 의존성 관리자 (DetailedDataSpec 이후)
             self.dependency_manager = GitHubDependencyManager(self.step_name)
+            self.dependency_manager.set_step_instance(self)
             
-            # GitHub 표준 상태 플래그들
+            # 나머지 초기화...
             self.is_initialized = False
             self.is_ready = False
             self.has_model = False
@@ -466,7 +602,7 @@ class BaseStepMixin:
             self.real_ai_pipeline_ready = False
             self.process_method_signature = self.config.process_method_signature
             
-            # DetailedDataSpec 상태 (v19.1 신규)
+            # 🔥 DetailedDataSpec 상태 - DetailedDataSpec 로딩 후 검증
             self.data_conversion_ready = self._validate_data_conversion_readiness()
             
             # 환경 최적화 적용
@@ -483,7 +619,8 @@ class BaseStepMixin:
             
         except Exception as e:
             self._github_emergency_setup(e)
-    
+
+
     def _load_detailed_data_spec_from_kwargs(self, **kwargs) -> DetailedDataSpecConfig:
         """StepFactory에서 주입받은 DetailedDataSpec 정보 로딩"""
         return DetailedDataSpecConfig(

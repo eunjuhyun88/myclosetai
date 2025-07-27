@@ -2331,17 +2331,191 @@ class RealAIModelLoader:
             return Path.cwd() / "ai_models"
     
     def _initialize_auto_detector(self):
-        """auto_model_detector 초기화"""
+        """auto_model_detector 초기화 - 안전성 강화"""
         try:
             if AUTO_DETECTOR_AVAILABLE:
                 self.auto_detector = get_global_detector()
-                ootd_models = auto_detector.get_models_for_step("VirtualFittingStep")
-                self.logger.info("✅ auto_model_detector 연동 완료")
+                
+                # 🔥 안전성 추가: auto_detector 유효성 확인
+                if self.auto_detector is not None:
+                    try:
+                        # 1. 기본 메서드 존재 확인
+                        required_methods = ['detect_all_models']
+                        missing_methods = []
+                        
+                        for method_name in required_methods:
+                            if not hasattr(self.auto_detector, method_name):
+                                missing_methods.append(method_name)
+                        
+                        if missing_methods:
+                            self.logger.warning(f"⚠️ auto_detector에 필수 메서드 없음: {missing_methods}")
+                            # 그래도 기본 기능은 유지
+                            self.logger.info("✅ auto_model_detector 제한적 연동 완료")
+                            return
+                        
+                        # 2. detect_all_models 테스트
+                        detected_models = self.auto_detector.detect_all_models()
+                        model_count = len(detected_models) if detected_models else 0
+                        self.logger.info(f"✅ auto_model_detector 연동 완료: {model_count}개 모델 탐지")
+                        
+                        # 3. get_models_for_step 메서드가 있다면 테스트
+                        if hasattr(self.auto_detector, 'get_models_for_step'):
+                            try:
+                                ootd_models = self.auto_detector.get_models_for_step("VirtualFittingStep")
+                                self.logger.info(f"✅ VirtualFittingStep 모델: {len(ootd_models)}개")
+                            except Exception as step_error:
+                                self.logger.warning(f"⚠️ get_models_for_step 오류 (무시): {step_error}")
+                        else:
+                            self.logger.info("ℹ️ get_models_for_step 메서드 없음 (detect_all_models 사용)")
+                        
+                        # 4. 추가 메서드 확인 (선택적)
+                        optional_methods = ['get_models_by_ai_class', 'get_large_models_only', 'list_available_models']
+                        available_optional = [m for m in optional_methods if hasattr(self.auto_detector, m)]
+                        if available_optional:
+                            self.logger.info(f"✅ 추가 기능 사용 가능: {available_optional}")
+                        
+                    except Exception as validation_error:
+                        self.logger.warning(f"⚠️ auto_detector 검증 실패: {validation_error}")
+                        # 검증 실패해도 auto_detector는 유지 (기본 기능이라도 사용)
+                        self.logger.info("✅ auto_model_detector 기본 연동 완료")
+                    
+                else:
+                    self.logger.warning("⚠️ auto_detector 인스턴스가 None")
+                    self.auto_detector = None
             else:
-                self.logger.warning("⚠️ auto_model_detector 없음")
+                self.logger.warning("⚠️ AUTO_DETECTOR_AVAILABLE = False")
+                self.auto_detector = None
+                
         except Exception as e:
             self.logger.error(f"❌ auto_model_detector 초기화 실패: {e}")
-    
+            self.logger.error(f"   에러 타입: {type(e).__name__}")
+            self.logger.error(f"   에러 메시지: {str(e)}")
+            
+            # 디버깅 정보 추가
+            try:
+                import traceback
+                self.logger.debug(f"   스택 트레이스: {traceback.format_exc()}")
+            except:
+                pass
+            
+            self.auto_detector = None
+
+    # ==============================================
+    # 🔥 추가: integrate_auto_detector 메서드도 수정
+    # ==============================================
+
+    def integrate_auto_detector(self) -> bool:
+        """🔥 AutoDetector 완전 통합 - available_models 연동 (안전성 강화)"""
+        integration_start = time.time()
+        
+        try:
+            with self._lock:
+                self.performance_stats['integration_attempts'] += 1
+                
+                if not AUTO_DETECTOR_AVAILABLE:
+                    self.logger.warning("⚠️ AutoDetector 사용 불가능")
+                    return False
+                
+                if self.auto_detector is None:
+                    self.logger.warning("⚠️ auto_detector 인스턴스가 None")
+                    return False
+                
+                # 🔥 안전한 모델 탐지
+                try:
+                    if hasattr(self.auto_detector, 'detect_all_models'):
+                        detected_models = self.auto_detector.detect_all_models()
+                        
+                        if not detected_models:
+                            self.logger.warning("⚠️ 탐지된 모델이 없음")
+                            return False
+                        
+                        integration_count = 0
+                        error_count = 0
+                        
+                        for model_name, detected_model in detected_models.items():
+                            try:
+                                # DetectedModel 객체인지 확인
+                                if hasattr(detected_model, 'to_dict'):
+                                    model_dict = detected_model.to_dict()
+                                elif isinstance(detected_model, dict):
+                                    model_dict = detected_model
+                                else:
+                                    self.logger.warning(f"⚠️ 알 수 없는 모델 형식: {type(detected_model)}")
+                                    error_count += 1
+                                    continue
+                                
+                                # available_models에 안전하게 추가
+                                self.available_models[model_name] = {
+                                    "name": model_name,
+                                    "path": model_dict.get("path", ""),
+                                    "checkpoint_path": model_dict.get("checkpoint_path", model_dict.get("path", "")),
+                                    "step_class": model_dict.get("step_class", "UnknownStep"),
+                                    "ai_class": model_dict.get("ai_model_info", {}).get("ai_class", "BaseRealAIModel"),
+                                    "size_mb": model_dict.get("size_mb", 0),
+                                    "device_config": model_dict.get("device_config", {"recommended_device": "cpu"}),
+                                    "auto_detected": True,
+                                    "integration_time": time.time(),
+                                    "confidence": model_dict.get("confidence", 0.5),
+                                    "priority_score": model_dict.get("priority_info", {}).get("priority_score", 0.0)
+                                }
+                                integration_count += 1
+                                
+                            except Exception as model_error:
+                                self.logger.debug(f"모델 통합 실패 {model_name}: {model_error}")
+                                error_count += 1
+                                continue
+                        
+                        self.performance_stats['auto_detector_models'] = integration_count
+                        self.performance_stats['auto_detector_errors'] = error_count
+                        
+                        if integration_count > 0:
+                            self.logger.info(f"✅ AutoDetector 통합 완료: {integration_count}개 모델")
+                            if error_count > 0:
+                                self.logger.warning(f"⚠️ 통합 실패: {error_count}개 모델")
+                            return True
+                        else:
+                            self.logger.warning("⚠️ 통합된 모델이 없음")
+                            return False
+                            
+                    else:
+                        self.logger.error("❌ auto_detector에 detect_all_models 메서드 없음")
+                        return False
+                        
+                except Exception as detection_error:
+                    self.logger.error(f"❌ 모델 탐지 실패: {detection_error}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"❌ AutoDetector 통합 실패: {e}")
+            return False
+        finally:
+            self.performance_stats['integration_duration'] = time.time() - integration_start
+
+    # ==============================================
+    # 🔥 추가: 안전한 auto_detector 사용을 위한 헬퍼 메서드
+    # ==============================================
+
+    def safe_auto_detector_call(self, method_name: str, *args, **kwargs):
+        """auto_detector 메서드 안전 호출"""
+        try:
+            if self.auto_detector is None:
+                self.logger.debug(f"auto_detector가 None이므로 {method_name} 호출 불가")
+                return None
+            
+            if not hasattr(self.auto_detector, method_name):
+                self.logger.debug(f"auto_detector에 {method_name} 메서드 없음")
+                return None
+            
+            method = getattr(self.auto_detector, method_name)
+            result = method(*args, **kwargs)
+            self.logger.debug(f"auto_detector.{method_name} 호출 성공")
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"auto_detector.{method_name} 호출 실패: {e}")
+            return None
+
+
     def _auto_integrate_on_init(self):
         """초기화 시 자동으로 AutoDetector 통합 시도"""
         try:
@@ -2873,6 +3047,105 @@ class RealAIModelLoader:
             self.model_status[model_name] = LoadingStatus.ERROR
             return None
     
+    # 🔥 여기에 추가! (load_model 메서드 바로 다음)
+    def load_model_from_path(self, model_path: str, **kwargs) -> Optional[BaseRealAIModel]:
+        """특정 경로에서 AI 모델 로딩"""
+        try:
+            path = Path(model_path)
+            if not path.exists():
+                self.logger.error(f"❌ 모델 파일 없음: {path}")
+                return None
+            
+            # 파일명에서 모델명 추출
+            model_name = path.stem
+            
+            # AI 클래스 결정
+            ai_class = self._determine_ai_class_from_path(path)
+            
+            # AI 모델 생성
+            ai_model = RealAIModelFactory.create_model(
+                ai_class=ai_class,
+                checkpoint_path=str(path),
+                device=self.device
+            )
+            
+            if not ai_model:
+                self.logger.error(f"❌ AI 모델 생성 실패: {ai_class}")
+                return None
+            
+            # 모델 로딩
+            if not ai_model.load_model():
+                self.logger.error(f"❌ AI 모델 로딩 실패: {model_name}")
+                return None
+            
+            # 캐시에 저장
+            cache_entry = RealModelCacheEntry(
+                ai_model=ai_model,
+                load_time=ai_model.load_time,
+                last_access=time.time(),
+                access_count=1,
+                memory_usage_mb=ai_model.memory_usage_mb,
+                device=ai_model.device,
+                is_healthy=True,
+                error_count=0
+            )
+            
+            with self._lock:
+                self.model_cache[model_name] = cache_entry
+                self.loaded_ai_models[model_name] = ai_model
+                self.model_status[model_name] = LoadingStatus.LOADED
+            
+            self.logger.info(f"✅ 경로에서 AI 모델 로딩 성공: {model_name}")
+            return ai_model
+            
+        except Exception as e:
+            self.logger.error(f"❌ 경로 기반 모델 로딩 실패: {e}")
+            return None
+    
+    def _determine_ai_class_from_path(self, path: Path) -> str:
+        """파일 경로에서 AI 클래스 결정"""
+        try:
+            file_name = path.name.lower()
+            parent_dir = path.parent.name.lower()
+            
+            # 파일명 기반 매핑
+            if 'graphonomy' in file_name or 'schp' in file_name or 'atr' in file_name:
+                return "RealGraphonomyModel"
+            elif 'sam' in file_name and 'vit' in file_name:
+                return "RealSAMModel"
+            elif 'realvis' in file_name or 'visxl' in file_name:
+                return "RealVisXLModel"
+            elif 'ootd' in file_name or 'diffusion' in file_name:
+                return "RealOOTDDiffusionModel"
+            elif 'clip' in file_name or ('vit' in file_name and 'large' in file_name):
+                return "RealCLIPModel"
+            elif 'vgg' in file_name:
+                return "RealVGGModel"
+            elif 'densenet' in file_name:
+                return "RealDenseNetModel"
+            elif 'esrgan' in file_name:
+                return "RealESRGANModel"
+            
+            # 디렉토리명 기반 매핑
+            if 'human_parsing' in parent_dir or 'step_01' in parent_dir:
+                return "RealGraphonomyModel"
+            elif 'segmentation' in parent_dir or 'step_03' in parent_dir:
+                return "RealSAMModel"
+            elif 'warping' in parent_dir or 'step_05' in parent_dir:
+                return "RealVisXLModel"
+            elif 'fitting' in parent_dir or 'step_06' in parent_dir:
+                return "RealOOTDDiffusionModel"
+            elif 'quality' in parent_dir or 'step_08' in parent_dir:
+                return "RealCLIPModel"
+            
+            return "BaseRealAIModel"
+            
+        except Exception as e:
+            self.logger.debug(f"AI 클래스 결정 실패: {e}")
+            return "BaseRealAIModel"
+    
+
+
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[BaseRealAIModel]:
         """비동기 실제 AI 모델 로딩"""
         try:
