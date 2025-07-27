@@ -11,7 +11,7 @@
 # ============================================================================
 # 🔥 백업 파일들 (완전 차단 - 최우선)
 # ============================================================================
-
+backend/static
 # 모든 백업 파일 패턴
 *.bak
 *.backup
@@ -22,6 +22,35 @@
 *_original
 *_original.*
 
+# 세션 디렉토리 전체 제외
+backend/static/sessions/
+static/sessions/
+sessions/
+
+# 세션 관련 파일들
+session_*.json
+session_*.jpg
+session_*.png
+session_*.webp
+**/session_*/
+**/session_*.*
+
+# 사용자 업로드 파일들
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+static/uploads/*
+!static/uploads/.gitkeep
+
+# 결과 파일들
+backend/static/results/*
+!backend/static/results/.gitkeep
+static/results/*
+!static/results/.gitkeep
+
+# 임시 세션 데이터
+temp_session_*
+session_temp_*
+user_data_*
 # 에디터 백업 파일들
 *~
 *.swp
@@ -399,16 +428,6 @@ cleanup.log
 mycloset_backup_*.tar.gz
 *.old
 
-# 중복 backend 폴더 방지
-backend/backend/
-**/backend/backend/
-
-# AI 모델 디렉토리는 루트의 backend/ai_models만 허용
-/backend/ai_models/
-!/backend/ai_models/.gitkeep
-!/backend/ai_models/*.yaml
-!/backend/ai_models/*.md
-
 # ============================================================================
 # 📝 문서화
 # ============================================================================
@@ -429,11 +448,4 @@ backend/backend/
 #
 # 마지막 업데이트: 2025-07-24
 # 버전: v3.0 (통합 완료)
-# ============================================================================*.backup
-*~
-*.bak
-*.orig
-.#*
-#*#
-*.swp
-*.swo
+# ============================================================================

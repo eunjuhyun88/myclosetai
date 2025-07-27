@@ -22,6 +22,35 @@ backend/static
 *_original
 *_original.*
 
+# 세션 디렉토리 전체 제외
+backend/static/sessions/
+static/sessions/
+sessions/
+
+# 세션 관련 파일들
+session_*.json
+session_*.jpg
+session_*.png
+session_*.webp
+**/session_*/
+**/session_*.*
+
+# 사용자 업로드 파일들
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+static/uploads/*
+!static/uploads/.gitkeep
+
+# 결과 파일들
+backend/static/results/*
+!backend/static/results/.gitkeep
+static/results/*
+!static/results/.gitkeep
+
+# 임시 세션 데이터
+temp_session_*
+session_temp_*
+user_data_*
 # 에디터 백업 파일들
 *~
 *.swp
