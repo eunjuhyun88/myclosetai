@@ -2019,6 +2019,162 @@ class QualityAssessmentStep(BaseStepMixin):
         }
 
     # ==============================================
+    # 🔥 PipelineManager 필수 호환성 메서드들 추가
+    # ==============================================
+    
+    def validate_dependencies_github_format(self, format_type: str = "boolean") -> Union[Dict[str, bool], Dict[str, Any]]:
+        """GitHub 프로젝트 호환 의존성 검증 (PipelineManager 필수)"""
+        try:
+            if format_type == "boolean":
+                return {
+                    'model_loader': self.model_loader is not None,
+                    'step_interface': hasattr(self, 'step_interface') and self.step_interface is not None,
+                    'memory_manager': self.memory_manager is not None,
+                    'data_converter': self.data_converter is not None,
+                    'step_requests_available': STEP_MODEL_REQUESTS_AVAILABLE,
+                    'detailed_spec_available': self.detailed_spec is not None
+                }
+            else:
+                return {
+                    "success": True,
+                    "total_dependencies": 4,
+                    "validated_dependencies": sum([
+                        self.model_loader is not None,
+                        hasattr(self, 'step_interface'),
+                        self.memory_manager is not None,
+                        self.data_converter is not None
+                    ]),
+                    "github_compatible": True,
+                    "step_requests_integrated": STEP_MODEL_REQUESTS_AVAILABLE
+                }
+                
+        except Exception as e:
+            self.logger.error(f"❌ 의존성 검증 실패: {e}")
+            return {'model_loader': False, 'step_interface': False, 'memory_manager': False, 'data_converter': False}
+
+    def _force_mps_device(self):
+        """MPS 디바이스 강제 설정 (PipelineManager 호환성)"""
+        try:
+            if self.is_m3_max and self.mps_available:
+                self.device = 'mps'
+                return True
+            return False
+        except Exception:
+            return False
+
+    def _setup_configurations(self):
+        """설정 초기화 (PipelineManager 호환성)"""
+        try:
+            # 이미 _setup_configurations가 __init__에서 호출되므로 추가 설정만
+            if not hasattr(self, 'assessment_config'):
+                self.assessment_config = {
+                    'use_clip': True,
+                    'use_aesthetic': True,
+                    'quality_threshold': 0.8
+                }
+            
+            if not hasattr(self, 'optimization_enabled'):
+                self.optimization_enabled = self.is_m3_max
+                
+            if not hasattr(self, 'analysis_depth'):
+                self.analysis_depth = 'comprehensive'
+                
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ QualityAssessmentStep 추가 설정 실패: {e}")
+            return False
+
+    async def warmup(self) -> bool:
+        """모델 웜업 (PipelineManager 필수)"""
+        try:
+            if not self.initialized:
+                await self.initialize()
+            
+            # AI 모델 웜업
+            if self.quality_models and TORCH_AVAILABLE:
+                dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
+                
+                for model_name, model in self.quality_models.items():
+                    if hasattr(model, 'forward'):
+                        with torch.no_grad():
+                            _ = model(dummy_input)
+                        self.logger.info(f"✅ {model_name} 모델 웜업 완료")
+            
+            # 기술적 분석기 웜업
+            if self.technical_analyzer:
+                dummy_image = np.random.rand(224, 224, 3).astype(np.float32)
+                _ = self.technical_analyzer.analyze(dummy_image)
+                self.logger.info("✅ TechnicalQualityAnalyzer 웜업 완료")
+            
+            # 웜업 완료 플래그
+            if not hasattr(self, 'warmup_completed'):
+                self.warmup_completed = True
+            
+            self.logger.info("✅ QualityAssessmentStep 웜업 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ 웜업 실패: {e}")
+            return False
+
+    def register_model_requirement(self, model_name: str, **kwargs) -> bool:
+        """모델 요구사항 등록 (StepInterface 호환)"""
+        try:
+            if not hasattr(self, 'registered_models'):
+                self.registered_models = {}
+            
+            self.registered_models[model_name] = {
+                'timestamp': time.time(),
+                'requirements': kwargs,
+                'status': 'registered'
+            }
+            
+            self.logger.info(f"✅ 모델 요구사항 등록: {model_name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ 모델 요구사항 등록 실패 {model_name}: {e}")
+            return False
+
+    def ensure_step_compatibility(self, config: Dict[str, Any] = None):
+        """Step 호환성 보장 (PipelineManager 글로벌 호환성)"""
+        try:
+            config = config or {}
+            
+            # 필수 속성 설정
+            essential_attrs = {
+                'step_name': 'quality_assessment',
+                'step_id': 8,
+                'device': self.device,
+                'is_m3_max': self.is_m3_max,
+                'model_loaded': self.model_loaded,
+                'warmup_completed': getattr(self, 'warmup_completed', False),
+                'optimization_enabled': self.is_m3_max,
+                'assessment_config': getattr(self, 'assessment_config', {
+                    'use_clip': True,
+                    'use_aesthetic': True,
+                    'quality_threshold': 0.8
+                }),
+                'analysis_depth': 'comprehensive',
+                'quality_threshold': 0.8
+            }
+            
+            for attr, value in essential_attrs.items():
+                if not hasattr(self, attr):
+                    setattr(self, attr, value)
+            
+            # 로거 확인
+            if not hasattr(self, 'logger'):
+                self.logger = logging.getLogger(f"steps.{self.__class__.__name__}")
+            
+            return True
+            
+        except Exception as e:
+            logging.getLogger(__name__).error(f"❌ Step 호환성 보장 실패: {e}")
+            return False
+
+    # ==============================================
     # 🔥 호환성 메서드들 (기존 인터페이스 유지)
     # ==============================================
     
@@ -2104,6 +2260,322 @@ class QualityAssessmentStep(BaseStepMixin):
     async def cleanup(self):
         """cleanup 별칭 (호환성)"""
         await self.cleanup_resources()
+
+    # ==============================================
+    # 🔥 추가 필수 메서드들 (누락된 기능들)
+    # ==============================================
+    
+    def register_step(self, step_name: str = None, step_config: Dict[str, Any] = None) -> bool:
+        """Step 등록 (StepFactory 호환)"""
+        try:
+            step_name = step_name or self.step_name
+            step_config = step_config or {}
+            
+            if not hasattr(self, 'registered_steps'):
+                self.registered_steps = {}
+            
+            self.registered_steps[step_name] = {
+                'timestamp': time.time(),
+                'config': step_config,
+                'status': 'registered',
+                'step_id': self.step_id,
+                'class_name': self.__class__.__name__
+            }
+            
+            self.logger.info(f"✅ Step 등록 완료: {step_name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step 등록 실패: {e}")
+            return False
+
+    def get_requirements(self) -> Dict[str, Any]:
+        """Step 요구사항 반환 (step_model_requests.py 기반)"""
+        try:
+            requirements = {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'model_requirements': [],
+                'device_requirements': {
+                    'preferred_device': self.device,
+                    'mps_supported': self.mps_available,
+                    'm3_max_optimized': self.is_m3_max
+                },
+                'memory_requirements': {
+                    'minimum_gb': 8,
+                    'recommended_gb': 16,
+                    'optimal_gb': 32 if self.is_m3_max else 16
+                },
+                'dependencies': {
+                    'torch': TORCH_AVAILABLE,
+                    'opencv': OPENCV_AVAILABLE,
+                    'pil': PIL_AVAILABLE,
+                    'skimage': SKIMAGE_AVAILABLE,
+                    'sklearn': SKLEARN_AVAILABLE
+                }
+            }
+            
+            # step_model_requests.py 스펙 추가
+            if self.step_request:
+                requirements['model_requirements'] = [
+                    {
+                        'model_name': self.step_request.model_name,
+                        'primary_file': self.step_request.primary_file,
+                        'size_mb': self.step_request.primary_size_mb,
+                        'architecture': self.step_request.model_architecture,
+                        'search_paths': self.step_request.search_paths,
+                        'alternative_files': self.step_request.alternative_files
+                    }
+                ]
+                
+                if self.detailed_spec:
+                    requirements['data_requirements'] = {
+                        'input_data_types': self.detailed_spec.input_data_types,
+                        'output_data_types': self.detailed_spec.output_data_types,
+                        'input_shapes': self.detailed_spec.input_shapes,
+                        'output_shapes': self.detailed_spec.output_shapes,
+                        'preprocessing_steps': self.detailed_spec.preprocessing_steps,
+                        'postprocessing_steps': self.detailed_spec.postprocessing_steps
+                    }
+            
+            return requirements
+            
+        except Exception as e:
+            self.logger.error(f"❌ 요구사항 반환 실패: {e}")
+            return {'step_name': self.step_name, 'step_id': self.step_id}
+
+    def validate_input(self, input_data: Any) -> Tuple[bool, str]:
+        """입력 데이터 검증"""
+        try:
+            if input_data is None:
+                return False, "입력 데이터가 None입니다."
+            
+            # step_model_requests.py 스펙 기반 검증
+            if self.detailed_spec:
+                expected_types = self.detailed_spec.input_data_types
+                
+                if isinstance(input_data, dict):
+                    # 딕셔너리 입력인 경우
+                    required_keys = ["final_result", "enhanced_image"]
+                    if not any(key in input_data for key in required_keys):
+                        return False, f"필수 키 중 하나가 필요합니다: {required_keys}"
+                
+                elif isinstance(input_data, str):
+                    # base64 문자열인 경우
+                    if not input_data.startswith(('data:image', '/9j/', 'iVBOR')):
+                        return False, "유효하지 않은 이미지 데이터 형식입니다."
+                
+                elif isinstance(input_data, np.ndarray):
+                    # NumPy 배열인 경우
+                    if len(input_data.shape) not in [2, 3]:
+                        return False, "이미지는 2D 또는 3D 배열이어야 합니다."
+                    
+                elif hasattr(input_data, 'read'):
+                    # 파일 객체인 경우
+                    try:
+                        input_data.seek(0)  # 파일 포인터 초기화
+                    except Exception:
+                        return False, "읽을 수 없는 파일 객체입니다."
+                
+                else:
+                    return False, f"지원하지 않는 입력 타입: {type(input_data)}"
+            
+            return True, "입력 데이터가 유효합니다."
+            
+        except Exception as e:
+            return False, f"입력 검증 중 오류: {str(e)}"
+
+    def validate_output(self, output_data: Any) -> Tuple[bool, str]:
+        """출력 데이터 검증"""
+        try:
+            if not isinstance(output_data, dict):
+                return False, "출력 데이터는 딕셔너리여야 합니다."
+            
+            # step_model_requests.py API 출력 매핑 검증
+            if self.detailed_spec and self.detailed_spec.api_output_mapping:
+                required_fields = self.detailed_spec.api_output_mapping.keys()
+                missing_fields = []
+                
+                for field in required_fields:
+                    if field not in output_data:
+                        missing_fields.append(field)
+                
+                if missing_fields:
+                    return False, f"필수 출력 필드 누락: {missing_fields}"
+            
+            # 기본 필수 필드 검증
+            basic_required = ['overall_quality', 'confidence']
+            missing_basic = [field for field in basic_required if field not in output_data]
+            
+            if missing_basic:
+                return False, f"기본 필수 필드 누락: {missing_basic}"
+            
+            # 값 범위 검증
+            if 'overall_quality' in output_data:
+                quality_score = output_data['overall_quality']
+                if not isinstance(quality_score, (int, float)) or not (0 <= quality_score <= 1):
+                    return False, "overall_quality는 0-1 사이의 숫자여야 합니다."
+            
+            if 'confidence' in output_data:
+                confidence = output_data['confidence']
+                if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
+                    return False, "confidence는 0-1 사이의 숫자여야 합니다."
+            
+            return True, "출력 데이터가 유효합니다."
+            
+        except Exception as e:
+            return False, f"출력 검증 중 오류: {str(e)}"
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """성능 메트릭 반환"""
+        try:
+            metrics = {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'device': self.device,
+                'model_loaded': self.model_loaded,
+                'initialized': self.initialized,
+                'warmup_completed': getattr(self, 'warmup_completed', False),
+                'memory_usage': {},
+                'processing_stats': {},
+                'optimization_stats': {
+                    'm3_max_enabled': self.is_m3_max,
+                    'mps_available': self.mps_available,
+                    'conda_optimized': getattr(self, 'conda_optimized', True)
+                }
+            }
+            
+            # 메모리 사용량 (가능한 경우)
+            if PSUTIL_AVAILABLE:
+                try:
+                    process = psutil.Process()
+                    memory_info = process.memory_info()
+                    metrics['memory_usage'] = {
+                        'rss_mb': memory_info.rss / 1024 / 1024,
+                        'vms_mb': memory_info.vms / 1024 / 1024,
+                        'percent': process.memory_percent()
+                    }
+                except Exception:
+                    pass
+            
+            # GPU 메모리 (PyTorch MPS 가능한 경우)
+            if TORCH_AVAILABLE and self.mps_available:
+                try:
+                    if hasattr(torch.mps, 'current_allocated_memory'):
+                        metrics['memory_usage']['mps_allocated_mb'] = torch.mps.current_allocated_memory() / 1024 / 1024
+                except Exception:
+                    pass
+            
+            # AI 모델 정보
+            if self.quality_models:
+                metrics['model_info'] = {
+                    'loaded_models': list(self.quality_models.keys()),
+                    'model_count': len(self.quality_models),
+                    'model_architecture': self.model_architecture
+                }
+            
+            # step_model_requests.py 스펙 정보
+            if self.step_request:
+                metrics['step_request_info'] = {
+                    'model_name': self.step_request.model_name,
+                    'primary_file': self.step_request.primary_file,
+                    'size_mb': self.step_request.primary_size_mb,
+                    'detailed_spec_available': self.detailed_spec is not None
+                }
+            
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"❌ 성능 메트릭 수집 실패: {e}")
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'error': str(e)
+            }
+
+    def reset_state(self):
+        """상태 리셋"""
+        try:
+            # 상태 변수 리셋
+            self.model_loaded = False
+            self.initialized = False
+            
+            if hasattr(self, 'warmup_completed'):
+                self.warmup_completed = False
+            
+            # 캐시 정리
+            if hasattr(self, 'analysis_cache'):
+                self.analysis_cache.clear()
+            
+            if self.technical_analyzer and hasattr(self.technical_analyzer, 'analysis_cache'):
+                self.technical_analyzer.analysis_cache.clear()
+            
+            # 메모리 정리
+            if self.mps_available:
+                safe_mps_empty_cache()
+            
+            gc.collect()
+            
+            self.logger.info("✅ QualityAssessmentStep 상태 리셋 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 상태 리셋 실패: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """현재 상태 반환"""
+        try:
+            status = {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'class_name': self.__class__.__name__,
+                'initialized': self.initialized,
+                'model_loaded': self.model_loaded,
+                'warmup_completed': getattr(self, 'warmup_completed', False),
+                'device': self.device,
+                'device_available': True,
+                'memory_efficient': self.is_m3_max,
+                'optimization_enabled': getattr(self, 'optimization_enabled', self.is_m3_max),
+                'analysis_depth': getattr(self, 'analysis_depth', 'comprehensive'),
+                'quality_threshold': getattr(self, 'quality_threshold', 0.8),
+                'dependencies': {
+                    'model_loader': self.model_loader is not None,
+                    'memory_manager': self.memory_manager is not None,
+                    'data_converter': self.data_converter is not None,
+                    'step_requests_available': STEP_MODEL_REQUESTS_AVAILABLE,
+                    'detailed_spec_available': self.detailed_spec is not None
+                },
+                'capabilities': {
+                    'technical_analysis': self.technical_analyzer is not None,
+                    'ai_quality_assessment': len(self.quality_models) > 0 if self.quality_models else False,
+                    'perceptual_quality': 'perceptual' in (self.quality_models or {}),
+                    'aesthetic_quality': 'aesthetic' in (self.quality_models or {}),
+                    'comparison_assessment': True,
+                    'recommendation_generation': True
+                },
+                'last_updated': time.time()
+            }
+            
+            # MPS 상태 확인
+            if self.mps_available:
+                try:
+                    import torch
+                    status['mps_status'] = {
+                        'available': torch.backends.mps.is_available(),
+                        'built': torch.backends.mps.is_built()
+                    }
+                except Exception:
+                    status['mps_status'] = {'available': False, 'built': False}
+            
+            return status
+            
+        except Exception as e:
+            self.logger.error(f"❌ 상태 반환 실패: {e}")
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'error': str(e),
+                'status': 'error'
+            }
 
 # ==============================================
 # 🔥 팩토리 및 유틸리티 함수들 (기존 호환성 유지)

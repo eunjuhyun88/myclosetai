@@ -1,30 +1,33 @@
 # backend/app/ai_pipeline/steps/base_step_mixin.py
 """
-🔥 BaseStepMixin v19.0 - 전면 개선 완전판 (GitHub 프로젝트 100% 호환)
-================================================================
+🔥 BaseStepMixin v19.1 - DetailedDataSpec 완전 통합 (GitHub 프로젝트 100% 호환)
+================================================================================
 
+✅ step_model_requirements.py DetailedDataSpec 완전 활용
+✅ API ↔ AI 모델 간 데이터 변환 표준화 완료
+✅ Step 간 데이터 흐름 자동 처리
+✅ 전처리/후처리 요구사항 자동 적용
 ✅ GitHub 프로젝트 Step 클래스들과 100% 호환
 ✅ process() 메서드 시그니처 완전 표준화
-✅ validate_dependencies() 반환 형식 통일
-✅ StepFactory v9.0과 완전 호환
-✅ 의존성 주입 시스템 전면 개선
+✅ validate_dependencies() 오버로드 지원
+✅ StepFactory v11.0과 완전 호환
 ✅ conda 환경 우선 최적화 (mycloset-ai-clean)
 ✅ M3 Max 128GB 메모리 최적화
 ✅ 실제 AI 모델 파이프라인 완전 지원
-✅ 프로덕션 레벨 안정성 및 성능
 
 핵심 개선사항:
-1. 🎯 GitHub Step 클래스들과 100% 호환되는 인터페이스
-2. 🔄 process() 메서드 표준 시그니처: async def process(self, **kwargs) -> Dict[str, Any]
-3. 🔍 validate_dependencies() 오버로드 (legacy + new format 지원)
-4. 🏗️ 의존성 주입 시스템 전면 재설계
-5. 🚀 실제 AI 모델 파이프라인 완전 지원
-6. 📊 성능 모니터링 및 진단 도구 강화
-7. 🛡️ 에러 처리 및 복구 시스템 개선
+1. 🎯 DetailedDataSpec 정보 저장 및 관리
+2. 🔄 표준화된 process 메서드 재설계 (입력변환 → AI로직 → 출력변환)
+3. 🔍 입력 데이터 변환 시스템 (API/Step간 → AI모델 형식)
+4. ⚙️ 전처리 자동 적용 (preprocessing_steps 기반)
+5. 📤 출력 데이터 변환 시스템 (AI모델 → API + Step간 형식)
+6. 🔧 후처리 자동 적용 (postprocessing_steps 기반)
+7. ✅ 데이터 검증 시스템 (타입, 형태, 범위 검증)
+8. 🛠️ 유틸리티 메서드들 (base64 변환, 에러 처리 등)
 
 Author: MyCloset AI Team
 Date: 2025-07-27
-Version: 19.0 (GitHub Project Full Compatibility)
+Version: 19.1 (DetailedDataSpec Full Integration)
 """
 
 import os
@@ -38,6 +41,8 @@ import weakref
 import subprocess
 import platform
 import inspect
+import base64
+from io import BytesIO
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, Type, TYPE_CHECKING, Awaitable
 from dataclasses import dataclass, field
@@ -120,8 +125,16 @@ try:
 except ImportError:
     np = None
 
+# OpenCV 안전 import
+CV2_AVAILABLE = False
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    cv2 = None
+
 # ==============================================
-# 🔥 GitHub 프로젝트 호환 인터페이스 (v19.0 신규)
+# 🔥 GitHub 프로젝트 호환 인터페이스 (v19.1)
 # ==============================================
 
 class ProcessMethodSignature(Enum):
@@ -137,76 +150,52 @@ class DependencyValidationFormat(Enum):
     DETAILED_DICT = "dict_detailed"  # BaseStepMixin v18.0 형식: {'success': True, 'details': {...}}
     AUTO_DETECT = "auto"  # 호출자에 따라 자동 선택
 
-# ==============================================
-# 🔥 GitHub 호환 의존성 주입 인터페이스 (v19.0 강화)
-# ==============================================
-
-class IGitHubModelProvider(ABC):
-    """GitHub 프로젝트 ModelLoader 인터페이스 (v19.0)"""
-    
-    @abstractmethod
-    def get_model(self, model_name: str) -> Optional[Any]:
-        """모델 가져오기"""
-        pass
-    
-    @abstractmethod
-    async def get_model_async(self, model_name: str) -> Optional[Any]:
-        """비동기 모델 가져오기"""
-        pass
-    
-    @abstractmethod
-    def is_model_available(self, model_name: str) -> bool:
-        """모델 사용 가능 여부"""
-        pass
-    
-    @abstractmethod
-    def load_model(self, model_name: str, **kwargs) -> bool:
-        """모델 로딩"""
-        pass
-    
-    @abstractmethod
-    def create_step_interface(self, step_name: str) -> Optional['StepModelInterface']:
-        """Step 인터페이스 생성 (GitHub 표준)"""
-        pass
-
-class IGitHubMemoryManager(ABC):
-    """GitHub 프로젝트 MemoryManager 인터페이스 (v19.0)"""
-    
-    @abstractmethod
-    def optimize_memory(self, aggressive: bool = False) -> Dict[str, Any]:
-        """메모리 최적화"""
-        pass
-    
-    @abstractmethod
-    async def optimize_memory_async(self, aggressive: bool = False) -> Dict[str, Any]:
-        """비동기 메모리 최적화"""
-        pass
-    
-    @abstractmethod
-    def get_memory_info(self) -> Dict[str, Any]:
-        """메모리 정보 조회"""
-        pass
-
-class IGitHubDataConverter(ABC):
-    """GitHub 프로젝트 DataConverter 인터페이스 (v19.0)"""
-    
-    @abstractmethod
-    def convert_data(self, data: Any, target_format: str) -> Any:
-        """데이터 변환"""
-        pass
-    
-    @abstractmethod
-    def validate_data(self, data: Any, expected_format: str) -> bool:
-        """데이터 검증"""
-        pass
+class DataConversionMethod(Enum):
+    """데이터 변환 방법"""
+    AUTOMATIC = "auto"      # DetailedDataSpec 기반 자동 변환
+    MANUAL = "manual"       # 하위 클래스에서 수동 변환
+    HYBRID = "hybrid"       # 자동 + 수동 조합
 
 # ==============================================
-# 🔥 설정 및 상태 클래스 (v19.0 GitHub 호환)
+# 🔥 설정 및 상태 클래스 (v19.1 DetailedDataSpec 지원)
 # ==============================================
 
 @dataclass
+class DetailedDataSpecConfig:
+    """DetailedDataSpec 설정 관리"""
+    # 입력 사양
+    input_data_types: List[str] = field(default_factory=list)
+    input_shapes: Dict[str, Tuple[int, ...]] = field(default_factory=dict)
+    input_value_ranges: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    preprocessing_required: List[str] = field(default_factory=list)
+    
+    # 출력 사양  
+    output_data_types: List[str] = field(default_factory=list)
+    output_shapes: Dict[str, Tuple[int, ...]] = field(default_factory=dict)
+    output_value_ranges: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    postprocessing_required: List[str] = field(default_factory=list)
+    
+    # API 호환성
+    api_input_mapping: Dict[str, str] = field(default_factory=dict)
+    api_output_mapping: Dict[str, str] = field(default_factory=dict)
+    
+    # Step 간 연동
+    step_input_schema: Dict[str, Any] = field(default_factory=dict)
+    step_output_schema: Dict[str, Any] = field(default_factory=dict)
+    
+    # 전처리/후처리 요구사항
+    normalization_mean: Tuple[float, ...] = field(default_factory=lambda: (0.485, 0.456, 0.406))
+    normalization_std: Tuple[float, ...] = field(default_factory=lambda: (0.229, 0.224, 0.225))
+    preprocessing_steps: List[str] = field(default_factory=list)
+    postprocessing_steps: List[str] = field(default_factory=list)
+    
+    # Step 간 데이터 전달 스키마
+    accepts_from_previous_step: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    provides_to_next_step: Dict[str, Dict[str, str]] = field(default_factory=dict)
+
+@dataclass
 class GitHubStepConfig:
-    """GitHub 프로젝트 호환 Step 설정 (v19.0)"""
+    """GitHub 프로젝트 호환 Step 설정 (v19.1)"""
     step_name: str = "BaseStep"
     step_id: int = 0
     device: str = "auto"
@@ -219,7 +208,7 @@ class GitHubStepConfig:
     quality_level: str = "balanced"
     strict_mode: bool = False
     
-    # 의존성 설정 (v19.0 GitHub 호환 강화)
+    # 의존성 설정
     auto_inject_dependencies: bool = True
     require_model_loader: bool = True
     require_memory_manager: bool = False
@@ -227,11 +216,18 @@ class GitHubStepConfig:
     dependency_timeout: float = 30.0
     dependency_retry_count: int = 3
     
-    # GitHub 프로젝트 특별 설정 (v19.0 신규)
+    # GitHub 프로젝트 특별 설정
     process_method_signature: ProcessMethodSignature = ProcessMethodSignature.STANDARD
     dependency_validation_format: DependencyValidationFormat = DependencyValidationFormat.AUTO_DETECT
     github_compatibility_mode: bool = True
     real_ai_pipeline_support: bool = True
+    
+    # DetailedDataSpec 설정 (v19.1 신규)
+    enable_detailed_data_spec: bool = True
+    data_conversion_method: DataConversionMethod = DataConversionMethod.AUTOMATIC
+    strict_data_validation: bool = True
+    auto_preprocessing: bool = True
+    auto_postprocessing: bool = True
     
     # 환경 최적화
     conda_optimized: bool = False
@@ -242,7 +238,7 @@ class GitHubStepConfig:
 
 @dataclass
 class GitHubDependencyStatus:
-    """GitHub 프로젝트 호환 의존성 상태 (v19.0)"""
+    """GitHub 프로젝트 호환 의존성 상태 (v19.1)"""
     model_loader: bool = False
     step_interface: bool = False
     memory_manager: bool = False
@@ -252,10 +248,18 @@ class GitHubDependencyStatus:
     custom_initialized: bool = False
     dependencies_validated: bool = False
     
-    # GitHub 특별 상태 (v19.0 신규)
+    # GitHub 특별 상태
     github_compatible: bool = False
     process_method_validated: bool = False
     real_ai_models_loaded: bool = False
+    
+    # DetailedDataSpec 상태 (v19.1 신규)
+    detailed_data_spec_loaded: bool = False
+    data_conversion_ready: bool = False
+    preprocessing_configured: bool = False
+    postprocessing_configured: bool = False
+    api_mapping_configured: bool = False
+    step_flow_configured: bool = False
     
     # 환경 상태
     conda_optimized: bool = False
@@ -268,7 +272,7 @@ class GitHubDependencyStatus:
 
 @dataclass
 class GitHubPerformanceMetrics:
-    """GitHub 프로젝트 호환 성능 메트릭 (v19.0)"""
+    """GitHub 프로젝트 호환 성능 메트릭 (v19.1)"""
     process_count: int = 0
     total_process_time: float = 0.0
     average_process_time: float = 0.0
@@ -286,22 +290,30 @@ class GitHubPerformanceMetrics:
     total_model_size_gb: float = 0.0
     inference_count: int = 0
     
-    # 의존성 메트릭 (v19.0 강화)
+    # 의존성 메트릭
     dependencies_injected: int = 0
     injection_failures: int = 0
     average_injection_time: float = 0.0
     
-    # GitHub 특별 메트릭 (v19.0 신규)
+    # GitHub 특별 메트릭
     github_process_calls: int = 0
     real_ai_inferences: int = 0
     pipeline_success_rate: float = 0.0
+    
+    # DetailedDataSpec 메트릭 (v19.1 신규)
+    data_conversions: int = 0
+    preprocessing_operations: int = 0
+    postprocessing_operations: int = 0
+    api_conversions: int = 0
+    step_data_transfers: int = 0
+    validation_failures: int = 0
 
 # ==============================================
-# 🔥 GitHub 호환 의존성 관리자 v19.0
+# 🔥 GitHub 호환 의존성 관리자 v19.1 (축약 버전)
 # ==============================================
 
 class GitHubDependencyManager:
-    """GitHub 프로젝트 완전 호환 의존성 관리자 v19.0"""
+    """GitHub 프로젝트 완전 호환 의존성 관리자 v19.1"""
     
     def __init__(self, step_name: str):
         self.step_name = step_name
@@ -319,24 +331,16 @@ class GitHubDependencyManager:
         # 동기화
         self._lock = threading.RLock()
         
-        # GitHub 호환성 추적 (v19.0 신규)
-        self._github_compatibility_checked = False
-        self._process_method_signature = None
-        self._dependency_validation_format = DependencyValidationFormat.AUTO_DETECT
-        self._auto_injection_attempted = False  # 자동 주입 시도 플래그
-        
         # 환경 최적화 설정
         self._setup_environment_optimization()
     
     def _setup_environment_optimization(self):
         """환경 최적화 설정"""
         try:
-            # conda 환경 최적화
             if self.conda_info['is_target_env']:
                 self.dependency_status.conda_optimized = True
                 self.logger.debug(f"✅ conda 환경 최적화 활성화: {self.conda_info['conda_env']}")
             
-            # M3 Max 최적화
             if self.is_m3_max:
                 self.dependency_status.m3_max_optimized = True
                 self.logger.debug(f"✅ M3 Max 최적화 활성화: {self.memory_gb:.1f}GB")
@@ -344,333 +348,27 @@ class GitHubDependencyManager:
         except Exception as e:
             self.logger.debug(f"환경 최적화 설정 실패: {e}")
     
-    def inject_model_loader(self, model_loader: 'ModelLoader') -> bool:
-        """GitHub 호환 ModelLoader 의존성 주입 (v19.0 완전 수정)"""
-        injection_start = time.time()
-        
+    def inject_model_loader(self, model_loader) -> bool:
+        """GitHub 호환 ModelLoader 의존성 주입"""
         try:
             with self._lock:
-                self.logger.info(f"🔄 {self.step_name} GitHub 호환 ModelLoader 의존성 주입 시작...")
-                
-                # 1. ModelLoader 저장
                 self.dependencies['model_loader'] = model_loader
-                
-                # 2. GitHub 호환성 검증
-                if not self._validate_github_model_loader(model_loader):
-                    self.logger.warning("⚠️ ModelLoader가 GitHub 표준을 완전히 준수하지 않음 (계속 진행)")
-                
-                # 3. 🔥 StepModelInterface 생성 (GitHub 표준)
-                step_interface = self._create_github_step_interface(model_loader)
-                if step_interface:
-                    self.dependencies['step_interface'] = step_interface
-                    self.dependency_status.step_interface = True
-                    self.logger.info(f"✅ {self.step_name} GitHub StepModelInterface 생성 완료")
-                
-                # 4. 환경 최적화 적용
-                self._apply_github_model_loader_optimization(model_loader)
-                
-                # 5. 상태 업데이트
                 self.dependency_status.model_loader = True
-                self.dependency_status.github_compatible = True
-                self.dependency_status.last_injection_time = time.time()
-                
-                injection_time = time.time() - injection_start
-                self.logger.info(f"✅ {self.step_name} GitHub ModelLoader 의존성 주입 완료 ({injection_time:.3f}초)")
-                
+                self.logger.info(f"✅ {self.step_name} ModelLoader 의존성 주입 완료")
                 return True
-                
         except Exception as e:
-            injection_time = time.time() - injection_start
-            self.logger.error(f"❌ {self.step_name} GitHub ModelLoader 주입 실패 ({injection_time:.3f}초): {e}")
+            self.logger.error(f"❌ {self.step_name} ModelLoader 주입 실패: {e}")
             return False
     
-    def _validate_github_model_loader(self, model_loader: 'ModelLoader') -> bool:
-        """GitHub 표준 ModelLoader 검증"""
-        try:
-            # GitHub 필수 메서드 확인
-            github_required_methods = [
-                'load_model', 'is_initialized', 'create_step_interface',
-                'get_model_sync', 'get_model_async'  # v19.0 추가
-            ]
-            
-            for method in github_required_methods:
-                if not hasattr(model_loader, method):
-                    self.logger.debug(f"⚠️ GitHub 표준 메서드 누락: {method}")
-                    return False
-            
-            # GitHub 특별 속성 확인
-            if hasattr(model_loader, 'github_compatible'):
-                if not getattr(model_loader, 'github_compatible', False):
-                    self.logger.debug("⚠️ ModelLoader가 GitHub 호환 모드가 아님")
-                    return False
-            
-            self.logger.debug(f"✅ {self.step_name} GitHub ModelLoader 검증 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ GitHub ModelLoader 검증 실패: {e}")
-            return False
-    
-    def _create_github_step_interface(self, model_loader: 'ModelLoader') -> Optional['StepModelInterface']:
-        """GitHub 표준 StepModelInterface 생성"""
-        try:
-            self.logger.info(f"🔄 {self.step_name} GitHub StepModelInterface 생성 시작...")
-            
-            # GitHub 표준 인터페이스 생성
-            if hasattr(model_loader, 'create_step_interface'):
-                interface = model_loader.create_step_interface(self.step_name)
-                
-                if interface and self._validate_github_step_interface(interface):
-                    self.logger.info(f"✅ {self.step_name} GitHub StepModelInterface 생성 및 검증 완료")
-                    return interface
-            
-            # GitHub 폴백 인터페이스 생성
-            return self._create_github_fallback_interface(model_loader)
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} GitHub StepModelInterface 생성 오류: {e}")
-            return self._create_github_fallback_interface(model_loader)
-    
-    def _validate_github_step_interface(self, interface: 'StepModelInterface') -> bool:
-        """GitHub 표준 StepModelInterface 검증"""
-        try:
-            # GitHub 필수 메서드 확인
-            github_required_methods = [
-                'get_model_sync', 'get_model_async', 'register_model_requirement',
-                'is_model_available', 'load_model_for_step'  # v19.0 추가
-            ]
-            
-            for method in github_required_methods:
-                if not hasattr(interface, method):
-                    self.logger.debug(f"⚠️ GitHub StepModelInterface 메서드 누락: {method}")
-            
-            return True
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ GitHub StepModelInterface 검증 오류: {e}")
-            return False
-    
-    def _create_github_fallback_interface(self, model_loader: 'ModelLoader') -> Optional['StepModelInterface']:
-        """GitHub 폴백 StepModelInterface 생성"""
-        try:
-            self.logger.info(f"🔄 {self.step_name} GitHub 폴백 StepModelInterface 생성...")
-            
-            # GitHub 호환 인터페이스 동적 생성
-            class GitHubStepModelInterface:
-                def __init__(self, step_name: str, model_loader):
-                    self.step_name = step_name
-                    self.model_loader = model_loader
-                    self.github_compatible = True
-                
-                def get_model_sync(self, model_name: str = "default") -> Optional[Any]:
-                    if hasattr(self.model_loader, 'load_model'):
-                        return self.model_loader.load_model(model_name)
-                    return None
-                
-                async def get_model_async(self, model_name: str = "default") -> Optional[Any]:
-                    if hasattr(self.model_loader, 'load_model_async'):
-                        return await self.model_loader.load_model_async(model_name)
-                    return self.get_model_sync(model_name)
-                
-                def register_model_requirement(self, model_name: str, **kwargs) -> bool:
-                    return True
-                
-                def is_model_available(self, model_name: str) -> bool:
-                    return True
-                
-                def load_model_for_step(self, model_name: str) -> bool:
-                    return self.get_model_sync(model_name) is not None
-            
-            interface = GitHubStepModelInterface(self.step_name, model_loader)
-            self.logger.info(f"✅ {self.step_name} GitHub 폴백 StepModelInterface 생성 완료")
-            return interface
-                
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 폴백 StepModelInterface 생성 실패: {e}")
-            return None
-    
-    def _apply_github_model_loader_optimization(self, model_loader: 'ModelLoader'):
-        """GitHub ModelLoader 환경 최적화"""
-        try:
-            # GitHub 특별 환경 설정
-            if hasattr(model_loader, 'configure_github_environment'):
-                github_config = {
-                    'conda_env': self.conda_info['conda_env'],
-                    'is_m3_max': self.is_m3_max,
-                    'memory_gb': self.memory_gb,
-                    'github_mode': True,
-                    'real_ai_pipeline': True
-                }
-                model_loader.configure_github_environment(github_config)
-                self.logger.debug(f"✅ {self.step_name} GitHub ModelLoader 환경 최적화 적용")
-                
-        except Exception as e:
-            self.logger.debug(f"GitHub ModelLoader 환경 최적화 실패: {e}")
-    
-    def validate_dependencies_github_format(self, format_type: DependencyValidationFormat = None) -> Union[Dict[str, bool], Dict[str, Any]]:
-        """GitHub 프로젝트 호환 의존성 검증 (v19.0 핵심 기능)"""
-        try:
-            with self._lock:
-                # 자동 감지 또는 지정된 형식 사용
-                if format_type is None:
-                    format_type = self._dependency_validation_format
-                
-                if format_type == DependencyValidationFormat.AUTO_DETECT:
-                    # 호출 스택 분석으로 형식 결정
-                    format_type = self._detect_validation_format_from_caller()
-                
-                if format_type == DependencyValidationFormat.BOOLEAN_DICT:
-                    # GeometricMatchingStep 형식 (GitHub 표준)
-                    return self._validate_dependencies_boolean_format()
-                else:
-                    # BaseStepMixin v18.0 형식 (상세 정보)
-                    return self._validate_dependencies_detailed_format()
-                    
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 의존성 검증 실패: {e}")
-            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
-                return {'error': True}
-            else:
-                return {'success': False, 'error': str(e)}
-    
-    def _detect_validation_format_from_caller(self) -> DependencyValidationFormat:
-        """호출자 분석으로 검증 형식 자동 감지"""
-        try:
-            frame = inspect.currentframe()
-            for _ in range(5):  # 최대 5단계까지 추적
-                frame = frame.f_back
-                if frame is None:
-                    break
-                
-                caller_name = frame.f_code.co_name
-                caller_file = frame.f_code.co_filename
-                
-                # GitHub Step 클래스에서 호출된 경우
-                if 'step_' in caller_file.lower() and any(name in caller_name.lower() for name in ['geometric', 'parsing', 'pose', 'cloth']):
-                    return DependencyValidationFormat.BOOLEAN_DICT
-                
-                # StepFactory에서 호출된 경우
-                if 'factory' in caller_file.lower() or 'validate' in caller_name.lower():
-                    return DependencyValidationFormat.DETAILED_DICT
-            
-            # 기본값
-            return DependencyValidationFormat.BOOLEAN_DICT
-            
-        except Exception:
-            return DependencyValidationFormat.BOOLEAN_DICT
-    
-    def _validate_dependencies_boolean_format(self) -> Dict[str, bool]:
-        """GitHub Step 클래스 호환 형식 (boolean dict)"""
-        try:
-            validation_results = {}
-            
-            for dep_name, dep_obj in self.dependencies.items():
-                if dep_obj is not None:
-                    if dep_name == 'model_loader':
-                        validation_results[dep_name] = hasattr(dep_obj, 'load_model')
-                    elif dep_name == 'step_interface':
-                        validation_results[dep_name] = hasattr(dep_obj, 'get_model_sync')
-                    elif dep_name == 'memory_manager':
-                        validation_results[dep_name] = hasattr(dep_obj, 'optimize_memory')
-                    elif dep_name == 'data_converter':
-                        validation_results[dep_name] = hasattr(dep_obj, 'convert_data')
-                    elif dep_name == 'di_container':
-                        validation_results[dep_name] = True
-                    else:
-                        validation_results[dep_name] = True
-                else:
-                    validation_results[dep_name] = False
-            
-            # GitHub 표준 의존성이 없는 경우 기본값 설정
-            default_deps = ['model_loader', 'step_interface', 'memory_manager', 'data_converter']
-            for dep in default_deps:
-                if dep not in validation_results:
-                    validation_results[dep] = False
-            
-            return validation_results
-            
-        except Exception as e:
-            self.logger.error(f"❌ Boolean 형식 의존성 검증 실패: {e}")
-            return {'model_loader': False, 'step_interface': False, 'memory_manager': False, 'data_converter': False}
-    
-    def _validate_dependencies_detailed_format(self) -> Dict[str, Any]:
-        """BaseStepMixin v18.0 호환 형식 (상세 정보)"""
-        try:
-            validation_results = {
-                "success": True,
-                "total_dependencies": len(self.dependencies),
-                "validated_dependencies": 0,
-                "failed_dependencies": 0,
-                "required_missing": [],
-                "optional_missing": [],
-                "validation_errors": [],
-                "details": {},
-                "github_compatible": self.dependency_status.github_compatible,  # v19.0 추가
-                "real_ai_ready": self.dependency_status.real_ai_models_loaded  # v19.0 추가
-            }
-            
-            for dep_name, dep_obj in self.dependencies.items():
-                if dep_obj is not None:
-                    if dep_name == 'model_loader':
-                        is_valid = hasattr(dep_obj, 'load_model') and hasattr(dep_obj, 'create_step_interface')
-                    elif dep_name == 'step_interface':
-                        is_valid = hasattr(dep_obj, 'get_model_sync') and hasattr(dep_obj, 'get_model_async')
-                    elif dep_name == 'memory_manager':
-                        is_valid = hasattr(dep_obj, 'optimize_memory')
-                    elif dep_name == 'data_converter':
-                        is_valid = hasattr(dep_obj, 'convert_data')
-                    else:
-                        is_valid = True
-                    
-                    if is_valid:
-                        validation_results["validated_dependencies"] += 1
-                        validation_results["details"][dep_name] = {"success": True, "valid": True}
-                    else:
-                        validation_results["failed_dependencies"] += 1
-                        validation_results["details"][dep_name] = {"success": False, "error": "필수 메서드 누락"}
-                        validation_results["validation_errors"].append(f"{dep_name}: 필수 메서드 누락")
-                else:
-                    validation_results["failed_dependencies"] += 1
-                    validation_results["details"][dep_name] = {"success": False, "error": "의존성 없음"}
-                    validation_results["required_missing"].append(dep_name)
-            
-            validation_results["success"] = len(validation_results["required_missing"]) == 0
-            return validation_results
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "github_compatible": False,
-                "real_ai_ready": False
-            }
-    
-    # 나머지 의존성 주입 메서드들 (v18.0과 동일하지만 GitHub 최적화 추가)
-    def inject_memory_manager(self, memory_manager: 'MemoryManager') -> bool:
+    def inject_memory_manager(self, memory_manager) -> bool:
         """GitHub 호환 MemoryManager 의존성 주입"""
         try:
             with self._lock:
                 self.dependencies['memory_manager'] = memory_manager
                 self.dependency_status.memory_manager = True
-                
-                # GitHub M3 Max 특별 설정
-                if self.is_m3_max and hasattr(memory_manager, 'configure_github_m3_max'):
-                    memory_manager.configure_github_m3_max(self.memory_gb)
-                
                 return True
         except Exception as e:
-            self.logger.error(f"❌ GitHub MemoryManager 주입 실패: {e}")
-            return False
-    
-    def inject_data_converter(self, data_converter: 'DataConverter') -> bool:
-        """GitHub 호환 DataConverter 의존성 주입"""
-        try:
-            with self._lock:
-                self.dependencies['data_converter'] = data_converter
-                self.dependency_status.data_converter = True
-                return True
-        except Exception as e:
-            self.logger.error(f"❌ GitHub DataConverter 주입 실패: {e}")
+            self.logger.error(f"❌ {self.step_name} MemoryManager 주입 실패: {e}")
             return False
     
     def get_dependency(self, name: str) -> Optional[Any]:
@@ -678,118 +376,50 @@ class GitHubDependencyManager:
         with self._lock:
             return self.dependencies.get(name)
     
-    def auto_inject_dependencies(self) -> bool:
-        """자동 의존성 주입 (GitHub 환경 최적화)"""
-        if self._auto_injection_attempted:
-            return True
-        
-        self._auto_injection_attempted = True
-        success_count = 0
-        
+    def validate_dependencies_github_format(self, format_type: DependencyValidationFormat = None) -> Union[Dict[str, bool], Dict[str, Any]]:
+        """GitHub 프로젝트 호환 의존성 검증"""
         try:
-            self.logger.info(f"🔄 {self.step_name} GitHub 자동 의존성 주입 시작...")
-            
-            # ModelLoader 자동 주입
-            if not self.dependency_status.model_loader:
-                model_loader = self._get_global_model_loader()
-                if model_loader:
-                    if self.inject_model_loader(model_loader):
-                        success_count += 1
-            
-            # MemoryManager 자동 주입
-            if not self.dependency_status.memory_manager:
-                memory_manager = self._get_global_memory_manager()
-                if memory_manager:
-                    if self.inject_memory_manager(memory_manager):
-                        success_count += 1
-            
-            self.logger.info(f"🔄 {self.step_name} GitHub 자동 의존성 주입 완료: {success_count}개")
-            return success_count > 0
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ {self.step_name} GitHub 자동 의존성 주입 실패: {e}")
-            return False
-    
-    def _get_global_model_loader(self) -> Optional['ModelLoader']:
-        """ModelLoader 동적 import (GitHub 환경 최적화)"""
-        try:
-            import importlib
-            module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-            get_global = getattr(module, 'get_global_model_loader', None)
-            if get_global:
-                # GitHub 환경 최적화 설정
-                config = {
-                    'conda_env': self.conda_info['conda_env'],
-                    'is_m3_max': self.is_m3_max,
-                    'memory_gb': self.memory_gb,
-                    'enable_conda_optimization': self.conda_info['is_target_env'],
-                    'github_mode': True
+            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
+                return {
+                    'model_loader': self.dependency_status.model_loader,
+                    'step_interface': self.dependency_status.step_interface,
+                    'memory_manager': self.dependency_status.memory_manager,
+                    'data_converter': self.dependency_status.data_converter
                 }
-                return get_global(config)
+            else:
+                return {
+                    'success': self.dependency_status.model_loader,
+                    'details': {
+                        'model_loader': self.dependency_status.model_loader,
+                        'github_compatible': self.dependency_status.github_compatible,
+                        'detailed_data_spec_ready': self.dependency_status.detailed_data_spec_loaded
+                    }
+                }
         except Exception as e:
-            self.logger.debug(f"GitHub ModelLoader 자동 주입 실패: {e}")
-        return None
-    
-    def _get_global_memory_manager(self) -> Optional['MemoryManager']:
-        """MemoryManager 동적 import (GitHub M3 Max 최적화)"""
-        try:
-            import importlib
-            module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
-            get_global = getattr(module, 'get_global_memory_manager', None)
-            if get_global:
-                return get_global()
-        except Exception as e:
-            self.logger.debug(f"GitHub MemoryManager 자동 주입 실패: {e}")
-        return None
-    
-    def get_github_status(self) -> Dict[str, Any]:
-        """GitHub 프로젝트 호환 상태 조회 (v19.0)"""
-        return {
-            'step_name': self.step_name,
-            'github_compatibility': {
-                'compatible': self.dependency_status.github_compatible,
-                'process_method_validated': self.dependency_status.process_method_validated,
-                'real_ai_models_loaded': self.dependency_status.real_ai_models_loaded,
-                'signature_format': self._process_method_signature.value if self._process_method_signature else 'unknown',
-                'validation_format': self._dependency_validation_format.value
-            },
-            'dependency_status': {
-                'model_loader': self.dependency_status.model_loader,
-                'step_interface': self.dependency_status.step_interface,
-                'memory_manager': self.dependency_status.memory_manager,
-                'data_converter': self.dependency_status.data_converter
-            },
-            'environment': {
-                'conda_optimized': self.dependency_status.conda_optimized,
-                'm3_max_optimized': self.dependency_status.m3_max_optimized,
-                'conda_env': self.conda_info['conda_env'],
-                'is_m3_max': self.is_m3_max,
-                'memory_gb': self.memory_gb
-            }
-        }
+            self.logger.error(f"❌ GitHub 의존성 검증 실패: {e}")
+            return {'model_loader': False} if format_type == DependencyValidationFormat.BOOLEAN_DICT else {'success': False}
 
 # ==============================================
-# 🔥 BaseStepMixin v19.0 - GitHub 프로젝트 완전 호환
+# 🔥 BaseStepMixin v19.1 - DetailedDataSpec 완전 통합
 # ==============================================
 
 class BaseStepMixin:
     """
-    🔥 BaseStepMixin v19.0 - GitHub 프로젝트 완전 호환
+    🔥 BaseStepMixin v19.1 - DetailedDataSpec 완전 통합
     
     핵심 개선사항:
-    ✅ GitHub Step 클래스들과 100% 호환
-    ✅ process() 메서드 시그니처 완전 표준화  
-    ✅ validate_dependencies() 오버로드 지원
-    ✅ 실제 AI 모델 파이프라인 완전 지원
-    ✅ StepFactory v9.0과 완전 호환
-    ✅ conda 환경 우선 최적화
-    ✅ M3 Max 128GB 메모리 최적화
+    ✅ DetailedDataSpec 정보 저장 및 관리
+    ✅ 표준화된 process 메서드 재설계
+    ✅ API ↔ AI 모델 간 데이터 변환 표준화
+    ✅ Step 간 데이터 흐름 자동 처리
+    ✅ 전처리/후처리 요구사항 자동 적용
+    ✅ GitHub 프로젝트 Step 클래스들과 100% 호환
     """
     
     def __init__(self, **kwargs):
-        """GitHub 프로젝트 호환 초기화 (v19.0)"""
+        """DetailedDataSpec 완전 통합 초기화 (v19.1)"""
         try:
-            # 기본 설정 (GitHub 호환)
+            # 기본 설정
             self.config = self._create_github_config(**kwargs)
             self.step_name = kwargs.get('step_name', self.__class__.__name__)
             self.step_id = kwargs.get('step_id', 0)
@@ -803,7 +433,10 @@ class BaseStepMixin:
                 self.logger.addHandler(handler)
                 self.logger.setLevel(logging.INFO)
             
-            # 🔥 GitHub 호환 의존성 관리자 (v19.0)
+            # 🔥 DetailedDataSpec 정보 저장 (StepFactory에서 주입받음)
+            self.detailed_data_spec = self._load_detailed_data_spec_from_kwargs(**kwargs)
+            
+            # 🔥 GitHub 호환 의존성 관리자
             self.dependency_manager = GitHubDependencyManager(self.step_name)
             
             # GitHub 표준 상태 플래그들
@@ -813,13 +446,13 @@ class BaseStepMixin:
             self.model_loaded = False
             self.warmup_completed = False
             
-            # 시스템 정보 (환경 최적화)
+            # 시스템 정보
             self.device = self._resolve_device(self.config.device)
             self.is_m3_max = IS_M3_MAX
             self.memory_gb = MEMORY_GB
             self.conda_info = CONDA_INFO
             
-            # GitHub 호환 성능 메트릭 (v19.0)
+            # GitHub 호환 성능 메트릭
             self.performance_metrics = GitHubPerformanceMetrics()
             
             # GitHub 호환성을 위한 속성들
@@ -827,14 +460,16 @@ class BaseStepMixin:
             self.model_interface = None
             self.memory_manager = None
             self.data_converter = None
-            self.di_container = None
             
-            # GitHub 특별 속성들 (v19.0 신규)
+            # GitHub 특별 속성들
             self.github_compatible = True
             self.real_ai_pipeline_ready = False
             self.process_method_signature = self.config.process_method_signature
             
-            # 환경 최적화 설정 적용
+            # DetailedDataSpec 상태 (v19.1 신규)
+            self.data_conversion_ready = self._validate_data_conversion_readiness()
+            
+            # 환경 최적화 적용
             self._apply_github_environment_optimization()
             
             # 자동 의존성 주입 (설정된 경우)
@@ -844,10 +479,1351 @@ class BaseStepMixin:
                 except Exception as e:
                     self.logger.warning(f"⚠️ {self.step_name} 자동 의존성 주입 실패: {e}")
             
-            self.logger.info(f"✅ {self.step_name} BaseStepMixin v19.1 GitHub 호환 초기화 완료")
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin v19.1 DetailedDataSpec 통합 초기화 완료")
             
         except Exception as e:
             self._github_emergency_setup(e)
+    
+    def _load_detailed_data_spec_from_kwargs(self, **kwargs) -> DetailedDataSpecConfig:
+        """StepFactory에서 주입받은 DetailedDataSpec 정보 로딩"""
+        return DetailedDataSpecConfig(
+            # 입력 사양
+            input_data_types=kwargs.get('input_data_types', []),
+            input_shapes=kwargs.get('input_shapes', {}),
+            input_value_ranges=kwargs.get('input_value_ranges', {}),
+            preprocessing_required=kwargs.get('preprocessing_required', []),
+            
+            # 출력 사양
+            output_data_types=kwargs.get('output_data_types', []),
+            output_shapes=kwargs.get('output_shapes', {}),
+            output_value_ranges=kwargs.get('output_value_ranges', {}),
+            postprocessing_required=kwargs.get('postprocessing_required', []),
+            
+            # API 호환성
+            api_input_mapping=kwargs.get('api_input_mapping', {}),
+            api_output_mapping=kwargs.get('api_output_mapping', {}),
+            
+            # Step 간 연동
+            step_input_schema=kwargs.get('step_input_schema', {}),
+            step_output_schema=kwargs.get('step_output_schema', {}),
+            
+            # 전처리/후처리 요구사항
+            normalization_mean=kwargs.get('normalization_mean', (0.485, 0.456, 0.406)),
+            normalization_std=kwargs.get('normalization_std', (0.229, 0.224, 0.225)),
+            preprocessing_steps=kwargs.get('preprocessing_steps', []),
+            postprocessing_steps=kwargs.get('postprocessing_steps', []),
+            
+            # Step 간 데이터 전달 스키마
+            accepts_from_previous_step=kwargs.get('accepts_from_previous_step', {}),
+            provides_to_next_step=kwargs.get('provides_to_next_step', {})
+        )
+    
+    def _validate_data_conversion_readiness(self) -> bool:
+        """데이터 변환 준비 상태 검증"""
+        try:
+            # 최소 요구사항 확인
+            has_api_mapping = bool(self.detailed_data_spec.api_input_mapping and 
+                                 self.detailed_data_spec.api_output_mapping)
+            
+            has_preprocessing = bool(self.detailed_data_spec.preprocessing_steps)
+            has_postprocessing = bool(self.detailed_data_spec.postprocessing_steps)
+            
+            # 데이터 타입 정보 확인
+            has_input_types = bool(self.detailed_data_spec.input_data_types)
+            has_output_types = bool(self.detailed_data_spec.output_data_types)
+            
+            readiness = has_api_mapping and has_input_types and has_output_types
+            
+            if readiness:
+                self.dependency_manager.dependency_status.detailed_data_spec_loaded = True
+                self.dependency_manager.dependency_status.data_conversion_ready = True
+                self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 데이터 변환 준비 완료")
+            else:
+                self.logger.warning(f"⚠️ {self.step_name} DetailedDataSpec 데이터 변환 준비 미완료")
+            
+            return readiness
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 데이터 변환 준비 상태 검증 실패: {e}")
+            return False
+    
+    # ==============================================
+    # 🔥 표준화된 process 메서드 (v19.1 핵심)
+    # ==============================================
+    
+    async def process(self, **kwargs) -> Dict[str, Any]:
+        """
+        🔥 완전히 재설계된 표준화 process 메서드 (v19.1)
+        
+        모든 데이터 변환을 BaseStepMixin에서 표준화 처리하고,
+        실제 Step 클래스들은 _run_ai_inference() 메서드만 구현하면 됨
+        """
+        try:
+            start_time = time.time()
+            self.performance_metrics.github_process_calls += 1
+            
+            self.logger.debug(f"🔄 {self.step_name} process 시작 (입력: {list(kwargs.keys())})")
+            
+            # 1. 입력 데이터 변환 (API/Step 간 → AI 모델)
+            converted_input = await self._convert_input_to_model_format(kwargs)
+            
+            # 2. 하위 클래스의 순수 AI 로직 실행
+            ai_result = await self._run_ai_inference(converted_input)
+            
+            # 3. 출력 데이터 변환 (AI 모델 → API + Step 간)
+            standardized_output = await self._convert_output_to_standard_format(ai_result)
+            
+            # 4. 성능 메트릭 업데이트
+            processing_time = time.time() - start_time
+            self._update_performance_metrics(processing_time, True)
+            
+            self.logger.debug(f"✅ {self.step_name} process 완료 ({processing_time:.3f}초)")
+            
+            return standardized_output
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            self._update_performance_metrics(processing_time, False)
+            self.logger.error(f"❌ {self.step_name} process 실패 ({processing_time:.3f}초): {e}")
+            return self._create_error_response(str(e))
+    
+    @abstractmethod
+    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        🔥 하위 클래스에서 구현할 순수 AI 로직
+        
+        Args:
+            processed_input: BaseStepMixin에서 변환된 표준 AI 모델 입력
+        
+        Returns:
+            AI 모델의 원시 출력 결과
+        """
+        pass
+    
+    # ==============================================
+    # 🔥 입력 데이터 변환 시스템 (v19.1)
+    # ==============================================
+    
+    async def _convert_input_to_model_format(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 API/Step 간 데이터 → AI 모델 입력 형식 변환"""
+        try:
+            converted = {}
+            self.performance_metrics.data_conversions += 1
+            
+            self.logger.debug(f"🔄 {self.step_name} 입력 데이터 변환 시작...")
+            
+            # 1. API 입력 매핑 처리 (UploadFile → PIL.Image 등)
+            for model_param, api_type in self.detailed_data_spec.api_input_mapping.items():
+                if model_param in kwargs:
+                    converted[model_param] = await self._convert_api_input_type(
+                        kwargs[model_param], api_type, model_param
+                    )
+                    self.performance_metrics.api_conversions += 1
+            
+            # 2. Step 간 데이터 처리 (이전 Step 결과 활용)
+            for step_name, step_data in kwargs.items():
+                if step_name.startswith('from_step_'):
+                    step_id = step_name.replace('from_step_', '')
+                    if step_id in self.detailed_data_spec.accepts_from_previous_step:
+                        step_schema = self.detailed_data_spec.accepts_from_previous_step[step_id]
+                        converted.update(self._map_step_input_data(step_data, step_schema))
+                        self.performance_metrics.step_data_transfers += 1
+            
+            # 3. 누락된 필수 입력 데이터 확인
+            for param_name in self.detailed_data_spec.api_input_mapping.keys():
+                if param_name not in converted and param_name in kwargs:
+                    # 직접 매핑 시도
+                    converted[param_name] = kwargs[param_name]
+            
+            # 4. 전처리 적용
+            if self.config.auto_preprocessing and self.detailed_data_spec.preprocessing_steps:
+                converted = await self._apply_preprocessing(converted)
+                self.performance_metrics.preprocessing_operations += 1
+            
+            # 5. 데이터 타입 및 형태 검증
+            if self.config.strict_data_validation:
+                validated_input = self._validate_input_data(converted)
+            else:
+                validated_input = converted
+            
+            self.logger.debug(f"✅ {self.step_name} 입력 데이터 변환 완료 (결과: {list(validated_input.keys())})")
+            
+            return validated_input
+            
+        except Exception as e:
+            self.performance_metrics.validation_failures += 1
+            self.logger.error(f"❌ {self.step_name} 입력 데이터 변환 실패: {e}")
+            raise
+    
+    async def _convert_api_input_type(self, value: Any, api_type: str, param_name: str) -> Any:
+        """API 타입별 변환 처리"""
+        try:
+            if api_type == "UploadFile":
+                if hasattr(value, 'file'):
+                    # FastAPI UploadFile
+                    content = await value.read() if hasattr(value, 'read') else value.file.read()
+                    return Image.open(BytesIO(content)) if PIL_AVAILABLE else content
+                elif hasattr(value, 'read'):
+                    # 파일 객체
+                    content = value.read()
+                    return Image.open(BytesIO(content)) if PIL_AVAILABLE else content
+                
+            elif api_type == "base64_string":
+                if isinstance(value, str):
+                    try:
+                        image_data = base64.b64decode(value)
+                        return Image.open(BytesIO(image_data)) if PIL_AVAILABLE else image_data
+                    except Exception:
+                        return value
+                        
+            elif api_type in ["str", "Optional[str]"]:
+                return str(value) if value is not None else None
+                
+            elif api_type in ["int", "Optional[int]"]:
+                return int(value) if value is not None else None
+                
+            elif api_type in ["float", "Optional[float]"]:
+                return float(value) if value is not None else None
+                
+            elif api_type in ["List[float]", "List[int]"]:
+                if isinstance(value, (list, tuple)):
+                    return [float(x) if "float" in api_type else int(x) for x in value]
+                    
+            # 기본값: 원본 반환
+            return value
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ {self.step_name} API 타입 변환 실패 ({param_name}: {api_type}): {e}")
+            return value
+    
+    def _map_step_input_data(self, step_data: Dict[str, Any], step_schema: Dict[str, str]) -> Dict[str, Any]:
+        """Step 간 데이터 매핑"""
+        mapped_data = {}
+        
+        for data_key, data_type in step_schema.items():
+            if data_key in step_data:
+                value = step_data[data_key]
+                
+                # 데이터 타입에 맞게 변환
+                if data_type == "np.ndarray" and NUMPY_AVAILABLE:
+                    if TORCH_AVAILABLE and torch.is_tensor(value):
+                        mapped_data[data_key] = value.cpu().numpy()
+                    else:
+                        mapped_data[data_key] = np.array(value) if not isinstance(value, np.ndarray) else value
+                        
+                elif data_type == "torch.Tensor" and TORCH_AVAILABLE:
+                    if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                        mapped_data[data_key] = torch.from_numpy(value)
+                    else:
+                        mapped_data[data_key] = value
+                        
+                elif data_type == "PIL.Image" and PIL_AVAILABLE:
+                    if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                        mapped_data[data_key] = Image.fromarray(value.astype(np.uint8))
+                    else:
+                        mapped_data[data_key] = value
+                        
+                else:
+                    mapped_data[data_key] = value
+        
+        return mapped_data
+    
+    # ==============================================
+    # 🔥 전처리 시스템 (v19.1)
+    # ==============================================
+    
+    async def _apply_preprocessing(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 DetailedDataSpec 기반 전처리 자동 적용"""
+        try:
+            processed = input_data.copy()
+            
+            self.logger.debug(f"🔄 {self.step_name} 전처리 적용: {self.detailed_data_spec.preprocessing_steps}")
+            
+            for step_name in self.detailed_data_spec.preprocessing_steps:
+                if step_name == "resize_512x512":
+                    processed = self._resize_images(processed, (512, 512))
+                elif step_name == "resize_768x1024":
+                    processed = self._resize_images(processed, (768, 1024))
+                elif step_name == "resize_256x192":
+                    processed = self._resize_images(processed, (256, 192))
+                elif step_name == "resize_224x224":
+                    processed = self._resize_images(processed, (224, 224))
+                elif step_name == "resize_368x368":
+                    processed = self._resize_images(processed, (368, 368))
+                elif step_name == "resize_1024x1024":
+                    processed = self._resize_images(processed, (1024, 1024))
+                    
+                elif step_name == "normalize_imagenet":
+                    processed = self._normalize_imagenet(processed)
+                elif step_name == "normalize_clip":
+                    processed = self._normalize_clip(processed)
+                elif step_name == "normalize_diffusion" or step_name == "normalize_centered":
+                    processed = self._normalize_diffusion(processed)
+                    
+                elif step_name == "to_tensor":
+                    processed = self._convert_to_tensor(processed)
+                    
+                elif step_name == "prepare_sam_prompts":
+                    processed = self._prepare_sam_prompts(processed)
+                elif step_name == "prepare_diffusion_input":
+                    processed = self._prepare_diffusion_input(processed)
+                elif step_name == "prepare_ootd_inputs":
+                    processed = self._prepare_ootd_inputs(processed)
+                elif step_name == "extract_pose_features":
+                    processed = self._extract_pose_features(processed)
+                elif step_name == "prepare_sr_input":
+                    processed = self._prepare_sr_input(processed)
+                    
+                else:
+                    self.logger.debug(f"⚠️ 알 수 없는 전처리 단계: {step_name}")
+            
+            self.logger.debug(f"✅ {self.step_name} 전처리 완료")
+            return processed
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 전처리 실패: {e}")
+            return input_data
+    
+    def _resize_images(self, data: Dict[str, Any], target_size: Tuple[int, int]) -> Dict[str, Any]:
+        """이미지 리사이즈 처리"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if PIL_AVAILABLE and isinstance(value, Image.Image):
+                    result[key] = value.resize(target_size, Image.LANCZOS)
+                    
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray) and len(value.shape) >= 2:
+                    if CV2_AVAILABLE:
+                        if len(value.shape) == 3:
+                            result[key] = cv2.resize(value, target_size)
+                        elif len(value.shape) == 2:
+                            result[key] = cv2.resize(value, target_size)
+                    else:
+                        # PIL 폴백
+                        if PIL_AVAILABLE:
+                            if len(value.shape) == 3:
+                                img = Image.fromarray(value.astype(np.uint8))
+                                result[key] = np.array(img.resize(target_size, Image.LANCZOS))
+                            elif len(value.shape) == 2:
+                                img = Image.fromarray(value.astype(np.uint8), mode='L')
+                                result[key] = np.array(img.resize(target_size, Image.LANCZOS))
+                                
+            except Exception as e:
+                self.logger.debug(f"이미지 리사이즈 실패 ({key}): {e}")
+        
+        return result
+    
+    def _normalize_imagenet(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """ImageNet 정규화 (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])"""
+        result = data.copy()
+        mean = np.array(self.detailed_data_spec.normalization_mean)
+        std = np.array(self.detailed_data_spec.normalization_std)
+        
+        for key, value in data.items():
+            try:
+                if PIL_AVAILABLE and isinstance(value, Image.Image):
+                    # PIL Image → NumPy
+                    array = np.array(value).astype(np.float32) / 255.0
+                    if len(array.shape) == 3 and array.shape[2] == 3:
+                        normalized = (array - mean) / std
+                        result[key] = normalized
+                        
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if value.dtype != np.float32:
+                        value = value.astype(np.float32)
+                    
+                    if value.max() > 1.0:
+                        value = value / 255.0
+                    
+                    if len(value.shape) == 3 and value.shape[2] == 3:
+                        normalized = (value - mean) / std
+                        result[key] = normalized
+                        
+            except Exception as e:
+                self.logger.debug(f"ImageNet 정규화 실패 ({key}): {e}")
+        
+        return result
+    
+    def _normalize_clip(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """CLIP 정규화 (mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])"""
+        result = data.copy()
+        clip_mean = np.array([0.48145466, 0.4578275, 0.40821073])
+        clip_std = np.array([0.26862954, 0.26130258, 0.27577711])
+        
+        for key, value in data.items():
+            try:
+                if PIL_AVAILABLE and isinstance(value, Image.Image):
+                    array = np.array(value).astype(np.float32) / 255.0
+                    if len(array.shape) == 3 and array.shape[2] == 3:
+                        normalized = (array - clip_mean) / clip_std
+                        result[key] = normalized
+                        
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if value.dtype != np.float32:
+                        value = value.astype(np.float32)
+                    
+                    if value.max() > 1.0:
+                        value = value / 255.0
+                    
+                    if len(value.shape) == 3 and value.shape[2] == 3:
+                        normalized = (value - clip_mean) / clip_std
+                        result[key] = normalized
+                        
+            except Exception as e:
+                self.logger.debug(f"CLIP 정규화 실패 ({key}): {e}")
+        
+        return result
+    
+    def _normalize_diffusion(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Diffusion 정규화 (mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) → [-1, 1] 범위"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if PIL_AVAILABLE and isinstance(value, Image.Image):
+                    array = np.array(value).astype(np.float32) / 255.0
+                    normalized = 2.0 * array - 1.0  # [0, 1] → [-1, 1]
+                    result[key] = normalized
+                    
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if value.dtype != np.float32:
+                        value = value.astype(np.float32)
+                    
+                    if value.max() > 1.0:
+                        value = value / 255.0
+                    
+                    normalized = 2.0 * value - 1.0  # [0, 1] → [-1, 1]
+                    result[key] = normalized
+                    
+            except Exception as e:
+                self.logger.debug(f"Diffusion 정규화 실패 ({key}): {e}")
+        
+        return result
+    
+    def _convert_to_tensor(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """PyTorch 텐서 변환"""
+        if not TORCH_AVAILABLE:
+            return data
+        
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    # HWC → CHW 변환 (이미지인 경우)
+                    if len(value.shape) == 3 and value.shape[2] in [1, 3, 4]:
+                        value = np.transpose(value, (2, 0, 1))
+                    result[key] = torch.from_numpy(value).float()
+                    
+                elif PIL_AVAILABLE and isinstance(value, Image.Image):
+                    array = np.array(value)
+                    if len(array.shape) == 3:
+                        array = np.transpose(array, (2, 0, 1))
+                    result[key] = torch.from_numpy(array).float()
+                    
+                elif isinstance(value, (list, tuple)):
+                    result[key] = torch.tensor(value).float()
+                    
+            except Exception as e:
+                self.logger.debug(f"텐서 변환 실패 ({key}): {e}")
+        
+        return result
+    
+    def _prepare_sam_prompts(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """SAM 프롬프트 준비"""
+        result = data.copy()
+        
+        # SAM 모델용 프롬프트 포인트 및 라벨 준비
+        if 'prompt_points' not in result and 'image' in result:
+            # 기본 프롬프트 포인트 (이미지 중앙)
+            if PIL_AVAILABLE and isinstance(result['image'], Image.Image):
+                w, h = result['image'].size
+                result['prompt_points'] = np.array([[w//2, h//2]])
+                result['prompt_labels'] = np.array([1])
+            elif NUMPY_AVAILABLE and isinstance(result['image'], np.ndarray):
+                if len(result['image'].shape) >= 2:
+                    h, w = result['image'].shape[:2]
+                    result['prompt_points'] = np.array([[w//2, h//2]])
+                    result['prompt_labels'] = np.array([1])
+        
+        return result
+    
+    def _prepare_diffusion_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Diffusion 모델 입력 준비"""
+        result = data.copy()
+        
+        # Diffusion 모델용 조건 준비
+        if 'guidance_scale' not in result:
+            result['guidance_scale'] = 7.5
+        
+        if 'num_inference_steps' not in result:
+            result['num_inference_steps'] = 20
+        
+        if 'strength' not in result:
+            result['strength'] = 0.8
+        
+        return result
+    
+    def _prepare_ootd_inputs(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """OOTD Diffusion 입력 준비"""
+        result = data.copy()
+        
+        # OOTD 특별 설정
+        if 'fitting_mode' not in result:
+            result['fitting_mode'] = 'hd'  # 'hd' or 'dc'
+        
+        return result
+    
+    def _extract_pose_features(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """포즈 특징 추출"""
+        # 포즈 키포인트 전처리
+        return data
+    
+    def _prepare_sr_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Super Resolution 입력 준비"""
+        result = data.copy()
+        
+        # 타일링 정보 준비
+        if 'tile_size' not in result:
+            result['tile_size'] = 512
+        
+        if 'overlap' not in result:
+            result['overlap'] = 64
+        
+        return result
+    
+    # ==============================================
+    # 🔥 출력 데이터 변환 시스템 (v19.1)
+    # ==============================================
+    
+    async def _convert_output_to_standard_format(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 AI 모델 출력 → 표준 형식 (API + Step 간) 변환"""
+        try:
+            self.logger.debug(f"🔄 {self.step_name} 출력 데이터 변환 시작...")
+            
+            # 1. 후처리 적용
+            processed_result = await self._apply_postprocessing(ai_result)
+            
+            # 2. API 응답 형식 변환
+            api_response = self._convert_to_api_format(processed_result)
+            
+            # 3. 다음 Step들을 위한 데이터 준비
+            next_step_data = self._prepare_next_step_data(processed_result)
+            
+            # 4. 표준 응답 구조 생성
+            standard_response = {
+                'success': True,
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': getattr(self, '_last_processing_time', 0.0),
+                
+                # API 응답 데이터
+                **api_response,
+                
+                # 다음 Step들을 위한 데이터
+                'next_step_data': next_step_data,
+                
+                # 메타데이터
+                'metadata': {
+                    'input_shapes': {k: self._get_shape_info(v) for k, v in ai_result.items()},
+                    'output_shapes': self.detailed_data_spec.output_shapes,
+                    'device': self.device,
+                    'github_compatible': True,
+                    'detailed_data_spec_applied': True,
+                    'data_conversion_version': 'v19.1'
+                }
+            }
+            
+            self.logger.debug(f"✅ {self.step_name} 출력 데이터 변환 완료")
+            return standard_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 출력 데이터 변환 실패: {e}")
+            return self._create_error_response(str(e))
+    
+    def _get_shape_info(self, value: Any) -> Optional[Tuple]:
+        """값의 형태 정보 추출"""
+        try:
+            if hasattr(value, 'shape'):
+                return tuple(value.shape)
+            elif isinstance(value, (list, tuple)):
+                return (len(value),)
+            else:
+                return None
+        except:
+            return None
+    
+    async def _apply_postprocessing(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 DetailedDataSpec 기반 후처리 자동 적용"""
+        try:
+            if not self.config.auto_postprocessing:
+                return ai_result
+            
+            processed = ai_result.copy()
+            
+            self.logger.debug(f"🔄 {self.step_name} 후처리 적용: {self.detailed_data_spec.postprocessing_steps}")
+            
+            for step_name in self.detailed_data_spec.postprocessing_steps:
+                if step_name == "softmax":
+                    processed = self._apply_softmax(processed)
+                elif step_name == "argmax":
+                    processed = self._apply_argmax(processed)
+                elif step_name == "resize_original":
+                    processed = self._resize_to_original(processed)
+                elif step_name == "to_numpy":
+                    processed = self._convert_to_numpy(processed)
+                elif step_name == "threshold_0.5":
+                    processed = self._apply_threshold(processed, 0.5)
+                elif step_name == "nms":
+                    processed = self._apply_nms(processed)
+                elif step_name == "denormalize_diffusion" or step_name == "denormalize_centered":
+                    processed = self._denormalize_diffusion(processed)
+                elif step_name == "denormalize":
+                    processed = self._denormalize_imagenet(processed)
+                elif step_name == "clip_values" or step_name == "clip_0_1":
+                    processed = self._clip_values(processed, 0.0, 1.0)
+                elif step_name == "apply_mask" or step_name == "apply_warping_mask":
+                    processed = self._apply_mask(processed)
+                elif step_name == "morphology_clean":
+                    processed = self._morphology_operations(processed)
+                elif step_name == "extract_keypoints":
+                    processed = self._extract_keypoints(processed)
+                elif step_name == "scale_coords":
+                    processed = self._scale_coordinates(processed)
+                elif step_name == "filter_confidence":
+                    processed = self._filter_by_confidence(processed)
+                elif step_name == "enhance_details":
+                    processed = self._enhance_details(processed)
+                elif step_name == "final_compositing":
+                    processed = self._final_compositing(processed)
+                elif step_name == "generate_quality_report":
+                    processed = self._generate_quality_report(processed)
+                else:
+                    self.logger.debug(f"⚠️ 알 수 없는 후처리 단계: {step_name}")
+            
+            self.performance_metrics.postprocessing_operations += 1
+            self.logger.debug(f"✅ {self.step_name} 후처리 완료")
+            return processed
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 후처리 실패: {e}")
+            return ai_result
+    
+    def _apply_softmax(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Softmax 적용"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if TORCH_AVAILABLE and torch.is_tensor(value):
+                    result[key] = torch.softmax(value, dim=-1)
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    exp_vals = np.exp(value - np.max(value, axis=-1, keepdims=True))
+                    result[key] = exp_vals / np.sum(exp_vals, axis=-1, keepdims=True)
+            except Exception as e:
+                self.logger.debug(f"Softmax 적용 실패 ({key}): {e}")
+        
+        return result
+    
+    def _apply_argmax(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Argmax 적용"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if TORCH_AVAILABLE and torch.is_tensor(value):
+                    result[key] = torch.argmax(value, dim=-1)
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    result[key] = np.argmax(value, axis=-1)
+            except Exception as e:
+                self.logger.debug(f"Argmax 적용 실패 ({key}): {e}")
+        
+        return result
+    
+    def _convert_to_numpy(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """NumPy 변환"""
+        if not NUMPY_AVAILABLE:
+            return data
+        
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if TORCH_AVAILABLE and torch.is_tensor(value):
+                    result[key] = value.detach().cpu().numpy()
+                elif not isinstance(value, np.ndarray):
+                    if isinstance(value, (list, tuple)):
+                        result[key] = np.array(value)
+            except Exception as e:
+                self.logger.debug(f"NumPy 변환 실패 ({key}): {e}")
+        
+        return result
+    
+    def _apply_threshold(self, data: Dict[str, Any], threshold: float) -> Dict[str, Any]:
+        """임계값 적용"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    result[key] = (value > threshold).astype(np.float32)
+                elif TORCH_AVAILABLE and torch.is_tensor(value):
+                    result[key] = (value > threshold).float()
+            except Exception as e:
+                self.logger.debug(f"임계값 적용 실패 ({key}): {e}")
+        
+        return result
+    
+    def _denormalize_diffusion(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Diffusion 역정규화 ([-1, 1] → [0, 1])"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    result[key] = (value + 1.0) / 2.0
+                elif TORCH_AVAILABLE and torch.is_tensor(value):
+                    result[key] = (value + 1.0) / 2.0
+            except Exception as e:
+                self.logger.debug(f"Diffusion 역정규화 실패 ({key}): {e}")
+        
+        return result
+    
+    def _denormalize_imagenet(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """ImageNet 역정규화"""
+        result = data.copy()
+        mean = np.array(self.detailed_data_spec.normalization_mean)
+        std = np.array(self.detailed_data_spec.normalization_std)
+        
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if len(value.shape) == 3 and value.shape[2] == 3:
+                        denormalized = value * std + mean
+                        result[key] = np.clip(denormalized, 0, 1)
+            except Exception as e:
+                self.logger.debug(f"ImageNet 역정규화 실패 ({key}): {e}")
+        
+        return result
+    
+    def _clip_values(self, data: Dict[str, Any], min_val: float, max_val: float) -> Dict[str, Any]:
+        """값 범위 클리핑"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    result[key] = np.clip(value, min_val, max_val)
+                elif TORCH_AVAILABLE and torch.is_tensor(value):
+                    result[key] = torch.clamp(value, min_val, max_val)
+            except Exception as e:
+                self.logger.debug(f"값 클리핑 실패 ({key}): {e}")
+        
+        return result
+    
+    def _apply_mask(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """마스크 적용"""
+        result = data.copy()
+        
+        # 마스크가 있는 경우 적용
+        if 'mask' in data and 'image' in data:
+            try:
+                mask = data['mask']
+                image = data['image']
+                
+                if NUMPY_AVAILABLE:
+                    if isinstance(mask, np.ndarray) and isinstance(image, np.ndarray):
+                        result['masked_image'] = image * mask
+                        
+            except Exception as e:
+                self.logger.debug(f"마스크 적용 실패: {e}")
+        
+        return result
+    
+    def _morphology_operations(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """형태학적 연산 (노이즈 제거)"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if CV2_AVAILABLE and NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if len(value.shape) == 2:  # 2D 마스크
+                        # 열기와 닫기 연산으로 노이즈 제거
+                        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                        opened = cv2.morphologyEx(value.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+                        closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+                        result[key] = closed.astype(np.float32)
+                        
+            except Exception as e:
+                self.logger.debug(f"형태학적 연산 실패 ({key}): {e}")
+        
+        return result
+    
+    def _extract_keypoints(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """키포인트 추출"""
+        result = data.copy()
+        
+        # OpenPose 스타일 키포인트 추출
+        if 'heatmaps' in data:
+            try:
+                heatmaps = data['heatmaps']
+                if NUMPY_AVAILABLE and isinstance(heatmaps, np.ndarray):
+                    keypoints = []
+                    for i in range(heatmaps.shape[0]):  # 각 키포인트별
+                        heatmap = heatmaps[i]
+                        y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+                        confidence = heatmap[y, x]
+                        keypoints.append([x, y, confidence])
+                    result['keypoints'] = np.array(keypoints)
+                    
+            except Exception as e:
+                self.logger.debug(f"키포인트 추출 실패: {e}")
+        
+        return result
+    
+    def _scale_coordinates(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """좌표 스케일링"""
+        result = data.copy()
+        
+        # 원본 이미지 크기로 좌표 스케일링
+        if 'keypoints' in data and 'original_size' in data:
+            try:
+                keypoints = data['keypoints']
+                original_size = data['original_size']
+                
+                if isinstance(keypoints, np.ndarray) and len(keypoints.shape) == 2:
+                    # 현재 크기에서 원본 크기로 스케일링
+                    scale_x = original_size[0] / self.detailed_data_spec.input_shapes.get('image', (512, 512))[1]
+                    scale_y = original_size[1] / self.detailed_data_spec.input_shapes.get('image', (512, 512))[0]
+                    
+                    scaled_keypoints = keypoints.copy()
+                    scaled_keypoints[:, 0] *= scale_x
+                    scaled_keypoints[:, 1] *= scale_y
+                    result['scaled_keypoints'] = scaled_keypoints
+                    
+            except Exception as e:
+                self.logger.debug(f"좌표 스케일링 실패: {e}")
+        
+        return result
+    
+    def _filter_by_confidence(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """신뢰도 기반 필터링"""
+        result = data.copy()
+        
+        confidence_threshold = self.config.confidence_threshold
+        
+        for key, value in data.items():
+            try:
+                if key.endswith('_confidence') or key.endswith('_scores'):
+                    if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                        valid_mask = value > confidence_threshold
+                        result[f'{key}_filtered'] = value[valid_mask]
+                        
+                        # 해당하는 데이터도 필터링
+                        base_key = key.replace('_confidence', '').replace('_scores', '')
+                        if base_key in data:
+                            base_data = data[base_key]
+                            if isinstance(base_data, np.ndarray) and len(base_data) == len(value):
+                                result[f'{base_key}_filtered'] = base_data[valid_mask]
+                                
+            except Exception as e:
+                self.logger.debug(f"신뢰도 필터링 실패 ({key}): {e}")
+        
+        return result
+    
+    def _enhance_details(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """세부사항 향상 (Super Resolution 후처리)"""
+        result = data.copy()
+        
+        # 간단한 샤프닝 필터 적용
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray) and len(value.shape) >= 2:
+                    if CV2_AVAILABLE and len(value.shape) == 3:
+                        # 언샤프 마스킹
+                        blurred = cv2.GaussianBlur(value, (3, 3), 1.0)
+                        sharpened = cv2.addWeighted(value, 1.5, blurred, -0.5, 0)
+                        result[f'{key}_enhanced'] = np.clip(sharpened, 0, 1)
+                        
+            except Exception as e:
+                self.logger.debug(f"세부사항 향상 실패 ({key}): {e}")
+        
+        return result
+    
+    def _final_compositing(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """최종 합성"""
+        result = data.copy()
+        
+        # 여러 레이어가 있는 경우 합성
+        if 'person_image' in data and 'clothing_image' in data and 'mask' in data:
+            try:
+                person = data['person_image']
+                clothing = data['clothing_image']
+                mask = data['mask']
+                
+                if all(isinstance(x, np.ndarray) for x in [person, clothing, mask]):
+                    # 마스크를 사용한 블렌딩
+                    composited = person * (1 - mask) + clothing * mask
+                    result['final_composited'] = composited
+                    
+            except Exception as e:
+                self.logger.debug(f"최종 합성 실패: {e}")
+        
+        return result
+    
+    def _generate_quality_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """품질 보고서 생성"""
+        result = data.copy()
+        
+        quality_metrics = {
+            'overall_quality': 0.0,
+            'detail_preservation': 0.0,
+            'color_consistency': 0.0,
+            'artifact_level': 0.0,
+            'recommendations': []
+        }
+        
+        try:
+            # 간단한 품질 메트릭 계산
+            if 'final_result' in data:
+                final_result = data['final_result']
+                if NUMPY_AVAILABLE and isinstance(final_result, np.ndarray):
+                    # 기본 품질 점수
+                    mean_intensity = np.mean(final_result)
+                    std_intensity = np.std(final_result)
+                    
+                    # 정규화된 점수
+                    quality_metrics['overall_quality'] = min(1.0, (mean_intensity + std_intensity) / 2.0)
+                    quality_metrics['detail_preservation'] = min(1.0, std_intensity * 2.0)
+                    quality_metrics['color_consistency'] = 1.0 - abs(0.5 - mean_intensity)
+                    
+                    # 권장사항
+                    if quality_metrics['overall_quality'] < 0.7:
+                        quality_metrics['recommendations'].append('이미지 품질 개선 필요')
+                    if quality_metrics['detail_preservation'] < 0.5:
+                        quality_metrics['recommendations'].append('세부사항 보존 개선 필요')
+            
+            result['quality_assessment'] = quality_metrics
+            
+        except Exception as e:
+            self.logger.debug(f"품질 보고서 생성 실패: {e}")
+            result['quality_assessment'] = quality_metrics
+        
+        return result
+    
+    def _apply_nms(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Non-Maximum Suppression 적용"""
+        result = data.copy()
+        
+        # 검출 결과가 있는 경우 NMS 적용
+        if 'detections' in data and 'scores' in data:
+            try:
+                # 간단한 NMS 구현 (실제로는 더 복잡한 알고리즘 필요)
+                detections = data['detections']
+                scores = data['scores']
+                
+                if NUMPY_AVAILABLE and isinstance(detections, np.ndarray) and isinstance(scores, np.ndarray):
+                    # 점수 순으로 정렬
+                    sorted_indices = np.argsort(scores)[::-1]
+                    
+                    # 상위 결과만 유지 (간단한 구현)
+                    top_k = min(10, len(sorted_indices))
+                    result['detections_nms'] = detections[sorted_indices[:top_k]]
+                    result['scores_nms'] = scores[sorted_indices[:top_k]]
+                    
+            except Exception as e:
+                self.logger.debug(f"NMS 적용 실패: {e}")
+        
+        return result
+    
+    def _resize_to_original(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """원본 크기로 리사이즈"""
+        result = data.copy()
+        
+        if 'original_size' in data:
+            original_size = data['original_size']
+            
+            for key, value in data.items():
+                try:
+                    if key != 'original_size' and isinstance(value, np.ndarray) and len(value.shape) >= 2:
+                        if CV2_AVAILABLE:
+                            if len(value.shape) == 3:
+                                resized = cv2.resize(value, tuple(original_size))
+                            elif len(value.shape) == 2:
+                                resized = cv2.resize(value, tuple(original_size))
+                            else:
+                                continue
+                            result[f'{key}_original_size'] = resized
+                            
+                except Exception as e:
+                    self.logger.debug(f"원본 크기 리사이즈 실패 ({key}): {e}")
+        
+        return result
+    
+    def _convert_to_api_format(self, processed_result: Dict[str, Any]) -> Dict[str, Any]:
+        """AI 결과 → API 응답 형식 변환"""
+        api_response = {}
+        
+        try:
+            for api_field, api_type in self.detailed_data_spec.api_output_mapping.items():
+                if api_field in processed_result:
+                    value = processed_result[api_field]
+                    
+                    if api_type == "base64_string":
+                        api_response[api_field] = self._array_to_base64(value)
+                    elif api_type == "List[Dict]":
+                        api_response[api_field] = self._convert_to_list_dict(value)
+                    elif api_type == "List[Dict[str, float]]":
+                        api_response[api_field] = self._convert_keypoints_to_dict_list(value)
+                    elif api_type == "float":
+                        api_response[api_field] = float(value) if value is not None else 0.0
+                    elif api_type == "List[float]":
+                        if isinstance(value, (list, tuple)):
+                            api_response[api_field] = [float(x) for x in value]
+                        elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                            api_response[api_field] = value.flatten().tolist()
+                        else:
+                            api_response[api_field] = [float(value)] if value is not None else []
+                    elif api_type == "Dict[str, float]":
+                        if isinstance(value, dict):
+                            api_response[api_field] = {k: float(v) for k, v in value.items()}
+                        else:
+                            api_response[api_field] = {}
+                    elif api_type == "List[str]":
+                        if isinstance(value, (list, tuple)):
+                            api_response[api_field] = [str(x) for x in value]
+                        else:
+                            api_response[api_field] = [str(value)] if value is not None else []
+                    else:
+                        api_response[api_field] = value
+            
+            # 기본 API 응답이 없는 경우 대체 매핑 시도
+            if not api_response:
+                api_response = self._create_fallback_api_response(processed_result)
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} API 형식 변환 실패: {e}")
+            api_response = self._create_fallback_api_response(processed_result)
+        
+        return api_response
+    
+    def _prepare_next_step_data(self, processed_result: Dict[str, Any]) -> Dict[str, Any]:
+        """다음 Step들을 위한 데이터 준비"""
+        next_step_data = {}
+        
+        try:
+            for next_step, data_schema in self.detailed_data_spec.provides_to_next_step.items():
+                step_data = {}
+                
+                for data_key, data_type in data_schema.items():
+                    if data_key in processed_result:
+                        value = processed_result[data_key]
+                        
+                        # 데이터 타입에 맞게 변환
+                        if data_type == "np.ndarray" and NUMPY_AVAILABLE:
+                            if TORCH_AVAILABLE and torch.is_tensor(value):
+                                step_data[data_key] = value.detach().cpu().numpy()
+                            elif not isinstance(value, np.ndarray):
+                                step_data[data_key] = np.array(value)
+                            else:
+                                step_data[data_key] = value
+                                
+                        elif data_type == "torch.Tensor" and TORCH_AVAILABLE:
+                            if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                                step_data[data_key] = torch.from_numpy(value)
+                            elif not torch.is_tensor(value):
+                                step_data[data_key] = torch.tensor(value)
+                            else:
+                                step_data[data_key] = value
+                                
+                        elif data_type == "List[float]":
+                            if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                                step_data[data_key] = value.flatten().tolist()
+                            elif isinstance(value, (list, tuple)):
+                                step_data[data_key] = [float(x) for x in value]
+                            else:
+                                step_data[data_key] = [float(value)] if value is not None else []
+                                
+                        elif data_type == "List[Tuple[float, float]]":
+                            if NUMPY_AVAILABLE and isinstance(value, np.ndarray) and len(value.shape) == 2:
+                                step_data[data_key] = [(float(row[0]), float(row[1])) for row in value]
+                            else:
+                                step_data[data_key] = value
+                                
+                        elif data_type == "Dict[str, Any]":
+                            step_data[data_key] = value if isinstance(value, dict) else {'data': value}
+                            
+                        else:
+                            step_data[data_key] = value
+                
+                if step_data:
+                    next_step_data[next_step] = step_data
+                    self.performance_metrics.step_data_transfers += 1
+        
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 다음 Step 데이터 준비 실패: {e}")
+        
+        return next_step_data
+    
+    # ==============================================
+    # 🔥 데이터 검증 시스템 (v19.1)
+    # ==============================================
+    
+    def _validate_input_data(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """입력 데이터 검증"""
+        validated = input_data.copy()
+        
+        try:
+            for key, value in input_data.items():
+                # 데이터 타입 검증
+                if key in self.detailed_data_spec.input_shapes:
+                    expected_shape = self.detailed_data_spec.input_shapes[key]
+                    if hasattr(value, 'shape'):
+                        actual_shape = value.shape
+                        # 형태 검증 (배치 차원 제외)
+                        if len(actual_shape) > len(expected_shape):
+                            if actual_shape[1:] != tuple(expected_shape):
+                                self.logger.warning(f"⚠️ {self.step_name} Shape mismatch for {key}: expected {expected_shape}, got {actual_shape[1:]}")
+                        elif actual_shape != tuple(expected_shape):
+                            self.logger.warning(f"⚠️ {self.step_name} Shape mismatch for {key}: expected {expected_shape}, got {actual_shape}")
+                
+                # 값 범위 검증
+                if key in self.detailed_data_spec.input_value_ranges:
+                    min_val, max_val = self.detailed_data_spec.input_value_ranges[key]
+                    if hasattr(value, 'min') and hasattr(value, 'max'):
+                        actual_min, actual_max = float(value.min()), float(value.max())
+                        if actual_min < min_val or actual_max > max_val:
+                            self.logger.warning(f"⚠️ {self.step_name} Value range warning for {key}: range [{actual_min:.3f}, {actual_max:.3f}], expected [{min_val}, {max_val}]")
+                            
+                            # 자동 클리핑 (설정된 경우)
+                            if self.config.strict_data_validation:
+                                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                                    validated[key] = np.clip(value, min_val, max_val)
+                                elif TORCH_AVAILABLE and torch.is_tensor(value):
+                                    validated[key] = torch.clamp(value, min_val, max_val)
+                
+                # 데이터 타입 검증
+                expected_types = self.detailed_data_spec.input_data_types
+                if expected_types:
+                    value_type = type(value).__name__
+                    if PIL_AVAILABLE and isinstance(value, Image.Image):
+                        value_type = "PIL.Image"
+                    elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                        value_type = "np.ndarray"
+                    elif TORCH_AVAILABLE and torch.is_tensor(value):
+                        value_type = "torch.Tensor"
+                    
+                    if value_type not in expected_types:
+                        self.logger.debug(f"🔄 {self.step_name} Type mismatch for {key}: got {value_type}, expected one of {expected_types}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 입력 데이터 검증 실패: {e}")
+            self.performance_metrics.validation_failures += 1
+        
+        return validated
+    
+    # ==============================================
+    # 🔥 유틸리티 메서드들 (v19.1)
+    # ==============================================
+    
+    def _array_to_base64(self, array: Any) -> str:
+        """NumPy 배열/텐서 → Base64 문자열 변환"""
+        try:
+            # 텐서를 numpy로 변환
+            if TORCH_AVAILABLE and torch.is_tensor(array):
+                array = array.detach().cpu().numpy()
+            
+            if not NUMPY_AVAILABLE or not isinstance(array, np.ndarray):
+                return ""
+            
+            # 값 범위 정규화
+            if array.dtype != np.uint8:
+                if array.max() <= 1.0:
+                    array = (array * 255).astype(np.uint8)
+                else:
+                    array = np.clip(array, 0, 255).astype(np.uint8)
+            
+            # PIL Image로 변환
+            if PIL_AVAILABLE:
+                if len(array.shape) == 3:
+                    # CHW → HWC 변환 (필요한 경우)
+                    if array.shape[0] in [1, 3, 4] and array.shape[0] < array.shape[1]:
+                        array = np.transpose(array, (1, 2, 0))
+                    
+                    if array.shape[2] == 1:
+                        array = array.squeeze(2)
+                        image = Image.fromarray(array, mode='L')
+                    elif array.shape[2] == 3:
+                        image = Image.fromarray(array, mode='RGB')
+                    elif array.shape[2] == 4:
+                        image = Image.fromarray(array, mode='RGBA')
+                    else:
+                        # 첫 번째 채널만 사용
+                        image = Image.fromarray(array[:, :, 0], mode='L')
+                        
+                elif len(array.shape) == 2:
+                    image = Image.fromarray(array, mode='L')
+                else:
+                    raise ValueError(f"Unsupported array shape: {array.shape}")
+                
+                # Base64 인코딩
+                buffer = BytesIO()
+                image.save(buffer, format='PNG')
+                buffer.seek(0)
+                
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            return ""
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} Base64 변환 실패: {e}")
+            return ""
+    
+    def _convert_to_list_dict(self, value: Any) -> List[Dict]:
+        """값을 List[Dict] 형식으로 변환"""
+        try:
+            if isinstance(value, (list, tuple)):
+                if all(isinstance(item, dict) for item in value):
+                    return list(value)
+                else:
+                    return [{'value': item, 'index': i} for i, item in enumerate(value)]
+            
+            elif isinstance(value, dict):
+                return [value]
+            
+            elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                if len(value.shape) == 1:
+                    return [{'value': float(item), 'index': i} for i, item in enumerate(value)]
+                elif len(value.shape) == 2:
+                    return [{'row': i, 'data': row.tolist()} for i, row in enumerate(value)]
+                else:
+                    return [{'data': value.tolist()}]
+            
+            else:
+                return [{'value': value}]
+                
+        except Exception as e:
+            self.logger.debug(f"List[Dict] 변환 실패: {e}")
+            return [{'value': str(value)}]
+    
+    def _convert_keypoints_to_dict_list(self, keypoints: Any) -> List[Dict[str, float]]:
+        """키포인트를 List[Dict[str, float]] 형식으로 변환"""
+        try:
+            if NUMPY_AVAILABLE and isinstance(keypoints, np.ndarray):
+                if len(keypoints.shape) == 2 and keypoints.shape[1] >= 2:
+                    result = []
+                    for i, point in enumerate(keypoints):
+                        point_dict = {
+                            'x': float(point[0]),
+                            'y': float(point[1])
+                        }
+                        if keypoints.shape[1] > 2:
+                            point_dict['confidence'] = float(point[2])
+                        if keypoints.shape[1] > 3:
+                            point_dict['visibility'] = float(point[3])
+                        
+                        point_dict['index'] = i
+                        result.append(point_dict)
+                    
+                    return result
+            
+            elif isinstance(keypoints, (list, tuple)):
+                result = []
+                for i, point in enumerate(keypoints):
+                    if isinstance(point, (list, tuple)) and len(point) >= 2:
+                        point_dict = {
+                            'x': float(point[0]),
+                            'y': float(point[1]),
+                            'index': i
+                        }
+                        if len(point) > 2:
+                            point_dict['confidence'] = float(point[2])
+                        result.append(point_dict)
+                
+                return result
+            
+            return []
+            
+        except Exception as e:
+            self.logger.debug(f"키포인트 Dict 변환 실패: {e}")
+            return []
+    
+    def _create_fallback_api_response(self, processed_result: Dict[str, Any]) -> Dict[str, Any]:
+        """폴백 API 응답 생성"""
+        fallback_response = {}
+        
+        try:
+            # 공통적으로 사용되는 키들에 대한 기본 매핑
+            common_mappings = {
+                'parsing_mask': 'base64_string',
+                'segmentation_mask': 'base64_string',
+                'fitted_image': 'base64_string',
+                'enhanced_image': 'base64_string',
+                'final_result': 'base64_string',
+                'result_image': 'base64_string',
+                'output_image': 'base64_string',
+                
+                'keypoints': 'List[Dict[str, float]]',
+                'pose_keypoints': 'List[Dict[str, float]]',
+                
+                'confidence': 'float',
+                'quality_score': 'float',
+                'confidence_scores': 'List[float]',
+                
+                'quality_assessment': 'Dict[str, float]',
+                'processing_metadata': 'Dict[str, Any]'
+            }
+            
+            for key, value in processed_result.items():
+                if key in common_mappings:
+                    api_type = common_mappings[key]
+                    
+                    if api_type == 'base64_string':
+                        fallback_response[key] = self._array_to_base64(value)
+                    elif api_type == 'List[Dict[str, float]]':
+                        fallback_response[key] = self._convert_keypoints_to_dict_list(value)
+                    elif api_type == 'float':
+                        fallback_response[key] = float(value) if value is not None else 0.0
+                    elif api_type == 'List[float]':
+                        if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                            fallback_response[key] = value.flatten().tolist()
+                        elif isinstance(value, (list, tuple)):
+                            fallback_response[key] = [float(x) for x in value]
+                    else:
+                        fallback_response[key] = value
+            
+            # 기본 응답이 없는 경우 첫 번째 이미지형 데이터를 result로 설정
+            if not fallback_response:
+                for key, value in processed_result.items():
+                    if NUMPY_AVAILABLE and isinstance(value, np.ndarray) and len(value.shape) >= 2:
+                        fallback_response['result'] = self._array_to_base64(value)
+                        break
+                    elif PIL_AVAILABLE and isinstance(value, Image.Image):
+                        fallback_response['result'] = self._array_to_base64(np.array(value))
+                        break
+            
+        except Exception as e:
+            self.logger.debug(f"폴백 API 응답 생성 실패: {e}")
+        
+        return fallback_response
+    
+    def _create_error_response(self, error_message: str) -> Dict[str, Any]:
+        """표준 에러 응답 생성"""
+        return {
+            'success': False,
+            'error': error_message,
+            'step_name': self.step_name,
+            'step_id': self.step_id,
+            'github_compatible': True,
+            'detailed_data_spec_applied': False,
+            'processing_time': 0.0,
+            'timestamp': time.time()
+        }
+    
+    # ==============================================
+    # 🔥 기존 GitHub 호환 메서드들 (v19.1 유지)
+    # ==============================================
     
     def _create_github_config(self, **kwargs) -> GitHubStepConfig:
         """GitHub 프로젝트 호환 설정 생성"""
@@ -859,6 +1835,7 @@ class BaseStepMixin:
         # GitHub 프로젝트 특별 설정
         config.github_compatibility_mode = True
         config.real_ai_pipeline_support = True
+        config.enable_detailed_data_spec = True
         
         # 환경별 설정 적용
         if CONDA_INFO['is_target_env']:
@@ -903,833 +1880,8 @@ class BaseStepMixin:
         self.is_initialized = False
         self.github_compatible = False
         self.performance_metrics = GitHubPerformanceMetrics()
+        self.detailed_data_spec = DetailedDataSpecConfig()
         self.logger.error(f"🚨 {self.step_name} GitHub 긴급 초기화: {error}")
-    
-    # ==============================================
-    # 🔥 GitHub 표준화된 의존성 주입 인터페이스 (v19.0)
-    # ==============================================
-    
-    def set_model_loader(self, model_loader: 'ModelLoader'):
-        """GitHub 표준 ModelLoader 의존성 주입 (v19.0)"""
-        try:
-            self.logger.info(f"🔄 {self.step_name} GitHub ModelLoader 의존성 주입 시작...")
-            
-            # GitHub 의존성 관리자를 통한 주입
-            success = self.dependency_manager.inject_model_loader(model_loader)
-            
-            if success:
-                # GitHub 호환성을 위한 속성 설정
-                self.model_loader = model_loader
-                self.model_interface = self.dependency_manager.get_dependency('step_interface')
-                
-                # GitHub 표준 상태 플래그 업데이트
-                self.has_model = True
-                self.model_loaded = True
-                self.real_ai_pipeline_ready = True
-                
-                # 성능 메트릭 업데이트
-                self.performance_metrics.dependencies_injected += 1
-                
-                self.logger.info(f"✅ {self.step_name} GitHub ModelLoader 의존성 주입 완료")
-            else:
-                self.logger.error(f"❌ {self.step_name} GitHub ModelLoader 의존성 주입 실패")
-                if self.config.strict_mode:
-                    raise RuntimeError(f"GitHub Strict Mode: ModelLoader 의존성 주입 실패")
-                
-        except Exception as e:
-            self.performance_metrics.injection_failures += 1
-            self.logger.error(f"❌ {self.step_name} GitHub ModelLoader 의존성 주입 오류: {e}")
-            if self.config.strict_mode:
-                raise
-    
-    def set_memory_manager(self, memory_manager: 'MemoryManager'):
-        """GitHub 표준 MemoryManager 의존성 주입"""
-        try:
-            success = self.dependency_manager.inject_memory_manager(memory_manager)
-            if success:
-                self.memory_manager = memory_manager
-                self.performance_metrics.dependencies_injected += 1
-                self.logger.debug(f"✅ {self.step_name} GitHub MemoryManager 의존성 주입 완료")
-        except Exception as e:
-            self.performance_metrics.injection_failures += 1
-            self.logger.warning(f"⚠️ {self.step_name} GitHub MemoryManager 의존성 주입 오류: {e}")
-    
-    def set_data_converter(self, data_converter: 'DataConverter'):
-        """GitHub 표준 DataConverter 의존성 주입"""
-        try:
-            success = self.dependency_manager.inject_data_converter(data_converter)
-            if success:
-                self.data_converter = data_converter
-                self.performance_metrics.dependencies_injected += 1
-                self.logger.debug(f"✅ {self.step_name} GitHub DataConverter 의존성 주입 완료")
-        except Exception as e:
-            self.performance_metrics.injection_failures += 1
-            self.logger.warning(f"⚠️ {self.step_name} GitHub DataConverter 의존성 주입 오류: {e}")
-    
-    def set_di_container(self, di_container: 'DIContainer'):
-        """GitHub 표준 DI Container 의존성 주입"""
-        try:
-            self.di_container = di_container
-            self.performance_metrics.dependencies_injected += 1
-            self.logger.debug(f"✅ {self.step_name} GitHub DI Container 의존성 주입 완료")
-        except Exception as e:
-            self.performance_metrics.injection_failures += 1
-            self.logger.warning(f"⚠️ {self.step_name} GitHub DI Container 의존성 주입 오류: {e}")
-    
-    # ==============================================
-    # 🔥 GitHub 호환 의존성 검증 (v19.0 핵심 기능)
-    # ==============================================
-    
-    def validate_dependencies(self, format_type: DependencyValidationFormat = None) -> Union[Dict[str, bool], Dict[str, Any]]:
-        """
-        GitHub 프로젝트 호환 의존성 검증 (v19.0 핵심)
-        
-        반환 형식:
-        - DependencyValidationFormat.BOOLEAN_DICT: {'model_loader': True, 'step_interface': False, ...}
-        - DependencyValidationFormat.DETAILED_DICT: {'success': True, 'details': {...}, ...}
-        - DependencyValidationFormat.AUTO_DETECT: 호출자에 따라 자동 선택
-        """
-        try:
-            return self.dependency_manager.validate_dependencies_github_format(format_type)
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} GitHub 의존성 검증 실패: {e}")
-            
-            # 에러 시 안전한 기본값 반환
-            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
-                return {'model_loader': False, 'step_interface': False, 'memory_manager': False, 'data_converter': False}
-            else:
-                return {'success': False, 'error': str(e), 'github_compatible': False}
-    
-    # GitHub Step 클래스 호환을 위한 별칭 메서드
-    def validate_dependencies_boolean(self) -> Dict[str, bool]:
-        """GitHub Step 클래스 호환 (GeometricMatchingStep 등)"""
-        return self.validate_dependencies(DependencyValidationFormat.BOOLEAN_DICT)
-    
-    def validate_dependencies_detailed(self) -> Dict[str, Any]:
-        """StepFactory 호환 (상세 정보)"""
-        return self.validate_dependencies(DependencyValidationFormat.DETAILED_DICT)
-    
-    # ==============================================
-    # 🔥 GitHub 표준 process 메서드 지원 (v19.1 데이터 전달 최적화)
-    # ==============================================
-    
-    async def process(self, **kwargs) -> Dict[str, Any]:
-        """
-        GitHub 프로젝트 표준 process 메서드 (v19.1 데이터 전달 최적화)
-        
-        이 메서드는 모든 kwargs를 받아서 실제 Step의 process 메서드로 
-        올바른 형태로 변환하여 전달합니다.
-        """
-        try:
-            # GitHub 통계 업데이트
-            self.performance_metrics.github_process_calls += 1
-            
-            # 하위 클래스의 실제 process 메서드 찾기
-            actual_process_method = self._find_actual_process_method()
-            
-            if actual_process_method and actual_process_method != self.process:
-                # 실제 process 메서드가 있는 경우, 시그니처에 맞게 데이터 변환
-                converted_args, converted_kwargs = self._convert_process_arguments(
-                    actual_process_method, **kwargs
-                )
-                
-                # 실제 Step의 process 메서드 호출
-                if asyncio.iscoroutinefunction(actual_process_method):
-                    return await actual_process_method(*converted_args, **converted_kwargs)
-                else:
-                    return actual_process_method(*converted_args, **converted_kwargs)
-            
-            # 기본 처리 로직 (하위 클래스에서 재정의되지 않은 경우)
-            self.logger.warning(f"⚠️ {self.step_name} process 메서드가 재정의되지 않음")
-            
-            return {
-                'success': True,
-                'message': f'{self.step_name} 기본 처리 완료',
-                'step_name': self.step_name,
-                'step_id': self.step_id,
-                'github_compatible': self.github_compatible,
-                'real_ai_ready': self.real_ai_pipeline_ready,
-                'inputs_received': list(kwargs.keys()),
-                'note': 'BaseStepMixin 기본 구현 - 하위 클래스에서 재정의 필요'
-            }
-            
-        except Exception as e:
-            self.performance_metrics.error_count += 1
-            self.logger.error(f"❌ {self.step_name} GitHub process 실패: {e}")
-            
-            return {
-                'success': False,
-                'error': str(e),
-                'step_name': self.step_name,
-                'github_compatible': self.github_compatible
-            }
-    
-    def _find_actual_process_method(self):
-        """실제 Step의 process 메서드 찾기 (BaseStepMixin의 process 제외)"""
-        try:
-            # 클래스 hierarchy에서 실제 구현된 process 메서드 찾기
-            for cls in self.__class__.__mro__:
-                if cls == BaseStepMixin:
-                    continue  # BaseStepMixin의 process는 제외
-                
-                if 'process' in cls.__dict__:
-                    actual_method = getattr(self, 'process')
-                    
-                    # 메서드가 BaseStepMixin의 것이 아닌지 확인
-                    if actual_method.__func__ != BaseStepMixin.process.__func__:
-                        return actual_method
-            
-            return None
-            
-        except Exception as e:
-            self.logger.debug(f"실제 process 메서드 찾기 실패: {e}")
-            return None
-    
-    def _convert_process_arguments(self, actual_process_method, **kwargs):
-        """
-        kwargs를 실제 Step의 process 메서드 시그니처에 맞게 변환
-        
-        예시:
-        - GeometricMatchingStep.process(person_image, clothing_image, **kwargs)
-        - ClothSegmentationStep.process(input_data, clothing_type=None, **kwargs)
-        """
-        try:
-            import inspect
-            
-            # 실제 메서드의 시그니처 분석
-            sig = inspect.signature(actual_process_method)
-            params = list(sig.parameters.keys())
-            
-            converted_args = []
-            converted_kwargs = kwargs.copy()
-            
-            # self 파라미터 제외
-            if 'self' in params:
-                params.remove('self')
-            
-            # 위치 인자들 변환
-            for param_name in params:
-                param = sig.parameters[param_name]
-                
-                # **kwargs 파라미터는 건너뛰기
-                if param.kind == inspect.Parameter.VAR_KEYWORD:
-                    continue
-                
-                # *args 파라미터는 건너뛰기  
-                if param.kind == inspect.Parameter.VAR_POSITIONAL:
-                    continue
-                
-                # 위치 인자 또는 기본값이 없는 경우
-                if param.default == inspect.Parameter.empty:
-                    # kwargs에서 해당 인자 찾아서 위치 인자로 변환
-                    if param_name in converted_kwargs:
-                        converted_args.append(converted_kwargs.pop(param_name))
-                    else:
-                        # 일반적인 이름 매핑 시도
-                        mapped_value = self._map_common_parameter_names(param_name, converted_kwargs)
-                        if mapped_value is not None:
-                            converted_args.append(mapped_value)
-                        else:
-                            self.logger.warning(f"⚠️ 필수 파라미터 {param_name}을 kwargs에서 찾을 수 없음")
-            
-            self.logger.debug(f"✅ 인자 변환 완료: args={len(converted_args)}, kwargs={list(converted_kwargs.keys())}")
-            return converted_args, converted_kwargs
-            
-        except Exception as e:
-            self.logger.error(f"❌ 인자 변환 실패: {e}")
-            # 실패시 모든 데이터를 kwargs로 전달
-            return [], kwargs
-    
-    def _map_common_parameter_names(self, param_name: str, kwargs: Dict[str, Any]):
-        """일반적인 파라미터 이름 매핑"""
-        try:
-            # 일반적인 이름 매핑 규칙
-            name_mappings = {
-                'person_image': ['person_image', 'image', 'input_image', 'user_image'],
-                'clothing_image': ['clothing_image', 'cloth_image', 'garment_image', 'item_image'], 
-                'input_data': ['input_data', 'data', 'image', 'person_image'],
-                'image': ['image', 'input_image', 'person_image', 'input_data'],
-                'fitted_image': ['fitted_image', 'image', 'result_image'],
-                'final_image': ['final_image', 'image', 'result_image'],
-                'measurements': ['measurements', 'body_measurements', 'user_measurements'],
-                'session_id': ['session_id', 'sessionId'],
-                'clothing_type': ['clothing_type', 'cloth_type', 'garment_type'],
-                'quality_level': ['quality_level', 'quality']
-            }
-            
-            # 매핑 규칙에 따라 값 찾기
-            possible_names = name_mappings.get(param_name, [param_name])
-            
-            for name in possible_names:
-                if name in kwargs:
-                    value = kwargs.pop(name)
-                    self.logger.debug(f"✅ 파라미터 매핑: {param_name} <- {name}")
-                    return value
-            
-            return None
-            
-        except Exception as e:
-            self.logger.debug(f"파라미터 매핑 실패: {e}")
-            return None
-    
-    # GitHub 호환을 위한 추가 process 메서드 시그니처들
-    async def process_pipeline(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """GitHub 파이프라인 모드 process 메서드"""
-        return await self.process(**input_data)
-    
-    def process_sync(self, **kwargs) -> Dict[str, Any]:
-        """GitHub 동기 process 메서드 (레거시 호환)"""
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 이미 실행 중인 루프에서는 태스크 생성
-                task = asyncio.create_task(self.process(**kwargs))
-                return {'success': False, 'error': 'async_required', 'task': task}
-            else:
-                return loop.run_until_complete(self.process(**kwargs))
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
-    
-    # ==============================================
-    # 🔥 핵심 기능 메서드들 (v19.0 GitHub 최적화)
-    # ==============================================
-    
-    def get_model(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """GitHub 호환 모델 가져오기"""
-        try:
-            start_time = time.time()
-            
-            # GitHub Step Interface 우선 사용
-            step_interface = self.dependency_manager.get_dependency('step_interface')
-            if step_interface and hasattr(step_interface, 'get_model_sync'):
-                model = step_interface.get_model_sync(model_name or "default")
-                if model:
-                    self.performance_metrics.cache_hits += 1
-                    self.performance_metrics.real_ai_inferences += 1
-                    return model
-            
-            # GitHub ModelLoader 직접 사용
-            model_loader = self.dependency_manager.get_dependency('model_loader')
-            if model_loader and hasattr(model_loader, 'load_model'):
-                model = model_loader.load_model(model_name or "default")
-                if model:
-                    self.performance_metrics.models_loaded += 1
-                    self.performance_metrics.real_ai_inferences += 1
-                    return model
-            
-            self.logger.warning("⚠️ GitHub 모델 제공자가 주입되지 않음")
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 모델 가져오기 실패: {e}")
-            self.performance_metrics.error_count += 1
-            return None
-        finally:
-            process_time = time.time() - start_time
-            self._update_github_performance_metrics(process_time)
-    
-    async def get_model_async(self, model_name: Optional[str] = None) -> Optional[Any]:
-        """GitHub 호환 비동기 모델 가져오기"""
-        try:
-            # GitHub Step Interface 우선 사용
-            step_interface = self.dependency_manager.get_dependency('step_interface')
-            if step_interface and hasattr(step_interface, 'get_model_async'):
-                model = await step_interface.get_model_async(model_name or "default")
-                if model:
-                    self.performance_metrics.real_ai_inferences += 1
-                    return model
-            
-            # 동기 메서드 폴백
-            return self.get_model(model_name)
-            
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 비동기 모델 가져오기 실패: {e}")
-            return None
-    
-    def optimize_memory(self, aggressive: bool = False) -> Dict[str, Any]:
-        """GitHub 호환 메모리 최적화"""
-        try:
-            start_time = time.time()
-            
-            # GitHub MemoryManager 우선 사용
-            memory_manager = self.dependency_manager.get_dependency('memory_manager')
-            if memory_manager and hasattr(memory_manager, 'optimize_memory'):
-                result = memory_manager.optimize_memory(aggressive=aggressive)
-                self.performance_metrics.memory_optimizations += 1
-                return result
-            
-            # GitHub 내장 메모리 최적화
-            result = self._github_builtin_memory_optimize(aggressive)
-            self.performance_metrics.memory_optimizations += 1
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 메모리 최적화 실패: {e}")
-            return {"success": False, "error": str(e), "github_mode": True}
-        finally:
-            optimization_time = time.time() - start_time
-            self.logger.debug(f"🧹 GitHub 메모리 최적화 소요 시간: {optimization_time:.3f}초")
-    
-    # ==============================================
-    # 🔥 GitHub 표준화된 초기화 및 워밍업 (v19.0)
-    # ==============================================
-    
-    def initialize(self) -> bool:
-        """GitHub 표준 초기화"""
-        try:
-            if self.is_initialized:
-                return True
-            
-            self.logger.info(f"🔄 {self.step_name} GitHub 표준 초기화 시작...")
-            
-            # GitHub 의존성 확인
-            if not self._check_github_required_dependencies():
-                if self.config.strict_mode:
-                    raise RuntimeError("GitHub 필수 의존성이 주입되지 않음")
-                else:
-                    self.logger.warning("⚠️ GitHub 일부 의존성이 누락됨")
-            
-            # GitHub process 메서드 검증
-            self._validate_github_process_method()
-            
-            # GitHub 환경별 초기화
-            self._github_environment_specific_initialization()
-            
-            # 초기화 상태 설정
-            self.dependency_manager.dependency_status.base_initialized = True
-            self.dependency_manager.dependency_status.github_compatible = True
-            self.is_initialized = True
-            
-            self.logger.info(f"✅ {self.step_name} GitHub 표준 초기화 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} GitHub 초기화 실패: {e}")
-            self.performance_metrics.error_count += 1
-            return False
-    
-    def _check_github_required_dependencies(self) -> bool:
-        """GitHub 필수 의존성 확인"""
-        required_deps = []
-        
-        if self.config.require_model_loader:
-            required_deps.append('model_loader')
-        if self.config.require_memory_manager:
-            required_deps.append('memory_manager')
-        if self.config.require_data_converter:
-            required_deps.append('data_converter')
-        
-        validation_result = self.validate_dependencies(DependencyValidationFormat.BOOLEAN_DICT)
-        
-        for dep in required_deps:
-            if not validation_result.get(dep, False):
-                return False
-        
-        return True
-    
-    def _validate_github_process_method(self):
-        """GitHub process 메서드 검증"""
-        try:
-            process_method = getattr(self, 'process', None)
-            if not process_method:
-                self.logger.warning("⚠️ GitHub process 메서드가 없음")
-                return
-            
-            # 시그니처 검증
-            sig = inspect.signature(process_method)
-            params = list(sig.parameters.keys())
-            
-            # GitHub 표준 시그니처 확인
-            if 'self' in params and len(params) >= 1:
-                self.dependency_manager.dependency_status.process_method_validated = True
-                self.logger.debug("✅ GitHub process 메서드 검증 완료")
-            else:
-                self.logger.warning("⚠️ GitHub process 메서드 시그니처 비표준")
-                
-        except Exception as e:
-            self.logger.debug(f"GitHub process 메서드 검증 실패: {e}")
-    
-    def _github_environment_specific_initialization(self):
-        """GitHub 환경별 특별 초기화"""
-        try:
-            # GitHub M3 Max 특별 초기화
-            if self.is_m3_max:
-                if TORCH_AVAILABLE and self.device == "mps":
-                    try:
-                        test_tensor = torch.randn(10, 10, device=self.device)
-                        _ = torch.matmul(test_tensor, test_tensor.t())
-                        self.logger.debug("✅ GitHub M3 Max MPS 워밍업 완료")
-                        self.real_ai_pipeline_ready = True
-                    except Exception as mps_error:
-                        self.logger.debug(f"GitHub M3 Max MPS 워밍업 실패: {mps_error}")
-            
-            # GitHub conda 환경 특별 초기화
-            if self.conda_info['is_target_env']:
-                os.environ['PYTHONPATH'] = self.conda_info['conda_prefix'] + '/lib/python3.11/site-packages'
-                self.real_ai_pipeline_ready = True
-                self.logger.debug("✅ GitHub conda 환경 최적화 완료")
-            
-        except Exception as e:
-            self.logger.debug(f"GitHub 환경별 초기화 실패: {e}")
-    
-    async def initialize_async(self) -> bool:
-        """GitHub 비동기 초기화"""
-        try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, self.initialize)
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 비동기 초기화 실패: {e}")
-            return False
-    
-    def warmup(self) -> Dict[str, Any]:
-        """GitHub 표준 워밍업 (v19.0)"""
-        try:
-            if self.warmup_completed:
-                return {'success': True, 'message': 'GitHub 워밍업 이미 완료됨', 'cached': True}
-            
-            self.logger.info(f"🔥 {self.step_name} GitHub 표준 워밍업 시작...")
-            start_time = time.time()
-            results = []
-            
-            # 1. GitHub 의존성 워밍업
-            try:
-                github_status = self.dependency_manager.get_github_status()
-                if github_status.get('github_compatibility', {}).get('compatible', False):
-                    results.append('github_dependency_success')
-                else:
-                    results.append('github_dependency_failed')
-            except:
-                results.append('github_dependency_failed')
-            
-            # 2. GitHub 메모리 워밍업
-            try:
-                memory_result = self.optimize_memory(aggressive=False)
-                results.append('github_memory_success' if memory_result.get('success') else 'github_memory_failed')
-            except:
-                results.append('github_memory_failed')
-            
-            # 3. GitHub AI 모델 워밍업
-            try:
-                test_model = self.get_model("github_warmup_test")
-                results.append('github_model_success' if test_model else 'github_model_skipped')
-            except:
-                results.append('github_model_failed')
-            
-            # 4. GitHub 디바이스 워밍업
-            results.append(self._github_device_warmup())
-            
-            # 5. GitHub 환경별 특별 워밍업
-            if self.is_m3_max:
-                results.append(self._github_m3_max_warmup())
-            
-            if self.conda_info['is_target_env']:
-                results.append(self._github_conda_warmup())
-            
-            # 6. GitHub process 메서드 테스트
-            results.append(self._github_process_warmup())
-            
-            duration = time.time() - start_time
-            success_count = sum(1 for r in results if 'success' in r)
-            overall_success = success_count > 0
-            
-            if overall_success:
-                self.warmup_completed = True
-                self.is_ready = True
-                self.real_ai_pipeline_ready = True
-            
-            self.logger.info(f"🔥 GitHub 워밍업 완료: {success_count}/{len(results)} 성공 ({duration:.2f}초)")
-            
-            return {
-                "success": overall_success,
-                "duration": duration,
-                "results": results,
-                "success_count": success_count,
-                "total_count": len(results),
-                "github_environment": {
-                    "is_m3_max": self.is_m3_max,
-                    "conda_optimized": self.conda_info['is_target_env'],
-                    "device": self.device,
-                    "real_ai_ready": self.real_ai_pipeline_ready
-                },
-                "github_status": self.dependency_manager.get_github_status()
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 워밍업 실패: {e}")
-            return {"success": False, "error": str(e), "github_mode": True}
-    
-    def _github_device_warmup(self) -> str:
-        """GitHub 디바이스 워밍업"""
-        try:
-            if TORCH_AVAILABLE:
-                test_tensor = torch.randn(100, 100)
-                if self.device != 'cpu':
-                    test_tensor = test_tensor.to(self.device)
-                _ = torch.matmul(test_tensor, test_tensor.t())
-                return 'github_device_success'
-            else:
-                return 'github_device_skipped'
-        except:
-            return 'github_device_failed'
-    
-    def _github_m3_max_warmup(self) -> str:
-        """GitHub M3 Max 특별 워밍업"""
-        try:
-            if TORCH_AVAILABLE and MPS_AVAILABLE:
-                # GitHub 실제 AI 모델 크기 테스트
-                large_tensor = torch.randn(2000, 2000, device='mps')
-                _ = torch.matmul(large_tensor, large_tensor.t())
-                del large_tensor
-                return 'github_m3_max_success'
-            return 'github_m3_max_skipped'
-        except:
-            return 'github_m3_max_failed'
-    
-    def _github_conda_warmup(self) -> str:
-        """GitHub conda 환경 워밍업"""
-        try:
-            import sys
-            conda_paths = [p for p in sys.path if 'conda' in p.lower() and 'mycloset-ai-clean' in p]
-            if conda_paths:
-                return 'github_conda_success'
-            return 'github_conda_skipped'
-        except:
-            return 'github_conda_failed'
-    
-    def _github_process_warmup(self) -> str:
-        """GitHub process 메서드 워밍업"""
-        try:
-            # process 메서드 존재 확인
-            if hasattr(self, 'process') and callable(getattr(self, 'process')):
-                # 시그니처 확인
-                sig = inspect.signature(self.process)
-                if 'kwargs' in str(sig) or len(sig.parameters) >= 1:
-                    return 'github_process_success'
-            return 'github_process_failed'
-        except:
-            return 'github_process_failed'
-    
-    async def warmup_async(self) -> Dict[str, Any]:
-        """GitHub 비동기 워밍업"""
-        try:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, self.warmup)
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 비동기 워밍업 실패: {e}")
-            return {"success": False, "error": str(e), "github_mode": True}
-    
-    # ==============================================
-    # 🔥 GitHub 성능 메트릭 및 모니터링 (v19.0)
-    # ==============================================
-    
-    def _update_github_performance_metrics(self, process_time: float):
-        """GitHub 성능 메트릭 업데이트 (v19.0)"""
-        try:
-            self.performance_metrics.process_count += 1
-            self.performance_metrics.total_process_time += process_time
-            self.performance_metrics.average_process_time = (
-                self.performance_metrics.total_process_time / 
-                self.performance_metrics.process_count
-            )
-            
-            # GitHub 파이프라인 성공률 계산
-            if self.performance_metrics.github_process_calls > 0:
-                success_rate = (
-                    (self.performance_metrics.github_process_calls - self.performance_metrics.error_count) /
-                    self.performance_metrics.github_process_calls * 100
-                )
-                self.performance_metrics.pipeline_success_rate = success_rate
-            
-            # GitHub M3 Max 메모리 최적화
-            if self.is_m3_max:
-                try:
-                    import psutil
-                    memory_info = psutil.virtual_memory()
-                    current_usage = memory_info.used / 1024**2  # MB
-                    
-                    if current_usage > self.performance_metrics.peak_memory_usage_mb:
-                        self.performance_metrics.peak_memory_usage_mb = current_usage
-                    
-                    # GitHub 이동 평균
-                    if self.performance_metrics.average_memory_usage_mb == 0:
-                        self.performance_metrics.average_memory_usage_mb = current_usage
-                    else:
-                        self.performance_metrics.average_memory_usage_mb = (
-                            self.performance_metrics.average_memory_usage_mb * 0.9 + 
-                            current_usage * 0.1
-                        )
-                except:
-                    pass
-                    
-        except Exception as e:
-            self.logger.debug(f"GitHub 성능 메트릭 업데이트 실패: {e}")
-    
-    def get_github_performance_metrics(self) -> Dict[str, Any]:
-        """GitHub 성능 메트릭 조회 (v19.0)"""
-        try:
-            return {
-                'github_process_metrics': {
-                    'github_process_calls': self.performance_metrics.github_process_calls,
-                    'real_ai_inferences': self.performance_metrics.real_ai_inferences,
-                    'pipeline_success_rate': round(self.performance_metrics.pipeline_success_rate, 2),
-                    'process_count': self.performance_metrics.process_count,
-                    'total_process_time': round(self.performance_metrics.total_process_time, 3),
-                    'average_process_time': round(self.performance_metrics.average_process_time, 3),
-                    'success_count': self.performance_metrics.success_count,
-                    'error_count': self.performance_metrics.error_count,
-                    'cache_hits': self.performance_metrics.cache_hits
-                },
-                'github_memory_metrics': {
-                    'peak_memory_usage_mb': round(self.performance_metrics.peak_memory_usage_mb, 2),
-                    'average_memory_usage_mb': round(self.performance_metrics.average_memory_usage_mb, 2),
-                    'memory_optimizations': self.performance_metrics.memory_optimizations
-                },
-                'github_ai_model_metrics': {
-                    'models_loaded': self.performance_metrics.models_loaded,
-                    'total_model_size_gb': round(self.performance_metrics.total_model_size_gb, 2),
-                    'inference_count': self.performance_metrics.inference_count
-                },
-                'github_dependency_metrics': {
-                    'dependencies_injected': self.performance_metrics.dependencies_injected,
-                    'injection_failures': self.performance_metrics.injection_failures,
-                    'average_injection_time': round(self.performance_metrics.average_injection_time, 3),
-                    'injection_success_rate': round(
-                        (self.performance_metrics.dependencies_injected / 
-                         max(1, self.performance_metrics.dependencies_injected + self.performance_metrics.injection_failures)) * 100, 2
-                    )
-                },
-                'github_environment_metrics': {
-                    'device': self.device,
-                    'is_m3_max': self.is_m3_max,
-                    'memory_gb': self.memory_gb,
-                    'conda_optimized': self.conda_info['is_target_env'],
-                    'real_ai_pipeline_ready': self.real_ai_pipeline_ready,
-                    'github_compatible': self.github_compatible
-                }
-            }
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 성능 메트릭 조회 실패: {e}")
-            return {'error': str(e), 'github_mode': True}
-    
-    # ==============================================
-    # 🔥 GitHub 상태 및 정리 메서드들 (v19.0)
-    # ==============================================
-    
-    def get_status(self) -> Dict[str, Any]:
-        """GitHub 통합 상태 조회 (v19.0)"""
-        try:
-            return {
-                'step_info': {
-                    'step_name': self.step_name,
-                    'step_id': self.step_id,
-                    'version': 'BaseStepMixin v19.1 GitHub Compatible'
-                },
-                'github_status_flags': {
-                    'is_initialized': self.is_initialized,
-                    'is_ready': self.is_ready,
-                    'has_model': self.has_model,
-                    'model_loaded': self.model_loaded,
-                    'warmup_completed': self.warmup_completed,
-                    'github_compatible': self.github_compatible,
-                    'real_ai_pipeline_ready': self.real_ai_pipeline_ready
-                },
-                'github_system_info': {
-                    'device': self.device,
-                    'is_m3_max': self.is_m3_max,
-                    'memory_gb': self.memory_gb,
-                    'conda_info': self.conda_info
-                },
-                'github_dependencies': self.dependency_manager.get_github_status(),
-                'github_performance': self.get_github_performance_metrics(),
-                'github_config': {
-                    'device': self.config.device,
-                    'use_fp16': self.config.use_fp16,
-                    'batch_size': self.config.batch_size,
-                    'confidence_threshold': self.config.confidence_threshold,
-                    'auto_memory_cleanup': self.config.auto_memory_cleanup,
-                    'auto_warmup': self.config.auto_warmup,
-                    'optimization_enabled': self.config.optimization_enabled,
-                    'strict_mode': self.config.strict_mode,
-                    'github_compatibility_mode': self.config.github_compatibility_mode,
-                    'real_ai_pipeline_support': self.config.real_ai_pipeline_support,
-                    'process_method_signature': self.config.process_method_signature.value,
-                    'dependency_validation_format': self.config.dependency_validation_format.value
-                },
-                'timestamp': time.time()
-            }
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 상태 조회 실패: {e}")
-            return {'error': str(e), 'version': 'BaseStepMixin v19.0 GitHub Compatible'}
-    
-    async def cleanup(self) -> Dict[str, Any]:
-        """GitHub 표준화된 정리 (v19.0)"""
-        try:
-            self.logger.info(f"🧹 {self.step_name} GitHub 표준 정리 시작...")
-            
-            # GitHub 성능 메트릭 저장
-            final_github_metrics = self.get_github_performance_metrics()
-            
-            # GitHub 메모리 정리
-            cleanup_result = await self.optimize_memory_async(aggressive=True)
-            
-            # GitHub 상태 리셋
-            self.is_ready = False
-            self.warmup_completed = False
-            self.has_model = False
-            self.model_loaded = False
-            self.real_ai_pipeline_ready = False
-            
-            # GitHub 의존성 해제
-            self.model_loader = None
-            self.model_interface = None
-            self.memory_manager = None
-            self.data_converter = None
-            self.di_container = None
-            
-            # GitHub 의존성 관리자 정리
-            github_dependency_status = self.dependency_manager.get_github_status()
-            
-            # GitHub M3 Max 특별 정리
-            if self.is_m3_max:
-                for _ in range(5):
-                    gc.collect()
-                if TORCH_AVAILABLE and MPS_AVAILABLE:
-                    try:
-                        torch.mps.empty_cache()
-                        self.logger.debug("✅ GitHub M3 Max MPS 캐시 정리 완료")
-                    except:
-                        pass
-            
-            # GitHub CUDA 정리 (호환성)
-            if TORCH_AVAILABLE and self.device == "cuda":
-                try:
-                    torch.cuda.empty_cache()
-                    self.logger.debug("✅ GitHub CUDA 캐시 정리 완료")
-                except:
-                    pass
-            
-            self.logger.info(f"✅ {self.step_name} GitHub 표준 정리 완료")
-            
-            return {
-                "success": True,
-                "cleanup_result": cleanup_result,
-                "final_github_metrics": final_github_metrics,
-                "github_dependency_status": github_dependency_status,
-                "step_name": self.step_name,
-                "version": "BaseStepMixin v19.0 GitHub Compatible",
-                "github_environment": {
-                    "is_m3_max": self.is_m3_max,
-                    "conda_optimized": self.conda_info['is_target_env'],
-                    "real_ai_pipeline_ready": self.real_ai_pipeline_ready
-                }
-            }
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 정리 실패: {e}")
-            return {"success": False, "error": str(e), "github_mode": True}
-    
-    # ==============================================
-    # 🔥 GitHub 내부 유틸리티 메서드들 (v19.0)
-    # ==============================================
     
     def _resolve_device(self, device: str) -> str:
         """GitHub 디바이스 해결 (환경 최적화)"""
@@ -1746,446 +1898,184 @@ class BaseStepMixin:
             return "cpu"
         return device
     
-    def _github_builtin_memory_optimize(self, aggressive: bool = False) -> Dict[str, Any]:
-        """GitHub 내장 메모리 최적화"""
+    def _update_performance_metrics(self, processing_time: float, success: bool):
+        """성능 메트릭 업데이트"""
         try:
-            results = []
-            start_time = time.time()
-            
-            # GitHub Python GC
-            before = len(gc.get_objects()) if hasattr(gc, 'get_objects') else 0
-            gc.collect()
-            after = len(gc.get_objects()) if hasattr(gc, 'get_objects') else 0
-            results.append(f"GitHub Python GC: {before - after}개 객체 해제")
-            
-            # GitHub PyTorch 메모리 정리
-            if TORCH_AVAILABLE:
-                if self.device == "cuda" and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    if aggressive:
-                        torch.cuda.ipc_collect()
-                    results.append("GitHub CUDA 캐시 정리")
-                
-                elif self.device == "mps" and MPS_AVAILABLE:
-                    try:
-                        if hasattr(torch.mps, 'empty_cache'):
-                            torch.mps.empty_cache()
-                        results.append("GitHub MPS 캐시 정리")
-                    except:
-                        results.append("GitHub MPS 캐시 정리 시도")
-            
-            # GitHub M3 Max 특별 최적화
-            if self.is_m3_max and aggressive:
-                # GitHub 통합 메모리 최적화
-                for _ in range(3):
-                    gc.collect()
-                results.append("GitHub M3 Max 통합 메모리 최적화")
-            
-            # GitHub conda 환경 최적화
-            if self.conda_info['is_target_env'] and aggressive:
-                # GitHub conda 캐시 정리
-                results.append("GitHub conda 환경 최적화")
-            
-            # GitHub 메모리 사용량 측정
-            memory_info = {}
-            try:
-                import psutil
-                vm = psutil.virtual_memory()
-                memory_info = {
-                    'total_gb': round(vm.total / 1024**3, 2),
-                    'available_gb': round(vm.available / 1024**3, 2),
-                    'used_percent': vm.percent
-                }
-            except:
-                memory_info = {'error': 'GitHub psutil_not_available'}
-            
-            duration = time.time() - start_time
-            
-            return {
-                "success": True,
-                "results": results,
-                "duration": round(duration, 3),
-                "device": self.device,
-                "github_environment": {
-                    "is_m3_max": self.is_m3_max,
-                    "conda_optimized": self.conda_info['is_target_env'],
-                    "memory_gb": self.memory_gb,
-                    "real_ai_ready": self.real_ai_pipeline_ready
-                },
-                "memory_info": memory_info,
-                "source": "github_builtin_optimized"
-            }
-            
-        except Exception as e:
-            return {
-                "success": False, 
-                "error": str(e), 
-                "source": "github_builtin_optimized",
-                "github_environment": {"is_m3_max": self.is_m3_max}
-            }
-    
-    # ==============================================
-    # 🔥 GitHub 진단 및 디버깅 메서드들 (v19.0)
-    # ==============================================
-    
-    def diagnose(self) -> Dict[str, Any]:
-        """GitHub Step 진단 (v19.0)"""
-        try:
-            self.logger.info(f"🔍 {self.step_name} GitHub 진단 시작...")
-            
-            diagnosis = {
-                'timestamp': time.time(),
-                'step_name': self.step_name,
-                'version': 'BaseStepMixin v19.0 GitHub Compatible',
-                'github_status': self.get_status(),
-                'github_issues': [],
-                'github_recommendations': [],
-                'github_health_score': 100
-            }
-            
-            # GitHub 의존성 진단
-            github_dependency_status = self.dependency_manager.get_github_status()
-            
-            if not github_dependency_status['dependency_status']['model_loader']:
-                diagnosis['github_issues'].append('GitHub ModelLoader가 주입되지 않음')
-                diagnosis['github_recommendations'].append('GitHub ModelLoader 의존성 주입 필요')
-                diagnosis['github_health_score'] -= 30
-            
-            if not github_dependency_status['dependency_status']['step_interface']:
-                diagnosis['github_issues'].append('GitHub StepModelInterface가 생성되지 않음')
-                diagnosis['github_recommendations'].append('GitHub ModelLoader의 create_step_interface 확인 필요')
-                diagnosis['github_health_score'] -= 25
-            
-            # GitHub 호환성 진단
-            if not self.github_compatible:
-                diagnosis['github_issues'].append('GitHub 호환성 모드가 비활성화됨')
-                diagnosis['github_recommendations'].append('GitHub 호환성 모드 활성화 필요')
-                diagnosis['github_health_score'] -= 20
-            
-            if not self.real_ai_pipeline_ready:
-                diagnosis['github_issues'].append('GitHub 실제 AI 파이프라인이 준비되지 않음')
-                diagnosis['github_recommendations'].append('실제 AI 모델 및 환경 설정 확인 필요')
-                diagnosis['github_health_score'] -= 15
-            
-            # GitHub process 메서드 진단
-            if not hasattr(self, 'process') or not callable(getattr(self, 'process')):
-                diagnosis['github_issues'].append('GitHub 표준 process 메서드가 없음')
-                diagnosis['github_recommendations'].append('async def process(self, **kwargs) -> Dict[str, Any] 구현 필요')
-                diagnosis['github_health_score'] -= 35
-            
-            # GitHub 환경 진단
-            if not self.conda_info['is_target_env']:
-                diagnosis['github_issues'].append(f"GitHub 권장 conda 환경이 아님: {self.conda_info['conda_env']}")
-                diagnosis['github_recommendations'].append('mycloset-ai-clean conda 환경 사용 권장')
-                diagnosis['github_health_score'] -= 10
-            
-            # GitHub M3 Max 진단
-            if self.is_m3_max and self.device != "mps":
-                diagnosis['github_issues'].append('GitHub M3 Max에서 MPS를 사용하지 않음')
-                diagnosis['github_recommendations'].append('M3 Max에서 MPS 디바이스 사용 권장')
-                diagnosis['github_health_score'] -= 15
-            
-            # GitHub 성능 진단
-            github_performance = self.get_github_performance_metrics()
-            if github_performance.get('github_process_metrics', {}).get('error_count', 0) > 0:
-                error_count = github_performance['github_process_metrics']['error_count']
-                process_count = github_performance['github_process_metrics']['process_count']
-                if process_count > 0:
-                    error_rate = error_count / process_count * 100
-                    if error_rate > 10:
-                        diagnosis['github_issues'].append(f"GitHub 높은 에러율: {error_rate:.1f}%")
-                        diagnosis['github_recommendations'].append('GitHub 에러 원인 분석 및 해결 필요')
-                        diagnosis['github_health_score'] -= 25
-            
-            # GitHub 최종 건강도 보정
-            diagnosis['github_health_score'] = max(0, diagnosis['github_health_score'])
-            
-            if diagnosis['github_health_score'] >= 90:
-                diagnosis['github_health_status'] = 'excellent'
-            elif diagnosis['github_health_score'] >= 70:
-                diagnosis['github_health_status'] = 'good'
-            elif diagnosis['github_health_score'] >= 50:
-                diagnosis['github_health_status'] = 'fair'
-            else:
-                diagnosis['github_health_status'] = 'poor'
-            
-            self.logger.info(f"🔍 {self.step_name} GitHub 진단 완료 (건강도: {diagnosis['github_health_score']}%)")
-            
-            return diagnosis
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} GitHub 진단 실패: {e}")
-            return {
-                'error': str(e),
-                'step_name': self.step_name,
-                'version': 'BaseStepMixin v19.0 GitHub Compatible',
-                'github_health_score': 0,
-                'github_health_status': 'error'
-            }
-    
-    def benchmark(self, iterations: int = 10) -> Dict[str, Any]:
-        """GitHub 성능 벤치마크 (v19.0)"""
-        try:
-            self.logger.info(f"📊 {self.step_name} GitHub 벤치마크 시작 ({iterations}회)...")
-            
-            benchmark_results = {
-                'iterations': iterations,
-                'step_name': self.step_name,
-                'device': self.device,
-                'github_environment': {
-                    'is_m3_max': self.is_m3_max,
-                    'memory_gb': self.memory_gb,
-                    'conda_optimized': self.conda_info['is_target_env'],
-                    'real_ai_ready': self.real_ai_pipeline_ready,
-                    'github_compatible': self.github_compatible
-                },
-                'github_timings': [],
-                'github_memory_usage': [],
-                'github_dependency_timings': [],
-                'github_process_timings': [],
-                'github_errors': 0
-            }
-            
-            for i in range(iterations):
-                try:
-                    start_time = time.time()
-                    
-                    # GitHub 기본 작업 시뮬레이션
-                    if TORCH_AVAILABLE:
-                        test_tensor = torch.randn(512, 512, device=self.device)
-                        result = torch.matmul(test_tensor, test_tensor.t())
-                        del test_tensor, result
-                    
-                    # GitHub 의존성 접근 벤치마크
-                    dependency_start = time.time()
-                    model_loader = self.dependency_manager.get_dependency('model_loader')
-                    step_interface = self.dependency_manager.get_dependency('step_interface')
-                    dependency_time = time.time() - dependency_start
-                    benchmark_results['github_dependency_timings'].append(dependency_time)
-                    
-                    # GitHub process 메서드 테스트
-                    process_start = time.time()
-                    if hasattr(self, 'process'):
-                        # process 메서드 존재 확인만 (실제 호출하지 않음)
-                        pass
-                    process_time = time.time() - process_start
-                    benchmark_results['github_process_timings'].append(process_time)
-                    
-                    # GitHub 메모리 최적화 테스트
-                    memory_result = self.optimize_memory()
-                    
-                    timing = time.time() - start_time
-                    benchmark_results['github_timings'].append(timing)
-                    
-                    # GitHub 메모리 사용량 측정
-                    try:
-                        import psutil
-                        memory_usage = psutil.virtual_memory().percent
-                        benchmark_results['github_memory_usage'].append(memory_usage)
-                    except:
-                        benchmark_results['github_memory_usage'].append(0)
-                    
-                except Exception as e:
-                    benchmark_results['github_errors'] += 1
-                    self.logger.debug(f"GitHub 벤치마크 {i+1} 실패: {e}")
-            
-            # GitHub 통계 계산
-            if benchmark_results['github_timings']:
-                benchmark_results['github_statistics'] = {
-                    'min_time': min(benchmark_results['github_timings']),
-                    'max_time': max(benchmark_results['github_timings']),
-                    'avg_time': sum(benchmark_results['github_timings']) / len(benchmark_results['github_timings']),
-                    'total_time': sum(benchmark_results['github_timings'])
-                }
-            
-            if benchmark_results['github_dependency_timings']:
-                benchmark_results['github_dependency_statistics'] = {
-                    'min_dependency_time': min(benchmark_results['github_dependency_timings']),
-                    'max_dependency_time': max(benchmark_results['github_dependency_timings']),
-                    'avg_dependency_time': sum(benchmark_results['github_dependency_timings']) / len(benchmark_results['github_dependency_timings'])
-                }
-            
-            if benchmark_results['github_memory_usage']:
-                benchmark_results['github_memory_statistics'] = {
-                    'min_memory': min(benchmark_results['github_memory_usage']),
-                    'max_memory': max(benchmark_results['github_memory_usage']),
-                    'avg_memory': sum(benchmark_results['github_memory_usage']) / len(benchmark_results['github_memory_usage'])
-                }
-            
-            benchmark_results['github_success_rate'] = (
-                (iterations - benchmark_results['github_errors']) / iterations * 100
+            self.performance_metrics.process_count += 1
+            self.performance_metrics.total_process_time += processing_time
+            self.performance_metrics.average_process_time = (
+                self.performance_metrics.total_process_time / 
+                self.performance_metrics.process_count
             )
             
-            self.logger.info(f"📊 {self.step_name} GitHub 벤치마크 완료 (성공률: {benchmark_results['github_success_rate']:.1f}%)")
+            if success:
+                self.performance_metrics.success_count += 1
+            else:
+                self.performance_metrics.error_count += 1
             
-            return benchmark_results
+            # 최근 처리 시간 저장
+            self._last_processing_time = processing_time
+            
+            # GitHub 파이프라인 성공률 계산
+            if self.performance_metrics.github_process_calls > 0:
+                success_rate = (
+                    self.performance_metrics.success_count /
+                    self.performance_metrics.process_count * 100
+                )
+                self.performance_metrics.pipeline_success_rate = success_rate
+                
+        except Exception as e:
+            self.logger.debug(f"성능 메트릭 업데이트 실패: {e}")
+    
+    # ==============================================
+    # 🔥 GitHub 호환 의존성 주입 인터페이스
+    # ==============================================
+    
+    def set_model_loader(self, model_loader):
+        """GitHub 표준 ModelLoader 의존성 주입"""
+        try:
+            success = self.dependency_manager.inject_model_loader(model_loader)
+            if success:
+                self.model_loader = model_loader
+                self.has_model = True
+                self.model_loaded = True
+                self.real_ai_pipeline_ready = True
+                self.performance_metrics.dependencies_injected += 1
+                self.logger.info(f"✅ {self.step_name} GitHub ModelLoader 의존성 주입 완료")
+        except Exception as e:
+            self.performance_metrics.injection_failures += 1
+            self.logger.error(f"❌ {self.step_name} GitHub ModelLoader 의존성 주입 오류: {e}")
+    
+    def set_memory_manager(self, memory_manager):
+        """GitHub 표준 MemoryManager 의존성 주입"""
+        try:
+            success = self.dependency_manager.inject_memory_manager(memory_manager)
+            if success:
+                self.memory_manager = memory_manager
+                self.performance_metrics.dependencies_injected += 1
+        except Exception as e:
+            self.performance_metrics.injection_failures += 1
+            self.logger.warning(f"⚠️ {self.step_name} GitHub MemoryManager 의존성 주입 오류: {e}")
+    
+    # ==============================================
+    # 🔥 GitHub 호환 의존성 검증
+    # ==============================================
+    
+    def validate_dependencies(self, format_type: DependencyValidationFormat = None) -> Union[Dict[str, bool], Dict[str, Any]]:
+        """GitHub 프로젝트 호환 의존성 검증 (v19.1)"""
+        try:
+            return self.dependency_manager.validate_dependencies_github_format(format_type)
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} GitHub 의존성 검증 실패: {e}")
+            
+            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
+                return {'model_loader': False, 'step_interface': False, 'memory_manager': False, 'data_converter': False}
+            else:
+                return {'success': False, 'error': str(e), 'github_compatible': False}
+    
+    def validate_dependencies_boolean(self) -> Dict[str, bool]:
+        """GitHub Step 클래스 호환 (GeometricMatchingStep 등)"""
+        return self.validate_dependencies(DependencyValidationFormat.BOOLEAN_DICT)
+    
+    def validate_dependencies_detailed(self) -> Dict[str, Any]:
+        """StepFactory 호환 (상세 정보)"""
+        return self.validate_dependencies(DependencyValidationFormat.DETAILED_DICT)
+    
+    # ==============================================
+    # 🔥 GitHub 표준 초기화 및 상태 관리
+    # ==============================================
+    
+    def initialize(self) -> bool:
+        """GitHub 표준 초기화"""
+        try:
+            if self.is_initialized:
+                return True
+            
+            self.logger.info(f"🔄 {self.step_name} GitHub 표준 초기화 시작...")
+            
+            # DetailedDataSpec 검증
+            if not self.data_conversion_ready:
+                self.logger.warning(f"⚠️ {self.step_name} DetailedDataSpec 데이터 변환 준비 미완료")
+            
+            # 초기화 상태 설정
+            self.dependency_manager.dependency_status.base_initialized = True
+            self.dependency_manager.dependency_status.github_compatible = True
+            self.is_initialized = True
+            
+            self.logger.info(f"✅ {self.step_name} GitHub 표준 초기화 완료")
+            return True
             
         except Exception as e:
-            self.logger.error(f"❌ GitHub 벤치마크 실패: {e}")
-            return {'error': str(e), 'step_name': self.step_name, 'github_mode': True}
-
-# ==============================================
-# 🔥 GitHub 편의 함수들 (BaseStepMixin v19.0 전용)
-# ==============================================
-
-def create_github_base_step_mixin(**kwargs) -> BaseStepMixin:
-    """GitHub 호환 BaseStepMixin 인스턴스 생성"""
-    kwargs.setdefault('github_compatibility_mode', True)
-    kwargs.setdefault('real_ai_pipeline_support', True)
-    return BaseStepMixin(**kwargs)
-
-def validate_github_step_environment() -> Dict[str, Any]:
-    """GitHub Step 환경 검증 (v19.0)"""
-    try:
-        validation = {
-            'timestamp': time.time(),
-            'github_environment_status': {},
-            'github_recommendations': [],
-            'github_overall_score': 100
-        }
-        
-        # GitHub conda 환경 검증
-        validation['github_environment_status']['conda'] = {
-            'current_env': CONDA_INFO['conda_env'],
-            'is_target_env': CONDA_INFO['is_target_env'],
-            'valid': CONDA_INFO['is_target_env']
-        }
-        
-        if not CONDA_INFO['is_target_env']:
-            validation['github_recommendations'].append('GitHub 표준 mycloset-ai-clean conda 환경 사용 권장')
-            validation['github_overall_score'] -= 20
-        
-        # GitHub 하드웨어 검증
-        validation['github_environment_status']['hardware'] = {
-            'is_m3_max': IS_M3_MAX,
-            'memory_gb': MEMORY_GB,
-            'sufficient_memory': MEMORY_GB >= 16.0,
-            'github_optimized': IS_M3_MAX and MEMORY_GB >= 64.0
-        }
-        
-        if MEMORY_GB < 16.0:
-            validation['github_recommendations'].append('GitHub AI 파이프라인용 16GB 이상 메모리 권장')
-            validation['github_overall_score'] -= 30
-        
-        # GitHub PyTorch 검증
-        validation['github_environment_status']['pytorch'] = {
-            'available': TORCH_AVAILABLE,
-            'mps_available': MPS_AVAILABLE,
-            'cuda_available': TORCH_AVAILABLE and torch.cuda.is_available() if TORCH_AVAILABLE else False,
-            'github_ready': TORCH_AVAILABLE and (MPS_AVAILABLE or torch.cuda.is_available()) if TORCH_AVAILABLE else False
-        }
-        
-        if not TORCH_AVAILABLE:
-            validation['github_recommendations'].append('GitHub AI 파이프라인용 PyTorch 설치 필요')
-            validation['github_overall_score'] -= 40
-        
-        # GitHub 기타 패키지 검증
-        validation['github_environment_status']['packages'] = {
-            'pil_available': PIL_AVAILABLE,
-            'numpy_available': NUMPY_AVAILABLE,
-            'github_dependencies_ready': PIL_AVAILABLE and NUMPY_AVAILABLE
-        }
-        
-        # GitHub 의존성 주입 시스템 검증
+            self.logger.error(f"❌ {self.step_name} GitHub 초기화 실패: {e}")
+            self.performance_metrics.error_count += 1
+            return False
+    
+    def get_status(self) -> Dict[str, Any]:
+        """GitHub 통합 상태 조회 (v19.1)"""
         try:
-            import importlib
-            model_loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-            step_interface_module = importlib.import_module('app.ai_pipeline.interface.step_interface')
-            validation['github_environment_status']['dependency_system'] = {
-                'model_loader_available': hasattr(model_loader_module, 'get_global_model_loader'),
-                'step_interface_available': hasattr(step_interface_module, 'StepModelInterface'),
-                'github_compatible': True
+            return {
+                'step_info': {
+                    'step_name': self.step_name,
+                    'step_id': self.step_id,
+                    'version': 'BaseStepMixin v19.1 DetailedDataSpec Integration'
+                },
+                'github_status_flags': {
+                    'is_initialized': self.is_initialized,
+                    'is_ready': self.is_ready,
+                    'has_model': self.has_model,
+                    'model_loaded': self.model_loaded,
+                    'github_compatible': self.github_compatible,
+                    'real_ai_pipeline_ready': self.real_ai_pipeline_ready,
+                    'data_conversion_ready': self.data_conversion_ready
+                },
+                'detailed_data_spec_status': {
+                    'spec_loaded': self.dependency_manager.dependency_status.detailed_data_spec_loaded,
+                    'data_conversion_ready': self.dependency_manager.dependency_status.data_conversion_ready,
+                    'preprocessing_configured': bool(self.detailed_data_spec.preprocessing_steps),
+                    'postprocessing_configured': bool(self.detailed_data_spec.postprocessing_steps),
+                    'api_mapping_configured': bool(self.detailed_data_spec.api_input_mapping and self.detailed_data_spec.api_output_mapping),
+                    'step_flow_configured': bool(self.detailed_data_spec.provides_to_next_step or self.detailed_data_spec.accepts_from_previous_step)
+                },
+                'github_performance': {
+                    'data_conversions': self.performance_metrics.data_conversions,
+                    'preprocessing_operations': self.performance_metrics.preprocessing_operations,
+                    'postprocessing_operations': self.performance_metrics.postprocessing_operations,
+                    'api_conversions': self.performance_metrics.api_conversions,
+                    'step_data_transfers': self.performance_metrics.step_data_transfers,
+                    'validation_failures': self.performance_metrics.validation_failures
+                },
+                'timestamp': time.time()
             }
-        except ImportError:
-            validation['github_environment_status']['dependency_system'] = {
-                'model_loader_available': False,
-                'step_interface_available': False,
-                'github_compatible': False
-            }
-            validation['github_recommendations'].append('GitHub 의존성 시스템 모듈 확인 필요')
-            validation['github_overall_score'] -= 25
-        
-        validation['github_overall_score'] = max(0, validation['github_overall_score'])
-        
-        return validation
-        
-    except Exception as e:
-        return {'error': str(e), 'github_overall_score': 0}
-
-def get_github_environment_info() -> Dict[str, Any]:
-    """GitHub 환경 정보 조회 (v19.0)"""
-    return {
-        'version': 'BaseStepMixin v19.0 GitHub Compatible',
-        'github_conda_info': CONDA_INFO,
-        'github_hardware': {
-            'is_m3_max': IS_M3_MAX,
-            'memory_gb': MEMORY_GB,
-            'platform': platform.system(),
-            'github_optimized': IS_M3_MAX and MEMORY_GB >= 64.0
-        },
-        'github_libraries': {
-            'torch_available': TORCH_AVAILABLE,
-            'mps_available': MPS_AVAILABLE,
-            'pil_available': PIL_AVAILABLE,
-            'numpy_available': NUMPY_AVAILABLE,
-            'github_ai_ready': TORCH_AVAILABLE and (MPS_AVAILABLE or (torch.cuda.is_available() if TORCH_AVAILABLE else False))
-        },
-        'github_device_info': {
-            'recommended_device': 'mps' if IS_M3_MAX and MPS_AVAILABLE else 'cuda' if TORCH_AVAILABLE and torch.cuda.is_available() else 'cpu',
-            'github_performance_mode': IS_M3_MAX and MPS_AVAILABLE
-        },
-        'github_dependency_system': {
-            'enhanced_dependency_manager': True,
-            'step_model_interface_support': True,
-            'auto_injection_support': True,
-            'validation_support': True,
-            'github_compatibility': True,
-            'process_method_validation': True,
-            'real_ai_pipeline_support': True
-        },
-        'github_features': {
-            'dual_validation_format': True,
-            'auto_format_detection': True,
-            'github_step_compatibility': True,
-            'real_ai_model_support': True,
-            'm3_max_optimization': IS_M3_MAX,
-            'conda_optimization': CONDA_INFO['is_target_env']
-        }
-    }
+        except Exception as e:
+            self.logger.error(f"❌ GitHub 상태 조회 실패: {e}")
+            return {'error': str(e), 'version': 'BaseStepMixin v19.1 DetailedDataSpec Integration'}
 
 # ==============================================
 # 🔥 Export
 # ==============================================
 
 __all__ = [
-    # 메인 클래스들
+    # 메인 클래스
     'BaseStepMixin',
     'GitHubDependencyManager',
     
     # 설정 및 상태 클래스들
+    'DetailedDataSpecConfig',
     'GitHubStepConfig',
-    'GitHubDependencyStatus',
+    'GitHubDependencyStatus', 
     'GitHubPerformanceMetrics',
-    
-    # GitHub 호환 인터페이스들
-    'IGitHubModelProvider',
-    'IGitHubMemoryManager',
-    'IGitHubDataConverter',
     
     # GitHub 열거형들
     'ProcessMethodSignature',
     'DependencyValidationFormat',
-    
-    # 편의 함수들
-    'create_github_base_step_mixin',
-    'validate_github_step_environment',
-    'get_github_environment_info',
+    'DataConversionMethod',
     
     # 상수들
     'TORCH_AVAILABLE',
     'MPS_AVAILABLE',
     'NUMPY_AVAILABLE',
     'PIL_AVAILABLE',
+    'CV2_AVAILABLE',
     'CONDA_INFO',
     'IS_M3_MAX',
     'MEMORY_GB'
@@ -2196,25 +2086,47 @@ __all__ = [
 # ==============================================
 
 logger = logging.getLogger(__name__)
-logger.info("=" * 80)
-logger.info("🔥 BaseStepMixin v19.1 - GitHub 프로젝트 완전 호환 (데이터 전달 최적화)")
-logger.info("=" * 80)
-logger.info("✅ GitHub Step 클래스들과 100% 호환")
+logger.info("=" * 100)
+logger.info("🔥 BaseStepMixin v19.1 - DetailedDataSpec 완전 통합")
+logger.info("=" * 100)
+logger.info("✅ step_model_requirements.py DetailedDataSpec 완전 활용")
+logger.info("✅ API ↔ AI 모델 간 데이터 변환 표준화 완료")
+logger.info("✅ Step 간 데이터 흐름 자동 처리")
+logger.info("✅ 전처리/후처리 요구사항 자동 적용")
+logger.info("✅ GitHub 프로젝트 Step 클래스들과 100% 호환")
 logger.info("✅ process() 메서드 시그니처 완전 표준화")
-logger.info("✅ 데이터 전달 자동 변환 시스템 (v19.1 신규)")
-logger.info("✅ validate_dependencies() 오버로드 지원 (dual format)")
-logger.info("✅ StepFactory v9.0과 완전 호환")
-logger.info("✅ 의존성 주입 시스템 전면 재설계")
-logger.info("✅ 실제 AI 모델 파이프라인 완전 지원")
-logger.info("✅ GitHub M3 Max 128GB 메모리 최적화")
-logger.info("✅ GitHub conda 환경 우선 최적화 (mycloset-ai-clean)")
-logger.info("✅ GitHubDependencyManager 완전 새로운 설계")
-logger.info("✅ 성능 모니터링 및 진단 도구 강화")
-logger.info("✅ 에러 처리 및 복구 시스템 개선")
-logger.info("✅ TYPE_CHECKING 패턴으로 순환참조 완전 방지")
-logger.info("✅ 🔥 자동 인자 변환 시스템 (v19.1)")
-logger.info("=" * 80)
-logger.info(f"🔧 현재 conda 환경: {CONDA_INFO['conda_env']} (GitHub 최적화: {CONDA_INFO['is_target_env']})")
+logger.info("✅ 실제 Step 클래스들은 _run_ai_inference() 메서드만 구현하면 됨")
+logger.info("✅ validate_dependencies() 오버로드 지원")
+logger.info("✅ StepFactory v11.0과 완전 호환")
+logger.info("✅ conda 환경 우선 최적화 (mycloset-ai-clean)")
+logger.info("✅ M3 Max 128GB 메모리 최적화")
+
+logger.info("🔧 DetailedDataSpec 통합 기능:")
+logger.info("   📋 입출력 데이터 타입, 형태, 범위 자동 검증")
+logger.info("   🔗 API 입출력 매핑 자동 변환")
+logger.info("   🔄 Step 간 데이터 스키마 자동 처리")
+logger.info("   ⚙️ 전처리/후처리 단계 자동 적용")
+logger.info("   📊 데이터 흐름 자동 관리")
+
+logger.info("🎯 지원하는 전처리:")
+logger.info("   - 이미지 리사이즈 (512x512, 768x1024, 256x192, 224x224, 368x368, 1024x1024)")
+logger.info("   - 정규화 (ImageNet, CLIP, Diffusion)")
+logger.info("   - 텐서 변환 (HWC → CHW)")
+logger.info("   - SAM 프롬프트 준비")
+logger.info("   - Diffusion 입력 준비")
+
+logger.info("🎯 지원하는 후처리:")
+logger.info("   - Softmax, Argmax 적용")
+logger.info("   - 임계값 적용, NMS")
+logger.info("   - 역정규화 (ImageNet, Diffusion)")
+logger.info("   - 형태학적 연산, 키포인트 추출")
+logger.info("   - 세부사항 향상, 최종 합성")
+
+logger.info(f"🔧 현재 conda 환경: {CONDA_INFO['conda_env']} ({'✅ 최적화됨' if CONDA_INFO['is_target_env'] else '⚠️ 권장: mycloset-ai-clean'})")
 logger.info(f"🖥️  현재 시스템: M3 Max={IS_M3_MAX}, 메모리={MEMORY_GB:.1f}GB")
 logger.info(f"🚀 GitHub AI 파이프라인 준비: {TORCH_AVAILABLE and (MPS_AVAILABLE or (torch.cuda.is_available() if TORCH_AVAILABLE else False))}")
-logger.info("=" * 80)
+logger.info("=" * 100)
+logger.info("🎉 BaseStepMixin v19.1 완전 준비 완료!")
+logger.info("💡 이제 실제 Step 클래스들은 _run_ai_inference() 메서드만 구현하면 됩니다!")
+logger.info("💡 모든 데이터 변환이 BaseStepMixin에서 자동으로 처리됩니다!")
+logger.info("=" * 100)
