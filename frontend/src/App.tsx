@@ -2337,36 +2337,123 @@ const App: React.FC = () => {
     }
   }, [apiClient]);
 
-  const handleCompletePipeline = useCallback(async () => {
+
+// 🔥 2. Complete Pipeline 핸들러 (기존 handleCompletePipeline 대체)
+  const handleCompletePipelineNew = useCallback(async () => {
     if (!personImage || !clothingImage) {
-      setError('이미지를 먼저 업로드해주세요.');
+      setError('사용자 이미지와 의류 이미지를 모두 업로드해주세요.');
       return;
     }
-    
-    setIsProcessing(true);
-    setProgress(10);
-    setProgressMessage('전체 파이프라인 실행 중...');
-    
-    try {
-      const result = await apiClient.runCompletePipeline(personImage, clothingImage, measurements);
-      console.log('전체 파이프라인 결과:', result);
-      setResult(result);
-      setProgress(100);
-      setProgressMessage('전체 파이프라인 완료!');
-      
-      setTimeout(() => {
-        setIsProcessing(false);
-        setCurrentStep(8);
-        setCompletedSteps([1, 2, 3, 4, 5, 6, 7]);
-      }, 1500);
-      
-    } catch (error: any) {
-      console.error('전체 파이프라인 실패:', error);
-      setError(`전체 파이프라인 실패: ${error.message}`);
-      setIsProcessing(false);
-      setProgress(0);
+
+    if (!measurements.height || !measurements.weight) {
+      setError('키와 몸무게를 입력해주세요.');
+      return;
     }
-  }, [personImage, clothingImage, measurements, apiClient]);
+
+    setIsCompleteProcessing(true);
+    setError('');
+    setCompleteProgress({ step: '', percentage: 0 });
+
+    try {
+      console.log('🚀 Complete Pipeline 시작 (/api/complete)');
+      
+      // WebSocket 연결 시도 (진행률 추적용)
+      try {
+        await apiClient.connectWebSocket('complete_session');
+      } catch (wsError) {
+        console.warn('WebSocket 연결 실패, HTTP만 사용:', wsError);
+      }
+
+      // 진행률 시뮬레이션 (실제로는 WebSocket으로 받음)
+      const progressSteps = [
+        { step: 'Step 1: 이미지 업로드 및 검증', percentage: 12.5 },
+        { step: 'Step 2: 신체 측정값 검증', percentage: 25 },
+        { step: 'Step 3: AI 인체 파싱 (20개 부위)', percentage: 37.5 },
+        { step: 'Step 4: AI 포즈 추정 (18개 키포인트)', percentage: 50 },
+        { step: 'Step 5: AI 의류 분석', percentage: 62.5 },
+        { step: 'Step 6: AI 기하학적 매칭', percentage: 75 },
+        { step: 'Step 7: AI 가상 피팅 생성 (14GB 모델)', percentage: 87.5 },
+        { step: 'Step 8: 최종 결과 분석', percentage: 100 }
+      ];
+
+      // 진행률 업데이트 시뮬레이션
+      const progressInterval = setInterval(() => {
+        const currentStep = progressSteps.find(s => s.percentage > completeProgress.percentage);
+        if (currentStep) {
+          setCompleteProgress(currentStep);
+        }
+      }, 2000);
+
+      // 실제 Complete API 호출
+      const result = await apiClient.runCompletePipeline(personImage, clothingImage, measurements);
+
+      // 진행률 시뮬레이션 정리
+      clearInterval(progressInterval);
+      setCompleteProgress({ step: '🎉 8단계 AI 파이프라인 완료!', percentage: 100 });
+
+      console.log('✅ Complete Pipeline 완료:', result);
+      
+      if (result.success) {
+        // 결과 설정
+        setResult(result);
+        
+        // 모든 단계를 완료로 표시
+        setCompletedSteps([1, 2, 3, 4, 5, 6, 7, 8]);
+        setCurrentStep(8);
+        
+        // Step 7 결과도 업데이트 (기존 코드와 호환성)
+        if (result.fitted_image) {
+          const step7Result: StepResult = {
+            success: true,
+            message: "AI 가상 피팅 완료",
+            confidence: result.confidence,
+            processing_time: result.processing_time,
+            session_id: result.session_id,
+            fitted_image: result.fitted_image,
+            fit_score: result.fit_score,
+            details: {
+              session_id: result.session_id,
+              result_image: result.fitted_image
+            }
+          };
+          
+          setStepResults(prev => ({ ...prev, 7: step7Result }));
+        }
+
+        // 성공 메시지
+        setTimeout(() => {
+          setIsCompleteProcessing(false);
+          alert('🎉 8단계 AI 파이프라인이 완료되었습니다! 결과를 확인해보세요.');
+        }, 1500);
+        
+      } else {
+        setError(`Complete Pipeline 실패: ${result.message || 'Unknown error'}`);
+        setIsCompleteProcessing(false);
+      }
+
+    } catch (error: any) {
+      console.error('❌ Complete Pipeline 오류:', error);
+      
+      let errorMessage = error.message || 'Unknown error';
+      if (errorMessage.includes('404')) {
+        errorMessage = 'Complete Pipeline API를 찾을 수 없습니다. 백엔드가 실행 중인지 확인해주세요.';
+      } else if (errorMessage.includes('500')) {
+        errorMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      }
+      
+      setError(`Complete Pipeline 처리 중 오류가 발생했습니다: ${errorMessage}`);
+      setIsCompleteProcessing(false);
+    } finally {
+      try {
+        apiClient.disconnectWebSocket();
+      } catch (cleanupError) {
+        console.warn('WebSocket 정리 중 오류:', cleanupError);
+      }
+    }
+  }, [personImage, clothingImage, measurements, apiClient, completeProgress.percentage]);
+
+
+
 
   // 요청 취소
   const handleCancelRequest = useCallback(() => {
