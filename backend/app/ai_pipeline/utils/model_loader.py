@@ -2295,6 +2295,210 @@ class RealAIModelLoader:
         self.logger.info(f"⚡ PyTorch: {self.torch_available}, MPS: {MPS_AVAILABLE}, CUDA: {CUDA_AVAILABLE}")
         self.logger.info(f"📁 모델 캐시 디렉토리: {self.model_cache_dir}")
     
+    # backend/app/ai_pipeline/utils/model_loader.py
+    # 🔥 1. 핵심 누락 메서드 추가
+    def _find_checkpoint_file(self, model_name: str) -> Optional[Path]:
+        """체크포인트 파일 검색 (누락된 핵심 메서드)"""
+        try:
+            search_patterns = [
+                f"{model_name}.pth",
+                f"{model_name}.pt", 
+                f"{model_name}.safetensors",
+                f"{model_name}.bin",
+                "pytorch_model.bin",
+                "diffusion_pytorch_model.safetensors",
+                "diffusion_pytorch_model.bin",
+                "model.pth"
+            ]
+            
+            search_dirs = [
+                self.model_cache_dir / model_name,
+                self.model_cache_dir / f"step_0{self._get_step_id_from_model_name(model_name)}_*",
+                self.model_cache_dir,
+                Path("ai_models") / model_name,
+                Path("checkpoints") / model_name
+            ]
+            
+            for search_dir in search_dirs:
+                if not search_dir.exists():
+                    continue
+                    
+                # 정확한 파일명 매칭
+                for pattern in search_patterns:
+                    matches = list(search_dir.glob(pattern))
+                    if matches:
+                        return matches[0]
+                        
+                # 재귀 검색
+                for pattern in search_patterns:
+                    matches = list(search_dir.rglob(pattern))
+                    if matches:
+                        return matches[0]
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ 체크포인트 파일 검색 실패 {model_name}: {e}")
+            return None
+
+    def _get_step_id_from_model_name(self, model_name: str) -> int:
+        """모델명에서 Step ID 추출"""
+        model_step_mapping = {
+            "cloth_segmentation_u2net": 3,
+            "geometric_matching_model": 4, 
+            "pose_estimation_openpose": 2,
+            "perceptual_quality_model": 8,
+            "technical_quality_model": 8,
+            "aesthetic_quality_model": 8,
+            "virtual_fitting_ootd": 6,
+            "realvis_xl": 5,
+            "vgg16_warping": 5,
+            "vgg19_warping": 5,
+            "densenet121": 5
+        }
+        return model_step_mapping.get(model_name, 0)
+    
+    # 🔥 2. MPS 호환성 개선된 로딩 메서드
+    def _safe_load_checkpoint_with_mps_fix(self, checkpoint_path: Path) -> Optional[Any]:
+        """MPS 호환성 강화된 체크포인트 로딩"""
+        try:
+            self.logger.info(f"🔄 MPS 안전 체크포인트 로딩: {checkpoint_path}")
+            
+            # 🔥 MPS 안전 로딩 전략
+            if self.device == "mps":
+                # 1단계: CPU로 먼저 로딩
+                checkpoint = torch.load(checkpoint_path, map_location='cpu')
+                self.logger.debug("✅ CPU 로딩 완료")
+                
+                # 2단계: MPS 호환 데이터 타입으로 변환
+                checkpoint = self._convert_to_mps_compatible(checkpoint)
+                
+                return checkpoint
+            else:
+                # 일반 로딩
+                return torch.load(checkpoint_path, map_location=self.device)
+                
+        except Exception as e:
+            self.logger.error(f"❌ MPS 안전 체크포인트 로딩 실패: {e}")
+            # CPU 폴백 시도
+            try:
+                self.logger.info("🔄 CPU 폴백 시도...")
+                self.device = "cpu"
+                return torch.load(checkpoint_path, map_location='cpu')
+            except Exception as fallback_error:
+                self.logger.error(f"❌ CPU 폴백도 실패: {fallback_error}")
+                return None
+
+    def _convert_to_mps_compatible(self, checkpoint: Any) -> Any:
+        """MPS 호환 데이터 타입으로 변환"""
+        try:
+            if isinstance(checkpoint, dict):
+                converted = {}
+                for key, value in checkpoint.items():
+                    if isinstance(value, torch.Tensor):
+                        # float64 → float32 변환 (MPS는 float64 미지원)
+                        if value.dtype == torch.float64:
+                            converted[key] = value.to(torch.float32)
+                            self.logger.debug(f"✅ {key}: float64 → float32 변환")
+                        # int64 → int32 변환 (안전성)
+                        elif value.dtype == torch.int64:
+                            converted[key] = value.to(torch.int32)
+                            self.logger.debug(f"✅ {key}: int64 → int32 변환")
+                        else:
+                            converted[key] = value
+                    elif isinstance(value, dict):
+                        converted[key] = self._convert_to_mps_compatible(value)
+                    else:
+                        converted[key] = value
+                return converted
+            elif isinstance(checkpoint, torch.Tensor):
+                # 단일 텐서인 경우
+                if checkpoint.dtype == torch.float64:
+                    return checkpoint.to(torch.float32)
+                elif checkpoint.dtype == torch.int64:
+                    return checkpoint.to(torch.int32)
+                return checkpoint
+            else:
+                return checkpoint
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ MPS 호환 변환 실패: {e}")
+            return checkpoint
+    
+    # 🔥 3. 폴백 체크포인트 로딩 (누락된 모델 해결)
+    def load_model_with_fallback(self, model_name: str, **kwargs):
+        """누락된 모델에 대한 폴백 처리"""
+        try:
+            # 기본 로딩 시도
+            return self.load_model(model_name, **kwargs)
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 기본 모델 로딩 실패: {model_name}")
+            
+            # 누락된 모델 경로 해결 시도
+            resolved_path = self._resolve_missing_model_path(model_name)
+            
+            if resolved_path:
+                self.logger.info(f"🔄 폴백 경로로 재시도: {model_name}")
+                # 경로를 직접 지정해서 로딩 시도
+                return self.load_model_from_path(resolved_path, **kwargs)
+            else:
+                self.logger.error(f"❌ 모델 로딩 완전 실패: {model_name}")
+                raise
+    
+    def _resolve_missing_model_path(self, model_name: str) -> Optional[str]:
+        """누락된 모델의 실제 경로 찾기"""
+        try:
+            # 1. 매핑 테이블에서 찾기
+            missing_model_mapping = {
+                # Step 05 ClothWarping 누락 모델들
+                'realvis_xl': 'step_05_cloth_warping/RealVisXL_V4.0.safetensors',
+                'vgg16_warping': 'step_05_cloth_warping/vgg16_warping.pth',
+                'vgg19_warping': 'step_05_cloth_warping/vgg19_warping.pth', 
+                'densenet121': 'step_05_cloth_warping/densenet121_warping.pth',
+                
+                # Step 07 PostProcessing 누락 모델들
+                'post_processing_model': 'step_07_post_processing/sr_model.pth',
+                'super_resolution': 'step_07_post_processing/Real-ESRGAN_x4plus.pth',
+                
+                # Step 08 QualityAssessment 누락 모델들
+                'clip_vit_large': 'step_08_quality_assessment/ViT-L-14.pt',
+                'quality_assessment': 'step_08_quality_assessment/quality_model.pth',
+                
+                # 공유 모델들 (여러 Step에서 사용)
+                'sam_vit_h': 'step_04_geometric_matching/sam_vit_h_4b8939.pth',
+                'vit_large_patch14': 'step_08_quality_assessment/ViT-L-14.pt',
+            }
+            
+            if model_name in missing_model_mapping:
+                mapped_path = self.model_cache_dir / missing_model_mapping[model_name]
+                if mapped_path.exists():
+                    self.logger.info(f"✅ 누락 모델 해결: {model_name} → {mapped_path}")
+                    return str(mapped_path)
+            
+            # 2. 동적 검색 (파일명 기반)
+            search_patterns = [
+                f"**/{model_name}.pth",
+                f"**/{model_name}.safetensors", 
+                f"**/{model_name}.pt",
+                f"**/{model_name}.bin",
+                f"**/model.safetensors",
+                f"**/pytorch_model.bin",
+            ]
+            
+            for pattern in search_patterns:
+                for found_path in self.model_cache_dir.glob(pattern):
+                    if found_path.is_file() and found_path.stat().st_size > 50 * 1024 * 1024:  # 50MB 이상
+                        self.logger.info(f"✅ 동적 검색 성공: {model_name} → {found_path}")
+                        return str(found_path)
+            
+            self.logger.warning(f"⚠️ 모델 경로 해결 실패: {model_name}")
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 모델 경로 해결 실패 ({model_name}): {e}")
+            return None
+
     def _resolve_device(self, device: str) -> str:
         """디바이스 해결"""
         if device == "auto":

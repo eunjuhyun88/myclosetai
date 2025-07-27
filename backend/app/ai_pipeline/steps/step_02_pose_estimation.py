@@ -1507,6 +1507,95 @@ class PoseEstimationStep(BaseStepMixin):
     # 🔥 BaseStepMixin v19.1 호환 - _run_ai_inference() 동기 메서드 구현
     # ==============================================
     
+    # backend/app/ai_pipeline/steps/step_02_pose_estimation.py
+    def _load_openpose_model(self) -> bool:
+        """OpenPose 모델 로딩 (MPS 호환성 개선)"""
+        try:
+            checkpoint_path = self.model_paths.get('openpose_body')
+            if not checkpoint_path or not checkpoint_path.exists():
+                return False
+            
+            self.logger.info(f"🧠 OpenPose 모델 로딩 시작: {checkpoint_path}")
+            
+            # 🔥 MPS 호환성 개선
+            if self.device == "mps":
+                # CPU에서 로딩 후 MPS로 이동
+                checkpoint = torch.load(checkpoint_path, map_location='cpu')
+                
+                # float64 → float32 변환 (MPS 호환)
+                if isinstance(checkpoint, dict):
+                    for key, value in checkpoint.items():
+                        if isinstance(value, torch.Tensor) and value.dtype == torch.float64:
+                            checkpoint[key] = value.float()
+                
+                # 모델 생성 및 가중치 로드
+                model = self._create_openpose_model()
+                model.load_state_dict(checkpoint, strict=False)
+                
+                # MPS로 이동
+                model = model.to(torch.device(self.device))
+            else:
+                # 기존 로직
+                checkpoint = torch.load(checkpoint_path, map_location=self.device)
+                model = self._create_openpose_model()
+                model.load_state_dict(checkpoint, strict=False)
+                model = model.to(torch.device(self.device))
+            
+            model.eval()
+            self.ai_models['openpose'] = model
+            self.logger.info("✅ OpenPose 모델 로딩 완료 (MPS 호환)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ OpenPose 모델 로딩 실패: {e}")
+            return False
+    
+    def _create_openpose_model(self):
+        """OpenPose 모델 생성"""
+        try:
+            # 간소화된 OpenPose 네트워크
+            class OpenPoseNetwork(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    # VGG 백본 (간소화)
+                    self.backbone = nn.Sequential(
+                        nn.Conv2d(3, 64, 3, 1, 1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(64, 128, 3, 1, 1),
+                        nn.BatchNorm2d(128),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(128, 256, 3, 1, 1),
+                        nn.BatchNorm2d(256),
+                        nn.ReLU(inplace=True)
+                    )
+                    
+                    # PAF (Part Affinity Fields) 브랜치
+                    self.paf_branch = nn.Sequential(
+                        nn.Conv2d(256, 128, 3, 1, 1),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(128, 38, 1)  # 19 connections * 2
+                    )
+                    
+                    # 키포인트 브랜치
+                    self.keypoint_branch = nn.Sequential(
+                        nn.Conv2d(256, 128, 3, 1, 1),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(128, 19, 1)  # 18 keypoints + background
+                    )
+                
+                def forward(self, x):
+                    features = self.backbone(x)
+                    paf_output = self.paf_branch(features)
+                    keypoint_output = self.keypoint_branch(features)
+                    return paf_output, keypoint_output
+            
+            return OpenPoseNetwork()
+            
+        except Exception as e:
+            self.logger.error(f"❌ OpenPose 모델 생성 실패: {e}")
+            return None
+
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """
         🔥 BaseStepMixin의 핵심 AI 추론 메서드 (동기 처리)

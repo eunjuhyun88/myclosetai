@@ -290,7 +290,7 @@ def get_step_requirements():
             self.model_name = "virtual_fitting_ootd"
             self.ai_class = "RealOOTDiffusionModel"
             self.input_size = (768, 1024)
-            self.memory_fraction = 0.7
+            self.memory_fraction = 0.3
             self.batch_size = 1
             self.device = "auto"
             self.data_spec = _create_fallback_data_spec()
@@ -1467,6 +1467,10 @@ class VirtualFittingStep(BaseStepMixinClass):
    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("🔥🔥🔥 VirtualFittingStep __init__ 호출됨! 🔥🔥🔥")
+        print("🔥🔥🔥 VirtualFittingStep __init__ 호출됨! 🔥🔥🔥")
         
         self.step_name = kwargs.get('step_name', "VirtualFittingStep")
         self.step_id = kwargs.get('step_id', 6)
@@ -1569,6 +1573,254 @@ class VirtualFittingStep(BaseStepMixinClass):
             self.logger.info(f"   - 입력 크기: {self.step_requirements.input_size}")
             self.logger.info(f"   - 메모리 비율: {self.step_requirements.memory_fraction}")
             self.logger.info(f"   - 배치 크기: {self.step_requirements.batch_size}")
+
+    # backend/app/ai_pipeline/steps/step_06_virtual_fitting.py
+# 🔥 기존 initialize() 메서드를 이 코드로 완전 교체하세요
+
+    def initialize(self) -> bool:
+        """Step 초기화 (step_model_requirements.py 완전 호환) - 🔥 상세 디버깅 버전"""
+        try:
+            if self.is_initialized:
+                return True
+            
+            self.logger.info("🔄 step_model_requirements.py 기반 VirtualFittingStep 실제 AI 모델 초기화 시작...")
+            
+            # 🔥 상세 시스템 정보 로깅
+            import torch
+            import psutil
+            import os
+            import sys
+            
+            self.logger.info("=" * 80)
+            self.logger.info("🔧 시스템 상세 정보:")
+            self.logger.info(f"   - 현재 작업 디렉토리: {os.getcwd()}")
+            self.logger.info(f"   - Python 버전: {sys.version}")
+            self.logger.info(f"   - PyTorch 버전: {torch.__version__}")
+            self.logger.info(f"   - CUDA 사용가능: {torch.cuda.is_available()}")
+            self.logger.info(f"   - MPS 사용가능: {torch.backends.mps.is_available()}")
+            
+            # 메모리 상태 체크
+            memory = psutil.virtual_memory()
+            self.logger.info(f"   - 시스템 메모리: {memory.total / (1024**3):.1f}GB 총, {memory.available / (1024**3):.1f}GB 사용가능")
+            self.logger.info(f"   - 메모리 사용률: {memory.percent}%")
+            
+            # 현재 프로세스 메모리
+            process = psutil.Process()
+            mem_info = process.memory_info()
+            self.logger.info(f"   - 현재 프로세스 메모리: {mem_info.rss / (1024**3):.2f}GB")
+            
+            # MPS 메모리 상태 (가능한 경우)
+            if torch.backends.mps.is_available():
+                try:
+                    # MPS 메모리 상태 확인 시도
+                    self.logger.info("🍎 MPS 백엔드 상태 확인 중...")
+                    # 간단한 텐서 생성으로 MPS 상태 테스트
+                    test_tensor = torch.randn(10, 10, device='mps')
+                    self.logger.info("✅ MPS 백엔드 정상 작동")
+                    del test_tensor
+                except Exception as mps_error:
+                    self.logger.error(f"❌ MPS 백엔드 문제: {mps_error}")
+            
+            self.logger.info("=" * 80)
+            
+            # 🔥 1. step_model_requirements 로딩 시도 (상세 로깅)
+            try:
+                self.logger.info("🔍 step_model_requirements 로딩 시도...")
+                if not hasattr(self, 'step_requirements') or not self.step_requirements:
+                    self.step_requirements = get_step_requirements('virtual_fitting_ootd')
+                
+                if self.step_requirements:
+                    self.logger.info("✅ step_model_requirements 로딩 성공:")
+                    self.logger.info(f"   - 모델명: {self.step_requirements.model_name}")
+                    self.logger.info(f"   - AI 클래스: {self.step_requirements.ai_class}")
+                    self.logger.info(f"   - 메모리 비율: {self.step_requirements.memory_fraction}")
+                    
+                    # DetailedDataSpec 확인
+                    if hasattr(self.step_requirements, 'data_spec'):
+                        self.detailed_data_spec = self.step_requirements.data_spec
+                        self.logger.info("✅ DetailedDataSpec 사전 로딩 완료")
+                    else:
+                        self.logger.warning("⚠️ DetailedDataSpec 없음")
+                else:
+                    self.logger.warning("⚠️ step_model_requirements 로딩 실패, 기본값 사용")
+            except Exception as e:
+                self.logger.error(f"❌ step_model_requirements 로딩 실패: {e}")
+                import traceback
+                self.logger.error(f"📋 스택 트레이스:\n{traceback.format_exc()}")
+            
+            # 🔥 2. 모델 파일 경로 검색 (상세 로깅)
+            self.logger.info("🔍 실제 AI 모델 파일 검색 시작...")
+            try:
+                model_paths = self._enhanced_find_model_paths()
+                
+                if model_paths:
+                    self.logger.info("✅ 발견된 모델 파일들:")
+                    for model_type, path in model_paths.items():
+                        file_size = os.path.getsize(path) / (1024**3) if os.path.exists(path) else 0
+                        self.logger.info(f"   - {model_type}: {path} ({file_size:.2f}GB)")
+                else:
+                    self.logger.error("❌ 모델 파일을 찾을 수 없습니다!")
+                    
+                    # 대체 경로들 상세 검색
+                    self.logger.info("🔍 대체 경로 상세 검색:")
+                    search_paths = [
+                        "backend/ai_models/step_06_virtual_fitting",
+                        "step_06_virtual_fitting",
+                        "checkpoints",
+                        "models",
+                        "."
+                    ]
+                    
+                    for search_path in search_paths:
+                        if os.path.exists(search_path):
+                            self.logger.info(f"✅ 존재하는 디렉토리: {search_path}")
+                            
+                            # 하위 파일들 검색
+                            for root, dirs, files in os.walk(search_path):
+                                for file in files:
+                                    if "diffusion" in file.lower() and file.endswith(('.bin', '.safetensors')):
+                                        full_path = os.path.join(root, file)
+                                        file_size = os.path.getsize(full_path) / (1024**3)
+                                        self.logger.info(f"   🔍 발견: {full_path} ({file_size:.2f}GB)")
+                        else:
+                            self.logger.warning(f"❌ 존재하지 않음: {search_path}")
+                    
+                    # 폴백 모드로 진행
+                    self.logger.info("🔄 폴백 모드로 진행...")
+                    self.is_initialized = True
+                    self.is_ready = True
+                    return True
+            except Exception as e:
+                self.logger.error(f"❌ 모델 파일 검색 실패: {e}")
+                import traceback
+                self.logger.error(f"📋 스택 트레이스:\n{traceback.format_exc()}")
+            
+            # 🔥 3. 실제 AI 모델 로딩 시도 (상세 로깅)
+            if model_paths:
+                self.logger.info("🚀 실제 AI 모델 로딩 시작...")
+                try:
+                    # 메모리 정리부터
+                    self.logger.info("🧹 로딩 전 메모리 정리...")
+                    self._cleanup_previous_models()
+                    
+                    # 메모리 최적화 설정
+                    self.logger.info("⚙️ 메모리 최적화 설정:")
+                    self.logger.info(f"   - 기존 메모리 비율: {getattr(self.config, 'memory_fraction', 0.7)}")
+                    
+                    # 🔥 메모리 설정 최적화
+                    if hasattr(self.config, 'memory_fraction'):
+                        original_fraction = self.config.memory_fraction
+                        self.config.memory_fraction = 0.3  # 0.7 → 0.3으로 줄임
+                        self.logger.info(f"   - 새 메모리 비율: {self.config.memory_fraction} (원래: {original_fraction})")
+                    
+                    self.config.enable_cpu_offload = True
+                    self.config.low_memory_mode = True
+                    self.logger.info("   - CPU 오프로드: 활성화")
+                    self.logger.info("   - 저메모리 모드: 활성화")
+                    
+                    # 실제 모델 로딩 시도
+                    models_loaded = self._enhanced_load_ai_models(model_paths)
+                    
+                    if models_loaded:
+                        self.logger.info("✅ 실제 AI 모델 로딩 성공!")
+                        self.logger.info(f"   - 로딩된 모델 수: {len(self.ai_models)}")
+                        for model_name in self.ai_models.keys():
+                            self.logger.info(f"   - {model_name}: 로딩됨")
+                    else:
+                        self.logger.warning("⚠️ 실제 AI 모델 로딩 실패, 폴백 모드로 진행...")
+                        
+                except Exception as loading_error:
+                    self.logger.error(f"❌ AI 모델 로딩 중 에러: {loading_error}")
+                    self.logger.error(f"   - 에러 타입: {type(loading_error).__name__}")
+                    import traceback
+                    self.logger.error(f"   - 상세 스택 트레이스:\n{traceback.format_exc()}")
+                    
+                    # 메모리 상태 재확인
+                    memory = psutil.virtual_memory()
+                    self.logger.error(f"   - 에러 시점 메모리 사용률: {memory.percent}%")
+                    
+                    # MPS 상태 재확인
+                    if torch.backends.mps.is_available():
+                        try:
+                            test_tensor = torch.randn(5, 5, device='mps')
+                            self.logger.info("   - MPS 백엔드: 여전히 정상")
+                            del test_tensor
+                        except Exception as mps_error:
+                            self.logger.error(f"   - MPS 백엔드 문제: {mps_error}")
+            
+            # 4. 의존성 주입 확인 및 자동 설정 (기존 코드 유지)
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                try:
+                    self.dependency_manager.auto_inject_dependencies()
+                    self.logger.info("✅ step_model_requirements.py 기반 자동 의존성 주입 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 자동 의존성 주입 실패: {e}")
+            
+            # 5. 수동 의존성 설정
+            if not hasattr(self, 'model_loader') or self.model_loader is None:
+                self._try_manual_dependency_injection()
+            
+            # 6. DetailedDataSpec 검증 (개선됨)
+            if hasattr(self, '_enhanced_validate_data_spec'):
+                self._enhanced_validate_data_spec()
+            
+            # 7. step_model_requirements.py 기반 메모리 최적화
+            if hasattr(self, '_optimize_memory_enhanced'):
+                self._optimize_memory_enhanced()
+            
+            # 8. 최종 상태 설정
+            self.is_initialized = True
+            self.is_ready = True
+            
+            self.logger.info("=" * 80)
+            self.logger.info("✅ VirtualFittingStep 초기화 완료!")
+            self.logger.info(f"   - 실제 AI 모델 로딩: {'성공' if len(self.ai_models) > 0 else '실패(폴백 모드)'}")
+            self.logger.info(f"   - 로딩된 모델 수: {len(self.ai_models)}")
+            self.logger.info("=" * 80)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ VirtualFittingStep 초기화 완전 실패: {e}")
+            import traceback
+            self.logger.error(f"📋 완전한 스택 트레이스:\n{traceback.format_exc()}")
+            
+            # 폴백으로라도 초기화 성공 처리
+            self.is_initialized = True
+            self.is_ready = True
+            return True
+
+    def _cleanup_previous_models(self):
+        """이전 Step 모델들 메모리 정리 - initialize() 메서드 내부에서 호출"""
+        try:
+            self.logger.info("🧹 이전 모델 메모리 정리 시작...")
+            
+            # 가비지 컬렉션
+            import gc
+            collected = gc.collect()
+            self.logger.info(f"   - 가비지 컬렉션: {collected}개 객체 정리")
+            
+            # GPU 메모리 정리
+            import torch
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+                self.logger.info("   - MPS 캐시 정리 완료")
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                self.logger.info("   - CUDA 캐시 정리 완료")
+            
+            # 메모리 상태 재확인
+            import psutil
+            memory = psutil.virtual_memory()
+            self.logger.info(f"   - 정리 후 메모리 사용률: {memory.percent}%")
+            
+            self.logger.info("✅ 이전 모델 메모리 정리 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 메모리 정리 실패: {e}")
+
+    # 🔥 이 메서드들을 VirtualFittingStep 클래스 안에 추가하세요!
+
 
     def _ensure_required_fields(self):
         """필수 필드 존재 보장"""
@@ -1776,88 +2028,7 @@ class VirtualFittingStep(BaseStepMixinClass):
         except Exception as e:
             self.logger.warning(f"⚠️ DataConverter 주입 실패: {e}")
             return False
-    
-    def initialize(self) -> bool:
-        """Step 초기화 (step_model_requirements.py 완전 호환) - 🔥 완전 수정된 버전"""
-        try:
-            if self.is_initialized:
-                return True
-            
-            self.logger.info("🔄 step_model_requirements.py 기반 VirtualFittingStep 실제 AI 모델 초기화 시작...")
-            
-            # 🔥 1. step_model_requirements 먼저 로드 (DetailedDataSpec 포함)
-            try:
-                if not hasattr(self, 'step_requirements') or not self.step_requirements:
-                    self.step_requirements = get_step_requirements('virtual_fitting_ootd')
-                
-                if self.step_requirements:
-                    # DetailedDataSpec 미리 설정
-                    if hasattr(self.step_requirements, 'data_spec'):
-                        self.detailed_data_spec = self.step_requirements.data_spec
-                        self.logger.info("✅ DetailedDataSpec 사전 로딩 완료")
-                    
-                    self.logger.info(f"✅ step_model_requirements 로딩: {self.step_requirements.model_name}")
-                else:
-                    self.logger.warning("⚠️ step_model_requirements 로딩 실패, 기본값 사용")
-            except Exception as e:
-                self.logger.warning(f"⚠️ step_model_requirements 로딩 실패: {e}")
-            
-            # 🔥 2. 실제 AI 모델 파일 경로 찾기 (강화된 로직)
-            self.logger.info("🔍 실제 AI 모델 파일 검색 시작...")
-            model_paths = self._enhanced_find_model_paths()
-            
-            if not model_paths:
-                self.logger.error("❌ 실제 AI 모델 파일을 찾을 수 없습니다!")
-                self.logger.info("🔄 폴백 모드로 진행...")
-                # 폴백 모드에서도 초기화는 성공으로 처리
-                self.is_initialized = True
-                self.is_ready = True
-                return True
-            
-            # 🔥 3. 실제 AI 모델 로딩 (오류 처리 강화)
-            self.logger.info("🚀 실제 AI 모델 로딩 시작...")
-            models_loaded = self._enhanced_load_ai_models(model_paths)
-            
-            if not models_loaded:
-                self.logger.warning("⚠️ 실제 AI 모델 로딩 실패, 폴백 모드로 진행...")
-                # 폴백 모드에서도 초기화는 성공으로 처리
-            else:
-                self.logger.info("✅ 실제 AI 모델 로딩 성공!")
-            
-            # 4. 의존성 주입 확인 및 자동 설정
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                try:
-                    self.dependency_manager.auto_inject_dependencies()
-                    self.logger.info("✅ step_model_requirements.py 기반 자동 의존성 주입 완료")
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 자동 의존성 주입 실패: {e}")
-            
-            # 5. 수동 의존성 설정
-            if not hasattr(self, 'model_loader') or self.model_loader is None:
-                self._try_manual_dependency_injection()
-            
-            # 6. DetailedDataSpec 검증 (개선됨)
-            self._enhanced_validate_data_spec()
-            
-            # 7. step_model_requirements.py 기반 메모리 최적화
-            self._optimize_memory_enhanced()
-            
-            # 8. 초기화 완료
-            self.is_initialized = True
-            self.is_ready = True
-            self.logger.info("✅ step_model_requirements.py 기반 VirtualFittingStep 실제 AI 모델 초기화 완료!")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ step_model_requirements.py 기반 초기화 실패: {e}")
-            self.logger.error(f"스택 트레이스: {traceback.format_exc()}")
-            
-            # 🔥 오류 발생해도 폴백 모드로 초기화 성공 처리
-            self.is_initialized = True
-            self.is_ready = True
-            self.logger.info("🔄 오류 발생으로 폴백 모드 초기화 완료")
-            return True
-
+  
     def _enhanced_find_model_paths(self) -> Dict[str, Path]:
         """🔥 실제 AI 모델 파일 경로 찾기 (강화된 버전)"""
         model_paths = {}
@@ -3574,6 +3745,10 @@ __description__ = "Virtual Fitting Step - Enhanced Real AI Model Integration wit
 # ==============================================
 # 🔥 15. step_model_requirements.py 기반 모듈 정보 출력
 # ==============================================
+# 🔥 파일 맨 끝에 추가
+print("🔥🔥🔥 step_06_virtual_fitting.py 파일 로드됨! 🔥🔥🔥")
+import logging
+logging.getLogger(__name__).error("🔥🔥🔥 step_06_virtual_fitting.py 파일 로드됨! 🔥🔥🔥")
 
 logger = logging.getLogger(__name__)
 logger.info("=" * 120)
