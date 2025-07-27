@@ -1,0 +1,227 @@
+{
+  "metadata": {
+    "session_id": "session_1753616968_dc94c032",
+    "created_at": "2025-07-27T20:49:28.202586",
+    "last_accessed": "2025-07-27T20:49:31.139868",
+    "measurements": {},
+    "person_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753616968_dc94c032/person.jpg",
+      "size": [
+        360,
+        706
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 46265
+    },
+    "clothing_image": {
+      "path": "/Users/gimdudeul/MVP/mycloset-ai/backend/static/sessions/session_1753616968_dc94c032/clothing.jpg",
+      "size": [
+        2000,
+        2667
+      ],
+      "mode": "RGB",
+      "format": "JPEG",
+      "file_size": 556419
+    },
+    "total_steps": 8,
+    "completed_steps": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "circular_reference_safe": true
+  },
+  "step_results": {
+    "0": {
+      "person_image": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "clothing_image": {
+        "type": "PIL_Image",
+        "size": [
+          2000,
+          2667
+        ],
+        "mode": "RGB"
+      },
+      "primary_output": {
+        "type": "PIL_Image",
+        "size": [
+          360,
+          706
+        ],
+        "mode": "RGB"
+      },
+      "measurements": {},
+      "processing_time": 0.0,
+      "quality_score": 1.0,
+      "timestamp": "2025-07-27T20:49:28.202628",
+      "step_id": 0
+    },
+    "1": {
+      "success": true,
+      "message": "이미지 업로드 검증 완료 (StepImplementationManager v12.0)",
+      "step_id": 1,
+      "step_name": "Upload Validation",
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step1_25c6f643",
+      "processing_time": 4.0531158447265625e-06,
+      "stepimpl_manager_used": true,
+      "timestamp": "2025-07-27T20:49:28.203315",
+      "confidence": 0.87,
+      "quality_score": 0.0
+    },
+    "2": {
+      "success": true,
+      "message": "신체 측정값 검증 완료 (StepImplementationManager v12.0)",
+      "step_id": 2,
+      "step_name": "Measurements Validation",
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step2_b3481cc7",
+      "processing_time": 1.6927719116210938e-05,
+      "measurements_bmi": 22.49,
+      "measurements": {
+        "height": 170.0,
+        "weight": 65.0,
+        "chest": 0.0,
+        "waist": 0.0,
+        "hips": 0.0,
+        "bmi": 22.49
+      },
+      "stepimpl_manager_used": true,
+      "timestamp": "2025-07-27T20:49:28.266519",
+      "confidence": 0.89,
+      "quality_score": 0.0
+    },
+    "3": {
+      "success": false,
+      "error": "StepFactory v9.0을 사용할 수 없습니다",
+      "step_name": "Human Parsing",
+      "error_type": "RuntimeError",
+      "processing_time": 0.026227951049804688,
+      "detailed_dataspec_applied": false,
+      "timestamp": "2025-07-27T20:49:28.297502",
+      "step_id": 3,
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step3_d60795bc",
+      "message": "인간 파싱 완료 (StepImplementationManager v12.0 → HumanParsingStep)",
+      "stepimpl_manager_used": true,
+      "confidence": 0.9099999999999999,
+      "quality_score": 0.0
+    },
+    "4": {
+      "success": false,
+      "error": "StepFactory v9.0을 사용할 수 없습니다",
+      "step_name": "Pose Estimation",
+      "error_type": "RuntimeError",
+      "processing_time": 0.007219791412353516,
+      "detailed_dataspec_applied": false,
+      "timestamp": "2025-07-27T20:49:28.819227",
+      "step_id": 4,
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step4_4f376e5f",
+      "message": "포즈 추정 완료 (StepImplementationManager v12.0 → PoseEstimationStep)",
+      "stepimpl_manager_used": true,
+      "confidence": 0.9299999999999999,
+      "quality_score": 0.0
+    },
+    "5": {
+      "success": false,
+      "error": "StepFactory v9.0을 사용할 수 없습니다",
+      "step_name": "Clothing Analysis",
+      "error_type": "RuntimeError",
+      "processing_time": 0.055548906326293945,
+      "detailed_dataspec_applied": false,
+      "timestamp": "2025-07-27T20:49:29.393880",
+      "step_id": 5,
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step5_01bd33a7",
+      "message": "의류 분석 완료 (StepImplementationManager v12.0 → ClothSegmentationStep)",
+      "stepimpl_manager_used": true,
+      "confidence": 0.95,
+      "quality_score": 0.0
+    },
+    "6": {
+      "success": false,
+      "error": "StepFactory v9.0을 사용할 수 없습니다",
+      "step_name": "Geometric Matching",
+      "error_type": "RuntimeError",
+      "processing_time": 0.06915783882141113,
+      "detailed_dataspec_applied": false,
+      "timestamp": "2025-07-27T20:49:29.974318",
+      "step_id": 6,
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step6_c1783906",
+      "message": "기하학적 매칭 완료 (StepImplementationManager v12.0 → GeometricMatchingStep)",
+      "stepimpl_manager_used": true,
+      "confidence": 0.97,
+      "quality_score": 0.0
+    },
+    "7": {
+      "success": false,
+      "error": "StepImplementationManager v12.0에서 fitted_image 생성 실패",
+      "step_id": 7,
+      "step_name": "Virtual Fitting",
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step7_e24f7844",
+      "timestamp": "2025-07-27T20:49:30.623956",
+      "confidence": 0.99,
+      "processing_time": 0.0,
+      "fit_score": 0.99,
+      "recommendations": [
+        "이 의류는 당신의 체형에 잘 맞습니다",
+        "어깨 라인이 자연스럽게 표현되었습니다",
+        "전체적인 비율이 균형잡혀 보입니다"
+      ],
+      "quality_score": 0.0
+    },
+    "8": {
+      "success": false,
+      "error": "가상 피팅 결과가 없습니다",
+      "step_id": 8,
+      "step_name": "Result Analysis",
+      "session_id": "session_1753616968_dc94c032",
+      "request_id": "step8_c0f5b174",
+      "timestamp": "2025-07-27T20:49:31.139897",
+      "confidence": 1.01,
+      "processing_time": 0.0,
+      "quality_score": 0.0
+    }
+  },
+  "step_processing_times": {
+    "0": 0.0,
+    "1": 4.0531158447265625e-06,
+    "2": 1.6927719116210938e-05,
+    "3": 0.026227951049804688,
+    "4": 0.007219791412353516,
+    "5": 0.055548906326293945,
+    "6": 0.06915783882141113,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "step_quality_scores": {
+    "0": 1.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0,
+    "5": 0.0,
+    "6": 0.0,
+    "7": 0.0,
+    "8": 0.0
+  },
+  "last_saved": "2025-07-27T20:49:31.140113",
+  "circular_reference_safe": true
+}

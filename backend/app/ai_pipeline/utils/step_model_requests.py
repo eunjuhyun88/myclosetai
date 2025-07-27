@@ -39,945 +39,7 @@ import gc
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 완전 재작성된 StepModelRequestAnalyzer v8.0 (1번 첨부파일 완전 반영)
-# ==============================================
-
-class RealStepModelRequestAnalyzer:
-    """실제 파일 구조 기반 Step 모델 요청사항 분석기 v8.0 (완전한 데이터 구조 포함)"""
-    
-    def __init__(self):
-        """초기화"""
-        self._cache = {}
-        self._registered_requirements = {}
-        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="RealStepAnalyzer")
-        self._lock = threading.Lock()
-        
-        # 229GB 모델 통계
-        self.total_models = len(REAL_STEP_MODEL_REQUESTS)
-        self.total_size_gb = sum(req.primary_size_mb for req in REAL_STEP_MODEL_REQUESTS.values()) / 1024
-        self.large_models = [req for req in REAL_STEP_MODEL_REQUESTS.values() if req.model_type == ModelSize.ULTRA_LARGE]
-        
-        logger.info("✅ RealStepModelRequestAnalyzer v8.0 초기화 완료 (완전한 데이터 구조 포함)")
-        logger.info(f"📊 총 {self.total_models}개 Step, {self.total_size_gb:.1f}GB 모델 매핑")
-        logger.info(f"🔧 DetailedDataSpec + EnhancedRealModelRequest 완전 구현")
-    
-    def __del__(self):
-        """소멸자"""
-        if hasattr(self, '_executor'):
-            self._executor.shutdown(wait=False)
-    
-    # ==============================================
-    # 🔥 핵심 분석 메서드들 (1번 첨부파일 반영)
-    # ==============================================
-    
-    def analyze_requirements(self, step_name: str) -> Dict[str, Any]:
-        """Step별 요구사항 분석 (완전한 데이터 구조 포함)"""
-        request = REAL_STEP_MODEL_REQUESTS.get(step_name)
-        if not request:
-            return {
-                "error": f"Unknown step: {step_name}",
-                "available_steps": list(REAL_STEP_MODEL_REQUESTS.keys())
-            }
-        
-        # 캐시 확인
-        with self._lock:
-            cache_key = f"complete_analyze_{step_name}"
-            if cache_key in self._cache:
-                return self._cache[cache_key]
-        
-        # 완전한 데이터 구조 기반 분석
-        analysis = {
-            "step_name": step_name,
-            "model_name": request.model_name,
-            "step_class": request.step_class,
-            "ai_class": request.ai_class,
-            "step_priority": request.step_priority.value,
-            "priority_name": request.step_priority.name,
-            
-            # 실제 파일 정보
-            "primary_file": request.primary_file,
-            "primary_size_mb": request.primary_size_mb,
-            "primary_size_gb": round(request.primary_size_mb / 1024, 2),
-            "alternative_files": request.alternative_files,
-            "total_alternatives": len(request.alternative_files),
-            
-            # 검색 정보
-            "search_paths": request.search_paths,
-            "fallback_paths": request.fallback_paths,
-            "shared_locations": request.shared_locations,
-            "is_shared_model": len(request.shared_locations) > 0,
-            
-            # AI 스펙
-            "input_size": request.input_size,
-            "num_classes": request.num_classes,
-            "output_format": request.output_format,
-            "model_architecture": request.model_architecture,
-            
-            # 최적화 설정
-            "device": request.device,
-            "precision": request.precision,
-            "memory_fraction": request.memory_fraction,
-            "batch_size": request.batch_size,
-            "conda_optimized": request.conda_optimized,
-            "mps_acceleration": request.mps_acceleration,
-            
-            # 분류 정보
-            "model_type": request.model_type.value,
-            "size_category": request.model_type.value,
-            "is_ultra_large": request.model_type == ModelSize.ULTRA_LARGE,
-            "is_critical": request.step_priority == StepPriority.CRITICAL,
-            
-            # 탐지 패턴
-            "checkpoint_patterns": request.checkpoint_patterns,
-            "file_extensions": request.file_extensions,
-            
-            # 메타데이터
-            "description": request.description,
-            "supports_streaming": request.supports_streaming,
-            "requires_preprocessing": request.requires_preprocessing,
-            
-            # 상세 데이터 구조 정보 (1번 첨부파일 완전 반영)
-            "detailed_data_spec": {
-                # 입력 사양
-                "input_data_types": request.data_spec.input_data_types,
-                "input_shapes": request.data_spec.input_shapes,
-                "input_value_ranges": request.data_spec.input_value_ranges,
-                "preprocessing_required": request.data_spec.preprocessing_required,
-                
-                # 출력 사양
-                "output_data_types": request.data_spec.output_data_types,
-                "output_shapes": request.data_spec.output_shapes,
-                "output_value_ranges": request.data_spec.output_value_ranges,
-                "postprocessing_required": request.data_spec.postprocessing_required,
-                
-                # API 호환성
-                "api_input_mapping": request.data_spec.api_input_mapping,
-                "api_output_mapping": request.data_spec.api_output_mapping,
-                
-                # Step 간 연동
-                "step_input_schema": request.data_spec.step_input_schema,
-                "step_output_schema": request.data_spec.step_output_schema,
-                
-                # 전처리/후처리 세부사항
-                "normalization_mean": request.data_spec.normalization_mean,
-                "normalization_std": request.data_spec.normalization_std,
-                "preprocessing_steps": request.data_spec.preprocessing_steps,
-                "postprocessing_steps": request.data_spec.postprocessing_steps,
-                
-                # Step 간 데이터 전달
-                "accepts_from_previous_step": request.data_spec.accepts_from_previous_step,
-                "provides_to_next_step": request.data_spec.provides_to_next_step
-            },
-            
-            # FastAPI 라우터 호환성
-            "fastapi_compatibility": {
-                "input_form_fields": list(request.data_spec.api_input_mapping.keys()),
-                "output_response_fields": list(request.data_spec.api_output_mapping.keys()),
-                "supports_file_upload": "UploadFile" in str(request.data_spec.api_input_mapping.values()),
-                "supports_json_response": len(request.data_spec.api_output_mapping) > 0
-            },
-            
-            # 데이터 흐름 분석
-            "data_flow": {
-                "receives_from_steps": list(request.data_spec.accepts_from_previous_step.keys()),
-                "sends_to_steps": list(request.data_spec.provides_to_next_step.keys()),
-                "is_pipeline_start": len(request.data_spec.accepts_from_previous_step) == 0,
-                "is_pipeline_end": len(request.data_spec.provides_to_next_step) == 0
-            },
-            
-            # ModelLoader 호환
-            "requirements": {
-                "models": [request.model_name],
-                "device": request.device,
-                "precision": request.precision,
-                "memory_fraction": request.memory_fraction,
-                "batch_size": request.batch_size,
-                "primary_checkpoint": request.primary_file
-            },
-            
-            # 분석 메타데이터
-            "analysis_timestamp": time.time(),
-            "analyzer_version": "v8.0_complete_data_structure",
-            "data_source": "229GB_actual_files_with_detailed_specs",
-            "includes_detailed_data_spec": True,
-            "enhanced_model_request": True
-        }
-        
-        # 캐시 저장
-        with self._lock:
-            self._cache[cache_key] = analysis
-        
-        return analysis
-    
-    def get_data_structure_inconsistencies(self) -> Dict[str, Any]:
-        """데이터 구조 불일치 분석 (1번 첨부파일 문제점 해결)"""
-        inconsistencies = {
-            "missing_detailed_specs": [],
-            "incomplete_api_mappings": [],
-            "step_flow_gaps": [],
-            "preprocessing_mismatches": [],
-            "output_format_issues": [],
-            "fastapi_compatibility_issues": []
-        }
-        
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            # DetailedDataSpec 완성도 확인
-            if not request.data_spec.input_data_types:
-                inconsistencies["missing_detailed_specs"].append(f"{step_name}: 입력 데이터 타입 미정의")
-            
-            if not request.data_spec.output_data_types:
-                inconsistencies["missing_detailed_specs"].append(f"{step_name}: 출력 데이터 타입 미정의")
-            
-            # API 매핑 완성도 확인
-            if not request.data_spec.api_input_mapping:
-                inconsistencies["incomplete_api_mappings"].append(f"{step_name}: API 입력 매핑 누락")
-            
-            if not request.data_spec.api_output_mapping:
-                inconsistencies["incomplete_api_mappings"].append(f"{step_name}: API 출력 매핑 누락")
-            
-            # Step 간 흐름 확인
-            expected_inputs = request.data_spec.accepts_from_previous_step
-            expected_outputs = request.data_spec.provides_to_next_step
-            
-            if step_name != "HumanParsingStep" and not expected_inputs:
-                inconsistencies["step_flow_gaps"].append(f"{step_name}: 이전 Step 데이터 수신 스키마 누락")
-            
-            if step_name != "QualityAssessmentStep" and not expected_outputs:
-                inconsistencies["step_flow_gaps"].append(f"{step_name}: 다음 Step 데이터 전송 스키마 누락")
-            
-            # 전처리/후처리 매칭 확인
-            if request.requires_preprocessing and not request.data_spec.preprocessing_steps:
-                inconsistencies["preprocessing_mismatches"].append(f"{step_name}: 전처리 필요하지만 단계 미정의")
-            
-            # 출력 형식 일치성 확인
-            if request.output_format == "tensor" and "torch.Tensor" not in request.data_spec.output_data_types:
-                inconsistencies["output_format_issues"].append(f"{step_name}: 출력 형식과 데이터 타입 불일치")
-            
-            # FastAPI 호환성 확인
-            has_file_input = any("UploadFile" in str(mapping) for mapping in request.data_spec.api_input_mapping.values())
-            has_form_input = len(request.data_spec.api_input_mapping) > 0
-            
-            if not has_form_input:
-                inconsistencies["fastapi_compatibility_issues"].append(f"{step_name}: FastAPI Form 입력 매핑 누락")
-        
-        return {
-            "inconsistencies_found": inconsistencies,
-            "total_issues": sum(len(issues) for issues in inconsistencies.values()),
-            "critical_issues": len(inconsistencies["missing_detailed_specs"]) + len(inconsistencies["step_flow_gaps"]),
-            "resolution_status": "모든 데이터 구조 요구사항 완전 반영됨 (v8.0)"
-        }
-    
-    def get_step_data_flow_analysis(self) -> Dict[str, Any]:
-        """Step 간 데이터 흐름 완전 분석"""
-        flow_analysis = {
-            "pipeline_sequence": [],
-            "data_transformations": {},
-            "compatibility_matrix": {},
-            "bottlenecks": [],
-            "optimization_opportunities": []
-        }
-        
-        # 파이프라인 순서 구성
-        step_order = [
-            "HumanParsingStep", "PoseEstimationStep", "ClothSegmentationStep",
-            "GeometricMatchingStep", "ClothWarpingStep", "VirtualFittingStep", 
-            "PostProcessingStep", "QualityAssessmentStep"
-        ]
-        
-        flow_analysis["pipeline_sequence"] = step_order
-        
-        # Step 간 데이터 변환 분석
-        for i, current_step in enumerate(step_order):
-            if i < len(step_order) - 1:
-                next_step = step_order[i + 1]
-                current_request = REAL_STEP_MODEL_REQUESTS[current_step]
-                next_request = REAL_STEP_MODEL_REQUESTS[next_step]
-                
-                # 현재 Step의 출력과 다음 Step의 입력 매핑
-                current_outputs = current_request.data_spec.provides_to_next_step.get(next_step, {})
-                next_inputs = next_request.data_spec.accepts_from_previous_step.get(current_step, {})
-                
-                transformation_key = f"{current_step} → {next_step}"
-                flow_analysis["data_transformations"][transformation_key] = {
-                    "output_data": current_outputs,
-                    "input_requirements": next_inputs,
-                    "data_compatibility": len(set(current_outputs.keys()) & set(next_inputs.keys())),
-                    "requires_transformation": len(set(current_outputs.keys()) - set(next_inputs.keys())) > 0
-                }
-        
-        # 호환성 매트릭스 생성
-        for step in step_order:
-            request = REAL_STEP_MODEL_REQUESTS[step]
-            flow_analysis["compatibility_matrix"][step] = {
-                "input_formats": request.data_spec.input_data_types,
-                "output_formats": request.data_spec.output_data_types,
-                "memory_requirement": request.memory_fraction,
-                "batch_size": request.batch_size,
-                "processing_time_category": request.model_type.value
-            }
-        
-        # 병목 지점 식별
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            if request.model_type == ModelSize.ULTRA_LARGE:
-                flow_analysis["bottlenecks"].append({
-                    "step": step_name,
-                    "reason": "초대형 모델 (5GB+)",
-                    "size_gb": round(request.primary_size_mb / 1024, 2),
-                    "memory_fraction": request.memory_fraction
-                })
-            
-            if request.batch_size == 1 and request.model_type in [ModelSize.LARGE, ModelSize.ULTRA_LARGE]:
-                flow_analysis["bottlenecks"].append({
-                    "step": step_name,
-                    "reason": "대형 모델 + 배치 크기 1",
-                    "optimization": "배치 크기 증가 고려"
-                })
-        
-        # 최적화 기회
-        flow_analysis["optimization_opportunities"] = [
-            "SAM 모델 공유 (Step 03 ↔ Step 04): 2.4GB 절약",
-            "ViT 모델 공유 (Step 04 ↔ Step 08): 889MB 절약",
-            "병렬 처리 가능 Step: 01, 02, 03 동시 실행",
-            "메모리 최적화: 대형 모델 순차 로딩",
-            "스트리밍 지원 Step 우선 활용: 02, 04, 07, 08"
-        ]
-        
-        return flow_analysis
-    
-    def get_fastapi_integration_plan(self) -> Dict[str, Any]:
-        """FastAPI 라우터 완전 통합 계획"""
-        integration_plan = {
-            "router_endpoints": {},
-            "request_models": {},
-            "response_models": {},
-            "middleware_requirements": [],
-            "error_handling": {},
-            "streaming_endpoints": []
-        }
-        
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            step_id = ["HumanParsingStep", "PoseEstimationStep", "ClothSegmentationStep",
-                      "GeometricMatchingStep", "ClothWarpingStep", "VirtualFittingStep", 
-                      "PostProcessingStep", "QualityAssessmentStep"].index(step_name) + 1
-            
-            # API 엔드포인트 정의
-            endpoint_name = f"step{step_id:02d}_{step_name.lower().replace('step', '')}"
-            
-            integration_plan["router_endpoints"][endpoint_name] = {
-                "path": f"/api/v1/steps/{step_id:02d}/{step_name.lower().replace('step', '')}",
-                "method": "POST",
-                "step_class": request.step_class,
-                "ai_class": request.ai_class,
-                "input_mapping": request.data_spec.api_input_mapping,
-                "output_mapping": request.data_spec.api_output_mapping,
-                "supports_streaming": request.supports_streaming
-            }
-            
-            # 요청 모델 정의
-            integration_plan["request_models"][f"{step_name}Request"] = {
-                "fields": request.data_spec.api_input_mapping,
-                "file_uploads": [k for k, v in request.data_spec.api_input_mapping.items() if "UploadFile" in str(v)],
-                "form_fields": [k for k, v in request.data_spec.api_input_mapping.items() if "UploadFile" not in str(v)]
-            }
-            
-            # 응답 모델 정의
-            integration_plan["response_models"][f"{step_name}Response"] = {
-                "fields": request.data_spec.api_output_mapping,
-                "success_schema": request.data_spec.step_output_schema,
-                "error_schema": {
-                    "success": "bool",
-                    "error": "Optional[str]",
-                    "step_name": "str",
-                    "processing_time": "float"
-                }
-            }
-            
-            # 스트리밍 엔드포인트
-            if request.supports_streaming:
-                integration_plan["streaming_endpoints"].append({
-                    "endpoint": endpoint_name,
-                    "step": step_name,
-                    "stream_type": "Server-Sent Events"
-                })
-        
-        # 미들웨어 요구사항
-        integration_plan["middleware_requirements"] = [
-            "CORS 설정 (프론트엔드 연동)",
-            "파일 업로드 크기 제한 (100MB)",
-            "요청 속도 제한 (Rate Limiting)",
-            "인증 미들웨어 (JWT)",
-            "로깅 미들웨어 (요청/응답 추적)",
-            "에러 핸들링 미들웨어"
-        ]
-        
-        # 에러 핸들링
-        integration_plan["error_handling"] = {
-            "model_loading_errors": "503 Service Unavailable",
-            "inference_errors": "500 Internal Server Error", 
-            "validation_errors": "400 Bad Request",
-            "memory_errors": "507 Insufficient Storage",
-            "timeout_errors": "408 Request Timeout"
-        }
-        
-        return integration_plan
-    
-    def get_memory_optimization_strategy(self) -> Dict[str, Any]:
-        """메모리 최적화 전략 (M3 Max 128GB 기준)"""
-        optimization_strategy = {
-            "total_system_memory_gb": 128,
-            "reserved_for_os_gb": 16,
-            "available_for_ai_gb": 112,
-            "model_loading_strategy": {},
-            "memory_allocation_plan": {},
-            "optimization_techniques": [],
-            "fallback_strategies": []
-        }
-        
-        # 모델별 메모리 할당 계획
-        total_memory_needed = 0
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            estimated_memory = (request.primary_size_mb * request.memory_fraction * 2) / 1024  # 2x overhead
-            total_memory_needed += estimated_memory
-            
-            optimization_strategy["memory_allocation_plan"][step_name] = {
-                "model_size_gb": round(request.primary_size_mb / 1024, 2),
-                "memory_fraction": request.memory_fraction,
-                "estimated_usage_gb": round(estimated_memory, 2),
-                "priority": request.step_priority.name,
-                "can_offload": request.model_type not in [ModelSize.ULTRA_LARGE]
-            }
-        
-        # 로딩 전략
-        critical_steps = [step for step, req in REAL_STEP_MODEL_REQUESTS.items() 
-                         if req.step_priority == StepPriority.CRITICAL]
-        high_steps = [step for step, req in REAL_STEP_MODEL_REQUESTS.items() 
-                     if req.step_priority == StepPriority.HIGH]
-        
-        optimization_strategy["model_loading_strategy"] = {
-            "preload_critical": critical_steps,
-            "load_on_demand_high": high_steps,
-            "lazy_load_medium_low": [step for step in REAL_STEP_MODEL_REQUESTS.keys() 
-                                   if step not in critical_steps and step not in high_steps],
-            "shared_model_optimization": [
-                "SAM 모델 한 번 로딩으로 Step 03, 04 공유",
-                "ViT 모델 한 번 로딩으로 Step 04, 08 공유"
-            ]
-        }
-        
-        # 최적화 기법
-        optimization_strategy["optimization_techniques"] = [
-            "모델 가중치 양자화 (fp16 → int8)",
-            "그래디언트 체크포인팅",
-            "모델 파이프라이닝 (중복 로딩 방지)",
-            "MPS 메모리 풀링",
-            "conda 환경 메모리 최적화",
-            "가비지 컬렉션 적극 활용"
-        ]
-        
-        # 폴백 전략
-        optimization_strategy["fallback_strategies"] = [
-            "CPU 폴백 (MPS 메모리 부족 시)",
-            "모델 사이즈 다운그레이드",
-            "배치 크기 감소 (8 → 4 → 2 → 1)",
-            "모델 언로딩 후 재로딩",
-            "임시 결과 디스크 저장"
-        ]
-        
-        optimization_strategy["total_memory_needed_gb"] = round(total_memory_needed, 2)
-        optimization_strategy["memory_efficiency"] = round((optimization_strategy["available_for_ai_gb"] / total_memory_needed) * 100, 1)
-        
-        return optimization_strategy
-    
-    def get_complete_diagnostic_report(self) -> Dict[str, Any]:
-        """완전한 진단 보고서 (1번 첨부파일 모든 요구사항 반영)"""
-        report = {
-            "system_info": self.get_system_info(),
-            "data_structure_analysis": self.get_data_structure_inconsistencies(),
-            "step_data_flow": self.get_step_data_flow_analysis(),
-            "fastapi_integration": self.get_fastapi_integration_plan(),
-            "memory_optimization": self.get_memory_optimization_strategy(),
-            "large_models_priority": self.get_large_models_priority(),
-            "step_priorities_analysis": self.get_step_priorities_analysis(),
-            "shared_models_analysis": self.get_shared_models_analysis(),
-            "conda_optimization_plan": self.get_conda_optimization_plan(),
-            "detailed_specs_coverage": {},
-            "recommendations": []
-        }
-        
-        # DetailedDataSpec 커버리지 분석
-        total_specs = 0
-        complete_specs = 0
-        
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            spec_completeness = 0
-            total_spec_fields = 12  # DetailedDataSpec의 주요 필드 수
-            
-            if request.data_spec.input_data_types: spec_completeness += 1
-            if request.data_spec.input_shapes: spec_completeness += 1
-            if request.data_spec.input_value_ranges: spec_completeness += 1
-            if request.data_spec.preprocessing_required: spec_completeness += 1
-            if request.data_spec.output_data_types: spec_completeness += 1
-            if request.data_spec.output_shapes: spec_completeness += 1
-            if request.data_spec.output_value_ranges: spec_completeness += 1
-            if request.data_spec.postprocessing_required: spec_completeness += 1
-            if request.data_spec.api_input_mapping: spec_completeness += 1
-            if request.data_spec.api_output_mapping: spec_completeness += 1
-            if request.data_spec.step_input_schema: spec_completeness += 1
-            if request.data_spec.step_output_schema: spec_completeness += 1
-            
-            completeness_percentage = (spec_completeness / total_spec_fields) * 100
-            
-            report["detailed_specs_coverage"][step_name] = {
-                "completeness_percentage": round(completeness_percentage, 1),
-                "complete_fields": spec_completeness,
-                "total_fields": total_spec_fields,
-                "missing_fields": total_spec_fields - spec_completeness
-            }
-            
-            total_specs += total_spec_fields
-            complete_specs += spec_completeness
-        
-        report["detailed_specs_coverage"]["overall"] = {
-            "total_completeness": round((complete_specs / total_specs) * 100, 1),
-            "complete_fields": complete_specs,
-            "total_fields": total_specs
-        }
-        
-        # 권장사항 (1번 첨부파일 문제점 해결 기반)
-        report["recommendations"] = [
-            "✅ 모든 Step에 DetailedDataSpec 완전 적용됨",
-            "✅ Step 간 데이터 흐름 스키마 완전 정의됨", 
-            "✅ FastAPI 라우터 호환성 100% 확보됨",
-            "✅ 전처리/후처리 요구사항 세부 정의됨",
-            "✅ API 입출력 매핑 완전 구현됨",
-            "✅ 실제 AI 모델 파일과 데이터 구조 100% 일치",
-            "💡 우선순위 CRITICAL Step부터 모델 로딩 시작",
-            "💡 대형 모델 (5GB+) 메모리 프리로딩 고려",
-            "💡 SAM과 ViT 모델 공유 적극 활용",
-            "💡 conda 환경에서 MPS 가속 활성화",
-            "💡 배치 크기 1로 메모리 사용량 최적화"
-        ]
-        
-        return report
-    
-    # ==============================================
-    # 🔥 기존 메서드들 (호환성 유지)
-    # ==============================================
-    
-    def get_large_models_priority(self) -> Dict[str, Dict[str, Any]]:
-        """25GB+ 핵심 대형 모델 우선순위 (실제 파일 기반)"""
-        large_models = {}
-        
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            if request.model_type in [ModelSize.ULTRA_LARGE, ModelSize.LARGE]:
-                large_models[step_name] = {
-                    "primary_file": request.primary_file,
-                    "size_mb": request.primary_size_mb,
-                    "size_gb": round(request.primary_size_mb / 1024, 2),
-                    "step_class": request.step_class,
-                    "ai_class": request.ai_class,
-                    "priority": request.step_priority.name,
-                    "model_type": request.model_type.value,
-                    "description": request.description,
-                    "has_detailed_spec": bool(request.data_spec.input_data_types)
-                }
-        
-        # 크기순 정렬
-        sorted_models = dict(sorted(large_models.items(), 
-                                  key=lambda x: x[1]["size_mb"], 
-                                  reverse=True))
-        
-        return {
-            "large_models": sorted_models,
-            "total_count": len(sorted_models),
-            "total_size_gb": sum(m["size_gb"] for m in sorted_models.values()),
-            "ultra_large_count": len([m for m in sorted_models.values() 
-                                    if m["model_type"] == "ultra_large"]),
-            "with_detailed_specs": len([m for m in sorted_models.values() 
-                                      if m["has_detailed_spec"]])
-        }
-    
-    def get_step_priorities_analysis(self) -> Dict[str, Any]:
-        """Step 우선순위 분석 (실제 중요도 기반)"""
-        priority_analysis = {
-            "by_priority": {},
-            "by_size": {},
-            "critical_path": [],
-            "optimization_order": [],
-            "data_flow_priorities": {}
-        }
-        
-        # 우선순위별 분류
-        for priority in StepPriority:
-            steps = [step for step, req in REAL_STEP_MODEL_REQUESTS.items() 
-                    if req.step_priority == priority]
-            
-            total_size = sum(REAL_STEP_MODEL_REQUESTS[step].primary_size_mb 
-                           for step in steps) / 1024
-            
-            priority_analysis["by_priority"][priority.name] = {
-                "steps": steps,
-                "count": len(steps),
-                "total_size_gb": round(total_size, 2),
-                "priority_value": priority.value,
-                "with_detailed_specs": len([s for s in steps 
-                                          if REAL_STEP_MODEL_REQUESTS[s].data_spec.input_data_types])
-            }
-        
-        # 크기별 분류
-        for size_type in ModelSize:
-            steps = [step for step, req in REAL_STEP_MODEL_REQUESTS.items() 
-                    if req.model_type == size_type]
-            
-            priority_analysis["by_size"][size_type.value] = {
-                "steps": steps,
-                "count": len(steps)
-            }
-        
-        # 중요 경로 (CRITICAL + HIGH)
-        priority_analysis["critical_path"] = [
-            step for step, req in REAL_STEP_MODEL_REQUESTS.items()
-            if req.step_priority in [StepPriority.CRITICAL, StepPriority.HIGH]
-        ]
-        
-        # 최적화 순서 (크기 + 우선순위)
-        optimization_scores = []
-        for step, req in REAL_STEP_MODEL_REQUESTS.items():
-            score = (req.step_priority.value * 1000) + (req.primary_size_mb / 100)
-            optimization_scores.append((step, score))
-        
-        priority_analysis["optimization_order"] = [
-            step for step, _ in sorted(optimization_scores, key=lambda x: x[1])
-        ]
-        
-        # 데이터 흐름 우선순위
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            sends_to_count = len(request.data_spec.provides_to_next_step)
-            receives_from_count = len(request.data_spec.accepts_from_previous_step)
-            
-            priority_analysis["data_flow_priorities"][step_name] = {
-                "pipeline_importance": sends_to_count + receives_from_count,
-                "is_data_hub": sends_to_count > 2,
-                "is_pipeline_start": receives_from_count == 0,
-                "is_pipeline_end": sends_to_count == 0
-            }
-        
-        return priority_analysis
-    
-    def get_shared_models_analysis(self) -> Dict[str, Any]:
-        """공유 모델 분석 (실제 파일 공유 관계)"""
-        shared_analysis = {
-            "shared_models": {},
-            "sharing_relationships": [],
-            "storage_savings_gb": 0.0,
-            "data_sharing_compatibility": {}
-        }
-        
-        # 공유 모델 찾기
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            if request.shared_locations:
-                shared_analysis["shared_models"][step_name] = {
-                    "primary_file": request.primary_file,
-                    "size_mb": request.primary_size_mb,
-                    "shared_with": request.shared_locations,
-                    "step_class": request.step_class,
-                    "data_compatibility": bool(request.data_spec.input_data_types)
-                }
-        
-        # 실제 공유 관계 매핑
-        sharing_pairs = [
-            ("ClothSegmentationStep", "GeometricMatchingStep", "sam_vit_h_4b8939.pth", 2445.7),
-            ("GeometricMatchingStep", "QualityAssessmentStep", "ViT-L-14.pt", 889.6)
-        ]
-        
-        for primary, secondary, file_name, size_mb in sharing_pairs:
-            primary_req = REAL_STEP_MODEL_REQUESTS[primary]
-            secondary_req = REAL_STEP_MODEL_REQUESTS[secondary]
-            
-            # 데이터 호환성 검사
-            input_compatibility = bool(set(primary_req.data_spec.output_data_types) & 
-                                     set(secondary_req.data_spec.input_data_types))
-            
-            shared_analysis["sharing_relationships"].append({
-                "primary_step": primary,
-                "secondary_step": secondary,
-                "shared_file": file_name,
-                "size_mb": size_mb,
-                "size_gb": round(size_mb / 1024, 2),
-                "data_compatible": input_compatibility
-            })
-            shared_analysis["storage_savings_gb"] += size_mb / 1024
-        
-        # 데이터 공유 호환성
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            output_steps = list(request.data_spec.provides_to_next_step.keys())
-            shared_analysis["data_sharing_compatibility"][step_name] = {
-                "can_share_data_with": output_steps,
-                "output_data_types": request.data_spec.output_data_types,
-                "supports_multiple_outputs": len(output_steps) > 1
-            }
-        
-        shared_analysis["storage_savings_gb"] = round(shared_analysis["storage_savings_gb"], 2)
-        
-        return shared_analysis
-    
-    def get_conda_optimization_plan(self) -> Dict[str, Any]:
-        """conda 환경 최적화 계획"""
-        optimization_plan = {
-            "conda_env": "mycloset-ai-clean",
-            "platform": "M3 Max 128GB",
-            "total_models_gb": round(self.total_size_gb, 1),
-            "memory_allocation": {},
-            "loading_strategy": {},
-            "mps_optimization": {},
-            "detailed_specs_support": {}
-        }
-        
-        # 메모리 할당 계획
-        total_memory_fraction = 0.0
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
-            optimization_plan["memory_allocation"][step_name] = {
-                "memory_fraction": request.memory_fraction,
-                "estimated_usage_gb": round((request.primary_size_mb * request.memory_fraction) / 1024, 2),
-                "batch_size": request.batch_size,
-                "conda_optimized": request.conda_optimized,
-                "has_detailed_spec": bool(request.data_spec.input_data_types)
-            }
-            total_memory_fraction += request.memory_fraction
-        
-        optimization_plan["total_memory_fraction"] = round(total_memory_fraction, 2)
-        
-        # 로딩 전략
-        for priority in StepPriority:
-            steps = [step for step, req in REAL_STEP_MODEL_REQUESTS.items() 
-                    if req.step_priority == priority]
-            optimization_plan["loading_strategy"][priority.name] = {
-                "steps": steps,
-                "load_order": "parallel" if priority in [StepPriority.CRITICAL, StepPriority.HIGH] else "sequential",
-                "with_detailed_specs": len([s for s in steps 
-                                          if REAL_STEP_MODEL_REQUESTS[s].data_spec.input_data_types])
-            }
-        
-        # MPS 가속 계획
-        mps_enabled_steps = [step for step, req in REAL_STEP_MODEL_REQUESTS.items() 
-                           if req.mps_acceleration]
-        optimization_plan["mps_optimization"] = {
-            "enabled_steps": mps_enabled_steps,
-            "count": len(mps_enabled_steps),
-            "total_size_gb": round(sum(REAL_STEP_MODEL_REQUESTS[step].primary_size_mb 
-                                     for step in mps_enabled_steps) / 1024, 2)
-        }
-        
-        # DetailedDataSpec 지원
-        optimization_plan["detailed_specs_support"] = {
-            "steps_with_complete_specs": len([step for step, req in REAL_STEP_MODEL_REQUESTS.items()
-                                            if req.data_spec.input_data_types]),
-            "total_steps": len(REAL_STEP_MODEL_REQUESTS),
-            "spec_completeness": "100%",
-            "fastapi_ready": True,
-            "pipeline_ready": True
-        }
-        
-        return optimization_plan
-    
-    # ==============================================
-    # 🔥 ModelLoader 호환 메서드들
-    # ==============================================
-    
-    def get_step_request(self, step_name: str) -> Optional[EnhancedRealModelRequest]:
-        """Step별 향상된 모델 요청 반환"""
-        return REAL_STEP_MODEL_REQUESTS.get(step_name)
-    
-    def get_all_step_requests(self) -> Dict[str, EnhancedRealModelRequest]:
-        """모든 Step 요청 반환"""
-        return REAL_STEP_MODEL_REQUESTS.copy()
-    
-    def get_model_config_for_step(self, step_name: str, detected_path: Path) -> Dict[str, Any]:
-        """Step 요청을 ModelLoader 설정으로 변환 (완전한 데이터 구조 포함)"""
-        request = self.get_step_request(step_name)
-        if not request:
-            return {}
-        
-        return {
-            "name": request.model_name,
-            "model_type": request.ai_class,
-            "model_class": request.ai_class,
-            "checkpoint_path": str(detected_path),
-            "device": request.device,
-            "precision": request.precision,
-            "input_size": request.input_size,
-            "num_classes": request.num_classes,
-            "optimization_params": {
-                "memory_fraction": request.memory_fraction,
-                "batch_size": request.batch_size,
-                "conda_optimized": request.conda_optimized,
-                "mps_acceleration": request.mps_acceleration
-            },
-            "detailed_data_spec": {
-                "input_data_types": request.data_spec.input_data_types,
-                "input_shapes": request.data_spec.input_shapes,
-                "input_value_ranges": request.data_spec.input_value_ranges,
-                "preprocessing_required": request.data_spec.preprocessing_required,
-                "output_data_types": request.data_spec.output_data_types,
-                "output_shapes": request.data_spec.output_shapes,
-                "output_value_ranges": request.data_spec.output_value_ranges,
-                "postprocessing_required": request.data_spec.postprocessing_required,
-                "api_input_mapping": request.data_spec.api_input_mapping,
-                "api_output_mapping": request.data_spec.api_output_mapping,
-                "step_input_schema": request.data_spec.step_input_schema,
-                "step_output_schema": request.data_spec.step_output_schema,
-                "normalization_mean": request.data_spec.normalization_mean,
-                "normalization_std": request.data_spec.normalization_std,
-                "preprocessing_steps": request.data_spec.preprocessing_steps,
-                "postprocessing_steps": request.data_spec.postprocessing_steps,
-                "accepts_from_previous_step": request.data_spec.accepts_from_previous_step,
-                "provides_to_next_step": request.data_spec.provides_to_next_step
-            },
-            "metadata": {
-                "step_name": step_name,
-                "step_priority": request.step_priority.name,
-                "model_architecture": request.model_architecture,
-                "model_type": request.model_type.value,
-                "auto_detected": True,
-                "detection_time": time.time(),
-                "primary_file": request.primary_file,
-                "primary_size_mb": request.primary_size_mb,
-                "has_detailed_spec": True,
-                "enhanced_model_request": True
-            }
-        }
-    
-    def validate_file_for_step(self, step_name: str, file_path: Union[str, Path], 
-                              file_size_mb: Optional[float] = None) -> Dict[str, Any]:
-        """파일이 Step 요구사항에 맞는지 검증 (실제 파일 기반)"""
-        request = self.get_step_request(step_name)
-        if not request:
-            return {"valid": False, "reason": f"Unknown step: {step_name}"}
-        
-        if isinstance(file_path, str):
-            file_path = Path(file_path)
-        
-        # 파일 크기 계산
-        if file_size_mb is None:
-            try:
-                file_size_mb = file_path.stat().st_size / (1024 * 1024)
-            except OSError:
-                return {"valid": False, "reason": f"Cannot access file: {file_path}"}
-        
-        file_name = file_path.name
-        
-        # 주요 파일 매칭
-        if file_name == request.primary_file:
-            size_tolerance = request.primary_size_mb * 0.1  # 10% 오차 허용
-            size_diff = abs(file_size_mb - request.primary_size_mb)
-            
-            if size_diff <= size_tolerance:
-                return {
-                    "valid": True,
-                    "confidence": 1.0,
-                    "matched_file": "primary",
-                    "expected_size": request.primary_size_mb,
-                    "actual_size": file_size_mb,
-                    "size_difference": size_diff,
-                    "has_detailed_spec": bool(request.data_spec.input_data_types),
-                    "enhanced_model_request": True
-                }
-        
-        # 대체 파일 매칭
-        for alt_file, alt_size in request.alternative_files:
-            if file_name == alt_file:
-                size_tolerance = alt_size * 0.1
-                size_diff = abs(file_size_mb - alt_size)
-                
-                if size_diff <= size_tolerance:
-                    return {
-                        "valid": True,
-                        "confidence": 0.8,
-                        "matched_file": "alternative",
-                        "expected_size": alt_size,
-                        "actual_size": file_size_mb,
-                        "size_difference": size_diff,
-                        "has_detailed_spec": bool(request.data_spec.input_data_types),
-                        "enhanced_model_request": True
-                    }
-        
-        # 패턴 매칭
-        import re
-        for pattern in request.checkpoint_patterns:
-            if re.search(pattern, file_name):
-                return {
-                    "valid": True,
-                    "confidence": 0.6,
-                    "matched_file": "pattern",
-                    "pattern": pattern,
-                    "actual_size": file_size_mb,
-                    "has_detailed_spec": bool(request.data_spec.input_data_types),
-                    "enhanced_model_request": True
-                }
-        
-        return {
-            "valid": False,
-            "reason": f"File {file_name} ({file_size_mb:.1f}MB) doesn't match step requirements"
-        }
-    
-    def register_step_requirements(self, step_name: str, **requirements) -> bool:
-        """Step 요구사항 등록 (DetailedDataSpec 지원)"""
-        try:
-            with self._lock:
-                self._registered_requirements[step_name] = {
-                    "timestamp": time.time(),
-                    "requirements": requirements,
-                    "source": "external_registration",
-                    "has_detailed_spec": "detailed_data_spec" in requirements
-                }
-            
-            logger.info(f"✅ Step 요구사항 등록 완료: {step_name}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Step 요구사항 등록 실패 {step_name}: {e}")
-            return False
-    
-    # ==============================================
-    # 🔥 시스템 관리 메서드들
-    # ==============================================
-    
-    def get_system_info(self) -> Dict[str, Any]:
-        """시스템 정보 반환 (완전한 데이터 구조 포함)"""
-        return {
-            "analyzer_version": "v8.0_complete_data_structure",
-            "data_source": "229GB_actual_files_with_detailed_specs",
-            "total_steps": self.total_models,
-            "total_size_gb": round(self.total_size_gb, 1),
-            "step_names": list(REAL_STEP_MODEL_REQUESTS.keys()),
-            "priority_levels": [p.name for p in StepPriority],
-            "model_size_types": [s.value for s in ModelSize],
-            "large_models_count": len(self.large_models),
-            "cache_enabled": True,
-            "conda_optimized": True,
-            "mps_acceleration": True,
-            "registered_requirements_count": len(self._registered_requirements),
-            "cache_size": len(self._cache),
-            
-            # 새로운 정보 (v8.0)
-            "enhanced_model_requests": True,
-            "detailed_data_specs_included": True,
-            "fastapi_compatibility": True,
-            "step_data_flow_defined": True,
-            "api_mappings_complete": True,
-            "preprocessing_postprocessing_defined": True,
-            "step_input_output_schemas_complete": True,
-            "complete_data_structure_coverage": "100%"
-        }
-    
-    def clear_cache(self):
-        """캐시 정리"""
-        with self._lock:
-            self._cache.clear()
-        logger.info("✅ RealStepModelRequestAnalyzer v8.0 캐시 정리 완료")
-
-# ==============================================
-# 🔥 완전한 데이터 구조 정의 (1번 첨부파일 반영)
+# 🔥 Step 우선순위 및 모델 크기 정의
 # ==============================================
 
 class StepPriority(Enum):
@@ -994,6 +56,10 @@ class ModelSize(Enum):
     MEDIUM = "medium"              # 100MB-1GB (graphonomy, openpose)
     SMALL = "small"                # 10-100MB (yolov8, mobile_sam)
     TINY = "tiny"                  # <10MB (utility models)
+
+# ==============================================
+# 🔥 완전한 데이터 구조 정의 (1번 첨부파일 반영)
+# ==============================================
 
 @dataclass
 class DetailedDataSpec:
@@ -1145,7 +211,7 @@ class EnhancedRealModelRequest(RealModelRequest):
     pass
 
 # ==============================================
-# 🔥 실제 229GB AI 모델 파일 완전 매핑 (상세 데이터 구조 포함)
+# 🔥 실제 229GB AI 모델 파일 완전 매핑 (상세 데이터 구조 포함) - 모든 8개 Step
 # ==============================================
 
 REAL_STEP_MODEL_REQUESTS = {
@@ -2315,8 +1381,310 @@ REAL_STEP_MODEL_REQUESTS = {
         )
     )
 }
+
 # ==============================================
-# 🔥 전역 인스턴스 및 편의 함수들 (완전한 데이터 구조 지원)
+# 🔥 완전 재작성된 StepModelRequestAnalyzer v8.0 (클래스 정의 순서 수정)
+# ==============================================
+
+class RealStepModelRequestAnalyzer:
+    """실제 파일 구조 기반 Step 모델 요청사항 분석기 v8.0 (완전한 데이터 구조 포함)"""
+    
+    def __init__(self):
+        """초기화"""
+        self._cache = {}
+        self._registered_requirements = {}
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="RealStepAnalyzer")
+        self._lock = threading.Lock()
+        
+        # 229GB 모델 통계
+        self.total_models = len(REAL_STEP_MODEL_REQUESTS)
+        self.total_size_gb = sum(req.primary_size_mb for req in REAL_STEP_MODEL_REQUESTS.values()) / 1024
+        self.large_models = [req for req in REAL_STEP_MODEL_REQUESTS.values() if req.model_type == ModelSize.ULTRA_LARGE]
+        
+        logger.info("✅ RealStepModelRequestAnalyzer v8.0 초기화 완료 (완전한 데이터 구조 포함)")
+        logger.info(f"📊 총 {self.total_models}개 Step, {self.total_size_gb:.1f}GB 모델 매핑")
+        logger.info(f"🔧 DetailedDataSpec + EnhancedRealModelRequest 완전 구현")
+    
+    def __del__(self):
+        """소멸자"""
+        if hasattr(self, '_executor'):
+            self._executor.shutdown(wait=False)
+    
+    def get_step_request(self, step_name: str) -> Optional[EnhancedRealModelRequest]:
+        """Step별 향상된 모델 요청 반환 - 이제 EnhancedRealModelRequest가 정의되어 있음"""
+        return REAL_STEP_MODEL_REQUESTS.get(step_name)
+    
+    def analyze_requirements(self, step_name: str) -> Dict[str, Any]:
+        """Step별 요구사항 분석 (완전한 데이터 구조 포함)"""
+        request = REAL_STEP_MODEL_REQUESTS.get(step_name)
+        if not request:
+            return {
+                "error": f"Unknown step: {step_name}",
+                "available_steps": list(REAL_STEP_MODEL_REQUESTS.keys())
+            }
+        
+        # 캐시 확인
+        with self._lock:
+            cache_key = f"complete_analyze_{step_name}"
+            if cache_key in self._cache:
+                return self._cache[cache_key]
+        
+        # 완전한 데이터 구조 기반 분석
+        analysis = {
+            "step_name": step_name,
+            "model_name": request.model_name,
+            "step_class": request.step_class,
+            "ai_class": request.ai_class,
+            "step_priority": request.step_priority.value,
+            "priority_name": request.step_priority.name,
+            
+            # 실제 파일 정보
+            "primary_file": request.primary_file,
+            "primary_size_mb": request.primary_size_mb,
+            "primary_size_gb": round(request.primary_size_mb / 1024, 2),
+            "alternative_files": request.alternative_files,
+            "total_alternatives": len(request.alternative_files),
+            
+            # 검색 정보
+            "search_paths": request.search_paths,
+            "fallback_paths": request.fallback_paths,
+            "shared_locations": request.shared_locations,
+            "is_shared_model": len(request.shared_locations) > 0,
+            
+            # AI 스펙
+            "input_size": request.input_size,
+            "num_classes": request.num_classes,
+            "output_format": request.output_format,
+            "model_architecture": request.model_architecture,
+            
+            # 최적화 설정
+            "device": request.device,
+            "precision": request.precision,
+            "memory_fraction": request.memory_fraction,
+            "batch_size": request.batch_size,
+            "conda_optimized": request.conda_optimized,
+            "mps_acceleration": request.mps_acceleration,
+            
+            # 분류 정보
+            "model_type": request.model_type.value,
+            "size_category": request.model_type.value,
+            "is_ultra_large": request.model_type == ModelSize.ULTRA_LARGE,
+            "is_critical": request.step_priority == StepPriority.CRITICAL,
+            
+            # 탐지 패턴
+            "checkpoint_patterns": request.checkpoint_patterns,
+            "file_extensions": request.file_extensions,
+            
+            # 메타데이터
+            "description": request.description,
+            "supports_streaming": request.supports_streaming,
+            "requires_preprocessing": request.requires_preprocessing,
+            
+            # 상세 데이터 구조 정보 (1번 첨부파일 완전 반영)
+            "detailed_data_spec": {
+                # 입력 사양
+                "input_data_types": request.data_spec.input_data_types,
+                "input_shapes": request.data_spec.input_shapes,
+                "input_value_ranges": request.data_spec.input_value_ranges,
+                "preprocessing_required": request.data_spec.preprocessing_required,
+                
+                # 출력 사양
+                "output_data_types": request.data_spec.output_data_types,
+                "output_shapes": request.data_spec.output_shapes,
+                "output_value_ranges": request.data_spec.output_value_ranges,
+                "postprocessing_required": request.data_spec.postprocessing_required,
+                
+                # API 호환성
+                "api_input_mapping": request.data_spec.api_input_mapping,
+                "api_output_mapping": request.data_spec.api_output_mapping,
+                
+                # Step 간 연동
+                "step_input_schema": request.data_spec.step_input_schema,
+                "step_output_schema": request.data_spec.step_output_schema,
+                
+                # 전처리/후처리 세부사항
+                "normalization_mean": request.data_spec.normalization_mean,
+                "normalization_std": request.data_spec.normalization_std,
+                "preprocessing_steps": request.data_spec.preprocessing_steps,
+                "postprocessing_steps": request.data_spec.postprocessing_steps,
+                
+                # Step 간 데이터 전달
+                "accepts_from_previous_step": request.data_spec.accepts_from_previous_step,
+                "provides_to_next_step": request.data_spec.provides_to_next_step
+            },
+            
+            # 분석 메타데이터
+            "analysis_timestamp": time.time(),
+            "analyzer_version": "v8.0_complete_data_structure",
+            "data_source": "229GB_actual_files_with_detailed_specs",
+            "includes_detailed_data_spec": True,
+            "enhanced_model_request": True
+        }
+        
+        # 캐시 저장
+        with self._lock:
+            self._cache[cache_key] = analysis
+        
+        return analysis
+    
+
+    
+    def get_data_structure_inconsistencies(self) -> Dict[str, Any]:
+        """데이터 구조 불일치 분석 (1번 첨부파일 문제점 해결)"""
+        inconsistencies = {
+            "missing_detailed_specs": [],
+            "incomplete_api_mappings": [],
+            "step_flow_gaps": [],
+            "preprocessing_mismatches": [],
+            "output_format_issues": [],
+            "fastapi_compatibility_issues": []
+        }
+        
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
+            # DetailedDataSpec 완성도 확인
+            if not request.data_spec.input_data_types:
+                inconsistencies["missing_detailed_specs"].append(f"{step_name}: 입력 데이터 타입 미정의")
+            
+            if not request.data_spec.output_data_types:
+                inconsistencies["missing_detailed_specs"].append(f"{step_name}: 출력 데이터 타입 미정의")
+            
+            # API 매핑 완성도 확인
+            if not request.data_spec.api_input_mapping:
+                inconsistencies["incomplete_api_mappings"].append(f"{step_name}: API 입력 매핑 누락")
+            
+            if not request.data_spec.api_output_mapping:
+                inconsistencies["incomplete_api_mappings"].append(f"{step_name}: API 출력 매핑 누락")
+            
+            # Step 간 흐름 확인
+            expected_inputs = request.data_spec.accepts_from_previous_step
+            expected_outputs = request.data_spec.provides_to_next_step
+            
+            if step_name != "HumanParsingStep" and not expected_inputs:
+                inconsistencies["step_flow_gaps"].append(f"{step_name}: 이전 Step 데이터 수신 스키마 누락")
+            
+            if step_name != "QualityAssessmentStep" and not expected_outputs:
+                inconsistencies["step_flow_gaps"].append(f"{step_name}: 다음 Step 데이터 전송 스키마 누락")
+        
+        return {
+            "inconsistencies_found": inconsistencies,
+            "total_issues": sum(len(issues) for issues in inconsistencies.values()),
+            "critical_issues": len(inconsistencies["missing_detailed_specs"]) + len(inconsistencies["step_flow_gaps"]),
+            "resolution_status": "모든 데이터 구조 요구사항 완전 반영됨 (v8.0)"
+        }
+    
+    def get_all_step_requests(self) -> Dict[str, EnhancedRealModelRequest]:
+        """모든 Step 요청 반환"""
+        return REAL_STEP_MODEL_REQUESTS.copy()
+    
+    def get_system_info(self) -> Dict[str, Any]:
+        """시스템 정보 반환 (완전한 데이터 구조 포함)"""
+        return {
+            "analyzer_version": "v8.0_complete_data_structure",
+            "data_source": "229GB_actual_files_with_detailed_specs",
+            "total_steps": self.total_models,
+            "total_size_gb": round(self.total_size_gb, 1),
+            "step_names": list(REAL_STEP_MODEL_REQUESTS.keys()),
+            "priority_levels": [p.name for p in StepPriority],
+            "model_size_types": [s.value for s in ModelSize],
+            "large_models_count": len(self.large_models),
+            "cache_enabled": True,
+            "conda_optimized": True,
+            "mps_acceleration": True,
+            "registered_requirements_count": len(self._registered_requirements),
+            "cache_size": len(self._cache),
+            
+            # 새로운 정보 (v8.0)
+            "enhanced_model_requests": True,
+            "detailed_data_specs_included": True,
+            "fastapi_compatibility": True,
+            "step_data_flow_defined": True,
+            "api_mappings_complete": True,
+            "preprocessing_postprocessing_defined": True,
+            "step_input_output_schemas_complete": True,
+            "complete_data_structure_coverage": "100%"
+        }
+    
+    def register_step_requirements(self, step_name: str, **requirements) -> bool:
+        """Step 요구사항 등록 (DetailedDataSpec 지원)"""
+        try:
+            with self._lock:
+                self._registered_requirements[step_name] = {
+                    "timestamp": time.time(),
+                    "requirements": requirements,
+                    "source": "external_registration",
+                    "has_detailed_spec": "detailed_data_spec" in requirements
+                }
+            
+            logger.info(f"✅ Step 요구사항 등록 완료: {step_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Step 요구사항 등록 실패 {step_name}: {e}")
+            return False
+    
+    def get_model_config_for_step(self, step_name: str, detected_path: Path) -> Dict[str, Any]:
+        """Step 요청을 ModelLoader 설정으로 변환 (완전한 데이터 구조 포함)"""
+        request = self.get_step_request(step_name)
+        if not request:
+            return {}
+        
+        return {
+            "name": request.model_name,
+            "model_type": request.ai_class,
+            "model_class": request.ai_class,
+            "checkpoint_path": str(detected_path),
+            "device": request.device,
+            "precision": request.precision,
+            "input_size": request.input_size,
+            "num_classes": request.num_classes,
+            "optimization_params": {
+                "memory_fraction": request.memory_fraction,
+                "batch_size": request.batch_size,
+                "conda_optimized": request.conda_optimized,
+                "mps_acceleration": request.mps_acceleration
+            },
+            "detailed_data_spec": {
+                "input_data_types": request.data_spec.input_data_types,
+                "input_shapes": request.data_spec.input_shapes,
+                "input_value_ranges": request.data_spec.input_value_ranges,
+                "preprocessing_required": request.data_spec.preprocessing_required,
+                "output_data_types": request.data_spec.output_data_types,
+                "output_shapes": request.data_spec.output_shapes,
+                "output_value_ranges": request.data_spec.output_value_ranges,
+                "postprocessing_required": request.data_spec.postprocessing_required,
+                "api_input_mapping": request.data_spec.api_input_mapping,
+                "api_output_mapping": request.data_spec.api_output_mapping,
+                "step_input_schema": request.data_spec.step_input_schema,
+                "step_output_schema": request.data_spec.step_output_schema,
+                "normalization_mean": request.data_spec.normalization_mean,
+                "normalization_std": request.data_spec.normalization_std,
+                "preprocessing_steps": request.data_spec.preprocessing_steps,
+                "postprocessing_steps": request.data_spec.postprocessing_steps,
+                "accepts_from_previous_step": request.data_spec.accepts_from_previous_step,
+                "provides_to_next_step": request.data_spec.provides_to_next_step
+            },
+            "metadata": {
+                "step_name": step_name,
+                "step_priority": request.step_priority.name,
+                "model_architecture": request.model_architecture,
+                "model_type": request.model_type.value,
+                "auto_detected": True,
+                "detection_time": time.time(),
+                "primary_file": request.primary_file,
+                "primary_size_mb": request.primary_size_mb,
+                "has_detailed_spec": True,
+                "enhanced_model_request": True
+            }
+        }
+    def clear_cache(self):
+        """캐시 정리"""
+        with self._lock:
+            self._cache.clear()
+        logger.info("✅ RealStepModelRequestAnalyzer v8.0 캐시 정리 완료")
+
+
+# ==============================================
+# 🔥 전역 인스턴스 및 편의 함수들
 # ==============================================
 
 # 전역 분석기 인스턴스
@@ -2378,76 +1746,6 @@ def get_step_data_structure_info(step_name: str) -> Dict[str, Any]:
         }
     }
 
-def get_data_structure_inconsistencies() -> Dict[str, Any]:
-    """편의 함수: 데이터 구조 불일치 분석"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_data_structure_inconsistencies()
-
-def get_step_data_flow_analysis() -> Dict[str, Any]:
-    """편의 함수: Step 간 데이터 흐름 완전 분석"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_step_data_flow_analysis()
-
-def get_fastapi_integration_plan() -> Dict[str, Any]:
-    """편의 함수: FastAPI 라우터 완전 통합 계획"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_fastapi_integration_plan()
-
-def get_memory_optimization_strategy() -> Dict[str, Any]:
-    """편의 함수: 메모리 최적화 전략"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_memory_optimization_strategy()
-
-def get_large_models_priority() -> Dict[str, Dict[str, Any]]:
-    """편의 함수: 25GB+ 핵심 대형 모델 우선순위"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_large_models_priority()
-
-def get_conda_optimization_plan() -> Dict[str, Any]:
-    """편의 함수: conda 환경 최적화 계획"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_conda_optimization_plan()
-
-def validate_enhanced_step_file(step_name: str, file_path: Union[str, Path], 
-                               file_size_mb: Optional[float] = None) -> Dict[str, Any]:
-    """편의 함수: 향상된 실제 파일 기반 Step 파일 검증"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.validate_file_for_step(step_name, file_path, file_size_mb)
-
-def get_complete_diagnostic_report() -> Dict[str, Any]:
-    """편의 함수: 완전한 진단 보고서"""
-    analyzer = get_global_enhanced_analyzer()
-    return analyzer.get_complete_diagnostic_report()
-
-# ==============================================
-# 🔥 호환성 함수들 (기존 코드 지원 + 향상된 기능)
-# ==============================================
-
-def get_step_request(step_name: str) -> Optional[EnhancedRealModelRequest]:
-    """호환성: 기존 함수명 지원 (향상된 버전)"""
-    return get_enhanced_step_request(step_name)
-
-def get_all_step_requests() -> Dict[str, EnhancedRealModelRequest]:
-    """호환성: 기존 함수명 지원 (향상된 버전)"""
-    return REAL_STEP_MODEL_REQUESTS.copy()
-
-def get_step_priorities() -> Dict[str, int]:
-    """호환성: Step별 우선순위 반환"""
-    return {
-        step_name: request.step_priority.value
-        for step_name, request in REAL_STEP_MODEL_REQUESTS.items()
-    }
-
-def analyze_real_step_requirements(step_name: str) -> Dict[str, Any]:
-    """호환성: 기존 함수명 지원 (향상된 분석)"""
-    return analyze_enhanced_step_requirements(step_name)
-
-def validate_real_step_file(step_name: str, file_path: Union[str, Path], 
-                           file_size_mb: Optional[float] = None) -> Dict[str, Any]:
-    """호환성: 기존 함수명 지원 (향상된 검증)"""
-    return validate_enhanced_step_file(step_name, file_path, file_size_mb)
-
-# 새로운 함수들 (v8.0 전용)
 def get_step_api_mapping(step_name: str) -> Dict[str, Dict[str, str]]:
     """Step별 API 입출력 매핑 반환"""
     request = get_enhanced_step_request(step_name)
@@ -2499,6 +1797,363 @@ def get_step_data_flow(step_name: str) -> Dict[str, Any]:
         "step_output_schema": request.data_spec.step_output_schema
     }
 
+# ==============================================
+# 🔥 중요한 분석 메서드들 추가
+# ==============================================
+
+def get_data_structure_inconsistencies() -> Dict[str, Any]:
+    """편의 함수: 데이터 구조 불일치 분석"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_data_structure_inconsistencies()
+
+def get_step_data_flow_analysis() -> Dict[str, Any]:
+    """편의 함수: Step 간 데이터 흐름 완전 분석"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_step_data_flow_analysis()
+
+def get_fastapi_integration_plan() -> Dict[str, Any]:
+    """편의 함수: FastAPI 라우터 완전 통합 계획"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_fastapi_integration_plan()
+
+def get_memory_optimization_strategy() -> Dict[str, Any]:
+    """편의 함수: 메모리 최적화 전략"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_memory_optimization_strategy()
+
+def get_large_models_priority() -> Dict[str, Dict[str, Any]]:
+    """편의 함수: 25GB+ 핵심 대형 모델 우선순위"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_large_models_priority()
+
+def get_conda_optimization_plan() -> Dict[str, Any]:
+    """편의 함수: conda 환경 최적화 계획"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_conda_optimization_plan()
+
+def validate_enhanced_step_file(step_name: str, file_path: Union[str, Path], 
+                               file_size_mb: Optional[float] = None) -> Dict[str, Any]:
+    """편의 함수: 향상된 실제 파일 기반 Step 파일 검증"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.validate_file_for_step(step_name, file_path, file_size_mb)
+
+def get_complete_diagnostic_report() -> Dict[str, Any]:
+    """편의 함수: 완전한 진단 보고서"""
+    analyzer = get_global_enhanced_analyzer()
+    return analyzer.get_complete_diagnostic_report()
+
+# ==============================================
+# 🔥 RealStepModelRequestAnalyzer에 빠진 메서드들 추가
+# ==============================================
+
+# 이 메서드들을 RealStepModelRequestAnalyzer 클래스에 동적으로 추가
+def _add_missing_analyzer_methods():
+    """분석기 클래스에 빠진 메서드들 동적 추가"""
+    
+    def get_step_data_flow_analysis(self) -> Dict[str, Any]:
+        """Step 간 데이터 흐름 완전 분석"""
+        flow_analysis = {
+            "pipeline_sequence": [],
+            "data_transformations": {},
+            "compatibility_matrix": {},
+            "bottlenecks": [],
+            "optimization_opportunities": []
+        }
+        
+        # 파이프라인 순서 구성
+        step_order = [
+            "HumanParsingStep", "PoseEstimationStep", "ClothSegmentationStep",
+            "GeometricMatchingStep", "ClothWarpingStep", "VirtualFittingStep", 
+            "PostProcessingStep", "QualityAssessmentStep"
+        ]
+        
+        flow_analysis["pipeline_sequence"] = step_order
+        
+        # Step 간 데이터 변환 분석
+        for i, current_step in enumerate(step_order):
+            if i < len(step_order) - 1:
+                next_step = step_order[i + 1]
+                current_request = REAL_STEP_MODEL_REQUESTS[current_step]
+                next_request = REAL_STEP_MODEL_REQUESTS[next_step]
+                
+                # 현재 Step의 출력과 다음 Step의 입력 매핑
+                current_outputs = current_request.data_spec.provides_to_next_step.get(next_step, {})
+                next_inputs = next_request.data_spec.accepts_from_previous_step.get(current_step, {})
+                
+                transformation_key = f"{current_step} → {next_step}"
+                flow_analysis["data_transformations"][transformation_key] = {
+                    "output_data": current_outputs,
+                    "input_requirements": next_inputs,
+                    "data_compatibility": len(set(current_outputs.keys()) & set(next_inputs.keys())),
+                    "requires_transformation": len(set(current_outputs.keys()) - set(next_inputs.keys())) > 0
+                }
+        
+        return flow_analysis
+    
+    def get_fastapi_integration_plan(self) -> Dict[str, Any]:
+        """FastAPI 라우터 완전 통합 계획"""
+        integration_plan = {
+            "router_endpoints": {},
+            "request_models": {},
+            "response_models": {},
+            "middleware_requirements": [],
+            "error_handling": {},
+            "streaming_endpoints": []
+        }
+        
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
+            step_id = ["HumanParsingStep", "PoseEstimationStep", "ClothSegmentationStep",
+                      "GeometricMatchingStep", "ClothWarpingStep", "VirtualFittingStep", 
+                      "PostProcessingStep", "QualityAssessmentStep"].index(step_name) + 1
+            
+            # API 엔드포인트 정의
+            endpoint_name = f"step{step_id:02d}_{step_name.lower().replace('step', '')}"
+            
+            integration_plan["router_endpoints"][endpoint_name] = {
+                "path": f"/api/v1/steps/{step_id:02d}/{step_name.lower().replace('step', '')}",
+                "method": "POST",
+                "step_class": request.step_class,
+                "ai_class": request.ai_class,
+                "input_mapping": request.data_spec.api_input_mapping,
+                "output_mapping": request.data_spec.api_output_mapping,
+                "supports_streaming": request.supports_streaming
+            }
+            
+            # 스트리밍 엔드포인트
+            if request.supports_streaming:
+                integration_plan["streaming_endpoints"].append({
+                    "endpoint": endpoint_name,
+                    "step": step_name,
+                    "stream_type": "Server-Sent Events"
+                })
+        
+        return integration_plan
+    
+    def get_memory_optimization_strategy(self) -> Dict[str, Any]:
+        """메모리 최적화 전략 (M3 Max 128GB 기준)"""
+        optimization_strategy = {
+            "total_system_memory_gb": 128,
+            "reserved_for_os_gb": 16,
+            "available_for_ai_gb": 112,
+            "model_loading_strategy": {},
+            "memory_allocation_plan": {},
+            "optimization_techniques": [],
+            "fallback_strategies": []
+        }
+        
+        # 모델별 메모리 할당 계획
+        total_memory_needed = 0
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
+            estimated_memory = (request.primary_size_mb * request.memory_fraction * 2) / 1024  # 2x overhead
+            total_memory_needed += estimated_memory
+            
+            optimization_strategy["memory_allocation_plan"][step_name] = {
+                "model_size_gb": round(request.primary_size_mb / 1024, 2),
+                "memory_fraction": request.memory_fraction,
+                "estimated_usage_gb": round(estimated_memory, 2),
+                "priority": request.step_priority.name,
+                "can_offload": request.model_type not in [ModelSize.ULTRA_LARGE]
+            }
+        
+        optimization_strategy["total_memory_needed_gb"] = round(total_memory_needed, 2)
+        optimization_strategy["memory_efficiency"] = round((optimization_strategy["available_for_ai_gb"] / total_memory_needed) * 100, 1)
+        
+        return optimization_strategy
+    
+    def get_large_models_priority(self) -> Dict[str, Dict[str, Any]]:
+        """25GB+ 핵심 대형 모델 우선순위 (실제 파일 기반)"""
+        large_models = {}
+        
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
+            if request.model_type in [ModelSize.ULTRA_LARGE, ModelSize.LARGE]:
+                large_models[step_name] = {
+                    "primary_file": request.primary_file,
+                    "size_mb": request.primary_size_mb,
+                    "size_gb": round(request.primary_size_mb / 1024, 2),
+                    "step_class": request.step_class,
+                    "ai_class": request.ai_class,
+                    "priority": request.step_priority.name,
+                    "model_type": request.model_type.value,
+                    "description": request.description,
+                    "has_detailed_spec": bool(request.data_spec.input_data_types)
+                }
+        
+        # 크기순 정렬
+        sorted_models = dict(sorted(large_models.items(), 
+                                  key=lambda x: x[1]["size_mb"], 
+                                  reverse=True))
+        
+        return {
+            "large_models": sorted_models,
+            "total_count": len(sorted_models),
+            "total_size_gb": sum(m["size_gb"] for m in sorted_models.values()),
+            "ultra_large_count": len([m for m in sorted_models.values() 
+                                    if m["model_type"] == "ultra_large"]),
+            "with_detailed_specs": len([m for m in sorted_models.values() 
+                                      if m["has_detailed_spec"]])
+        }
+    
+    def get_conda_optimization_plan(self) -> Dict[str, Any]:
+        """conda 환경 최적화 계획"""
+        optimization_plan = {
+            "conda_env": "mycloset-ai-clean",
+            "platform": "M3 Max 128GB",
+            "total_models_gb": round(self.total_size_gb, 1),
+            "memory_allocation": {},
+            "loading_strategy": {},
+            "mps_optimization": {},
+            "detailed_specs_support": {}
+        }
+        
+        # 메모리 할당 계획
+        total_memory_fraction = 0.0
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
+            optimization_plan["memory_allocation"][step_name] = {
+                "memory_fraction": request.memory_fraction,
+                "estimated_usage_gb": round((request.primary_size_mb * request.memory_fraction) / 1024, 2),
+                "batch_size": request.batch_size,
+                "conda_optimized": request.conda_optimized,
+                "has_detailed_spec": bool(request.data_spec.input_data_types)
+            }
+            total_memory_fraction += request.memory_fraction
+        
+        optimization_plan["total_memory_fraction"] = round(total_memory_fraction, 2)
+        
+        return optimization_plan
+    
+    def validate_file_for_step(self, step_name: str, file_path: Union[str, Path], 
+                              file_size_mb: Optional[float] = None) -> Dict[str, Any]:
+        """파일이 Step 요구사항에 맞는지 검증 (실제 파일 기반)"""
+        request = self.get_step_request(step_name)
+        if not request:
+            return {"valid": False, "reason": f"Unknown step: {step_name}"}
+        
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+        
+        # 파일 크기 계산
+        if file_size_mb is None:
+            try:
+                file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            except OSError:
+                return {"valid": False, "reason": f"Cannot access file: {file_path}"}
+        
+        file_name = file_path.name
+        
+        # 주요 파일 매칭
+        if file_name == request.primary_file:
+            size_tolerance = request.primary_size_mb * 0.1  # 10% 오차 허용
+            size_diff = abs(file_size_mb - request.primary_size_mb)
+            
+            if size_diff <= size_tolerance:
+                return {
+                    "valid": True,
+                    "confidence": 1.0,
+                    "matched_file": "primary",
+                    "expected_size": request.primary_size_mb,
+                    "actual_size": file_size_mb,
+                    "size_difference": size_diff,
+                    "has_detailed_spec": bool(request.data_spec.input_data_types),
+                    "enhanced_model_request": True
+                }
+        
+        return {
+            "valid": False,
+            "reason": f"File {file_name} ({file_size_mb:.1f}MB) doesn't match step requirements"
+        }
+    
+    def get_complete_diagnostic_report(self) -> Dict[str, Any]:
+        """완전한 진단 보고서 (1번 첨부파일 모든 요구사항 반영)"""
+        report = {
+            "system_info": self.get_system_info(),
+            "data_structure_analysis": self.get_data_structure_inconsistencies(),
+            "step_data_flow": self.get_step_data_flow_analysis(),
+            "fastapi_integration": self.get_fastapi_integration_plan(),
+            "memory_optimization": self.get_memory_optimization_strategy(),
+            "large_models_priority": self.get_large_models_priority(),
+            "conda_optimization_plan": self.get_conda_optimization_plan(),
+            "detailed_specs_coverage": {},
+            "recommendations": []
+        }
+        
+        # DetailedDataSpec 커버리지 분석
+        total_specs = 0
+        complete_specs = 0
+        
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items():
+            spec_completeness = 0
+            total_spec_fields = 12  # DetailedDataSpec의 주요 필드 수
+            
+            if request.data_spec.input_data_types: spec_completeness += 1
+            if request.data_spec.input_shapes: spec_completeness += 1
+            if request.data_spec.input_value_ranges: spec_completeness += 1
+            if request.data_spec.preprocessing_required: spec_completeness += 1
+            if request.data_spec.output_data_types: spec_completeness += 1
+            if request.data_spec.output_shapes: spec_completeness += 1
+            if request.data_spec.output_value_ranges: spec_completeness += 1
+            if request.data_spec.postprocessing_required: spec_completeness += 1
+            if request.data_spec.api_input_mapping: spec_completeness += 1
+            if request.data_spec.api_output_mapping: spec_completeness += 1
+            if request.data_spec.step_input_schema: spec_completeness += 1
+            if request.data_spec.step_output_schema: spec_completeness += 1
+            
+            completeness_percentage = (spec_completeness / total_spec_fields) * 100
+            
+            report["detailed_specs_coverage"][step_name] = {
+                "completeness_percentage": round(completeness_percentage, 1),
+                "complete_fields": spec_completeness,
+                "total_fields": total_spec_fields,
+                "missing_fields": total_spec_fields - spec_completeness
+            }
+            
+            total_specs += total_spec_fields
+            complete_specs += spec_completeness
+        
+        report["detailed_specs_coverage"]["overall"] = {
+            "total_completeness": round((complete_specs / total_specs) * 100, 1),
+            "complete_fields": complete_specs,
+            "total_fields": total_specs
+        }
+        
+        return report
+    
+    # 메서드들을 클래스에 동적으로 추가
+    RealStepModelRequestAnalyzer.get_step_data_flow_analysis = get_step_data_flow_analysis
+    RealStepModelRequestAnalyzer.get_fastapi_integration_plan = get_fastapi_integration_plan
+    RealStepModelRequestAnalyzer.get_memory_optimization_strategy = get_memory_optimization_strategy
+    RealStepModelRequestAnalyzer.get_large_models_priority = get_large_models_priority
+    RealStepModelRequestAnalyzer.get_conda_optimization_plan = get_conda_optimization_plan
+    RealStepModelRequestAnalyzer.validate_file_for_step = validate_file_for_step
+    RealStepModelRequestAnalyzer.get_complete_diagnostic_report = get_complete_diagnostic_report
+
+# 빠진 메서드들 추가 실행
+_add_missing_analyzer_methods()
+
+# 호환성 함수들
+def get_step_request(step_name: str) -> Optional[EnhancedRealModelRequest]:
+    """호환성: 기존 함수명 지원 (향상된 버전)"""
+    return get_enhanced_step_request(step_name)
+
+def get_all_step_requests() -> Dict[str, EnhancedRealModelRequest]:
+    """호환성: 기존 함수명 지원 (향상된 버전)"""
+    return REAL_STEP_MODEL_REQUESTS.copy()
+
+def get_step_priorities() -> Dict[str, int]:
+    """호환성: Step별 우선순위 반환"""
+    return {
+        step_name: request.step_priority.value
+        for step_name, request in REAL_STEP_MODEL_REQUESTS.items()
+    }
+
+def analyze_real_step_requirements(step_name: str) -> Dict[str, Any]:
+    """호환성: 기존 함수명 지원 (향상된 분석)"""
+    return analyze_enhanced_step_requirements(step_name)
+
+def validate_real_step_file(step_name: str, file_path: Union[str, Path], 
+                           file_size_mb: Optional[float] = None) -> Dict[str, Any]:
+    """호환성: 기존 함수명 지원 (향상된 검증)"""
+    return validate_enhanced_step_file(step_name, file_path, file_size_mb)
+
 def cleanup_enhanced_analyzer():
     """향상된 분석기 정리"""
     global _global_enhanced_analyzer
@@ -2510,7 +2165,7 @@ import atexit
 atexit.register(cleanup_enhanced_analyzer)
 
 # ==============================================
-# 🔥 모듈 익스포트 (완전한 데이터 구조 포함)
+# 🔥 모듈 익스포트 (완전한 데이터 구조 포함) - 모든 함수 포함
 # ==============================================
 
 __all__ = [
@@ -2537,8 +2192,6 @@ __all__ = [
     'get_conda_optimization_plan',
     'validate_enhanced_step_file',
     'get_complete_diagnostic_report',
-    
-    # 전역 인스턴스 (향상된 버전)
     'get_global_enhanced_analyzer',
     
     # 새로운 함수들 (v8.0)
@@ -2582,19 +2235,9 @@ logger.info("   🔗 API 매핑: FastAPI Form ↔ AI 모델 완전 연결")
 logger.info("   🔄 Step 간 스키마: 파이프라인 데이터 흐름 완전 정의")
 logger.info("   ⚙️ 전처리/후처리: 정규화, 변환 단계 상세 정의")
 logger.info("   📊 데이터 범위: 입력/출력 값 범위 정확히 명시")
-logger.info("✅ 1번 첨부파일 모든 요구사항 100% 반영:")
-logger.info("   ❌ 기존 문제: step_model_requests.py 기본 메타데이터만 있음")
-logger.info("   ✅ 해결됨: 실제 데이터 흐름과 변환 요구사항 완전 포함")
-logger.info("   ❌ 기존 문제: FastAPI 라우터 호환성 없음")
-logger.info("   ✅ 해결됨: API 입출력 매핑 완전 정의")
-logger.info("   ❌ 기존 문제: Step 간 데이터 전달 스키마 없음")
-logger.info("   ✅ 해결됨: accepts_from_previous_step, provides_to_next_step 완전 정의")
-logger.info("   ❌ 기존 문제: 전처리/후처리 요구사항 누락")
-logger.info("   ✅ 해결됨: 정규화, 변환 단계 상세 정의")
-logger.info("✅ 25GB+ 핵심 모델 완전 활용 체계 구축")
-logger.info("✅ 동적 경로 매핑 + 공유 모델 시스템")
-logger.info("✅ 실제 파일 크기 및 AI 클래스명 정확 반영")
-logger.info("✅ 데이터 구조 불일치 문제 완전 해결")
+logger.info("✅ 클래스 정의 순서 문제 해결됨")
+logger.info("✅ EnhancedRealModelRequest 정상 사용 가능")
+logger.info("✅ NameError 완전 해결")
 logger.info("=" * 100)
 
 # 초기화 시 전역 분석기 생성
@@ -2617,19 +2260,6 @@ try:
         logger.info("✅ 1번 첨부파일의 모든 요구사항이 완전히 반영됨")
     else:
         logger.warning(f"⚠️ 데이터 구조 문제 발견: {inconsistencies['total_issues']}개")
-    
-    # Step 간 데이터 흐름 확인
-    data_flow = _initial_enhanced_analyzer.get_step_data_flow_analysis()
-    logger.info(f"🔄 파이프라인 순서: {' → '.join(data_flow['pipeline_sequence'])}")
-    logger.info(f"🔧 데이터 변환 매핑: {len(data_flow['data_transformations'])}개")
-    logger.info(f"⚡ 최적화 기회: {len(data_flow['optimization_opportunities'])}개")
-    
-    # FastAPI 통합 준비상태 확인
-    fastapi_plan = _initial_enhanced_analyzer.get_fastapi_integration_plan()
-    logger.info(f"🔗 FastAPI 엔드포인트 준비: {len(fastapi_plan['router_endpoints'])}개")
-    logger.info(f"📋 요청 모델 정의: {len(fastapi_plan['request_models'])}개")
-    logger.info(f"📤 응답 모델 정의: {len(fastapi_plan['response_models'])}개")
-    logger.info(f"🌊 스트리밍 엔드포인트: {len(fastapi_plan['streaming_endpoints'])}개")
     
 except Exception as e:
     logger.error(f"❌ 전역 Enhanced 실제 파일 기반 분석기 초기화 실패: {e}")

@@ -54,7 +54,7 @@ import traceback
 import weakref
 import json
 import base64
-from typing import Dict, Any, Optional, List, Union, Type, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, Union, Type, TYPE_CHECKING, Tuple  # ← Tuple 추가!
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -62,6 +62,7 @@ from enum import Enum
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+
 
 # 안전한 타입 힌팅 (순환참조 방지)
 if TYPE_CHECKING:
