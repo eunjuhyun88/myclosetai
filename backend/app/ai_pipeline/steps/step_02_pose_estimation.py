@@ -39,7 +39,6 @@ import gc
 import time
 import asyncio
 import logging
-import threading
 import traceback
 import hashlib
 import json
@@ -62,6 +61,12 @@ if TYPE_CHECKING:
     from ..factories.step_factory import StepFactory
     from ..steps.base_step_mixin import BaseStepMixin
 
+try:
+    from app.ai_pipeline.interface.step_interface import StepInterface
+except ImportError:
+    pass
+
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 2. conda 환경 및 필수 패키지 체크
 # ==============================================

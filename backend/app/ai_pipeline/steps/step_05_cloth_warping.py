@@ -30,7 +30,8 @@ import gc
 import time
 import math
 import logging
-import hashlib
+
+logger = logging.getLogger(__name__)import hashlib
 import traceback
 import threading
 import platform
@@ -42,7 +43,10 @@ from typing import Dict, Any, Optional, Tuple, Union, List, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
+import logging
 
+logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔧 TYPE_CHECKING으로 순환참조 방지
 # ==============================================

@@ -52,13 +52,15 @@ from functools import lru_cache, wraps
 from contextlib import asynccontextmanager
 from io import BytesIO
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
+import logging
 
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 TYPE_CHECKING으로 순환참조 완전 방지
 # ==============================================
 if TYPE_CHECKING:
     from ..utils.model_loader import ModelLoader
-    from ..interfaces.step_interface import StepModelInterface
+    from ..interface.step_interface import StepModelInterface
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
     from ..core.di_container import DIContainer

@@ -62,7 +62,9 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps, lru_cache
 from io import BytesIO
+import logging
 
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 2. conda 환경 체크 및 최적화
 # ==============================================
@@ -4199,10 +4201,7 @@ __description__ = "Virtual Fitting Step - Enhanced Real AI Model Integration wit
 # ==============================================
 # 🔥 파일 맨 끝에 추가
 print("🔥🔥🔥 step_06_virtual_fitting.py 파일 로드됨! 🔥🔥🔥")
-import logging
-logging.getLogger(__name__).error("🔥🔥🔥 step_06_virtual_fitting.py 파일 로드됨! 🔥🔥🔥")
 
-logger = logging.getLogger(__name__)
 logger.info("=" * 120)
 logger.info("🔥 VirtualFittingStep v10.0 - step_model_requirements.py 완전 호환 실제 AI 모델 통합 버전")
 logger.info("=" * 120)

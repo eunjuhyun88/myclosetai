@@ -27,7 +27,8 @@ Version: v22.0 (BaseStepMixin v19.1 완전 호환 + AI 강화)
 import os
 import sys
 import logging
-import time
+
+logger = logging.getLogger(__name__)import time
 import threading
 import gc
 import hashlib
@@ -42,7 +43,10 @@ from enum import Enum
 from io import BytesIO
 import platform
 import subprocess
+import logging
 
+logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 1. BaseStepMixin 상속 및 TYPE_CHECKING 순환참조 방지
 # ==============================================
@@ -160,6 +164,11 @@ try:
 except ImportError:
     logger.warning("⚠️ ONNX Runtime 없음 - pip install onnxruntime")
 
+
+try:
+    from app.ai_pipeline.interface.step_interface import StepInterface
+except ImportError:
+    pass
 # ==============================================
 # 🔥 3. step_model_requests.py 요구사항 로드
 # ==============================================

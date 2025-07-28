@@ -62,7 +62,9 @@ if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader
     from ..factories.step_factory import StepFactory
     from ..steps.base_step_mixin import BaseStepMixin
+import logging
 
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 2. conda 환경 및 시스템 체크
 # ==============================================
@@ -2059,6 +2061,7 @@ from io import BytesIO
 from PIL import Image
 import logging
 
+logger = logging.getLogger(__name__)
 # 🔧 수정된 _numpy_to_base64 함수
 def _numpy_to_base64(self, image) -> str:
     """numpy 배열을 base64 문자열로 변환 - 완전 수정 버전"""

@@ -18,7 +18,8 @@
 import os
 import sys
 import logging
-import time
+
+logger = logging.getLogger(__name__)import time
 import asyncio
 import threading
 import json

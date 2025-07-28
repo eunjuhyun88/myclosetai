@@ -25,7 +25,8 @@ import os
 import gc
 import time
 import logging
-import threading
+
+logger = logging.getLogger(__name__)import threading
 import weakref
 import math
 import numpy as np
@@ -38,7 +39,10 @@ from functools import wraps
 from enum import Enum
 from io import BytesIO
 import base64
+import logging
 
+logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 1. TYPE_CHECKING 패턴으로 순환참조 완전 방지
 # ==============================================
@@ -121,7 +125,10 @@ try:
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
-
+try:
+    from app.ai_pipeline.interface.step_interface import StepInterface
+except ImportError:
+    pass
 # ==============================================
 # 🔥 3. 동적 import 함수들 (TYPE_CHECKING 패턴)
 # ==============================================
