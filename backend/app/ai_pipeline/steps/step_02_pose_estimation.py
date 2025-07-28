@@ -348,7 +348,7 @@ class SmartModelPathMapper:
         for pattern in yolo_patterns:
             path = self.ai_models_root / pattern
             if path.exists():
-                model_files["yolov8"] = path
+                model_files["yolo"] = path
                 self.logger.info(f"✅ YOLOv8 모델 발견: {path}")
                 break
         
