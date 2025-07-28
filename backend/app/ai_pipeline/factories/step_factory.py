@@ -229,7 +229,7 @@ class EnhancedGitHubStepConfig:
     memory_gb: float = 16.0
     
     # 🔥 환경 감지 플래그들 (키워드 충돌 완전 해결)
-    is_m3_max_detected: bool = False  # 🔥 변경: is_m3_max → is_m3_max_detected
+    is_m3_max: bool = False  # 🔥 변경: is_m3_max → is_m3_max_detected
     github_compatible: bool = True
     mycloset_optimized: bool = False
     memory_optimization: bool = False

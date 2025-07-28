@@ -1113,56 +1113,91 @@ class GeometricMatchingStep(BaseStepMixin):
     
     def __init__(self, **kwargs):
         """BaseStepMixin 호환 생성자 - step_model_requirements.py 요구사항 반영"""
-        super().__init__(**kwargs)
         
-        # step_model_requirements.py 기준 기본 속성
-        self.step_name = "GeometricMatchingStep"
-        self.step_id = 4
-        self.device = self._force_mps_device(kwargs.get('device', 'auto'))
-        
-        # step_model_requirements.py 요구사항 로드
-        self.step_request = get_step_model_request()
-        self._load_requirements_config()
-        
-        # 상태 관리
+        # 🔥 1. 먼저 status 속성 생성 (super() 호출 전에!)
         self.status = ProcessingStatus()
         
-        # 모델 경로 매핑 (step_model_requirements.py 기준)
+        # 🔥 2. 기본 속성들 먼저 설정
+        self.step_name = "GeometricMatchingStep"
+        self.step_id = 4
+        self.device = kwargs.get('device', 'auto')
+        
+        # 🔥 3. Logger 설정 (디버깅용)
+        self.logger = logging.getLogger(f"steps.{self.step_name}")
+        
+        # 🔥 4. _force_mps_device 메서드 정의 (호출 전에!)
+        def _force_mps_device(device_input):
+            """MPS 디바이스 강제 설정"""
+            if device_input == 'auto':
+                import torch
+                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    return 'mps'
+                elif torch.cuda.is_available():
+                    return 'cuda'
+                else:
+                    return 'cpu'
+            return device_input
+        
+        # 디바이스 설정
+        self.device = _force_mps_device(self.device)
+        
+        # 🔥 5. 이제 안전하게 super() 호출
+        try:
+            super().__init__(**kwargs)
+        except Exception as e:
+            self.logger.debug(f"super().__init__ 실패: {e}")
+            # 기본 BaseStepMixin 속성들 수동 설정
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+        
+        # 🔥 6. 나머지 초기화 계속
+        try:
+            # step_model_requirements.py 요구사항 로드
+            from app.ai_pipeline.utils.step_model_requests import get_step_request
+            self.step_request = get_step_request('step_04_geometric_matching')
+            if self.step_request:
+                self.status.requirements_compatible = True
+        except Exception as e:
+            self.logger.debug(f"step_model_requirements 로드 실패: {e}")
+            self.step_request = None
+        
+        # 모델 경로 매핑
         ai_models_root = kwargs.get('ai_models_root', 'ai_models')
-        self.model_mapper = EnhancedModelPathMapper(ai_models_root)
+        try:
+            from app.core.model_paths import EnhancedModelPathMapper
+            self.model_mapper = EnhancedModelPathMapper(ai_models_root)
+        except Exception as e:
+            self.logger.debug(f"ModelPathMapper 생성 실패: {e}")
+            self.model_mapper = None
         
-        # 실제 AI 모델들 (step_model_requirements.py ai_class 기준)
-        self.gmm_model: Optional[RealGMMModel] = None  # ai_class="RealGMMModel"
-        self.tps_model: Optional[RealTPSModel] = None
-        self.sam_model: Optional[RealSAMModel] = None  # 공유 모델
-        self.vit_model: Optional[RealViTModel] = None  # 기존 파일에 있던 모델
-        self.efficientnet_model: Optional[RealEfficientNetModel] = None  # 기존 파일에 있던 모델
+        # 실제 AI 모델들 초기화
+        self.gmm_model = None
+        self.tps_model = None
+        self.sam_model = None
+        self.vit_model = None
+        self.efficientnet_model = None
         
-        # 고급 기하학적 매칭 알고리즘
-        self.geometric_matcher = AdvancedGeometricMatcher(self.device)
+        # 기존 호환성 속성들
+        self.geometric_model = None
+        self.model_interface = None
+        self.model_paths = {}
         
-        # 기존 파일에 있던 속성들 보존
-        self.geometric_model = None  # 기존 호환성
-        self.model_interface = None  # 기존 기능
-        self.model_paths = {}  # 기존 기능
+        # 의존성 (BaseStepMixin 호환)
+        self.model_loader = None
+        self.memory_manager = None
+        self.data_converter = None
+        self.di_container = None
         
-        # 의존성 매니저 초기화
-        self._initialize_dependency_manager()
-        
-        # 통계 초기화
-        self._init_statistics()
+        # 상태 업데이트
+        self.status.initialized = True
+        self.is_initialized = True
         
         self.logger.info(f"✅ GeometricMatchingStep 생성 완료 - Device: {self.device}")
         if self.step_request:
             self.logger.info(f"📋 step_model_requirements.py 요구사항 로드 완료")
-            self.status.requirements_compatible = True
-    
-    # backend/app/ai_pipeline/steps/step_04_geometric_matching.py
-# GeometricMatchingStep 클래스 내부 수정
-
-class GeometricMatchingStep(BaseStepMixin):
-    # ... 기존 코드 ...
-    
+            
     def _load_gmm_model(self) -> bool:
         """GMM 모델 로딩 (MPS float64 문제 해결)"""
         try:

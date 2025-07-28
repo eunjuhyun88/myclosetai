@@ -1,0 +1,3156 @@
+{
+  "timestamp": 1753674758.2406988,
+  "system_info": {
+    "platform": {
+      "system": "Darwin",
+      "release": "24.4.0",
+      "machine": "arm64",
+      "processor": "arm"
+    },
+    "python": {
+      "version": "3.10.18 | packaged by conda-forge | (main, Jun  4 2025, 14:46:00) [Clang 18.1.8 ]",
+      "path": [
+        "/Users/gimdudeul/MVP/mycloset-ai/backend",
+        "/Users/gimdudeul/MVP/mycloset-ai",
+        "/Users/gimdudeul/MVP/mycloset-ai/backend",
+        "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai-clean/lib/python310.zip",
+        "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai-clean/lib/python3.10"
+      ]
+    },
+    "hardware": {
+      "memory": {
+        "total_gb": 128.0,
+        "available_gb": 67.13699340820312,
+        "used_percent": 47.5,
+        "available_percent": 52.5
+      },
+      "cpu": {
+        "usage_percent": 16.3,
+        "core_count": 16,
+        "freq_current": 4056
+      },
+      "warnings": []
+    },
+    "conda_env": "mycloset-ai-clean",
+    "is_m3_max": true
+  },
+  "model_files": {
+    "total_files": 310,
+    "total_size_gb": 263.8471026867628,
+    "files_by_step": {
+      "step_02_pose_estimation": [
+        {
+          "name": "openpose.pth",
+          "size_mb": 0.03664398193359375,
+          "path": "ai_models/openpose.pth"
+        },
+        {
+          "name": "body_pose_model.pth",
+          "size_mb": 199.57313060760498,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth"
+        },
+        {
+          "name": "openpose_pose.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/pose_estimation/models--lllyasviel--Annotators/.no_exist/982e7edaec38759d914a963c48c4726685de7d96/openpose_pose.pth"
+        },
+        {
+          "name": "openpose.pth",
+          "size_mb": 97.75390625,
+          "path": "ai_models/step_02_pose_estimation/openpose.pth"
+        },
+        {
+          "name": "body_pose_model.pth",
+          "size_mb": 97.75390625,
+          "path": "ai_models/step_02_pose_estimation/body_pose_model.pth"
+        },
+        {
+          "name": "hrnet_w48_coco_256x192.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1378.2092323303223,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 689.1237659454346,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1378.2092323303223,
+          "path": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.bin",
+          "size_mb": 689.2188482284546,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 1378.302544593811,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "yolov8n-pose.pt",
+          "size_mb": 6.512632369995117,
+          "path": "ai_models/step_02_pose_estimation/yolov8n-pose.pt"
+        },
+        {
+          "name": "yolov8s-pose.pt",
+          "size_mb": 22.420957565307617,
+          "path": "ai_models/step_02_pose_estimation/yolov8s-pose.pt"
+        },
+        {
+          "name": "openpose.pth",
+          "size_mb": 0.03664398193359375,
+          "path": "ai_models/openpose.pth"
+        },
+        {
+          "name": "body_pose_model.pth",
+          "size_mb": 199.57313060760498,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth"
+        },
+        {
+          "name": "openpose_pose.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/pose_estimation/models--lllyasviel--Annotators/.no_exist/982e7edaec38759d914a963c48c4726685de7d96/openpose_pose.pth"
+        },
+        {
+          "name": "openpose.pth",
+          "size_mb": 97.75390625,
+          "path": "ai_models/step_02_pose_estimation/openpose.pth"
+        },
+        {
+          "name": "body_pose_model.pth",
+          "size_mb": 97.75390625,
+          "path": "ai_models/step_02_pose_estimation/body_pose_model.pth"
+        },
+        {
+          "name": "hrnet_w48_coco_256x192.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/step_02_pose_estimation/hrnet_w48_coco_256x192.pth"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1378.2092323303223,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 689.1237659454346,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1378.2092323303223,
+          "path": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.bin",
+          "size_mb": 689.2188482284546,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 1378.302544593811,
+          "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "yolov8n-pose.pt",
+          "size_mb": 6.512632369995117,
+          "path": "ai_models/step_02_pose_estimation/yolov8n-pose.pt"
+        },
+        {
+          "name": "yolov8s-pose.pt",
+          "size_mb": 22.420957565307617,
+          "path": "ai_models/step_02_pose_estimation/yolov8s-pose.pt"
+        }
+      ],
+      "step_01_human_parsing": [
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 0.194610595703125,
+          "path": "ai_models/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "parsing_atr.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/human_parsing/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/parsing_atr.pth"
+        },
+        {
+          "name": "exp-schp-201908261155-atr.pth",
+          "size_mb": 255.05565357208252,
+          "path": "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth"
+        },
+        {
+          "name": "exp-schp-201908261155-lip.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 255.05565357208252,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "graphonomy_alternative.pth",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth"
+        },
+        {
+          "name": "graphonomy.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "atr_model.pth",
+          "size_mb": 255.05565357208252,
+          "path": "ai_models/step_01_human_parsing/atr_model.pth"
+        },
+        {
+          "name": "lip_model.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/step_01_human_parsing/lip_model.pth"
+        },
+        {
+          "name": "graphonomy.pth",
+          "size_mb": 1172.9622974395752,
+          "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "deeplab_resnet101.pth",
+          "size_mb": 233.21679973602295,
+          "path": "ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth"
+        },
+        {
+          "name": "fcn_resnet101_ultra.pth",
+          "size_mb": 207.8078327178955,
+          "path": "ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/step_01_human_parsing/ultra_models/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "rng_state.pth",
+          "size_mb": 0.013899803161621094,
+          "path": "ai_models/Graphonomy/rng_state.pth"
+        },
+        {
+          "name": "inference.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/Graphonomy/inference.pth"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 104.4208869934082,
+          "path": "ai_models/Graphonomy/model.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/human_parsing/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/human_parsing/schp/pytorch_model.bin"
+        },
+        {
+          "name": "open_clip_pytorch_model.bin",
+          "size_mb": 5213.743920326233,
+          "path": "ai_models/step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/step_01_human_parsing/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/step_01_human_parsing/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "training_args.bin",
+          "size_mb": 0.0031690597534179688,
+          "path": "ai_models/Graphonomy/training_args.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/Graphonomy/pytorch_model.bin"
+        },
+        {
+          "name": "optimizer.pt",
+          "size_mb": 208.95465564727783,
+          "path": "ai_models/Graphonomy/optimizer.pt"
+        },
+        {
+          "name": "scheduler.pt",
+          "size_mb": 0.0005979537963867188,
+          "path": "ai_models/Graphonomy/scheduler.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.05361747741699219,
+          "path": "ai_models/step_01_human_parsing/ultra_models/pytorch_model/data.pkl"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.05361747741699219,
+          "path": "ai_models/step_01_human_parsing/pytorch_model/data.pkl"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 0.194610595703125,
+          "path": "ai_models/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "parsing_atr.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/human_parsing/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/humanparsing/parsing_atr.pth"
+        },
+        {
+          "name": "exp-schp-201908261155-atr.pth",
+          "size_mb": 255.05565357208252,
+          "path": "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth"
+        },
+        {
+          "name": "exp-schp-201908261155-lip.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 255.05565357208252,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "graphonomy_alternative.pth",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth"
+        },
+        {
+          "name": "graphonomy.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "atr_model.pth",
+          "size_mb": 255.05565357208252,
+          "path": "ai_models/step_01_human_parsing/atr_model.pth"
+        },
+        {
+          "name": "lip_model.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/step_01_human_parsing/lip_model.pth"
+        },
+        {
+          "name": "graphonomy.pth",
+          "size_mb": 1172.9622974395752,
+          "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "deeplab_resnet101.pth",
+          "size_mb": 233.21679973602295,
+          "path": "ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth"
+        },
+        {
+          "name": "fcn_resnet101_ultra.pth",
+          "size_mb": 207.8078327178955,
+          "path": "ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth"
+        },
+        {
+          "name": "exp-schp-201908301523-atr.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/step_01_human_parsing/ultra_models/exp-schp-201908301523-atr.pth"
+        },
+        {
+          "name": "rng_state.pth",
+          "size_mb": 0.013899803161621094,
+          "path": "ai_models/Graphonomy/rng_state.pth"
+        },
+        {
+          "name": "inference.pth",
+          "size_mb": 255.05957508087158,
+          "path": "ai_models/Graphonomy/inference.pth"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 104.4208869934082,
+          "path": "ai_models/Graphonomy/model.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/human_parsing/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/human_parsing/schp/pytorch_model.bin"
+        },
+        {
+          "name": "open_clip_pytorch_model.bin",
+          "size_mb": 5213.743920326233,
+          "path": "ai_models/step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/step_01_human_parsing/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/step_01_human_parsing/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "training_args.bin",
+          "size_mb": 0.0031690597534179688,
+          "path": "ai_models/Graphonomy/training_args.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/Graphonomy/pytorch_model.bin"
+        },
+        {
+          "name": "optimizer.pt",
+          "size_mb": 208.95465564727783,
+          "path": "ai_models/Graphonomy/optimizer.pt"
+        },
+        {
+          "name": "scheduler.pt",
+          "size_mb": 0.0005979537963867188,
+          "path": "ai_models/Graphonomy/scheduler.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.05361747741699219,
+          "path": "ai_models/step_01_human_parsing/ultra_models/pytorch_model/data.pkl"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.05361747741699219,
+          "path": "ai_models/step_01_human_parsing/pytorch_model/data.pkl"
+        }
+      ],
+      "step_03_cloth_segmentation": [
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "u2net.pth",
+          "size_mb": 0.0023088455200195312,
+          "path": "ai_models/step_03_cloth_segmentation/u2net.pth"
+        },
+        {
+          "name": "bisenet_resnet18.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/bisenet_resnet18.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "u2net_official.pth",
+          "size_mb": 0.0022592544555664062,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/u2net_official.pth"
+        },
+        {
+          "name": "deeplabv3_resnet101_ultra.pth",
+          "size_mb": 233.32293128967285,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth"
+        },
+        {
+          "name": "u2net_fallback.pth",
+          "size_mb": 160.56964874267578,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_fallback.pth"
+        },
+        {
+          "name": "u2net_alternative.pth",
+          "size_mb": 0.0023088455200195312,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "isnet.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/isnet.pth"
+        },
+        {
+          "name": "u2net_cloth.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_cloth.pth"
+        },
+        {
+          "name": "sam_vit_l_0b3195.pth",
+          "size_mb": 1191.6395254135132,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth"
+        },
+        {
+          "name": "tom_final.pth",
+          "size_mb": 83.26171875,
+          "path": "ai_models/checkpoints/step_05_cloth_warping/tom_final.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 357.668288230896,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "u2net_cloth_seg.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/cloth_segmentation/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/cloth_segm/u2net_cloth_seg.pth"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/step_05_cloth_warping/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "vgg19_warping.pth",
+          "size_mb": 548.0597839355469,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/vgg19_warping.pth"
+        },
+        {
+          "name": "vgg16_warping_ultra.pth",
+          "size_mb": 527.8031978607178,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth"
+        },
+        {
+          "name": "densenet121_ultra.pth",
+          "size_mb": 31.010759353637695,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/densenet121_ultra.pth"
+        },
+        {
+          "name": "RealVisXL_V4.0.safetensors",
+          "size_mb": 6616.631227493286,
+          "path": "ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors"
+        },
+        {
+          "name": "model.fp16.safetensors",
+          "size_mb": 579.8515701293945,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/safety_checker/model.fp16.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/cache/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 2445.7597856521606,
+          "path": "ai_models/step_03_cloth_segmentation/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 168.39410591125488,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 3279.1255235671997,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/unet/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "mobile_sam.pt",
+          "size_mb": 38.84146308898926,
+          "path": "ai_models/step_03_cloth_segmentation/mobile_sam.pt"
+        },
+        {
+          "name": "mobile_sam.pt",
+          "size_mb": 38.84146308898926,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/mobile_sam.pt"
+        },
+        {
+          "name": "mobile_sam_alternative.pt",
+          "size_mb": 357.668288230896,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt"
+        },
+        {
+          "name": "mobile_sam.pt",
+          "size_mb": 38.84146308898926,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.08094120025634766,
+          "path": "ai_models/step_03_cloth_segmentation/pytorch_model/data.pkl"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.13429737091064453,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/unet/archive/data.pkl"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "u2net.pth",
+          "size_mb": 0.0023088455200195312,
+          "path": "ai_models/step_03_cloth_segmentation/u2net.pth"
+        },
+        {
+          "name": "bisenet_resnet18.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/bisenet_resnet18.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "u2net_official.pth",
+          "size_mb": 0.0022592544555664062,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/u2net_official.pth"
+        },
+        {
+          "name": "deeplabv3_resnet101_ultra.pth",
+          "size_mb": 233.32293128967285,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth"
+        },
+        {
+          "name": "u2net_fallback.pth",
+          "size_mb": 160.56964874267578,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_fallback.pth"
+        },
+        {
+          "name": "u2net_alternative.pth",
+          "size_mb": 0.0023088455200195312,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "isnet.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/isnet.pth"
+        },
+        {
+          "name": "u2net_cloth.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_cloth.pth"
+        },
+        {
+          "name": "sam_vit_l_0b3195.pth",
+          "size_mb": 1191.6395254135132,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth"
+        },
+        {
+          "name": "tom_final.pth",
+          "size_mb": 83.26171875,
+          "path": "ai_models/checkpoints/step_05_cloth_warping/tom_final.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 2445.7463064193726,
+          "path": "ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "sam_vit_h_4b8939.pth",
+          "size_mb": 357.668288230896,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth"
+        },
+        {
+          "name": "u2net_cloth_seg.pth",
+          "size_mb": 0.0,
+          "path": "ai_models/cloth_segmentation/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/cloth_segm/u2net_cloth_seg.pth"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/step_05_cloth_warping/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "vgg19_warping.pth",
+          "size_mb": 548.0597839355469,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/vgg19_warping.pth"
+        },
+        {
+          "name": "vgg16_warping_ultra.pth",
+          "size_mb": 527.8031978607178,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth"
+        },
+        {
+          "name": "densenet121_ultra.pth",
+          "size_mb": 31.010759353637695,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/densenet121_ultra.pth"
+        },
+        {
+          "name": "RealVisXL_V4.0.safetensors",
+          "size_mb": 6616.631227493286,
+          "path": "ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors"
+        },
+        {
+          "name": "model.fp16.safetensors",
+          "size_mb": 579.8515701293945,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/safety_checker/model.fp16.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/cache/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 2445.7597856521606,
+          "path": "ai_models/step_03_cloth_segmentation/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 168.39410591125488,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 3279.1255235671997,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/unet/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "mobile_sam.pt",
+          "size_mb": 38.84146308898926,
+          "path": "ai_models/step_03_cloth_segmentation/mobile_sam.pt"
+        },
+        {
+          "name": "mobile_sam.pt",
+          "size_mb": 38.84146308898926,
+          "path": "ai_models/step_03_cloth_segmentation/ultra_models/mobile_sam.pt"
+        },
+        {
+          "name": "mobile_sam_alternative.pt",
+          "size_mb": 357.668288230896,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt"
+        },
+        {
+          "name": "mobile_sam.pt",
+          "size_mb": 38.84146308898926,
+          "path": "ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.08094120025634766,
+          "path": "ai_models/step_03_cloth_segmentation/pytorch_model/data.pkl"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.13429737091064453,
+          "path": "ai_models/step_05_cloth_warping/ultra_models/unet/archive/data.pkl"
+        }
+      ],
+      "step_06_virtual_fitting": [
+        {
+          "name": "hrviton_final.pth",
+          "size_mb": 230.341796875,
+          "path": "ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1719.0,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 0.0,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/ootd/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3303.2670001983643,
+          "path": "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 319.14069747924805,
+          "path": "ai_models/step_06_virtual_fitting/vae/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "v1-5-pruned-emaonly.safetensors",
+          "size_mb": 4067.5604858398438,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors"
+        },
+        {
+          "name": "v1-5-pruned.safetensors",
+          "size_mb": 7346.462522506714,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 469.4613208770752,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors"
+        },
+        {
+          "name": "model.fp16.safetensors",
+          "size_mb": 234.74203491210938,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892078399658,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.non_ema.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 1639.4856491088867,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 1159.650640487671,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors"
+        },
+        {
+          "name": "model.fp16.safetensors",
+          "size_mb": 579.8515701293945,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 319.14069747924805,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 159.58341789245605,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 2386.225830078125,
+          "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 469.4989538192749,
+          "path": "ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 469.4989538192749,
+          "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 3279.0705919265747,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 469.4989538192749,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 319.2063455581665,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 577.1999998092651,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/ootdiffusion/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "text_encoder_pytorch_model.bin",
+          "size_mb": 492.3999996185303,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/text_encoder/ootdiffusion/text_encoder/text_encoder_pytorch_model.bin"
+        },
+        {
+          "name": "vae_diffusion_pytorch_model.bin",
+          "size_mb": 334.5999994277954,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/vae/ootdiffusion/vae/vae_diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 3279.0705919265747,
+          "path": "ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 0.0,
+          "path": "ai_models/virtual_fitting/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/ootd_hd/pytorch_model.bin"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.13429737091064453,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive/data.pkl"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.13429737091064453,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive 2/data.pkl"
+        },
+        {
+          "name": "hrviton_final.pth",
+          "size_mb": 230.341796875,
+          "path": "ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1719.0,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 0.0,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/ootd/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3303.2670001983643,
+          "path": "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 319.14069747924805,
+          "path": "ai_models/step_06_virtual_fitting/vae/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.9360275268555,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "v1-5-pruned-emaonly.safetensors",
+          "size_mb": 4067.5604858398438,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors"
+        },
+        {
+          "name": "v1-5-pruned.safetensors",
+          "size_mb": 7346.462522506714,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 469.4613208770752,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors"
+        },
+        {
+          "name": "model.fp16.safetensors",
+          "size_mb": 234.74203491210938,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 3278.892078399658,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.non_ema.safetensors",
+          "size_mb": 3278.892074584961,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 1639.4856491088867,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 1159.650640487671,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors"
+        },
+        {
+          "name": "model.fp16.safetensors",
+          "size_mb": 579.8515701293945,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 319.14069747924805,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 159.58341789245605,
+          "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 2386.225830078125,
+          "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 469.4989538192749,
+          "path": "ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 469.4989538192749,
+          "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 3279.0705919265747,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 469.4989538192749,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 319.2063455581665,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 577.1999998092651,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/ootdiffusion/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "text_encoder_pytorch_model.bin",
+          "size_mb": 492.3999996185303,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/text_encoder/ootdiffusion/text_encoder/text_encoder_pytorch_model.bin"
+        },
+        {
+          "name": "vae_diffusion_pytorch_model.bin",
+          "size_mb": 334.5999994277954,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/vae/ootdiffusion/vae/vae_diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 3279.0705919265747,
+          "path": "ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 0.0,
+          "path": "ai_models/virtual_fitting/models--levihsu--OOTDiffusion/.no_exist/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/ootd_hd/pytorch_model.bin"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.13429737091064453,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive/data.pkl"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.13429737091064453,
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive 2/data.pkl"
+        }
+      ],
+      "unknown": [
+        {
+          "name": "GFPGAN.pth",
+          "size_mb": 332.4822177886963,
+          "path": "ai_models/checkpoints/step_07_post_processing/GFPGAN.pth"
+        },
+        {
+          "name": "lpips_vgg.pth",
+          "size_mb": 527.7956781387329,
+          "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_vgg.pth"
+        },
+        {
+          "name": "lpips_alex.pth",
+          "size_mb": 233.095703125,
+          "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_alex.pth"
+        },
+        {
+          "name": "ESRGAN_x8.pth",
+          "size_mb": 135.87373638153076,
+          "path": "ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth"
+        },
+        {
+          "name": "densenet161_enhance.pth",
+          "size_mb": 110.58963775634766,
+          "path": "ai_models/step_07_post_processing/ultra_models/densenet161_enhance.pth"
+        },
+        {
+          "name": "mobilenet_v3_ultra.pth",
+          "size_mb": 21.11079978942871,
+          "path": "ai_models/step_07_post_processing/ultra_models/mobilenet_v3_ultra.pth"
+        },
+        {
+          "name": "resnet101_enhance_ultra.pth",
+          "size_mb": 170.5408763885498,
+          "path": "ai_models/step_07_post_processing/ultra_models/resnet101_enhance_ultra.pth"
+        },
+        {
+          "name": "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+          "size_mb": 56.849955558776855,
+          "path": "ai_models/step_07_post_processing/ultra_models/001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth"
+        },
+        {
+          "name": "alex.pth",
+          "size_mb": 0.006951332092285156,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/alex.pth"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 822.9781694412231,
+          "path": "ai_models/step_07_post_processing/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 20.45078754425049,
+          "path": "ai_models/common/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 577.2085866928101,
+          "path": "ai_models/step_08_quality_assessment/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 1631.4235677719116,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "photomaker-v1.bin",
+          "size_mb": 890.8304376602173,
+          "path": "ai_models/future_enhancements/face_enhancement/photomaker_ultra/photomaker-v1.bin"
+        },
+        {
+          "name": "ip-adapter.bin",
+          "size_mb": 1612.7911958694458,
+          "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ip-adapter.bin"
+        },
+        {
+          "name": "edsr_x4.pt",
+          "size_mb": 0.0,
+          "path": "ai_models/step_07_post_processing/ultra_models/edsr_x4.pt"
+        },
+        {
+          "name": "ViT-B-32.pt",
+          "size_mb": 337.5783176422119,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-B-32.pt"
+        },
+        {
+          "name": "ViT-L-14.pt",
+          "size_mb": 889.5570125579834,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-L-14.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.07559490203857422,
+          "path": "ai_models/step_08_quality_assessment/archive/data.pkl"
+        },
+        {
+          "name": "GFPGAN.pth",
+          "size_mb": 332.4822177886963,
+          "path": "ai_models/checkpoints/step_07_post_processing/GFPGAN.pth"
+        },
+        {
+          "name": "lpips_vgg.pth",
+          "size_mb": 527.7956781387329,
+          "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_vgg.pth"
+        },
+        {
+          "name": "lpips_alex.pth",
+          "size_mb": 233.095703125,
+          "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_alex.pth"
+        },
+        {
+          "name": "ESRGAN_x8.pth",
+          "size_mb": 135.87373638153076,
+          "path": "ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth"
+        },
+        {
+          "name": "densenet161_enhance.pth",
+          "size_mb": 110.58963775634766,
+          "path": "ai_models/step_07_post_processing/ultra_models/densenet161_enhance.pth"
+        },
+        {
+          "name": "mobilenet_v3_ultra.pth",
+          "size_mb": 21.11079978942871,
+          "path": "ai_models/step_07_post_processing/ultra_models/mobilenet_v3_ultra.pth"
+        },
+        {
+          "name": "resnet101_enhance_ultra.pth",
+          "size_mb": 170.5408763885498,
+          "path": "ai_models/step_07_post_processing/ultra_models/resnet101_enhance_ultra.pth"
+        },
+        {
+          "name": "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+          "size_mb": 56.849955558776855,
+          "path": "ai_models/step_07_post_processing/ultra_models/001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth"
+        },
+        {
+          "name": "alex.pth",
+          "size_mb": 0.006951332092285156,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/alex.pth"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 822.9781694412231,
+          "path": "ai_models/step_07_post_processing/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 20.45078754425049,
+          "path": "ai_models/common/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 577.2085866928101,
+          "path": "ai_models/step_08_quality_assessment/pytorch_model.bin"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 1631.4235677719116,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/pytorch_model.bin"
+        },
+        {
+          "name": "photomaker-v1.bin",
+          "size_mb": 890.8304376602173,
+          "path": "ai_models/future_enhancements/face_enhancement/photomaker_ultra/photomaker-v1.bin"
+        },
+        {
+          "name": "ip-adapter.bin",
+          "size_mb": 1612.7911958694458,
+          "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ip-adapter.bin"
+        },
+        {
+          "name": "edsr_x4.pt",
+          "size_mb": 0.0,
+          "path": "ai_models/step_07_post_processing/ultra_models/edsr_x4.pt"
+        },
+        {
+          "name": "ViT-B-32.pt",
+          "size_mb": 337.5783176422119,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-B-32.pt"
+        },
+        {
+          "name": "ViT-L-14.pt",
+          "size_mb": 889.5570125579834,
+          "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-L-14.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.07559490203857422,
+          "path": "ai_models/step_08_quality_assessment/archive/data.pkl"
+        }
+      ],
+      "step_05_image_generation": [
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/checkpoints/step_07_post_processing/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "RealESRGAN_x2plus.pth",
+          "size_mb": 63.955044746398926,
+          "path": "ai_models/step_07_post_processing/ultra_models/RealESRGAN_x2plus.pth"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/step_07_post_processing/ultra_models/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 2649.976982116699,
+          "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 469.4606475830078,
+          "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 4897.260437011719,
+          "path": "ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 2386.225830078125,
+          "path": "ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "mm_sd_v15_v2.ckpt",
+          "size_mb": 1733.6735067367554,
+          "path": "ai_models/future_enhancements/video_generation/animatediff_ultra/mm_sd_v15_v2.ckpt"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/checkpoints/step_07_post_processing/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "RealESRGAN_x2plus.pth",
+          "size_mb": 63.955044746398926,
+          "path": "ai_models/step_07_post_processing/ultra_models/RealESRGAN_x2plus.pth"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/step_07_post_processing/ultra_models/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 2649.976982116699,
+          "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors"
+        },
+        {
+          "name": "model.safetensors",
+          "size_mb": 469.4606475830078,
+          "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 4897.260437011719,
+          "path": "ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "diffusion_pytorch_model.fp16.safetensors",
+          "size_mb": 2386.225830078125,
+          "path": "ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors"
+        },
+        {
+          "name": "mm_sd_v15_v2.ckpt",
+          "size_mb": 1733.6735067367554,
+          "path": "ai_models/future_enhancements/video_generation/animatediff_ultra/mm_sd_v15_v2.ckpt"
+        }
+      ],
+      "step_04_geometric_matching": [
+        {
+          "name": "gmm_final.pth",
+          "size_mb": 44.658203125,
+          "path": "ai_models/step_04_geometric_matching/gmm_final.pth"
+        },
+        {
+          "name": "tps_network.pth",
+          "size_mb": 527.7956781387329,
+          "path": "ai_models/step_04_geometric_matching/tps_network.pth"
+        },
+        {
+          "name": "raft-things.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/raft-things.pth"
+        },
+        {
+          "name": "resnet101_geometric.pth",
+          "size_mb": 170.5384120941162,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/resnet101_geometric.pth"
+        },
+        {
+          "name": "resnet50_geometric_ultra.pth",
+          "size_mb": 97.79625511169434,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/resnet50_geometric_ultra.pth"
+        },
+        {
+          "name": "efficientnet_b0_ultra.pth",
+          "size_mb": 20.458444595336914,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/efficientnet_b0_ultra.pth"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "raft-things.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-things.pth"
+        },
+        {
+          "name": "raft-chairs.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-chairs.pth"
+        },
+        {
+          "name": "raft-kitti.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-kitti.pth"
+        },
+        {
+          "name": "raft-sintel.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-sintel.pth"
+        },
+        {
+          "name": "raft-small.pth",
+          "size_mb": 3.8002147674560547,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-small.pth"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1378.2092323303223,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 1161.0660848617554,
+          "path": "ai_models/step_04_geometric_matching/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 1378.302544593811,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "ViT-L-14.pt",
+          "size_mb": 889.5570125579834,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/ViT-L-14.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.06491374969482422,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model/data.pkl"
+        },
+        {
+          "name": "gmm_final.pth",
+          "size_mb": 44.658203125,
+          "path": "ai_models/step_04_geometric_matching/gmm_final.pth"
+        },
+        {
+          "name": "tps_network.pth",
+          "size_mb": 527.7956781387329,
+          "path": "ai_models/step_04_geometric_matching/tps_network.pth"
+        },
+        {
+          "name": "raft-things.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/raft-things.pth"
+        },
+        {
+          "name": "resnet101_geometric.pth",
+          "size_mb": 170.5384120941162,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/resnet101_geometric.pth"
+        },
+        {
+          "name": "resnet50_geometric_ultra.pth",
+          "size_mb": 97.79625511169434,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/resnet50_geometric_ultra.pth"
+        },
+        {
+          "name": "efficientnet_b0_ultra.pth",
+          "size_mb": 20.458444595336914,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/efficientnet_b0_ultra.pth"
+        },
+        {
+          "name": "RealESRGAN_x4plus.pth",
+          "size_mb": 63.935269355773926,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/RealESRGAN_x4plus.pth"
+        },
+        {
+          "name": "raft-things.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-things.pth"
+        },
+        {
+          "name": "raft-chairs.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-chairs.pth"
+        },
+        {
+          "name": "raft-kitti.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-kitti.pth"
+        },
+        {
+          "name": "raft-sintel.pth",
+          "size_mb": 20.130157470703125,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-sintel.pth"
+        },
+        {
+          "name": "raft-small.pth",
+          "size_mb": 3.8002147674560547,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/models/raft-small.pth"
+        },
+        {
+          "name": "diffusion_pytorch_model.safetensors",
+          "size_mb": 1378.2092323303223,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.safetensors"
+        },
+        {
+          "name": "pytorch_model.bin",
+          "size_mb": 1161.0660848617554,
+          "path": "ai_models/step_04_geometric_matching/pytorch_model.bin"
+        },
+        {
+          "name": "diffusion_pytorch_model.bin",
+          "size_mb": 1378.302544593811,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.bin"
+        },
+        {
+          "name": "ViT-L-14.pt",
+          "size_mb": 889.5570125579834,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/ViT-L-14.pt"
+        },
+        {
+          "name": "data.pkl",
+          "size_mb": 0.06491374969482422,
+          "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model/data.pkl"
+        }
+      ]
+    },
+    "large_files": [
+      {
+        "name": "v1-5-pruned.safetensors",
+        "size_mb": 7346.462522506714,
+        "size_gb": 7.174279807135463,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors"
+      },
+      {
+        "name": "v1-5-pruned.safetensors",
+        "size_mb": 7346.462522506714,
+        "size_gb": 7.174279807135463,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors"
+      },
+      {
+        "name": "RealVisXL_V4.0.safetensors",
+        "size_mb": 6616.631227493286,
+        "size_gb": 6.461553933098912,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors"
+      },
+      {
+        "name": "RealVisXL_V4.0.safetensors",
+        "size_mb": 6616.631227493286,
+        "size_gb": 6.461553933098912,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors"
+      },
+      {
+        "name": "open_clip_pytorch_model.bin",
+        "size_mb": 5213.743920326233,
+        "size_gb": 5.091546797193587,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin"
+      },
+      {
+        "name": "open_clip_pytorch_model.bin",
+        "size_mb": 5213.743920326233,
+        "size_gb": 5.091546797193587,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 4897.260437011719,
+        "size_gb": 4.782480895519257,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 4897.260437011719,
+        "size_gb": 4.782480895519257,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/sdxl_turbo_ultra/unet/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "v1-5-pruned-emaonly.safetensors",
+        "size_mb": 4067.5604858398438,
+        "size_gb": 3.9722270369529724,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors"
+      },
+      {
+        "name": "v1-5-pruned-emaonly.safetensors",
+        "size_mb": 4067.5604858398438,
+        "size_gb": 3.9722270369529724,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3303.2670001983643,
+        "size_gb": 3.225846679881215,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3303.2670001983643,
+        "size_gb": 3.225846679881215,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.1255235671997,
+        "size_gb": 3.2022710191085935,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/unet/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.1255235671997,
+        "size_gb": 3.2022710191085935,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/unet/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "size_gb": 3.2022173749282956,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "size_gb": 3.2022173749282956,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "size_gb": 3.2022173749282956,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "size_gb": 3.2022173749282956,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "size_gb": 3.202085964381695,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892078399658,
+        "size_gb": 3.202043045312166,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892078399658,
+        "size_gb": 3.202043045312166,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.non_ema.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.non_ema.safetensors",
+        "size_mb": 3278.892074584961,
+        "size_gb": 3.202043041586876,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.non_ema.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 2649.976982116699,
+        "size_gb": 2.587868146598339,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 2649.976982116699,
+        "size_gb": 2.587868146598339,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder_2/model.safetensors"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 2445.7597856521606,
+        "size_gb": 2.388437290675938,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 2445.7597856521606,
+        "size_gb": 2.388437290675938,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/pytorch_model.bin"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "size_gb": 2.3884241273626685,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 2386.225830078125,
+        "size_gb": 2.330298662185669,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 2386.225830078125,
+        "size_gb": 2.330298662185669,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 2386.225830078125,
+        "size_gb": 2.330298662185669,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/controlnet_xl_canny/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 2386.225830078125,
+        "size_gb": 2.330298662185669,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ControlNetModel/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "mm_sd_v15_v2.ckpt",
+        "size_mb": 1733.6735067367554,
+        "size_gb": 1.6930405339226127,
+        "step": "step_05_image_generation",
+        "path": "ai_models/future_enhancements/video_generation/animatediff_ultra/mm_sd_v15_v2.ckpt"
+      },
+      {
+        "name": "mm_sd_v15_v2.ckpt",
+        "size_mb": 1733.6735067367554,
+        "size_gb": 1.6930405339226127,
+        "step": "step_05_image_generation",
+        "path": "ai_models/future_enhancements/video_generation/animatediff_ultra/mm_sd_v15_v2.ckpt"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1719.0,
+        "size_gb": 1.6787109375,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1719.0,
+        "size_gb": 1.6787109375,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 1639.4856491088867,
+        "size_gb": 1.6010602042078972,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 1639.4856491088867,
+        "size_gb": 1.6010602042078972,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/unet/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 1631.4235677719116,
+        "size_gb": 1.5931870779022574,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 1631.4235677719116,
+        "size_gb": 1.5931870779022574,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "ip-adapter.bin",
+        "size_mb": 1612.7911958694458,
+        "size_gb": 1.5749914022162557,
+        "step": "unknown",
+        "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ip-adapter.bin"
+      },
+      {
+        "name": "ip-adapter.bin",
+        "size_mb": 1612.7911958694458,
+        "size_gb": 1.5749914022162557,
+        "step": "unknown",
+        "path": "ai_models/future_enhancements/face_enhancement/instantid_ultra/ip-adapter.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 1378.302544593811,
+        "size_gb": 1.3459985787048936,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 1378.302544593811,
+        "size_gb": 1.3459985787048936,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 1378.302544593811,
+        "size_gb": 1.3459985787048936,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 1378.302544593811,
+        "size_gb": 1.3459985787048936,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "size_gb": 1.3459074534475803,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "size_gb": 1.3459074534475803,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "size_gb": 1.3459074534475803,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "size_gb": 1.3459074534475803,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "size_gb": 1.3459074534475803,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "size_gb": 1.3459074534475803,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "sam_vit_l_0b3195.pth",
+        "size_mb": 1191.6395254135132,
+        "size_gb": 1.163710474036634,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth"
+      },
+      {
+        "name": "sam_vit_l_0b3195.pth",
+        "size_mb": 1191.6395254135132,
+        "size_gb": 1.163710474036634,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth"
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 1172.9622974395752,
+        "size_gb": 1.1454709935933352,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 1172.9622974395752,
+        "size_gb": 1.1454709935933352,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 1161.0660848617554,
+        "size_gb": 1.133853598497808,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 1161.0660848617554,
+        "size_gb": 1.133853598497808,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/pytorch_model.bin"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 1159.650640487671,
+        "size_gb": 1.1324713286012411,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 1159.650640487671,
+        "size_gb": 1.1324713286012411,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.safetensors"
+      },
+      {
+        "name": "photomaker-v1.bin",
+        "size_mb": 890.8304376602173,
+        "size_gb": 0.8699515992775559,
+        "step": "unknown",
+        "path": "ai_models/future_enhancements/face_enhancement/photomaker_ultra/photomaker-v1.bin"
+      },
+      {
+        "name": "photomaker-v1.bin",
+        "size_mb": 890.8304376602173,
+        "size_gb": 0.8699515992775559,
+        "step": "unknown",
+        "path": "ai_models/future_enhancements/face_enhancement/photomaker_ultra/photomaker-v1.bin"
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "size_gb": 0.8687080200761557,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/ViT-L-14.pt"
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "size_gb": 0.8687080200761557,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-L-14.pt"
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "size_gb": 0.8687080200761557,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/ViT-L-14.pt"
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "size_gb": 0.8687080200761557,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-L-14.pt"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 822.9781694412231,
+        "size_gb": 0.8036896185949445,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 822.9781694412231,
+        "size_gb": 0.8036896185949445,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.bin",
+        "size_mb": 689.2188482284546,
+        "size_gb": 0.6730652814731002,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.bin",
+        "size_mb": 689.2188482284546,
+        "size_gb": 0.6730652814731002,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 689.1237659454346,
+        "size_gb": 0.6729724276810884,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 689.1237659454346,
+        "size_gb": 0.6729724276810884,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_02_pose_estimation/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 579.8515701293945,
+        "size_gb": 0.5662612989544868,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors"
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 579.8515701293945,
+        "size_gb": 0.5662612989544868,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/safety_checker/model.fp16.safetensors"
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 579.8515701293945,
+        "size_gb": 0.5662612989544868,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/safety_checker/model.fp16.safetensors"
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 579.8515701293945,
+        "size_gb": 0.5662612989544868,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/safety_checker/model.fp16.safetensors"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 577.2085866928101,
+        "size_gb": 0.5636802604421973,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 577.2085866928101,
+        "size_gb": 0.5636802604421973,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 577.1999998092651,
+        "size_gb": 0.5636718748137355,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/ootdiffusion/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 577.1999998092651,
+        "size_gb": 0.5636718748137355,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/ootdiffusion/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "vgg19_warping.pth",
+        "size_mb": 548.0597839355469,
+        "size_gb": 0.5352146327495575,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/vgg19_warping.pth"
+      },
+      {
+        "name": "vgg19_warping.pth",
+        "size_mb": 548.0597839355469,
+        "size_gb": 0.5352146327495575,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/vgg19_warping.pth"
+      },
+      {
+        "name": "vgg16_warping_ultra.pth",
+        "size_mb": 527.8031978607178,
+        "size_gb": 0.5154328104108572,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth"
+      },
+      {
+        "name": "vgg16_warping_ultra.pth",
+        "size_mb": 527.8031978607178,
+        "size_gb": 0.5154328104108572,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth"
+      },
+      {
+        "name": "lpips_vgg.pth",
+        "size_mb": 527.7956781387329,
+        "size_gb": 0.5154254669323564,
+        "step": "unknown",
+        "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_vgg.pth"
+      },
+      {
+        "name": "tps_network.pth",
+        "size_mb": 527.7956781387329,
+        "size_gb": 0.5154254669323564,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/tps_network.pth"
+      },
+      {
+        "name": "lpips_vgg.pth",
+        "size_mb": 527.7956781387329,
+        "size_gb": 0.5154254669323564,
+        "step": "unknown",
+        "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_vgg.pth"
+      },
+      {
+        "name": "tps_network.pth",
+        "size_mb": 527.7956781387329,
+        "size_gb": 0.5154254669323564,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/tps_network.pth"
+      },
+      {
+        "name": "text_encoder_pytorch_model.bin",
+        "size_mb": 492.3999996185303,
+        "size_gb": 0.48085937462747097,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/text_encoder/ootdiffusion/text_encoder/text_encoder_pytorch_model.bin"
+      },
+      {
+        "name": "text_encoder_pytorch_model.bin",
+        "size_mb": 492.3999996185303,
+        "size_gb": 0.48085937462747097,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/text_encoder/ootdiffusion/text_encoder/text_encoder_pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "size_gb": 0.45849507208913565,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "size_gb": 0.45849507208913565,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "size_gb": 0.45849507208913565,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "size_gb": 0.45849507208913565,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "size_gb": 0.45849507208913565,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "size_gb": 0.45849507208913565,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/text_encoder/pytorch_model.bin"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 469.4613208770752,
+        "size_gb": 0.45845832116901875,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 469.4613208770752,
+        "size_gb": 0.45845832116901875,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 469.4606475830078,
+        "size_gb": 0.45845766365528107,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 469.4606475830078,
+        "size_gb": 0.45845766365528107,
+        "step": "step_05_image_generation",
+        "path": "ai_models/experimental_models/sdxl_turbo_ultra/text_encoder/model.safetensors"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 357.668288230896,
+        "size_gb": 0.34928543772548437,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "mobile_sam_alternative.pt",
+        "size_mb": 357.668288230896,
+        "size_gb": 0.34928543772548437,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt"
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 357.668288230896,
+        "size_gb": 0.34928543772548437,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth"
+      },
+      {
+        "name": "mobile_sam_alternative.pt",
+        "size_mb": 357.668288230896,
+        "size_gb": 0.34928543772548437,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt"
+      },
+      {
+        "name": "ViT-B-32.pt",
+        "size_mb": 337.5783176422119,
+        "size_gb": 0.3296663258224726,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-B-32.pt"
+      },
+      {
+        "name": "ViT-B-32.pt",
+        "size_mb": 337.5783176422119,
+        "size_gb": 0.3296663258224726,
+        "step": "unknown",
+        "path": "ai_models/step_08_quality_assessment/ultra_models/ViT-B-32.pt"
+      },
+      {
+        "name": "vae_diffusion_pytorch_model.bin",
+        "size_mb": 334.5999994277954,
+        "size_gb": 0.32675781194120646,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/vae/ootdiffusion/vae/vae_diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "vae_diffusion_pytorch_model.bin",
+        "size_mb": 334.5999994277954,
+        "size_gb": 0.32675781194120646,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/vae/ootdiffusion/vae/vae_diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "GFPGAN.pth",
+        "size_mb": 332.4822177886963,
+        "size_gb": 0.3246896658092737,
+        "step": "unknown",
+        "path": "ai_models/checkpoints/step_07_post_processing/GFPGAN.pth"
+      },
+      {
+        "name": "GFPGAN.pth",
+        "size_mb": 332.4822177886963,
+        "size_gb": 0.3246896658092737,
+        "step": "unknown",
+        "path": "ai_models/checkpoints/step_07_post_processing/GFPGAN.pth"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 319.2063455581665,
+        "size_gb": 0.311724946834147,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 319.2063455581665,
+        "size_gb": 0.311724946834147,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/vae/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 319.14069747924805,
+        "size_gb": 0.31166083738207817,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/vae/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 319.14069747924805,
+        "size_gb": 0.31166083738207817,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 319.14069747924805,
+        "size_gb": 0.31166083738207817,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/vae/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 319.14069747924805,
+        "size_gb": 0.31166083738207817,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.safetensors"
+      },
+      {
+        "name": "exp-schp-201908261155-lip.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
+      },
+      {
+        "name": "lip_model.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/lip_model.pth"
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth"
+      },
+      {
+        "name": "inference.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/inference.pth"
+      },
+      {
+        "name": "exp-schp-201908261155-lip.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth"
+      },
+      {
+        "name": "lip_model.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/lip_model.pth"
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/exp-schp-201908301523-atr.pth"
+      },
+      {
+        "name": "inference.pth",
+        "size_mb": 255.05957508087158,
+        "size_gb": 0.24908161628991365,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/inference.pth"
+      },
+      {
+        "name": "exp-schp-201908261155-atr.pth",
+        "size_mb": 255.05565357208252,
+        "size_gb": 0.24907778669148684,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth"
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.05565357208252,
+        "size_gb": 0.24907778669148684,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
+      },
+      {
+        "name": "atr_model.pth",
+        "size_mb": 255.05565357208252,
+        "size_gb": 0.24907778669148684,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/atr_model.pth"
+      },
+      {
+        "name": "exp-schp-201908261155-atr.pth",
+        "size_mb": 255.05565357208252,
+        "size_gb": 0.24907778669148684,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth"
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.05565357208252,
+        "size_gb": 0.24907778669148684,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908301523-atr.pth"
+      },
+      {
+        "name": "atr_model.pth",
+        "size_mb": 255.05565357208252,
+        "size_gb": 0.24907778669148684,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/atr_model.pth"
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 234.74203491210938,
+        "size_gb": 0.2292402684688568,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors"
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 234.74203491210938,
+        "size_gb": 0.2292402684688568,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/text_encoder/model.fp16.safetensors"
+      },
+      {
+        "name": "deeplabv3_resnet101_ultra.pth",
+        "size_mb": 233.32293128967285,
+        "size_gb": 0.22785442508757114,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth"
+      },
+      {
+        "name": "deeplabv3_resnet101_ultra.pth",
+        "size_mb": 233.32293128967285,
+        "size_gb": 0.22785442508757114,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/ultra_models/deeplabv3_resnet101_ultra.pth"
+      },
+      {
+        "name": "deeplab_resnet101.pth",
+        "size_mb": 233.21679973602295,
+        "size_gb": 0.2277507809922099,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth"
+      },
+      {
+        "name": "deeplab_resnet101.pth",
+        "size_mb": 233.21679973602295,
+        "size_gb": 0.2277507809922099,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/ultra_models/deeplab_resnet101.pth"
+      },
+      {
+        "name": "lpips_alex.pth",
+        "size_mb": 233.095703125,
+        "size_gb": 0.2276325225830078,
+        "step": "unknown",
+        "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_alex.pth"
+      },
+      {
+        "name": "lpips_alex.pth",
+        "size_mb": 233.095703125,
+        "size_gb": 0.2276325225830078,
+        "step": "unknown",
+        "path": "ai_models/checkpoints/step_08_quality_assessment/lpips_alex.pth"
+      },
+      {
+        "name": "hrviton_final.pth",
+        "size_mb": 230.341796875,
+        "size_gb": 0.2249431610107422,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth"
+      },
+      {
+        "name": "hrviton_final.pth",
+        "size_mb": 230.341796875,
+        "size_gb": 0.2249431610107422,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth"
+      },
+      {
+        "name": "optimizer.pt",
+        "size_mb": 208.95465564727783,
+        "size_gb": 0.20405728090554476,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/optimizer.pt"
+      },
+      {
+        "name": "optimizer.pt",
+        "size_mb": 208.95465564727783,
+        "size_gb": 0.20405728090554476,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/optimizer.pt"
+      },
+      {
+        "name": "fcn_resnet101_ultra.pth",
+        "size_mb": 207.8078327178955,
+        "size_gb": 0.20293733663856983,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth"
+      },
+      {
+        "name": "fcn_resnet101_ultra.pth",
+        "size_mb": 207.8078327178955,
+        "size_gb": 0.20293733663856983,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth"
+      },
+      {
+        "name": "body_pose_model.pth",
+        "size_mb": 199.57313060760498,
+        "size_gb": 0.19489563535898924,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth"
+      },
+      {
+        "name": "body_pose_model.pth",
+        "size_mb": 199.57313060760498,
+        "size_gb": 0.19489563535898924,
+        "step": "step_02_pose_estimation",
+        "path": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth"
+      },
+      {
+        "name": "resnet101_enhance_ultra.pth",
+        "size_mb": 170.5408763885498,
+        "size_gb": 0.16654382459819317,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/ultra_models/resnet101_enhance_ultra.pth"
+      },
+      {
+        "name": "resnet101_enhance_ultra.pth",
+        "size_mb": 170.5408763885498,
+        "size_gb": 0.16654382459819317,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/ultra_models/resnet101_enhance_ultra.pth"
+      },
+      {
+        "name": "resnet101_geometric.pth",
+        "size_mb": 170.5384120941162,
+        "size_gb": 0.16654141806066036,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/resnet101_geometric.pth"
+      },
+      {
+        "name": "resnet101_geometric.pth",
+        "size_mb": 170.5384120941162,
+        "size_gb": 0.16654141806066036,
+        "step": "step_04_geometric_matching",
+        "path": "ai_models/step_04_geometric_matching/ultra_models/resnet101_geometric.pth"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 168.39410591125488,
+        "size_gb": 0.16444736905395985,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 168.39410591125488,
+        "size_gb": 0.16444736905395985,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/step_03_cloth_segmentation/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "u2net_fallback.pth",
+        "size_mb": 160.56964874267578,
+        "size_gb": 0.15680629760026932,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_fallback.pth"
+      },
+      {
+        "name": "u2net_fallback.pth",
+        "size_mb": 160.56964874267578,
+        "size_gb": 0.15680629760026932,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_fallback.pth"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 159.58341789245605,
+        "size_gb": 0.15584318153560162,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 159.58341789245605,
+        "size_gb": 0.15584318153560162,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/checkpoints/stable-diffusion-v1-5/vae/diffusion_pytorch_model.fp16.safetensors"
+      },
+      {
+        "name": "ESRGAN_x8.pth",
+        "size_mb": 135.87373638153076,
+        "size_gb": 0.13268919568508863,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth"
+      },
+      {
+        "name": "ESRGAN_x8.pth",
+        "size_mb": 135.87373638153076,
+        "size_gb": 0.13268919568508863,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth"
+      },
+      {
+        "name": "densenet161_enhance.pth",
+        "size_mb": 110.58963775634766,
+        "size_gb": 0.10799769312143326,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/ultra_models/densenet161_enhance.pth"
+      },
+      {
+        "name": "densenet161_enhance.pth",
+        "size_mb": 110.58963775634766,
+        "size_gb": 0.10799769312143326,
+        "step": "unknown",
+        "path": "ai_models/step_07_post_processing/ultra_models/densenet161_enhance.pth"
+      },
+      {
+        "name": "graphonomy_alternative.pth",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/human_parsing/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/human_parsing/schp/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/cache/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/pytorch_model.bin"
+      },
+      {
+        "name": "graphonomy_alternative.pth",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/human_parsing/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/human_parsing/schp/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_03_cloth_segmentation",
+        "path": "ai_models/cache/models--mattmdjaga--segformer_b2_clothes/snapshots/c4d76e5d0058ab0e3e805d5382c44d5bd059fee3/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/ultra_models/pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/pytorch_model.bin"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 104.4208869934082,
+        "size_gb": 0.1019735224545002,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/model.safetensors"
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 104.4208869934082,
+        "size_gb": 0.1019735224545002,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/Graphonomy/model.safetensors"
+      }
+    ],
+    "missing_files": [
+      {
+        "path": "ai_models/u2net.pth",
+        "error": "[Errno 2] No such file or directory: 'ai_models/u2net.pth'"
+      },
+      {
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+        "error": "[Errno 2] No such file or directory: 'ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth'"
+      },
+      {
+        "path": "ai_models/pytorch_model.bin",
+        "error": "[Errno 2] No such file or directory: 'ai_models/pytorch_model.bin'"
+      },
+      {
+        "path": "ai_models/u2net.pth",
+        "error": "[Errno 2] No such file or directory: 'ai_models/u2net.pth'"
+      },
+      {
+        "path": "ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth",
+        "error": "[Errno 2] No such file or directory: 'ai_models/checkpoints/step_03_cloth_segmentation/u2net.pth'"
+      },
+      {
+        "path": "ai_models/pytorch_model.bin",
+        "error": "[Errno 2] No such file or directory: 'ai_models/pytorch_model.bin'"
+      }
+    ],
+    "search_paths": [
+      "ai_models",
+      "models",
+      "backend/ai_models",
+      "../ai_models",
+      "ai_models",
+      "checkpoints",
+      "weights"
+    ]
+  },
+  "steps_analysis": {
+    "total_steps": 4,
+    "import_success": 4,
+    "instance_success": 4,
+    "initialization_success": 4,
+    "step_details": {
+      "HumanParsingStep": {
+        "import_success": true,
+        "instance_created": true,
+        "initialized": true,
+        "ai_models_loaded": [],
+        "dependencies": {},
+        "error_count": 0,
+        "errors": []
+      },
+      "PoseEstimationStep": {
+        "import_success": true,
+        "instance_created": true,
+        "initialized": true,
+        "ai_models_loaded": [],
+        "dependencies": {},
+        "error_count": 0,
+        "errors": []
+      },
+      "ClothSegmentationStep": {
+        "import_success": true,
+        "instance_created": true,
+        "initialized": true,
+        "ai_models_loaded": [],
+        "dependencies": {},
+        "error_count": 0,
+        "errors": []
+      },
+      "GeometricMatchingStep": {
+        "import_success": true,
+        "instance_created": true,
+        "initialized": true,
+        "ai_models_loaded": [],
+        "dependencies": {},
+        "error_count": 0,
+        "errors": []
+      }
+    }
+  },
+  "dependencies": {
+    "core_libraries": {
+      "PyTorch": {
+        "installed": true,
+        "version": "2.2.2",
+        "module_name": "torch"
+      },
+      "TorchVision": {
+        "installed": true,
+        "version": "0.17.2",
+        "module_name": "torchvision"
+      },
+      "NumPy": {
+        "installed": true,
+        "version": "1.26.4",
+        "module_name": "numpy"
+      },
+      "Pillow": {
+        "installed": true,
+        "version": "11.3.0",
+        "module_name": "PIL"
+      },
+      "OpenCV": {
+        "installed": true,
+        "version": "4.11.0",
+        "module_name": "cv2"
+      }
+    },
+    "ai_libraries": {
+      "Transformers": {
+        "installed": true,
+        "version": "4.53.3"
+      },
+      "Diffusers": {
+        "installed": true,
+        "version": "0.34.0"
+      },
+      "Ultralytics": {
+        "installed": true,
+        "version": "8.3.169"
+      },
+      "SafeTensors": {
+        "installed": true,
+        "version": "0.5.3"
+      },
+      "Segment Anything": {
+        "installed": true,
+        "version": "unknown"
+      }
+    },
+    "project_modules": {
+      "app.ai_pipeline.utils.memory_manager": {
+        "available": true
+      },
+      "app.ai_pipeline.utils.model_loader": {
+        "available": true
+      },
+      "app.core.config": {
+        "available": true
+      }
+    },
+    "missing_dependencies": []
+  },
+  "memory_usage": {
+    "process_memory": {
+      "rss_mb": 5252.234375,
+      "vms_mb": 408564.390625,
+      "percent": 4.007136821746826
+    },
+    "system_memory": {
+      "total_gb": 128.0,
+      "available_gb": 62.0362548828125,
+      "used_percent": 51.5,
+      "free_gb": 3.3931427001953125
+    },
+    "recommendations": []
+  },
+  "recommendations": [
+    "✅ AI 모델 파일 발견: 310개 (263.8GB)"
+  ],
+  "analysis_completed_at": 1753674766.151639,
+  "total_analysis_time": 8.916851997375488
+}
