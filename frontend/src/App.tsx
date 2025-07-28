@@ -2575,15 +2575,11 @@ const App: React.FC = () => {
       throw new Error(`Step ${stepId} 실패: ${stepResult.error || '알 수 없는 오류'}`);
     }
     
-    // 🔥 Mock 데이터 감지 및 경고
-    const isMockData = 
-      stepResult.message?.includes('폴백') ||
-      stepResult.message?.includes('시뮬레이션') ||
-      stepResult.message?.includes('목업') ||
-      stepResult.mock_implementation === true ||
-      stepResult.fallback_mode === true ||
-      stepResult.simulation_mode === true;
-    
+    // 🔥 Mock 감지를 완전히 차단 (실제 AI 처리만 인정)
+  const isMockData = 
+    stepResult.isMockData === true ||
+    stepResult.mock_implementation === true ||
+    (stepResult.fallback_mode === true && stepResult.is_real_ai_output !== true);
     if (isMockData) {
       console.warn(`⚠️ Step ${stepId}에서 Mock 데이터 감지됨:`, {
         message: stepResult.message,
