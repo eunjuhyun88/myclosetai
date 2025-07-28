@@ -1103,124 +1103,222 @@ if BASE_STEP_MIXIN_AVAILABLE:
                 self.logger.error(f"❌ 이미지 전처리 실패: {e}")
                 return None
         
-        def _execute_real_ai_inference_sync(self, image: Image.Image, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-            """실제 AI 추론 실행 (동기 구현) - ModelLoader 연동"""
-            try:
-                # ModelLoader를 통한 실제 AI 모델 로딩
-                best_model = None
-                best_model_name = None
-                
-                for model_name in self.preferred_model_order:
-                    try:
-                        # 🔥 ModelLoader get_model_async() 호출 (동기적으로)
-                        if hasattr(self, 'model_loader') and self.model_loader:
-                            if hasattr(self.model_loader, 'get_model_sync'):
-                                model = self.model_loader.get_model_sync(model_name)
-                            elif hasattr(self.model_loader, 'load_model'):
-                                model = self.model_loader.load_model(model_name)
-                            else:
-                                model = None
+    def _execute_real_ai_inference_sync(self, image: Image.Image, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """실제 AI 추론 실행 (목업 제거 버전)"""
+        try:
+            # ModelLoader를 통한 실제 AI 모델 로딩
+            best_model = None
+            best_model_name = None
+            
+            for model_name in self.preferred_model_order:
+                try:
+                    if hasattr(self, 'model_loader') and self.model_loader:
+                        if hasattr(self.model_loader, 'get_model_sync'):
+                            model = self.model_loader.get_model_sync(model_name)
+                        elif hasattr(self.model_loader, 'load_model'):
+                            model = self.model_loader.load_model(model_name)
                         else:
-                            # StepModelInterface를 통한 모델 로딩
-                            if hasattr(self, 'model_interface') and self.model_interface:
-                                model = self.model_interface.get_model_sync(model_name)
-                            else:
-                                model = None
-                        
-                        if model is not None:
-                            best_model = model
-                            best_model_name = model_name
-                            self.logger.info(f"✅ AI 모델 로딩 성공: {model_name}")
-                            break
-                            
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ AI 모델 로딩 실패 ({model_name}): {e}")
-                        continue
-                
-                if best_model is None:
-                    # 폴백: 기본 AI 모델 클래스 생성
-                    self.logger.warning("⚠️ ModelLoader에서 모델 로딩 실패, 기본 모델 생성")
-                    best_model = RealGraphonomyModel(num_classes=self.num_classes).to(self.device)
-                    best_model.eval()
-                    best_model_name = "fallback_graphonomy"
-                
-                # 이미지를 텐서로 변환
-                input_tensor = self._image_to_tensor(image)
-                
-                # 실제 AI 모델 직접 추론
-                with torch.no_grad():
-                    if hasattr(best_model, 'forward') or callable(best_model):
-                        if isinstance(best_model, (RealGraphonomyModel, RealATRModel)):
-                            model_output = best_model(input_tensor)
-                        elif hasattr(best_model, '__call__'):
-                            model_output = best_model(input_tensor)
-                        else:
-                            # 모델이 딕셔너리 형태인 경우 (ModelLoader 로딩 결과)
-                            model_output = self._fallback_inference(input_tensor)
+                            model = None
                     else:
-                        model_output = self._fallback_inference(input_tensor)
-                
-                # 출력 처리
-                if isinstance(model_output, dict) and 'parsing' in model_output:
-                    parsing_tensor = model_output['parsing']
-                elif torch.is_tensor(model_output):
-                    parsing_tensor = model_output
-                else:
-                    raise RuntimeError(f"예상치 못한 AI 모델 출력: {type(model_output)}")
-                
-                # 파싱 맵 생성 (20개 부위 정밀 파싱)
-                parsing_map = self._tensor_to_parsing_map(parsing_tensor, image.size)
-                
-                # 신뢰도 계산
-                confidence = self._calculate_ai_confidence(parsing_tensor)
-                confidence_scores = self._calculate_confidence_scores(parsing_tensor)
-                
-                self.last_used_model = best_model_name
-                
-                return {
-                    'success': True,
-                    'parsing_map': parsing_map,
-                    'confidence': confidence,
-                    'confidence_scores': confidence_scores,
-                    'model_name': best_model_name,
-                    'device': self.device,
-                    'real_ai_inference': True,
-                    'sync_inference': True
-                }
-                
-            except Exception as e:
-                self.logger.error(f"❌ 실제 AI 추론 실패: {e}")
+                        if hasattr(self, 'model_interface') and self.model_interface:
+                            model = self.model_interface.get_model_sync(model_name)
+                        else:
+                            model = None
+                    
+                    if model is not None:
+                        best_model = model
+                        best_model_name = model_name
+                        self.logger.info(f"✅ AI 모델 로딩 성공: {model_name}")
+                        break
+                        
+                except Exception as e:
+                    self.logger.warning(f"⚠️ AI 모델 로딩 실패 ({model_name}): {e}")
+                    continue
+            
+            # ❌ 기존: 폴백 모델 생성
+            # if best_model is None:
+            #     best_model = RealGraphonomyModel(num_classes=self.num_classes).to(self.device)
+            #     best_model_name = "fallback_graphonomy"
+            
+            # ✅ 수정: 실제 모델 없으면 실패 반환
+            if best_model is None:
                 return {
                     'success': False,
-                    'error': str(e),
-                    'model_name': best_model_name if 'best_model_name' in locals() else 'unknown',
-                    'device': self.device,
-                    'real_ai_inference': False,
+                    'error': '실제 AI 모델 파일을 찾을 수 없습니다',
+                    'required_files': [
+                        'ai_models/step_01_human_parsing/graphonomy.pth',
+                        'ai_models/Graphonomy/pytorch_model.bin',
+                        'ai_models/Self-Correction-Human-Parsing/exp-schp-201908301523-atr.pth'
+                    ],
                     'sync_inference': True
                 }
-        
-        def _fallback_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
-            """폴백 추론 (모델 로딩 실패 시)"""
-            try:
-                batch_size, channels, height, width = input_tensor.shape
-                # 기본 세그멘테이션 결과 생성
-                fallback_output = torch.zeros((batch_size, self.num_classes, height, width), 
-                                            device=input_tensor.device, dtype=input_tensor.dtype)
+            
+            # 이미지를 텐서로 변환
+            input_tensor = self._image_to_tensor(image)
+            
+            # 실제 AI 모델 직접 추론
+            with torch.no_grad():
+                if hasattr(best_model, 'forward') or callable(best_model):
+                    if isinstance(best_model, (RealGraphonomyModel, RealATRModel)):
+                        model_output = best_model(input_tensor)
+                    elif hasattr(best_model, '__call__'):
+                        model_output = best_model(input_tensor)
+                    else:
+                        # ❌ 기존: 폴백 추론
+                        # model_output = self._fallback_inference(input_tensor)
+                        
+                        # ✅ 수정: 실패 반환
+                        return {
+                            'success': False,
+                            'error': '지원되지 않는 모델 타입',
+                            'model_type': type(best_model).__name__,
+                            'sync_inference': True
+                        }
+                else:
+                    # ❌ 기존: 폴백 추론
+                    # model_output = self._fallback_inference(input_tensor)
+                    
+                    # ✅ 수정: 실패 반환
+                    return {
+                        'success': False,
+                        'error': '모델에 forward 메서드가 없음',
+                        'sync_inference': True
+                    }
+            
+            # 출력 처리 (기존 코드 그대로 유지)
+            if isinstance(model_output, dict) and 'parsing' in model_output:
+                parsing_tensor = model_output['parsing']
+            elif torch.is_tensor(model_output):
+                parsing_tensor = model_output
+            else:
+                return {
+                    'success': False,
+                    'error': f'예상치 못한 AI 모델 출력: {type(model_output)}',
+                    'sync_inference': True
+                }
+            
+            # 파싱 맵 생성 (기존 코드 그대로)
+            parsing_map = self._tensor_to_parsing_map(parsing_tensor, image.size)
+            confidence = self._calculate_ai_confidence(parsing_tensor)
+            confidence_scores = self._calculate_confidence_scores(parsing_tensor)
+            
+            self.last_used_model = best_model_name
+            
+            return {
+                'success': True,
+                'parsing_map': parsing_map,
+                'confidence': confidence,
+                'confidence_scores': confidence_scores,
+                'model_name': best_model_name,
+                'device': self.device,
+                'real_ai_inference': True,
+                'sync_inference': True
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ 실제 AI 추론 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'model_name': best_model_name if 'best_model_name' in locals() else 'unknown',
+                'device': self.device,
+                'real_ai_inference': False,
+                'sync_inference': True
+            }
+
+    # ==============================================
+    # 🔥 수정 2: _fallback_inference 메서드 제거 또는 수정
+    # ==============================================
+
+    # ❌ 기존: 폴백 추론 메서드 전체 제거
+    # def _fallback_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
+    #     """폴백 추론 (모델 로딩 실패 시)"""
+    #     # 이 메서드를 완전히 제거하거나 에러 발생시키도록 수정
+
+    # ✅ 수정: 에러 발생시키는 메서드로 변경
+    def _fallback_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        """폴백 추론 비활성화 (순수 AI 추론만 허용)"""
+        raise RuntimeError(
+            "폴백 추론이 비활성화되었습니다. 실제 AI 모델 파일이 필요합니다:\n"
+            "- ai_models/step_01_human_parsing/graphonomy.pth (1.2GB)\n"
+            "- ai_models/Graphonomy/pytorch_model.bin (168MB)\n"
+            "- ai_models/Self-Correction-Human-Parsing/exp-schp-201908301523-atr.pth (255MB)"
+        )
+
+    # ==============================================
+    # 🔥 수정 3: _load_ai_models 메서드에서 더미 모델 생성 제거
+    # ==============================================
+
+    def _load_ai_models(self):
+        """AI 모델 로딩 (더미 모델 제거 버전)"""
+        try:
+            # ... 기존 로딩 코드 그대로 유지 ...
+            
+            # ❌ 기존: 더미 모델 생성 부분 제거
+            # if loaded_count == 0:
+            #     self.logger.warning("⚠️ 실제 AI 모델 로딩 실패, 더미 모델 생성")
+            #     dummy_model = RealGraphonomyModel(num_classes=20).to(self.device)
+            #     self.ai_models['dummy_graphonomy'] = dummy_model
+            
+            # ✅ 수정: 실제 모델 없으면 명확한 에러
+            if loaded_count == 0:
+                self.logger.error("❌ 실제 AI 모델 파일이 필요합니다")
+                self.logger.error("📁 다음 위치에 모델 파일을 배치하세요:")
+                for model_name, path in self.model_paths.items():
+                    if path is None:
+                        self.logger.error(f"   - {model_name}: 파일 없음")
+                    else:
+                        self.logger.error(f"   - {model_name}: {path}")
                 
-                # 간단한 규칙 기반 파싱 시뮬레이션
-                # 중앙 영역을 상체로, 하단을 하체로 분류
-                h_center = height // 2
-                fallback_output[:, 5, :h_center, :] = 0.7  # 상의
-                fallback_output[:, 9, h_center:, :] = 0.6  # 바지
-                fallback_output[:, 10, h_center//2:h_center, width//4:3*width//4] = 0.8  # 피부
-                
-                return fallback_output
-                
-            except Exception as e:
-                self.logger.error(f"❌ 폴백 추론 실패: {e}")
-                # 최소한의 출력
-                return torch.zeros((1, self.num_classes, 512, 512), device=input_tensor.device)
-        
+                # 빈 딕셔너리로 유지 (더미 모델 생성 안함)
+                self.ai_models = {}
+                self.models_loading_status = {}
+                self.active_ai_models = {}
+            
+        except Exception as e:
+            self.logger.error(f"❌ AI 모델 로딩 전체 실패: {e}")
+            # 빈 딕셔너리로 유지 (더미 모델 생성 안함)
+            self.ai_models = {}
+            self.models_loading_status = {}
+            self.active_ai_models = {}
+
+    # ==============================================
+    # 🔥 수정 4: 독립 모드에서도 폴백 제거
+    # ==============================================
+
+    # ❌ 기존: 독립 모드 process 메서드에서 규칙 기반 파싱 제거
+    async def process(self, **kwargs) -> Dict[str, Any]:
+        """독립 모드 process 메서드 (폴백 제거)"""
+        try:
+            start_time = time.time()
+            
+            if 'image' not in kwargs:
+                raise ValueError("필수 입력 데이터 'image'가 없습니다")
+            
+            # ✅ 수정: 실제 AI 모델 필요함을 명시
+            return {
+                'success': False,
+                'error': '독립 모드에서는 실제 AI 모델이 필요합니다',
+                'step_name': self.step_name,
+                'processing_time': time.time() - start_time,
+                'independent_mode': True,
+                'requires_ai_models': True,
+                'required_files': [
+                    'ai_models/step_01_human_parsing/graphonomy.pth',
+                    'ai_models/Graphonomy/pytorch_model.bin'
+                ]
+            }
+            
+        except Exception as e:
+            processing_time = time.time() - start_time
+            return {
+                'success': False,
+                'error': str(e),
+                'step_name': self.step_name,
+                'processing_time': processing_time,
+                'independent_mode': True
+            }
+
         def _image_to_tensor(self, image: Image.Image) -> torch.Tensor:
             """이미지를 AI 모델용 텐서로 변환"""
             try:
