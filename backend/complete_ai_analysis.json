@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753678277.5510988,
+  "timestamp": 1753681324.863311,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -20,12 +20,12 @@
     "hardware": {
       "memory": {
         "total_gb": 128.0,
-        "available_gb": 71.987548828125,
-        "used_percent": 43.8,
-        "available_percent": 56.2
+        "available_gb": 71.58633422851562,
+        "used_percent": 44.1,
+        "available_percent": 55.9
       },
       "cpu": {
-        "usage_percent": 11.2,
+        "usage_percent": 22.2,
         "core_count": 16,
         "freq_current": 4056
       },
@@ -3029,10 +3029,20 @@
   },
   "steps_analysis": {
     "total_steps": 4,
-    "import_success": 0,
-    "instance_success": 0,
-    "initialization_success": 0,
-    "step_details": {}
+    "import_success": 1,
+    "instance_success": 1,
+    "initialization_success": 1,
+    "step_details": {
+      "HumanParsingStep": {
+        "import_success": true,
+        "instance_created": true,
+        "initialized": true,
+        "ai_models_loaded": [],
+        "dependencies": {},
+        "error_count": 0,
+        "errors": []
+      }
+    }
   },
   "dependencies": {
     "core_libraries": {
@@ -3099,15 +3109,15 @@
   },
   "memory_usage": {
     "process_memory": {
-      "rss_mb": 278.734375,
-      "vms_mb": 402927.859375,
-      "percent": 0.21265745162963867
+      "rss_mb": 1012.390625,
+      "vms_mb": 404233.59375,
+      "percent": 0.772392749786377
     },
     "system_memory": {
       "total_gb": 128.0,
-      "available_gb": 71.6837158203125,
-      "used_percent": 44.0,
-      "free_gb": 10.717803955078125
+      "available_gb": 70.5345458984375,
+      "used_percent": 44.9,
+      "free_gb": 7.8642730712890625
     },
     "recommendations": []
   },
@@ -3115,6 +3125,6 @@
     "✅ AI 모델 파일 발견: 310개 (263.8GB)",
     "❌ 일부 Step의 import가 실패했습니다. 의존성을 확인하세요."
   ],
-  "analysis_completed_at": 1753678280.241227,
-  "total_analysis_time": 3.696288824081421
+  "analysis_completed_at": 1753681330.1937091,
+  "total_analysis_time": 6.336482048034668
 }

@@ -62,7 +62,6 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps, lru_cache
 from io import BytesIO
-import logging
 
 logger = logging.getLogger(__name__)
 # ==============================================
@@ -1469,7 +1468,6 @@ class VirtualFittingStep(BaseStepMixinClass):
    
     async def process(self, **kwargs):
         """process 메서드 디버깅"""
-        import logging
         logger = logging.getLogger(__name__)
         logger.error("🔥🔥🔥 VirtualFittingStep process() 호출됨! 🔥🔥🔥")
         print("🔥🔥🔥 VirtualFittingStep process() 호출됨! 🔥🔥🔥")
@@ -1511,7 +1509,6 @@ class VirtualFittingStep(BaseStepMixinClass):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        import logging
         logger = logging.getLogger(__name__)
         logger.error("🔥🔥🔥 VirtualFittingStep __init__ 호출됨! 🔥🔥🔥")
         print("🔥🔥🔥 VirtualFittingStep __init__ 호출됨! 🔥🔥🔥")

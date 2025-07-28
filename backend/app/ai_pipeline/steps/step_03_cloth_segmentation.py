@@ -27,8 +27,6 @@ Version: v22.0 (BaseStepMixin v19.1 완전 호환 + AI 강화)
 import os
 import sys
 import logging
-
-logger = logging.getLogger(__name__)import time
 import threading
 import gc
 import hashlib
@@ -43,9 +41,7 @@ from enum import Enum
 from io import BytesIO
 import platform
 import subprocess
-import logging
 
-logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 # ==============================================
 # 🔥 1. BaseStepMixin 상속 및 TYPE_CHECKING 순환참조 방지
@@ -97,9 +93,6 @@ if TYPE_CHECKING:
 # ==============================================
 # 🔥 2. 핵심 라이브러리 import (conda 환경 우선)
 # ==============================================
-
-# Logger 설정
-logger = logging.getLogger(__name__)
 
 # NumPy 안전 import
 NUMPY_AVAILABLE = False

@@ -1,4 +1,4 @@
-# backend/app/ai_pipeline/interface/__init__.py
+# backend/app/ai_pipeline/interfaces/__init__.py
 """
 🔧 Interface 경로 호환성 패치
 ============================
@@ -6,7 +6,7 @@
 ERROR 해결: ❌ StepInterface 동적 import 실패: No module named 'app.ai_pipeline.interface'
 
 이 파일은 기존 코드에서 잘못된 경로로 import하는 문제를 해결합니다:
-- 기존: app.ai_pipeline.interfaces(틀림)
+- 기존: app.ai_pipeline.interfaces (틀림)
 - 올바른 경로: app.ai_pipeline.interface (맞음)
 
 이 패치를 통해 기존 코드 수정 없이 호환성을 제공합니다.
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # 호환성 경고
 warnings.warn(
     "app.ai_pipeline.interfaces 는 deprecated됩니다. "
-    "app.ai_pipeline.interface 를 사용하세요.",
+    "app.ai_pipeline.interface를 사용하세요.",
     DeprecationWarning,
     stacklevel=2
 )
@@ -29,7 +29,7 @@ logger.warning("⚠️ app.ai_pipeline.interfaces 경로는 deprecated - app.ai_
 
 # 올바른 경로에서 모든 클래스와 함수를 import
 try:
-    from .step_interface import *
+    from ..interface.step_interface import *
     logger.info("✅ StepInterface 호환성 패치 적용 성공")
 except ImportError as e:
     logger.error(f"❌ StepInterface 호환성 패치 실패: {e}")
@@ -60,7 +60,7 @@ except ImportError as e:
 
 # backward compatibility를 위한 alias 설정
 try:
-    from .step_interface import (
+    from ..interface.step_interface import (
         GitHubStepModelInterface as StepModelInterface,
         GitHubStepConfig as StepConfig,
         GitHubStepType as StepType,

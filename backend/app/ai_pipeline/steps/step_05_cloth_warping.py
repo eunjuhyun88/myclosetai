@@ -31,7 +31,6 @@ import time
 import math
 import logging
 
-logger = logging.getLogger(__name__)import hashlib
 import traceback
 import threading
 import platform
@@ -43,9 +42,7 @@ from typing import Dict, Any, Optional, Tuple, Union, List, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-import logging
 
-logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 # ==============================================
 # 🔧 TYPE_CHECKING으로 순환참조 방지
@@ -2910,7 +2907,6 @@ if __name__ == "__main__":
     print("=" * 80)
 
 # 최종 확인 로깅
-logger = logging.getLogger(__name__)
 logger.info(f"📦 ClothWarpingStep v{__version__} 로드 완료 - BaseStepMixin v19.1 표준 준수")
 logger.info("✅ _run_ai_inference() 메서드만 구현됨")
 logger.info("✅ 모든 데이터 변환이 BaseStepMixin에서 자동 처리됨")

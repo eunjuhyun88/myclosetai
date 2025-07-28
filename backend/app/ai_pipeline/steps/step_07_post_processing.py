@@ -62,7 +62,6 @@ if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader
     from ..factories.step_factory import StepFactory
     from ..steps.base_step_mixin import BaseStepMixin
-import logging
 
 logger = logging.getLogger(__name__)
 # ==============================================
@@ -2059,7 +2058,6 @@ import base64
 import numpy as np
 from io import BytesIO
 from PIL import Image
-import logging
 
 logger = logging.getLogger(__name__)
 # 🔧 수정된 _numpy_to_base64 함수

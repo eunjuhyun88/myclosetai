@@ -65,8 +65,8 @@ try:
     from app.ai_pipeline.interface.step_interface import StepInterface
 except ImportError:
     pass
-
 logger = logging.getLogger(__name__)
+
 # ==============================================
 # 🔥 2. conda 환경 및 필수 패키지 체크
 # ==============================================
@@ -166,7 +166,6 @@ except ImportError:
     SAFETENSORS_AVAILABLE = False
 
 # 로거 설정
-logger = logging.getLogger(__name__)
 
 # ==============================================
 # 🔥 3. 동적 import 함수들 (TYPE_CHECKING 호환)

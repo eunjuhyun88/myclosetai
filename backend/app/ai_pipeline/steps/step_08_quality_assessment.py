@@ -18,8 +18,7 @@
 import os
 import sys
 import logging
-
-logger = logging.getLogger(__name__)import time
+import time
 import asyncio
 import threading
 import json
@@ -40,7 +39,7 @@ import io
 # ==============================================
 if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader
-    from app.ai_pipeline.interfaces.step_interface import StepModelInterface
+    from backend.app.ai_pipeline.interface.step_interface import StepModelInterface
 
 # ==============================================
 # 🔥 step_model_requests.py 임포트 (기존 유지)

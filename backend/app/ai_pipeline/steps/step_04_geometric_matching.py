@@ -24,9 +24,6 @@ import asyncio
 import os
 import gc
 import time
-import logging
-
-logger = logging.getLogger(__name__)import threading
 import weakref
 import math
 import numpy as np
@@ -39,10 +36,8 @@ from functools import wraps
 from enum import Enum
 from io import BytesIO
 import base64
-import logging
 
-logger = logging.getLogger(__name__)
-logger = logging.getLogger(__name__)
+
 # ==============================================
 # 🔥 1. TYPE_CHECKING 패턴으로 순환참조 완전 방지
 # ==============================================
@@ -129,6 +124,10 @@ try:
     from app.ai_pipeline.interface.step_interface import StepInterface
 except ImportError:
     pass
+
+import logging
+logger = logging.getLogger(__name__)
+
 # ==============================================
 # 🔥 3. 동적 import 함수들 (TYPE_CHECKING 패턴)
 # ==============================================
@@ -262,7 +261,6 @@ class EnhancedModelPathMapper:
     def __init__(self, ai_models_root: str = "ai_models"):
         self.ai_models_root = Path(ai_models_root)
         self.model_cache = {}
-        self.logger = logging.getLogger(__name__)
         
         # step_model_requirements.py에서 요구사항 로드
         self.step_request = get_step_model_request()
@@ -3725,7 +3723,6 @@ def validate_dependencies() -> Dict[str, bool]:
 
 async def test_enhanced_geometric_matching() -> bool:
     """향상된 AI 기하학적 매칭 테스트"""
-    logger = logging.getLogger(__name__)
     
     try:
         # 의존성 확인
@@ -3793,7 +3790,6 @@ async def test_enhanced_geometric_matching() -> bool:
 
 async def test_step_model_requirements_compatibility() -> bool:
     """step_model_requirements.py 호환성 테스트"""
-    logger = logging.getLogger(__name__)
     
     try:
         logger.info("🔍 step_model_requirements.py 호환성 테스트")
@@ -3936,7 +3932,6 @@ __all__ = [
     'test_real_ai_geometric_matching'  # 기존 함수
 ]
 
-logger = logging.getLogger(__name__)
 logger.info("=" * 80)
 logger.info("🔥 GeometricMatchingStep v14.0 로드 완료 (AI 추론 강화 + 동기 처리 + 완전 보존)")
 logger.info("=" * 80)
