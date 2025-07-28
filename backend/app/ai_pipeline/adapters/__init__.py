@@ -26,7 +26,7 @@ __all__ = [
 
 import logging
 from typing import Any, Dict, Optional, List
-from ..interfaces.model_interface import IModelLoader, IStepInterface
+from ..interface.model_interface import IModelLoader, IStepInterface
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ import logging
 import gc
 import time
 from typing import Dict, Any
-from ..interfaces.memory_interface import IMemoryManager
+from ..interface.memory_interface import IMemoryManager
 
 class MemoryManagerAdapter(IMemoryManager):
     """메모리 관리자 어댑터"""
@@ -410,7 +410,7 @@ import logging
 from typing import Any, Tuple, Union
 from PIL import Image
 import numpy as np
-from ..interfaces.data_interface import IDataConverter
+from ..interface.data_interface import IDataConverter
 
 class DataConverterAdapter(IDataConverter):
     """데이터 변환기 어댑터"""

@@ -39,6 +39,33 @@ import gc
 import time
 import asyncio
 import logging
+
+# 🔥 모듈 레벨 logger 안전 정의
+def create_module_logger():
+    """모듈 레벨 logger 안전 생성"""
+    try:
+        module_logger = logging.getLogger(__name__)
+        if not module_logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            module_logger.addHandler(handler)
+            module_logger.setLevel(logging.INFO)
+        return module_logger
+    except Exception as e:
+        # 최후 폴백
+        import sys
+        print(f"⚠️ Logger 생성 실패, stdout 사용: {e}", file=sys.stderr)
+        class FallbackLogger:
+            def info(self, msg): print(f"INFO: {msg}")
+            def error(self, msg): print(f"ERROR: {msg}")
+            def warning(self, msg): print(f"WARNING: {msg}")
+            def debug(self, msg): print(f"DEBUG: {msg}")
+        return FallbackLogger()
+
+# 모듈 레벨 logger
+logger = create_module_logger()
+
 import traceback
 import hashlib
 import json
@@ -65,7 +92,6 @@ try:
     from app.ai_pipeline.interface.step_interface import StepInterface
 except ImportError:
     pass
-logger = logging.getLogger(__name__)
 
 # ==============================================
 # 🔥 2. conda 환경 및 필수 패키지 체크

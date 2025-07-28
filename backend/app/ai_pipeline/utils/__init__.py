@@ -390,7 +390,7 @@ def get_system_status() -> Dict[str, Any]:
             'pil': {'available': PIL_AVAILABLE, 'version': PIL_VERSION}
         },
         'cache_status': {
-            'model_interfaces': len(_interface_cache),
+            'model_interface': len(_interface_cache),
             'memory_managers': len(_memory_manager_cache),
             'data_converters': len(_data_converter_cache)
         }
