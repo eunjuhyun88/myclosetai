@@ -387,6 +387,58 @@ class SmartModelPathMapper:
 class Step02ModelMapper(SmartModelPathMapper):
     """Step 02 Pose Estimation 전용 동적 경로 매핑 (2번 파일 호환)"""
     
+    def __init__(self):
+        super().__init__()
+        self.logger = logging.getLogger(f"{__name__}.Step02ModelMapper")
+        self.base_path = Path("ai_models")
+    
+    def _search_models(self, model_files: Dict[str, List[str]], 
+                      search_priority: List[str]) -> Dict[str, Optional[Path]]:
+        """모델 파일 검색 메서드 (누락된 메서드 추가)"""
+        found_models = {}
+        
+        try:
+            for model_type, file_patterns in model_files.items():
+                found_models[model_type] = None
+                
+                # 우선순위에 따라 검색
+                for search_path in search_priority:
+                    if found_models[model_type] is not None:
+                        break
+                        
+                    full_search_path = self.base_path / search_path
+                    
+                    # 각 파일 패턴에 대해 검색
+                    for pattern in file_patterns:
+                        # 직접 경로 확인
+                        direct_path = full_search_path / pattern
+                        if direct_path.exists():
+                            found_models[model_type] = direct_path
+                            self.logger.info(f"✅ {model_type} 모델 발견: {direct_path}")
+                            break
+                        
+                        # 재귀 검색
+                        if full_search_path.exists():
+                            for found_file in full_search_path.rglob(pattern):
+                                if found_file.is_file() and found_file.stat().st_size > 1024:  # 1KB 이상
+                                    found_models[model_type] = found_file
+                                    self.logger.info(f"✅ {model_type} 모델 발견 (재귀): {found_file}")
+                                    break
+                        
+                        if found_models[model_type] is not None:
+                            break
+                
+                if found_models[model_type] is None:
+                    self.logger.warning(f"⚠️ {model_type} 모델을 찾을 수 없습니다")
+            
+            self.logger.info(f"📊 모델 검색 완료: {sum(1 for v in found_models.values() if v is not None)}/{len(found_models)} 개 발견")
+            return found_models
+            
+        except Exception as e:
+            self.logger.error(f"❌ 모델 검색 실패: {e}")
+            # 빈 결과 반환 (None으로 초기화된 딕셔너리)
+            return {model_type: None for model_type in model_files.keys()}
+    
     def get_step02_model_paths(self) -> Dict[str, Optional[Path]]:
         """Step 02 모델 경로 자동 탐지 - 2번 파일 호환"""
         model_files = {
@@ -414,6 +466,50 @@ class Step02ModelMapper(SmartModelPathMapper):
         ]
         
         return self._search_models(model_files, search_priority)
+    
+    def get_available_models(self) -> List[str]:
+        """사용 가능한 모델 목록 반환"""
+        try:
+            found_models = self.get_step02_model_paths()
+            available = [model_type for model_type, path in found_models.items() if path is not None]
+            return available
+        except Exception as e:
+            self.logger.error(f"❌ 사용 가능한 모델 목록 조회 실패: {e}")
+            return []
+    
+    def get_model_info(self, model_type: str) -> Dict[str, Any]:
+        """특정 모델 정보 반환"""
+        try:
+            found_models = self.get_step02_model_paths()
+            model_path = found_models.get(model_type)
+            
+            if model_path and model_path.exists():
+                stat = model_path.stat()
+                return {
+                    'model_type': model_type,
+                    'path': str(model_path),
+                    'size_mb': stat.st_size / (1024 * 1024),
+                    'exists': True,
+                    'modified': stat.st_mtime
+                }
+            else:
+                return {
+                    'model_type': model_type,
+                    'path': None,
+                    'size_mb': 0,
+                    'exists': False,
+                    'modified': None
+                }
+        except Exception as e:
+            self.logger.error(f"❌ {model_type} 모델 정보 조회 실패: {e}")
+            return {
+                'model_type': model_type,
+                'path': None,
+                'size_mb': 0,
+                'exists': False,
+                'error': str(e)
+            }
+
 
 # ==============================================
 # 🔥 6. HRNet 고해상도 네트워크 (완전 구현)
