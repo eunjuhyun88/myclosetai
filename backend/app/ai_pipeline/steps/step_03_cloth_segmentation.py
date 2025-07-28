@@ -23,10 +23,29 @@ Author: MyCloset AI Team
 Date: 2025-07-27  
 Version: v22.0 (BaseStepMixin v19.1 완전 호환 + AI 강화)
 """
-
+import time
 import os
 import sys
 import logging
+import threading
+import gc
+import hashlib
+import json
+import base64
+import math
+from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from enum import Enum
+from io import BytesIO
+import platform
+import subprocess
+
+
+# ==============================================
+# 🔥 1. BaseStepMixin 상속 및 TYPE_CHECKING 순환참조 방지
+# ==============================================
 
 # 🔥 모듈 레벨 logger 안전 정의
 def create_module_logger():
@@ -53,25 +72,6 @@ def create_module_logger():
 
 # 모듈 레벨 logger
 logger = create_module_logger()
-import threading
-import gc
-import hashlib
-import json
-import base64
-import math
-from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from enum import Enum
-from io import BytesIO
-import platform
-import subprocess
-
-
-# ==============================================
-# 🔥 1. BaseStepMixin 상속 및 TYPE_CHECKING 순환참조 방지
-# ==============================================
 
 # BaseStepMixin 동적 import
 def get_base_step_mixin_class():
@@ -93,6 +93,8 @@ if BaseStepMixin is None:
         def __init__(self, **kwargs):
             self.logger = logging.getLogger(self.__class__.__name__)
             self.step_name = kwargs.get('step_name', 'BaseStep')
+            self.quality_level = kwargs.get('quality_level', 'high')
+
             self.step_id = kwargs.get('step_id', 0)
             self.device = kwargs.get('device', 'cpu')
             self.is_initialized = False
@@ -115,6 +117,22 @@ if TYPE_CHECKING:
     from app.ai_pipeline.utils.step_model_requests import (
         EnhancedRealModelRequest, DetailedDataSpec, get_enhanced_step_request
     )
+
+    # 1. rembg import 수정
+    try:
+        from rembg import new_session
+        from rembg.sessions import U2NET
+        REMBG_AVAILABLE = True
+    except ImportError:
+        # 폴백 방식 사용
+        try:
+            import rembg
+            new_session = rembg.new_session
+            REMBG_AVAILABLE = True
+        except ImportError:
+            REMBG_AVAILABLE = False
+            logger.warning("⚠️ RemBG 없음 - pip install rembg")
+
 
 # ==============================================
 # 🔥 2. 핵심 라이브러리 import (conda 환경 우선)
@@ -846,56 +864,109 @@ class ClothSegmentationStep(BaseStepMixin):
     
     이 클래스는 _run_ai_inference() 메서드만 구현하면 됩니다!
     """
+    
     def __init__(self, **kwargs):
-        """초기화 - ClothWarpingConfig step_name 에러 해결"""
+        """BaseStepMixin v19.1 상속 초기화 - _emergency_setup 에러 해결"""
         try:
-            # 기본 속성 설정
-            kwargs.setdefault('step_name', 'ClothWarpingStep')
-            kwargs.setdefault('step_id', 5)
-            
             # BaseStepMixin 초기화
-            super().__init__(**kwargs)
+            super().__init__(
+                step_name="ClothSegmentationStep",
+                step_id=3,
+                **kwargs
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ BaseStepMixin 초기화 실패, 최소 설정 적용: {e}")
+            # 최소 필수 속성 직접 설정
+            self.step_name = "ClothSegmentationStep"
+            self.step_id = 3
+            self.device = kwargs.get('device', 'cpu')
+            self.logger = logger
+
+            # Step 03 특화 속성들
+            self.ai_models = {}
+            self.model_paths = {}
+            self.available_methods = []
+            self.segmentation_config = SegmentationConfig()
             
-            # 🔥 워핑 설정 - step_name 파라미터 문제 해결
-            try:
-                # ClothWarpingConfig에 step_name을 안전하게 전달
-                config_kwargs = kwargs.copy()
-                config_kwargs['step_name'] = 'ClothWarpingStep'  # 명시적 설정
-                self.warping_config = ClothWarpingConfig(**config_kwargs)
-            except TypeError as e:
-                if "unexpected keyword argument 'step_name'" in str(e):
-                    # step_name을 제거하고 다시 시도
-                    config_kwargs = {k: v for k, v in kwargs.items() 
-                                if k not in ['step_name', 'step_id']}
-                    self.warping_config = ClothWarpingConfig(**config_kwargs)
-                    self.logger.warning("⚠️ ClothWarpingConfig step_name 파라미터 제거하여 생성")
-                else:
-                    raise
+            # 모델 로딩 상태
+            self.models_loading_status = {
+                'sam_huge': False,          # sam_vit_h_4b8939.pth (2445.7MB) 
+                'u2net_cloth': False,       # u2net.pth (168.1MB)
+                'mobile_sam': False,        # mobile_sam.pt (38.8MB)
+                'isnet': False,             # isnetis.onnx (168.1MB)
+            }
             
-            # AI 모델 래퍼
-            self.ai_model_wrapper = None
+            # 시스템 최적화
+            self.is_m3_max = IS_M3_MAX
+            self.memory_gb = MEMORY_GB
             
-            # 물리 시뮬레이션
-            self.physics_properties = PhysicsProperties()
-            self.physics_simulator = None
+            # 실행자 및 캐시
+            self.executor = ThreadPoolExecutor(
+                max_workers=4 if self.is_m3_max else 2,
+                thread_name_prefix="cloth_seg_ai"
+            )
+            self.segmentation_cache = {}
+            self.cache_lock = threading.RLock()
             
-            # 시각화
-            self.visualizer = WarpingVisualizer(self.warping_config.quality_level)
+            # AI 강화 통계
+            self.ai_stats = {
+                'total_processed': 0,
+                'sam_huge_calls': 0,
+                'u2net_calls': 0,
+                'mobile_sam_calls': 0,
+                'isnet_calls': 0,
+                'hybrid_calls': 0,
+                'ai_model_calls': 0,
+                'average_confidence': 0.0
+            }
             
-            # TPS 변환
-            self.tps_transform = AdvancedTPSTransform(self.warping_config.num_control_points)
-            
-            # AI 이미지 처리
-            self.ai_processor = AIImageProcessor(self.device)
-            
-            # 캐시
-            self.prediction_cache = {}
-            
-            self.logger.info(f"✅ ClothWarpingStep v14.0 초기화 완료 - BaseStepMixin v19.1 표준 준수")
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin v19.1 호환 초기화 완료")
+            self.logger.info(f"   - Device: {self.device}")
+            self.logger.info(f"   - M3 Max: {self.is_m3_max}")
+            self.logger.info(f"   - Memory: {self.memory_gb}GB")
             
         except Exception as e:
-            self.logger.error(f"❌ ClothWarpingStep 초기화 실패: {e}")
+            self.logger.error(f"❌ ClothSegmentationStep 초기화 실패: {e}")
+            # 🔥 _emergency_setup 메서드 호출 (필수!)
             self._emergency_setup(**kwargs)
+    
+    def _emergency_setup(self, **kwargs):
+        """긴급 설정 - 초기화 실패 시 최소 기능 보장"""
+        try:
+            self.logger.warning("⚠️ 긴급 설정 모드 - 최소 기능만 제공")
+            
+            # 기본 속성 설정
+            self.step_name = kwargs.get('step_name', 'ClothSegmentationStep')
+            self.step_id = kwargs.get('step_id', 3)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # 최소 필수 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            
+            # 빈 컨테이너들
+            self.ai_models = {}
+            self.model_paths = {}
+            self.available_methods = []
+            self.models_loading_status = {}
+            self.segmentation_cache = {}
+            self.ai_stats = {'total_processed': 0}
+            
+            # 더미 설정
+            self.segmentation_config = SegmentationConfig()
+            self.cache_lock = threading.RLock()
+            
+            self.logger.info("✅ 긴급 설정 완료 - 기본 기능 사용 가능")
+            
+        except Exception as e:
+            # 최후의 수단
+            print(f"❌ 긴급 설정도 실패: {e}")
+            self.step_name = "ClothSegmentationStep"
+            self.step_id = 3
+            self.is_initialized = False
+            self.is_ready = False
 
 
     # ==============================================

@@ -1535,7 +1535,8 @@ class VirtualFittingStep(BaseStepMixinClass):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         logger = logging.getLogger(__name__)
-        logger.error("🔥🔥🔥 VirtualFittingStep __init__ 호출됨! 🔥🔥🔥")
+        logger.info("✅ VirtualFittingStep 초기화 시작")
+
         print("🔥🔥🔥 VirtualFittingStep __init__ 호출됨! 🔥🔥🔥")
         
         self.step_name = kwargs.get('step_name', "VirtualFittingStep")

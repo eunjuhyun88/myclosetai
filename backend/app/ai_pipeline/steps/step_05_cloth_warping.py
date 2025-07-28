@@ -209,12 +209,17 @@ class ClothWarpingConfig:
     batch_size: int = 1
     strict_mode: bool = False
     
+    # ✅ 이 줄을 추가하세요
+    step_name: str = "ClothWarpingStep"
+    step_id: int = 5  # 추가 필요!
+
     # 실제 AI 모델 설정
     use_realvis_xl: bool = True
     use_vgg19_warping: bool = True
     use_vgg16_warping: bool = True
     use_densenet: bool = True
     use_diffusion_warping: bool = False  # 메모리 절약용
+
 
 # 실제 AI 모델 매핑
 ENHANCED_STEP_05_MODEL_MAPPING = {
