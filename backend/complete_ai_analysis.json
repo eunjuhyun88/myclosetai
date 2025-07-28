@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753720925.769537,
+  "timestamp": 1753725802.333794,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -20,12 +20,12 @@
     "hardware": {
       "memory": {
         "total_gb": 128.0,
-        "available_gb": 74.5635986328125,
-        "used_percent": 41.7,
-        "available_percent": 58.3
+        "available_gb": 72.82171630859375,
+        "used_percent": 43.1,
+        "available_percent": 56.9
       },
       "cpu": {
-        "usage_percent": 9.3,
+        "usage_percent": 11.9,
         "core_count": 16,
         "freq_current": 4056
       },
@@ -36,7 +36,7 @@
   },
   "model_files": {
     "total_files": 310,
-    "total_size_gb": 263.8471026867628,
+    "total_size_gb": 266.3421514760703,
     "files_by_step": {
       "step_02_pose_estimation": [
         {
@@ -203,13 +203,8 @@
         },
         {
           "name": "graphonomy.pth",
-          "size_mb": 0.0,
+          "size_mb": 1172.9622974395752,
           "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
-        },
-        {
-          "name": "exp-schp-201908301523-atr.pth",
-          "size_mb": 0.0,
-          "path": "ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth"
         },
         {
           "name": "atr_model.pth",
@@ -225,6 +220,11 @@
           "name": "graphonomy.pth",
           "size_mb": 1172.9622974395752,
           "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+        },
+        {
+          "name": "graphonomy_new.pth",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/step_01_human_parsing/graphonomy_new.pth"
         },
         {
           "name": "exp-schp-201908301523-atr.pth",
@@ -348,13 +348,8 @@
         },
         {
           "name": "graphonomy.pth",
-          "size_mb": 0.0,
+          "size_mb": 1172.9622974395752,
           "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
-        },
-        {
-          "name": "exp-schp-201908301523-atr.pth",
-          "size_mb": 0.0,
-          "path": "ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth"
         },
         {
           "name": "atr_model.pth",
@@ -370,6 +365,11 @@
           "name": "graphonomy.pth",
           "size_mb": 1172.9622974395752,
           "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+        },
+        {
+          "name": "graphonomy_new.pth",
+          "size_mb": 104.50268268585205,
+          "path": "ai_models/step_01_human_parsing/graphonomy_new.pth"
         },
         {
           "name": "exp-schp-201908301523-atr.pth",
@@ -2141,7 +2141,21 @@
         "size_mb": 1172.9622974395752,
         "size_gb": 1.1454709935933352,
         "step": "step_01_human_parsing",
+        "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 1172.9622974395752,
+        "size_gb": 1.1454709935933352,
+        "step": "step_01_human_parsing",
         "path": "ai_models/step_01_human_parsing/graphonomy.pth"
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 1172.9622974395752,
+        "size_gb": 1.1454709935933352,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth"
       },
       {
         "name": "graphonomy.pth",
@@ -2886,6 +2900,13 @@
         "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth"
       },
       {
+        "name": "graphonomy_new.pth",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/graphonomy_new.pth"
+      },
+      {
         "name": "pytorch_model.bin",
         "size_mb": 104.50268268585205,
         "size_gb": 0.1020534010604024,
@@ -2933,6 +2954,13 @@
         "size_gb": 0.1020534010604024,
         "step": "step_01_human_parsing",
         "path": "ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth"
+      },
+      {
+        "name": "graphonomy_new.pth",
+        "size_mb": 104.50268268585205,
+        "size_gb": 0.1020534010604024,
+        "step": "step_01_human_parsing",
+        "path": "ai_models/step_01_human_parsing/graphonomy_new.pth"
       },
       {
         "name": "pytorch_model.bin",
@@ -3136,21 +3164,21 @@
   },
   "memory_usage": {
     "process_memory": {
-      "rss_mb": 1508.484375,
-      "vms_mb": 405483.09375,
-      "percent": 1.1508822441101074
+      "rss_mb": 2040.71875,
+      "vms_mb": 405779.984375,
+      "percent": 1.5569448471069336
     },
     "system_memory": {
       "total_gb": 128.0,
-      "available_gb": 72.93698120117188,
-      "used_percent": 43.0,
-      "free_gb": 33.16471862792969
+      "available_gb": 70.80755615234375,
+      "used_percent": 44.7,
+      "free_gb": 31.88372802734375
     },
     "recommendations": []
   },
   "recommendations": [
-    "✅ AI 모델 파일 발견: 310개 (263.8GB)"
+    "✅ AI 모델 파일 발견: 310개 (266.3GB)"
   ],
-  "analysis_completed_at": 1753720932.799675,
-  "total_analysis_time": 8.037606954574585
+  "analysis_completed_at": 1753725815.086477,
+  "total_analysis_time": 13.756979942321777
 }

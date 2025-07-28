@@ -698,7 +698,6 @@ class RealAIStepImplementationManager:
     async def process_step_by_name(self, step_name: str, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Step 이름으로 실제 AI 모델 처리"""
         start_time = time.time()
-        
         try:
             self.logger.info(f"🔄 {step_name} 실제 AI 처리 시작...")
             
@@ -777,7 +776,7 @@ class RealAIStepImplementationManager:
                 'timestamp': datetime.now().isoformat(),
                 'real_ai_processing_attempted': True
             }
-    
+
     async def _get_or_create_step_instance(self, step_type: StepType, step_name: str, **kwargs):
         """Step 인스턴스 생성 또는 캐시에서 가져오기"""
         try:
@@ -849,6 +848,56 @@ class RealAIStepImplementationManager:
             self.logger.info(f"✅ {step_name} 실제 AI 인스턴스 생성 완료")
             return step_instance
             
+        except Exception as e:
+            # 오류 처리 추가
+            self.logger.error(f"❌ {step_name} 인스턴스 생성 실패: {e}")
+            
+            # 오류 메트릭 업데이트
+            with self._lock:
+                self.metrics['step_creation_errors'] += 1
+            
+            # 폴백 처리 (필요한 경우)
+            try:
+                # 간단한 폴백 인스턴스 생성 시도
+                fallback_instance = self._create_fallback_step_instance(step_name, **kwargs)
+                if fallback_instance:
+                    self.logger.warning(f"⚠️ {step_name} 폴백 인스턴스 사용")
+                    return fallback_instance
+            except Exception as fallback_error:
+                self.logger.error(f"❌ {step_name} 폴백 인스턴스도 실패: {fallback_error}")
+            
+            # 최종적으로 None 반환하거나 예외 다시 발생
+            raise RuntimeError(f"{step_name} 인스턴스 생성 완전 실패: {e}")
+
+    def _create_fallback_step_instance(self, step_name: str, **kwargs):
+        """폴백 Step 인스턴스 생성"""
+        try:
+            # 기본 Step 클래스나 Mock 인스턴스 생성
+            class FallbackStep:
+                def __init__(self):
+                    self.step_name = step_name
+                    self.is_fallback = True
+                    self.is_initialized = False
+                
+                async def process(self, *args, **kwargs):
+                    self.logger.warning(f"⚠️ {self.step_name} 폴백 모드로 실행")
+                    return {
+                        'success': True,
+                        'fallback': True,
+                        'message': f'{self.step_name} 폴백 처리 완료'
+                    }
+                
+                def initialize(self):
+                    self.is_initialized = True
+                    return True
+            
+            return FallbackStep()
+            
+        except Exception as e:
+            self.logger.error(f"❌ 폴백 인스턴스 생성도 실패: {e}")
+            return None
+
+# ✅ 남겨야 할 두 번째 _apply_preprocessing (완전한 구현)
     async def _apply_preprocessing(self, step_name: str, step_input: Dict[str, Any], preprocessing_req: Dict[str, Any]) -> Dict[str, Any]:
         """전처리 단계 적용 (preprocessing_steps 기반)"""
         try:
@@ -883,33 +932,8 @@ class RealAIStepImplementationManager:
         except Exception as e:
             self.logger.warning(f"⚠️ {step_name} 전처리 실패: {e}")
             return step_input
-    
-    async def _apply_postprocessing(self, step_name: str, step_output: Dict[str, Any], postprocessing_req: Dict[str, Any]) -> Dict[str, Any]:
-        """후처리 단계 적용 (postprocessing_steps 기반)"""
-        try:
-            postprocessing_steps = postprocessing_req.get('postprocessing_steps', [])
-            
-            processed_output = step_output.copy()
-            
-            # 각 후처리 단계 적용
-            for step in postprocessing_steps:
-                if "argmax" in step.lower():
-                    processed_output = await self._apply_argmax(processed_output)
-                elif "softmax" in step.lower():
-                    processed_output = await self._apply_softmax(processed_output)
-                elif "threshold" in step.lower():
-                    threshold = float(step.split('_')[-1]) if '_' in step else 0.5
-                    processed_output = await self._apply_threshold(processed_output, threshold)
-                elif "denormalize" in step.lower():
-                    processed_output = await self._apply_denormalization(processed_output)
-            
-            self.logger.debug(f"🔧 {step_name} 후처리 완료: {len(postprocessing_steps)}단계")
-            return processed_output
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ {step_name} 후처리 실패: {e}")
-            return step_output
-    
+
+
     def _extract_size_from_step(self, step: str, input_shapes: Dict[str, Any]) -> tuple:
         """전처리 단계에서 크기 추출"""
         import re

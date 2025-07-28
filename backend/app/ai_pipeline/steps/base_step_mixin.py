@@ -1205,43 +1205,50 @@ class BaseStepMixin:
     # ==============================================
     # 🔥 표준화된 process 메서드 (v19.1 핵심)
     # ==============================================
-    
-    async def process(self, **kwargs) -> Dict[str, Any]:
-        """
-        🔥 완전히 재설계된 표준화 process 메서드 (v19.1)
+        async def process(self, **kwargs) -> Dict[str, Any]:
+            """
+            🔥 완전히 재설계된 표준화 process 메서드 (v19.1)
+            """
+            try:
+                start_time = time.time()
+                self.performance_metrics.github_process_calls += 1
+                
+                self.logger.debug(f"🔄 {self.step_name} process 시작 (입력: {list(kwargs.keys())})")
+                
+                # 1. 입력 데이터 변환 (API/Step 간 → AI 모델)
+                converted_input = await self._convert_input_to_model_format(kwargs)
+                
+                # 2. 🔥 하위 클래스의 순수 AI 로직 실행 (동기로 변경!)
+                ai_result = self._run_ai_inference(converted_input)  # async 제거!
+                
+                # 3. 출력 데이터 변환 (AI 모델 → API + Step 간)
+                standardized_output = await self._convert_output_to_standard_format(ai_result)
+                
+                # 4. 성능 메트릭 업데이트
+                processing_time = time.time() - start_time
+                self._update_performance_metrics(processing_time, True)
+                
+                self.logger.debug(f"✅ {self.step_name} process 완료 ({processing_time:.3f}초)")
+                
+                return standardized_output
+                
+            except Exception as e:
+                processing_time = time.time() - start_time
+                self._update_performance_metrics(processing_time, False)
+                self.logger.error(f"❌ {self.step_name} process 실패 ({processing_time:.3f}초): {e}")
+                return self._create_error_response(str(e))
         
-        모든 데이터 변환을 BaseStepMixin에서 표준화 처리하고,
-        실제 Step 클래스들은 _run_ai_inference() 메서드만 구현하면 됨
-        """
-        try:
-            start_time = time.time()
-            self.performance_metrics.github_process_calls += 1
+        def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            🔥 하위 클래스에서 구현할 순수 AI 로직 (동기 메서드로 변경!)
             
-            self.logger.debug(f"🔄 {self.step_name} process 시작 (입력: {list(kwargs.keys())})")
+            Args:
+                processed_input: BaseStepMixin에서 변환된 표준 AI 모델 입력
             
-            # 1. 입력 데이터 변환 (API/Step 간 → AI 모델)
-            converted_input = await self._convert_input_to_model_format(kwargs)
-            
-            # 2. 하위 클래스의 순수 AI 로직 실행
-            ai_result = await self._run_ai_inference(converted_input)
-            
-            # 3. 출력 데이터 변환 (AI 모델 → API + Step 간)
-            standardized_output = await self._convert_output_to_standard_format(ai_result)
-            
-            # 4. 성능 메트릭 업데이트
-            processing_time = time.time() - start_time
-            self._update_performance_metrics(processing_time, True)
-            
-            self.logger.debug(f"✅ {self.step_name} process 완료 ({processing_time:.3f}초)")
-            
-            return standardized_output
-            
-        except Exception as e:
-            processing_time = time.time() - start_time
-            self._update_performance_metrics(processing_time, False)
-            self.logger.error(f"❌ {self.step_name} process 실패 ({processing_time:.3f}초): {e}")
-            return self._create_error_response(str(e))
-    
+            Returns:
+                AI 모델의 원시 출력 결과
+            """
+            raise NotImplementedError(f"{self.step_name}에서 _run_ai_inference 메서드를 구현해야 합니다")
     @abstractmethod
     async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """

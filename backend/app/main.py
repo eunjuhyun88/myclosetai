@@ -1023,6 +1023,53 @@ async def periodic_ai_status_broadcast():
 # =============================================================================
 # 🔥 18. FastAPI 앱 생성 (StepServiceManager 중심)
 # =============================================================================
+# backend/app/main.py
+# FastAPI 앱 시작 시 AI 환경 초기화 추가
+
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# main.py의 setup_ai_environment 함수 수정
+
+def setup_ai_environment():
+    """AI 환경 초기화"""
+    try:
+        # 1. MPS 호환성 먼저 설정 - 인스턴스 생성 후 호출
+        from app.ai_pipeline.utils.memory_manager import get_device_manager
+        device_manager = get_device_manager()  # 인스턴스 생성
+        device_manager.setup_mps_compatibility()  # 인스턴스 메서드 호출
+        
+        # 2. ModelLoader 초기화
+        from app.ai_pipeline.utils.model_loader import get_global_model_loader
+        model_loader = get_global_model_loader()
+        
+        if model_loader:
+            logger.info("✅ AI 환경 초기화 완료")
+            
+            # 3. 체크포인트 파일 확인
+            ai_models_dir = Path("ai_models")
+            if ai_models_dir.exists():
+                checkpoint_count = len(list(ai_models_dir.rglob("*.pth"))) + \
+                                len(list(ai_models_dir.rglob("*.safetensors"))) + \
+                                len(list(ai_models_dir.rglob("*.bin")))
+                logger.info(f"📦 체크포인트 파일 발견: {checkpoint_count}개")
+            else:
+                logger.warning("⚠️ ai_models 디렉토리 없음")
+                
+        else:
+            logger.warning("⚠️ ModelLoader 초기화 실패")
+            
+    except Exception as e:
+        logger.error(f"❌ AI 환경 초기화 실패: {e}")
+
+
+# FastAPI 앱 생성 후 추가
+app = FastAPI(title="MyCloset AI API", version="1.0.0")
+
+# AI 환경 초기화 호출
+setup_ai_environment()
 
 # 설정 로드
 settings = get_settings()

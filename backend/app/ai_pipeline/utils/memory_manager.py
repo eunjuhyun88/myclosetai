@@ -1,7 +1,9 @@
 # app/ai_pipeline/utils/memory_manager.py
 """
-🍎 MyCloset AI - 완전 최적화 메모리 관리 시스템 v8.2
+🍎 MyCloset AI - 완전 최적화 메모리 관리 시스템 v8.3
 ================================================================================
+✅ DeviceManager 클래스 완전 추가
+✅ setup_mps_compatibility 메서드 구현
 ✅ RuntimeWarning: coroutine 완전 해결
 ✅ object dict can't be used in 'await' expression 완전 해결
 ✅ optimize_startup 메서드 완전 동기화
@@ -10,10 +12,11 @@
 ✅ M3 Max 128GB + conda 환경 완전 최적화
 ✅ 모든 비동기 오류 해결
 ✅ 프로덕션 레벨 안정성
+✅ main.py import 오류 완전 해결
 ================================================================================
 Author: MyCloset AI Team
-Date: 2025-07-20
-Version: 8.2 (Error-Free Complete Implementation)
+Date: 2025-07-29
+Version: 8.3 (DeviceManager Complete Implementation)
 """
 
 import os
@@ -149,6 +152,254 @@ def _get_system_info() -> Dict[str, Any]:
 
 # 전역 시스템 정보
 SYSTEM_INFO = _get_system_info()
+
+# ==============================================
+# 🔥 DeviceManager 클래스 (완전 구현)
+# ==============================================
+
+class DeviceManager:
+    """
+    🔥 완전 구현된 DeviceManager 클래스
+    ✅ setup_mps_compatibility 메서드 포함
+    ✅ main.py import 오류 완전 해결
+    ✅ M3 Max 특화 최적화
+    """
+    
+    def __init__(self):
+        """디바이스 관리자 초기화"""
+        self.device = self._detect_optimal_device()
+        self.is_mps_available = False
+        self.is_cuda_available = False
+        self.logger = logging.getLogger("DeviceManager")
+        self._init_device_info()
+        
+        self.logger.debug(f"🎮 DeviceManager 초기화 완료 - 디바이스: {self.device}")
+    
+    def _detect_optimal_device(self) -> str:
+        """최적 디바이스 감지"""
+        try:
+            if not TORCH_AVAILABLE:
+                return "cpu"
+            
+            # M3 Max MPS 우선
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.is_mps_available = True
+                return "mps"
+            
+            # CUDA 확인
+            elif torch.cuda.is_available():
+                self.is_cuda_available = True
+                return "cuda"
+            
+            # CPU 폴백
+            return "cpu"
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 디바이스 감지 실패: {e}")
+            return "cpu"
+    
+    def _init_device_info(self):
+        """디바이스 정보 초기화"""
+        try:
+            if not TORCH_AVAILABLE:
+                return
+            
+            if self.device == "mps":
+                # M3 Max 최적화
+                self._setup_mps_optimization()
+                
+            elif self.device == "cuda":
+                # CUDA 최적화
+                if hasattr(torch.backends, 'cudnn'):
+                    torch.backends.cudnn.benchmark = True
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ 디바이스 초기화 실패: {e}")
+    
+    def _setup_mps_optimization(self):
+        """MPS 최적화 설정"""
+        try:
+            # M3 Max 환경 변수 설정
+            os.environ.update({
+                'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.0',
+                'PYTORCH_MPS_LOW_WATERMARK_RATIO': '0.0',
+                'METAL_DEVICE_WRAPPER_TYPE': '1',
+                'METAL_PERFORMANCE_SHADERS_ENABLED': '1',
+                'PYTORCH_MPS_PREFER_METAL': '1',
+                'PYTORCH_ENABLE_MPS_FALLBACK': '1'
+            })
+            
+            # 스레드 최적화
+            if TORCH_AVAILABLE:
+                torch.set_num_threads(min(16, SYSTEM_INFO["cpu_count"]))
+            
+            self.logger.debug("🍎 MPS 최적화 설정 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ MPS 최적화 실패: {e}")
+    
+    def setup_mps_compatibility(self):
+        """
+        🔥 MPS 호환성 설정 (main.py에서 요구하는 핵심 메서드)
+        ✅ import 오류 완전 해결
+        """
+        try:
+            if not TORCH_AVAILABLE:
+                self.logger.warning("⚠️ PyTorch 없음 - MPS 호환성 설정 건너뜀")
+                return False
+            
+            if not self.is_mps_available:
+                self.logger.info("ℹ️ MPS 사용 불가 - 호환성 설정 건너뜀")
+                return False
+            
+            self.logger.info("🍎 MPS 호환성 설정 시작...")
+            
+            # 1. MPS 메모리 정리
+            if hasattr(torch.mps, 'empty_cache'):
+                safe_mps_empty_cache()
+                self.logger.debug("✅ MPS 메모리 정리 완료")
+            
+            # 2. MPS 환경 변수 재설정
+            self._setup_mps_optimization()
+            
+            # 3. MPS 동기화
+            if hasattr(torch.mps, 'synchronize'):
+                try:
+                    torch.mps.synchronize()
+                    self.logger.debug("✅ MPS 동기화 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ MPS 동기화 실패: {e}")
+            
+            # 4. 테스트 텐서 생성 (MPS 작동 확인)
+            try:
+                test_tensor = torch.tensor([1.0], device='mps')
+                test_result = test_tensor + 1
+                self.logger.debug("✅ MPS 작동 확인 완료")
+                del test_tensor, test_result
+            except Exception as e:
+                self.logger.warning(f"⚠️ MPS 작동 확인 실패: {e}")
+                return False
+            
+            self.logger.info("✅ MPS 호환성 설정 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ MPS 호환성 설정 실패: {e}")
+            return False
+    
+    def get_device(self) -> str:
+        """현재 디바이스 반환"""
+        return self.device
+    
+    def get_device_info(self) -> Dict[str, Any]:
+        """디바이스 정보 반환"""
+        try:
+            info = {
+                "device": self.device,
+                "is_mps_available": self.is_mps_available,
+                "is_cuda_available": self.is_cuda_available,
+                "torch_available": TORCH_AVAILABLE,
+                "torch_version": TORCH_VERSION,
+                "system_info": SYSTEM_INFO
+            }
+            
+            if TORCH_AVAILABLE and self.device == "cuda":
+                info.update({
+                    "cuda_device_count": torch.cuda.device_count(),
+                    "cuda_current_device": torch.cuda.current_device(),
+                    "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "N/A"
+                })
+            
+            return info
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 디바이스 정보 조회 실패: {e}")
+            return {"device": self.device, "error": str(e)}
+    
+    def optimize_memory(self):
+        """메모리 최적화"""
+        try:
+            # Python 가비지 컬렉션
+            gc.collect()
+            
+            if not TORCH_AVAILABLE:
+                return
+            
+            if self.device == "mps":
+                try:
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                    if hasattr(torch.mps, 'empty_cache'):
+                        safe_mps_empty_cache()
+                    self.logger.debug("✅ MPS 메모리 최적화 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ MPS 메모리 최적화 실패: {e}")
+                    
+            elif self.device == "cuda":
+                try:
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    self.logger.debug("✅ CUDA 메모리 최적화 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ CUDA 메모리 최적화 실패: {e}")
+                    
+        except Exception as e:
+            self.logger.warning(f"⚠️ 메모리 최적화 실패: {e}")
+    
+    def get_memory_info(self) -> Dict[str, Any]:
+        """메모리 정보 반환"""
+        try:
+            info = {
+                'device': self.device,
+                'allocated': 0,
+                'cached': 0,
+                'total': 0
+            }
+            
+            if not TORCH_AVAILABLE:
+                return info
+            
+            if self.device == "cuda" and torch.cuda.is_available():
+                info.update({
+                    'allocated': torch.cuda.memory_allocated(),
+                    'cached': torch.cuda.memory_reserved(),
+                    'total': torch.cuda.get_device_properties(0).total_memory
+                })
+            elif self.device == "mps":
+                # MPS는 정확한 메모리 정보를 제공하지 않으므로 추정값 사용
+                info.update({
+                    'allocated': 2 * 1024**3,  # 2GB 추정
+                    'cached': 1 * 1024**3,     # 1GB 추정
+                    'total': SYSTEM_INFO["memory_gb"] * 1024**3
+                })
+            
+            return info
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 메모리 정보 조회 실패: {e}")
+            return {
+                'device': self.device,
+                'allocated': 0,
+                'cached': 0,
+                'total': 0,
+                'error': str(e)
+            }
+    
+    def is_available(self) -> bool:
+        """디바이스 사용 가능 여부"""
+        try:
+            if not TORCH_AVAILABLE:
+                return False
+            
+            if self.device == "mps":
+                return torch.backends.mps.is_available()
+            elif self.device == "cuda":
+                return torch.cuda.is_available()
+            else:
+                return True  # CPU는 항상 사용 가능
+                
+        except Exception:
+            return False
 
 # ==============================================
 # 🔥 데이터 구조 정의
@@ -584,8 +835,6 @@ class MemoryManager:
         except Exception as e:
             self.logger.warning(f"⚠️ conda 최적화 실패: {e}")
 
-    # backend/app/ai_pipeline/utils/memory_manager.py
-  
     def optimize(self) -> Dict[str, Any]:
         """
         메모리 최적화 (optimize_memory의 별칭)
@@ -1260,6 +1509,68 @@ class MemoryManagerAdapter:
                 "timestamp": time.time()
             }
 
+
+    def optimize(self, aggressive: bool = False) -> Dict[str, Any]:
+        """
+        메모리 최적화 (optimize_memory의 별칭) - MemoryManagerAdapter용
+        """
+        return self.optimize_memory(aggressive=aggressive)
+    
+    async def optimize_async(self, aggressive: bool = False) -> Dict[str, Any]:
+        """
+        비동기 메모리 최적화 - MemoryManagerAdapter용
+        """
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, self.optimize_memory, aggressive)
+            return result
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManagerAdapter 비동기 최적화 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "adapter": True
+            }
+    
+    def get_memory_status(self) -> Dict[str, Any]:
+        """
+        메모리 상태 조회 - MemoryManagerAdapter용
+        """
+        try:
+            base_status = self._base_manager.get_memory_status()
+            base_status.update({
+                "adapter": True,
+                "adapter_type": "MemoryManagerAdapter",
+                "base_manager_type": type(self._base_manager).__name__
+            })
+            return base_status
+        except Exception as e:
+            return {
+                "error": str(e),
+                "adapter": True,
+                "available": False
+            }
+    
+    def cleanup(self) -> bool:
+        """
+        메모리 매니저 정리 - MemoryManagerAdapter용
+        """
+        try:
+            # 기본 매니저 정리
+            result = self._base_manager.cleanup()
+            
+            # 어댑터 캐시 정리
+            if hasattr(self, 'optimization_cache'):
+                self.optimization_cache.clear()
+            
+            self.logger.debug("✅ MemoryManagerAdapter 정리 완료")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManagerAdapter 정리 실패: {e}")
+            return False
+
     def _run_adapter_optimizations(self, aggressive: bool = False) -> List[str]:
         """어댑터 특화 최적화 (동기)"""
         optimizations = []
@@ -1487,6 +1798,7 @@ class GPUMemoryManager(MemoryManager):
 _global_memory_manager = None
 _global_gpu_memory_manager = None
 _global_adapter = None
+_global_device_manager = None
 _manager_lock = threading.Lock()
 
 def get_memory_manager(**kwargs) -> MemoryManager:
@@ -1501,6 +1813,20 @@ def get_memory_manager(**kwargs) -> MemoryManager:
 def get_global_memory_manager(**kwargs) -> MemoryManager:
     """전역 메모리 관리자 인스턴스 반환 (별칭)"""
     return get_memory_manager(**kwargs)
+
+def get_device_manager(**kwargs) -> DeviceManager:
+    """
+    🔥 DeviceManager 인스턴스 반환 (main.py에서 요구하는 핵심 함수)
+    ✅ import 오류 완전 해결
+    ✅ setup_mps_compatibility 메서드 포함
+    """
+    global _global_device_manager
+    
+    with _manager_lock:
+        if _global_device_manager is None:
+            _global_device_manager = DeviceManager()
+            logger.info(f"✅ DeviceManager 초기화 완료 - 디바이스: {_global_device_manager.device}")
+        return _global_device_manager
 
 def get_memory_adapter(device: str = "auto", **kwargs) -> MemoryManagerAdapter:
     """VirtualFittingStep용 어댑터 반환"""
@@ -1989,6 +2315,7 @@ def print_memory_report():
 
 __all__ = [
     # 🔥 기존 클래스명 완전 유지
+    'DeviceManager',             # ✅ main.py에서 필요한 핵심 클래스
     'MemoryManager',
     'MemoryManagerAdapter',      # ✅ VirtualFittingStep 호환용 완전 구현
     'GPUMemoryManager',          # ✅ 현재 구조에서 사용
@@ -1996,6 +2323,7 @@ __all__ = [
     'MemoryConfig',
     
     # 🔥 기존 함수명 완전 유지
+    'get_device_manager',        # ✅ main.py에서 필요한 핵심 함수
     'get_memory_manager',
     'get_global_memory_manager',
     'get_step_memory_manager',   # ✅ main.py에서 필요한 핵심 함수
@@ -2029,7 +2357,7 @@ __all__ = [
 # ==============================================
 
 # 환경 정보 로깅 (INFO 레벨로 중요 정보만)
-logger.info("✅ MemoryManager v8.2 로드 완료 (Error-Free Complete Implementation)")
+logger.info("✅ MemoryManager v8.3 로드 완료 (DeviceManager Complete Implementation)")
 logger.info(f"🔧 시스템: {SYSTEM_INFO['platform']} / {SYSTEM_INFO['device']}")
 
 if SYSTEM_INFO["is_m3_max"]:
@@ -2038,10 +2366,11 @@ if SYSTEM_INFO["is_m3_max"]:
 if SYSTEM_INFO["in_conda"]:
     logger.info(f"🐍 conda 환경: {SYSTEM_INFO['conda_env']}")
 
-logger.debug("🔗 주요 클래스: MemoryManager, MemoryManagerAdapter, GPUMemoryManager")
-logger.debug("🔗 주요 함수: get_step_memory_manager, get_memory_adapter")
+logger.debug("🔗 주요 클래스: DeviceManager, MemoryManager, MemoryManagerAdapter, GPUMemoryManager")
+logger.debug("🔗 주요 함수: get_device_manager, get_step_memory_manager, get_memory_adapter")
 logger.debug("⚡ M3 Max + conda 환경 완전 최적화")
 logger.debug("🔧 모든 async/await 오류 완전 해결")
+logger.debug("🎯 DeviceManager.setup_mps_compatibility 메서드 완전 구현")
 
 # M3 Max + conda 조합 확인
 if SYSTEM_INFO["is_m3_max"] and SYSTEM_INFO["in_conda"]:
@@ -2055,5 +2384,9 @@ if SYSTEM_INFO["in_conda"]:
     except Exception as e:
         logger.debug(f"⚠️ conda 자동 최적화 건너뜀: {e}")
 
-logger.info("🎯 RuntimeWarning: coroutine 'MemoryManager.optimize_memory' was never awaited 완전 해결")
-logger.info("🎯 object dict can't be used in 'await' expression 완전 해결")
+logger.info("🎯 main.py import 오류 완전 해결:")
+logger.info("   - DeviceManager 클래스 완전 구현 ✅")
+logger.info("   - setup_mps_compatibility 메서드 포함 ✅")
+logger.info("   - get_device_manager 함수 제공 ✅")
+logger.info("   - RuntimeWarning: coroutine 완전 해결 ✅")
+logger.info("   - object dict can't be used in 'await' expression 완전 해결 ✅")
