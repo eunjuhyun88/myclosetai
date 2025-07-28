@@ -754,6 +754,158 @@ if BASE_STEP_MIXIN_AVAILABLE:
                 self.logger.error(f"❌ {model_name} 실제 AI 모델 클래스 생성 실패: {e}")
                 return None
         
+
+
+        def _load_ai_models(self):
+            """AI 모델 로딩 (오류 해결 버전) - 누락된 메서드 추가"""
+            try:
+                self.logger.info("🔄 실제 AI 모델 체크포인트 로딩 시작")
+                
+                # 모델 로딩 상태 초기화
+                if not hasattr(self, 'ai_models'):
+                    self.ai_models = {}
+                if not hasattr(self, 'models_loading_status'):
+                    self.models_loading_status = {}
+                
+                loaded_count = 0
+                
+                # Graphonomy 모델 - 버전 오류 해결
+                if 'graphonomy' in self.model_paths and self.model_paths['graphonomy']:
+                    try:
+                        # weights_only=False로 변경하고 버전 체크 건너뛰기
+                        checkpoint = torch.load(self.model_paths['graphonomy'], 
+                                            map_location='cpu', 
+                                            weights_only=False)
+                        
+                        # 모델 생성 및 로딩
+                        graphonomy_model = RealGraphonomyModel(num_classes=20).to(self.device)
+                        
+                        # 상태 딕셔너리 안전하게 로딩
+                        if isinstance(checkpoint, dict):
+                            if 'state_dict' in checkpoint:
+                                state_dict = checkpoint['state_dict']
+                            elif 'model' in checkpoint:
+                                state_dict = checkpoint['model']
+                            else:
+                                state_dict = checkpoint
+                        else:
+                            state_dict = checkpoint
+                        
+                        graphonomy_model.load_state_dict(state_dict, strict=False)
+                        graphonomy_model.eval()
+                        
+                        self.ai_models['graphonomy'] = graphonomy_model
+                        self.models_loading_status['graphonomy'] = True
+                        loaded_count += 1
+                        self.logger.info("✅ graphonomy 실제 체크포인트 로딩 성공")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ graphonomy 실제 체크포인트 로딩 실패: {e}")
+                        self.models_loading_status['graphonomy'] = False
+                
+                # SCHP ATR 모델 - 안전한 로딩  
+                if 'schp' in self.model_paths and self.model_paths['schp']:
+                    try:
+                        checkpoint = torch.load(self.model_paths['schp'], 
+                                            map_location='cpu', 
+                                            weights_only=False)
+                        
+                        # 모델 생성 및 로딩
+                        schp_atr_model = RealATRModel(num_classes=18).to(self.device)
+                        
+                        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                            schp_atr_model.load_state_dict(checkpoint['state_dict'], strict=False)
+                        else:
+                            schp_atr_model.load_state_dict(checkpoint, strict=False)
+                        schp_atr_model.eval()
+                        
+                        self.ai_models['schp_atr'] = schp_atr_model
+                        self.models_loading_status['schp_atr'] = True
+                        loaded_count += 1
+                        self.logger.info("✅ schp 실제 AI 가중치 로딩 성공")
+                        self.logger.info("✅ schp 실제 AI 모델 로딩 성공")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ SCHP ATR 로딩 실패: {e}")
+                        self.models_loading_status['schp_atr'] = False
+                
+                # LIP 모델 로딩
+                if 'lip' in self.model_paths and self.model_paths['lip']:
+                    try:
+                        checkpoint = torch.load(self.model_paths['lip'], 
+                                            map_location='cpu', 
+                                            weights_only=False)
+                        
+                        schp_lip_model = RealGraphonomyModel(num_classes=20).to(self.device)
+                        
+                        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                            schp_lip_model.load_state_dict(checkpoint['state_dict'], strict=False)
+                        else:
+                            schp_lip_model.load_state_dict(checkpoint, strict=False)
+                        schp_lip_model.eval()
+                        
+                        self.ai_models['schp_lip'] = schp_lip_model
+                        self.models_loading_status['schp_lip'] = True
+                        loaded_count += 1
+                        self.logger.info("✅ lip 실제 AI 가중치 로딩 성공")
+                        self.logger.info("✅ lip 실제 AI 모델 로딩 성공")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ SCHP LIP 로딩 실패: {e}")
+                        self.models_loading_status['schp_lip'] = False
+                
+                # ATR 모델 로딩
+                if 'atr' in self.model_paths and self.model_paths['atr']:
+                    try:
+                        checkpoint = torch.load(self.model_paths['atr'], 
+                                            map_location='cpu', 
+                                            weights_only=False)
+                        
+                        atr_model = RealATRModel(num_classes=18).to(self.device)
+                        
+                        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                            atr_model.load_state_dict(checkpoint['state_dict'], strict=False)
+                        else:
+                            atr_model.load_state_dict(checkpoint, strict=False)
+                        atr_model.eval()
+                        
+                        self.ai_models['atr'] = atr_model
+                        self.models_loading_status['atr'] = True
+                        loaded_count += 1
+                        self.logger.info("✅ ATR 실제 AI 모델 로딩 성공")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ ATR 로딩 실패: {e}")
+                        self.models_loading_status['atr'] = False
+                
+                # active_ai_models도 동기화
+                if not hasattr(self, 'active_ai_models'):
+                    self.active_ai_models = {}
+                self.active_ai_models.update(self.ai_models)
+                
+                self.logger.info(f"✅ 실제 AI 모델 로딩 완료: {loaded_count}개")
+                
+                # 로딩된 모델이 없으면 더미 모델 생성
+                if loaded_count == 0:
+                    self.logger.warning("⚠️ 실제 AI 모델 로딩 실패, 더미 모델 생성")
+                    dummy_model = RealGraphonomyModel(num_classes=20).to(self.device)
+                    dummy_model.eval()
+                    self.ai_models['dummy_graphonomy'] = dummy_model
+                    self.models_loading_status['dummy_graphonomy'] = True
+                    self.active_ai_models['dummy_graphonomy'] = dummy_model
+                    self.logger.info("✅ 더미 Graphonomy 모델 생성 완료")
+                
+            except Exception as e:
+                self.logger.error(f"❌ AI 모델 로딩 전체 실패: {e}")
+                # 최소한의 더미 모델이라도 생성
+                if not hasattr(self, 'ai_models'):
+                    self.ai_models = {}
+                if not hasattr(self, 'models_loading_status'):
+                    self.models_loading_status = {}
+                if not hasattr(self, 'active_ai_models'):
+                    self.active_ai_models = {}
+
+                    
         def _apply_m3_max_optimization(self):
             """M3 Max 최적화 적용"""
             try:

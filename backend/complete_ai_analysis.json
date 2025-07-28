@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753674758.2406988,
+  "timestamp": 1753675164.013242,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -20,12 +20,12 @@
     "hardware": {
       "memory": {
         "total_gb": 128.0,
-        "available_gb": 67.13699340820312,
-        "used_percent": 47.5,
-        "available_percent": 52.5
+        "available_gb": 67.07154846191406,
+        "used_percent": 47.6,
+        "available_percent": 52.4
       },
       "cpu": {
-        "usage_percent": 16.3,
+        "usage_percent": 10.4,
         "core_count": 16,
         "freq_current": 4056
       },
@@ -3136,21 +3136,21 @@
   },
   "memory_usage": {
     "process_memory": {
-      "rss_mb": 5252.234375,
-      "vms_mb": 408564.390625,
-      "percent": 4.007136821746826
+      "rss_mb": 5145.96875,
+      "vms_mb": 408295.421875,
+      "percent": 3.92606258392334
     },
     "system_memory": {
       "total_gb": 128.0,
-      "available_gb": 62.0362548828125,
+      "available_gb": 62.01605224609375,
       "used_percent": 51.5,
-      "free_gb": 3.3931427001953125
+      "free_gb": 3.58905029296875
     },
     "recommendations": []
   },
   "recommendations": [
     "✅ AI 모델 파일 발견: 310개 (263.8GB)"
   ],
-  "analysis_completed_at": 1753674766.151639,
-  "total_analysis_time": 8.916851997375488
+  "analysis_completed_at": 1753675171.8392909,
+  "total_analysis_time": 8.83182692527771
 }
