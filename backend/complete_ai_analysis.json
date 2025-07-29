@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753725802.333794,
+  "timestamp": 1753728880.3161972,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -20,12 +20,12 @@
     "hardware": {
       "memory": {
         "total_gb": 128.0,
-        "available_gb": 72.82171630859375,
-        "used_percent": 43.1,
-        "available_percent": 56.9
+        "available_gb": 73.75981140136719,
+        "used_percent": 42.4,
+        "available_percent": 57.6
       },
       "cpu": {
-        "usage_percent": 11.9,
+        "usage_percent": 2.4,
         "core_count": 16,
         "freq_current": 4056
       },
@@ -3103,12 +3103,12 @@
     "core_libraries": {
       "PyTorch": {
         "installed": true,
-        "version": "2.5.1",
+        "version": "2.7.1",
         "module_name": "torch"
       },
       "TorchVision": {
         "installed": true,
-        "version": "0.20.1",
+        "version": "0.22.0",
         "module_name": "torchvision"
       },
       "NumPy": {
@@ -3164,21 +3164,21 @@
   },
   "memory_usage": {
     "process_memory": {
-      "rss_mb": 2040.71875,
-      "vms_mb": 405779.984375,
-      "percent": 1.5569448471069336
+      "rss_mb": 1908.015625,
+      "vms_mb": 406235.71875,
+      "percent": 1.455700397491455
     },
     "system_memory": {
       "total_gb": 128.0,
-      "available_gb": 70.80755615234375,
-      "used_percent": 44.7,
-      "free_gb": 31.88372802734375
+      "available_gb": 71.88029479980469,
+      "used_percent": 43.8,
+      "free_gb": 33.808837890625
     },
     "recommendations": []
   },
   "recommendations": [
     "✅ AI 모델 파일 발견: 310개 (266.3GB)"
   ],
-  "analysis_completed_at": 1753725815.086477,
-  "total_analysis_time": 13.756979942321777
+  "analysis_completed_at": 1753728894.124834,
+  "total_analysis_time": 14.817508220672607
 }

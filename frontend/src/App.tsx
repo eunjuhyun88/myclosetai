@@ -2120,244 +2120,372 @@ const App: React.FC = () => {
   // =================================================================
   // 🔧 핵심 처리 함수들
   // =================================================================
-
   const autoProcessRemainingSteps = async () => {
-  // 세션 ID 추출
-  const sessionId = 
-    stepResults[1]?.session_id ||
-    stepResults[1]?.details?.session_id ||
-    apiClient.getSessionId();
+    // 세션 ID 추출
+    const sessionId = 
+      stepResults[1]?.session_id ||
+      stepResults[1]?.details?.session_id ||
+      apiClient.getSessionId();
 
-  if (!sessionId) {
-    setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
-    return;
-  }
-
-  setAutoProcessing(true);
-  setIsProcessing(true);
-
-  try {
-    // WebSocket 연결 시도
-    try {
-      await apiClient.connectWebSocket(sessionId);
-    } catch (error) {
-      console.warn('WebSocket 연결 실패, HTTP 폴링으로 진행:', error);
+    if (!sessionId) {
+      setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
+      return;
     }
 
-    // 🔥 실제 백엔드 API 스펙에 맞춘 단계 설정 (엔드포인트 직접 포함)
-    const stepsConfig = [
-      {
-        stepId: 3,
-        endpoint: '/api/step/3/human-parsing',
-        progressPercent: 37.5,
-        stepName: 'AI 인체 파싱 중...',
-        params: {
-          session_id: sessionId,
-          enhance_quality: 'true'
-        }
-      },
-      {
-        stepId: 4,
-        endpoint: '/api/step/4/pose-estimation',
-        progressPercent: 50.0,
-        stepName: 'AI 포즈 추정 중...',
-        params: {
-          session_id: sessionId,
-          detection_confidence: '0.5'
-        }
-      },
-      {
-        stepId: 5,
-        endpoint: '/api/step/5/clothing-analysis',
-        progressPercent: 62.5,
-        stepName: 'AI 의류 분석 중...',
-        params: {
-          session_id: sessionId,
-          analysis_detail: 'medium'
-        }
-      },
-      {
-        stepId: 6,
-        endpoint: '/api/step/6/geometric-matching',
-        progressPercent: 75.0,
-        stepName: 'AI 기하학적 매칭 중...',
-        params: {
-          session_id: sessionId,
-          matching_precision: 'high'
-        }
-      },
-      {
-        stepId: 7,
-        endpoint: '/api/step/7/virtual-fitting',
-        progressPercent: 87.5,
-        stepName: 'AI 가상 피팅 생성 중...',
-        params: {
-          session_id: sessionId,
-          fitting_quality: 'high'
-        }
-      },
-      {
-        stepId: 8,
-        endpoint: '/api/step/8/result-analysis',
-        progressPercent: 100.0,
-        stepName: '최종 결과 분석 중...',
-        params: {
-          session_id: sessionId,
-          analysis_depth: 'comprehensive'
-        }
+    console.log('✅ 세션 ID 확정:', sessionId);
+    setAutoProcessing(true);
+    setIsProcessing(true);
+
+    try {
+      // WebSocket 연결 시도
+      try {
+        await apiClient.connectWebSocket(sessionId);
+      } catch (error) {
+        console.warn('WebSocket 연결 실패, HTTP 폴링으로 진행:', error);
       }
-    ];
-    
-    // 🔥 각 단계를 순차 처리 (엔드포인트가 이미 stepsConfig에 포함됨)
+
+      // 🔥 단계별 설정
+      const stepsConfig = [
+        {
+          stepId: 3,
+          endpoint: '/api/step/3/human-parsing',
+          progressPercent: 37.5,
+          stepName: 'AI 인체 파싱 중...',
+          params: {
+            session_id: sessionId,
+            force_real_ai_processing: 'true',
+            disable_mock_mode: 'true',
+            disable_fallback_mode: 'true',
+            disable_simulation_mode: 'true'
+          }
+        },
+        {
+          stepId: 4,
+          endpoint: '/api/step/4/pose-estimation',
+          progressPercent: 50.0,
+          stepName: 'AI 포즈 추정 중...',
+          params: {
+            session_id: sessionId,
+            force_real_ai_processing: 'true',
+            disable_mock_mode: 'true',
+            disable_fallback_mode: 'true',
+            disable_simulation_mode: 'true',
+            detection_confidence: '0.5'
+          }
+        },
+        {
+          stepId: 5,
+          endpoint: '/api/step/5/clothing-analysis',
+          progressPercent: 62.5,
+          stepName: 'AI 의류 분석 중...',
+          params: {
+            session_id: sessionId,
+            force_real_ai_processing: 'true',
+            disable_mock_mode: 'true',
+            disable_fallback_mode: 'true',
+            disable_simulation_mode: 'true',
+            analysis_detail: 'medium'
+          }
+        },
+        {
+          stepId: 6,
+          endpoint: '/api/step/6/geometric-matching',
+          progressPercent: 75.0,
+          stepName: 'AI 기하학적 매칭 중...',
+          params: {
+            session_id: sessionId,
+            force_real_ai_processing: 'true',
+            disable_mock_mode: 'true',
+            disable_fallback_mode: 'true',
+            disable_simulation_mode: 'true',
+            matching_precision: 'high'
+          }
+        },
+        {
+          stepId: 7,
+          endpoint: '/api/step/7/virtual-fitting',
+          progressPercent: 87.5,
+          stepName: 'AI 가상 피팅 생성 중...',
+          isSpecialStep: true, // Step 7 특별 처리 플래그
+          kwargsData: {
+            fitting_quality: 'high',
+            force_real_ai_processing: true,
+            disable_mock_mode: true,
+            disable_fallback_mode: true,
+            disable_simulation_mode: true,
+            processing_mode: 'production',
+            require_real_ai_models: true,
+            strict_mode: true,
+            no_fallback_allowed: true,
+            real_ai_only: true,
+            enable_ootdiffusion: true,
+            diffusion_steps: 50,
+            guidance_scale: 7.5,
+            generate_real_image: true,
+            fabric_type: 'cotton',
+            clothing_type: 'shirt'
+          },
+          params: {
+            session_id: sessionId
+          }
+        },
+        {
+          stepId: 8,
+          endpoint: '/api/step/8/result-analysis',
+          progressPercent: 100.0,
+          stepName: '최종 결과 분석 중...',
+          params: {
+            session_id: sessionId,
+            force_real_ai_processing: 'true',
+            disable_mock_mode: 'true',
+            disable_fallback_mode: 'true',
+            disable_simulation_mode: 'true',
+            analysis_depth: 'comprehensive'
+          }
+        }
+      ];
+
+      let finalTryOnResult = null;
+    console.log('🧪 for 루프 시작 전 - Step 7 처리 코드 확인');
+
     for (const stepConfig of stepsConfig) {
       const { stepId, endpoint, progressPercent, stepName, params } = stepConfig;
+      console.log('🔥 Step 7 특별 처리 시작 - kwargs를 URL에 추가');
+
+      setProgress(progressPercent);
+      setProgressMessage(`Step ${stepId}: ${stepName}`);
       
-      try {
-        // 현재 단계 설정
-        setCurrentStep(stepId);
-        setProgress(progressPercent);
-        setProgressMessage(`Step ${stepId}: ${stepName}`);
+      // 🔥 Step 7 특별 처리
+      if (stepId === 7) {
+        console.log('🎯 Step 7 감지됨! 특별 처리 시작');
+
+        // FormData는 session_id만
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
         
-        console.log(`🚀 Step ${stepId} 처리 시작:`, {
-          endpoint,
-          params,
+        // kwargs 데이터 준비
+        const kwargsData = {
+          fitting_quality: 'high',
+          force_real_ai_processing: true,
+          disable_mock_mode: true,
+          disable_fallback_mode: true,
+          disable_simulation_mode: true,
+          processing_mode: 'production',
+          require_real_ai_models: true,
+          strict_mode: true,
+          no_fallback_allowed: true,
+          real_ai_only: true,
+          enable_ootdiffusion: true,
+          diffusion_steps: 50,
+          guidance_scale: 7.5,
+          generate_real_image: true,
+          fabric_type: 'cotton',
+          clothing_type: 'shirt'
+        };
+        
+        // URL에 kwargs 쿼리 파라미터 추가
+        const kwargsParam = encodeURIComponent(JSON.stringify(kwargsData));
+        const fullUrl = `http://localhost:8000${endpoint}?kwargs=${kwargsParam}`;
+        
+        console.log(`🔥 Step 7 URL with kwargs:`, {
+          url: fullUrl.substring(0, 150) + '...',
+          kwargsData,
           sessionId
         });
         
-        // FormData 생성
-        const formData = new FormData();
-        Object.entries(params).forEach(([key, value]) => {
-          formData.append(key, String(value));
-        });
-        
-        console.log(`📋 Step ${stepId} FormData:`, {
-          endpoint,
-          formDataEntries: Object.fromEntries(formData.entries())
-        });
-        
-        // 🔥 API 호출 (하드코딩된 baseURL 사용)
-        const baseUrl = 'http://localhost:8000';
-        const fullUrl = `${baseUrl}${endpoint}`;
-        
-        console.log(`🌐 API 호출 URL: ${fullUrl}`);
-        
         const response = await fetch(fullUrl, {
           method: 'POST',
-          body: formData
+          body: formData,
+          headers: {
+            'X-AI-Processing-Required': 'true',
+            'X-Disable-Mock-Mode': 'true',
+            'X-Disable-Fallback-Mode': 'true',
+            'X-Production-Mode': 'true',
+            'X-Real-AI-Models-Only': 'true',
+            'X-No-Simulation': 'true',
+            'X-Force-Real-Processing': 'true'
+          }
         });
         
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
+          console.error(`❌ Step 7 HTTP 오류:`, {
+            status: response.status,
+            statusText: response.statusText,
+            errorText,
+            url: fullUrl.substring(0, 100) + '...'
+          });
+          throw new Error(`Step 7 실패: ${errorText}`);
         }
         
         const stepResult = await response.json();
         
         if (!stepResult.success) {
-          throw new Error(stepResult.error || `Step ${stepId} 처리 실패`);
+          console.error(`❌ Step 7 처리 실패:`, stepResult);
+          throw new Error(`Step 7 실패: ${stepResult.error || '알 수 없는 오류'}`);
+        }
+        
+        console.log(`✅ Step 7 완료:`, stepResult);
+        
+        // 🔥 Step 7 결과 처리
+        console.log('🔍 Step 7 결과 상세 분석:', {
+          success: stepResult.success,
+          fitted_image: stepResult.fitted_image ? '있음' : '없음',
+          fitted_image_length: stepResult.fitted_image?.length || 0,
+          fit_score: stepResult.fit_score,
+          confidence: stepResult.confidence
+        });
+        
+        if (stepResult.fitted_image && stepResult.fitted_image.length > 10000) {
+          console.log('🎉 fitted_image 발견! 결과 생성 중...');
+          
+          let imageDataUrl;
+          
+          if (stepResult.fitted_image.startsWith('data:')) {
+            imageDataUrl = stepResult.fitted_image;
+          } else {
+            console.log('🔄 Base64를 Data URL로 변환');
+            imageDataUrl = `data:image/jpeg;base64,${stepResult.fitted_image}`;
+          }
+          
+          const heightInMeters = measurements.height / 100;
+          const bmi = measurements.weight / (heightInMeters * heightInMeters);
+          
+          finalTryOnResult = {
+            success: true,
+            message: '실제 AI 가상 피팅 완료!',
+            processing_time: stepResult.processing_time || 2.5,
+            confidence: stepResult.confidence || 0.9,
+            session_id: sessionId,
+            fitted_image: imageDataUrl,
+            fit_score: stepResult.fit_score || 0.9,
+            measurements: {
+              chest: measurements.height * 0.5,
+              waist: measurements.height * 0.45,
+              hip: measurements.height * 0.55,
+              bmi: Math.round(bmi * 100) / 100
+            },
+            clothing_analysis: {
+              category: stepResult.details?.category || "상의",
+              style: stepResult.details?.style || "캐주얼",
+              dominant_color: [100, 150, 200],
+              color_name: "블루",
+              material: "코튼",
+              pattern: "솔리드"
+            },
+            recommendations: stepResult.recommendations || [
+              "✅ 실제 AI가 생성한 가상 피팅 결과입니다",
+              "이 의류는 당신의 체형에 잘 맞습니다",
+              "색상이 잘 어울립니다"
+            ]
+          };
+          
+          console.log('🎯 finalTryOnResult 생성 완료:', {
+            confidence: finalTryOnResult.confidence,
+            fit_score: finalTryOnResult.fit_score,
+            fitted_image_length: finalTryOnResult.fitted_image?.length || 0,
+            success: finalTryOnResult.success,
+            message: finalTryOnResult.message,
+            session_id: finalTryOnResult.session_id
+          });
+        } else {
+          console.error('❌ Step 7에서 유효한 실제 AI 이미지를 받지 못함');
+          throw new Error('Step 7: 실제 AI 가상 피팅 이미지 생성 실패');
+        }
+        
+        // Step 7 결과 저장
+        setStepResults(prev => ({
+          ...prev,
+          [stepId]: stepResult
+        }));
+        
+        setCompletedSteps(prev => [...prev, stepId]);
+        
+      } else {
+        // 🔥 다른 Step들은 기존 방식
+        const formData = new FormData();
+        
+        Object.entries(params).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+        
+        console.log(`🔥 Step ${stepId} 실제 AI 처리 강제 요청:`, {
+          endpoint,
+          sessionId,
+          mockDisabled: true,
+          formDataEntries: Object.fromEntries(formData.entries())
+        });
+        
+        const response = await fetch(`http://localhost:8000${endpoint}`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-AI-Processing-Required': 'true',
+            'X-Disable-Mock-Mode': 'true',
+            'X-Disable-Fallback-Mode': 'true',
+            'X-Production-Mode': 'true',
+            'X-Real-AI-Models-Only': 'true',
+            'X-No-Simulation': 'true',
+            'X-Force-Real-Processing': 'true'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ Step ${stepId} HTTP 오류:`, {
+            status: response.status,
+            statusText: response.statusText,
+            errorText
+          });
+          throw new Error(`Step ${stepId} 실패: ${errorText}`);
+        }
+        
+        const stepResult = await response.json();
+        
+        if (!stepResult.success) {
+          console.error(`❌ Step ${stepId} 처리 실패:`, stepResult);
+          throw new Error(`Step ${stepId} 실패: ${stepResult.error || '알 수 없는 오류'}`);
         }
         
         console.log(`✅ Step ${stepId} 완료:`, stepResult);
         
-        // 상태 업데이트
-        setStepResults(prev => ({ ...prev, [stepId]: stepResult }));
+        // 다른 Step들 결과 저장
+        setStepResults(prev => ({
+          ...prev,
+          [stepId]: stepResult
+        }));
+        
         setCompletedSteps(prev => [...prev, stepId]);
-        
-        // Step 7에서 가상 피팅 결과 처리
-        if (stepId === 7 && stepResult.success && stepResult.fitted_image) {
-          try {
-            const heightInMeters = measurements.height / 100;
-            const bmi = measurements.weight / (heightInMeters * heightInMeters);
-            
-            const newResult: TryOnResult = {
-              success: true,
-              message: stepResult.message,
-              processing_time: stepResult.processing_time,
-              confidence: stepResult.confidence,
-              session_id: sessionId,
-              fitted_image: stepResult.fitted_image,
-              fit_score: stepResult.fit_score || stepResult.confidence || 0.88,
-              measurements: {
-                chest: measurements.height * 0.5,
-                waist: measurements.height * 0.45,
-                hip: measurements.height * 0.55,
-                bmi: Math.round(bmi * 100) / 100
-              },
-              clothing_analysis: {
-                category: stepResult?.details?.category || "상의",
-                style: stepResult?.details?.style || "캐주얼",
-                dominant_color: [100, 150, 200],
-                color_name: "블루",
-                material: "코튼",
-                pattern: "솔리드"
-              },
-              recommendations: stepResult.recommendations || [
-                "이 의류는 당신의 체형에 잘 맞습니다",
-                "색상이 잘 어울립니다",
-                "사이즈가 적절합니다"
-              ]
-            };
-            
-            setResult(newResult);
-            console.log('🎉 TryOnResult 설정 완료:', newResult);
-            
-          } catch (resultError) {
-            console.error('❌ TryOnResult 생성 실패:', resultError);
-          }
-        }
-        
-        // 단계별 지연
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-      } catch (stepError: any) {
-        console.error(`❌ Step ${stepId} 실패:`, stepError);
-        
-        let errorMessage = `Step ${stepId} 실패`;
-        if (stepError.message) {
-          if (stepError.message.includes('404')) {
-            errorMessage = `Step ${stepId}: 세션을 찾을 수 없습니다.`;
-          } else if (stepError.message.includes('422')) {
-            errorMessage = `Step ${stepId}: 입력 데이터가 올바르지 않습니다.`;
-          } else if (stepError.message.includes('500')) {
-            errorMessage = `Step ${stepId}: 서버 오류가 발생했습니다.`;
-          } else {
-            errorMessage = `Step ${stepId}: ${stepError.message}`;
-          }
-        }
-        
-        setError(errorMessage);
-        setIsProcessing(false);
-        setAutoProcessing(false);
-        return;
       }
     }
-    
-    // 모든 단계 완료
-    setProgress(100);
-    setProgressMessage('🎉 모든 단계 완료!');
-    
-    setTimeout(() => {
+          // 🔥 최종 결과 React State 업데이트
+    if (finalTryOnResult) {
+      console.log('🎯 최종 결과 React State 업데이트 시작:', {
+        confidence: finalTryOnResult.confidence,
+        fit_score: finalTryOnResult.fit_score || 0, // 🔥 수정: || 0 추가
+        fitted_image_length: finalTryOnResult.fitted_image?.length || 0,
+        message: finalTryOnResult.message,
+        success: finalTryOnResult.success,
+        session_id: finalTryOnResult.session_id
+      });
+      
+      setResult(finalTryOnResult);
+      setCurrentStep(8);
+      
+      console.log('✅ React State 업데이트 및 Step 8 이동 완료');
+    } else {
+      throw new Error('최종 가상 피팅 결과를 생성하지 못했습니다.');
+    }
+      
+    } catch (error) {
+      console.error('❌ 자동 처리 실패:', error);
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
       setIsProcessing(false);
       setAutoProcessing(false);
-      setCurrentStep(8);
-    }, 1500);
-    
-  } catch (error: any) {
-    console.error('❌ 자동 처리 중 오류:', error);
-    setError(`자동 처리 실패: ${error.message}`);
-    setIsProcessing(false);
-    setAutoProcessing(false);
-  } finally {
-    try {
-      apiClient.disconnectWebSocket();
-    } catch (cleanupError) {
-      console.warn('WebSocket 정리 중 오류:', cleanupError);
     }
-  }
   };
 
-
-  
   // =================================================================
   // 🔧 이벤트 핸들러들
   // =================================================================
@@ -2487,7 +2615,7 @@ const App: React.FC = () => {
       stepName: 'AI 기하학적 매칭 중...',
     },
     {
-      stepId: 7,
+     stepId: 7,
       endpoint: '/api/step/7/virtual-fitting',
       progressPercent: 90,
       stepName: 'AI 가상 피팅 생성 중...',
@@ -2499,7 +2627,7 @@ const App: React.FC = () => {
       stepName: '최종 결과 분석 중...',
     }
   ];
-
+  
   // 🔥 결과 추적을 위한 변수
   let finalTryOnResult: TryOnResult | null = null;
 
@@ -2580,6 +2708,7 @@ const App: React.FC = () => {
     stepResult.isMockData === true ||
     stepResult.mock_implementation === true ||
     (stepResult.fallback_mode === true && stepResult.is_real_ai_output !== true);
+
     if (isMockData) {
       console.warn(`⚠️ Step ${stepId}에서 Mock 데이터 감지됨:`, {
         message: stepResult.message,
