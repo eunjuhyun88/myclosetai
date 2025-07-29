@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753728880.3161972,
+  "timestamp": 1753771122.2594209,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -20,12 +20,12 @@
     "hardware": {
       "memory": {
         "total_gb": 128.0,
-        "available_gb": 73.75981140136719,
-        "used_percent": 42.4,
-        "available_percent": 57.6
+        "available_gb": 73.20465087890625,
+        "used_percent": 42.8,
+        "available_percent": 57.2
       },
       "cpu": {
-        "usage_percent": 2.4,
+        "usage_percent": 3.4,
         "core_count": 16,
         "freq_current": 4056
       },
@@ -36,7 +36,7 @@
   },
   "model_files": {
     "total_files": 310,
-    "total_size_gb": 266.3421514760703,
+    "total_size_gb": 271.82938147708774,
     "files_by_step": {
       "step_02_pose_estimation": [
         {
@@ -917,7 +917,7 @@
         },
         {
           "name": "pytorch_model.bin",
-          "size_mb": 469.4989538192749,
+          "size_mb": 3279.0705919265747,
           "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
         },
         {
@@ -962,13 +962,13 @@
         },
         {
           "name": "data.pkl",
-          "size_mb": 0.13429737091064453,
-          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive/data.pkl"
+          "size_mb": 0.024419784545898438,
+          "path": "ai_models/step_06_virtual_fitting/archive/data.pkl"
         },
         {
           "name": "data.pkl",
           "size_mb": 0.13429737091064453,
-          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive 2/data.pkl"
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive/data.pkl"
         },
         {
           "name": "hrviton_final.pth",
@@ -1102,7 +1102,7 @@
         },
         {
           "name": "pytorch_model.bin",
-          "size_mb": 469.4989538192749,
+          "size_mb": 3279.0705919265747,
           "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
         },
         {
@@ -1147,13 +1147,13 @@
         },
         {
           "name": "data.pkl",
-          "size_mb": 0.13429737091064453,
-          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive/data.pkl"
+          "size_mb": 0.024419784545898438,
+          "path": "ai_models/step_06_virtual_fitting/archive/data.pkl"
         },
         {
           "name": "data.pkl",
           "size_mb": 0.13429737091064453,
-          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive 2/data.pkl"
+          "path": "ai_models/step_06_virtual_fitting/ootdiffusion/archive/data.pkl"
         }
       ],
       "unknown": [
@@ -1703,6 +1703,13 @@
         "path": "ai_models/step_05_cloth_warping/ultra_models/unet/diffusion_pytorch_model.bin"
       },
       {
+        "name": "pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "size_gb": 3.2022173749282956,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
+      },
+      {
         "name": "diffusion_pytorch_model.bin",
         "size_mb": 3279.0705919265747,
         "size_gb": 3.2022173749282956,
@@ -1715,6 +1722,13 @@
         "size_gb": 3.2022173749282956,
         "step": "step_06_virtual_fitting",
         "path": "ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin"
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "size_gb": 3.2022173749282956,
+        "step": "step_06_virtual_fitting",
+        "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
       },
       {
         "name": "diffusion_pytorch_model.bin",
@@ -2408,13 +2422,6 @@
         "size_gb": 0.45849507208913565,
         "step": "step_06_virtual_fitting",
         "path": "ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin"
-      },
-      {
-        "name": "pytorch_model.bin",
-        "size_mb": 469.4989538192749,
-        "size_gb": 0.45849507208913565,
-        "step": "step_06_virtual_fitting",
-        "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
       },
       {
         "name": "pytorch_model.bin",
@@ -2429,13 +2436,6 @@
         "size_gb": 0.45849507208913565,
         "step": "step_06_virtual_fitting",
         "path": "ai_models/cache/models--levihsu--OOTDiffusion/snapshots/c79f9dd0585743bea82a39261cc09a24040bc4f9/checkpoints/ootd/text_encoder/pytorch_model.bin"
-      },
-      {
-        "name": "pytorch_model.bin",
-        "size_mb": 469.4989538192749,
-        "size_gb": 0.45849507208913565,
-        "step": "step_06_virtual_fitting",
-        "path": "ai_models/step_06_virtual_fitting/pytorch_model.bin"
       },
       {
         "name": "pytorch_model.bin",
@@ -3164,21 +3164,21 @@
   },
   "memory_usage": {
     "process_memory": {
-      "rss_mb": 1908.015625,
-      "vms_mb": 406235.71875,
-      "percent": 1.455700397491455
+      "rss_mb": 934.765625,
+      "vms_mb": 405238.859375,
+      "percent": 0.7131695747375488
     },
     "system_memory": {
       "total_gb": 128.0,
-      "available_gb": 71.88029479980469,
-      "used_percent": 43.8,
-      "free_gb": 33.808837890625
+      "available_gb": 72.58671569824219,
+      "used_percent": 43.3,
+      "free_gb": 31.964920043945312
     },
     "recommendations": []
   },
   "recommendations": [
-    "✅ AI 모델 파일 발견: 310개 (266.3GB)"
+    "✅ AI 모델 파일 발견: 310개 (271.8GB)"
   ],
-  "analysis_completed_at": 1753728894.124834,
-  "total_analysis_time": 14.817508220672607
+  "analysis_completed_at": 1753771127.655176,
+  "total_analysis_time": 6.404653787612915
 }

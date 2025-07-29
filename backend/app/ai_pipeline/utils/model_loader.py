@@ -138,7 +138,7 @@ class StepModelRequirement:
 # ==============================================
 
 class BaseModel:
-    """기본 모델 클래스 (AI 추론 제거)"""
+    """기본 모델 클래스 (체크포인트 로딩 문제 해결)"""
     
     def __init__(self, model_name: str, model_path: str, device: str = "auto"):
         self.model_name = model_name
@@ -148,9 +148,10 @@ class BaseModel:
         self.load_time = 0.0
         self.memory_usage_mb = 0.0
         self.logger = logging.getLogger(f"BaseModel.{model_name}")
+        self.checkpoint_data = None  # 실제 체크포인트 데이터
         
     def load(self) -> bool:
-        """모델 로딩 (메타데이터만)"""
+        """모델 로딩 (실제 체크포인트 포함)"""
         try:
             start_time = time.time()
             
@@ -159,21 +160,167 @@ class BaseModel:
                 self.logger.error(f"❌ 모델 파일 없음: {self.model_path}")
                 return False
             
-            # 메타데이터 로딩
-            self.memory_usage_mb = self.model_path.stat().st_size / (1024 * 1024)
-            self.load_time = time.time() - start_time
-            self.loaded = True
+            # 파일 크기 확인
+            file_size = self.model_path.stat().st_size
+            self.memory_usage_mb = file_size / (1024 * 1024)
             
-            self.logger.info(f"✅ 모델 메타데이터 로딩 완료: {self.model_name} ({self.memory_usage_mb:.1f}MB)")
-            return True
+            self.logger.info(f"🔄 체크포인트 로딩 시작: {self.model_name} ({self.memory_usage_mb:.1f}MB)")
             
+            # 실제 체크포인트 로딩 시도
+            self.checkpoint_data = self._load_checkpoint_ultra_safe()
+            
+            if self.checkpoint_data is not None:
+                self.load_time = time.time() - start_time
+                self.loaded = True
+                self.logger.info(f"✅ 체크포인트 로딩 완료: {self.model_name} ({self.load_time:.2f}초)")
+                return True
+            else:
+                self.logger.warning(f"⚠️ 체크포인트 로딩 실패, 메타데이터만 로딩: {self.model_name}")
+                self.load_time = time.time() - start_time
+                self.loaded = True  # 메타데이터로라도 로딩됨
+                return True
+                
         except Exception as e:
             self.logger.error(f"❌ 모델 로딩 실패: {e}")
             return False
     
+    def _load_checkpoint_ultra_safe(self) -> Optional[Any]:
+        """초안전 체크포인트 로딩 (모든 PyTorch 버전 호환)"""
+        import warnings
+        import pickle
+        import gc
+        from io import BytesIO
+        
+        # 메모리 정리
+        gc.collect()
+        
+        # Graphonomy 특별 처리
+        if "graphonomy" in self.model_path.name.lower():
+            return self._load_graphonomy_special()
+        
+        # 🔥 1단계: 최신 PyTorch 안전 모드
+        try:
+            self.logger.debug(f"1단계: {self.model_name} weights_only=True 시도")
+            checkpoint = torch.load(
+                self.model_path, 
+                map_location='cpu',
+                weights_only=True
+            )
+            self.logger.debug(f"✅ {self.model_name} 안전 모드 성공")
+            return checkpoint
+            
+        except Exception as e1:
+            self.logger.debug(f"1단계 실패: {str(e1)[:50]}")
+        
+        # 🔥 2단계: 호환성 모드
+        try:
+            self.logger.debug(f"2단계: {self.model_name} weights_only=False 시도")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                checkpoint = torch.load(
+                    self.model_path, 
+                    map_location='cpu',
+                    weights_only=False
+                )
+            self.logger.debug(f"✅ {self.model_name} 호환성 모드 성공")
+            return checkpoint
+            
+        except Exception as e2:
+            self.logger.debug(f"2단계 실패: {str(e2)[:50]}")
+        
+        # 🔥 3단계: Legacy 모드
+        try:
+            self.logger.debug(f"3단계: {self.model_name} Legacy 모드 시도")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                checkpoint = torch.load(self.model_path, map_location='cpu')
+            self.logger.debug(f"✅ {self.model_name} Legacy 모드 성공")
+            return checkpoint
+            
+        except Exception as e3:
+            self.logger.warning(f"❌ {self.model_name} 모든 표준 로딩 실패: {str(e3)[:50]}")
+            return None
+    
+    def _load_graphonomy_special(self) -> Optional[Any]:
+        """Graphonomy 1.2GB 모델 전용 로딩"""
+        import warnings
+        import pickle
+        import mmap
+        from io import BytesIO
+        
+        self.logger.info(f"🔧 Graphonomy 전용 로딩: {self.model_path.name}")
+        
+        try:
+            # 🔥 방법 1: 메모리 매핑 + 안전 로딩
+            try:
+                with open(self.model_path, 'rb') as f:
+                    with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mmapped_file:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            checkpoint = torch.load(
+                                BytesIO(mmapped_file[:]), 
+                                map_location='cpu',
+                                weights_only=False
+                            )
+                
+                self.logger.info("✅ Graphonomy 메모리 매핑 성공")
+                return checkpoint
+                
+            except Exception as e1:
+                self.logger.debug(f"메모리 매핑 실패: {str(e1)[:50]}")
+            
+            # 🔥 방법 2: 직접 pickle 로딩
+            try:
+                with open(self.model_path, 'rb') as f:
+                    checkpoint = pickle.load(f)
+                
+                self.logger.info("✅ Graphonomy 직접 pickle 성공")
+                return checkpoint
+                
+            except Exception as e2:
+                self.logger.debug(f"직접 pickle 실패: {str(e2)[:50]}")
+            
+            # 🔥 방법 3: 환경 변수 설정 후 재시도
+            try:
+                import os
+                old_env = os.environ.get('PYTORCH_WARN_DEPRECATED', None)
+                os.environ['PYTORCH_WARN_DEPRECATED'] = '0'
+                
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    checkpoint = torch.load(
+                        self.model_path, 
+                        map_location='cpu',
+                        weights_only=False
+                    )
+                
+                # 환경 변수 복구
+                if old_env is not None:
+                    os.environ['PYTORCH_WARN_DEPRECATED'] = old_env
+                elif 'PYTORCH_WARN_DEPRECATED' in os.environ:
+                    del os.environ['PYTORCH_WARN_DEPRECATED']
+                
+                self.logger.info("✅ Graphonomy 환경 설정 후 성공")
+                return checkpoint
+                
+            except Exception as e3:
+                self.logger.debug(f"환경 설정 후 실패: {str(e3)[:50]}")
+            
+            self.logger.warning("❌ Graphonomy 모든 로딩 방법 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ Graphonomy 전용 로딩 오류: {e}")
+            return None
+    
+    def get_checkpoint_data(self) -> Optional[Any]:
+        """로드된 체크포인트 데이터 반환"""
+        return self.checkpoint_data
+    
     def unload(self):
         """모델 언로드"""
         self.loaded = False
+        self.checkpoint_data = None
         gc.collect()
     
     def get_info(self) -> Dict[str, Any]:
@@ -186,9 +333,9 @@ class BaseModel:
             "load_time": self.load_time,
             "memory_usage_mb": self.memory_usage_mb,
             "file_exists": self.model_path.exists(),
-            "file_size_mb": self.model_path.stat().st_size / (1024 * 1024) if self.model_path.exists() else 0
+            "file_size_mb": self.model_path.stat().st_size / (1024 * 1024) if self.model_path.exists() else 0,
+            "has_checkpoint_data": self.checkpoint_data is not None
         }
-
 # ==============================================
 # 🔥 4. StepModelInterface 정의 (오류 해결)
 # ==============================================
@@ -549,8 +696,9 @@ class ModelLoader:
     # 🔥 핵심 모델 로딩 메서드들
     # ==============================================
     
+
     def load_model(self, model_name: str, **kwargs) -> Optional[BaseModel]:
-        """모델 로딩 (메타데이터만)"""
+        """모델 로딩 (체크포인트 로딩 문제 해결)"""
         try:
             with self._lock:
                 # 캐시 확인
@@ -570,6 +718,10 @@ class ModelLoader:
                     self.logger.error(f"❌ 모델 경로를 찾을 수 없음: {model_name}")
                     self.model_status[model_name] = ModelStatus.ERROR
                     return None
+                
+                # Graphonomy 특별 처리
+                if "graphonomy" in model_name.lower():
+                    self.logger.info(f"🔧 Graphonomy 모델 감지: {model_name}")
                 
                 # BaseModel 생성 및 로딩
                 model = BaseModel(
@@ -596,7 +748,11 @@ class ModelLoader:
                     self.performance_metrics['models_loaded'] += 1
                     self.performance_metrics['total_memory_mb'] += model.memory_usage_mb
                     
-                    self.logger.info(f"✅ 모델 로딩 성공: {model_name} ({model.memory_usage_mb:.1f}MB)")
+                    # 체크포인트 데이터 확인
+                    has_checkpoint = model.get_checkpoint_data() is not None
+                    checkpoint_status = "✅ 체크포인트 로딩됨" if has_checkpoint else "⚠️ 메타데이터만"
+                    
+                    self.logger.info(f"✅ 모델 로딩 성공: {model_name} ({model.memory_usage_mb:.1f}MB) {checkpoint_status}")
                     
                     # 캐시 크기 관리
                     self._manage_cache()
@@ -612,7 +768,8 @@ class ModelLoader:
             self.model_status[model_name] = ModelStatus.ERROR
             self.performance_metrics['error_count'] += 1
             return None
-    
+
+
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[BaseModel]:
         """비동기 모델 로딩"""
         try:
