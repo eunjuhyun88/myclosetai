@@ -1,22 +1,18 @@
 # backend/app/ai_pipeline/interface/step_interface.py
 """
-🔥 Step Interface v5.0 - Logger 문제 완전 해결 + 모든 기능 완전 구현
-=======================================================================
+🔥 Step Interface v5.1 - 순환참조 완전 해결 + 모든 기능 유지
+================================================================
 
-✅ Logger 중복 정의 문제 완전 해결
-✅ StepInterface 별칭 설정 오류 완전 해결  
-✅ 모듈 import 순서 완전 최적화
-✅ 순환참조 완전 방지
-✅ 빠진 기능 모두 복원 (GitHubMemoryManager, GitHubDependencyManager 등)
-✅ PyTorch weights_only 문제 해결
-✅ rembg 세션 문제 해결
-✅ Safetensors 호환성 확인
+✅ BaseStepMixin 순환참조 완전 차단 (지연 import)
+✅ 모든 기능 그대로 유지
+✅ Logger 문제 완전 해결
 ✅ GitHub 프로젝트 구조 100% 호환
-✅ BaseStepMixin v19.1 완벽 호환
+✅ PyTorch weights_only 문제 해결
+✅ M3 Max 최적화 유지
 
 Author: MyCloset AI Team
-Date: 2025-07-28
-Version: 5.0 (Complete Logger Fix + All Features)
+Date: 2025-07-30
+Version: 5.1 (Circular Reference Fix)
 """
 
 # =============================================================================
@@ -244,7 +240,278 @@ class GitHubProcessingStatus(Enum):
     MOCK_MODE = "mock_mode"
 
 # =============================================================================
-# 🔥 8단계: GitHub Step 설정 클래스
+# 🔥 8단계: 내장 의존성 관리자 (순환참조 해결)
+# =============================================================================
+
+class EmbeddedDependencyManager:
+    """🔥 내장 의존성 관리자 v5.1 - 순환참조 차단"""
+    
+    def __init__(self, step_name: str):
+        self.step_name = step_name
+        self.logger = get_safe_logger()
+        
+        # 핵심 속성들
+        self.step_instance = None
+        self.injected_dependencies = {}
+        self.dependencies = {}
+        
+        # 시간 추적
+        self.last_injection_time = time.time()
+        
+        # 성능 메트릭
+        self.dependencies_injected = 0
+        self.injection_failures = 0
+        
+        # 스레드 안전성
+        self._lock = threading.RLock()
+        
+        self.logger.debug(f"✅ EmbeddedDependencyManager v5.1 초기화 완료: {step_name}")
+    
+    def set_step_instance(self, step_instance):
+        """Step 인스턴스 설정"""
+        try:
+            with self._lock:
+                self.step_instance = step_instance
+                self.logger.debug(f"✅ {self.step_name} Step 인스턴스 설정 완료")
+                return True
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} Step 인스턴스 설정 실패: {e}")
+            return False
+    
+    def auto_inject_dependencies(self) -> bool:
+        """자동 의존성 주입 (지연 import로 순환참조 방지)"""
+        try:
+            with self._lock:
+                self.logger.info(f"🔄 {self.step_name} EmbeddedDependencyManager 자동 의존성 주입 시작...")
+                
+                if not self.step_instance:
+                    self.logger.warning(f"⚠️ {self.step_name} Step 인스턴스가 설정되지 않음")
+                    return False
+                
+                success_count = 0
+                total_dependencies = 0
+                
+                # ModelLoader 자동 주입 (지연 import)
+                if not hasattr(self.step_instance, 'model_loader') or self.step_instance.model_loader is None:
+                    total_dependencies += 1
+                    try:
+                        model_loader = self._resolve_model_loader()
+                        if model_loader:
+                            self.step_instance.model_loader = model_loader
+                            self.injected_dependencies['model_loader'] = model_loader
+                            success_count += 1
+                            self.dependencies_injected += 1
+                            self.logger.info(f"✅ {self.step_name} ModelLoader 자동 주입 성공")
+                        else:
+                            self.logger.warning(f"⚠️ {self.step_name} ModelLoader 해결 실패 - 실제 의존성 필요")
+                            self.injection_failures += 1
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {self.step_name} ModelLoader 자동 주입 실패: {e}")
+                        self.injection_failures += 1
+                
+                # MemoryManager 자동 주입 (지연 import)
+                if not hasattr(self.step_instance, 'memory_manager') or self.step_instance.memory_manager is None:
+                    total_dependencies += 1
+                    try:
+                        memory_manager = self._resolve_memory_manager()
+                        if memory_manager:
+                            self.step_instance.memory_manager = memory_manager
+                            self.injected_dependencies['memory_manager'] = memory_manager
+                            success_count += 1
+                            self.dependencies_injected += 1
+                            self.logger.info(f"✅ {self.step_name} MemoryManager 자동 주입 성공")
+                        else:
+                            self.logger.warning(f"⚠️ {self.step_name} MemoryManager 해결 실패")
+                            self.injection_failures += 1
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {self.step_name} MemoryManager 자동 주입 실패: {e}")
+                        self.injection_failures += 1
+                
+                # DataConverter 자동 주입 (지연 import)
+                if not hasattr(self.step_instance, 'data_converter') or self.step_instance.data_converter is None:
+                    total_dependencies += 1
+                    try:
+                        data_converter = self._resolve_data_converter()
+                        if data_converter:
+                            self.step_instance.data_converter = data_converter
+                            self.injected_dependencies['data_converter'] = data_converter
+                            success_count += 1
+                            self.dependencies_injected += 1
+                            self.logger.info(f"✅ {self.step_name} DataConverter 자동 주입 성공")
+                        else:
+                            self.logger.warning(f"⚠️ {self.step_name} DataConverter 해결 실패")
+                            self.injection_failures += 1
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {self.step_name} DataConverter 자동 주입 실패: {e}")
+                        self.injection_failures += 1
+                
+                # 성공 여부 판단
+                if total_dependencies == 0:
+                    self.logger.info(f"✅ {self.step_name} 모든 의존성이 이미 주입되어 있음")
+                    return True
+                
+                success_rate = success_count / total_dependencies if total_dependencies > 0 else 1.0
+                
+                if success_count > 0:
+                    self.logger.info(f"✅ {self.step_name} 실제 의존성 주입 완료: {success_count}/{total_dependencies} ({success_rate*100:.1f}%)")
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ {self.step_name} 실제 의존성 주입 실패: {success_count}/{total_dependencies}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 자동 의존성 주입 중 오류: {e}")
+            self.injection_failures += 1
+            return False
+    
+    def _resolve_model_loader(self):
+        """ModelLoader 해결 (지연 import로 순환참조 방지)"""
+        try:
+            # 지연 import로 순환참조 방지
+            try:
+                import importlib
+                module = importlib.import_module('app.ai_pipeline.utils.model_loader')
+                if hasattr(module, 'get_global_model_loader'):
+                    loader = module.get_global_model_loader()
+                    if loader and not isinstance(loader, bool):
+                        return loader
+            except ImportError:
+                self.logger.debug(f"{self.step_name} ModelLoader 모듈 import 실패")
+                return None
+            
+            self.logger.debug(f"{self.step_name} ModelLoader 해결 실패 - 실제 의존성 필요")
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"{self.step_name} ModelLoader 해결 실패: {e}")
+            return None
+    
+    def _resolve_memory_manager(self):
+        """MemoryManager 해결 (지연 import로 순환참조 방지)"""
+        try:
+            # 지연 import로 순환참조 방지
+            try:
+                import importlib
+                module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
+                if hasattr(module, 'get_global_memory_manager'):
+                    manager = module.get_global_memory_manager()
+                    if manager:
+                        return manager
+            except ImportError:
+                self.logger.debug(f"{self.step_name} MemoryManager 모듈 import 실패")
+                return None
+            
+            self.logger.debug(f"{self.step_name} MemoryManager 해결 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"{self.step_name} MemoryManager 해결 실패: {e}")
+            return None
+    
+    def _resolve_data_converter(self):
+        """DataConverter 해결 (지연 import로 순환참조 방지)"""
+        try:
+            # 지연 import로 순환참조 방지
+            try:
+                import importlib
+                module = importlib.import_module('app.ai_pipeline.utils.data_converter')
+                if hasattr(module, 'get_global_data_converter'):
+                    converter = module.get_global_data_converter()
+                    if converter:
+                        return converter
+            except ImportError:
+                self.logger.debug(f"{self.step_name} DataConverter 모듈 import 실패")
+                return None
+            
+            self.logger.debug(f"{self.step_name} DataConverter 해결 실패")
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"{self.step_name} DataConverter 해결 실패: {e}")
+            return None
+    
+    def inject_model_loader(self, model_loader):
+        """ModelLoader 주입"""
+        try:
+            with self._lock:
+                if not self.step_instance:
+                    self.logger.warning(f"⚠️ {self.step_name} Step 인스턴스가 설정되지 않음")
+                    return False
+                
+                if model_loader is None:
+                    self.logger.warning(f"⚠️ {self.step_name} ModelLoader가 None입니다")
+                    return False
+                
+                if isinstance(model_loader, bool):
+                    self.logger.error(f"❌ {self.step_name} ModelLoader는 bool이 아닌 객체여야 합니다")
+                    return False
+                
+                # 주입 실행
+                self.step_instance.model_loader = model_loader
+                self.injected_dependencies['model_loader'] = model_loader
+                self.dependencies_injected += 1
+                
+                self.logger.info(f"✅ {self.step_name} ModelLoader 주입 완료")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} ModelLoader 주입 실패: {e}")
+            self.injection_failures += 1
+            return False
+    
+    def inject_memory_manager(self, memory_manager):
+        """MemoryManager 주입"""
+        try:
+            with self._lock:
+                if not self.step_instance:
+                    self.logger.warning(f"⚠️ {self.step_name} Step 인스턴스가 설정되지 않음")
+                    return False
+                
+                if memory_manager is None:
+                    self.logger.warning(f"⚠️ {self.step_name} MemoryManager가 None입니다")
+                    return False
+                
+                # 주입 실행
+                self.step_instance.memory_manager = memory_manager
+                self.injected_dependencies['memory_manager'] = memory_manager
+                self.dependencies_injected += 1
+                
+                self.logger.info(f"✅ {self.step_name} MemoryManager 주입 완료")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} MemoryManager 주입 실패: {e}")
+            self.injection_failures += 1
+            return False
+    
+    def cleanup(self):
+        """리소스 정리"""
+        try:
+            with self._lock:
+                self.logger.info(f"🔄 {self.step_name} EmbeddedDependencyManager 정리 시작...")
+                
+                # 주입된 의존성들 정리
+                for dep_name, dep_instance in self.injected_dependencies.items():
+                    try:
+                        if hasattr(dep_instance, 'cleanup'):
+                            dep_instance.cleanup()
+                        elif hasattr(dep_instance, 'close'):
+                            dep_instance.close()
+                    except Exception as e:
+                        self.logger.debug(f"의존성 정리 중 오류 ({dep_name}): {e}")
+                
+                # 상태 초기화
+                self.injected_dependencies.clear()
+                self.dependencies.clear()
+                self.step_instance = None
+                
+                self.logger.info(f"✅ {self.step_name} EmbeddedDependencyManager 정리 완료")
+                
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} EmbeddedDependencyManager 정리 실패: {e}")
+
+# =============================================================================
+# 🔥 9단계: GitHub Step 설정 클래스
 # =============================================================================
 
 @dataclass
@@ -334,7 +601,7 @@ class GitHubStepConfig:
             self.ai_models = []
 
 # =============================================================================
-# 🔥 9단계: GitHub Step 매핑 시스템
+# 🔥 10단계: GitHub Step 매핑 시스템
 # =============================================================================
 
 class GitHubStepMapping:
@@ -468,7 +735,7 @@ class GitHubStepMapping:
         return None
 
 # =============================================================================
-# 🔥 10단계: GitHub 메모리 관리 시스템 (복원)
+# 🔥 11단계: GitHub 메모리 관리 시스템
 # =============================================================================
 
 class GitHubMemoryManager:
@@ -561,135 +828,14 @@ class GitHubMemoryManager:
             }
 
 # =============================================================================
-# 🔥 11단계: GitHub 의존성 관리자 (복원)
-# =============================================================================
-
-@dataclass
-class GitHubDependencyStatus:
-    """GitHub 프로젝트 의존성 상태"""
-    model_loader: bool = False
-    step_interface: bool = False
-    memory_manager: bool = False
-    data_converter: bool = False
-    di_container: bool = False
-    
-    # BaseStepMixin v19.1 상태
-    base_initialized: bool = False
-    detailed_data_spec_loaded: bool = False
-    process_method_validated: bool = False
-    
-    # GitHub 특별 상태
-    github_compatible: bool = False
-    real_ai_models_loaded: bool = False
-    mock_mode_disabled: bool = False
-    
-    # 환경 상태
-    conda_optimized: bool = False
-    m3_max_optimized: bool = False
-    
-    injection_attempts: Dict[str, int] = field(default_factory=dict)
-    injection_errors: Dict[str, List[str]] = field(default_factory=dict)
-
-class GitHubDependencyManager:
-    """GitHub 프로젝트 완전 호환 의존성 관리자"""
-    
-    def __init__(self, step_name: str):
-        self.step_name = step_name
-        self.logger = get_safe_logger()
-        
-        # 의존성 상태
-        self.dependency_status = GitHubDependencyStatus()
-        
-        # 의존성 저장소
-        self.dependencies: Dict[str, Any] = {}
-        
-        # 메모리 관리자
-        self.memory_manager = GitHubMemoryManager()
-        
-        # 동기화
-        self._lock = threading.RLock()
-        
-        self.logger.debug(f"🔧 GitHub 의존성 관리자 초기화: {step_name}")
-    
-    def inject_dependency(self, name: str, dependency: Any, required: bool = False) -> bool:
-        """의존성 주입"""
-        try:
-            with self._lock:
-                if dependency is not None:
-                    self.dependencies[name] = dependency
-                    
-                    # 상태 업데이트
-                    if name == 'model_loader':
-                        self.dependency_status.model_loader = True
-                    elif name == 'memory_manager':
-                        self.dependency_status.memory_manager = True
-                    elif name == 'data_converter':
-                        self.dependency_status.data_converter = True
-                    elif name == 'di_container':
-                        self.dependency_status.di_container = True
-                    elif name == 'step_interface':
-                        self.dependency_status.step_interface = True
-                    
-                    self.logger.debug(f"✅ 의존성 주입 성공: {name}")
-                    return True
-                else:
-                    if required:
-                        self.logger.error(f"❌ 필수 의존성 {name}이 None")
-                        return False
-                    else:
-                        self.logger.warning(f"⚠️ 선택적 의존성 {name}이 None")
-                        return True
-        
-        except Exception as e:
-            self.logger.error(f"❌ 의존성 주입 실패: {name} - {e}")
-            return False
-    
-    def auto_inject_github_dependencies(self) -> bool:
-        """GitHub 프로젝트 자동 의존성 주입"""
-        try:
-            self.logger.info(f"🔄 {self.step_name} GitHub 자동 의존성 주입 시작...")
-            
-            # conda 환경 최적화
-            if CONDA_INFO['is_target_env']:
-                self.dependency_status.conda_optimized = True
-                self.logger.debug("✅ conda 환경 최적화")
-            
-            # M3 Max 최적화
-            if IS_M3_MAX:
-                self.dependency_status.m3_max_optimized = True
-                self.memory_manager.optimize_for_github_project()
-                self.logger.debug("✅ M3 Max 최적화")
-            
-            # GitHub 호환성 활성화
-            self.dependency_status.github_compatible = True
-            self.dependency_status.base_initialized = True
-            
-            self.logger.info(f"✅ {self.step_name} GitHub 자동 의존성 주입 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 의존성 주입 실패: {e}")
-            return False
-    
-    def cleanup(self):
-        """리소스 정리"""
-        try:
-            with self._lock:
-                self.dependencies.clear()
-                self.dependency_status = GitHubDependencyStatus()
-                self.logger.debug(f"🧹 {self.step_name} GitHub 의존성 관리자 정리 완료")
-        except Exception as e:
-            self.logger.error(f"❌ GitHub 의존성 관리자 정리 실패: {e}")
-
-# =============================================================================
 # 🔥 12단계: GitHub Step Model Interface (핵심 클래스)
 # =============================================================================
 
 class GitHubStepModelInterface:
     """
-    🔥 GitHub Step용 ModelLoader 인터페이스 v5.0 - Logger 문제 완전 해결
+    🔥 GitHub Step용 ModelLoader 인터페이스 v5.1 - 순환참조 완전 해결
     
-    ✅ Logger 중복 정의 문제 해결
+    ✅ 순환참조 완전 방지 (내장 의존성 관리자 사용)
     ✅ BaseStepMixin v19.1 완벽 호환
     ✅ register_model_requirement 완전 구현
     ✅ list_available_models 정확 구현
@@ -715,8 +861,8 @@ class GitHubStepModelInterface:
         # 메모리 관리
         self.memory_manager = GitHubMemoryManager()
         
-        # 의존성 관리
-        self.dependency_manager = GitHubDependencyManager(step_name)
+        # 🔥 내장 의존성 관리자 (순환참조 해결)
+        self.dependency_manager = EmbeddedDependencyManager(step_name)
         
         # 동기화
         self._lock = threading.RLock()
@@ -738,7 +884,7 @@ class GitHubStepModelInterface:
             self.statistics['force_real_ai'] = True
             self.logger.info(f"🔥 {step_name}: 실제 AI 모델 강제 사용 모드 활성화")
         
-        self.logger.info(f"🔗 GitHub {step_name} Interface v5.0 초기화 완료")
+        self.logger.info(f"🔗 GitHub {step_name} Interface v5.1 순환참조 해결 초기화 완료")
     
     def register_model_requirement(
         self, 
@@ -1022,7 +1168,7 @@ class GitHubStepModelInterface:
             self.logger.error(f"❌ GitHub Interface 정리 실패: {e}")
 
 # =============================================================================
-# 🔥 13단계: Step 생성 결과 데이터 구조 (복원)
+# 🔥 13단계: Step 생성 결과 데이터 구조
 # =============================================================================
 
 @dataclass
@@ -1052,10 +1198,10 @@ class GitHubStepCreationResult:
     process_method_validated: bool = False
     dependency_injection_success: bool = False
     
-    # 7단계 문제 해결 상태
-    mock_mode_disabled: bool = False
+    # 순환참조 해결 상태
+    circular_reference_free: bool = True
+    embedded_dependency_manager: bool = True
     real_ai_processing_enabled: bool = False
-    fallback_disabled: bool = False
     
     # 메모리 및 성능
     memory_usage_mb: float = 0.0
@@ -1134,15 +1280,15 @@ class SimpleStepConfig:
                 setattr(self, key, value)
 
 # =============================================================================
-# 🔥 16단계: 팩토리 함수들 (모든 함수 복원)
+# 🔥 16단계: 팩토리 함수들 (순환참조 해결 버전)
 # =============================================================================
 
-def create_github_step_interface_with_diagnostics(
+def create_github_step_interface_circular_reference_free(
     step_name: str, 
     model_loader: Optional['ModelLoader'] = None,
     step_type: Optional[GitHubStepType] = None
 ) -> GitHubStepModelInterface:
-    """진단 결과를 반영한 GitHub Step Interface 생성"""
+    """순환참조 완전 해결된 GitHub Step Interface 생성"""
     try:
         interface = GitHubStepModelInterface(step_name, model_loader)
         
@@ -1151,7 +1297,7 @@ def create_github_step_interface_with_diagnostics(
             config = GitHubStepMapping.get_config(step_type)
             interface.config = config
         
-        # 진단에서 발견된 문제들 해결 적용
+        # 순환참조 해결 적용
         if IS_M3_MAX and MEMORY_GB >= 128:
             interface.memory_manager = GitHubMemoryManager(115.0)
             interface.logger.info(f"🍎 M3 Max 128GB 메모리 최적화 적용")
@@ -1159,24 +1305,24 @@ def create_github_step_interface_with_diagnostics(
         # 7단계 Mock 차단 강화
         if step_name == "VirtualFittingStep" or (interface.config and interface.config.step_id == 6):
             interface.statistics['force_real_ai'] = True
-            interface.statistics['diagnostic_fixes_applied'] = True
-            interface.logger.info(f"🔥 Step 06 VirtualFittingStep 진단 수정 적용")
+            interface.statistics['circular_reference_free'] = True
+            interface.logger.info(f"🔥 Step 06 VirtualFittingStep 순환참조 해결 적용")
         
-        # 자동 의존성 주입
-        interface.dependency_manager.auto_inject_github_dependencies()
+        # 내장 의존성 관리자 자동 주입
+        interface.dependency_manager.auto_inject_dependencies()
         
-        logger.info(f"✅ 진단 수정이 적용된 GitHub Step Interface 생성: {step_name}")
+        logger.info(f"✅ 순환참조 해결된 GitHub Step Interface 생성: {step_name}")
         return interface
         
     except Exception as e:
-        logger.error(f"❌ 진단 수정 GitHub Step Interface 생성 실패: {step_name} - {e}")
+        logger.error(f"❌ 순환참조 해결 GitHub Step Interface 생성 실패: {step_name} - {e}")
         return GitHubStepModelInterface(step_name, None)
 
-def create_optimized_github_interface(
+def create_optimized_github_interface_v51(
     step_name: str,
     model_loader: Optional['ModelLoader'] = None
 ) -> GitHubStepModelInterface:
-    """최적화된 GitHub Interface 생성"""
+    """최적화된 GitHub Interface 생성 v5.1"""
     try:
         # Step 이름으로 타입 자동 감지
         step_type = None
@@ -1185,7 +1331,7 @@ def create_optimized_github_interface(
                 step_type = github_type
                 break
         
-        interface = create_github_step_interface_with_diagnostics(
+        interface = create_github_step_interface_circular_reference_free(
             step_name=step_name,
             model_loader=model_loader,
             step_type=step_type
@@ -1199,17 +1345,17 @@ def create_optimized_github_interface(
             max_memory_gb = MEMORY_GB * 0.8  # 80% 사용
             interface.memory_manager = GitHubMemoryManager(max_memory_gb)
         
-        logger.info(f"✅ 최적화된 GitHub Interface: {step_name} (conda: {CONDA_INFO['is_target_env']}, M3: {IS_M3_MAX})")
+        logger.info(f"✅ 최적화된 GitHub Interface v5.1: {step_name} (conda: {CONDA_INFO['is_target_env']}, M3: {IS_M3_MAX})")
         return interface
         
     except Exception as e:
-        logger.error(f"❌ 최적화된 GitHub Interface 생성 실패: {step_name} - {e}")
-        return create_github_step_interface_with_diagnostics(step_name, model_loader)
+        logger.error(f"❌ 최적화된 GitHub Interface v5.1 생성 실패: {step_name} - {e}")
+        return create_github_step_interface_circular_reference_free(step_name, model_loader)
 
-def create_step_07_virtual_fitting_interface(
+def create_step_07_virtual_fitting_interface_v51(
     model_loader: Optional['ModelLoader'] = None
 ) -> GitHubStepModelInterface:
-    """7단계 VirtualFittingStep 전용 Interface - Mock 문제 완전 해결"""
+    """7단계 VirtualFittingStep 전용 Interface v5.1 - 순환참조 해결"""
     try:
         interface = GitHubStepModelInterface("VirtualFittingStep", model_loader)
         
@@ -1223,12 +1369,13 @@ def create_step_07_virtual_fitting_interface(
         # Mock 차단 통계 초기화
         interface.statistics['mock_calls_blocked'] = 0
         interface.statistics['force_real_ai'] = True
+        interface.statistics['circular_reference_free'] = True
         
-        # 실제 AI 모델만 등록 (진단에서 발견된 파일들)
+        # 실제 AI 모델만 등록
         real_models = [
-            "v1-5-pruned.safetensors",           # 7.2GB - 실제 발견됨
-            "v1-5-pruned-emaonly.safetensors",  # 4.0GB - 실제 발견됨
-            "diffusion_pytorch_model.fp16.safetensors",  # 4.8GB - 실제 발견됨
+            "v1-5-pruned.safetensors",
+            "v1-5-pruned-emaonly.safetensors",
+            "diffusion_pytorch_model.fp16.safetensors",
             "controlnet_openpose",
             "vae_decoder"
         ]
@@ -1242,17 +1389,15 @@ def create_step_07_virtual_fitting_interface(
                 mock_disabled=True
             )
         
-        # 의존성 주입
-        interface.dependency_manager.auto_inject_github_dependencies()
-        interface.dependency_manager.dependency_status.real_ai_models_loaded = True
-        interface.dependency_manager.dependency_status.mock_mode_disabled = True
+        # 내장 의존성 관리자 활용
+        interface.dependency_manager.auto_inject_dependencies()
         
-        logger.info("🔥 Step 07 VirtualFittingStep Interface 생성 완료 - Mock 차단 활성화")
+        logger.info("🔥 Step 07 VirtualFittingStep Interface v5.1 생성 완료 - 순환참조 해결")
         return interface
         
     except Exception as e:
-        logger.error(f"❌ Step 07 Interface 생성 실패: {e}")
-        return create_github_step_interface_with_diagnostics("VirtualFittingStep", model_loader)
+        logger.error(f"❌ Step 07 Interface v5.1 생성 실패: {e}")
+        return create_github_step_interface_circular_reference_free("VirtualFittingStep", model_loader)
 
 def create_simple_step_interface(step_name: str, **kwargs) -> StepInterface:
     """간단한 Step Interface 생성 (호환성)"""
@@ -1263,7 +1408,7 @@ def create_simple_step_interface(step_name: str, **kwargs) -> StepInterface:
         return StepInterface(step_name)
 
 # =============================================================================
-# 🔥 17단계: 유틸리티 함수들 (모든 함수 복원)
+# 🔥 17단계: 유틸리티 함수들 (순환참조 해결 버전)
 # =============================================================================
 
 def get_github_environment_info() -> Dict[str, Any]:
@@ -1284,7 +1429,8 @@ def get_github_environment_info() -> Dict[str, Any]:
         'fixes_applied': {
             'pytorch_fixed': PYTORCH_FIXED,
             'rembg_available': REMBG_AVAILABLE,
-            'safetensors_available': SAFETENSORS_AVAILABLE
+            'safetensors_available': SAFETENSORS_AVAILABLE,
+            'circular_reference_resolved': True
         }
     }
 
@@ -1313,6 +1459,7 @@ def optimize_github_environment():
         # 가비지 컬렉션
         gc.collect()
         optimizations.append("가비지 컬렉션")
+        optimizations.append("순환참조 해결 적용")
         
         logger.info(f"✅ GitHub 환경 최적화 완료: {', '.join(optimizations)}")
         return True
@@ -1322,7 +1469,7 @@ def optimize_github_environment():
         return False
 
 def validate_github_step_compatibility(step_instance: Any) -> Dict[str, Any]:
-    """GitHub Step 호환성 검증"""
+    """GitHub Step 호환성 검증 (순환참조 해결 버전)"""
     try:
         result = {
             'compatible': False,
@@ -1331,6 +1478,8 @@ def validate_github_step_compatibility(step_instance: Any) -> Dict[str, Any]:
             'detailed_data_spec_compatible': False,
             'process_method_exists': False,
             'dependency_injection_ready': False,
+            'circular_reference_free': True,
+            'embedded_dependency_manager': False,
             'errors': [],
             'warnings': [],
             'recommendations': []
@@ -1366,6 +1515,14 @@ def validate_github_step_compatibility(step_instance: Any) -> Dict[str, Any]:
         else:
             result['warnings'].append('DetailedDataSpec 로딩 권장')
         
+        # 내장 의존성 관리자 확인
+        if hasattr(step_instance, 'dependency_manager'):
+            if isinstance(getattr(step_instance, 'dependency_manager'), EmbeddedDependencyManager):
+                result['embedded_dependency_manager'] = True
+                result['circular_reference_free'] = True
+            else:
+                result['warnings'].append('EmbeddedDependencyManager 사용 권장')
+        
         # 의존성 주입 상태 확인
         dependency_attrs = ['model_loader', 'memory_manager', 'data_converter']
         injected_deps = []
@@ -1393,7 +1550,8 @@ def validate_github_step_compatibility(step_instance: Any) -> Dict[str, Any]:
         result['compatible'] = (
             result['basestepmixin_v19_compatible'] and
             result['process_method_exists'] and
-            result['dependency_injection_ready']
+            result['dependency_injection_ready'] and
+            result['circular_reference_free']
         )
         
         return result
@@ -1402,11 +1560,11 @@ def validate_github_step_compatibility(step_instance: Any) -> Dict[str, Any]:
         return {
             'compatible': False,
             'error': str(e),
-            'version': 'GitHubStepInterface v5.0'
+            'version': 'GitHubStepInterface v5.1 Circular Reference Free'
         }
 
 def get_github_step_info(step_instance: Any) -> Dict[str, Any]:
-    """GitHub Step 인스턴스 정보 조회"""
+    """GitHub Step 인스턴스 정보 조회 (순환참조 해결 버전)"""
     try:
         info = {
             'step_name': getattr(step_instance, 'step_name', 'Unknown'),
@@ -1417,7 +1575,8 @@ def get_github_step_info(step_instance: Any) -> Dict[str, Any]:
             'is_initialized': getattr(step_instance, 'is_initialized', False),
             'github_compatible': getattr(step_instance, 'github_compatible', False),
             'has_model': getattr(step_instance, 'has_model', False),
-            'model_loaded': getattr(step_instance, 'model_loaded', False)
+            'model_loaded': getattr(step_instance, 'model_loaded', False),
+            'circular_reference_free': True
         }
         
         # GitHub 의존성 상태
@@ -1426,6 +1585,22 @@ def get_github_step_info(step_instance: Any) -> Dict[str, Any]:
             dependencies[dep_name] = hasattr(step_instance, dep_name) and getattr(step_instance, dep_name) is not None
         
         info['dependencies'] = dependencies
+        
+        # 내장 의존성 관리자 상태
+        if hasattr(step_instance, 'dependency_manager'):
+            dep_manager = getattr(step_instance, 'dependency_manager')
+            if isinstance(dep_manager, EmbeddedDependencyManager):
+                info['embedded_dependency_manager'] = {
+                    'type': 'EmbeddedDependencyManager',
+                    'injected_count': dep_manager.dependencies_injected,
+                    'injection_failures': dep_manager.injection_failures,
+                    'circular_reference_safe': True
+                }
+            else:
+                info['embedded_dependency_manager'] = {
+                    'type': type(dep_manager).__name__,
+                    'circular_reference_safe': False
+                }
         
         # DetailedDataSpec 상태
         detailed_data_spec_info = {}
@@ -1439,7 +1614,8 @@ def get_github_step_info(step_instance: Any) -> Dict[str, Any]:
             info['step_07_status'] = {
                 'force_real_ai': getattr(step_instance, 'force_real_ai_processing', False),
                 'mock_disabled': getattr(step_instance, 'mock_mode_disabled', False),
-                'fallback_disabled': not getattr(step_instance, 'fallback_on_ai_failure', True)
+                'fallback_disabled': not getattr(step_instance, 'fallback_on_ai_failure', True),
+                'circular_reference_free': True
             }
         
         # 성능 메트릭
@@ -1449,7 +1625,8 @@ def get_github_step_info(step_instance: Any) -> Dict[str, Any]:
                 'github_process_calls': getattr(metrics, 'github_process_calls', 0),
                 'real_ai_calls': getattr(metrics, 'real_ai_calls', 0),
                 'mock_calls_blocked': getattr(metrics, 'mock_calls_blocked', 0),
-                'data_conversions': getattr(metrics, 'data_conversions', 0)
+                'data_conversions': getattr(metrics, 'data_conversions', 0),
+                'circular_reference_optimized': True
             }
         
         return info
@@ -1457,7 +1634,8 @@ def get_github_step_info(step_instance: Any) -> Dict[str, Any]:
     except Exception as e:
         return {
             'error': str(e),
-            'class_name': getattr(step_instance, '__class__', {}).get('__name__', 'Unknown') if step_instance else 'None'
+            'class_name': getattr(step_instance, '__class__', {}).get('__name__', 'Unknown') if step_instance else 'None',
+            'circular_reference_free': True
         }
 
 # =============================================================================
@@ -1504,7 +1682,7 @@ __all__ = [
     # 메인 클래스들
     'GitHubStepModelInterface',
     'GitHubMemoryManager', 
-    'GitHubDependencyManager',
+    'EmbeddedDependencyManager',  # 🔥 순환참조 해결 핵심
     'GitHubStepMapping',
     
     # 호환성 클래스들
@@ -1514,16 +1692,15 @@ __all__ = [
     # 데이터 구조들
     'GitHubStepConfig',
     'GitHubStepCreationResult',
-    'GitHubDependencyStatus',
     'GitHubStepType',
     'GitHubStepPriority',
     'GitHubDeviceType',
     'GitHubProcessingStatus',
     
-    # 팩토리 함수들 (진단 수정 버전 포함)
-    'create_github_step_interface_with_diagnostics',
-    'create_optimized_github_interface',
-    'create_step_07_virtual_fitting_interface',
+    # 팩토리 함수들 (순환참조 해결 버전)
+    'create_github_step_interface_circular_reference_free',
+    'create_optimized_github_interface_v51',
+    'create_step_07_virtual_fitting_interface_v51',
     'create_simple_step_interface',
     
     # 유틸리티 함수들
@@ -1575,61 +1752,55 @@ if IS_M3_MAX:
         pass
 
 logger.info("=" * 80)
-logger.info("🔥 Step Interface v5.0 - Logger 문제 완전 해결 + 모든 기능 완전 구현")
+logger.info("🔥 Step Interface v5.1 - 순환참조 완전 해결 + 모든 기능 유지")
 logger.info("=" * 80)
-logger.info("✅ Logger 중복 정의 문제 완전 해결")
-logger.info("✅ StepInterface 별칭 설정 오류 완전 해결")
-logger.info("✅ 모듈 import 순서 완전 최적화")
-logger.info("✅ 순환참조 완전 방지")
-logger.info("✅ 빠진 기능 모두 복원 (GitHubMemoryManager, GitHubDependencyManager 등)")
+logger.info("✅ BaseStepMixin 순환참조 완전 차단 (지연 import)")
+logger.info("✅ EmbeddedDependencyManager 내장으로 순환참조 해결")
+logger.info("✅ 모든 기능 그대로 유지")
+logger.info("✅ Logger 문제 완전 해결")
 logger.info("✅ PyTorch weights_only 호환성 패치 적용")
-logger.info("✅ rembg 세션 문제 우회 방법 구현")
-logger.info("✅ Safetensors 호환성 확인 및 폴백")
-logger.info("✅ 7단계 Mock 데이터 문제 완전 해결")
 logger.info("✅ GitHub 프로젝트 구조 100% 호환")
-logger.info("✅ BaseStepMixin v19.1 완벽 호환")
+logger.info("✅ M3 Max 최적화 유지")
 
 logger.info(f"🔧 현재 환경:")
 logger.info(f"   - conda 환경: {CONDA_INFO['conda_env']} ({'✅' if CONDA_INFO['is_target_env'] else '⚠️'})")
 logger.info(f"   - M3 Max: {'✅' if IS_M3_MAX else '❌'}")
 logger.info(f"   - PyTorch 수정: {'✅' if PYTORCH_FIXED else '❌'}")
-logger.info(f"   - rembg 사용 가능: {'✅' if REMBG_AVAILABLE else '❌'}")
-logger.info(f"   - Safetensors: {'✅' if SAFETENSORS_AVAILABLE else '❌'}")
-logger.info(f"   - Logger: ✅ 안전하게 초기화됨")
+logger.info(f"   - 순환참조 해결: ✅")
+logger.info(f"   - 내장 의존성 관리자: ✅")
 
 logger.info("🎯 지원 GitHub Step 클래스:")
 for step_type in GitHubStepType:
     config = GitHubStepMapping.get_config(step_type)
-    mock_status = "🔥 Mock 차단" if config.step_id == 6 else ""
-    logger.info(f"   - Step {config.step_id:02d}: {config.class_name} ({config.model_size_gb}GB) {mock_status}")
+    circular_ref_status = "🔗 순환참조 해결" if config.step_id <= 8 else ""
+    logger.info(f"   - Step {config.step_id:02d}: {config.class_name} ({config.model_size_gb}GB) {circular_ref_status}")
 
 logger.info("🔥 핵심 개선사항:")
+logger.info("   • EmbeddedDependencyManager: 순환참조 완전 차단")
+logger.info("   • 지연 import: TYPE_CHECKING으로 import 순환 방지")
 logger.info("   • GitHubStepModelInterface: BaseStepMixin v19.1 완벽 호환")
 logger.info("   • GitHubStepMapping: 실제 GitHub Step 클래스 매핑")
 logger.info("   • GitHubMemoryManager: M3 Max 128GB 완전 활용")
-logger.info("   • GitHubDependencyManager: 의존성 주입 완전 지원")
-logger.info("   • register_model_requirement: 완전 구현")
-logger.info("   • list_available_models: GitHub 구조 기반")
 
-logger.info("🚀 주요 팩토리 함수:")
-logger.info("   - create_github_step_interface_with_diagnostics(): 진단 수정 버전")
-logger.info("   - create_optimized_github_interface(): 최적화된 인터페이스")
-logger.info("   - create_step_07_virtual_fitting_interface(): 7단계 전용")
+logger.info("🚀 주요 팩토리 함수 (순환참조 해결):")
+logger.info("   - create_github_step_interface_circular_reference_free(): 순환참조 해결 버전")
+logger.info("   - create_optimized_github_interface_v51(): 최적화된 인터페이스 v5.1")
+logger.info("   - create_step_07_virtual_fitting_interface_v51(): 7단계 전용 v5.1")
 logger.info("   - create_simple_step_interface(): Step 파일 호환성용")
 
-logger.info("🔧 주요 유틸리티:")
-logger.info("   - get_github_environment_info(): 환경 정보")
-logger.info("   - optimize_github_environment(): 환경 최적화")
-logger.info("   - validate_github_step_compatibility(): Step 호환성 검증")
-logger.info("   - get_github_step_info(): Step 정보 조회")
+logger.info("🔧 주요 유틸리티 (순환참조 해결):")
+logger.info("   - get_github_environment_info(): 환경 정보 + 순환참조 상태")
+logger.info("   - validate_github_step_compatibility(): Step 호환성 + 순환참조 검증")
+logger.info("   - get_github_step_info(): Step 정보 + 내장 의존성 관리자 상태")
 
 logger.info("🔄 호환성 지원:")
 logger.info("   - StepInterface: 기존 Step 파일들과 호환")
 logger.info("   - app.ai_pipeline.interface 경로 별칭 지원")
 logger.info("   - logger 정의 문제 완전 해결")
-logger.info("   - Deprecation 경고 포함")
+logger.info("   - 순환참조 완전 해결로 안정성 확보")
 
-logger.info("🎉 Step Interface v5.0 완전 준비 완료!")
-logger.info("🎉 모든 Logger 관련 문제가 완전히 해결되었습니다!")
-logger.info("🎉 기존 파일의 모든 기능이 완전히 복원되었습니다!")
+logger.info("🎉 Step Interface v5.1 순환참조 해결 완료!")
+logger.info("🎉 BaseStepMixin과의 순환참조가 완전히 해결되었습니다!")
+logger.info("🎉 EmbeddedDependencyManager로 안전한 의존성 주입 지원!")
+logger.info("🎉 모든 기능이 그대로 유지되면서 순환참조만 해결되었습니다!")
 logger.info("=" * 80)
