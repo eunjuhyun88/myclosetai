@@ -812,7 +812,7 @@ class RealU2NetClothModel:
         self.is_loaded = False
         
     def load(self) -> bool:
-        """U2Net 모델 로드"""
+        """U2Net 모델 로드 (3단계 안전 로딩)"""
         try:
             if not TORCH_AVAILABLE:
                 return False
@@ -820,11 +820,25 @@ class RealU2NetClothModel:
             # U2Net 아키텍처 생성
             self.model = self._create_u2net_architecture()
             
-            # 체크포인트 로드
+            # 🔥 3단계 안전 체크포인트 로딩
             if os.path.exists(self.model_path):
-                checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=True)
+                try:
+                    # 1단계: 최신 보안 기준 (weights_only=True)
+                    checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
+                except:
+                    # 2단계: Legacy 포맷 지원 (weights_only=False)
+                    checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
+                
+                # MPS 호환성: float64 → float32 변환
+                if self.device == "mps" and isinstance(checkpoint, dict):
+                    for key, value in checkpoint.items():
+                        if isinstance(value, torch.Tensor) and value.dtype == torch.float64:
+                            checkpoint[key] = value.float()
+                
+                # 모델에 가중치 로드
                 self.model.load_state_dict(checkpoint, strict=False)
             
+            # 디바이스로 이동
             self.model.to(self.device)
             self.model.eval()
             self.is_loaded = True
@@ -835,7 +849,8 @@ class RealU2NetClothModel:
         except Exception as e:
             logger.error(f"❌ U2Net 모델 로드 실패: {e}")
             return False
-    
+
+
     def _create_u2net_architecture(self):
         """U2Net 아키텍처 생성"""
         class U2NetForCloth(nn.Module):
@@ -925,9 +940,9 @@ class RealDeepLabV3PlusModel:
         self.device = device
         self.model = None
         self.is_loaded = False
-        
+    
     def load(self) -> bool:
-        """DeepLabV3+ 모델 로드 (CompleteEnhancedClothSegmentationAI 사용)"""
+        """DeepLabV3+ 모델 로드 (CompleteEnhancedClothSegmentationAI 사용, 3단계 안전 로딩)"""
         try:
             if not TORCH_AVAILABLE:
                 return False
@@ -935,11 +950,25 @@ class RealDeepLabV3PlusModel:
             # CompleteEnhancedClothSegmentationAI 사용 (원본)
             self.model = CompleteEnhancedClothSegmentationAI(num_classes=1)
             
-            # 체크포인트 로드
+            # 🔥 3단계 안전 체크포인트 로딩
             if os.path.exists(self.model_path):
-                checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=True)
+                try:
+                    # 1단계: 최신 보안 기준 (weights_only=True)
+                    checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
+                except:
+                    # 2단계: Legacy 포맷 지원 (weights_only=False)
+                    checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
+                
+                # MPS 호환성: float64 → float32 변환
+                if self.device == "mps" and isinstance(checkpoint, dict):
+                    for key, value in checkpoint.items():
+                        if isinstance(value, torch.Tensor) and value.dtype == torch.float64:
+                            checkpoint[key] = value.float()
+                
+                # 모델에 가중치 로드
                 self.model.load_state_dict(checkpoint, strict=False)
             
+            # 디바이스로 이동
             self.model.to(self.device)
             self.model.eval()
             self.is_loaded = True
@@ -950,7 +979,8 @@ class RealDeepLabV3PlusModel:
         except Exception as e:
             logger.error(f"❌ DeepLabV3+ 모델 로드 실패: {e}")
             return False
-    
+
+
     def predict(self, image: np.ndarray) -> Dict[str, Any]:
         """DeepLabV3+ 예측 실행 (CompleteEnhanced 버전)"""
         try:

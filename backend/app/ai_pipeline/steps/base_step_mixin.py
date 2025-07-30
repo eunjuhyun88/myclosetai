@@ -41,15 +41,11 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from contextlib import asynccontextmanager
 from enum import Enum
-
-# 🔥 TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
     from ..utils.model_loader import ModelLoader, StepModelInterface
-    from ..factories.step_factory import StepFactory
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
-    from ..core.di_container import DIContainer
-
+  
 # ==============================================
 # 🔥 환경 설정 및 시스템 정보
 # ==============================================
@@ -82,6 +78,58 @@ try:
 except:
     pass
 
+
+# ==============================================
+# 🔥 동적 의존성 해결 함수들 (순환참조 방지)
+# ==============================================
+# ==============================================
+# 🔥 DI Container 기반 동적 의존성 해결 (순환참조 완전 방지)
+# ==============================================
+
+def _get_global_di_container():
+    """전역 DI Container 안전한 동적 해결"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+
+def _get_service_from_container_safe(service_key: str):
+    """DI Container를 통한 안전한 서비스 조회"""
+    try:
+        container = _get_global_di_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+def _get_memory_manager_safe():
+    """MemoryManager 안전한 동적 해결"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
+        get_global_fn = getattr(module, 'get_global_memory_manager', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+
+def _get_data_converter_safe():
+    """DataConverter 안전한 동적 해결"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.utils.data_converter')
+        get_global_fn = getattr(module, 'get_global_data_converter', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
 # ==============================================
 # 🔥 라이브러리 안전 import
 # ==============================================
@@ -128,6 +176,18 @@ except ImportError:
 # 🔥 GitHub 프로젝트 호환 인터페이스 (v19.2)
 # ==============================================
 
+class StepFactory:
+    def create_step(self, step_name: str, **kwargs):
+        # 1. Step 클래스 동적 로딩
+        step_class = self._load_step_class_dynamically(step_name)
+        
+        # 2. Step 인스턴스 생성
+        step_instance = step_class(**kwargs)
+        
+        # 3. 안전한 의존성 주입 (순환참조 방지)
+        inject_dependencies_to_step_safe(step_instance)
+        
+        return step_instance
 class ProcessMethodSignature(Enum):
     """GitHub 프로젝트에서 사용되는 process 메서드 시그니처 패턴"""
     STANDARD = "async def process(self, **kwargs) -> Dict[str, Any]"
@@ -303,33 +363,33 @@ class GitHubPerformanceMetrics:
 # 🔥 GitHubDependencyManager - 완전 복원 + 순환참조 해결
 # ==============================================
 
+# ==============================================
+# 🔥 DI Container 기반 GitHubDependencyManager (순환참조 완전 해결)
+# ==============================================
+
 class GitHubDependencyManager:
-    """🔥 GitHub 프로젝트 완전 호환 의존성 관리자 v19.2 - 순환참조 해결"""
+    """🔥 DI Container 기반 의존성 관리자 v19.3 - 순환참조 완전 해결"""
     
     def __init__(self, step_name: str, **kwargs):
-        """완전 수정된 초기화 메서드"""
+        """DI Container 기반 초기화"""
         self.step_name = step_name
         self.logger = logging.getLogger(f"GitHubDependencyManager.{step_name}")
         
-        # 🔥 핵심 속성들 (오류 해결)
+        # 🔥 핵심 속성들
         self.step_instance = None
         self.injected_dependencies = {}
-        self.dependencies = {}
         self.injection_attempts = {}
         self.injection_errors = {}
         
-        # 🔥 dependency_status 속성 추가 (오류 해결!)
+        # 🔥 DI Container 참조 (지연 초기화)
+        self._di_container = None
+        self._container_initialized = False
+        
+        # 🔥 dependency_status 속성 (오류 해결!)
         self.dependency_status = GitHubDependencyStatus()
         
         # 시간 추적
         self.last_injection_time = time.time()
-        
-        # 선택적 매개변수 처리
-        self.memory_gb = kwargs.get('memory_gb', 16)
-        self.quality_level = kwargs.get('quality_level', 'balanced')
-        self.auto_inject_enabled = kwargs.get('auto_inject_dependencies', True)
-        self.dependency_timeout = kwargs.get('dependency_timeout', 30.0)
-        self.dependency_retry_count = kwargs.get('dependency_retry_count', 3)
         
         # 성능 메트릭
         self.dependencies_injected = 0
@@ -339,10 +399,27 @@ class GitHubDependencyManager:
         # 스레드 안전성
         self._lock = threading.RLock()
         
-        self.logger.debug(f"✅ GitHubDependencyManager v19.2 초기화 완료: {step_name}")
+        self.logger.debug(f"✅ DI Container 기반 GitHubDependencyManager 초기화: {step_name}")
+    
+    def _get_di_container(self):
+        """DI Container 지연 초기화 (순환참조 방지)"""
+        if not self._container_initialized:
+            try:
+                self._di_container = _get_global_di_container()
+                self._container_initialized = True
+                if self._di_container:
+                    self.logger.debug(f"✅ {self.step_name} DI Container 연결 성공")
+                else:
+                    self.logger.warning(f"⚠️ {self.step_name} DI Container 연결 실패")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} DI Container 초기화 실패: {e}")
+                self._di_container = None
+                self._container_initialized = True
+        
+        return self._di_container
     
     def set_step_instance(self, step_instance):
-        """Step 인스턴스 설정 - 완전 수정"""
+        """Step 인스턴스 설정"""
         try:
             with self._lock:
                 self.step_instance = step_instance
@@ -353,178 +430,122 @@ class GitHubDependencyManager:
             return False
     
     def auto_inject_dependencies(self) -> bool:
-        """🔥 완전 수정된 자동 의존성 주입 메서드"""
+        """🔥 DI Container 기반 자동 의존성 주입"""
         try:
             with self._lock:
-                self.logger.info(f"🔄 {self.step_name} GitHubDependencyManager 자동 의존성 주입 시작...")
+                self.logger.info(f"🔄 {self.step_name} DI Container 기반 자동 의존성 주입 시작...")
                 
                 if not self.step_instance:
                     self.logger.warning(f"⚠️ {self.step_name} Step 인스턴스가 설정되지 않음")
                     return False
                 
+                container = self._get_di_container()
+                if not container:
+                    self.logger.error(f"❌ {self.step_name} DI Container 사용 불가")
+                    return False
+                
                 success_count = 0
                 total_dependencies = 0
                 
-                # ModelLoader 자동 주입
+                # ModelLoader 자동 주입 (DI Container 기반)
                 if not hasattr(self.step_instance, 'model_loader') or self.step_instance.model_loader is None:
                     total_dependencies += 1
                     try:
-                        model_loader = self._resolve_model_loader()
+                        model_loader = container.get('model_loader')
                         if model_loader:
                             self.step_instance.model_loader = model_loader
                             self.injected_dependencies['model_loader'] = model_loader
                             self.dependency_status.model_loader = True
                             success_count += 1
                             self.dependencies_injected += 1
-                            self.logger.info(f"✅ {self.step_name} ModelLoader 자동 주입 성공")
+                            self.logger.info(f"✅ {self.step_name} ModelLoader DI Container 주입 성공")
                         else:
-                            self.logger.warning(f"⚠️ {self.step_name} ModelLoader 해결 실패 - 실제 의존성 필요")
+                            self.logger.warning(f"⚠️ {self.step_name} ModelLoader DI Container 해결 실패")
                             self.injection_failures += 1
                     except Exception as e:
-                        self.logger.warning(f"⚠️ {self.step_name} ModelLoader 자동 주입 실패: {e}")
+                        self.logger.warning(f"⚠️ {self.step_name} ModelLoader DI Container 주입 실패: {e}")
                         self.injection_failures += 1
                 
-                # MemoryManager 자동 주입  
+                # MemoryManager 자동 주입 (DI Container 기반)
                 if not hasattr(self.step_instance, 'memory_manager') or self.step_instance.memory_manager is None:
                     total_dependencies += 1
                     try:
-                        memory_manager = self._resolve_memory_manager()
+                        memory_manager = container.get('memory_manager')
                         if memory_manager:
                             self.step_instance.memory_manager = memory_manager
                             self.injected_dependencies['memory_manager'] = memory_manager
                             self.dependency_status.memory_manager = True
                             success_count += 1
                             self.dependencies_injected += 1
-                            self.logger.info(f"✅ {self.step_name} MemoryManager 자동 주입 성공")
+                            self.logger.info(f"✅ {self.step_name} MemoryManager DI Container 주입 성공")
                         else:
-                            self.logger.warning(f"⚠️ {self.step_name} MemoryManager 해결 실패 - 실제 의존성 필요")
+                            self.logger.warning(f"⚠️ {self.step_name} MemoryManager DI Container 해결 실패")
                             self.injection_failures += 1
                     except Exception as e:
-                        self.logger.warning(f"⚠️ {self.step_name} MemoryManager 자동 주입 실패: {e}")
+                        self.logger.warning(f"⚠️ {self.step_name} MemoryManager DI Container 주입 실패: {e}")
                         self.injection_failures += 1
                 
-                # DataConverter 자동 주입
+                # DataConverter 자동 주입 (DI Container 기반)
                 if not hasattr(self.step_instance, 'data_converter') or self.step_instance.data_converter is None:
                     total_dependencies += 1
                     try:
-                        data_converter = self._resolve_data_converter()
+                        data_converter = container.get('data_converter')
                         if data_converter:
                             self.step_instance.data_converter = data_converter
                             self.injected_dependencies['data_converter'] = data_converter
                             self.dependency_status.data_converter = True
                             success_count += 1
                             self.dependencies_injected += 1
-                            self.logger.info(f"✅ {self.step_name} DataConverter 자동 주입 성공")
+                            self.logger.info(f"✅ {self.step_name} DataConverter DI Container 주입 성공")
                         else:
-                            self.logger.warning(f"⚠️ {self.step_name} DataConverter 해결 실패 - 실제 의존성 필요")
+                            self.logger.warning(f"⚠️ {self.step_name} DataConverter DI Container 해결 실패")
                             self.injection_failures += 1
                     except Exception as e:
-                        self.logger.warning(f"⚠️ {self.step_name} DataConverter 자동 주입 실패: {e}")
+                        self.logger.warning(f"⚠️ {self.step_name} DataConverter DI Container 주입 실패: {e}")
                         self.injection_failures += 1
                 
-                # 성공 여부 판단 (실제 의존성 기반)
+                # DI Container 자체도 주입
+                if not hasattr(self.step_instance, 'di_container') or self.step_instance.di_container is None:
+                    try:
+                        self.step_instance.di_container = container
+                        self.injected_dependencies['di_container'] = container
+                        self.dependency_status.di_container = True
+                        self.dependencies_injected += 1
+                        self.logger.info(f"✅ {self.step_name} DI Container 자체 주입 성공")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {self.step_name} DI Container 자체 주입 실패: {e}")
+                
+                # 성공 여부 판단
                 if total_dependencies == 0:
                     self.logger.info(f"✅ {self.step_name} 모든 의존성이 이미 주입되어 있음")
                     return True
                 
                 success_rate = success_count / total_dependencies if total_dependencies > 0 else 1.0
                 
-                # 실제 의존성만 허용 - 성공한 것만 사용
                 if success_count > 0:
-                    self.logger.info(f"✅ {self.step_name} 실제 의존성 주입 완료: {success_count}/{total_dependencies} ({success_rate*100:.1f}%)")
+                    self.logger.info(f"✅ {self.step_name} DI Container 의존성 주입 완료: {success_count}/{total_dependencies} ({success_rate*100:.1f}%)")
                     self.dependency_status.base_initialized = True
                     self.dependency_status.github_compatible = True
                     return True
                 else:
-                    self.logger.warning(f"⚠️ {self.step_name} 실제 의존성 주입 실패: {success_count}/{total_dependencies} - Mock 폴백 없음")
+                    self.logger.warning(f"⚠️ {self.step_name} DI Container 의존성 주입 실패: {success_count}/{total_dependencies}")
                     return False
                     
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 자동 의존성 주입 중 오류: {e}")
+            self.logger.error(f"❌ {self.step_name} DI Container 기반 자동 의존성 주입 중 오류: {e}")
             self.injection_failures += 1
             return False
     
-    def _resolve_model_loader(self):
-        """ModelLoader 해결 (지연 import로 순환참조 방지)"""
-        try:
-            # 지연 import로 순환참조 방지
-            try:
-                import importlib
-                module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-                if hasattr(module, 'get_global_model_loader'):
-                    loader = module.get_global_model_loader()
-                    if loader and not isinstance(loader, bool):
-                        return loader
-            except ImportError:
-                self.logger.debug(f"{self.step_name} ModelLoader 모듈 import 실패")
-                return None
-            
-            self.logger.debug(f"{self.step_name} ModelLoader 해결 실패 - 실제 의존성 필요")
-            return None
-            
-        except Exception as e:
-            self.logger.debug(f"{self.step_name} ModelLoader 해결 실패: {e}")
-            return None
-    
-    def _resolve_memory_manager(self):
-        """MemoryManager 해결 (지연 import로 순환참조 방지)"""
-        try:
-            # 지연 import로 순환참조 방지
-            try:
-                import importlib
-                module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
-                if hasattr(module, 'get_global_memory_manager'):
-                    manager = module.get_global_memory_manager()
-                    if manager:
-                        return manager
-            except ImportError:
-                self.logger.debug(f"{self.step_name} MemoryManager 모듈 import 실패")
-                return None
-            
-            self.logger.debug(f"{self.step_name} MemoryManager 해결 실패 - 실제 의존성 필요")
-            return None
-            
-        except Exception as e:
-            self.logger.debug(f"{self.step_name} MemoryManager 해결 실패: {e}")
-            return None
-    
-    def _resolve_data_converter(self):
-        """DataConverter 해결 (지연 import로 순환참조 방지)"""
-        try:
-            # 지연 import로 순환참조 방지
-            try:
-                import importlib
-                module = importlib.import_module('app.ai_pipeline.utils.data_converter')
-                if hasattr(module, 'get_global_data_converter'):
-                    converter = module.get_global_data_converter()
-                    if converter:
-                        return converter
-            except ImportError:
-                self.logger.debug(f"{self.step_name} DataConverter 모듈 import 실패")
-                return None
-            
-            self.logger.debug(f"{self.step_name} DataConverter 해결 실패 - 실제 의존성 필요")
-            return None
-            
-        except Exception as e:
-            self.logger.debug(f"{self.step_name} DataConverter 해결 실패: {e}")
-            return None
-    
     def inject_model_loader(self, model_loader):
-        """ModelLoader 주입 - 완전 수정"""
+        """ModelLoader 주입 (DI Container 호환)"""
         try:
             with self._lock:
                 if not self.step_instance:
                     self.logger.warning(f"⚠️ {self.step_name} Step 인스턴스가 설정되지 않음")
                     return False
                 
-                # 유효성 검증
                 if model_loader is None:
                     self.logger.warning(f"⚠️ {self.step_name} ModelLoader가 None입니다")
-                    return False
-                
-                if isinstance(model_loader, bool):
-                    self.logger.error(f"❌ {self.step_name} ModelLoader는 bool이 아닌 객체여야 합니다")
                     return False
                 
                 # 주입 실행
@@ -533,6 +554,11 @@ class GitHubDependencyManager:
                 self.dependency_status.model_loader = True
                 self.dependency_status.base_initialized = True
                 self.dependencies_injected += 1
+                
+                # DI Container에도 등록 (선택적)
+                container = self._get_di_container()
+                if container:
+                    container.register('model_loader', model_loader, singleton=True)
                 
                 self.logger.info(f"✅ {self.step_name} ModelLoader 주입 완료")
                 return True
@@ -543,7 +569,7 @@ class GitHubDependencyManager:
             return False
     
     def inject_memory_manager(self, memory_manager):
-        """MemoryManager 주입 - 완전 수정"""
+        """MemoryManager 주입 (DI Container 호환)"""
         try:
             with self._lock:
                 if not self.step_instance:
@@ -560,6 +586,11 @@ class GitHubDependencyManager:
                 self.dependency_status.memory_manager = True
                 self.dependencies_injected += 1
                 
+                # DI Container에도 등록 (선택적)
+                container = self._get_di_container()
+                if container:
+                    container.register('memory_manager', memory_manager, singleton=True)
+                
                 self.logger.info(f"✅ {self.step_name} MemoryManager 주입 완료")
                 return True
                 
@@ -569,7 +600,7 @@ class GitHubDependencyManager:
             return False
     
     def inject_data_converter(self, data_converter):
-        """DataConverter 주입 - 완전 수정"""
+        """DataConverter 주입 (DI Container 호환)"""
         try:
             with self._lock:
                 if not self.step_instance:
@@ -586,6 +617,11 @@ class GitHubDependencyManager:
                 self.dependency_status.data_converter = True
                 self.dependencies_injected += 1
                 
+                # DI Container에도 등록 (선택적)
+                container = self._get_di_container()
+                if container:
+                    container.register('data_converter', data_converter, singleton=True)
+                
                 self.logger.info(f"✅ {self.step_name} DataConverter 주입 완료")
                 return True
                 
@@ -595,15 +631,21 @@ class GitHubDependencyManager:
             return False
     
     def inject_di_container(self, di_container):
-        """DI Container 의존성 주입 - 완전 수정"""
+        """DI Container 의존성 주입"""
         try:
             with self._lock:
                 if di_container is None:
                     self.logger.warning(f"⚠️ {self.step_name} DI Container가 None입니다")
                     return False
                 
-                # DI Container는 step_instance가 아닌 dependencies에 저장
-                self.dependencies['di_container'] = di_container
+                # DI Container 저장
+                self._di_container = di_container
+                self._container_initialized = True
+                
+                # Step 인스턴스에도 주입
+                if self.step_instance:
+                    self.step_instance.di_container = di_container
+                
                 self.injected_dependencies['di_container'] = di_container
                 self.dependency_status.di_container = True
                 self.dependencies_injected += 1
@@ -617,7 +659,7 @@ class GitHubDependencyManager:
             return False
     
     def validate_dependencies_github_format(self, format_type=None):
-        """GitHub 형식 의존성 검증 - 완전 수정"""
+        """GitHub 형식 의존성 검증 (DI Container 기반)"""
         try:
             with self._lock:
                 self.validation_attempts += 1
@@ -636,11 +678,12 @@ class GitHubDependencyManager:
                         'model_loader': hasattr(self.step_instance, 'model_loader') and self.step_instance.model_loader is not None,
                         'memory_manager': hasattr(self.step_instance, 'memory_manager') and self.step_instance.memory_manager is not None,
                         'data_converter': hasattr(self.step_instance, 'data_converter') and self.step_instance.data_converter is not None,
-                        'step_interface': True,  # 기본값 (Step 인스턴스가 존재하면 인터페이스 OK)
+                        'step_interface': True,  # Step 인스턴스가 존재하면 인터페이스 OK
                     }
                 
-                # DI Container는 별도 확인
-                dependencies['di_container'] = 'di_container' in self.dependencies and self.dependencies['di_container'] is not None
+                # DI Container 확인
+                container = self._get_di_container()
+                dependencies['di_container'] = container is not None
                 
                 # 반환 형식 결정
                 if format_type:
@@ -655,9 +698,10 @@ class GitHubDependencyManager:
                 
                 # 기본값: 상세 정보 반환
                 return {
-                    'success': all(dep for key, dep in dependencies.items() if key != 'di_container'),  # DI Container 제외하고 판단
+                    'success': all(dep for key, dep in dependencies.items() if key != 'di_container'),
                     'dependencies': dependencies,
                     'github_compatible': True,
+                    'di_container_based': True,
                     'injected_count': len(self.injected_dependencies),
                     'step_name': self.step_name,
                     'dependency_status': {
@@ -673,22 +717,26 @@ class GitHubDependencyManager:
                         'failures': self.injection_failures,
                         'validation_attempts': self.validation_attempts
                     },
+                    'di_container_stats': container.get_stats() if container else {},
                     'timestamp': time.time()
                 }
                 
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} GitHub 의존성 검증 실패: {e}")
+            self.logger.error(f"❌ {self.step_name} DI Container 기반 의존성 검증 실패: {e}")
             return {
                 'success': False,
                 'error': str(e),
                 'github_compatible': False,
+                'di_container_based': True,
                 'step_name': self.step_name
             }
     
     def get_dependency_status(self) -> Dict[str, Any]:
-        """의존성 상태 조회 - 완전 수정"""
+        """의존성 상태 조회 (DI Container 기반)"""
         try:
             with self._lock:
+                container = self._get_di_container()
+                
                 return {
                     'step_name': self.step_name,
                     'step_instance_set': self.step_instance is not None,
@@ -703,6 +751,11 @@ class GitHubDependencyManager:
                         'detailed_data_spec_loaded': self.dependency_status.detailed_data_spec_loaded,
                         'data_conversion_ready': self.dependency_status.data_conversion_ready
                     },
+                    'di_container_info': {
+                        'connected': container is not None,
+                        'initialized': self._container_initialized,
+                        'stats': container.get_stats() if container else {}
+                    },
                     'metrics': {
                         'dependencies_injected': self.dependencies_injected,
                         'injection_failures': self.injection_failures,
@@ -712,46 +765,72 @@ class GitHubDependencyManager:
                     'timestamp': time.time()
                 }
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 의존성 상태 조회 실패: {e}")
+            self.logger.error(f"❌ {self.step_name} DI Container 기반 의존성 상태 조회 실패: {e}")
             return {
                 'step_name': self.step_name,
                 'error': str(e),
+                'di_container_based': True,
                 'timestamp': time.time()
             }
     
-    def cleanup(self):
-        """리소스 정리 - 완전 수정"""
+    # ==============================================
+    # 🔥 리소스 정리 (DI Container 기반)
+    # ==============================================
+    
+    async def cleanup(self):
+        """리소스 정리 (DI Container 기반)"""
         try:
-            with self._lock:
-                self.logger.info(f"🔄 {self.step_name} GitHubDependencyManager 정리 시작...")
-                
-                # 주입된 의존성들 정리
-                for dep_name, dep_instance in self.injected_dependencies.items():
-                    try:
-                        if hasattr(dep_instance, 'cleanup'):
-                            dep_instance.cleanup()
-                        elif hasattr(dep_instance, 'close'):
-                            dep_instance.close()
-                    except Exception as e:
-                        self.logger.debug(f"의존성 정리 중 오류 ({dep_name}): {e}")
-                
-                # 상태 초기화
-                self.injected_dependencies.clear()
-                self.dependencies.clear()
-                self.step_instance = None
-                
-                # dependency_status 초기화
-                self.dependency_status = GitHubDependencyStatus()
-                
-                self.logger.info(f"✅ {self.step_name} GitHubDependencyManager 정리 완료")
-                
+            self.logger.info(f"🔄 {self.step_name} BaseStepMixin DI Container 기반 정리 시작...")
+            
+            # DI Container를 통한 메모리 최적화
+            if self.di_container:
+                try:
+                    cleanup_stats = self.di_container.optimize_memory()
+                    self.logger.debug(f"DI Container 메모리 최적화: {cleanup_stats}")
+                except Exception as e:
+                    self.logger.debug(f"DI Container 메모리 최적화 실패: {e}")
+            
+            # Dependency Manager 정리
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                try:
+                    self.dependency_manager.cleanup()
+                except Exception as e:
+                    self.logger.debug(f"Dependency Manager 정리 실패: {e}")
+            
+            # 성능 메트릭 정리
+            if hasattr(self, 'performance_metrics'):
+                try:
+                    # 최종 통계 로그
+                    total_processes = self.performance_metrics.process_count
+                    if total_processes > 0:
+                        success_rate = (self.performance_metrics.success_count / total_processes) * 100
+                        avg_time = self.performance_metrics.average_process_time
+                        self.logger.info(f"📊 {self.step_name} 최종 통계: {total_processes}개 처리, {success_rate:.1f}% 성공, 평균 {avg_time:.3f}초")
+                except Exception as e:
+                    self.logger.debug(f"성능 메트릭 정리 실패: {e}")
+            
+            # 기본 속성 정리
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            self.is_initialized = False
+            self.is_ready = False
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin DI Container 기반 정리 완료")
+            
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} GitHubDependencyManager 정리 실패: {e}")
+            self.logger.error(f"❌ {self.step_name} BaseStepMixin 정리 실패: {e}")
     
     def __del__(self):
         """소멸자 - 안전한 정리"""
         try:
-            self.cleanup()
+            # 비동기 cleanup을 동기적으로 실행 (소멸자에서는 async 불가)
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                self.dependency_manager.cleanup()
+            
+            if hasattr(self, 'di_container') and self.di_container:
+                self.di_container.optimize_memory()
         except:
             pass  # 소멸자에서는 예외 무시
 
@@ -773,7 +852,7 @@ class BaseStepMixin:
     ✅ GitHub 프로젝트 Step 클래스들과 100% 호환
     """
     def __init__(self, **kwargs):
-        """순환참조 완전 해결 초기화 (v19.2)"""
+        """순환참조 완전 해결 초기화 (v19.3 - DI Container 적용)"""
         try:
             # 기본 설정
             self.config = self._create_github_config(**kwargs)
@@ -795,7 +874,7 @@ class BaseStepMixin:
             # 🔥 DetailedDataSpec 정보 저장
             self.detailed_data_spec = self._load_detailed_data_spec_from_kwargs(**kwargs)
             
-            # 🔥 내장 의존성 관리자 (순환참조 해결)
+            # 🔥 DI Container 기반 의존성 관리자 (순환참조 해결)
             self.dependency_manager = GitHubDependencyManager(self.step_name)
             self.dependency_manager.set_step_instance(self)
             
@@ -820,6 +899,8 @@ class BaseStepMixin:
             self.model_interface = None
             self.memory_manager = None
             self.data_converter = None
+            # 🔥 DI Container 속성 추가
+            self.di_container = None
             
             # GitHub 특별 속성들
             self.github_compatible = True
@@ -832,14 +913,19 @@ class BaseStepMixin:
             # 환경 최적화 적용
             self._apply_github_environment_optimization()
             
-            # 자동 의존성 주입 (설정된 경우)
+            # 🔥 DI Container를 통한 자동 의존성 주입 (설정된 경우)
             if self.config.auto_inject_dependencies:
                 try:
-                    self.dependency_manager.auto_inject_dependencies()
+                    # DI Container 기반 의존성 주입
+                    injection_success = self.dependency_manager.auto_inject_dependencies()
+                    if injection_success:
+                        self.logger.debug(f"✅ {self.step_name} DI Container 기반 자동 의존성 주입 성공")
+                    else:
+                        self.logger.warning(f"⚠️ {self.step_name} DI Container 기반 자동 의존성 주입 부분 실패")
                 except Exception as e:
-                    self.logger.warning(f"⚠️ {self.step_name} 자동 의존성 주입 실패: {e}")
+                    self.logger.warning(f"⚠️ {self.step_name} DI Container 기반 자동 의존성 주입 실패: {e}")
             
-            self.logger.info(f"✅ {self.step_name} BaseStepMixin v19.2 순환참조 해결 초기화 완료")
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin v19.3 DI Container 적용 초기화 완료")
             
         except Exception as e:
             self._github_emergency_setup(e)
@@ -1971,7 +2057,107 @@ class BaseStepMixin:
             self.performance_metrics.validation_failures += 1
         
         return validated
+    # ==============================================
+    # 🔥 DI Container 편의 메서드들 (v19.3 신규)
+    # ==============================================
     
+    def set_di_container(self, di_container):
+        """DI Container 설정 (GitHub 표준 호환)"""
+        try:
+            success = self.dependency_manager.inject_di_container(di_container)
+            if success:
+                self.di_container = di_container
+                self.performance_metrics.dependencies_injected += 1
+                self.logger.info(f"✅ {self.step_name} DI Container 설정 완료")
+                
+                # DI Container를 통한 추가 의존성 자동 주입 시도
+                self._try_additional_di_injections()
+                
+        except Exception as e:
+            self.performance_metrics.injection_failures += 1
+            self.logger.error(f"❌ {self.step_name} DI Container 설정 오류: {e}")
+    
+    def _try_additional_di_injections(self):
+        """DI Container 설정 후 추가 의존성 자동 주입 시도"""
+        try:
+            if not self.di_container:
+                return
+            
+            # 누락된 의존성들 자동 주입 시도
+            if not self.model_loader:
+                model_loader = self.di_container.get('model_loader')
+                if model_loader:
+                    self.model_loader = model_loader
+                    self.has_model = True
+                    self.model_loaded = True
+                    self.logger.debug(f"✅ {self.step_name} ModelLoader DI Container 추가 주입")
+            
+            if not self.memory_manager:
+                memory_manager = self.di_container.get('memory_manager')
+                if memory_manager:
+                    self.memory_manager = memory_manager
+                    self.logger.debug(f"✅ {self.step_name} MemoryManager DI Container 추가 주입")
+            
+            if not self.data_converter:
+                data_converter = self.di_container.get('data_converter')
+                if data_converter:
+                    self.data_converter = data_converter
+                    self.logger.debug(f"✅ {self.step_name} DataConverter DI Container 추가 주입")
+                    
+        except Exception as e:
+            self.logger.debug(f"DI Container 추가 주입 실패: {e}")
+    
+    def get_service(self, service_key: str):
+        """DI Container를 통한 서비스 조회"""
+        try:
+            if self.di_container:
+                return self.di_container.get(service_key)
+            else:
+                # DI Container가 없으면 전역 컨테이너 사용
+                return _get_service_from_container_safe(service_key)
+        except Exception as e:
+            self.logger.debug(f"서비스 조회 실패 ({service_key}): {e}")
+            return None
+    
+    def register_service(self, service_key: str, service_instance: Any, singleton: bool = True):
+        """DI Container에 서비스 등록"""
+        try:
+            if self.di_container:
+                self.di_container.register(service_key, service_instance, singleton)
+                self.logger.debug(f"✅ {self.step_name} 서비스 등록: {service_key}")
+                return True
+            else:
+                self.logger.warning(f"⚠️ {self.step_name} DI Container 없음 - 서비스 등록 실패: {service_key}")
+                return False
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 서비스 등록 실패 ({service_key}): {e}")
+            return False
+    
+    def optimize_di_memory(self):
+        """DI Container를 통한 메모리 최적화"""
+        try:
+            if self.di_container:
+                cleanup_stats = self.di_container.optimize_memory()
+                self.logger.debug(f"✅ {self.step_name} DI Container 메모리 최적화 완료: {cleanup_stats}")
+                return cleanup_stats
+            else:
+                # DI Container가 없으면 기본 메모리 정리
+                gc.collect()
+                return {'gc_collected': True}
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} DI Container 메모리 최적화 실패: {e}")
+            return {}
+    
+    def get_di_container_stats(self) -> Dict[str, Any]:
+        """DI Container 통계 조회"""
+        try:
+            if self.di_container:
+                return self.di_container.get_stats()
+            else:
+                return {'error': 'DI Container not available'}
+        except Exception as e:
+            return {'error': str(e)}
+        
     # ==============================================
     # 🔥 유틸리티 메서드들 (모든 기능 유지)
     # ==============================================

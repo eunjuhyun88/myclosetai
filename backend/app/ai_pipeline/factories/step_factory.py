@@ -43,18 +43,26 @@ from enum import Enum, IntEnum
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 
-# 🔥 TYPE_CHECKING으로 순환참조 완전 방지
+# 🔥 TYPE_CHECKING으로 순환참조 완전 방지  
 if TYPE_CHECKING:
     from ..steps.base_step_mixin import BaseStepMixin, GitHubDependencyManager
     from ..utils.model_loader import ModelLoader
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
-    from ...core.di_container import DIContainer
+    from ...core.di_container import CircularReferenceFreeDIContainer  # 추가
+else:
+    # 런타임에는 Any로 처리
+    BaseStepMixin = Any
+    GitHubDependencyManager = Any
+    ModelLoader = Any
+    MemoryManager = Any
+    DataConverter = Any
+    CircularReferenceFreeDIContainer = Any  # 추가
 
 # ==============================================
 # 🔥 step_interface.py v5.2에서 실제 구조 import
 # ==============================================
-
+    
 try:
     from ..interface.step_interface import (
         # 실제 환경 정보
@@ -146,6 +154,232 @@ STEP_MODEL_REQUIREMENTS = _load_step_model_requirements()
 
 logger.info(f"🔧 StepFactory v11.1 실제 구조 반영: {'✅ 성공' if STEP_MODEL_REQUIREMENTS else '❌ 실패'}")
 logger.info(f"🔧 환경: conda={CONDA_INFO['conda_env']}, M3 Max={IS_M3_MAX_DETECTED}, 메모리={MEMORY_GB:.1f}GB")
+
+
+# ==============================================
+# 🔥 동적 Import 해결기 (순환참조 완전 방지)
+# ==============================================
+
+class DynamicImportResolver:
+    """동적 import 해결기 (순환참조 완전 방지)"""
+    
+    @staticmethod
+    def resolve_model_loader():
+        """ModelLoader 동적 해결 (순환참조 방지)"""
+        import_paths = [
+            'app.ai_pipeline.utils.model_loader',
+            'ai_pipeline.utils.model_loader',
+            'utils.model_loader'
+        ]
+        
+        for path in import_paths:
+            try:
+                module = importlib.import_module(path)
+                
+                # 전역 함수 우선
+                if hasattr(module, 'get_global_model_loader'):
+                    loader = module.get_global_model_loader()
+                    if loader:
+                        logger.debug(f"✅ ModelLoader 동적 해결: {path}")
+                        return loader
+                
+                # 클래스 직접 생성
+                if hasattr(module, 'ModelLoader'):
+                    ModelLoaderClass = module.ModelLoader
+                    loader = ModelLoaderClass()
+                    logger.debug(f"✅ ModelLoader 클래스 생성: {path}")
+                    return loader
+                    
+            except ImportError:
+                continue
+        
+        # 완전 실패 시 Mock 반환
+        logger.warning("⚠️ ModelLoader 해결 실패, Mock 사용")
+        return DynamicImportResolver._create_mock_model_loader()
+    
+    @staticmethod
+    def resolve_memory_manager():
+        """MemoryManager 동적 해결 (순환참조 방지)"""
+        import_paths = [
+            'app.ai_pipeline.utils.memory_manager',
+            'ai_pipeline.utils.memory_manager',
+            'utils.memory_manager'
+        ]
+        
+        for path in import_paths:
+            try:
+                module = importlib.import_module(path)
+                
+                if hasattr(module, 'get_global_memory_manager'):
+                    manager = module.get_global_memory_manager()
+                    if manager:
+                        logger.debug(f"✅ MemoryManager 동적 해결: {path}")
+                        return manager
+                
+                if hasattr(module, 'MemoryManager'):
+                    MemoryManagerClass = module.MemoryManager
+                    manager = MemoryManagerClass()
+                    logger.debug(f"✅ MemoryManager 클래스 생성: {path}")
+                    return manager
+                    
+            except ImportError:
+                continue
+        
+        logger.warning("⚠️ MemoryManager 해결 실패, Mock 사용")
+        return DynamicImportResolver._create_mock_memory_manager()
+    
+    @staticmethod
+    def resolve_data_converter():
+        """DataConverter 동적 해결 (순환참조 방지)"""
+        import_paths = [
+            'app.ai_pipeline.utils.data_converter',
+            'ai_pipeline.utils.data_converter',
+            'utils.data_converter'
+        ]
+        
+        for path in import_paths:
+            try:
+                module = importlib.import_module(path)
+                
+                if hasattr(module, 'get_global_data_converter'):
+                    converter = module.get_global_data_converter()
+                    if converter:
+                        logger.debug(f"✅ DataConverter 동적 해결: {path}")
+                        return converter
+                
+                if hasattr(module, 'DataConverter'):
+                    DataConverterClass = module.DataConverter
+                    converter = DataConverterClass()
+                    logger.debug(f"✅ DataConverter 클래스 생성: {path}")
+                    return converter
+                    
+            except ImportError:
+                continue
+        
+        logger.warning("⚠️ DataConverter 해결 실패, Mock 사용")
+        return DynamicImportResolver._create_mock_data_converter()
+    
+    @staticmethod
+    def resolve_di_container():
+        """DI Container 동적 해결 (순환참조 방지)"""
+        import_paths = [
+            'app.core.di_container',
+            'core.di_container',
+            '...core.di_container'
+        ]
+        
+        for path in import_paths:
+            try:
+                module = importlib.import_module(path)
+                
+                if hasattr(module, 'get_global_container'):
+                    container = module.get_global_container()
+                    if container:
+                        logger.debug(f"✅ DIContainer 동적 해결: {path}")
+                        return container
+                        
+            except ImportError:
+                continue
+        
+        logger.warning("⚠️ DIContainer 해결 실패")
+        return None
+    
+    @staticmethod
+    def resolve_step_factory():
+        """StepFactory 동적 해결 (순환참조 방지) - 절대 사용하지 말 것!"""
+        # ⚠️ 이 함수는 순환참조를 만들 수 있으므로 사용 금지
+        logger.warning("⚠️ StepFactory 동적 해결 요청됨 - 순환참조 위험!")
+        return None
+    
+    @staticmethod
+    def _create_mock_model_loader():
+        """Mock ModelLoader (순환참조 방지)"""
+        class MockModelLoader:
+            def __init__(self):
+                self.models = {}
+                self.device = 'cpu'
+                self.is_initialized = True
+            
+            def get_model(self, model_name: str):
+                if model_name not in self.models:
+                    self.models[model_name] = {
+                        "name": model_name,
+                        "device": self.device,
+                        "type": "mock_model",
+                        "loaded": True,
+                        "size_mb": 50.0
+                    }
+                return self.models[model_name]
+            
+            def load_model(self, model_name: str):
+                return self.get_model(model_name)
+            
+            def initialize(self):
+                return True
+            
+            def cleanup_models(self):
+                self.models.clear()
+        
+        return MockModelLoader()
+    
+    @staticmethod
+    def _create_mock_memory_manager():
+        """Mock MemoryManager (순환참조 방지)"""
+        class MockMemoryManager:
+            def __init__(self):
+                self.optimization_count = 0
+                self.is_initialized = True
+            
+            def optimize_memory(self, aggressive: bool = False):
+                try:
+                    gc.collect()
+                    self.optimization_count += 1
+                    return {
+                        "success": True,
+                        "method": "mock_optimization",
+                        "count": self.optimization_count,
+                        "memory_freed_mb": 50.0
+                    }
+                except Exception as e:
+                    return {"success": False, "error": str(e)}
+            
+            def get_memory_info(self):
+                return {
+                    "total_gb": 16.0,
+                    "available_gb": 11.2,
+                    "percent": 30.0,
+                    "device": 'cpu'
+                }
+            
+            def cleanup(self):
+                self.optimize_memory(aggressive=True)
+        
+        return MockMemoryManager()
+    
+    @staticmethod
+    def _create_mock_data_converter():
+        """Mock DataConverter (순환참조 방지)"""
+        class MockDataConverter:
+            def __init__(self):
+                self.conversion_count = 0
+                self.is_initialized = True
+            
+            def convert(self, data, target_format: str):
+                self.conversion_count += 1
+                return {
+                    "converted_data": f"mock_converted_{target_format}_{self.conversion_count}",
+                    "format": target_format,
+                    "conversion_count": self.conversion_count,
+                    "success": True
+                }
+            
+            def get_supported_formats(self):
+                return ["tensor", "numpy", "pil", "cv2", "base64"]
+            
+            def cleanup(self):
+                self.conversion_count = 0
+        
+        return MockDataConverter()
 
 # ==============================================
 # 🔥 실제 AI 모델 구조 (step_interface.py v5.2 기반)
@@ -694,6 +928,42 @@ class RealGitHubDependencyResolver:
         self._resolution_attempts: Dict[str, int] = {}
         self._max_attempts = 3
     
+
+    def _resolve_real_github_di_container(self):
+        """실제 DI Container 해결 (지연 import로 순환참조 방지)"""
+        try:
+            with self._lock:
+                cache_key = "real_github_di_container"
+                if cache_key in self._resolved_cache:
+                    return self._resolved_cache[cache_key]
+                
+                # 🔥 지연 import로 순환참조 방지
+                try:
+                    import importlib
+                    module = importlib.import_module('app.core.di_container')
+                    if hasattr(module, 'get_global_container'):
+                        di_container = module.get_global_container()
+                        if di_container:
+                            self._resolved_cache[cache_key] = di_container
+                            self.logger.info("✅ 실제 GitHub DIContainer 해결 완료")
+                            return di_container
+                            
+                except ImportError:
+                    try:
+                        module = importlib.import_module('...core.di_container', package=__name__)
+                        if hasattr(module, 'get_global_container'):
+                            di_container = module.get_global_container()
+                            if di_container:
+                                self._resolved_cache[cache_key] = di_container
+                                self.logger.info("✅ 실제 GitHub DIContainer 해결 완료 (상대 경로)")
+                                return di_container
+                    except ImportError:
+                        return None
+                        
+        except Exception as e:
+            self.logger.debug(f"실제 GitHub DIContainer 해결 실패: {e}")
+            return None
+        
     def resolve_enhanced_github_dependencies_for_constructor(self, config: RealGitHubStepConfig) -> Dict[str, Any]:
         """실제 GitHub 의존성 해결 (생성자용) - DetailedDataSpec 완전 활용 + 순환참조 해결"""
         try:
@@ -1680,6 +1950,7 @@ class StepFactory:
     # 🔥 실제 GitHub Step 생성 메서드들 (기존 유지, 순환참조 해결)
     # ==============================================
 
+
     def create_step(
         self,
         step_type: Union[StepType, str],
@@ -1690,31 +1961,26 @@ class StepFactory:
         start_time = time.time()
         
         try:
-            # Step 타입 정규화
-            if isinstance(step_type, str):
-                try:
-                    step_type = StepType(step_type.lower())
-                except ValueError:
-                    if self.is_step_registered(step_type):
-                        return self._create_step_from_registered(step_type, use_cache, **kwargs)
-                    
-                    return RealGitHubStepCreationResult(
-                        success=False,
-                        error_message=f"지원하지 않는 실제 GitHub Step 타입: {step_type}",
-                        creation_time=time.time() - start_time
-                    )
+            # 순환참조 감지
+            step_key = str(step_type)
+            if step_key in self._resolving_stack:
+                circular_path = ' -> '.join(self._resolving_stack + [step_key])
+                self._stats['circular_references_prevented'] += 1
+                logger.error(f"❌ 순환참조 감지: {circular_path}")
+                return RealGitHubStepCreationResult(
+                    success=False,
+                    error_message=f"순환참조 감지: {circular_path}",
+                    creation_time=time.time() - start_time
+                )
             
-            step_id = self._get_step_id_from_type(step_type)
+            self._resolving_stack.append(step_key)
             
-            # 실제 GitHub 등록된 Step이 있으면 우선 사용
-            if step_id and self.is_step_registered(step_id):
-                self.logger.info(f"🎯 {step_type.value} 실제 GitHub 등록된 Step 클래스 사용")
-                return self._create_step_from_registered(step_id, use_cache, **kwargs)
-            
-            # 등록된 Step이 없으면 기존 방식 사용
-            self.logger.info(f"🎯 {step_type.value} 실제 GitHub 동적 로딩 방식 사용")
-            return self._create_step_legacy_way(step_type, use_cache, **kwargs)
-            
+            try:
+                # 기존 Step 생성 로직...
+                return self._create_step_internal(step_type, use_cache, **kwargs)
+            finally:
+                self._resolving_stack.remove(step_key)
+                
         except Exception as e:
             with self._lock:
                 self._stats['failed_creations'] += 1
@@ -2530,6 +2796,9 @@ class StepFactory:
             with self._lock:
                 self._step_cache.clear()
                 self.dependency_resolver.clear_cache()
+                    
+                self._circular_detected.clear()
+                self._resolving_stack.clear()
                 
                 # 실제 GitHub M3 Max 메모리 정리
                 if IS_M3_MAX_DETECTED and MPS_AVAILABLE and PYTORCH_AVAILABLE:

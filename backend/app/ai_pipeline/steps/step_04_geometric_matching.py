@@ -14,25 +14,6 @@
 ✅ TYPE_CHECKING 패턴 순환참조 방지
 ✅ 프로덕션 레벨 안정성
 ✅ 실제 옷 갈아입히기 가능한 모든 알고리즘 구체 구현
-
-실제 AI 모델 파일 활용:
-- gmm_final.pth (44.7MB) - Geometric Matching Module
-- tps_network.pth (527.8MB) - Thin-Plate Spline Transformation Network
-- sam_vit_h_4b8939.pth (2445.7MB) - Segment Anything Model (공유)
-- resnet101_geometric.pth (170.5MB) - ResNet-101 기반 특징 추출
-- raft-things.pth (20.1MB) - Optical Flow 계산
-
-처리 흐름:
-1. StepFactory.create_step(StepType.GEOMETRIC_MATCHING) → GeometricMatchingStep 생성
-2. ModelLoader 의존성 주입 → set_model_loader()
-3. MemoryManager 의존성 주입 → set_memory_manager()
-4. 초기화 실행 → initialize() → 실제 AI 모델 로딩
-5. AI 추론 실행 → _run_ai_inference() → GMM + TPS 기반 변형 계산
-6. 실제 의류 워핑 → 변형 그리드 생성 → 다음 Step으로 데이터 전달
-
-Author: MyCloset AI Team
-Date: 2025-07-30
-Version: v27.0 (Complete AI Integration + Virtual Clothing Fitting)
 """
 
 # ==============================================
@@ -167,11 +148,32 @@ def get_base_step_mixin_class():
             from .base_step_mixin import BaseStepMixin
             return BaseStepMixin
         except ImportError:
-            logger.error("❌ BaseStepMixin 동적 import 실패")
+            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
             return None
-        
+
 BaseStepMixin = get_base_step_mixin_class()
 
+# ==============================================
+# 🔥 ProcessingStatus 클래스 정의
+# ==============================================
+
+@dataclass
+class ProcessingStatus:
+    """처리 상태 추적 클래스"""
+    models_loaded: bool = False
+    advanced_ai_loaded: bool = False
+    model_creation_success: bool = False
+    requirements_compatible: bool = False
+    detailed_data_spec_loaded: bool = False
+    initialization_complete: bool = False
+    last_updated: float = field(default_factory=time.time)
+    
+    def update_status(self, **kwargs):
+        """상태 업데이트"""
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self.last_updated = time.time()
 
 # ============================================================================
 # 🔥 1. step_model_requirements.py 완전 호환 시스템 (중요도: ★★★★★)
@@ -187,59 +189,6 @@ def get_step_model_request():
     except ImportError as e:
         logging.debug(f"step_model_requests import 실패: {e}")
         return None
-
-def _load_requirements_config(self):
-    """step_model_requirements.py 요구사항 설정 로드"""
-    if self.step_request:
-        # step_model_requirements.py 기준 설정
-        self.matching_config = {
-            'method': 'advanced_deeplab_aspp_self_attention',
-            'input_size': self.step_request.input_size,  # (256, 192)
-            'output_format': self.step_request.output_format,  # "transformation_matrix"
-            'model_architecture': self.step_request.model_architecture,  # "gmm_tps"
-            'batch_size': self.step_request.batch_size,  # 2
-            'memory_fraction': self.step_request.memory_fraction,  # 0.2
-            'device': self.step_request.device,  # "auto"
-            'precision': self.step_request.precision,  # "fp16"
-            'use_real_models': True,
-            'detailed_data_spec': True,
-            'algorithm_type': 'advanced_deeplab_aspp_self_attention'
-        }
-        
-        self.advanced_config = {
-        'method': 'advanced_deeplab_aspp_self_attention',
-        'algorithm_type': 'advanced_deeplab_aspp_self_attention',
-        'use_real_models': True,
-        'ai_enhanced': kwargs.get('ai_enhanced', True),
-        'batch_size': 2,
-        'precision': 'fp16'
-         }
-    
-        # DetailedDataSpec 로드
-        if hasattr(self.step_request, 'data_spec'):
-            self.data_spec = self.step_request.data_spec
-            self.status.detailed_data_spec_loaded = True
-            self.logger.info("✅ DetailedDataSpec 로드 완료")
-        else:
-            self.data_spec = None
-            self.logger.warning("⚠️ DetailedDataSpec 없음")
-    else:
-        self._load_fallback_config()
-
-def _load_fallback_config(self):
-    """폴백 설정 로드"""
-    self.matching_config = {
-        'method': 'advanced_deeplab_aspp_self_attention',
-        'input_size': (256, 192),
-        'output_format': 'transformation_matrix',
-        'batch_size': 2,
-        'device': self.device,
-        'use_real_models': True,
-        'algorithm_type': 'advanced_deeplab_aspp_self_attention'
-    }
-    self.data_spec = None
-    self.logger.warning("⚠️ step_model_requirements.py 요구사항 로드 실패 - 폴백 설정 사용")
-
 
 # ==============================================
 # 🔥 실제 AI 모델 클래스들 (옷 갈아입히기 특화)
@@ -616,7 +565,6 @@ class KeypointMatchingNetwork(nn.Module):
             'descriptors': descriptors,
             'features': features
         }
-
 
 # ============================================================================
 # 🔥 2. 고급 딥러닝 알고리즘 클래스들 (중요도: ★★★★★)
@@ -1280,18 +1228,6 @@ class AdvancedGeometricMatcher:
         
         return best_inliers_src, best_inliers_dst
 
-
-# ============================================================================
-# 🔥 3. 고급 기하학적 매칭 알고리즘 (중요도: ★★★★)
-# ============================================================================
-
-class AdvancedGeometricMatcher:
-    """고급 기하학적 매칭 알고리즘 - Procrustes + RANSAC"""
-    
-    def __init__(self, device="cpu"):
-        self.device = device
-        self.logger = logging.getLogger(self.__class__.__name__)
-        
     def compute_transformation_matrix_procrustes(self, src_keypoints: torch.Tensor, 
                                                dst_keypoints: torch.Tensor) -> torch.Tensor:
         """Procrustes 분석 기반 최적 변형 계산"""
@@ -1316,7 +1252,6 @@ class AdvancedGeometricMatcher:
                 return error
             
             # 최적화
-            from scipy.optimize import minimize
             initial_params = [0, 0, 1, 0]
             result = minimize(objective, initial_params, method='BFGS')
             
@@ -1335,62 +1270,7 @@ class AdvancedGeometricMatcher:
             
         except Exception as e:
             self.logger.warning(f"Procrustes 분석 실패: {e}")
-            return self._compute_with_pytorch(src_keypoints.unsqueeze(0), dst_keypoints.unsqueeze(0))
-
-    def ransac_filtering(self, matches: List[Tuple[int, int, float]], 
-                        threshold: float = 5.0, max_trials: int = 1000) -> List[Tuple[int, int, float]]:
-        """RANSAC 이상치 제거"""
-        if len(matches) < 4:
-            return matches
-        
-        best_inliers = []
-        best_score = 0
-        
-        for _ in range(max_trials):
-            sample_indices = np.random.choice(len(matches), 4, replace=False)
-            sample_matches = [matches[i] for i in sample_indices]
-            
-            try:
-                transform = self._compute_affine_transform(sample_matches)
-                
-                inliers = []
-                for match in matches:
-                    error = self._compute_transform_error(match, transform)
-                    if error < threshold:
-                        inliers.append(match)
-                
-                if len(inliers) > best_score:
-                    best_score = len(inliers)
-                    best_inliers = inliers
-                    
-            except Exception:
-                continue
-        
-        return best_inliers if best_inliers else matches
-
-    def _compute_affine_transform(self, matches: List[Tuple[int, int, float]]) -> np.ndarray:
-        """어핀 변형 계산"""
-        if len(matches) < 3:
-            return np.eye(3)
-        
-        src_pts = np.array([[i, j] for i, j, _ in matches[:4]], dtype=np.float32)
-        dst_pts = np.array([[j, i] for i, j, _ in matches[:4]], dtype=np.float32)
-        
-        try:
-            import cv2
-            transform = cv2.getAffineTransform(src_pts[:3], dst_pts[:3])
-            return np.vstack([transform, [0, 0, 1]])
-        except:
-            return np.eye(3)
-
-    def _compute_transform_error(self, match: Tuple[int, int, float], 
-                               transform: np.ndarray) -> float:
-        """변형 오차 계산"""
-        i, j, _ = match
-        src_pt = np.array([i, j, 1])
-        transformed_pt = transform @ src_pt
-        error = np.linalg.norm(transformed_pt[:2] - np.array([j, i]))
-        return error
+            return torch.eye(2, 3, device=src_keypoints.device).unsqueeze(0)
 
 # ============================================================================
 # 🔥 4. Enhanced Model Path Mapping (중요도: ★★★★)
@@ -1415,7 +1295,7 @@ class EnhancedModelPathMapper:
         """실제 ai_models 디렉토리 자동 탐지 (step_model_requirements.py 기준)"""
         # step_model_requirements.py에서 정의된 검색 경로 사용
         if self.step_request:
-            search_paths = self.step_request.search_paths + self.step_request.fallback_paths
+            search_paths = getattr(self.step_request, 'search_paths', []) + getattr(self.step_request, 'fallback_paths', [])
         else:
             search_paths = [
                 "step_04_geometric_matching",
@@ -1442,6 +1322,46 @@ class EnhancedModelPathMapper:
                         
         return Path.cwd() / "ai_models"
     
+    def find_model_file(self, filename: str) -> Optional[Path]:
+        """모델 파일 찾기"""
+        try:
+            # 캐시 확인
+            if filename in self.model_cache:
+                return self.model_cache[filename]
+            
+            # 검색 경로
+            search_dirs = [
+                self.ai_models_root,
+                self.ai_models_root / "step_04_geometric_matching",
+                self.ai_models_root / "step_04_geometric_matching" / "ultra_models",
+                self.ai_models_root / "step_04_geometric_matching" / "models",
+                self.ai_models_root / "step_03_cloth_segmentation",  # SAM 공유
+                self.ai_models_root / "checkpoints" / "step_04_geometric_matching",
+            ]
+            
+            for search_dir in search_dirs:
+                if search_dir.exists():
+                    # 직접 파일 찾기
+                    file_path = search_dir / filename
+                    if file_path.exists():
+                        self.model_cache[filename] = file_path
+                        return file_path
+                    
+                    # 재귀 검색
+                    try:
+                        for found_path in search_dir.rglob(filename):
+                            if found_path.is_file():
+                                self.model_cache[filename] = found_path
+                                return found_path
+                    except Exception:
+                        continue
+            
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"모델 파일 검색 실패 {filename}: {e}")
+            return None
+    
     def get_geometric_matching_models(self) -> Dict[str, Path]:
         """기하학적 매칭용 모델들 매핑 (step_model_requirements.py 기준)"""
         result = {}
@@ -1449,14 +1369,18 @@ class EnhancedModelPathMapper:
         # step_model_requirements.py에서 정의된 파일들
         if self.step_request:
             # 주요 파일
-            primary_file = self.step_request.primary_file  # gmm_final.pth
+            primary_file = getattr(self.step_request, 'primary_file', 'gmm_final.pth')
             primary_path = self.find_model_file(primary_file)
             if primary_path:
                 result['gmm'] = primary_path
                 self.logger.info(f"✅ 주요 모델 발견: {primary_file} -> {primary_path.name}")
             
             # 대체 파일들
-            for alt_file, alt_size in self.step_request.alternative_files:
+            alternative_files = getattr(self.step_request, 'alternative_files', [])
+            for alt_file in alternative_files:
+                if isinstance(alt_file, (list, tuple)):
+                    alt_file = alt_file[0]  # (filename, size) 튜플인 경우
+                
                 alt_path = self.find_model_file(alt_file)
                 if alt_path:
                     if alt_file == "tps_network.pth":
@@ -1510,15 +1434,15 @@ class GeometricMatchingStep(BaseStepMixin):
         self.optical_flow_model = None  # Optical Flow
         self.keypoint_matcher = None    # Keypoint Matching
         self.sam_model = None           # SAM (공유)
-        
-        # 🔥 여기에 추가: 3번 파일의 고급 AI 모델들
         self.advanced_geometric_ai = None       # CompleteAdvancedGeometricMatchingAI
-        self.status = ProcessingStatus()        # 처리 상태 추적
+        
+        # 처리 상태
+        self.status = ProcessingStatus()
         
         # 모델 경로
         self.model_paths = {}
         
-            # 🔥 여기에 추가: step_model_requirements.py 요구사항 로드
+        # step_model_requirements.py 요구사항 로드
         try:
             self.step_request = get_step_model_request()
             if self.step_request:
@@ -1531,7 +1455,7 @@ class GeometricMatchingStep(BaseStepMixin):
             self.step_request = None
             self._load_fallback_config()
         
-        # 🔥 여기에 추가: Enhanced Model Path Mapping
+        # Enhanced Model Path Mapping
         ai_models_root = kwargs.get('ai_models_root', 'ai_models')
         try:
             self.model_mapper = EnhancedModelPathMapper(ai_models_root)
@@ -1539,23 +1463,31 @@ class GeometricMatchingStep(BaseStepMixin):
             self.logger.debug(f"ModelPathMapper 생성 실패: {e}")
             self.model_mapper = None
         
-
         # 기하학적 매칭 설정
-                # 기하학적 매칭 설정
         self.matching_config = {
-        'input_size': (256, 192),
-        'output_size': (256, 192),
-        'keypoint_threshold': 0.3,
-        'ransac_threshold': 5.0,
-        'max_ransac_trials': 1000,
-        'transformation_type': 'tps',  # 'tps', 'affine', 'perspective'
-        'enable_optical_flow': True,
-        'enable_keypoint_matching': True,
-        'confidence_threshold': kwargs.get('confidence_threshold', 0.7),
-        'method': 'advanced_deeplab_aspp_self_attention',
-        'algorithm_type': 'advanced_deeplab_aspp_self_attention',
-        'use_real_models': True,
-        'ai_enhanced': kwargs.get('ai_enhanced', True)
+            'input_size': (256, 192),
+            'output_size': (256, 192),
+            'keypoint_threshold': 0.3,
+            'ransac_threshold': 5.0,
+            'max_ransac_trials': 1000,
+            'transformation_type': 'tps',  # 'tps', 'affine', 'perspective'
+            'enable_optical_flow': True,
+            'enable_keypoint_matching': True,
+            'confidence_threshold': kwargs.get('confidence_threshold', 0.7),
+            'method': 'advanced_deeplab_aspp_self_attention',
+            'algorithm_type': 'advanced_deeplab_aspp_self_attention',
+            'use_real_models': True,
+            'ai_enhanced': kwargs.get('ai_enhanced', True)
+        }
+        
+        # 고급 설정
+        self.advanced_config = {
+            'method': 'advanced_deeplab_aspp_self_attention',
+            'algorithm_type': 'advanced_deeplab_aspp_self_attention',
+            'use_real_models': True,
+            'ai_enhanced': kwargs.get('ai_enhanced', True),
+            'batch_size': 2,
+            'precision': 'fp16'
         }
         
         # 알고리즘 매처
@@ -1570,7 +1502,7 @@ class GeometricMatchingStep(BaseStepMixin):
         # 성능 통계
         self._initialize_performance_stats()
         
-        # 🔥 여기에 추가: 3번 파일의 통계 시스템
+        # 통계 시스템
         self._init_statistics()
         
         # 캐시 시스템 (M3 Max 최적화)
@@ -1578,13 +1510,11 @@ class GeometricMatchingStep(BaseStepMixin):
         self.cache_max_size = 100 if IS_M3_MAX else 50
         
         self.logger.info(f"✅ {self.step_name} v27.0 초기화 완료 (device: {self.device})")
-    
-        self.logger.info(f"✅ {self.step_name} v27.1 초기화 완료 (device: {self.device})")
 
     def _load_requirements_config(self):
         """step_model_requirements.py 요구사항 설정 로드"""
         if self.step_request:
-            # 🔥 기존 matching_config는 유지하고 새로운 키들만 추가
+            # 기존 matching_config는 유지하고 새로운 키들만 추가
             additional_config = {
                 'method': 'advanced_deeplab_aspp_self_attention',
                 'algorithm_type': 'advanced_deeplab_aspp_self_attention',
@@ -1602,7 +1532,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 'model_architecture': getattr(self.step_request, 'model_architecture', 'gmm_tps')
             }
             
-            # 🔥 안전하게 병합 (기존 키는 유지, 새로운 키만 추가)
+            # 안전하게 병합 (기존 키는 유지, 새로운 키만 추가)
             self.matching_config.update(requirements_config)
             self.advanced_config.update(additional_config)
             
@@ -1619,7 +1549,7 @@ class GeometricMatchingStep(BaseStepMixin):
 
     def _load_fallback_config(self):
         """폴백 설정 로드"""
-        # 🔥 기존 matching_config는 건드리지 않고 advanced_config만 설정
+        # 기존 matching_config는 건드리지 않고 advanced_config만 설정
         self.advanced_config = {
             'method': 'advanced_deeplab_aspp_self_attention',
             'algorithm_type': 'advanced_deeplab_aspp_self_attention',
@@ -1630,7 +1560,7 @@ class GeometricMatchingStep(BaseStepMixin):
         self.logger.warning("⚠️ step_model_requirements.py 요구사항 로드 실패 - 폴백 설정 사용")
 
     def _init_statistics(self):
-        """통계 초기화 (3번 파일에서 추가)"""
+        """통계 초기화"""
         self.statistics = {
             'total_processed': 0,
             'successful_matches': 0,
@@ -1757,6 +1687,7 @@ class GeometricMatchingStep(BaseStepMixin):
             
             self.is_initialized = True
             self.is_ready = True
+            self.status.initialization_complete = True
             
             self.logger.info(f"✅ {self.step_name} v27.0 초기화 완료 (로딩된 모델: {self.performance_stats['models_loaded']}개)")
             return True
@@ -1816,16 +1747,13 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ 모델 경로 탐지 실패: {e}")
             self.model_paths = {}
-    
         
     async def _load_ai_models(self) -> bool:
-        """실제 AI 모델 로딩 (3번 파일 고급 기능 추가)"""
+        """실제 AI 모델 로딩"""
         try:
             self.logger.info("🔄 실제 AI 모델 체크포인트 로딩 시작")
             
             loaded_count = 0
-            
-            # 🔥 1. 기존 1번 파일 모델들 로딩 (유지)
             
             # GMM (Geometric Matching Module) 로딩
             if 'gmm' in self.model_paths:
@@ -1871,8 +1799,6 @@ class GeometricMatchingStep(BaseStepMixin):
             except Exception as e:
                 self.logger.warning(f"⚠️ Keypoint Matching 네트워크 로딩 실패: {e}")
             
-            # 🔥 2. 3번 파일의 고급 AI 모델들 추가 로딩
-            
             # CompleteAdvancedGeometricMatchingAI 로딩
             try:
                 self.advanced_geometric_ai = CompleteAdvancedGeometricMatchingAI(
@@ -1889,28 +1815,14 @@ class GeometricMatchingStep(BaseStepMixin):
             except Exception as e:
                 self.logger.warning(f"⚠️ CompleteAdvancedGeometricMatchingAI 로딩 실패: {e}")
             
-            # AdvancedGeometricMatcher 업그레이드 (3번 파일 버전으로)
-            try:
-                # 기존 매처를 3번 파일의 고급 버전으로 교체
-                self.geometric_matcher = AdvancedGeometricMatcher(self.device)
-                # Procrustes 분석 기능 확인
-                if hasattr(self.geometric_matcher, 'compute_transformation_matrix_procrustes'):
-                    self.logger.info("✅ AdvancedGeometricMatcher (Procrustes 지원) 로딩 완료")
-                else:
-                    self.logger.info("✅ AdvancedGeometricMatcher (기본) 로딩 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ AdvancedGeometricMatcher 업그레이드 실패: {e}")
-            
-            # 🔥 3. 상태 업데이트
+            # 상태 업데이트
             self.performance_stats['models_loaded'] = loaded_count
             self.status.models_loaded = loaded_count > 0
             self.status.advanced_ai_loaded = self.advanced_geometric_ai is not None
             self.status.model_creation_success = loaded_count > 0
             
             if loaded_count > 0:
-                self.logger.info(f"✅ 실제 AI 모델 로딩 완료: {loaded_count}개 (기존 + 고급)")
-                self.logger.info(f"   - 기존 모델: GMM, TPS, OpticalFlow, Keypoint")
-                self.logger.info(f"   - 고급 모델: CompleteAdvancedGeometricMatchingAI")
+                self.logger.info(f"✅ 실제 AI 모델 로딩 완료: {loaded_count}개")
                 return True
             else:
                 self.logger.error("❌ 로딩된 실제 AI 모델이 없습니다")
@@ -1921,7 +1833,7 @@ class GeometricMatchingStep(BaseStepMixin):
             return False
 
     def _load_pretrained_weights(self, checkpoint_path: Path):
-        """사전 학습된 가중치 로딩 (3번 파일에서 추가)"""
+        """사전 학습된 가중치 로딩"""
         try:
             if not checkpoint_path.exists():
                 self.logger.warning(f"⚠️ 체크포인트 파일 없음: {checkpoint_path}")
@@ -1930,7 +1842,7 @@ class GeometricMatchingStep(BaseStepMixin):
             self.logger.info(f"🔄 고급 AI 체크포인트 로딩 시도: {checkpoint_path}")
             
             # 체크포인트 로딩
-            checkpoint = torch.load(checkpoint_path, map_location='cpu')
+            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
             
             # 다양한 체크포인트 형식 처리
             if isinstance(checkpoint, dict):
@@ -1975,7 +1887,6 @@ class GeometricMatchingStep(BaseStepMixin):
                 
         except Exception as e:
             self.logger.warning(f"⚠️ 고급 AI 체크포인트 로딩 실패: {e}")
-
 
     def _safe_load_checkpoint(self, checkpoint_path: Path) -> Optional[Any]:
         """안전한 체크포인트 로딩"""
@@ -2082,12 +1993,12 @@ class GeometricMatchingStep(BaseStepMixin):
     # ==============================================
     
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-        """실제 AI 기반 기하학적 매칭 추론 (3번 파일 고급 기능 추가)"""
+        """실제 AI 기반 기하학적 매칭 추론"""
         try:
             start_time = time.time()
             self.logger.info(f"🧠 {self.step_name} 실제 AI 추론 시작...")
             
-            # 1. 입력 데이터 검증 및 전처리 (기존 유지)
+            # 1. 입력 데이터 검증 및 전처리
             person_image = processed_input.get('person_image')
             clothing_image = processed_input.get('clothing_image')
             person_parsing = processed_input.get('person_parsing', {})
@@ -2097,11 +2008,11 @@ class GeometricMatchingStep(BaseStepMixin):
             if person_image is None or clothing_image is None:
                 raise ValueError("필수 입력 데이터 없음: person_image, clothing_image")
             
-            # 2. 이미지 텐서 변환 (기존 유지)
+            # 2. 이미지 텐서 변환
             person_tensor = self._prepare_image_tensor(person_image)
             clothing_tensor = self._prepare_image_tensor(clothing_image)
             
-            # 3. 캐시 확인 (기존 유지)
+            # 3. 캐시 확인
             cache_key = self._generate_cache_key(person_tensor, clothing_tensor)
             if cache_key in self.prediction_cache:
                 cached_result = self.prediction_cache[cache_key]
@@ -2111,7 +2022,7 @@ class GeometricMatchingStep(BaseStepMixin):
             
             results = {}
             
-            # 🔥 4. 기존 1번 파일 AI 모델들 실행 (유지)
+            # 4. 기존 AI 모델들 실행
             
             # GMM 기반 기하학적 매칭 (핵심)
             if self.gmm_model is not None:
@@ -2142,7 +2053,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 except Exception as e:
                     self.logger.warning(f"⚠️ Optical Flow 실패: {e}")
             
-            # 🔥 5. 3번 파일의 고급 AI 모델 실행 (추가)
+            # 5. 고급 AI 모델 실행
             
             # CompleteAdvancedGeometricMatchingAI 실행
             if self.advanced_geometric_ai is not None:
@@ -2153,7 +2064,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 except Exception as e:
                     self.logger.warning(f"⚠️ CompleteAdvancedGeometricMatchingAI 실행 실패: {e}")
             
-            # Procrustes 분석 기반 키포인트 매칭 (3번 파일에서 추가)
+            # Procrustes 분석 기반 키포인트 매칭
             if (self.geometric_matcher is not None and 
                 hasattr(self.geometric_matcher, 'compute_transformation_matrix_procrustes')):
                 try:
@@ -2166,23 +2077,24 @@ class GeometricMatchingStep(BaseStepMixin):
                         
                         # Procrustes 분석 기반 최적 변형
                         transformation_matrix = self.geometric_matcher.compute_transformation_matrix_procrustes(
-                            clothing_keypoints, person_keypoints
+                            torch.tensor(clothing_keypoints, device=self.device),
+                            torch.tensor(person_keypoints, device=self.device)
                         )
                         
                         results['procrustes_transform'] = transformation_matrix
-                        results['keypoints'] = person_keypoints.cpu().numpy().tolist()
+                        results['keypoints'] = person_keypoints.tolist() if hasattr(person_keypoints, 'tolist') else person_keypoints
                         self.logger.info("✅ Procrustes 분석 기반 매칭 완료")
                     
                 except Exception as e:
                     self.logger.warning(f"⚠️ Procrustes 분석 실패: {e}")
             
-            # 🔥 6. 고급 결과 융합 (3번 파일 방식으로 업그레이드)
+            # 6. 고급 결과 융합
             final_result = self._fuse_matching_results_advanced(results, person_tensor, clothing_tensor)
             
-            # 7. 변형 품질 평가 (기존 + 고급)
+            # 7. 변형 품질 평가
             processing_time = time.time() - start_time
-            confidence = self._compute_enhanced_confidence(results)  # 3번 파일 방식
-            quality_score = self._compute_quality_score_advanced(results)  # 3번 파일 방식
+            confidence = self._compute_enhanced_confidence(results)
+            quality_score = self._compute_quality_score_advanced(results)
             
             final_result.update({
                 'success': True,
@@ -2190,7 +2102,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 'confidence': confidence,
                 'quality_score': quality_score,
                 'ai_models_used': list(results.keys()),
-                'algorithms_used': self._get_used_algorithms(results),  # 3번 파일에서 추가
+                'algorithms_used': self._get_used_algorithms(results),
                 'device': self.device,
                 'real_ai_inference': True,
                 'cache_hit': False,
@@ -2199,10 +2111,10 @@ class GeometricMatchingStep(BaseStepMixin):
                 'version': 'v27.1'
             })
             
-            # 8. 캐시에 저장 (기존 유지)
+            # 8. 캐시에 저장
             self._save_to_cache(cache_key, final_result)
             
-            # 9. 통계 업데이트 (기존 + 3번 파일 방식)
+            # 9. 통계 업데이트
             self._update_performance_stats(processing_time, True, confidence, quality_score)
             self._update_statistics_advanced(processing_time, True, confidence, quality_score)
             
@@ -2217,18 +2129,18 @@ class GeometricMatchingStep(BaseStepMixin):
             # 폴백: 기본 변형 결과
             return self._create_fallback_result(processed_input, str(e))
 
-    # 🔥 고급 결과 융합 메서드 (3번 파일에서 추가)
+    # 고급 결과 융합 메서드
     def _fuse_matching_results_advanced(self, results: Dict[str, Any], 
                                     person_tensor: torch.Tensor, 
                                     clothing_tensor: torch.Tensor) -> Dict[str, Any]:
-        """고급 AI 결과 융합 (3번 파일 방식)"""
+        """고급 AI 결과 융합"""
         
         # 1. 변형 그리드/행렬 우선순위 결정
         transformation_matrix = None
         transformation_grid = None
         warped_clothing = None
         
-        # 고급 AI 결과 우선 사용 (3번 파일에서 추가)
+        # 고급 AI 결과 우선 사용
         if 'advanced_ai' in results:
             adv_result = results['advanced_ai']
             if 'transformation_matrix' in adv_result:
@@ -2238,20 +2150,34 @@ class GeometricMatchingStep(BaseStepMixin):
             if 'warped_clothing' in adv_result:
                 warped_clothing = adv_result['warped_clothing']
         
-        # GMM 결과 보조 활용 (기존 1번 파일)
+        # GMM 결과 보조 활용
         if transformation_matrix is None and 'gmm' in results:
             gmm_result = results['gmm']
             transformation_matrix = gmm_result.get('transformation_matrix')
             transformation_grid = gmm_result.get('transformation_grid')
             warped_clothing = gmm_result.get('warped_clothing')
         
-        # Procrustes 결과 보조 활용 (3번 파일에서 추가)
+        # Procrustes 결과 보조 활용
         if 'procrustes_transform' in results and transformation_matrix is None:
             transformation_matrix = results['procrustes_transform']
         
-        # 나머지는 기존 _fuse_matching_results 로직 유지...
+        # 폴백: Identity 변형
+        if transformation_matrix is None:
+            transformation_matrix = torch.eye(2, 3, device=self.device).unsqueeze(0)
         
-        # 🔥 추가 결과 정리 (3번 파일에서 추가)
+        if transformation_grid is None:
+            transformation_grid = self._create_identity_grid(1, 256, 192)
+        
+        if warped_clothing is None:
+            try:
+                warped_clothing = F.grid_sample(
+                    clothing_tensor, transformation_grid, mode='bilinear',
+                    padding_mode='border', align_corners=False
+                )
+            except Exception:
+                warped_clothing = clothing_tensor.clone()
+        
+        # 추가 결과 정리
         keypoint_heatmaps = None
         confidence_map = None
         edge_features = None
@@ -2267,18 +2193,18 @@ class GeometricMatchingStep(BaseStepMixin):
             'transformation_grid': transformation_grid,
             'warped_clothing': warped_clothing,
             'flow_field': self._generate_flow_field_from_grid(transformation_grid),
-            'keypoint_heatmaps': keypoint_heatmaps,      # 3번 파일에서 추가
-            'confidence_map': confidence_map,            # 3번 파일에서 추가
-            'edge_features': edge_features,              # 3번 파일에서 추가
+            'keypoint_heatmaps': keypoint_heatmaps,
+            'confidence_map': confidence_map,
+            'edge_features': edge_features,
             'keypoints': results.get('keypoints', []),
             'matching_score': self._compute_matching_score(results),
             'fusion_weights': self._get_fusion_weights(results),
             'detailed_results': results
         }
 
-    # 🔥 3번 파일의 고급 평가 함수들 추가
+    # 고급 평가 함수들
     def _compute_enhanced_confidence(self, results: Dict[str, Any]) -> float:
-        """강화된 신뢰도 계산 (3번 파일에서 추가)"""
+        """강화된 신뢰도 계산"""
         confidences = []
         
         # 고급 AI 신뢰도
@@ -2298,7 +2224,7 @@ class GeometricMatchingStep(BaseStepMixin):
             keypoint_confidence = kpt_conf * match_ratio
             confidences.append(keypoint_confidence)
         
-        # Procrustes 매칭 신뢰도 (3번 파일에서 추가)
+        # Procrustes 매칭 신뢰도
         if 'procrustes_transform' in results:
             transform = results['procrustes_transform']
             try:
@@ -2311,7 +2237,7 @@ class GeometricMatchingStep(BaseStepMixin):
         return float(np.mean(confidences)) if confidences else 0.8
 
     def _compute_quality_score_advanced(self, results: Dict[str, Any]) -> float:
-        """고급 품질 점수 계산 (3번 파일에서 추가)"""
+        """고급 품질 점수 계산"""
         quality_factors = []
         
         # 고급 AI 사용 점수
@@ -2332,7 +2258,7 @@ class GeometricMatchingStep(BaseStepMixin):
             kpt_quality = min(1.0, kpt_count / 20.0)
             quality_factors.append(kpt_quality)
         
-        # Edge features 품질 (3번 파일에서 추가)
+        # Edge features 품질
         if 'advanced_ai' in results and 'edge_features' in results['advanced_ai']:
             edge_feat = results['advanced_ai']['edge_features']
             if isinstance(edge_feat, torch.Tensor):
@@ -2342,7 +2268,7 @@ class GeometricMatchingStep(BaseStepMixin):
         return float(np.mean(quality_factors)) if quality_factors else 0.75
 
     def _get_used_algorithms(self, results: Dict[str, Any]) -> List[str]:
-        """사용된 알고리즘 목록 (3번 파일에서 추가)"""
+        """사용된 알고리즘 목록"""
         algorithms = []
         
         if 'advanced_ai' in results:
@@ -2370,7 +2296,7 @@ class GeometricMatchingStep(BaseStepMixin):
 
     def _update_statistics_advanced(self, processing_time: float, success: bool, 
                                 confidence: float, quality_score: float):
-        """고급 통계 업데이트 (3번 파일에서 추가)"""
+        """고급 통계 업데이트"""
         try:
             self.statistics['total_processed'] += 1
             self.statistics['ai_model_calls'] += 1
@@ -2390,9 +2316,6 @@ class GeometricMatchingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.debug(f"고급 통계 업데이트 실패: {e}")
-
-
-
 
     def _prepare_image_tensor(self, image: Any) -> torch.Tensor:
         """이미지를 PyTorch 텐서로 변환"""
@@ -2486,151 +2409,6 @@ class GeometricMatchingStep(BaseStepMixin):
                 'match_count': 0
             }
     
-    def _fuse_matching_results(self, results: Dict[str, Any], 
-                             person_tensor: torch.Tensor, 
-                             clothing_tensor: torch.Tensor) -> Dict[str, Any]:
-        """매칭 결과 융합"""
-        try:
-            # 최종 변형 그리드 및 행렬 결정
-            transformation_matrix = None
-            transformation_grid = None
-            warped_clothing = None
-            
-            # 1. GMM 결과 우선 사용
-            if 'gmm' in results:
-                gmm_result = results['gmm']
-                transformation_matrix = gmm_result.get('transformation_matrix')
-                transformation_grid = gmm_result.get('transformation_grid')
-                warped_clothing = gmm_result.get('warped_clothing')
-            
-            # 2. 키포인트 결과로 보정
-            if 'keypoint' in results and transformation_matrix is not None:
-                keypoint_matrix = results['keypoint']['transformation_matrix']
-                if keypoint_matrix is not None:
-                    # 가중 평균으로 결합
-                    gmm_weight = 0.7
-                    keypoint_weight = 0.3
-                    
-                    # numpy to torch 변환
-                    if isinstance(keypoint_matrix, np.ndarray):
-                        keypoint_matrix_torch = torch.from_numpy(keypoint_matrix[:2, :]).float().to(self.device).unsqueeze(0)
-                    else:
-                        keypoint_matrix_torch = keypoint_matrix
-                    
-                    # 가중 평균
-                    if transformation_matrix.shape == keypoint_matrix_torch.shape:
-                        transformation_matrix = (gmm_weight * transformation_matrix + 
-                                               keypoint_weight * keypoint_matrix_torch)
-            
-            # 3. Optical Flow로 미세 조정
-            if 'optical_flow' in results and transformation_grid is not None:
-                flow = results['optical_flow']
-                # Flow를 그리드에 추가 (미세 조정)
-                if flow.shape[-2:] == transformation_grid.shape[1:3]:
-                    flow_normalized = flow.permute(0, 2, 3, 1) * 0.1  # 미세 조정
-                    transformation_grid = transformation_grid + flow_normalized
-            
-            # 4. 폴백: Identity 변형
-            if transformation_matrix is None:
-                transformation_matrix = torch.eye(2, 3, device=self.device).unsqueeze(0)
-            
-            if transformation_grid is None:
-                transformation_grid = self._create_identity_grid(1, 256, 192)
-            
-            # 5. 의류 이미지 변형 (없는 경우)
-            if warped_clothing is None:
-                try:
-                    warped_clothing = F.grid_sample(
-                        clothing_tensor, transformation_grid, mode='bilinear',
-                        padding_mode='border', align_corners=False
-                    )
-                except Exception:
-                    warped_clothing = clothing_tensor.clone()
-            
-            # 6. Flow field 생성
-            flow_field = self._generate_flow_field_from_grid(transformation_grid)
-            
-            # 7. 매칭 점수 계산
-            matching_score = self._compute_matching_score(results)
-            
-            return {
-                'transformation_matrix': transformation_matrix,
-                'transformation_grid': transformation_grid,
-                'warped_clothing': warped_clothing,
-                'flow_field': flow_field,
-                'matching_score': matching_score,
-                'fusion_weights': self._get_fusion_weights(results),
-                'detailed_results': results
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 결과 융합 실패: {e}")
-            return self._create_identity_transform_result(clothing_tensor)
-    
-    def _compute_matching_confidence(self, results: Dict[str, Any]) -> float:
-        """매칭 신뢰도 계산"""
-        try:
-            confidences = []
-            
-            # GMM 신뢰도
-            if 'gmm' in results:
-                gmm_conf = 0.8  # GMM은 기본적으로 높은 신뢰도
-                confidences.append(gmm_conf)
-            
-            # 키포인트 매칭 신뢰도
-            if 'keypoint' in results:
-                kpt_conf = results['keypoint']['keypoint_confidence']
-                match_ratio = min(results['keypoint']['match_count'] / 18.0, 1.0)
-                keypoint_confidence = kpt_conf * match_ratio
-                confidences.append(keypoint_confidence)
-            
-            # Optical Flow 신뢰도
-            if 'optical_flow' in results:
-                flow_tensor = results['optical_flow']
-                if torch.is_tensor(flow_tensor):
-                    flow_magnitude = torch.mean(torch.norm(flow_tensor, dim=1))
-                    flow_confidence = min(1.0, 1.0 / (1.0 + flow_magnitude.item()))
-                    confidences.append(flow_confidence)
-            
-            return float(np.mean(confidences)) if confidences else 0.7
-            
-        except Exception as e:
-            self.logger.error(f"❌ 신뢰도 계산 실패: {e}")
-            return 0.7
-    
-    def _compute_transformation_quality(self, result: Dict[str, Any]) -> float:
-        """변형 품질 점수 계산"""
-        try:
-            quality_factors = []
-            
-            # 변형 행렬 안정성
-            if 'transformation_matrix' in result:
-                matrix = result['transformation_matrix']
-                if torch.is_tensor(matrix):
-                    det = torch.det(matrix[:, :2, :2])
-                    stability = torch.clamp(1.0 / (torch.abs(det) + 1e-8), 0, 1)
-                    quality_factors.append(stability.mean().item())
-            
-            # 매칭 점수
-            if 'matching_score' in result:
-                quality_factors.append(result['matching_score'])
-            
-            # 워핑 품질 (이미지 변형 후 품질)
-            if 'warped_clothing' in result:
-                warped = result['warped_clothing']
-                if torch.is_tensor(warped):
-                    # 변형된 이미지의 그라디언트 분석
-                    grad_x = torch.abs(warped[:, :, :, 1:] - warped[:, :, :, :-1])
-                    grad_y = torch.abs(warped[:, :, 1:, :] - warped[:, :, :-1, :])
-                    gradient_quality = 1.0 - torch.mean(grad_x + grad_y).item()
-                    quality_factors.append(max(0.0, gradient_quality))
-            
-            return float(np.mean(quality_factors)) if quality_factors else 0.75
-            
-        except Exception as e:
-            self.logger.error(f"❌ 품질 점수 계산 실패: {e}")
-            return 0.75
-    
     def _compute_matching_score(self, results: Dict[str, Any]) -> float:
         """매칭 점수 계산"""
         try:
@@ -2702,21 +2480,6 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Flow field 생성 실패: {e}")
             return torch.zeros((1, 2, 256, 192), device=self.device)
-    
-    def _create_identity_transform_result(self, clothing_tensor: torch.Tensor) -> Dict[str, Any]:
-        """Identity 변형 결과 생성"""
-        batch_size = clothing_tensor.shape[0]
-        height, width = clothing_tensor.shape[-2:]
-        
-        return {
-            'transformation_matrix': torch.eye(2, 3, device=self.device).unsqueeze(0).repeat(batch_size, 1, 1),
-            'transformation_grid': self._create_identity_grid(batch_size, height, width),
-            'warped_clothing': clothing_tensor.clone(),
-            'flow_field': torch.zeros((batch_size, 2, height, width), device=self.device),
-            'matching_score': 0.5,
-            'fusion_weights': {'identity': 1.0},
-            'detailed_results': {}
-        }
     
     def _create_fallback_result(self, processed_input: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
         """폴백 결과 생성"""
@@ -2814,8 +2577,23 @@ class GeometricMatchingStep(BaseStepMixin):
     # ==============================================
     # 🔥 유틸리티 및 정보 조회 메서드들
     # ==============================================
+    
+    def get_full_config(self) -> Dict[str, Any]:
+        """전체 설정 반환 (안전한 병합)"""
+        full_config = self.matching_config.copy()
+        full_config.update(self.advanced_config)
+        return full_config
+
+    def is_ai_enhanced(self) -> bool:
+        """AI 강화 여부"""
+        return self.advanced_geometric_ai is not None
+
+    def get_algorithm_type(self) -> str:
+        """알고리즘 타입 반환"""
+        return 'advanced_deeplab_aspp_self_attention'
+
     def get_step_info(self) -> Dict[str, Any]:
-        """Step 정보 반환 (안전한 설정 병합)"""
+        """Step 정보 반환"""
         return {
             'step_name': self.step_name,
             'step_id': self.step_id,
@@ -2827,28 +2605,71 @@ class GeometricMatchingStep(BaseStepMixin):
                 'tps_network': self.tps_network is not None,
                 'optical_flow_model': self.optical_flow_model is not None,
                 'keypoint_matcher': self.keypoint_matcher is not None,
-                'advanced_geometric_ai': getattr(self, 'advanced_geometric_ai', None) is not None
+                'advanced_geometric_ai': self.advanced_geometric_ai is not None
             },
             'model_files_detected': len(self.model_paths),
-            # 🔥 안전한 설정 병합
-            'matching_config': self.matching_config,  # 기존 설정
-            'advanced_config': getattr(self, 'advanced_config', {}),  # 고급 설정
-            'full_config': self.get_full_config(),  # 병합된 전체 설정
+            'matching_config': self.matching_config,
+            'advanced_config': self.advanced_config,
+            'full_config': self.get_full_config(),
             'performance_stats': self.performance_stats,
-            'statistics': getattr(self, 'statistics', {}),
-            'algorithms': getattr(self, 'statistics', {}).get('features', [
-                'GMM (Geometric Matching Module)',
-                'TPS (Thin-Plate Spline) Transformation',
-                'Keypoint-based Matching',
-                'Optical Flow Calculation',
-                'RANSAC Outlier Removal',
-                'Procrustes Analysis'
-            ]),
+            'statistics': self.statistics,
+            'algorithms': self.statistics.get('features', []),
             'ai_enhanced': self.is_ai_enhanced(),
             'algorithm_type': self.get_algorithm_type()
         }
 
-    
+    def debug_info(self) -> Dict[str, Any]:
+        """디버깅 정보 반환"""
+        try:
+            return {
+                'step_info': {
+                    'name': self.step_name,
+                    'id': self.step_id,
+                    'device': self.device,
+                    'initialized': getattr(self, 'is_initialized', False),
+                    'models_loaded': self.status.models_loaded,
+                    'algorithm_type': 'advanced_deeplab_aspp_self_attention',
+                    'version': 'v27.1'
+                },
+                'ai_models': {
+                    'gmm_model_loaded': self.gmm_model is not None,
+                    'advanced_geometric_ai_loaded': self.advanced_geometric_ai is not None,
+                    'geometric_matcher_loaded': self.geometric_matcher is not None,
+                    'model_files_detected': len(self.model_paths)
+                },
+                'config': self.matching_config,
+                'statistics': self.statistics,
+                'performance_stats': self.performance_stats,
+                'requirements': {
+                    'compatible': self.status.requirements_compatible,
+                    'detailed_spec_loaded': self.status.detailed_data_spec_loaded,
+                    'ai_enhanced': True
+                },
+                'features': self.statistics.get('features', [])
+            }
+        except Exception as e:
+            self.logger.error(f"❌ 디버깅 정보 수집 실패: {e}")
+            return {'error': str(e)}
+
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """성능 통계 반환"""
+        try:
+            stats = self.statistics.copy()
+            
+            # 추가 계산된 통계
+            if stats['total_processed'] > 0:
+                stats['average_processing_time'] = stats['total_processing_time'] / stats['total_processed']
+                stats['success_rate'] = stats['successful_matches'] / stats['total_processed']
+            else:
+                stats['average_processing_time'] = 0.0
+                stats['success_rate'] = 0.0
+            
+            stats['algorithm_type'] = 'advanced_deeplab_aspp_self_attention'
+            stats['version'] = 'v27.1'
+            return stats
+        except Exception as e:
+            self.logger.error(f"❌ 성능 통계 수집 실패: {e}")
+            return {'error': str(e)}
     
     def validate_dependencies(self) -> Dict[str, bool]:
         """의존성 검증"""
@@ -2952,7 +2773,7 @@ class GeometricMatchingStep(BaseStepMixin):
             # AI 모델 정리
             models_to_cleanup = [
                 'gmm_model', 'tps_network', 'optical_flow_model', 
-                'keypoint_matcher', 'sam_model'
+                'keypoint_matcher', 'sam_model', 'advanced_geometric_ai'
             ]
             
             for model_name in models_to_cleanup:
@@ -2992,8 +2813,6 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ 정리 작업 실패: {e}")
 
-
-
 # ==============================================
 # 🔥 편의 함수들
 # ==============================================
@@ -3012,102 +2831,6 @@ def create_m3_max_geometric_matching_step(**kwargs) -> GeometricMatchingStep:
     """M3 Max 최적화 기하학적 매칭 Step 생성"""
     kwargs.setdefault('device', 'mps')
     return GeometricMatchingStep(**kwargs)
-
-# ==============================================
-# 🔥 테스트 및 검증 함수들
-# ==============================================
-def debug_info(self) -> Dict[str, Any]:
-    """디버깅 정보 반환 (3번 파일에서 추가)"""
-    try:
-        return {
-            'step_info': {
-                'name': self.step_name,
-                'id': self.step_id,
-                'device': self.device,
-                'initialized': getattr(self, 'is_initialized', False),
-                'models_loaded': self.status.models_loaded if hasattr(self, 'status') else False,
-                'algorithm_type': 'advanced_deeplab_aspp_self_attention',
-                'version': 'v27.1'
-            },
-            'ai_models': {
-                'gmm_model_loaded': self.gmm_model is not None,
-                'advanced_geometric_ai_loaded': getattr(self, 'advanced_geometric_ai', None) is not None,
-                'geometric_matcher_loaded': self.geometric_matcher is not None,
-                'model_files_detected': len(self.model_paths) if hasattr(self, 'model_paths') else 0
-            },
-            'config': self.matching_config if hasattr(self, 'matching_config') else {},
-            'statistics': getattr(self, 'statistics', {}),
-            'performance_stats': getattr(self, 'performance_stats', {}),
-            'requirements': {
-                'compatible': getattr(self.status, 'requirements_compatible', False) if hasattr(self, 'status') else False,
-                'detailed_spec_loaded': getattr(self.status, 'detailed_data_spec_loaded', False) if hasattr(self, 'status') else False,
-                'ai_enhanced': True
-            },
-            'features': getattr(self, 'statistics', {}).get('features', [])
-        }
-    except Exception as e:
-        self.logger.error(f"❌ 디버깅 정보 수집 실패: {e}")
-        return {'error': str(e)}
-
-def get_performance_stats(self) -> Dict[str, Any]:
-    """성능 통계 반환 (3번 파일에서 추가)"""
-    try:
-        if hasattr(self, 'statistics'):
-            stats = self.statistics.copy()
-            
-            # 추가 계산된 통계
-            if stats['total_processed'] > 0:
-                stats['average_processing_time'] = stats['total_processing_time'] / stats['total_processed']
-                stats['success_rate'] = stats['successful_matches'] / stats['total_processed']
-            else:
-                stats['average_processing_time'] = 0.0
-                stats['success_rate'] = 0.0
-            
-            stats['algorithm_type'] = 'advanced_deeplab_aspp_self_attention'
-            stats['version'] = 'v27.1'
-            return stats
-        else:
-            return {'message': '통계 데이터 없음'}
-    except Exception as e:
-        self.logger.error(f"❌ 성능 통계 수집 실패: {e}")
-        return {'error': str(e)}
-
-# ============================================================================
-# 🔥 5. get_step_info 메서드 업데이트
-# ============================================================================
-
-def get_step_info(self) -> Dict[str, Any]:
-    """Step 정보 반환 (고급 기능 추가)"""
-    return {
-        'step_name': self.step_name,
-        'step_id': self.step_id,
-        'version': 'v27.1',  # 버전 업데이트
-        'initialized': getattr(self, 'is_initialized', False),
-        'device': self.device,
-        'ai_models_loaded': {
-            'gmm_model': self.gmm_model is not None,
-            'tps_network': self.tps_network is not None,
-            'optical_flow_model': self.optical_flow_model is not None,
-            'keypoint_matcher': self.keypoint_matcher is not None,
-            # 🔥 3번 파일에서 추가
-            'advanced_geometric_ai': getattr(self, 'advanced_geometric_ai', None) is not None
-        },
-        'model_files_detected': len(self.model_paths),
-        'matching_config': self.matching_config,
-        'performance_stats': self.performance_stats,
-        # 🔥 3번 파일에서 추가
-        'statistics': getattr(self, 'statistics', {}),
-        'algorithms': getattr(self, 'statistics', {}).get('features', [
-            'GMM (Geometric Matching Module)',
-            'TPS (Thin-Plate Spline) Transformation',
-            'Keypoint-based Matching',
-            'Optical Flow Calculation',
-            'RANSAC Outlier Removal',
-            'Procrustes Analysis'
-        ]),
-        'ai_enhanced': True,
-        'algorithm_type': 'advanced_deeplab_aspp_self_attention'
-    }
 
 def validate_geometric_matching_dependencies() -> Dict[str, bool]:
     """의존성 검증"""
@@ -3200,6 +2923,81 @@ async def test_geometric_matching_step() -> bool:
         logger.error(f"❌ 테스트 실패: {e}")
         return False
 
+async def test_advanced_ai_geometric_matching() -> bool:
+    """고급 AI 기하학적 매칭 테스트"""
+    try:
+        logger = logging.getLogger(__name__)
+        logger.info("🔍 고급 AI 기하학적 매칭 테스트 시작")
+        
+        # 고급 AI 모델 생성 테스트
+        try:
+            advanced_ai = CompleteAdvancedGeometricMatchingAI(input_nc=6, num_keypoints=20)
+            logger.info("✅ CompleteAdvancedGeometricMatchingAI 생성 성공")
+            
+            # 더미 입력으로 순전파 테스트
+            person_img = torch.randn(1, 3, 256, 192)
+            clothing_img = torch.randn(1, 3, 256, 192)
+            
+            with torch.no_grad():
+                result = advanced_ai(person_img, clothing_img)
+            
+            logger.info("✅ 고급 AI 순전파 성공")
+            logger.info(f"  - 변형 행렬 형태: {result['transformation_matrix'].shape}")
+            logger.info(f"  - 변형 그리드 형태: {result['transformation_grid'].shape}")
+            logger.info(f"  - 워핑 의류 형태: {result['warped_clothing'].shape}")
+            logger.info(f"  - 키포인트 히트맵 형태: {result['keypoint_heatmaps'].shape}")
+            logger.info(f"  - 신뢰도 맵 형태: {result['confidence_map'].shape}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ 고급 AI 모델 테스트 실패: {e}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ 고급 AI 테스트 전체 실패: {e}")
+        return False
+
+# ==============================================
+# 🔥 동적 import 함수들
+# ==============================================
+
+def get_model_loader():
+    """ModelLoader 동적 import"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.utils.model_loader')
+        return getattr(module, 'ModelLoader', None)
+    except ImportError:
+        return None
+
+def get_memory_manager():
+    """MemoryManager 동적 import"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.utils.memory_manager')
+        return getattr(module, 'MemoryManager', None)
+    except ImportError:
+        return None
+
+def get_data_converter():
+    """DataConverter 동적 import"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.utils.data_converter')
+        return getattr(module, 'DataConverter', None)
+    except ImportError:
+        return None
+
+def get_di_container():
+    """DIContainer 동적 import"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.core.di_container')
+        return getattr(module, 'DIContainer', None)
+    except ImportError:
+        return None
+
 # ==============================================
 # 🔥 모듈 정보 및 익스포트
 # ==============================================
@@ -3219,29 +3017,21 @@ __all__ = [
     'OpticalFlowNetwork',
     'KeypointMatchingNetwork',
     
-    # 알고리즘 클래스
-    'AdvancedGeometricMatcher',
-    
-    # 🔥 3번 파일에서 추가할 고급 AI 모델 클래스들
+    # 고급 AI 모델 클래스들
     'CompleteAdvancedGeometricMatchingAI',
     'DeepLabV3PlusBackbone',
     'ASPPModule',
     'SelfAttentionKeypointMatcher',
     'EdgeAwareTransformationModule',
     'ProgressiveGeometricRefinement',
-    # 🔥 3번 파일에서 추가할 유틸리티 클래스들
+    
+    # 알고리즘 클래스
+    'AdvancedGeometricMatcher',
+    
+    # 유틸리티 클래스들
     'EnhancedModelPathMapper',
     'ProcessingStatus',
-   
-    # 🔥 3번 파일에서 추가할 테스트 함수들
-    'test_advanced_ai_geometric_matching',
     
-    # 🔥 3번 파일에서 추가할 동적 import 함수들
-    'get_model_loader',
-    'get_step_model_request',
-    'get_memory_manager',
-    'get_data_converter',
-    'get_di_container'
     # 편의 함수들
     'create_geometric_matching_step',
     'create_geometric_matching_step_async',
@@ -3249,7 +3039,15 @@ __all__ = [
     
     # 테스트 함수들
     'validate_geometric_matching_dependencies',
-    'test_geometric_matching_step'
+    'test_geometric_matching_step',
+    'test_advanced_ai_geometric_matching',
+    
+    # 동적 import 함수들
+    'get_model_loader',
+    'get_step_model_request',
+    'get_memory_manager',
+    'get_data_converter',
+    'get_di_container'
 ]
 
 # ==============================================
@@ -3274,6 +3072,7 @@ logger.info("   🎯 GeometricMatchingModule - GMM 기반 기하학적 매칭")
 logger.info("   🌊 TPSGridGenerator - Thin-Plate Spline 변형")
 logger.info("   📊 OpticalFlowNetwork - RAFT 기반 Flow 계산")
 logger.info("   🎯 KeypointMatchingNetwork - 키포인트 매칭")
+logger.info("   🔥 CompleteAdvancedGeometricMatchingAI - 고급 AI 모델")
 logger.info("   📐 AdvancedGeometricMatcher - 고급 매칭 알고리즘")
 logger.info("🔧 실제 모델 파일:")
 logger.info("   📁 gmm_final.pth (44.7MB)")
@@ -3344,6 +3143,7 @@ if __name__ == "__main__":
     # 테스트 실행
     try:
         asyncio.run(test_geometric_matching_step())
+        asyncio.run(test_advanced_ai_geometric_matching())
     except Exception as e:
         print(f"❌ 테스트 실행 실패: {e}")
     
