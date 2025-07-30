@@ -1,0 +1,1026 @@
+{
+  "timestamp": 1753863139.665626,
+  "system_info": {
+    "platform": {
+      "system": "Darwin",
+      "release": "24.4.0",
+      "machine": "arm64",
+      "processor": "arm"
+    },
+    "memory": {
+      "total_gb": 128.0,
+      "available_gb": 60.26922607421875,
+      "used_percent": 52.9
+    },
+    "cpu": {
+      "core_count": 16,
+      "usage_percent": 7.0
+    },
+    "python": {
+      "version": "3.11.13",
+      "conda_env": "mycloset-ai-clean"
+    }
+  },
+  "pytorch_info": {
+    "torch_version": "2.7.1",
+    "cuda_available": false,
+    "mps_available": true,
+    "device_count": 0,
+    "default_device": "mps"
+  },
+  "model_files_analysis": {
+    "total_files": 148,
+    "total_size_gb": 134.7193837761879,
+    "analyzed_files": 102,
+    "large_models": [
+      {
+        "name": "v1-5-pruned.safetensors",
+        "size_mb": 7346.462522506714,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "RealVisXL_V4.0.safetensors",
+        "size_mb": 6616.631227493286,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "open_clip_pytorch_model.bin",
+        "size_mb": 5213.743920326233,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 4897.260437011719,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "v1-5-pruned-emaonly.safetensors",
+        "size_mb": 4067.5604858398438,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3303.2670001983643,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.1255235671997,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.9360275268555,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892078399658,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3278.892074584961,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.non_ema.safetensors",
+        "size_mb": 3278.892074584961,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 2649.976982116699,
+        "step": "unknown",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 2445.7597856521606,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 2445.7463064193726,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 2386.225830078125,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 2386.225830078125,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1719.0,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 1639.4856491088867,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 1631.4235677719116,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "ip-adapter.bin",
+        "size_mb": 1612.7911958694458,
+        "step": "unknown",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 1378.302544593811,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 1378.302544593811,
+        "step": "step_02_pose_estimation",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "step": "step_02_pose_estimation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 1378.2092323303223,
+        "step": "step_02_pose_estimation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "sam_vit_l_0b3195.pth",
+        "size_mb": 1191.6395254135132,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 1172.9622974395752,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "graphonomy_damaged.pth",
+        "size_mb": 1172.9622974395752,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 1161.0660848617554,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 1159.650640487671,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "photomaker-v1.bin",
+        "size_mb": 890.8304376602173,
+        "step": "unknown",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 822.9781694412231,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.bin",
+        "size_mb": 689.2188482284546,
+        "step": "step_02_pose_estimation",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 689.1237659454346,
+        "step": "step_02_pose_estimation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 579.8515701293945,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 579.8515701293945,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 577.2085866928101,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 577.1999998092651,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "vgg19_warping.pth",
+        "size_mb": 548.0597839355469,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "vgg16_warping_ultra.pth",
+        "size_mb": 527.8031978607178,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "lpips_vgg.pth",
+        "size_mb": 527.7956781387329,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "tps_network.pth",
+        "size_mb": 527.7956781387329,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "text_encoder_pytorch_model.bin",
+        "size_mb": 492.3999996185303,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 469.4989538192749,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 469.4613208770752,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 469.4606475830078,
+        "step": "unknown",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "sam_vit_h_4b8939.pth",
+        "size_mb": 357.668288230896,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "mobile_sam_alternative.pt",
+        "size_mb": 357.668288230896,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "ViT-B-32.pt",
+        "size_mb": 337.5783176422119,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "vae_diffusion_pytorch_model.bin",
+        "size_mb": 334.5999994277954,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "GFPGAN.pth",
+        "size_mb": 332.4822177886963,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": true,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "diffusion_pytorch_model.bin",
+        "size_mb": 319.2063455581665,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 319.14069747924805,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 319.14069747924805,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "graphonomy_fixed.pth",
+        "size_mb": 255.15043830871582,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 255.15043830871582,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "exp-schp-201908261155-lip.pth",
+        "size_mb": 255.05957508087158,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "lip_model.pth",
+        "size_mb": 255.05957508087158,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.05957508087158,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "inference.pth",
+        "size_mb": 255.05957508087158,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "exp-schp-201908261155-atr.pth",
+        "size_mb": 255.05565357208252,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 255.05565357208252,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "atr_model.pth",
+        "size_mb": 255.05565357208252,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.fp16.safetensors",
+        "size_mb": 234.74203491210938,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "deeplabv3_resnet101_ultra.pth",
+        "size_mb": 233.32293128967285,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "deeplab_resnet101.pth",
+        "size_mb": 233.21679973602295,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "lpips_alex.pth",
+        "size_mb": 233.095703125,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "hrviton_final.pth",
+        "size_mb": 230.341796875,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "optimizer.pt",
+        "size_mb": 208.95465564727783,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "fcn_resnet101_ultra.pth",
+        "size_mb": 207.8078327178955,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "body_pose_model.pth",
+        "size_mb": 199.57313060760498,
+        "step": "step_02_pose_estimation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "resnet101_enhance_ultra.pth",
+        "size_mb": 170.5408763885498,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "resnet101_geometric.pth",
+        "size_mb": 170.5384120941162,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 168.39410591125488,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "u2net_fallback.pth",
+        "size_mb": 160.56964874267578,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "diffusion_pytorch_model.fp16.safetensors",
+        "size_mb": 159.58341789245605,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "ESRGAN_x8.pth",
+        "size_mb": 135.87373638153076,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": true,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "densenet161_enhance.pth",
+        "size_mb": 110.58963775634766,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "graphonomy_alternative.pth",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "graphonomy_new.pth",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 104.50268268585205,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "model.safetensors",
+        "size_mb": 104.4208869934082,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      }
+    ],
+    "step_distribution": {
+      "step_02_pose_estimation": {
+        "count": 13,
+        "total_size_mb": 5937.114800453186
+      },
+      "step_01_human_parsing": {
+        "count": 29,
+        "total_size_mb": 11341.505884170532
+      },
+      "step_03_cloth_segmentation": {
+        "count": 30,
+        "total_size_mb": 26648.72079849243
+      },
+      "step_06_virtual_fitting": {
+        "count": 37,
+        "total_size_mb": 76506.1125202179
+      },
+      "step_07_post_processing": {
+        "count": 11,
+        "total_size_mb": 1842.2509765625
+      },
+      "step_08_quality_assessment": {
+        "count": 7,
+        "total_size_mb": 4196.665817260742
+      },
+      "step_04_geometric_matching": {
+        "count": 16,
+        "total_size_mb": 5836.768138885498
+      },
+      "unknown": {
+        "count": 5,
+        "total_size_mb": 5643.510050773621
+      }
+    },
+    "loading_test_results": []
+  },
+  "step_loading_reports": {
+    "HumanParsingStep": "StepLoadingReport(step_name='HumanParsingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.0005328655242919922, inference_test_passed=True, inference_test_time=1.6689300537109375e-06, step_errors=[])",
+    "PoseEstimationStep": "StepLoadingReport(step_name='PoseEstimationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.03246498107910156, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])",
+    "ClothSegmentationStep": "StepLoadingReport(step_name='ClothSegmentationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00013208389282226562, inference_test_passed=True, inference_test_time=7.152557373046875e-07, step_errors=[])",
+    "GeometricMatchingStep": "StepLoadingReport(step_name='GeometricMatchingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.0001049041748046875, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])"
+  },
+  "overall_summary": {
+    "steps": {
+      "total": 4,
+      "import_success": 4,
+      "instance_success": 4,
+      "init_success": 4,
+      "inference_success": 4,
+      "success_rate": 100.0
+    },
+    "models": {
+      "total_files": 148,
+      "large_models": 102,
+      "analyzed_models": 102,
+      "successful_loads": 66,
+      "load_success_rate": 64.70588235294117,
+      "total_size_gb": 134.7193837761879
+    },
+    "system_health": {
+      "pytorch_available": true,
+      "device_acceleration": true,
+      "memory_sufficient": true
+    }
+  },
+  "recommendations": [
+    "✅ 모든 Step 초기화 성공 (4개)",
+    "⚠️ 일부 모델 로딩 실패: 64.7% 성공"
+  ],
+  "validation_completed_at": 1753863152.910757,
+  "total_validation_time": 13.245136022567749
+}
