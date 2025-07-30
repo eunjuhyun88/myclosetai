@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753876147.946632,
+  "timestamp": 1753878628.459502,
   "pytorch_compatibility": "fixed",
   "loading_methods": [
     "secure_mode",
@@ -16,12 +16,12 @@
     },
     "memory": {
       "total_gb": 128.0,
-      "available_gb": 58.421142578125,
-      "used_percent": 54.4
+      "available_gb": 58.0914306640625,
+      "used_percent": 54.6
     },
     "cpu": {
       "core_count": 16,
-      "usage_percent": 13.2
+      "usage_percent": 11.9
     },
     "python": {
       "version": "3.11.13",
@@ -37,12 +37,11 @@
   },
   "model_files_analysis": {
     "total_files": 136,
-    "total_size_gb": 132.99208268802613,
-    "analyzed_files": 101,
-    "successful_loads": 72,
+    "total_size_gb": 134.55203161668032,
+    "analyzed_files": 102,
+    "successful_loads": 71,
     "loading_methods_used": {
-      "safe_mode": 69,
-      "compatible_mode": 3
+      "safe_mode": 71
     },
     "large_models": [
       {
@@ -127,6 +126,16 @@
       },
       {
         "name": "diffusion_pytorch_model.bin",
+        "size_mb": 3279.0705919265747,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": false,
+        "loading_method": "",
+        "device_compatible": false,
+        "errors": 1,
+        "warnings": 0
+      },
+      {
+        "name": "pytorch_model.bin",
         "size_mb": 3279.0705919265747,
         "step": "step_06_virtual_fitting",
         "checkpoint_loaded": false,
@@ -264,16 +273,6 @@
         "device_compatible": false,
         "errors": 1,
         "warnings": 0
-      },
-      {
-        "name": "sam_vit_h_4b8939.pth",
-        "size_mb": 2445.7463064193726,
-        "step": "step_03_cloth_segmentation",
-        "checkpoint_loaded": true,
-        "loading_method": "safe_mode",
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
       },
       {
         "name": "sam_vit_h_4b8939.pth",
@@ -460,7 +459,7 @@
         "size_mb": 889.5482721328735,
         "step": "step_04_geometric_matching",
         "checkpoint_loaded": true,
-        "loading_method": "compatible_mode",
+        "loading_method": "safe_mode",
         "device_compatible": false,
         "errors": 0,
         "warnings": 0
@@ -470,9 +469,19 @@
         "size_mb": 889.5482721328735,
         "step": "step_08_quality_assessment",
         "checkpoint_loaded": true,
-        "loading_method": "compatible_mode",
+        "loading_method": "safe_mode",
         "device_compatible": false,
         "errors": 0,
+        "warnings": 0
+      },
+      {
+        "name": "pytorch_model.bin",
+        "size_mb": 822.9781694412231,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": false,
+        "loading_method": "",
+        "device_compatible": false,
+        "errors": 1,
         "warnings": 0
       },
       {
@@ -670,7 +679,7 @@
         "size_mb": 337.57555866241455,
         "step": "step_08_quality_assessment",
         "checkpoint_loaded": true,
-        "loading_method": "compatible_mode",
+        "loading_method": "safe_mode",
         "device_compatible": false,
         "errors": 0,
         "warnings": 0
@@ -1058,24 +1067,24 @@
     ],
     "step_distribution": {
       "step_02_pose_estimation": {
-        "count": 11,
-        "total_size_mb": 5937.114800453186
+        "count": 10,
+        "total_size_mb": 5839.360894203186
       },
       "step_01_human_parsing": {
         "count": 26,
         "total_size_mb": 9572.699012756348
       },
       "step_03_cloth_segmentation": {
-        "count": 26,
-        "total_size_mb": 26648.72079849243
+        "count": 25,
+        "total_size_mb": 24241.81364631653
       },
       "step_06_virtual_fitting": {
-        "count": 35,
-        "total_size_mb": 76506.19211673737
+        "count": 36,
+        "total_size_mb": 79785.26270866394
       },
       "step_07_post_processing": {
-        "count": 10,
-        "total_size_mb": 1842.2509765625
+        "count": 11,
+        "total_size_mb": 2665.229146003723
       },
       "step_08_quality_assessment": {
         "count": 7,
@@ -1096,14 +1105,13 @@
   "overall_summary": {
     "models": {
       "total_files": 136,
-      "large_models": 101,
-      "analyzed_models": 101,
-      "successful_loads": 72,
-      "load_success_rate": 71.28712871287128,
-      "total_size_gb": 132.99208268802613,
+      "large_models": 102,
+      "analyzed_models": 102,
+      "successful_loads": 71,
+      "load_success_rate": 69.6078431372549,
+      "total_size_gb": 134.55203161668032,
       "loading_methods_used": {
-        "safe_mode": 69,
-        "compatible_mode": 3
+        "safe_mode": 71
       }
     },
     "system_health": {
@@ -1114,12 +1122,12 @@
     }
   },
   "recommendations": [
-    "✅ 모델 로딩 양호: 71.3% 성공",
-    "📊 사용된 로딩 방법: safe_mode: 69개, compatible_mode: 3개",
+    "⚠️ 모델 로딩 개선 필요: 69.6% 성공",
+    "📊 사용된 로딩 방법: safe_mode: 71개",
     "✅ PyTorch 호환성 문제 해결됨",
     "✅ GPU 가속 사용 가능",
-    "📊 대용량 AI 모델 환경: 133.0GB"
+    "📊 대용량 AI 모델 환경: 134.6GB"
   ],
-  "validation_completed_at": 1753876156.876247,
-  "total_validation_time": 8.929621934890747
+  "validation_completed_at": 1753878636.6069162,
+  "total_validation_time": 8.147419214248657
 }

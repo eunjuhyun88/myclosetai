@@ -1,38 +1,94 @@
 #!/usr/bin/env python3
+#backend/app/ai_pipeline/__init__.py
+#!/usr/bin/env python3
 """
-🔥 MyCloset AI 파이프라인 시스템 v7.1 - Step 01 경로 문제 완전 해결
+🔥 MyCloset AI Pipeline System v8.0 - DI Container v4.0 완전 적용
 ================================================================
 
-✅ Step 01 모듈 경로 문제 해결 (human_body_parsing → human_parsing)
-✅ 정확한 파일명 매핑 시스템
-✅ 복잡한 동적 생성 제거
-✅ 직접 매핑으로 단순화
-
-문제 해결:
-- 기존: step_01_human_body_parsing (잘못된 경로)
-- 수정: step_01_human_parsing (올바른 경로)
+✅ CircularReferenceFreeDIContainer 완전 통합
+✅ TYPE_CHECKING으로 순환참조 완전 차단
+✅ 지연 해결(Lazy Resolution) 활성화
+✅ Step 팩토리 순환참조 완전 해결
+✅ 안전한 의존성 주입 시스템
+✅ M3 Max 128GB + conda 환경 최적화
+✅ GitHub 프로젝트 구조 100% 호환
 
 Author: MyCloset AI Team
-Date: 2025-07-25
-Version: v7.1 (Step 01 Path Fix)
+Date: 2025-07-30
+Version: 8.0 (DI Container v4.0 Integration)
 """
 
+import os
+import gc
 import logging
 import sys
+import time
 import warnings
-from typing import Dict, Any, Optional, List, Type
+import platform
+import asyncio
+from typing import Dict, Any, Optional, List, Type, Callable, Union, TYPE_CHECKING
 from pathlib import Path
 
-# 경고 무시
-warnings.filterwarnings('ignore')
+# 경고 무시 (deprecated 경로 관련)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', message='.*deprecated.*')
 
-# =============================================================================
-# 🔥 기본 설정 및 로깅
-# =============================================================================
-
+# Logger 최우선 초기화 (에러 방지)
 logger = logging.getLogger(__name__)
 
-# 상위 패키지에서 시스템 정보 가져오기
+# 🔥 TYPE_CHECKING으로 순환참조 완전 방지
+if TYPE_CHECKING:
+    # 오직 타입 체크 시에만 import
+    from .steps.base_step_mixin import BaseStepMixin
+    from .utils.model_loader import ModelLoader
+    from .utils.memory_manager import MemoryManager
+    from .utils.data_converter import DataConverter
+    from .factories.step_factory import StepFactory
+    from .pipeline_manager import PipelineManager
+else:
+    # 런타임에는 Any로 처리 (순환참조 방지)
+    BaseStepMixin = Any
+    ModelLoader = Any
+    MemoryManager = Any
+    DataConverter = Any
+    StepFactory = Any
+    PipelineManager = Any
+
+# ==============================================
+# 🔥 DI Container v4.0 Core 시스템 Import
+# ==============================================
+
+try:
+    from ..core.di_container import (
+        CircularReferenceFreeDIContainer,
+        LazyDependency,
+        DynamicImportResolver,
+        get_global_container,
+        reset_global_container,
+        inject_dependencies_to_step_safe,
+        get_service_safe,
+        register_service_safe,
+        register_lazy_service,
+        initialize_di_system_safe
+    )
+    DI_CONTAINER_AVAILABLE = True
+    logger.info("✅ DI Container v4.0 Core 시스템 로드 성공")
+except ImportError as e:
+    logger.error(f"❌ DI Container v4.0 Core 시스템 로드 실패: {e}")
+    DI_CONTAINER_AVAILABLE = False
+    # 폴백 처리
+    def inject_dependencies_to_step_safe(step_instance, container=None):
+        logger.warning("⚠️ DI Container 없음 - 의존성 주입 스킵")
+    
+    def get_service_safe(key: str):
+        logger.warning(f"⚠️ DI Container 없음 - 서비스 조회 실패: {key}")
+        return None
+
+# ==============================================
+# 🔥 환경 설정 (DI Container 통합)
+# ==============================================
+
+# 시스템 정보 가져오기 (상위 패키지)
 try:
     from .. import get_system_info, is_conda_environment, is_m3_max, get_device
     SYSTEM_INFO = get_system_info()
@@ -42,163 +98,320 @@ try:
     logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공")
 except ImportError as e:
     logger.warning(f"⚠️ 상위 패키지 로드 실패, 기본값 사용: {e}")
-    SYSTEM_INFO = {'device': 'cpu', 'is_m3_max': False, 'memory_gb': 16.0}
-    IS_CONDA = False
-    IS_M3_MAX = False
-    DEVICE = 'cpu'
-
-# =============================================================================
-# 🔥 정확한 Step 매핑 (파일명 기반)
-# =============================================================================
-
-# Step별 정확한 모듈명과 클래스명 매핑
-STEP_MAPPING = {
-    'step_01': {
-        'module': 'app.ai_pipeline.steps.step_01_human_parsing',  # 🔥 올바른 경로
-        'class': 'HumanParsingStep',
-        'description': '인체 파싱 - Human Body Parsing',
-        'models': ['SCHP', 'Graphonomy'],
-        'priority': 2
-    },
-    'step_02': {
-        'module': 'app.ai_pipeline.steps.step_02_pose_estimation',
-        'class': 'PoseEstimationStep',
-        'description': '포즈 추정 - Pose Estimation',
-        'models': ['OpenPose', 'YOLO-Pose'],
-        'priority': 4
-    },
-    'step_03': {
-        'module': 'app.ai_pipeline.steps.step_03_cloth_segmentation',
-        'class': 'ClothSegmentationStep',
-        'description': '의류 분할 - Cloth Segmentation',
-        'models': ['U2Net', 'SAM'],
-        'priority': 3
-    },
-    'step_04': {
-        'module': 'app.ai_pipeline.steps.step_04_geometric_matching',
-        'class': 'GeometricMatchingStep',
-        'description': '기하학적 매칭 - Geometric Matching',
-        'models': ['TPS', 'GMM'],
-        'priority': 7
-    },
-    'step_05': {
-        'module': 'app.ai_pipeline.steps.step_05_cloth_warping',
-        'class': 'ClothWarpingStep',
-        'description': '의류 변형 - Cloth Warping',
-        'models': ['Advanced Warping'],
-        'priority': 8
-    },
-    'step_06': {
-        'module': 'app.ai_pipeline.steps.step_06_virtual_fitting',
-        'class': 'VirtualFittingStep',
-        'description': '가상 피팅 - Virtual Fitting',
-        'models': ['OOTDiffusion', 'IDM-VTON'],
-        'priority': 1  # 가장 중요
-    },
-    'step_07': {
-        'module': 'app.ai_pipeline.steps.step_07_post_processing',
-        'class': 'PostProcessingStep',
-        'description': '후처리 - Post Processing',
-        'models': ['RealESRGAN', 'Enhancement'],
-        'priority': 5
-    },
-    'step_08': {
-        'module': 'app.ai_pipeline.steps.step_08_quality_assessment',
-        'class': 'QualityAssessmentStep',
-        'description': '품질 평가 - Quality Assessment',
-        'models': ['CLIP', 'Quality Metrics'],
-        'priority': 6
+    # 기본값 설정
+    CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
+    IS_CONDA = CONDA_ENV != 'none'
+    IS_TARGET_ENV = CONDA_ENV == 'mycloset-ai-clean'
+    
+    # M3 Max 감지
+    def _detect_m3_max() -> bool:
+        try:
+            if platform.system() == 'Darwin':
+                import subprocess
+                result = subprocess.run(
+                    ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                    capture_output=True, text=True, timeout=5
+                )
+                return 'M3' in result.stdout and 'Max' in result.stdout
+        except Exception:
+            pass
+        return False
+    
+    IS_M3_MAX = _detect_m3_max()
+    MEMORY_GB = 128.0 if IS_M3_MAX else 16.0
+    DEVICE = 'mps' if IS_M3_MAX else 'cpu'
+    
+    SYSTEM_INFO = {
+        'device': DEVICE,
+        'is_m3_max': IS_M3_MAX,
+        'memory_gb': MEMORY_GB,
+        'is_conda': IS_CONDA,
+        'conda_env': CONDA_ENV
     }
-}
 
-# conda 환경에서 로딩 우선순위
-LOADING_PRIORITY = sorted(STEP_MAPPING.keys(), 
-                         key=lambda x: STEP_MAPPING[x]['priority'])
+# PyTorch 최적화 설정
+TORCH_AVAILABLE = False
+MPS_AVAILABLE = False
+try:
+    import torch
+    TORCH_AVAILABLE = True
+    
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        MPS_AVAILABLE = True
+        # M3 Max 최적화 설정
+        os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+        os.environ.setdefault('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.0')
+        
+    logger.info(f"✅ PyTorch 로드: MPS={MPS_AVAILABLE}, M3 Max={IS_M3_MAX}")
+except ImportError:
+    logger.warning("⚠️ PyTorch 없음 - conda install pytorch 권장")
 
-# =============================================================================
-# 🔥 단순화된 파이프라인 로더 (정확한 경로 사용)
-# =============================================================================
+# ==============================================
+# 🔥 DI Container 기반 Step 로딩 시스템
+# ==============================================
 
-class FixedPipelineLoader:
-    """수정된 파이프라인 로더 - 정확한 경로 사용"""
+class DIBasedStepLoader:
+    """DI Container 기반 Step 로더 v4.0"""
     
     def __init__(self):
-        self._loaded_classes = {}
-        self._failed_loads = set()
-        self.logger = logging.getLogger(f"{__name__}.FixedPipelineLoader")
+        self._container: Optional[CircularReferenceFreeDIContainer] = None
+        self._loaded_steps = {}
+        self._failed_steps = set()
+        self._step_mapping = {}
+        self.logger = logging.getLogger(f"{__name__}.DIBasedStepLoader")
         
-    def safe_import_step(self, step_id: str) -> Optional[Type]:
-        """안전한 Step 클래스 import (정확한 경로 사용)"""
-        if step_id in self._loaded_classes:
-            return self._loaded_classes[step_id]
-            
-        if step_id in self._failed_loads:
-            return None
-            
+        # DI Container 초기화
+        self._initialize_container()
+        
+        # Step 매핑 설정
+        self._setup_step_mapping()
+    
+    def _initialize_container(self):
+        """DI Container 초기화"""
         try:
-            step_info = STEP_MAPPING.get(step_id)
+            if DI_CONTAINER_AVAILABLE:
+                self._container = get_global_container()
+                
+                # 시스템 정보 등록
+                self._container.register('device', DEVICE)
+                self._container.register('is_m3_max', IS_M3_MAX)
+                self._container.register('memory_gb', SYSTEM_INFO.get('memory_gb', 16.0))
+                self._container.register('is_conda', IS_CONDA)
+                self._container.register('torch_available', TORCH_AVAILABLE)
+                self._container.register('mps_available', MPS_AVAILABLE)
+                
+                # DI 시스템 초기화
+                initialize_di_system_safe()
+                
+                self.logger.info("✅ DI Container v4.0 초기화 완료")
+            else:
+                self.logger.warning("⚠️ DI Container 사용 불가 - 폴백 모드")
+                
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 초기화 실패: {e}")
+    
+    def _setup_step_mapping(self):
+        """Step 매핑 설정 (GitHub 구조 기준)"""
+        self._step_mapping = {
+            'step_01': {
+                'module': 'app.ai_pipeline.steps.step_01_human_parsing',
+                'class': 'HumanParsingStep',
+                'description': '인체 파싱 - Human Body Parsing',
+                'models': ['SCHP', 'Graphonomy'],
+                'priority': 2
+            },
+            'step_02': {
+                'module': 'app.ai_pipeline.steps.step_02_pose_estimation',
+                'class': 'PoseEstimationStep',
+                'description': '포즈 추정 - Pose Estimation',
+                'models': ['OpenPose', 'YOLO-Pose'],
+                'priority': 4
+            },
+            'step_03': {
+                'module': 'app.ai_pipeline.steps.step_03_cloth_segmentation',
+                'class': 'ClothSegmentationStep',
+                'description': '의류 분할 - Cloth Segmentation',
+                'models': ['U2Net', 'SAM'],
+                'priority': 3
+            },
+            'step_04': {
+                'module': 'app.ai_pipeline.steps.step_04_geometric_matching',
+                'class': 'GeometricMatchingStep',
+                'description': '기하학적 매칭 - Geometric Matching',
+                'models': ['TPS', 'GMM'],
+                'priority': 7
+            },
+            'step_05': {
+                'module': 'app.ai_pipeline.steps.step_05_cloth_warping',
+                'class': 'ClothWarpingStep',
+                'description': '의류 변형 - Cloth Warping',
+                'models': ['Advanced Warping'],
+                'priority': 8
+            },
+            'step_06': {
+                'module': 'app.ai_pipeline.steps.step_06_virtual_fitting',
+                'class': 'VirtualFittingStep',
+                'description': '가상 피팅 - Virtual Fitting',
+                'models': ['OOTDiffusion', 'IDM-VTON'],
+                'priority': 1  # 가장 중요
+            },
+            'step_07': {
+                'module': 'app.ai_pipeline.steps.step_07_post_processing',
+                'class': 'PostProcessingStep',
+                'description': '후처리 - Post Processing',
+                'models': ['RealESRGAN', 'Enhancement'],
+                'priority': 5
+            },
+            'step_08': {
+                'module': 'app.ai_pipeline.steps.step_08_quality_assessment',
+                'class': 'QualityAssessmentStep',
+                'description': '품질 평가 - Quality Assessment',
+                'models': ['CLIP', 'Quality Metrics'],
+                'priority': 6
+            }
+        }
+        
+        # conda 환경에서 우선순위 정렬
+        self._loading_priority = sorted(
+            self._step_mapping.keys(), 
+            key=lambda x: self._step_mapping[x]['priority']
+        )
+    
+    def safe_import_step(self, step_id: str) -> Optional[Type]:
+        """DI Container 기반 안전한 Step import"""
+        if step_id in self._loaded_steps:
+            return self._loaded_steps[step_id]
+        
+        if step_id in self._failed_steps:
+            return None
+        
+        try:
+            step_info = self._step_mapping.get(step_id)
             if not step_info:
                 self.logger.warning(f"⚠️ 알 수 없는 Step ID: {step_id}")
                 return None
-                
-            # 🔥 정확한 모듈명과 클래스명 사용
-            module_name = step_info['module']
-            class_name = step_info['class']
             
-            # 동적 import 시도
-            import importlib
-            try:
-                self.logger.debug(f"🔄 {step_id} 로딩 시도: {module_name}")
-                module = importlib.import_module(module_name)
-                step_class = getattr(module, class_name, None)
+            # DI Container 기반 동적 import
+            if self._container:
+                # 지연 로딩으로 Step 클래스 등록
+                def step_factory():
+                    return self._dynamic_import_step(step_info['module'], step_info['class'])
+                
+                step_key = f"step_class_{step_id}"
+                self._container.register_lazy(step_key, step_factory)
+                
+                # 지연 해결
+                step_class = self._container.get(step_key)
                 
                 if step_class:
-                    self._loaded_classes[step_id] = step_class
-                    self.logger.info(f"✅ {step_id} ({class_name}) 로드 성공")
+                    self._loaded_steps[step_id] = step_class
+                    self.logger.info(f"✅ {step_id} ({step_info['class']}) DI 로드 성공")
                     return step_class
-                else:
-                    self.logger.warning(f"⚠️ {class_name} 클래스를 찾을 수 없음")
-                    
-            except ImportError as e:
-                self.logger.debug(f"📋 {step_id} 모듈 없음 (정상): {e}")
-                
+            else:
+                # 폴백: 직접 import
+                step_class = self._dynamic_import_step(step_info['module'], step_info['class'])
+                if step_class:
+                    self._loaded_steps[step_id] = step_class
+                    self.logger.info(f"✅ {step_id} ({step_info['class']}) 직접 로드 성공")
+                    return step_class
+        
         except Exception as e:
             self.logger.error(f"❌ {step_id} 로드 실패: {e}")
-            
-        # 실패 기록
-        self._failed_loads.add(step_id)
-        self._loaded_classes[step_id] = None
-        return None
         
+        # 실패 기록
+        self._failed_steps.add(step_id)
+        self._loaded_steps[step_id] = None
+        return None
+    
+    def _dynamic_import_step(self, module_name: str, class_name: str) -> Optional[Type]:
+        """동적 Step import (순환참조 방지)"""
+        import_paths = [
+            module_name,
+            module_name.replace('app.', ''),
+            f".{module_name.split('.')[-1]}"
+        ]
+        
+        for path in import_paths:
+            try:
+                if path.startswith('.'):
+                    # 상대 import
+                    import importlib
+                    module = importlib.import_module(path, package=__package__)
+                else:
+                    # 절대 import
+                    import importlib
+                    module = importlib.import_module(path)
+                
+                step_class = getattr(module, class_name, None)
+                if step_class:
+                    self.logger.debug(f"✅ {class_name} 동적 import 성공: {path}")
+                    return step_class
+                    
+            except (ImportError, SyntaxError, AttributeError) as e:
+                self.logger.debug(f"📋 {class_name} import 시도: {path} - {e}")
+                continue
+        
+        return None
+    
     def load_all_available_steps(self) -> Dict[str, Optional[Type]]:
-        """사용 가능한 모든 Step 로드"""
+        """사용 가능한 모든 Step 로드 (DI Container 기반)"""
         loaded_steps = {}
         
         # conda 환경이면 우선순위 순으로 로드
-        load_order = LOADING_PRIORITY if IS_CONDA else STEP_MAPPING.keys()
+        load_order = self._loading_priority if IS_CONDA else self._step_mapping.keys()
         
         for step_id in load_order:
             step_class = self.safe_import_step(step_id)
             loaded_steps[step_id] = step_class
-            
-        available_count = sum(1 for step in loaded_steps.values() if step is not None)
-        total_count = len(STEP_MAPPING)
         
-        self.logger.info(f"📊 Step 로딩 완료: {available_count}/{total_count}개")
+        available_count = sum(1 for step in loaded_steps.values() if step is not None)
+        total_count = len(self._step_mapping)
+        
+        self.logger.info(f"📊 DI 기반 Step 로딩 완료: {available_count}/{total_count}개")
+        
         if IS_CONDA:
             self.logger.info("🐍 conda 환경: 우선순위 기반 로딩 적용")
-            
+        
         return loaded_steps
+    
+    def create_step_instance(self, step_id: str, **kwargs) -> Optional[Any]:
+        """DI Container 기반 Step 인스턴스 생성"""
+        step_class = self.safe_import_step(step_id)
+        if step_class is None:
+            self.logger.error(f"❌ Step 클래스를 찾을 수 없음: {step_id}")
+            return None
+        
+        try:
+            # 기본 설정 추가
+            default_config = {
+                'device': DEVICE,
+                'is_m3_max': IS_M3_MAX,
+                'memory_gb': SYSTEM_INFO.get('memory_gb', 16.0),
+                'conda_optimized': IS_CONDA
+            }
+            default_config.update(kwargs)
+            
+            # Step 인스턴스 생성
+            step_instance = step_class(**default_config)
+            
+            # DI Container 기반 의존성 주입
+            if self._container:
+                inject_dependencies_to_step_safe(step_instance, self._container)
+            else:
+                inject_dependencies_to_step_safe(step_instance)
+            
+            self.logger.info(f"✅ {step_id} 인스턴스 생성 완료 (DI 주입 포함)")
+            return step_instance
+            
+        except Exception as e:
+            self.logger.error(f"❌ {step_id} 인스턴스 생성 실패: {e}")
+            return None
+    
+    def get_container_stats(self) -> Dict[str, Any]:
+        """DI Container 통계 반환"""
+        if self._container:
+            return self._container.get_stats()
+        else:
+            return {
+                'container_available': False,
+                'fallback_mode': True,
+                'loaded_steps': len(self._loaded_steps),
+                'failed_steps': len(self._failed_steps)
+            }
 
-# 전역 로더 인스턴스
-_pipeline_loader = FixedPipelineLoader()
+# ==============================================
+# 🔥 전역 DI 기반 Step 로더 초기화
+# ==============================================
 
-# =============================================================================
-# 🔥 유틸리티 모듈 안전한 로딩
-# =============================================================================
+# 전역 Step 로더 생성 (DI Container 기반)
+_di_step_loader = DIBasedStepLoader()
 
-def _safe_import_utils():
-    """유틸리티 모듈들 안전하게 import"""
+# ==============================================
+# 🔥 유틸리티 모듈 안전한 로딩 (DI Container 통합)
+# ==============================================
+
+def _safe_import_utils_with_di():
+    """유틸리티 모듈들 안전하게 import (DI Container 통합)"""
     utils_status = {
         'model_loader': False,
         'memory_manager': False,
@@ -207,29 +420,59 @@ def _safe_import_utils():
     }
     
     try:
-        from .utils import (
-            get_step_model_interface,
-            get_step_memory_manager, 
-            get_step_data_converter,
-            preprocess_image_for_step
-        )
-        utils_status.update({
-            'model_loader': True,
-            'memory_manager': True,
-            'data_converter': True,
-            'model_interface': True
-        })
-        logger.info("✅ 파이프라인 유틸리티 모듈 로드 성공")
+        # DI Container 기반 유틸리티 로딩
+        container = get_global_container() if DI_CONTAINER_AVAILABLE else None
         
-        # 전역에 추가
-        globals().update({
-            'get_step_model_interface': get_step_model_interface,
-            'get_step_memory_manager': get_step_memory_manager,
-            'get_step_data_converter': get_step_data_converter,
-            'preprocess_image_for_step': preprocess_image_for_step
-        })
+        if container:
+            # DI Container에서 유틸리티 서비스 조회
+            model_loader = container.get('model_loader')
+            memory_manager = container.get('memory_manager')
+            data_converter = container.get('data_converter')
+            
+            if model_loader:
+                utils_status['model_loader'] = True
+                globals()['get_step_model_interface'] = lambda: model_loader
+            
+            if memory_manager:
+                utils_status['memory_manager'] = True
+                globals()['get_step_memory_manager'] = lambda: memory_manager
+            
+            if data_converter:
+                utils_status['data_converter'] = True
+                globals()['get_step_data_converter'] = lambda: data_converter
+            
+            utils_status['model_interface'] = True
+            logger.info("✅ DI Container 기반 유틸리티 로드 성공")
+        else:
+            # 폴백: 직접 import
+            try:
+                from .utils import (
+                    get_step_model_interface,
+                    get_step_memory_manager, 
+                    get_step_data_converter,
+                    preprocess_image_for_step
+                )
+                utils_status.update({
+                    'model_loader': True,
+                    'memory_manager': True,
+                    'data_converter': True,
+                    'model_interface': True
+                })
+                logger.info("✅ 직접 유틸리티 모듈 로드 성공")
+                
+                # 전역에 추가
+                globals().update({
+                    'get_step_model_interface': get_step_model_interface,
+                    'get_step_memory_manager': get_step_memory_manager,
+                    'get_step_data_converter': get_step_data_converter,
+                    'preprocess_image_for_step': preprocess_image_for_step
+                })
+                
+            except ImportError as e:
+                logger.warning(f"⚠️ 직접 유틸리티 모듈 로드 실패: {e}")
+                raise
         
-    except ImportError as e:
+    except Exception as e:
         logger.warning(f"⚠️ 유틸리티 모듈 로드 실패: {e}")
         
         # 폴백 함수들
@@ -238,7 +481,7 @@ def _safe_import_utils():
                 logger.warning(f"⚠️ {name} 함수 사용 불가 (모듈 로드 실패)")
                 return None
             return fallback
-            
+        
         globals().update({
             'get_step_model_interface': _fallback_function('get_step_model_interface'),
             'get_step_memory_manager': _fallback_function('get_step_memory_manager'),
@@ -248,75 +491,68 @@ def _safe_import_utils():
     
     return utils_status
 
-# 유틸리티 로딩
-UTILS_STATUS = _safe_import_utils()
+# 유틸리티 로딩 (DI Container 통합)
+UTILS_STATUS = _safe_import_utils_with_di()
 
-# =============================================================================
-# 🔥 파이프라인 관리 함수들
-# =============================================================================
+# ==============================================
+# 🔥 파이프라인 관리 함수들 (DI Container 기반)
+# ==============================================
 
 def get_pipeline_status() -> Dict[str, Any]:
-    """파이프라인 전체 상태 반환"""
-    loaded_steps = _pipeline_loader.load_all_available_steps()
+    """파이프라인 전체 상태 반환 (DI Container 포함)"""
+    loaded_steps = _di_step_loader.load_all_available_steps()
     available_steps = [k for k, v in loaded_steps.items() if v is not None]
+    container_stats = _di_step_loader.get_container_stats()
     
     return {
         'system_info': SYSTEM_INFO,
         'conda_optimized': IS_CONDA,
         'm3_max_optimized': IS_M3_MAX,
         'device': DEVICE,
-        'total_steps': len(STEP_MAPPING),
+        'total_steps': len(_di_step_loader._step_mapping),
         'available_steps': len(available_steps),
         'loaded_steps': available_steps,
         'failed_steps': [k for k, v in loaded_steps.items() if v is None],
-        'success_rate': (len(available_steps) / len(STEP_MAPPING)) * 100,
+        'success_rate': (len(available_steps) / len(_di_step_loader._step_mapping)) * 100,
         'utils_status': UTILS_STATUS,
-        'loading_priority': LOADING_PRIORITY if IS_CONDA else None
+        'loading_priority': _di_step_loader._loading_priority if IS_CONDA else None,
+        'di_container_available': DI_CONTAINER_AVAILABLE,
+        'di_container_stats': container_stats
     }
 
 def get_step_class(step_name: str) -> Optional[Type]:
-    """Step 클래스 반환"""
+    """Step 클래스 반환 (DI Container 기반)"""
     if step_name.startswith('step_'):
-        return _pipeline_loader.safe_import_step(step_name)
+        return _di_step_loader.safe_import_step(step_name)
     else:
         # 클래스명으로 검색
-        for step_id, step_info in STEP_MAPPING.items():
+        for step_id, step_info in _di_step_loader._step_mapping.items():
             if step_info['class'] == step_name:
-                return _pipeline_loader.safe_import_step(step_id)
+                return _di_step_loader.safe_import_step(step_id)
     return None
 
 def create_step_instance(step_name: str, **kwargs) -> Optional[Any]:
-    """Step 인스턴스 생성"""
-    step_class = get_step_class(step_name)
-    if step_class is None:
-        logger.error(f"❌ Step 클래스를 찾을 수 없음: {step_name}")
-        return None
-        
-    try:
-        # 기본 설정 추가
-        default_config = {
-            'device': DEVICE,
-            'is_m3_max': IS_M3_MAX,
-            'memory_gb': SYSTEM_INFO.get('memory_gb', 16.0),
-            'conda_optimized': IS_CONDA
-        }
-        default_config.update(kwargs)
-        
-        return step_class(**default_config)
-        
-    except Exception as e:
-        logger.error(f"❌ Step 인스턴스 생성 실패 {step_name}: {e}")
-        return None
+    """Step 인스턴스 생성 (DI Container 기반)"""
+    if step_name.startswith('step_'):
+        return _di_step_loader.create_step_instance(step_name, **kwargs)
+    else:
+        # 클래스명으로 검색
+        for step_id, step_info in _di_step_loader._step_mapping.items():
+            if step_info['class'] == step_name:
+                return _di_step_loader.create_step_instance(step_id, **kwargs)
+    
+    logger.error(f"❌ Step을 찾을 수 없음: {step_name}")
+    return None
 
 def list_available_steps() -> List[str]:
     """사용 가능한 Step 목록 반환"""
-    loaded_steps = _pipeline_loader.load_all_available_steps()
+    loaded_steps = _di_step_loader.load_all_available_steps()
     return [step_id for step_id, step_class in loaded_steps.items() if step_class is not None]
 
 def get_step_info(step_id: str) -> Dict[str, Any]:
-    """Step 정보 반환"""
-    step_config = STEP_MAPPING.get(step_id, {})
-    step_class = _pipeline_loader._loaded_classes.get(step_id)
+    """Step 정보 반환 (DI Container 기반)"""
+    step_config = _di_step_loader._step_mapping.get(step_id, {})
+    step_class = _di_step_loader._loaded_steps.get(step_id)
     
     return {
         'step_id': step_id,
@@ -327,33 +563,65 @@ def get_step_info(step_id: str) -> Dict[str, Any]:
         'priority': step_config.get('priority', 10),
         'available': step_class is not None,
         'loaded': step_class is not None,
-        'failed': step_id in _pipeline_loader._failed_loads
+        'failed': step_id in _di_step_loader._failed_steps,
+        'di_injected': DI_CONTAINER_AVAILABLE
     }
 
 async def initialize_pipeline_system() -> bool:
-    """파이프라인 시스템 초기화"""
+    """파이프라인 시스템 초기화 (DI Container 기반)"""
     try:
-        logger.info("🚀 파이프라인 시스템 초기화 시작")
+        logger.info("🚀 파이프라인 시스템 초기화 시작 (DI Container v4.0)")
+        
+        # DI Container 초기화
+        if DI_CONTAINER_AVAILABLE:
+            initialize_di_system_safe()
+            logger.info("✅ DI Container v4.0 시스템 초기화 완료")
         
         # Step 클래스들 로드
-        loaded_steps = _pipeline_loader.load_all_available_steps()
+        loaded_steps = _di_step_loader.load_all_available_steps()
         available_count = sum(1 for step in loaded_steps.values() if step is not None)
         
-        logger.info(f"✅ 파이프라인 시스템 초기화 완료: {available_count}/{len(STEP_MAPPING)}개 Step")
-        return available_count > 0
+        logger.info(f"✅ 파이프라인 시스템 초기화 완료: {available_count}/{len(_di_step_loader._step_mapping)}개 Step")
+        
+        # 중요한 Step들 개별 체크
+        critical_steps = ['step_06', 'step_01', 'step_04']  # VirtualFitting, HumanParsing, GeometricMatching
+        critical_available = 0
+        
+        for step_id in critical_steps:
+            if loaded_steps.get(step_id):
+                critical_available += 1
+                logger.info(f"🎉 중요 Step {step_id} 로드 성공!")
+            else:
+                logger.warning(f"⚠️ 중요 Step {step_id} 로드 실패!")
+        
+        success = available_count > 0 and critical_available >= 1
+        
+        if success:
+            logger.info("🚀 파이프라인 시스템 준비 완료!")
+        else:
+            logger.warning("⚠️ 파이프라인 시스템 부분 준비")
+        
+        return success
         
     except Exception as e:
         logger.error(f"❌ 파이프라인 시스템 초기화 실패: {e}")
         return False
 
 async def cleanup_pipeline_system() -> None:
-    """파이프라인 시스템 정리"""
+    """파이프라인 시스템 정리 (DI Container 기반)"""
     try:
-        logger.info("🧹 파이프라인 시스템 정리 시작")
+        logger.info("🧹 파이프라인 시스템 정리 시작 (DI Container v4.0)")
         
-        # 캐시 정리
-        _pipeline_loader._loaded_classes.clear()
-        _pipeline_loader._failed_loads.clear()
+        # DI Container 메모리 최적화
+        if DI_CONTAINER_AVAILABLE:
+            container = get_global_container()
+            if container:
+                cleanup_stats = container.optimize_memory()
+                logger.info(f"🧹 DI Container 메모리 최적화: {cleanup_stats}")
+        
+        # Step 로더 캐시 정리
+        _di_step_loader._loaded_steps.clear()
+        _di_step_loader._failed_steps.clear()
         
         # GPU 메모리 정리 (가능한 경우)
         if DEVICE in ['cuda', 'mps']:
@@ -365,45 +633,74 @@ async def cleanup_pipeline_system() -> None:
                     # M3 Max 메모리 정리 (안전하게)
                     import gc
                     gc.collect()
-            except:
-                pass
-                
+                    if hasattr(torch.backends.mps, 'empty_cache'):
+                        torch.backends.mps.empty_cache()
+            except Exception as e:
+                logger.debug(f"GPU 메모리 정리 실패: {e}")
+        
         logger.info("✅ 파이프라인 시스템 정리 완료")
         
     except Exception as e:
         logger.warning(f"⚠️ 파이프라인 시스템 정리 실패: {e}")
 
-# =============================================================================
-# 🔥 자동 Step 클래스 로딩 (전역 변수)
-# =============================================================================
+# ==============================================
+# 🔥 자동 Step 클래스 로딩 (DI Container 기반)
+# ==============================================
 
-# 사용 가능한 Step 클래스들을 전역 변수로 설정
+# Step 클래스들을 전역 변수로 설정 (지연 로딩)
 try:
-    _loaded_steps = _pipeline_loader.load_all_available_steps()
+    _loaded_steps = _di_step_loader.load_all_available_steps()
     
     # 개별 Step 클래스들을 전역에 추가
     for step_id, step_class in _loaded_steps.items():
         if step_class:
-            step_info = STEP_MAPPING[step_id]
+            step_info = _di_step_loader._step_mapping[step_id]
             class_name = step_info['class']
             globals()[class_name] = step_class
-            
-    logger.info("✅ Step 클래스들 전역 설정 완료")
+    
+    logger.info("✅ DI 기반 Step 클래스들 전역 설정 완료")
     
 except Exception as e:
-    logger.warning(f"⚠️ Step 클래스 전역 설정 실패: {e}")
+    logger.warning(f"⚠️ DI 기반 Step 클래스 전역 설정 실패: {e}")
 
-# =============================================================================
-# 🔥 Export 목록
-# =============================================================================
+# Step 매핑 호환성 (기존 코드 지원)
+STEP_MAPPING = _di_step_loader._step_mapping
+LOADING_PRIORITY = _di_step_loader._loading_priority
+
+# 가용성 플래그 매핑 (지연 평가)
+def get_step_availability():
+    loaded_steps = _di_step_loader._loaded_steps
+    return {
+        step_id: (loaded_steps.get(step_id) is not None)
+        for step_id in _di_step_loader._step_mapping.keys()
+    }
+
+STEP_AVAILABILITY = get_step_availability()
+
+# 사용 가능한 Step만 필터링 (지연 평가)
+def get_available_steps():
+    loaded_steps = _di_step_loader._loaded_steps
+    return {
+        step_id: step_class 
+        for step_id, step_class in loaded_steps.items() 
+        if step_class is not None
+    }
+
+AVAILABLE_STEPS = get_available_steps()
+
+# ==============================================
+# 🔥 Export 목록 (DI Container 기반)
+# ==============================================
 
 __all__ = [
     # 🎯 파이프라인 상수
     'STEP_MAPPING',
     'LOADING_PRIORITY',
     'SYSTEM_INFO',
+    'STEP_AVAILABILITY',
+    'AVAILABLE_STEPS',
     
-    # 🔧 파이프라인 관리 함수들
+    # 🔧 파이프라인 관리 함수들 (DI 기반)
     'get_pipeline_status',
     'get_step_class',
     'create_step_instance',
@@ -418,48 +715,89 @@ __all__ = [
     'get_step_data_converter', 
     'preprocess_image_for_step',
     
+    # 🔗 DI Container 관련
+    'DIBasedStepLoader',
+    'inject_dependencies_to_step_safe',
+    'get_service_safe',
+    'register_service_safe',
+    'register_lazy_service',
+    'DI_CONTAINER_AVAILABLE',
+    
     # 📊 상태 정보
     'UTILS_STATUS',
     'IS_CONDA',
     'IS_M3_MAX',
-    'DEVICE'
+    'DEVICE',
+    'TORCH_AVAILABLE',
+    'MPS_AVAILABLE'
 ]
 
 # Step 클래스들도 동적으로 추가
-for step_info in STEP_MAPPING.values():
+for step_info in _di_step_loader._step_mapping.values():
     class_name = step_info['class']
     if class_name in globals():
         __all__.append(class_name)
 
-# =============================================================================
-# 🔥 초기화 완료 메시지
-# =============================================================================
+# ==============================================
+# 🔥 초기화 완료 메시지 (DI Container 포함)
+# ==============================================
 
 def _print_initialization_summary():
-    """초기화 요약 출력"""
+    """초기화 요약 출력 (DI Container 포함)"""
     status = get_pipeline_status()
     available_count = status['available_steps']
     total_count = status['total_steps']
     success_rate = status['success_rate']
+    di_stats = status.get('di_container_stats', {})
     
-    print(f"\n🍎 MyCloset AI 파이프라인 시스템 v7.0 초기화 완료!")
+    print(f"\n🔥 MyCloset AI 파이프라인 시스템 v8.0 초기화 완료!")
+    print(f"🔗 DI Container v4.0: {'✅ 활성화' if DI_CONTAINER_AVAILABLE else '❌ 비활성화'}")
     print(f"📊 사용 가능한 Step: {available_count}/{total_count}개 ({success_rate:.1f}%)")
     print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'}")
     print(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
     print(f"🖥️ 디바이스: {DEVICE}")
+    print(f"⚡ PyTorch MPS: {'✅' if MPS_AVAILABLE else '❌'}")
     print(f"🛠️ 유틸리티: {sum(UTILS_STATUS.values())}/4개 사용 가능")
+    
+    if DI_CONTAINER_AVAILABLE and di_stats:
+        lazy_resolutions = di_stats.get('statistics', {}).get('lazy_resolutions', 0)
+        circular_prevented = di_stats.get('statistics', {}).get('circular_references_prevented', 0)
+        print(f"🔗 DI 지연 해결: {lazy_resolutions}회")
+        print(f"🚫 순환참조 차단: {circular_prevented}회")
     
     if available_count > 0:
         print(f"✅ 로드된 Steps: {', '.join(status['loaded_steps'])}")
     
     if status['failed_steps']:
         print(f"⚠️ 실패한 Steps: {', '.join(status['failed_steps'])}")
-        
+    
     print("🚀 파이프라인 시스템 준비 완료!\n")
 
 # 초기화 상태 출력 (한 번만)
-if not hasattr(sys, '_mycloset_pipeline_initialized'):
+if not hasattr(sys, '_mycloset_pipeline_di_initialized'):
     _print_initialization_summary()
-    sys._mycloset_pipeline_initialized = True
+    sys._mycloset_pipeline_di_initialized = True
 
-logger.info("🍎 MyCloset AI 파이프라인 시스템 초기화 완료")
+# conda 환경 자동 최적화 (DI Container 기반)
+if IS_CONDA and DI_CONTAINER_AVAILABLE:
+    try:
+        # conda 환경 최적화
+        os.environ.setdefault('OMP_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+        os.environ.setdefault('MKL_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+        os.environ.setdefault('NUMEXPR_NUM_THREADS', str(max(1, os.cpu_count() // 2)))
+        
+        if TORCH_AVAILABLE:
+            import torch
+            torch.set_num_threads(max(1, os.cpu_count() // 2))
+            
+            if IS_M3_MAX and MPS_AVAILABLE:
+                if hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+                logger.info("🍎 M3 Max MPS conda 최적화 완료")
+        
+        logger.info(f"🐍 conda 환경 자동 최적화 완료")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ conda 자동 최적화 실패: {e}")
+
+logger.info("🔥 MyCloset AI Pipeline System v8.0 with DI Container v4.0 초기화 완료!")

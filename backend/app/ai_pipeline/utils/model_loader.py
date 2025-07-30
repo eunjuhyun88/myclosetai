@@ -23,8 +23,6 @@ Version: 5.1 (step_interface.py v5.2 완전 호환)
 """
 
 import os
-from fix_pytorch_loading import apply_pytorch_patch; apply_pytorch_patch()
-
 import sys
 import gc
 import time
@@ -561,6 +559,7 @@ class RealAIModel:
         except Exception as e:
             self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
             return None
+        
     def _load_safetensors(self) -> Optional[Any]:
         """Safetensors 파일 로딩 (RealVisXL, Diffusion 등)"""
         try:
@@ -1488,59 +1487,202 @@ class ModelLoader:
             return None
     
     def _find_model_path(self, model_name: str, **kwargs) -> Optional[str]:
-        """step_interface.py AI_MODELS_ROOT 기반 모델 경로 찾기"""
+        """실제 파일 구조 기반 모델 경로 찾기 - 단순하고 효율적"""
         try:
-            # 직접 경로 지정
+            # 직접 경로 지정된 경우
             if 'model_path' in kwargs:
                 path = Path(kwargs['model_path'])
                 if path.exists():
                     return str(path)
             
-            # available_models에서 찾기
-            if model_name in self._available_models_cache:
-                model_info = self._available_models_cache[model_name]
-                path = Path(model_info.get('path', ''))
-                if path.exists():
-                    return str(path)
+            # 캐시된 경로가 있는 경우
+            if hasattr(self, '_model_path_cache') and model_name in self._model_path_cache:
+                cached_path = Path(self._model_path_cache[model_name])
+                if cached_path.exists():
+                    return str(cached_path)
             
-            # step_interface.py 매핑에서 찾기
-            step_name = kwargs.get('step_name')
-            if step_name and step_name in self.step_interface_mappings:
-                mapping = self.step_interface_mappings[step_name]
-                for local_path in mapping.get('local_paths', []):
-                    full_path = self.model_cache_dir / local_path
+            # 캐시 초기화
+            if not hasattr(self, '_model_path_cache'):
+                self._model_path_cache = {}
+            
+            # 실제 파일명 매핑 (현재 구조 기반)
+            model_name_mappings = {
+                # Human Parsing 모델들
+                'graphonomy': [
+                    'checkpoints/step_01_human_parsing/graphonomy_alternative.pth',
+                    'step_01_human_parsing/graphonomy_fixed.pth',
+                    'step_01_human_parsing/graphonomy_new.pth',
+                    'Graphonomy/inference.pth'
+                ],
+                'schp_atr': [
+                    'exp-schp-201908301523-atr.pth',
+                    'Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth'
+                ],
+                'atr_model': [
+                    'exp-schp-201908301523-atr.pth',
+                    'Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth'
+                ],
+                'schp_lip': [
+                    'step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth'
+                ],
+                
+                # Pose Estimation 모델들
+                'hrnet': [
+                    'step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth',
+                    'step_02_pose_estimation/yolov8s-pose.pt'
+                ],
+                'openpose': [
+                    'step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth'
+                ],
+                'body_pose_model': [
+                    'step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth'
+                ],
+                
+                # Cloth Segmentation 모델들
+                'sam': [
+                    'checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',
+                    'step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth',
+                    'step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth'
+                ],
+                'sam_vit_h': [
+                    'checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',
+                    'step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth'
+                ],
+                'sam_vit_l': [
+                    'checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth'
+                ],
+                'mobile_sam': [
+                    'checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt',
+                    'step_03_cloth_segmentation/mobile_sam.pt'
+                ],
+                'u2net': [
+                    'checkpoints/step_03_cloth_segmentation/u2net_fallback.pth',
+                    'step_03_cloth_segmentation/u2net.pth'
+                ],
+                
+                # Geometric Matching 모델들
+                'resnet': [
+                    'step_04_geometric_matching/ultra_models/resnet101_geometric.pth'
+                ],
+                'raft': [
+                    'step_04_geometric_matching/ultra_models/raft-things.pth'
+                ],
+                'vit': [
+                    'step_04_geometric_matching/ultra_models/ViT-L-14.pt',
+                    'step_08_quality_assessment/ultra_models/ViT-L-14.pt'
+                ],
+                'efficientnet': [
+                    'step_04_geometric_matching/ultra_models/efficientnet_b0_ultra.pth'
+                ],
+                
+                # Cloth Warping 모델들
+                'tom': [
+                    'checkpoints/step_05_cloth_warping/tom_final.pth'
+                ],
+                'hrviton': [
+                    'checkpoints/step_06_virtual_fitting/hrviton_final.pth'
+                ],
+                'vgg': [
+                    'step_05_cloth_warping/ultra_models/vgg19_warping.pth',
+                    'step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth'
+                ],
+                
+                # Virtual Fitting 모델들
+                'ootdiffusion': [
+                    'step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin',
+                    'checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors'
+                ],
+                'stable_diffusion': [
+                    'checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors',
+                    'checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors'
+                ],
+                
+                # Post Processing 모델들
+                'esrgan': [
+                    'step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth',
+                    'step_07_post_processing/ultra_models/RealESRGAN_x4plus.pth'
+                ],
+                'gfpgan': [
+                    'checkpoints/step_07_post_processing/GFPGAN.pth'
+                ],
+                
+                # Quality Assessment 모델들
+                'clip': [
+                    'step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin',
+                    'step_08_quality_assessment/clip_vit_b32.pth'
+                ],
+                'lpips': [
+                    'checkpoints/step_08_quality_assessment/lpips_vgg.pth',
+                    'checkpoints/step_08_quality_assessment/lpips_alex.pth'
+                ]
+            }
+            
+            # 매핑된 경로에서 찾기
+            if model_name in model_name_mappings:
+                for relative_path in model_name_mappings[model_name]:
+                    full_path = self.model_cache_dir / relative_path
                     if full_path.exists():
-                        # 모델명 매칭 확인
-                        if model_name in local_path or local_path.stem == model_name:
-                            return str(full_path)
+                        self._model_path_cache[model_name] = str(full_path)
+                        self.logger.info(f"✅ 모델 발견: {model_name} → {full_path}")
+                        return str(full_path)
             
-            # 모든 Step 매핑에서 찾기 (step_interface.py GitHubStepMapping 전체 검색)
-            for step_name, mapping in self.step_interface_mappings.items():
-                for local_path in mapping.get('local_paths', []):
-                    full_path = self.model_cache_dir / local_path
-                    if full_path.exists():
-                        if model_name in local_path or local_path.stem == model_name or model_name in mapping.get('ai_models', []):
-                            return str(full_path)
-            
-            # 확장자 패턴으로 검색 (step_interface.py 구조 기반)
-            possible_patterns = [
-                f"**/{model_name}",
-                f"**/{model_name}.*",
-                f"**/*{model_name}*",
-                f"**/step_*/{model_name}.*"
+            # 매핑에 없는 경우 - 파일명으로 직접 검색 (최후 수단)
+            search_patterns = [
+                f"**/{model_name}.pth",
+                f"**/{model_name}.pt", 
+                f"**/{model_name}.safetensors",
+                f"**/{model_name}.bin",
+                f"**/*{model_name}*.pth",
+                f"**/*{model_name}*.pt"
             ]
             
-            for pattern in possible_patterns:
-                for found_path in self.model_cache_dir.glob(pattern):
-                    if found_path.is_file():
-                        return str(found_path)
+            for pattern in search_patterns:
+                try:
+                    for found_path in self.model_cache_dir.glob(pattern):
+                        if found_path.is_file() and found_path.stat().st_size > 1024:  # 1KB 이상
+                            self._model_path_cache[model_name] = str(found_path)
+                            self.logger.info(f"🔍 패턴 검색으로 모델 발견: {model_name} → {found_path}")
+                            return str(found_path)
+                except Exception as e:
+                    self.logger.debug(f"패턴 검색 실패 {pattern}: {e}")
+                    continue
             
+            # 못 찾은 경우
+            self.logger.warning(f"❌ 모델을 찾을 수 없음: {model_name}")
             return None
             
         except Exception as e:
             self.logger.error(f"❌ 모델 경로 찾기 실패 {model_name}: {e}")
             return None
-    
+
+    # 추가: 모델 캐시 초기화 함수
+    def clear_model_cache(self):
+        """모델 경로 캐시 초기화"""
+        if hasattr(self, '_model_path_cache'):
+            self._model_path_cache.clear()
+            self.logger.info("🗑️ 모델 경로 캐시 초기화 완료")
+
+    # 추가: 사용 가능한 모델 목록 함수  
+    def list_available_models(self) -> Dict[str, str]:
+        """사용 가능한 모델들 목록 반환"""
+        available = {}
+        
+        # 주요 모델들 체크
+        important_models = [
+            'graphonomy', 'schp_atr', 'hrnet', 'openpose', 'sam', 'sam_vit_h', 
+            'u2net', 'resnet', 'raft', 'vit', 'hrviton', 'ootdiffusion', 
+            'stable_diffusion', 'esrgan', 'gfpgan', 'clip'
+        ]
+        
+        for model_name in important_models:
+            path = self._find_model_path(model_name)
+            if path:
+                available[model_name] = path
+        
+        self.logger.info(f"📊 사용 가능한 모델: {len(available)}개")
+        return available
+
+
     def _manage_cache(self):
         """실제 AI 모델 캐시 관리 (step_interface.py 호환)"""
         try:

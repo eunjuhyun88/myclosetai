@@ -125,15 +125,21 @@ class LazyDependency:
     def is_resolved(self) -> bool:
         return self._resolved
 
+
+# backend/app/core/di_container.py 수정사항
+
 class DynamicImportResolver:
-    """동적 import 해결기 (순환참조 완전 방지)"""
+    """동적 import 해결기 (순환참조 완전 방지) - 경로 수정"""
     
     @staticmethod
     def resolve_model_loader():
-        """ModelLoader 동적 해결 (순환참조 방지)"""
+        """ModelLoader 동적 해결 (정확한 경로들)"""
         import_paths = [
+            # 실제 프로젝트 구조에 맞는 경로들
             'app.ai_pipeline.utils.model_loader',
+            'app.services.model_manager',  # 📁 실제 ModelManager 위치
             'ai_pipeline.utils.model_loader',
+            'services.model_manager',
             'utils.model_loader'
         ]
         
@@ -141,21 +147,26 @@ class DynamicImportResolver:
             try:
                 module = importlib.import_module(path)
                 
-                # 전역 함수 우선
-                if hasattr(module, 'get_global_model_loader'):
-                    loader = module.get_global_model_loader()
-                    if loader:
-                        logger.debug(f"✅ ModelLoader 동적 해결: {path}")
-                        return loader
-                
-                # 클래스 직접 생성
-                if hasattr(module, 'ModelLoader'):
-                    ModelLoaderClass = module.ModelLoader
-                    loader = ModelLoaderClass()
-                    logger.debug(f"✅ ModelLoader 클래스 생성: {path}")
-                    return loader
+                # 다양한 클래스명 시도
+                class_names = ['ModelLoader', 'ModelManager', 'get_global_model_loader']
+                for class_name in class_names:
+                    if hasattr(module, class_name):
+                        if class_name.startswith('get_'):
+                            # 함수인 경우 호출
+                            loader = getattr(module, class_name)()
+                        else:
+                            # 클래스인 경우 인스턴스 생성
+                            LoaderClass = getattr(module, class_name)
+                            loader = LoaderClass()
+                        
+                        if loader:
+                            logger.debug(f"✅ {class_name} 동적 해결: {path}")
+                            return loader
                     
             except ImportError:
+                continue
+            except Exception as e:
+                logger.debug(f"⚠️ {path} 해결 실패: {e}")
                 continue
         
         # 완전 실패 시 Mock 반환
@@ -164,32 +175,54 @@ class DynamicImportResolver:
     
     @staticmethod
     def resolve_memory_manager():
-        """MemoryManager 동적 해결 (순환참조 방지)"""
+        """MemoryManager 동적 해결 (정확한 경로들)"""
         import_paths = [
-            'app.ai_pipeline.utils.memory_manager',
+            # 🔥 실제 MemoryManager 경로들
+            'app.services.memory_manager',  # 📁 services에 있음
+            'app.ai_pipeline.utils.memory_manager',  # 📁 utils에도 있음
+            'services.memory_manager',
             'ai_pipeline.utils.memory_manager',
-            'utils.memory_manager'
+            'utils.memory_manager',
+            'backend.app.services.memory_manager',  # 전체 경로
+            'backend.app.ai_pipeline.utils.memory_manager'
         ]
         
         for path in import_paths:
             try:
                 module = importlib.import_module(path)
                 
-                # 전역 함수 우선
-                if hasattr(module, 'get_global_memory_manager'):
-                    manager = module.get_global_memory_manager()
-                    if manager:
-                        logger.debug(f"✅ MemoryManager 동적 해결: {path}")
-                        return manager
+                # 다양한 함수/클래스명 시도
+                access_methods = [
+                    'get_global_memory_manager',  # 함수
+                    'get_memory_manager',         # 함수
+                    'create_memory_manager',      # 함수
+                    'MemoryManager',              # 클래스
+                    'create_optimized_memory_manager'  # 함수
+                ]
                 
-                # 클래스 직접 생성
-                if hasattr(module, 'MemoryManager'):
-                    MemoryManagerClass = module.MemoryManager
-                    manager = MemoryManagerClass()
-                    logger.debug(f"✅ MemoryManager 클래스 생성: {path}")
-                    return manager
+                for method_name in access_methods:
+                    if hasattr(module, method_name):
+                        try:
+                            if method_name.startswith('get_') or method_name.startswith('create_'):
+                                # 함수인 경우 호출
+                                manager = getattr(module, method_name)()
+                            else:
+                                # 클래스인 경우 인스턴스 생성
+                                ManagerClass = getattr(module, method_name)
+                                manager = ManagerClass()
+                            
+                            if manager:
+                                logger.info(f"✅ MemoryManager 해결 성공: {path} → {method_name}")
+                                return manager
+                        except Exception as e:
+                            logger.debug(f"⚠️ {method_name} 호출 실패: {e}")
+                            continue
                     
-            except ImportError:
+            except ImportError as e:
+                logger.debug(f"📋 {path} import 실패: {e}")
+                continue
+            except Exception as e:
+                logger.debug(f"⚠️ {path} 해결 중 오류: {e}")
                 continue
         
         # 완전 실패 시 Mock 반환
@@ -198,146 +231,111 @@ class DynamicImportResolver:
     
     @staticmethod
     def resolve_data_converter():
-        """DataConverter 동적 해결 (순환참조 방지)"""
+        """DataConverter 동적 해결 (정확한 경로들)"""
         import_paths = [
             'app.ai_pipeline.utils.data_converter',
+            'app.services.data_converter',  # services에도 있을 수 있음
             'ai_pipeline.utils.data_converter',
-            'utils.data_converter'
+            'services.data_converter',
+            'utils.data_converter',
+            'backend.app.ai_pipeline.utils.data_converter'
         ]
         
         for path in import_paths:
             try:
                 module = importlib.import_module(path)
                 
-                # 전역 함수 우선
-                if hasattr(module, 'get_global_data_converter'):
-                    converter = module.get_global_data_converter()
-                    if converter:
-                        logger.debug(f"✅ DataConverter 동적 해결: {path}")
-                        return converter
+                # 다양한 접근 방법
+                access_methods = [
+                    'get_global_data_converter',
+                    'get_data_converter', 
+                    'create_data_converter',
+                    'DataConverter'
+                ]
                 
-                # 클래스 직접 생성
-                if hasattr(module, 'DataConverter'):
-                    DataConverterClass = module.DataConverter
-                    converter = DataConverterClass()
-                    logger.debug(f"✅ DataConverter 클래스 생성: {path}")
-                    return converter
+                for method_name in access_methods:
+                    if hasattr(module, method_name):
+                        try:
+                            if method_name.startswith('get_') or method_name.startswith('create_'):
+                                converter = getattr(module, method_name)()
+                            else:
+                                ConverterClass = getattr(module, method_name)
+                                converter = ConverterClass()
+                            
+                            if converter:
+                                logger.info(f"✅ DataConverter 해결 성공: {path} → {method_name}")
+                                return converter
+                        except Exception as e:
+                            logger.debug(f"⚠️ {method_name} 호출 실패: {e}")
+                            continue
                     
             except ImportError:
+                continue
+            except Exception as e:
+                logger.debug(f"⚠️ {path} 해결 중 오류: {e}")
                 continue
         
         # 완전 실패 시 Mock 반환
         logger.warning("⚠️ DataConverter 해결 실패, Mock 사용")
         return DynamicImportResolver._create_mock_data_converter()
-    
-    @staticmethod
-    def resolve_step_factory():
-        """StepFactory 동적 해결 (순환참조 방지) - 절대 사용하지 말 것!"""
-        # ⚠️ 이 함수는 순환참조를 만들 수 있으므로 사용 금지
-        logger.warning("⚠️ StepFactory 동적 해결 요청됨 - 순환참조 위험!")
-        return None
-    
-    @staticmethod
-    def _create_mock_model_loader():
-        """Mock ModelLoader (순환참조 방지)"""
-        class MockModelLoader:
-            def __init__(self):
-                self.models = {}
-                self.device = DEVICE
-                self.is_initialized = True
-            
-            def get_model(self, model_name: str):
-                if model_name not in self.models:
-                    self.models[model_name] = {
-                        "name": model_name,
-                        "device": self.device,
-                        "type": "mock_model",
-                        "loaded": True,
-                        "size_mb": 50.0
-                    }
-                return self.models[model_name]
-            
-            def load_model(self, model_name: str):
-                return self.get_model(model_name)
-            
-            def initialize(self):
-                return True
-            
-            def cleanup_models(self):
-                self.models.clear()
-        
-        return MockModelLoader()
-    
-    @staticmethod
-    def _create_mock_memory_manager():
-        """Mock MemoryManager (순환참조 방지)"""
-        class MockMemoryManager:
-            def __init__(self):
-                self.optimization_count = 0
-                self.is_initialized = True
-            
-            def optimize_memory(self, aggressive: bool = False):
-                try:
-                    gc.collect()
-                    
-                    if TORCH_AVAILABLE and IS_M3_MAX and MPS_AVAILABLE:
-                        import torch
-                        if hasattr(torch.backends.mps, 'empty_cache'):
-                            torch.backends.mps.empty_cache()
-                    
-                    self.optimization_count += 1
-                    return {
-                        "success": True,
-                        "method": "mock_optimization",
-                        "count": self.optimization_count,
-                        "memory_freed_mb": 50.0
-                    }
-                except Exception as e:
-                    return {"success": False, "error": str(e)}
-            
-            def optimize(self, aggressive: bool = False):
-                return self.optimize_memory(aggressive)
-            
-            def get_memory_info(self):
-                return {
-                    "total_gb": MEMORY_GB,
-                    "available_gb": MEMORY_GB * 0.7,
-                    "percent": 30.0,
-                    "device": DEVICE,
-                    "is_m3_max": IS_M3_MAX,
-                    "optimization_count": self.optimization_count
-                }
-            
-            def cleanup(self):
-                self.optimize_memory(aggressive=True)
-        
-        return MockMemoryManager()
-    
-    @staticmethod
-    def _create_mock_data_converter():
-        """Mock DataConverter (순환참조 방지)"""
-        class MockDataConverter:
-            def __init__(self):
-                self.conversion_count = 0
-                self.is_initialized = True
-            
-            def convert(self, data, target_format: str):
-                self.conversion_count += 1
-                return {
-                    "converted_data": f"mock_converted_{target_format}_{self.conversion_count}",
-                    "format": target_format,
-                    "conversion_count": self.conversion_count,
-                    "success": True
-                }
-            
-            def get_supported_formats(self):
-                return ["tensor", "numpy", "pil", "cv2", "base64"]
-            
-            def cleanup(self):
-                self.conversion_count = 0
-        
-        return MockDataConverter()
 
+# ==============================================
+# 🔥 추가: 실제 경로 탐지 함수
+# ==============================================
+
+def detect_actual_paths():
+    """실제 프로젝트의 경로들을 탐지"""
+    import os
+    from pathlib import Path
+    
+    try:
+        # 현재 위치에서 실제 파일들 찾기
+        backend_root = Path(__file__).parent.parent.parent  # backend/
+        
+        paths_found = {}
+        
+        # MemoryManager 찾기
+        memory_manager_paths = [
+            backend_root / "app" / "services" / "memory_manager.py",
+            backend_root / "app" / "ai_pipeline" / "utils" / "memory_manager.py"
+        ]
+        
+        for path in memory_manager_paths:
+            if path.exists():
+                relative_path = str(path.relative_to(backend_root)).replace('/', '.').replace('.py', '')
+                paths_found['memory_manager'] = relative_path
+                logger.info(f"📁 MemoryManager 발견: {relative_path}")
+                break
+        
+        # ModelLoader/ModelManager 찾기  
+        model_paths = [
+            backend_root / "app" / "services" / "model_manager.py",
+            backend_root / "app" / "ai_pipeline" / "utils" / "model_loader.py"
+        ]
+        
+        for path in model_paths:
+            if path.exists():
+                relative_path = str(path.relative_to(backend_root)).replace('/', '.').replace('.py', '')
+                paths_found['model_manager'] = relative_path
+                logger.info(f"📁 ModelManager 발견: {relative_path}")
+                break
+        
+        return paths_found
+    
+    except Exception as e:
+        logger.error(f"❌ 경로 탐지 실패: {e}")
+        return {}
+
+# 초기화 시 실제 경로 탐지
+logger.info("🔍 실제 프로젝트 경로 탐지 중...")
+DETECTED_PATHS = detect_actual_paths()
+
+if DETECTED_PATHS:
+    logger.info(f"✅ 발견된 경로들: {DETECTED_PATHS}")
+else:
+    logger.warning("⚠️ 경로 탐지 실패, 기본 경로 사용")
+
+    
 # ==============================================
 # 🔥 순환참조 방지 DI Container
 # ==============================================
