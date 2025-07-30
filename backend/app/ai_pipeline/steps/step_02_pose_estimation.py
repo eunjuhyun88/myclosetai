@@ -69,6 +69,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+try:
+    from app.core.di_container import get_global_di_container
+    DI_CONTAINER_AVAILABLE = True
+except ImportError:
+    try:
+        from app.ai_pipeline.core import DIContainer
+        DI_CONTAINER_AVAILABLE = True
+    except ImportError:
+        DI_CONTAINER_AVAILABLE = False
+        print("⚠️ DI Container 없음 - 폴백 모드 사용")
+
 # ==============================================
 # 🔥 2. conda 환경 및 시스템 체크
 # ==============================================

@@ -1664,19 +1664,19 @@ class GeometricMatchingStep(BaseStepMixin):
     # 🔥 초기화 및 AI 모델 로딩
     # ==============================================
     
-    async def initialize(self) -> bool:
+    def initialize(self) -> bool:
         """초기화 (GitHub 표준 플로우)"""
         try:
             if getattr(self, 'is_initialized', False):
                 return True
-            
+                
             self.logger.info(f"🚀 {self.step_name} v27.0 초기화 시작")
             
             # 모델 경로 탐지
             self._detect_model_paths()
             
-            # 실제 AI 모델 로딩
-            success = await self._load_ai_models()
+            # 실제 AI 모델 로딩 (동기 버전으로 변경)
+            success = self._load_ai_models_sync()
             if not success:
                 self.logger.warning("⚠️ 실제 AI 모델 로딩 실패")
                 return False
@@ -1695,7 +1695,7 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} v27.0 초기화 실패: {e}")
             return False
-    
+
     def _detect_model_paths(self):
         """실제 AI 모델 경로 탐지"""
         try:
@@ -1747,7 +1747,8 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ 모델 경로 탐지 실패: {e}")
             self.model_paths = {}
-        
+    
+
     async def _load_ai_models(self) -> bool:
         """실제 AI 모델 로딩"""
         try:
@@ -1830,6 +1831,126 @@ class GeometricMatchingStep(BaseStepMixin):
                 
         except Exception as e:
             self.logger.error(f"❌ 실제 AI 모델 로딩 실패: {e}")
+            return False
+
+        #!/usr/bin/env python3
+   
+    def _load_ai_models_sync(self) -> bool:
+        """BaseStepMixin 호환 동기식 AI 모델 로딩"""
+        try:
+            self.logger.info("🔄 동기식 실제 AI 모델 체크포인트 로딩 시작")
+            
+            loaded_count = 0
+            
+            # GMM (Geometric Matching Module) 로딩
+            if 'gmm' in self.model_paths:
+                try:
+                    self.gmm_model = GeometricMatchingModule(input_nc=6, output_nc=1).to(self.device)
+                    checkpoint = self._safe_load_checkpoint(self.model_paths['gmm'])
+                    if checkpoint is not None:
+                        self._load_model_weights(self.gmm_model, checkpoint, 'gmm')
+                    self.gmm_model.eval()
+                    loaded_count += 1
+                    self.logger.info("✅ GMM 모델 동기 로딩 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ GMM 모델 동기 로딩 실패: {e}")
+            
+            # TPS Network 로딩
+            if 'tps' in self.model_paths:
+                try:
+                    self.tps_network = self.gmm_model.grid_generator if self.gmm_model else TPSGridGenerator()
+                    loaded_count += 1
+                    self.logger.info("✅ TPS Network 동기 로딩 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ TPS Network 동기 로딩 실패: {e}")
+            
+            # Optical Flow Network 로딩
+            if 'raft' in self.model_paths:
+                try:
+                    self.optical_flow_model = OpticalFlowNetwork().to(self.device)
+                    checkpoint = self._safe_load_checkpoint(self.model_paths['raft'])
+                    if checkpoint is not None:
+                        self._load_model_weights(self.optical_flow_model, checkpoint, 'optical_flow')
+                    self.optical_flow_model.eval()
+                    loaded_count += 1
+                    self.logger.info("✅ Optical Flow 모델 동기 로딩 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Optical Flow 모델 동기 로딩 실패: {e}")
+            
+            # Keypoint Matching Network 로딩
+            try:
+                self.keypoint_matcher = KeypointMatchingNetwork(num_keypoints=18).to(self.device)
+                self.keypoint_matcher.eval()
+                loaded_count += 1
+                self.logger.info("✅ Keypoint Matching 네트워크 동기 로딩 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Keypoint Matching 네트워크 동기 로딩 실패: {e}")
+            
+            # CompleteAdvancedGeometricMatchingAI 로딩
+            try:
+                self.advanced_geometric_ai = CompleteAdvancedGeometricMatchingAI(
+                    input_nc=6, num_keypoints=20
+                ).to(self.device)
+                self.advanced_geometric_ai.eval()
+                loaded_count += 1
+                self.logger.info("✅ CompleteAdvancedGeometricMatchingAI 동기 로딩 완료")
+                
+                # 실제 체크포인트 로딩 시도 (가능한 경우)
+                if 'gmm' in self.model_paths:
+                    self._load_pretrained_weights(self.model_paths['gmm'])
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ CompleteAdvancedGeometricMatchingAI 동기 로딩 실패: {e}")
+            
+            # 상태 업데이트
+            self.performance_stats['models_loaded'] = loaded_count
+            self.status.models_loaded = loaded_count > 0
+            self.status.advanced_ai_loaded = self.advanced_geometric_ai is not None
+            self.status.model_creation_success = loaded_count > 0
+            
+            if loaded_count > 0:
+                self.logger.info(f"✅ 동기식 실제 AI 모델 로딩 완료: {loaded_count}개")
+                return True
+            else:
+                self.logger.error("❌ 동기식 로딩된 실제 AI 모델이 없습니다")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ 동기식 실제 AI 모델 로딩 실패: {e}")
+            return False
+
+    # initialize() 메서드도 함께 수정해야 합니다:
+
+    def initialize(self) -> bool:
+        """초기화 (GitHub 표준 플로우) - 수정된 버전"""
+        try:
+            if getattr(self, 'is_initialized', False):
+                return True
+                
+            self.logger.info(f"🚀 {self.step_name} v27.0 초기화 시작")
+            
+            # 모델 경로 탐지
+            self._detect_model_paths()
+            
+            # 실제 AI 모델 로딩 (동기 버전 호출)
+            success = self._load_ai_models_sync()  # 변경: 동기 메서드 호출
+            if not success:
+                self.logger.warning("⚠️ 실제 AI 모델 로딩 실패")
+                return False
+            
+            # M3 Max 최적화 적용
+            if self.device == "mps" or IS_M3_MAX:
+                self._apply_m3_max_optimization()
+            
+            self.is_initialized = True
+            self.is_ready = True
+            self.status.initialization_complete = True
+            
+            self.logger.info(f"✅ {self.step_name} v27.0 초기화 완료 (로딩된 모델: {self.performance_stats['models_loaded']}개)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} v27.0 초기화 실패: {e}")
             return False
 
     def _load_pretrained_weights(self, checkpoint_path: Path):

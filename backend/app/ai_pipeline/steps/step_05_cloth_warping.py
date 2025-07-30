@@ -1431,63 +1431,389 @@ if BaseStepMixin:
                 self.logger.debug(f"상세 오류: {traceback.format_exc()}")
                 return self._create_error_ai_result(str(e))
         
+
         def _execute_multi_algorithm_warping(self, cloth_tensor: torch.Tensor, 
-                                             person_tensor: torch.Tensor,
-                                             geometric_data: Dict[str, Any],
-                                             method: str) -> Dict[str, Any]:
-            """멀티 알고리즘 워핑 실행"""
+                                     person_tensor: torch.Tensor,
+                                     geometric_data: Dict[str, Any],
+                                     method: str) -> Dict[str, Any]:
+            """멀티 알고리즘 워핑 실행 (수정된 버전)"""
             try:
                 results = {}
                 
                 self.logger.info(f"🔄 멀티 알고리즘 워핑 실행: {method}")
                 
-                # 1. TPS 기반 워핑
-                if self.tps_network and method in ['hybrid_multi', 'tps_advanced']:
-                    tps_result = self.tps_network(cloth_tensor, person_tensor)
-                    results['tps'] = tps_result
-                    self.logger.info("✅ TPS 워핑 완료")
+                # 🔧 수정 1: 모델 상태 사전 검증
+                available_models = self._check_available_models()
+                self.logger.info(f"📊 사용 가능한 모델: {available_models}")
                 
-                # 2. RAFT Flow 기반 워핑
-                if self.raft_network and method in ['hybrid_multi', 'raft_flow']:
-                    raft_result = self.raft_network(
-                        cloth_tensor, person_tensor, 
-                        num_iterations=12
-                    )
-                    results['raft'] = raft_result
-                    self.logger.info("✅ RAFT Flow 워핑 완료")
-                
-                # 3. VGG 기반 매칭 워핑
-                if self.vgg_matching and method in ['hybrid_multi', 'vgg_matching']:
-                    vgg_result = self.vgg_matching(cloth_tensor, person_tensor)
-                    results['vgg'] = vgg_result
-                    self.logger.info("✅ VGG 매칭 워핑 완료")
-                
-                # 4. 결과 융합 (HYBRID_MULTI인 경우)
-                if method == 'hybrid_multi' and len(results) > 1:
-                    fused_result = self._fuse_multiple_warping_results(results)
-                    results['fused'] = fused_result
-                    self.logger.info("✅ 멀티 알고리즘 융합 완료")
-                
-                # 5. 최적 결과 선택
-                best_result = self._select_best_warping_result(results)
+                # 🔧 수정 2: TPS 기반 워핑 (안전한 실행)
+                if method in ['hybrid_multi', 'tps_advanced']:
+                    try:
+                        if self.tps_network is not None:
+                            self.logger.info("🧠 TPS 워핑 시작...")
+                            tps_result = self._safe_execute_tps(cloth_tensor, person_tensor)
+                            if tps_result is not None and 'warped_cloth' in tps_result:
+                                results['tps'] = tps_result
+                                self.logger.info("✅ TPS 워핑 완료")
+                            else:
+                                self.logger.warning("⚠️ TPS 워핑 결과가 유효하지 않음")
+                        else:
+                            self.logger.warning("⚠️ TPS 네트워크가 초기화되지 않음")
+                            # 간단한 TPS 폴백 구현
+                            simple_tps = self._create_simple_warping_result(cloth_tensor, person_tensor, "tps_fallback")
+                            results['tps_simple'] = simple_tps
+                            self.logger.info("✅ 간단한 TPS 폴백 완료")
+                    except Exception as e:
+                        self.logger.error(f"❌ TPS 워핑 실패: {e}")
+                        fallback_tps = self._create_simple_warping_result(cloth_tensor, person_tensor, "tps_error_fallback")
+                        results['tps_fallback'] = fallback_tps
+
+                # 🔧 수정 3: RAFT Flow 기반 워핑 (안전한 실행)
+                if method in ['hybrid_multi', 'raft_flow']:
+                    try:
+                        if self.raft_network is not None:
+                            self.logger.info("🌊 RAFT Flow 워핑 시작...")
+                            raft_result = self._safe_execute_raft(cloth_tensor, person_tensor)
+                            if raft_result is not None and 'warped_cloth' in raft_result:
+                                results['raft'] = raft_result
+                                self.logger.info("✅ RAFT Flow 워핑 완료")
+                            else:
+                                self.logger.warning("⚠️ RAFT 워핑 결과가 유효하지 않음")
+                        else:
+                            self.logger.warning("⚠️ RAFT 네트워크가 초기화되지 않음")
+                            simple_flow = self._create_simple_warping_result(cloth_tensor, person_tensor, "raft_fallback")
+                            results['raft_simple'] = simple_flow
+                            self.logger.info("✅ 간단한 Flow 폴백 완료")
+                    except Exception as e:
+                        self.logger.error(f"❌ RAFT 워핑 실패: {e}")
+                        fallback_raft = self._create_simple_warping_result(cloth_tensor, person_tensor, "raft_error_fallback")
+                        results['raft_fallback'] = fallback_raft
+
+                # 🔧 수정 4: VGG 기반 매칭 워핑 (안전한 실행)
+                if method in ['hybrid_multi', 'vgg_matching']:
+                    try:
+                        if self.vgg_matching is not None:
+                            self.logger.info("🎯 VGG 매칭 워핑 시작...")
+                            vgg_result = self._safe_execute_vgg(cloth_tensor, person_tensor)
+                            if vgg_result is not None and 'warped_cloth' in vgg_result:
+                                results['vgg'] = vgg_result
+                                self.logger.info("✅ VGG 매칭 워핑 완료")
+                            else:
+                                self.logger.warning("⚠️ VGG 워핑 결과가 유효하지 않음")
+                        else:
+                            self.logger.warning("⚠️ VGG 네트워크가 초기화되지 않음")
+                            simple_matching = self._create_simple_warping_result(cloth_tensor, person_tensor, "vgg_fallback")
+                            results['vgg_simple'] = simple_matching
+                            self.logger.info("✅ 간단한 매칭 폴백 완료")
+                    except Exception as e:
+                        self.logger.error(f"❌ VGG 워핑 실패: {e}")
+                        fallback_vgg = self._create_simple_warping_result(cloth_tensor, person_tensor, "vgg_error_fallback")
+                        results['vgg_fallback'] = fallback_vgg
+
+                # 🔧 수정 5: 최소한의 결과 보장 (핵심 수정!)
+                if not results:
+                    self.logger.warning("⚠️ 모든 AI 알고리즘이 실패했습니다. 기본 워핑을 생성합니다.")
+                    basic_warping = self._create_basic_warping_result(cloth_tensor, person_tensor)
+                    results['basic'] = basic_warping
+                    self.logger.info("✅ 기본 워핑 결과 생성 완료")
+
+                # 🔧 수정 6: 결과 검증
+                valid_results = self._validate_warping_results(results)
+                self.logger.info(f"📊 유효한 워핑 결과: {len(valid_results)}개")
+
+                # 🔧 수정 7: 융합 로직 (2개 이상의 유효한 결과가 있을 때만)
+                if method == 'hybrid_multi' and len(valid_results) > 1:
+                    try:
+                        fused_result = self._fuse_multiple_warping_results(valid_results)
+                        if fused_result is not None:
+                            valid_results['fused'] = fused_result
+                            self.logger.info("✅ 멀티 알고리즘 융합 완료")
+                    except Exception as e:
+                        self.logger.error(f"❌ 융합 실패: {e}")
+
+                # 🔧 수정 8: 최적 결과 선택 (보장된 결과 사용)
+                best_result = self._select_best_warping_result_safe(valid_results)
                 
                 return {
                     'best_warped_cloth': best_result['warped_cloth'],
-                    'all_results': results,
+                    'all_results': valid_results,
                     'method_used': method,
-                    'confidence': best_result.get('confidence', torch.tensor([0.8])),
+                    'confidence': best_result.get('confidence', torch.tensor([0.7])),
                     'warping_metadata': {
-                        'algorithms_used': list(results.keys()),
-                        'fusion_applied': 'fused' in results,
-                        'geometric_data_used': bool(geometric_data)
+                        'algorithms_used': list(valid_results.keys()),
+                        'fusion_applied': 'fused' in valid_results,
+                        'geometric_data_used': bool(geometric_data),
+                        'total_algorithms_attempted': len([k for k in ['tps', 'raft', 'vgg'] if method in ['hybrid_multi'] or k in method]),
+                        'successful_algorithms': len(valid_results)
                     }
                 }
                 
             except Exception as e:
                 self.logger.error(f"❌ 멀티 알고리즘 워핑 실행 실패: {e}")
-                # 폴백: 간단한 어파인 변형
+                self.logger.debug(f"상세 오류: {traceback.format_exc()}")
+                # 최후 폴백: 간단한 어파인 변형
                 return self._fallback_simple_warping(cloth_tensor, person_tensor)
-        
+
+        # 새로 추가할 안전한 실행 메서드들
+        def _check_available_models(self) -> Dict[str, bool]:
+            """사용 가능한 모델 상태 확인"""
+            try:
+                available = {
+                    'tps_network': self.tps_network is not None,
+                    'raft_network': self.raft_network is not None,
+                    'vgg_matching': self.vgg_matching is not None,
+                    'densenet_quality': self.densenet_quality is not None,
+                    'physics_simulation': hasattr(self, 'fabric_simulator') and self.fabric_simulator is not None
+                }
+                return available
+            except Exception as e:
+                self.logger.error(f"❌ 모델 상태 확인 실패: {e}")
+                return {}
+
+        def _safe_execute_tps(self, cloth_tensor: torch.Tensor, person_tensor: torch.Tensor) -> Optional[Dict[str, Any]]:
+            """안전한 TPS 워핑 실행"""
+            try:
+                with torch.no_grad():
+                    result = self.tps_network(cloth_tensor, person_tensor)
+                    
+                    # 결과 검증
+                    if result is None or not isinstance(result, dict):
+                        self.logger.warning("TPS 네트워크가 None 또는 잘못된 타입 반환")
+                        return None
+                        
+                    if 'warped_cloth' not in result:
+                        self.logger.warning("TPS 결과에 warped_cloth가 없음")
+                        return None
+                        
+                    warped_cloth = result['warped_cloth']
+                    if not torch.is_tensor(warped_cloth) or warped_cloth.numel() == 0:
+                        self.logger.warning("TPS warped_cloth가 유효하지 않음")
+                        return None
+                    
+                    return {
+                        'warped_cloth': warped_cloth,
+                        'confidence': result.get('confidence', torch.tensor([0.7])),
+                        'method': 'tps_network',
+                        'tps_metadata': {
+                            'control_points': result.get('control_points'),
+                            'transformation_matrix': result.get('transformation_matrix')
+                        }
+                    }
+            except Exception as e:
+                self.logger.error(f"❌ 안전한 TPS 실행 실패: {e}")
+                return None
+
+        def _safe_execute_raft(self, cloth_tensor: torch.Tensor, person_tensor: torch.Tensor) -> Optional[Dict[str, Any]]:
+            """안전한 RAFT 워핑 실행"""
+            try:
+                with torch.no_grad():
+                    result = self.raft_network(cloth_tensor, person_tensor, num_iterations=12)
+                    
+                    if result is None or not isinstance(result, dict) or 'warped_cloth' not in result:
+                        return None
+                        
+                    warped_cloth = result['warped_cloth']
+                    if not torch.is_tensor(warped_cloth) or warped_cloth.numel() == 0:
+                        return None
+                    
+                    return {
+                        'warped_cloth': warped_cloth,
+                        'confidence': result.get('confidence', torch.tensor([0.6])),
+                        'method': 'raft_network',
+                        'raft_metadata': {
+                            'optical_flow': result.get('flow'),
+                            'flow_magnitude': result.get('flow_magnitude')
+                        }
+                    }
+            except Exception as e:
+                self.logger.error(f"❌ 안전한 RAFT 실행 실패: {e}")
+                return None
+
+        def _safe_execute_vgg(self, cloth_tensor: torch.Tensor, person_tensor: torch.Tensor) -> Optional[Dict[str, Any]]:
+            """안전한 VGG 워핑 실행"""
+            try:
+                with torch.no_grad():
+                    result = self.vgg_matching(cloth_tensor, person_tensor)
+                    
+                    if result is None or not isinstance(result, dict) or 'warped_cloth' not in result:
+                        return None
+                        
+                    warped_cloth = result['warped_cloth']
+                    if not torch.is_tensor(warped_cloth) or warped_cloth.numel() == 0:
+                        return None
+                    
+                    return {
+                        'warped_cloth': warped_cloth,
+                        'confidence': result.get('confidence', torch.tensor([0.65])),
+                        'method': 'vgg_matching',
+                        'vgg_metadata': {
+                            'feature_maps': result.get('feature_maps'),
+                            'matching_score': result.get('matching_score')
+                        }
+                    }
+            except Exception as e:
+                self.logger.error(f"❌ 안전한 VGG 실행 실패: {e}")
+                return None
+
+        def _create_simple_warping_result(self, cloth_tensor: torch.Tensor, person_tensor: torch.Tensor, method_name: str) -> Dict[str, Any]:
+            """간단한 워핑 결과 생성"""
+            try:
+                # 간단한 크기 조정과 위치 조정
+                cloth_h, cloth_w = cloth_tensor.shape[-2:]
+                person_h, person_w = person_tensor.shape[-2:]
+                
+                # 크기 비율 조정
+                scale_h = person_h / cloth_h
+                scale_w = person_w / cloth_w
+                scale = min(scale_h, scale_w)
+                
+                # 리사이즈
+                new_h = int(cloth_h * scale)
+                new_w = int(cloth_w * scale)
+                
+                warped_cloth = F.interpolate(
+                    cloth_tensor, 
+                    size=(new_h, new_w), 
+                    mode='bilinear', 
+                    align_corners=False
+                )
+                
+                # 중앙 정렬을 위한 패딩
+                pad_h = (person_h - new_h) // 2
+                pad_w = (person_w - new_w) // 2
+                
+                warped_cloth = F.pad(
+                    warped_cloth,
+                    (pad_w, person_w - new_w - pad_w, pad_h, person_h - new_h - pad_h),
+                    mode='constant', 
+                    value=0
+                )
+                
+                return {
+                    'warped_cloth': warped_cloth,
+                    'confidence': torch.tensor([0.5]),
+                    'method': method_name,
+                    'is_fallback': True,
+                    'transform_metadata': {
+                        'scale_used': scale,
+                        'padding': (pad_h, pad_w),
+                        'original_size': (cloth_h, cloth_w),
+                        'target_size': (person_h, person_w)
+                    }
+                }
+            except Exception as e:
+                self.logger.error(f"❌ 간단한 워핑 결과 생성 실패: {e}")
+                return {
+                    'warped_cloth': cloth_tensor.clone(),
+                    'confidence': torch.tensor([0.1]),
+                    'method': f"{method_name}_identity",
+                    'is_fallback': True,
+                    'error': str(e)
+                }
+
+        def _create_basic_warping_result(self, cloth_tensor: torch.Tensor, person_tensor: torch.Tensor) -> Dict[str, Any]:
+            """기본 워핑 결과 생성 (최후 보장)"""
+            try:
+                # 더 정교한 기본 워핑
+                return self._create_simple_warping_result(cloth_tensor, person_tensor, "basic_resize_align")
+            except Exception as e:
+                self.logger.error(f"❌ 기본 워핑 결과 생성 실패: {e}")
+                # 최후의 수단: 원본 반환
+                return {
+                    'warped_cloth': cloth_tensor.clone(),
+                    'confidence': torch.tensor([0.1]),
+                    'method': 'identity',
+                    'is_fallback': True,
+                    'error': str(e)
+                }
+
+        def _validate_warping_results(self, results: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+            """워핑 결과 검증"""
+            valid_results = {}
+            
+            for method_name, result in results.items():
+                try:
+                    if (result is not None and 
+                        isinstance(result, dict) and 
+                        'warped_cloth' in result and
+                        result['warped_cloth'] is not None):
+                        
+                        # 텐서 유효성 검사
+                        warped_cloth = result['warped_cloth']
+                        if torch.is_tensor(warped_cloth) and warped_cloth.numel() > 0:
+                            # NaN 체크
+                            if not torch.isnan(warped_cloth).any() and not torch.isinf(warped_cloth).any():
+                                valid_results[method_name] = result
+                                self.logger.debug(f"✅ {method_name} 결과 유효함")
+                            else:
+                                self.logger.warning(f"⚠️ {method_name} 결과에 NaN/Inf 값 포함")
+                        else:
+                            self.logger.warning(f"⚠️ {method_name} 결과의 텐서가 유효하지 않음")
+                    else:
+                        self.logger.warning(f"⚠️ {method_name} 결과가 유효하지 않음")
+                except Exception as e:
+                    self.logger.error(f"❌ {method_name} 결과 검증 실패: {e}")
+            
+            return valid_results
+
+        def _select_best_warping_result_safe(self, results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+            """안전한 최적 워핑 결과 선택"""
+            try:
+                if not results:
+                    raise ValueError("유효한 워핑 결과가 없습니다")
+                
+                # 융합 결과가 있으면 우선 선택
+                if 'fused' in results:
+                    return results['fused']
+                
+                # 신뢰도 기반 선택
+                best_method = None
+                best_confidence = -1.0
+                
+                for method_name, result in results.items():
+                    try:
+                        conf = result.get('confidence', torch.tensor([0.0]))
+                        if torch.is_tensor(conf):
+                            conf_value = conf.mean().item()
+                        else:
+                            conf_value = float(conf)
+                        
+                        if conf_value > best_confidence:
+                            best_confidence = conf_value
+                            best_method = method_name
+                    except Exception as e:
+                        self.logger.debug(f"신뢰도 추출 실패 ({method_name}): {e}")
+                        continue
+                
+                if best_method:
+                    selected_result = results[best_method].copy()
+                    selected_result['selected_method'] = best_method
+                    selected_result['selection_confidence'] = best_confidence
+                    return selected_result
+                
+                # 폴백: 첫 번째 결과
+                first_method = list(results.keys())[0]
+                selected_result = results[first_method].copy()
+                selected_result['selected_method'] = first_method
+                selected_result['selection_confidence'] = 0.3
+                return selected_result
+                
+            except Exception as e:
+                self.logger.error(f"❌ 안전한 최적 결과 선택 실패: {e}")
+                
+                # 최후 폴백
+                if results:
+                    first_result = list(results.values())[0]
+                    return {
+                        'warped_cloth': first_result.get('warped_cloth'),
+                        'confidence': torch.tensor([0.2]),
+                        'selected_method': 'emergency_fallback',
+                        'error': str(e)
+                    }
+                else:
+                    # 정말 최후의 수단
+                    raise ValueError("복구 불가능한 워핑 실패: 사용 가능한 결과가 전혀 없습니다")
+                
         def _fuse_multiple_warping_results(self, results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
             """여러 워핑 결과 융합"""
             try:

@@ -902,8 +902,12 @@ class RealOOTDiffusionModel:
             mask = np.ones((h, w), dtype=np.uint8) * 255
             return mask
     
+    # ==============================================
+# 🔥 VirtualFittingStep 텐서 차원 정규화 수정
+# ==============================================
+
     def _preprocess_image(self, image: np.ndarray, device) -> Optional[torch.Tensor]:
-        """이미지 전처리"""
+        """이미지 전처리 - 텐서 차원 정규화 개선"""
         try:
             if not TORCH_AVAILABLE:
                 return None
@@ -921,13 +925,335 @@ class RealOOTDiffusionModel:
                 transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])  # [-1, 1] 범위
             ])
             
-            tensor = transform(pil_image).unsqueeze(0).to(device)
+            tensor = transform(pil_image)
+            
+            # 🔥 핵심 수정: 텐서 차원 정규화
+            tensor = self._ensure_4d_tensor(tensor)
+            tensor = tensor.to(device)
+            
             return tensor
             
         except Exception as e:
             self.logger.warning(f"이미지 전처리 실패: {e}")
             return None
+
+    def _ensure_4d_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+        """텐서 차원을 4D (NCHW)로 정규화"""
+        try:
+            if tensor.dim() == 2:  # (H, W) → (1, 1, H, W)
+                tensor = tensor.unsqueeze(0).unsqueeze(0)
+            elif tensor.dim() == 3:  # (C, H, W) → (1, C, H, W)
+                tensor = tensor.unsqueeze(0)
+            elif tensor.dim() == 4:  # (N, C, H, W) - 이미 4D
+                pass
+            else:
+                # 예상치 못한 차원은 3D로 변환 후 4D로
+                if tensor.dim() > 4:
+                    tensor = tensor.squeeze()
+                    if tensor.dim() == 3:
+                        tensor = tensor.unsqueeze(0)
+                    elif tensor.dim() == 2:
+                        tensor = tensor.unsqueeze(0).unsqueeze(0)
+            
+            return tensor
+            
+        except Exception as e:
+            self.logger.warning(f"텐서 차원 정규화 실패: {e}")
+            # 폴백: 기본 4D 텐서 생성
+            return torch.zeros(1, 3, 768, 1024, device=tensor.device, dtype=tensor.dtype)
+
+    def _ensure_3d_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+        """텐서 차원을 3D (CHW)로 정규화"""
+        try:
+            if tensor.dim() == 4:  # (N, C, H, W) → (C, H, W)
+                if tensor.size(0) == 1:
+                    tensor = tensor.squeeze(0)
+                else:
+                    tensor = tensor[0]  # 첫 번째 배치 선택
+            elif tensor.dim() == 2:  # (H, W) → (1, H, W)
+                tensor = tensor.unsqueeze(0)
+            elif tensor.dim() == 3:  # (C, H, W) - 이미 3D
+                pass
+            
+            return tensor
+            
+        except Exception as e:
+            self.logger.warning(f"3D 텐서 정규화 실패: {e}")
+            return tensor
+
+    def _run_diffusion_inference(self, person_tensor, clothing_tensor, text_embeddings, 
+                                unet_key, device) -> Optional[torch.Tensor]:
+        """실제 Diffusion 추론 연산 - 텐서 차원 보정"""
+        try:
+            unet = self.unet_models[unet_key]
+            
+            # 🔥 핵심 수정: 입력 텐서 차원 정규화
+            if hasattr(clothing_tensor, 'dim'):
+                clothing_tensor = self._ensure_4d_tensor(clothing_tensor)
+            else:
+                # NumPy 배열을 텐서로 변환
+                clothing_tensor = torch.from_numpy(clothing_tensor).float()
+                clothing_tensor = self._ensure_4d_tensor(clothing_tensor)
+                clothing_tensor = clothing_tensor.to(device)
+            
+            # VAE로 latent space 인코딩
+            if self.vae and TORCH_AVAILABLE:
+                with torch.no_grad():
+                    # 배치 차원 확인
+                    if clothing_tensor.dim() != 4:
+                        clothing_tensor = self._ensure_4d_tensor(clothing_tensor)
+                    
+                    clothing_latents = self.vae.encode(clothing_tensor).latent_dist.sample()
+                    clothing_latents = clothing_latents * 0.18215
+            else:
+                # 폴백: 간단한 다운샘플링
+                if TORCH_AVAILABLE:
+                    clothing_tensor = self._ensure_4d_tensor(clothing_tensor)
+                    clothing_latents = F.interpolate(clothing_tensor, size=(96, 128), mode='bilinear')
+                else:
+                    clothing_latents = clothing_tensor
+            
+            # 노이즈 스케줄링
+            if self.scheduler:
+                self.scheduler.set_timesteps(self.config.num_inference_steps)
+                timesteps = self.scheduler.timesteps
+            else:
+                if TORCH_AVAILABLE:
+                    timesteps = torch.linspace(1000, 0, self.config.num_inference_steps, 
+                                            device=device, dtype=torch.long)
+                else:
+                    timesteps = np.linspace(1000, 0, self.config.num_inference_steps)
+            
+            # 🔥 핵심 수정: 초기 노이즈 차원 정규화
+            if TORCH_AVAILABLE:
+                clothing_latents = self._ensure_4d_tensor(clothing_latents)
+                noise = torch.randn_like(clothing_latents)
+                current_sample = noise
+            else:
+                noise = np.random.randn(*clothing_latents.shape)
+                current_sample = noise
+            
+            # 🔥 핵심 수정: 텍스트 임베딩 차원 검증
+            if hasattr(text_embeddings, 'dim'):
+                if text_embeddings.dim() == 2:  # (seq_len, hidden_size) → (1, seq_len, hidden_size)
+                    text_embeddings = text_embeddings.unsqueeze(0)
+            
+            # Diffusion 루프
+            with torch.no_grad() if TORCH_AVAILABLE else self._dummy_context():
+                for i, timestep in enumerate(timesteps):
+                    # 🔥 핵심 수정: 입력 차원 검증
+                    current_sample = self._ensure_4d_tensor(current_sample) if TORCH_AVAILABLE else current_sample
+                    
+                    # UNet 추론
+                    if DIFFUSERS_AVAILABLE and hasattr(unet, 'forward'):
+                        # timestep 차원 정규화
+                        if TORCH_AVAILABLE:
+                            if timestep.dim() == 0:
+                                timestep = timestep.unsqueeze(0)
+                        
+                        noise_pred = unet(
+                            current_sample,
+                            timestep,
+                            encoder_hidden_states=text_embeddings
+                        ).sample
+                    else:
+                        # 폴백: 간단한 노이즈 예측
+                        noise_pred = self._simple_noise_prediction(current_sample, timestep, text_embeddings)
+                    
+                    # 스케줄러로 다음 샘플 계산
+                    if self.scheduler and hasattr(self.scheduler, 'step'):
+                        current_sample = self.scheduler.step(
+                            noise_pred, timestep, current_sample
+                        ).prev_sample
+                    else:
+                        # 폴백: 선형 업데이트
+                        alpha = 1.0 - (i + 1) / len(timesteps)
+                        current_sample = alpha * current_sample + (1 - alpha) * noise_pred
+            
+            # VAE 디코딩
+            if self.vae and TORCH_AVAILABLE:
+                current_sample = current_sample / 0.18215
+                # 배치 차원 확인
+                current_sample = self._ensure_4d_tensor(current_sample)
+                result_image = self.vae.decode(current_sample).sample
+            else:
+                # 폴백: 업샘플링
+                if TORCH_AVAILABLE:
+                    current_sample = self._ensure_4d_tensor(current_sample)
+                    result_image = F.interpolate(current_sample, size=self.config.input_size, mode='bilinear')
+                else:
+                    result_image = current_sample
+            
+            return result_image
+            
+        except Exception as e:
+            self.logger.warning(f"Diffusion 추론 실패: {e}")
+            return None
+
+
+    def _ensure_4d_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+        """텐서 차원을 4D (NCHW)로 정규화"""
+        try:
+            if tensor.dim() == 2:  # (H, W) → (1, 1, H, W)
+                tensor = tensor.unsqueeze(0).unsqueeze(0)
+            elif tensor.dim() == 3:  # (C, H, W) → (1, C, H, W)
+                tensor = tensor.unsqueeze(0)
+            elif tensor.dim() == 4:  # (N, C, H, W) - 이미 4D
+                pass
+            else:
+                # 예상치 못한 차원은 3D로 변환 후 4D로
+                if tensor.dim() > 4:
+                    tensor = tensor.squeeze()
+                    if tensor.dim() == 3:
+                        tensor = tensor.unsqueeze(0)
+                    elif tensor.dim() == 2:
+                        tensor = tensor.unsqueeze(0).unsqueeze(0)
+            
+            return tensor
+            
+        except Exception as e:
+            self.logger.warning(f"텐서 차원 정규화 실패: {e}")
+            # 폴백: 기본 4D 텐서 생성
+            return torch.zeros(1, 3, 768, 1024, device=tensor.device, dtype=tensor.dtype)
     
+    def _postprocess_tensor(self, tensor) -> np.ndarray:
+        """텐서 후처리 - 차원 정규화 개선"""
+        try:
+            if TORCH_AVAILABLE and hasattr(tensor, 'cpu'):
+                # [-1, 1] → [0, 1] 정규화
+                tensor = (tensor + 1.0) / 2.0
+                tensor = torch.clamp(tensor, 0, 1)
+                
+                # 🔥 핵심 수정: 배치 차원 제거
+                if tensor.dim() == 4:  # (N, C, H, W) → (C, H, W)
+                    tensor = tensor.squeeze(0)
+                elif tensor.dim() == 5:  # 예상치 못한 5D 텐서
+                    tensor = tensor.squeeze(0).squeeze(0)
+                
+                # CPU로 이동 후 numpy 변환
+                image = tensor.cpu().numpy()
+            else:
+                # NumPy 처리
+                image = (tensor + 1.0) / 2.0
+                image = np.clip(image, 0, 1)
+                
+                # 🔥 핵심 수정: NumPy 배치 차원 제거
+                if image.ndim == 4:  # (N, C, H, W) → (C, H, W)
+                    image = image[0]
+                elif image.ndim == 5:  # 예상치 못한 5D 배열
+                    image = image[0, 0]
+            
+            # 🔥 핵심 수정: CHW → HWC 변환 (올바른 차원 확인)
+            if image.ndim == 3:
+                if image.shape[0] == 3 or image.shape[0] == 1:  # 채널이 첫 번째 차원
+                    image = np.transpose(image, (1, 2, 0))
+                # 이미 HWC 형태라면 그대로 유지
+            elif image.ndim == 2:  # 그레이스케일
+                image = np.expand_dims(image, axis=-1)
+            
+            # [0, 1] → [0, 255]
+            image = (image * 255).astype(np.uint8)
+            
+            # 🔥 핵심 수정: RGB 채널 확인
+            if image.shape[-1] == 1:  # 그레이스케일 → RGB 변환
+                image = np.repeat(image, 3, axis=-1)
+            elif image.shape[-1] > 3:  # 채널이 3개 초과인 경우 RGB만 선택
+                image = image[:, :, :3]
+            
+            return image
+            
+        except Exception as e:
+            self.logger.warning(f"텐서 후처리 실패: {e}")
+            # 폴백: 기본 이미지 반환
+            return np.zeros((768, 1024, 3), dtype=np.uint8)
+
+    # ==============================================
+    # 🔥 BaseStepMixin의 텐서 변환 메서드도 수정
+    # ==============================================
+
+    def _convert_to_tensor(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """PyTorch 텐서 변환 - 차원 정규화 개선"""
+        if not TORCH_AVAILABLE:
+            return data
+        
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    # 🔥 핵심 수정: NumPy 배열 차원 정규화
+                    if len(value.shape) == 2:  # (H, W) → (1, H, W)
+                        value = np.expand_dims(value, axis=0)
+                    elif len(value.shape) == 3:
+                        if value.shape[2] in [1, 3, 4]:  # HWC → CHW
+                            value = np.transpose(value, (2, 0, 1))
+                    elif len(value.shape) == 4:  # NHWC → NCHW
+                        if value.shape[3] in [1, 3, 4]:
+                            value = np.transpose(value, (0, 3, 1, 2))
+                    
+                    tensor = torch.from_numpy(value).float()
+                    
+                    # 배치 차원 추가 (3D → 4D)
+                    if tensor.dim() == 3:
+                        tensor = tensor.unsqueeze(0)
+                    
+                    result[key] = tensor
+                    
+                elif PIL_AVAILABLE and isinstance(value, Image.Image):
+                    # PIL Image → Tensor
+                    array = np.array(value).astype(np.float32) / 255.0
+                    if len(array.shape) == 3:  # HWC → CHW
+                        array = np.transpose(array, (2, 0, 1))
+                    elif len(array.shape) == 2:  # HW → CHW
+                        array = np.expand_dims(array, axis=0)
+                    
+                    tensor = torch.from_numpy(array).float()
+                    
+                    # 배치 차원 추가
+                    if tensor.dim() == 3:
+                        tensor = tensor.unsqueeze(0)
+                    
+                    result[key] = tensor
+                    
+            except Exception as e:
+                self.logger.debug(f"텐서 변환 실패 ({key}): {e}")
+        
+        return result
+
+    def _normalize_diffusion(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Diffusion 정규화 - 차원 안전성 개선"""
+        result = data.copy()
+        
+        for key, value in data.items():
+            try:
+                if PIL_AVAILABLE and isinstance(value, Image.Image):
+                    array = np.array(value).astype(np.float32) / 255.0
+                    normalized = 2.0 * array - 1.0
+                    result[key] = normalized
+                    
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    if value.dtype != np.float32:
+                        value = value.astype(np.float32)
+                    if value.max() > 1.0:
+                        value = value / 255.0
+                    
+                    normalized = 2.0 * value - 1.0
+                    result[key] = normalized
+                    
+                elif TORCH_AVAILABLE and torch.is_tensor(value):
+                    # 🔥 핵심 수정: 텐서 정규화 시 차원 보존
+                    if value.dtype != torch.float32:
+                        value = value.float()
+                    if value.max() > 1.0:
+                        value = value / 255.0
+                    
+                    normalized = 2.0 * value - 1.0
+                    result[key] = normalized
+                    
+            except Exception as e:
+                self.logger.debug(f"Diffusion 정규화 실패 ({key}): {e}")
+        
+        return result
     def _encode_text_prompt(self, clothing_props: ClothingProperties, device) -> torch.Tensor:
         """텍스트 프롬프트 인코딩"""
         try:
@@ -962,89 +1288,6 @@ class RealOOTDiffusionModel:
                 return torch.randn(1, 77, 768, device=device)
             else:
                 return np.random.randn(1, 77, 768)
-    
-    def _run_diffusion_inference(self, person_tensor, clothing_tensor, text_embeddings, 
-                                unet_key, device) -> Optional[torch.Tensor]:
-        """실제 Diffusion 추론 연산"""
-        try:
-            unet = self.unet_models[unet_key]
-            
-            # VAE로 latent space 인코딩
-            if self.vae and TORCH_AVAILABLE:
-                with torch.no_grad():
-                    if hasattr(clothing_tensor, 'to'):
-                        clothing_latents = self.vae.encode(clothing_tensor).latent_dist.sample()
-                        clothing_latents = clothing_latents * 0.18215
-                    else:
-                        # NumPy 배열 처리
-                        clothing_tensor = torch.from_numpy(clothing_tensor).to(device)
-                        clothing_latents = F.interpolate(clothing_tensor, size=(96, 128), mode='bilinear')
-            else:
-                # 폴백: 간단한 다운샘플링
-                if TORCH_AVAILABLE:
-                    clothing_latents = F.interpolate(clothing_tensor, size=(96, 128), mode='bilinear')
-                else:
-                    clothing_latents = clothing_tensor
-            
-            # 노이즈 스케줄링
-            if self.scheduler:
-                self.scheduler.set_timesteps(self.config.num_inference_steps)
-                timesteps = self.scheduler.timesteps
-            else:
-                if TORCH_AVAILABLE:
-                    timesteps = torch.linspace(1000, 0, self.config.num_inference_steps, 
-                                             device=device, dtype=torch.long)
-                else:
-                    timesteps = np.linspace(1000, 0, self.config.num_inference_steps)
-            
-            # 초기 노이즈
-            if TORCH_AVAILABLE:
-                noise = torch.randn_like(clothing_latents)
-                current_sample = noise
-            else:
-                noise = np.random.randn(*clothing_latents.shape)
-                current_sample = noise
-            
-            # Diffusion 루프
-            with torch.no_grad() if TORCH_AVAILABLE else self._dummy_context():
-                for i, timestep in enumerate(timesteps):
-                    # UNet 추론
-                    if DIFFUSERS_AVAILABLE and hasattr(unet, 'forward'):
-                        noise_pred = unet(
-                            current_sample,
-                            timestep.unsqueeze(0),
-                            encoder_hidden_states=text_embeddings
-                        ).sample
-                    else:
-                        # 폴백: 간단한 노이즈 예측
-                        noise_pred = self._simple_noise_prediction(current_sample, timestep, text_embeddings)
-                    
-                    # 스케줄러로 다음 샘플 계산
-                    if self.scheduler and hasattr(self.scheduler, 'step'):
-                        current_sample = self.scheduler.step(
-                            noise_pred, timestep, current_sample
-                        ).prev_sample
-                    else:
-                        # 폴백: 선형 업데이트
-                        alpha = 1.0 - (i + 1) / len(timesteps)
-                        current_sample = alpha * current_sample + (1 - alpha) * noise_pred
-            
-            # VAE 디코딩
-            if self.vae and TORCH_AVAILABLE:
-                current_sample = current_sample / 0.18215
-                result_image = self.vae.decode(current_sample).sample
-            else:
-                # 폴백: 업샘플링
-                if TORCH_AVAILABLE:
-                    result_image = F.interpolate(current_sample, size=self.config.input_size, mode='bilinear')
-                else:
-                    result_image = current_sample
-            
-            return result_image
-            
-        except Exception as e:
-            self.logger.warning(f"Diffusion 추론 실패: {e}")
-            return None
     
     def _dummy_context(self):
         """더미 컨텍스트 매니저"""

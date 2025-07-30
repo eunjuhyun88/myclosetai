@@ -1,35 +1,127 @@
 # backend/app/api/__init__.py
 """
-🍎 MyCloset AI API 라우터 패키지 v7.0 - 단순화된 API 초기화
+🍎 MyCloset AI API 라우터 패키지 v8.1 - NameError 문제 해결
 ================================================================
 
+✅ step_routes.py 완전 지원 추가 (/api/step/*)
+✅ 기존 pipeline_routes.py도 유지 (/api/v1/pipeline/*)
 ✅ 단순하고 안정적인 API 초기화
-✅ FastAPI 라우터 자동 등록
 ✅ conda 환경 우선 최적화
 ✅ M3 Max 성능 최적화
 ✅ CORS 및 미들웨어 지원
 ✅ WebSocket 실시간 통신 지원
 ✅ 에러 핸들링 및 로깅
+✅ NameError: CONDA_ENV 문제 완전 해결
 
 API 엔드포인트:
-- /api/v1/pipeline: AI 파이프라인 API
+- /api/step/*: 8단계 AI 파이프라인 API (신규!)
+- /api/v1/pipeline/*: 기존 파이프라인 API
 - /ws: WebSocket 실시간 통신
 - /api/v1/health: 헬스 체크
 
 작성자: MyCloset AI Team
-날짜: 2025-07-23
-버전: v7.0.0 (Simplified API Initialization)
+날짜: 2025-07-31
+버전: v8.1.0 (NameError Fixed)
 """
 
 import logging
 import sys
+import time
+import warnings
+import os
+import platform
 from typing import Dict, Any, Optional, List
 from functools import lru_cache
-import warnings
 
 # 경고 무시
 warnings.filterwarnings('ignore')
-# 절대 경로로 변경
+
+# =============================================================================
+# 🔥 기본 설정 및 시스템 정보 (NameError 방지)
+# =============================================================================
+
+logger = logging.getLogger(__name__)
+
+# 시스템 정보 직접 감지 (안전한 방식)
+def _detect_system_info():
+    """시스템 정보 직접 감지"""
+    # conda 환경 감지
+    conda_env = os.environ.get('CONDA_DEFAULT_ENV', 'none')
+    is_conda = conda_env != 'none'
+    
+    # M3 Max 감지
+    is_m3_max = False
+    memory_gb = 16.0
+    
+    if platform.system() == 'Darwin':
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'], 
+                capture_output=True, text=True, timeout=5
+            )
+            chip_info = result.stdout.strip()
+            is_m3_max = 'M3' in chip_info and 'Max' in chip_info
+            
+            if is_m3_max:
+                memory_gb = 128.0
+        except:
+            pass
+    
+    # 디바이스 감지
+    device = 'cpu'
+    if is_m3_max:
+        try:
+            import torch
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                device = 'mps'
+        except ImportError:
+            pass
+    
+    return {
+        'conda_env': conda_env,
+        'is_conda': is_conda,
+        'is_m3_max': is_m3_max,
+        'memory_gb': memory_gb,
+        'device': device
+    }
+
+# 시스템 정보 로드
+detected_info = _detect_system_info()
+
+# 전역 변수 정의 (NameError 방지)
+CONDA_ENV = detected_info['conda_env']
+IS_CONDA = detected_info['is_conda']
+IS_M3_MAX = detected_info['is_m3_max']
+DEVICE = detected_info['device']
+MEMORY_GB = detected_info['memory_gb']
+
+# 상위 패키지에서 시스템 정보 가져오기 시도 (있으면 덮어씀)
+try:
+    from .. import get_system_info, is_conda_environment, is_m3_max, get_device
+    SYSTEM_INFO = get_system_info()
+    IS_CONDA = is_conda_environment()
+    IS_M3_MAX = is_m3_max()
+    DEVICE = get_device()
+    
+    # conda_env 정보 업데이트
+    if hasattr(SYSTEM_INFO, 'conda_env'):
+        CONDA_ENV = SYSTEM_INFO.conda_env
+    elif isinstance(SYSTEM_INFO, dict) and 'conda_env' in SYSTEM_INFO:
+        CONDA_ENV = SYSTEM_INFO['conda_env']
+    
+    logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공")
+except ImportError as e:
+    logger.warning(f"⚠️ 상위 패키지 로드 실패, 기본값 사용: {e}")
+    SYSTEM_INFO = {
+        'device': DEVICE, 
+        'is_m3_max': IS_M3_MAX, 
+        'memory_gb': MEMORY_GB,
+        'conda_env': CONDA_ENV,
+        'is_conda': IS_CONDA
+    }
+
+# DI Container 지원 (선택적)
 try:
     from app.core.di_container import (
         CircularReferenceFreeDIContainer,
@@ -44,28 +136,8 @@ try:
     DI_CONTAINER_AVAILABLE = True
     logger.info("✅ DI Container v4.0 Core Import 성공")
 except ImportError as e:
-    logger.error(f"❌ DI Container v4.0 Core Import 실패: {e}")
+    logger.debug(f"DI Container import 실패 (선택적): {e}")
     DI_CONTAINER_AVAILABLE = False
-# =============================================================================
-# 🔥 기본 설정 및 시스템 정보
-# =============================================================================
-
-logger = logging.getLogger(__name__)
-
-# 상위 패키지에서 시스템 정보 가져오기
-try:
-    from .. import get_system_info, is_conda_environment, is_m3_max, get_device
-    SYSTEM_INFO = get_system_info()
-    IS_CONDA = is_conda_environment()
-    IS_M3_MAX = is_m3_max()
-    DEVICE = get_device()
-    logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ 상위 패키지 로드 실패, 기본값 사용: {e}")
-    SYSTEM_INFO = {'device': 'cpu', 'is_m3_max': False, 'memory_gb': 16.0}
-    IS_CONDA = False
-    IS_M3_MAX = False
-    DEVICE = 'cpu'
 
 # =============================================================================
 # 🔥 API 라우터 상태 추적
@@ -75,6 +147,7 @@ except ImportError as e:
 ROUTER_STATUS = {
     'virtual_tryon': False,
     'pipeline_routes': False,
+    'step_routes': False,        # 🔥 step_routes.py 추가!
     'websocket_routes': False,
     'health_check': False
 }
@@ -119,6 +192,24 @@ def _safe_import_pipeline_routes():
         logger.error(f"❌ pipeline_routes 라우터 로드 실패: {e}")
         return None
 
+def _safe_import_step_routes():
+    """🔥 step_routes 라우터 안전하게 import (신규!)"""
+    try:
+        from .step_routes import router as step_router
+        
+        globals()['step_router'] = step_router
+        
+        ROUTER_STATUS['step_routes'] = True
+        logger.info("✅ step_routes 라우터 로드 성공")
+        return step_router
+        
+    except ImportError as e:
+        logger.warning(f"⚠️ step_routes 라우터 없음: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ step_routes 라우터 로드 실패: {e}")
+        return None
+
 def _safe_import_websocket_routes():
     """websocket_routes 라우터 안전하게 import"""
     try:
@@ -142,7 +233,7 @@ def _create_health_check_router():
     try:
         from fastapi import APIRouter
         
-        health_router = APIRouter(prefix="/api/v1", tags=["health"])
+        health_router = APIRouter(tags=["health"])
         
         @health_router.get("/health")
         async def health_check():
@@ -153,7 +244,9 @@ def _create_health_check_router():
                 "router_status": ROUTER_STATUS,
                 "conda_optimized": IS_CONDA,
                 "m3_max_optimized": IS_M3_MAX,
-                "device": DEVICE
+                "device": DEVICE,
+                "step_routes_available": ROUTER_STATUS['step_routes'],  # 🔥 step_routes 상태!
+                "timestamp": time.time()
             }
         
         @health_router.get("/status")
@@ -162,16 +255,18 @@ def _create_health_check_router():
             available_routers = [k for k, v in ROUTER_STATUS.items() if v]
             
             return {
-                "api_version": "v7.0.0",
+                "api_version": "v8.1.0",
                 "available_routers": available_routers,
                 "total_routers": len(ROUTER_STATUS),
                 "success_rate": (len(available_routers) / len(ROUTER_STATUS)) * 100,
                 "system": {
                     "conda": IS_CONDA,
+                    "conda_env": CONDA_ENV,
                     "m3_max": IS_M3_MAX,
                     "device": DEVICE,
-                    "memory_gb": SYSTEM_INFO.get('memory_gb', 16)
-                }
+                    "memory_gb": MEMORY_GB
+                },
+                "step_routes_enabled": ROUTER_STATUS['step_routes']  # 🔥 step_routes 정보!
             }
         
         globals()['health_router'] = health_router
@@ -185,7 +280,7 @@ def _create_health_check_router():
         return None
 
 # =============================================================================
-# 🔥 라우터들 로딩
+# 🔥 라우터들 로딩 (step_routes.py 추가!)
 # =============================================================================
 
 # 모든 라우터 로딩 시도
@@ -196,10 +291,15 @@ virtual_tryon_router = _safe_import_virtual_tryon()
 if virtual_tryon_router:
     AVAILABLE_ROUTERS['virtual_tryon'] = virtual_tryon_router
 
-# Pipeline 라우터
+# Pipeline 라우터 (기존)
 pipeline_router = _safe_import_pipeline_routes()
 if pipeline_router:
     AVAILABLE_ROUTERS['pipeline'] = pipeline_router
+
+# 🔥 Step 라우터 (신규 추가!)
+step_router = _safe_import_step_routes()
+if step_router:
+    AVAILABLE_ROUTERS['step_routes'] = step_router
 
 # WebSocket 라우터
 websocket_router = _safe_import_websocket_routes()
@@ -212,7 +312,7 @@ if health_router:
     AVAILABLE_ROUTERS['health'] = health_router
 
 # =============================================================================
-# 🔥 라우터 등록 함수
+# 🔥 라우터 등록 함수 (step_routes.py 지원 추가!)
 # =============================================================================
 
 def register_routers(app) -> int:
@@ -230,7 +330,7 @@ def register_routers(app) -> int:
             registered_count += 1
             logger.info("✅ virtual_tryon 라우터 등록")
         
-        # Pipeline 라우터
+        # Pipeline 라우터 (기존)
         if 'pipeline' in AVAILABLE_ROUTERS:
             app.include_router(
                 AVAILABLE_ROUTERS['pipeline'],
@@ -239,6 +339,16 @@ def register_routers(app) -> int:
             )
             registered_count += 1
             logger.info("✅ pipeline 라우터 등록")
+        
+        # 🔥 Step 라우터 (신규 추가!) - 프론트엔드 호환성을 위해 /api/step 경로 사용
+        if 'step_routes' in AVAILABLE_ROUTERS:
+            app.include_router(
+                AVAILABLE_ROUTERS['step_routes'],
+                prefix="/api/step",  # 🔥 프론트엔드가 기대하는 경로!
+                tags=["step-pipeline"]
+            )
+            registered_count += 1
+            logger.info("✅ step_routes 라우터 등록 (/api/step)")
         
         # WebSocket 라우터
         if 'websocket' in AVAILABLE_ROUTERS:
@@ -259,6 +369,8 @@ def register_routers(app) -> int:
             logger.info("✅ health_check 라우터 등록")
         
         logger.info(f"🎯 총 {registered_count}개 라우터 등록 완료")
+        logger.info(f"🔥 step_routes.py 지원: {'✅' if ROUTER_STATUS['step_routes'] else '❌'}")
+        
         return registered_count
         
     except Exception as e:
@@ -305,15 +417,23 @@ def setup_middleware(app):
             response = await call_next(request)
             process_time = time.time() - start_time
             
-            logger.debug(
-                f"{request.method} {request.url.path} - "
-                f"Status: {response.status_code} - "
-                f"Time: {process_time:.4f}s"
-            )
+            # step_routes 요청은 상세 로깅
+            if request.url.path.startswith("/api/step/"):
+                logger.info(
+                    f"🔥 STEP API: {request.method} {request.url.path} - "
+                    f"Status: {response.status_code} - "
+                    f"Time: {process_time:.4f}s"
+                )
+            else:
+                logger.debug(
+                    f"{request.method} {request.url.path} - "
+                    f"Status: {response.status_code} - "
+                    f"Time: {process_time:.4f}s"
+                )
             
             return response
         
-        logger.info("✅ 요청 로깅 미들웨어 설정 완료")
+        logger.info("✅ 요청 로깅 미들웨어 설정 완료 (step_routes 강화)")
         
     except Exception as e:
         logger.error(f"❌ 미들웨어 설정 실패: {e}")
@@ -328,96 +448,106 @@ def get_api_status() -> Dict[str, Any]:
     available_routers = [k for k, v in ROUTER_STATUS.items() if v]
     
     return {
-        'api_version': 'v7.0.0',
-        'system_info': SYSTEM_INFO,
-        'router_status': ROUTER_STATUS.copy(),
-        'available_routers': available_routers,
-        'total_routers': len(ROUTER_STATUS),
-        'success_rate': (len(available_routers) / len(ROUTER_STATUS)) * 100,
-        'conda_optimized': IS_CONDA,
-        'm3_max_optimized': IS_M3_MAX,
-        'device': DEVICE
+        "api_version": "v8.1.0",
+        "total_routers": len(ROUTER_STATUS),
+        "available_routers": available_routers,
+        "success_rate": (len(available_routers) / len(ROUTER_STATUS)) * 100,
+        "system": SYSTEM_INFO,
+        "router_details": ROUTER_STATUS,
+        "step_routes_enabled": ROUTER_STATUS['step_routes'],  # 🔥 step_routes 상태!
+        "conda_optimized": IS_CONDA,
+        "m3_max_optimized": IS_M3_MAX
     }
 
-def get_available_routers() -> Dict[str, Any]:
-    """사용 가능한 라우터 목록 반환"""
-    return AVAILABLE_ROUTERS.copy()
-
-def get_router_info(router_name: str) -> Dict[str, Any]:
-    """특정 라우터 정보 반환"""
-    router = AVAILABLE_ROUTERS.get(router_name)
+def get_available_endpoints() -> List[str]:
+    """사용 가능한 엔드포인트 목록"""
+    endpoints = ["/health", "/status"]
     
-    return {
-        'router_name': router_name,
-        'available': router is not None,
-        'loaded': ROUTER_STATUS.get(router_name, False),
-        'router_object': router is not None
-    }
+    if ROUTER_STATUS.get('virtual_tryon'):
+        endpoints.extend(["/api/v1/virtual-tryon/*"])
+    
+    if ROUTER_STATUS.get('pipeline_routes'):
+        endpoints.extend(["/api/v1/pipeline/*"])
+    
+    # 🔥 step_routes 엔드포인트 추가!
+    if ROUTER_STATUS.get('step_routes'):
+        endpoints.extend([
+            "/api/step/health",
+            "/api/step/1/upload-validation",
+            "/api/step/2/measurements-validation",
+            "/api/step/3/human-parsing",
+            "/api/step/4/pose-estimation",
+            "/api/step/5/clothing-analysis",
+            "/api/step/6/geometric-matching",
+            "/api/step/7/virtual-fitting",
+            "/api/step/8/result-analysis",
+            "/api/step/complete"
+        ])
+    
+    if ROUTER_STATUS.get('websocket_routes'):
+        endpoints.extend(["/api/ws/*"])
+    
+    return endpoints
+
+def get_router_info() -> Dict[str, Any]:
+    """라우터 상세 정보"""
+    router_info = {}
+    
+    for router_name, is_available in ROUTER_STATUS.items():
+        router_info[router_name] = {
+            "available": is_available,
+            "loaded": router_name in AVAILABLE_ROUTERS,
+            "instance": AVAILABLE_ROUTERS.get(router_name) is not None
+        }
+    
+    # 🔥 step_routes 특별 정보 추가!
+    if ROUTER_STATUS.get('step_routes'):
+        router_info['step_routes'].update({
+            "prefix": "/api/step",
+            "frontend_compatible": True,
+            "ai_pipeline_steps": 8,
+            "real_ai_only": True
+        })
+    
+    return router_info
 
 # =============================================================================
-# 🔥 Export 목록
+# 🔥 Export
 # =============================================================================
 
 __all__ = [
-    # 🎯 핵심 함수들
     'register_routers',
-    'setup_cors',
+    'setup_cors', 
     'setup_middleware',
-    
-    # 📊 상태 관리 함수들
     'get_api_status',
-    'get_available_routers',
+    'get_available_endpoints',
     'get_router_info',
-    
-    # 🔧 라우터들 (조건부)
     'AVAILABLE_ROUTERS',
     'ROUTER_STATUS',
-    
-    # 📡 시스템 정보
     'SYSTEM_INFO',
+    'CONDA_ENV',
     'IS_CONDA',
     'IS_M3_MAX',
-    'DEVICE'
+    'DEVICE',
+    'MEMORY_GB'
 ]
 
-# 사용 가능한 라우터들을 동적으로 추가
-for router_name in AVAILABLE_ROUTERS.keys():
-    router_var_name = f"{router_name}_router"
-    if router_var_name in globals():
-        __all__.append(router_var_name)
-
 # =============================================================================
-# 🔥 초기화 완료 메시지
+# 🔥 초기화 완료 메시지 (NameError 방지)
 # =============================================================================
 
-def _print_initialization_summary():
-    """초기화 요약 출력"""
-    available_count = len(AVAILABLE_ROUTERS)
-    total_count = len(ROUTER_STATUS)
-    success_rate = (available_count / total_count) * 100 if total_count > 0 else 0
-    
-    print(f"\n🍎 MyCloset AI API 시스템 v7.0 초기화 완료!")
-    print(f"📡 사용 가능한 라우터: {available_count}/{total_count}개 ({success_rate:.1f}%)")
-    print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'}")
-    print(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-    print(f"🖥️ 디바이스: {DEVICE}")
-    
-    if AVAILABLE_ROUTERS:
-        print(f"✅ 로드된 라우터: {', '.join(AVAILABLE_ROUTERS.keys())}")
-    
-    unavailable_routers = [k for k, v in ROUTER_STATUS.items() if not v]
-    if unavailable_routers:
-        print(f"⚠️ 구현 대기 라우터: {', '.join(unavailable_routers)}")
-        print(f"💡 이는 정상적인 상태입니다 (단계적 구현)")
-    
-    print("🚀 API 시스템 준비 완료!\n")
+logger.info("🎉 API 라우터 통합 관리자 v8.1 로드 완료!")
+logger.info(f"✅ 시스템 환경: conda={CONDA_ENV}, M3 Max={IS_M3_MAX}")
+logger.info(f"✅ 메모리: {MEMORY_GB}GB, 디바이스: {DEVICE}")
+logger.info(f"✅ 사용 가능한 라우터: {len([k for k, v in ROUTER_STATUS.items() if v])}/{len(ROUTER_STATUS)}")
+logger.info(f"🔥 step_routes.py 지원: {'✅ 활성화' if ROUTER_STATUS['step_routes'] else '❌ 비활성화'}")
 
-# 초기화 상태 출력 (한 번만)
-if not hasattr(sys, '_mycloset_api_initialized'):
-    _print_initialization_summary()
-    sys._mycloset_api_initialized = True
+if ROUTER_STATUS['step_routes']:
+    logger.info("🎯 step_routes.py 라우터 정보:")
+    logger.info("   - 경로: /api/step/*")
+    logger.info("   - 프론트엔드 완전 호환")
+    logger.info("   - 8단계 AI 파이프라인 지원")
+    logger.info("   - 실제 AI 모델 전용")
 
-logger.info("🍎 MyCloset AI API 시스템 초기화 완료")
-
-# 시간 import (미들웨어에서 사용)
-import time
+logger.info("🚀 프론트엔드 API 요청 준비 완료!")
+logger.info("✅ NameError: CONDA_ENV 문제 완전 해결!")

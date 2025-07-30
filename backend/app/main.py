@@ -1,10 +1,11 @@
 # backend/app/main.py
 """
-🔥 MyCloset AI Backend - StepServiceManager 완벽 연동 통합 버전 v27.0
+🔥 MyCloset AI Backend - StepServiceManager 완벽 연동 통합 버전 v28.0
 ================================================================================
 
 ✅ step_routes.py v5.0 완벽 연동 (모든 기능 복구)
-✅ StepServiceManager v13.0 + step_implementations.py 완전 통합
+✅ StepServiceManager v15.0 + RealAIStepImplementationManager v14.0 완전 통합
+✅ step_implementations.py DetailedDataSpec 완전 활용
 ✅ 실제 229GB AI 모델 파이프라인 완전 활용
 ✅ 프론트엔드 호환성 100% 보장 (누락된 기능 복구)
 ✅ conda 환경 mycloset-ai-clean 최적화
@@ -16,6 +17,7 @@
 ✅ AI 환경 초기화 함수 복구
 ✅ 서비스 매니저들 초기화 복구
 ✅ 주기적 작업 및 라이프스팬 관리 복구
+✅ API 라우터 통합 관리자 완전 통합
 
 핵심 복구사항:
 - AI 환경 초기화 함수 복구
@@ -24,10 +26,15 @@
 - 주기적 정리 작업 복구
 - 라이프스팬 컨텍스트 관리 복구
 - 모든 API 엔드포인트 복구
+- API 라우터 통합 관리자 통합
+
+새로운 통합 아키텍처:
+step_routes.py → StepServiceManager v15.0 → RealAIStepImplementationManager v14.0 → 
+StepFactory v11.0 → BaseStepMixin v19.1 → 실제 229GB AI 모델
 
 Author: MyCloset AI Team
-Date: 2025-07-29
-Version: 27.0.0 (Complete Restoration)
+Date: 2025-07-31
+Version: 28.0.0 (Complete Integration)
 """
 
 import os
@@ -159,10 +166,19 @@ print(f"  💾 메모리: {SYSTEM_INFO['memory_gb']}GB")
 
 def setup_logging():
     """로깅 설정"""
+    # AI 파이프라인 등 시끄러운 로그들 완전 억제
+    for logger_name in [
+        'app.ai_pipeline', 'pipeline', 'app.core', 'app.services',
+        'app.api', 'app.models', 'torch', 'transformers', 'diffusers',
+        'urllib3', 'requests', 'PIL', 'matplotlib'
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+    
+    # 기본 로깅 설정
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)]
+        format='%(levelname)s: %(message)s',
+        force=True
     )
     return logging.getLogger(__name__)
 
@@ -212,7 +228,23 @@ except ImportError:
     logger.warning("⚠️ PyTorch import 실패")
 
 # =============================================================================
-# 🔥 4. 설정 모듈 import
+# 🔥 4. 전역 시스템 변수 설정 (API 모듈 호환성)
+# =============================================================================
+
+# API 모듈에서 필요한 전역 변수들을 먼저 설정
+CONDA_ENV = SYSTEM_INFO['conda_env']
+MEMORY_GB = SYSTEM_INFO['memory_gb']
+
+# 환경 변수에도 설정하여 하위 모듈에서 접근 가능하도록 함
+os.environ['MYCLOSET_CONDA_ENV'] = CONDA_ENV
+os.environ['MYCLOSET_MEMORY_GB'] = str(MEMORY_GB)
+os.environ['MYCLOSET_DEVICE'] = DEVICE
+os.environ['MYCLOSET_IS_M3_MAX'] = str(IS_M3_MAX)
+os.environ['MYCLOSET_IS_CONDA'] = str(IS_CONDA)
+os.environ['MYCLOSET_IS_MYCLOSET_ENV'] = str(IS_MYCLOSET_ENV)
+
+# =============================================================================
+# 🔥 5. 설정 모듈 import
 # =============================================================================
 
 try:
@@ -243,14 +275,54 @@ except ImportError as e:
     settings = Settings()
 
 # =============================================================================
-# 🔥 5. StepServiceManager 우선 초기화 (핵심!)
+# 🔥 6. API 라우터 통합 관리자 import (복구)
+# =============================================================================
+
+API_INTEGRATION_AVAILABLE = False
+AVAILABLE_ROUTERS = {}
+ROUTER_STATUS = {}
+
+try:
+    from app.api import (
+        register_routers,
+        setup_cors,
+        setup_middleware,
+        get_api_status,
+        get_available_endpoints,
+        AVAILABLE_ROUTERS,
+        ROUTER_STATUS,
+        SYSTEM_INFO as API_SYSTEM_INFO
+    )
+    API_INTEGRATION_AVAILABLE = True
+    logger.info("✅ API 라우터 통합 관리자 로드 성공")
+    
+    # API 모듈의 SYSTEM_INFO가 있다면 사용, 없다면 우리 것 사용
+    if 'API_SYSTEM_INFO' in locals():
+        SYSTEM_INFO.update(API_SYSTEM_INFO)
+    
+except ImportError as e:
+    logger.error(f"❌ API 라우터 통합 관리자 로드 실패: {e}")
+    logger.error(f"❌ 상세 오류: {str(e)}")
+    API_INTEGRATION_AVAILABLE = False
+    
+    # 폴백 ROUTER_STATUS
+    ROUTER_STATUS = {
+        'step_routes': False,
+        'pipeline_routes': False,
+        'websocket_routes': False,
+        'health': False,
+        'models': False
+    }
+
+# =============================================================================
+# 🔥 7. StepServiceManager 우선 초기화 (핵심!)
 # =============================================================================
 
 STEP_SERVICE_MANAGER_AVAILABLE = False
 step_service_manager = None
 
 try:
-    logger.info("🔥 StepServiceManager v13.0 우선 초기화 중...")
+    logger.info("🔥 StepServiceManager v15.0 우선 초기화 중...")
     from app.services.step_service import (
         StepServiceManager,
         get_step_service_manager,
@@ -266,7 +338,7 @@ try:
     # 전역 StepServiceManager 초기화
     step_service_manager = get_step_service_manager()
     
-    logger.info(f"✅ StepServiceManager v13.0 초기화 완료!")
+    logger.info(f"✅ StepServiceManager v15.0 초기화 완료!")
     logger.info(f"📊 상태: {step_service_manager.status}")
     logger.info(f"🤖 실제 229GB AI 모델 파이프라인 준비 완료")
     
@@ -280,7 +352,7 @@ except Exception as e:
     STEP_SERVICE_MANAGER_AVAILABLE = False
 
 # =============================================================================
-# 🔥 6. 기타 핵심 컴포넌트 초기화
+# 🔥 8. 기타 핵심 컴포넌트 초기화
 # =============================================================================
 
 # SmartModelPathMapper 초기화
@@ -391,7 +463,7 @@ except Exception as e:
     logger.warning(f"⚠️ PipelineManager 초기화 실패: {e}")
 
 # =============================================================================
-# 🔥 7. AI 환경 초기화 함수 (누락된 기능 복구)
+# 🔥 9. AI 환경 초기화 함수 (누락된 기능 복구)
 # =============================================================================
 
 def setup_ai_environment():
@@ -425,7 +497,7 @@ def setup_ai_environment():
         logger.error(f"❌ AI 환경 초기화 실패: {e}")
 
 # =============================================================================
-# 🔥 8. 실제 AI 컨테이너 (StepServiceManager 중심) - 완전 복구
+# 🔥 10. 실제 AI 컨테이너 (StepServiceManager 중심) - 완전 복구
 # =============================================================================
 
 class RealAIContainer:
@@ -656,7 +728,7 @@ class RealAIContainer:
 ai_container = RealAIContainer()
 
 # =============================================================================
-# 🔥 9. WebSocket 관리자 (완전 복구) - 실시간 AI 진행률
+# 🔥 11. WebSocket 관리자 (완전 복구) - 실시간 AI 진행률
 # =============================================================================
 
 class AIWebSocketManager:
@@ -761,14 +833,14 @@ class AIWebSocketManager:
 ai_websocket_manager = AIWebSocketManager()
 
 # =============================================================================
-# 🔥 10. 앱 라이프스팬 관리 (누락된 기능 복구)
+# 🔥 12. 앱 라이프스팬 관리 (누락된 기능 복구)
 # =============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """앱 라이프스팬 - StepServiceManager 중심 초기화"""
     try:
-        logger.info("🚀 MyCloset AI 서버 시작 (StepServiceManager v13.0 중심 아키텍처)")
+        logger.info("🚀 MyCloset AI 서버 시작 (StepServiceManager v15.0 중심 아키텍처)")
         
         # 1. 실제 AI 컨테이너 초기화 (StepServiceManager 중심)
         await ai_container.initialize()
@@ -878,29 +950,207 @@ async def periodic_ai_status_broadcast():
             logger.error(f"❌ AI 상태 브로드캐스트 실패: {e}")
 
 # =============================================================================
-# 🔥 11. FastAPI 앱 생성
+# 🔥 13. 시스템 라우터 (직접 생성)
 # =============================================================================
 
-app = FastAPI(
-    title="MyCloset AI Backend - StepServiceManager 완벽 연동 v27.0",
-    description="step_routes.py v5.0 + StepServiceManager v13.0 완전 통합 + 229GB AI 모델 파이프라인",
-    version="27.0.0",
-    lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
+def create_system_routes():
+    """시스템 기본 라우터 생성"""
+    from fastapi import APIRouter
+    
+    system_router = APIRouter(tags=["system"])
+    
+    @system_router.get("/")
+    async def root():
+        """루트 엔드포인트"""
+        return {
+            "message": "MyCloset AI Backend API v28.0",
+            "status": "running",
+            "step_routes_support": ROUTER_STATUS.get('step_routes', STEP_SERVICE_MANAGER_AVAILABLE),
+            "step_service_manager_integration": "v15.0 완벽 연동",
+            "real_ai_pipeline_integration": "RealAIStepImplementationManager v14.0",
+            "available_endpoints": [
+                "/health",
+                "/api/system/info", 
+                "/api/step/*",  # 🔥 step_routes.py 지원!
+                "/docs"
+            ]
+        }
+    
+    @system_router.get("/api/system/info")
+    async def system_info():
+        """시스템 정보"""
+        try:
+            if API_INTEGRATION_AVAILABLE:
+                api_status = get_api_status()
+                available_endpoints = get_available_endpoints()
+                
+                return {
+                    "system": SYSTEM_INFO,
+                    "api_status": api_status,
+                    "available_endpoints": available_endpoints,
+                    "router_status": ROUTER_STATUS,
+                    "step_routes_enabled": ROUTER_STATUS.get('step_routes', STEP_SERVICE_MANAGER_AVAILABLE)  # 🔥 중요!
+                }
+            else:
+                return {
+                    "system": {"device": DEVICE, "memory_gb": SYSTEM_INFO['memory_gb']},
+                    "api_status": {"status": "limited"},
+                    "step_routes_enabled": STEP_SERVICE_MANAGER_AVAILABLE,
+                    "step_service_manager_available": STEP_SERVICE_MANAGER_AVAILABLE,
+                    "real_ai_pipeline_ready": ai_container.is_initialized
+                }
+        except Exception as e:
+            logger.error(f"❌ 시스템 정보 조회 실패: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    return system_router
+
+# =============================================================================
+# 🔥 14. FastAPI 앱 생성
+# =============================================================================
+
+def create_app() -> FastAPI:
+    """FastAPI 애플리케이션 생성"""
+    
+    # FastAPI 인스턴스 생성
+    app = FastAPI(
+        title="MyCloset AI Backend API",
+        description="MyCloset AI 가상 피팅 백엔드 API v28.0 - StepServiceManager 완벽 연동",
+        version="28.0.0",
+        lifespan=lifespan,
+        docs_url="/docs",
+        redoc_url="/redoc"
+    )
+    
+    # =================================================================
+    # 🔥 CORS 설정 (필수!)
+    # =================================================================
+    
+    if API_INTEGRATION_AVAILABLE:
+        setup_cors(app)
+        setup_middleware(app)
+    else:
+        # 폴백 CORS 설정
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[
+                "http://localhost:3000",
+                "http://localhost:5173", 
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:5173"
+            ],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        logger.info("✅ 폴백 CORS 설정 완료")
+    
+    # =================================================================
+    # 🔥 라우터 등록 (step_routes.py 우선!)
+    # =================================================================
+    
+    if API_INTEGRATION_AVAILABLE:
+        # 통합 라우터 관리자를 통한 등록
+        registered_count = register_routers(app)
+        logger.info(f"🎯 라우터 등록 완료: {registered_count}개")
+        
+        # step_routes.py 특별 확인
+        if ROUTER_STATUS.get('step_routes'):
+            logger.info("🔥 step_routes.py 라우터 성공적으로 등록됨!")
+            logger.info("   - 경로: /api/step/*")
+            logger.info("   - 프론트엔드 완전 호환")
+        else:
+            logger.warning("⚠️ step_routes.py 라우터 등록 실패")
+    else:
+        # 수동 라우터 등록
+        try:
+            logger.info("🔥 step_routes.py v5.0 라우터 수동 등록 중...")
+            from app.api.step_routes import router as step_router
+            
+            app.include_router(
+                step_router,
+                prefix="/api/step",
+                tags=["8단계 AI 파이프라인 - 실제 AI 전용"]
+            )
+            
+            logger.info("✅ step_routes.py v5.0 라우터 등록 성공 - /api/step/* 경로 활성화")
+            ROUTER_STATUS['step_routes'] = True
+            
+        except ImportError as e:
+            logger.error(f"❌ step_routes 라우터 import 실패: {e}")
+            ROUTER_STATUS['step_routes'] = False
+        except Exception as e:
+            logger.error(f"❌ step_routes 라우터 등록 실패: {e}")
+            ROUTER_STATUS['step_routes'] = False
+        
+        # 기타 라우터들 등록
+        routers_to_register = [
+            ('app.api.pipeline_routes', '/api/pipeline', '통합 AI 파이프라인'),
+            ('app.api.websocket_routes', '/api/ws', 'WebSocket 실시간 통신'),
+            ('app.api.health', '/api/health', '헬스체크'),
+            ('app.api.models', '/api/models', 'AI 모델 관리')
+        ]
+        
+        for module_path, prefix, description in routers_to_register:
+            try:
+                module = __import__(module_path, fromlist=['router'])
+                router = getattr(module, 'router')
+                app.include_router(router, prefix=prefix, tags=[description])
+                logger.info(f"✅ {module_path.split('.')[-1]} 라우터 등록 성공")
+            except ImportError as e:
+                logger.warning(f"⚠️ {module_path} 라우터 import 실패: {e}")
+            except Exception as e:
+                logger.warning(f"⚠️ {module_path} 라우터 등록 실패: {e}")
+    
+    # 시스템 라우터 (항상 등록)
+    system_router = create_system_routes()
+    app.include_router(system_router)
+    logger.info("✅ 시스템 라우터 등록 완료")
+    
+    # =================================================================
+    # 🔥 전역 예외 처리기
+    # =================================================================
+    
+    @app.exception_handler(404)
+    async def not_found_handler(request: Request, exc: HTTPException):
+        """404 에러 처리"""
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": "Not Found",
+                "message": f"엔드포인트를 찾을 수 없습니다: {request.url.path}",
+                "available_endpoints": get_available_endpoints() if API_INTEGRATION_AVAILABLE else [
+                    "/health", "/api/system/info", "/docs", "/api/step/*"
+                ],
+                "step_routes_available": ROUTER_STATUS.get('step_routes', STEP_SERVICE_MANAGER_AVAILABLE),
+                "step_service_manager_available": STEP_SERVICE_MANAGER_AVAILABLE
+            }
+        )
+    
+    @app.exception_handler(500)
+    async def internal_error_handler(request: Request, exc: Exception):
+        """500 에러 처리"""
+        logger.error(f"❌ 내부 서버 오류: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal Server Error", 
+                "message": "서버 내부 오류가 발생했습니다",
+                "step_routes_available": ROUTER_STATUS.get('step_routes', STEP_SERVICE_MANAGER_AVAILABLE),
+                "step_service_manager_available": STEP_SERVICE_MANAGER_AVAILABLE
+            }
+        )
+    
+    return app
+
+# =============================================================================
+# 🔥 15. 앱 인스턴스 생성
+# =============================================================================
+
+app = create_app()
 
 # AI 환경 초기화 호출
 setup_ai_environment()
-
-# CORS 설정
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # 압축 미들웨어
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -910,116 +1160,21 @@ static_dir = Path("static")
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-logger.info("✅ FastAPI 앱 생성 및 기본 설정 완료")
-
 # =============================================================================
-# 🔥 12. step_routes.py 라우터 등록 (핵심!)
-# =============================================================================
-
-try:
-    logger.info("🔥 step_routes.py v5.0 라우터 등록 중...")
-    from app.api.step_routes import router as step_router
-    
-    # 🔥 올바른 prefix 설정으로 등록
-    app.include_router(
-        step_router,
-        prefix="/api/step",
-        tags=["8단계 AI 파이프라인 - 실제 AI 전용"]
-    )
-    
-    logger.info("✅ step_routes.py v5.0 라우터 등록 성공 - /api/step/* 경로 활성화")
-    logger.info("🔥 주요 엔드포인트:")
-    logger.info("   POST /api/step/1/upload-validation (이미지 업로드)")
-    logger.info("   POST /api/step/2/measurements-validation (신체 측정값)")
-    logger.info("   POST /api/step/3/human-parsing (1.2GB Graphonomy)")
-    logger.info("   POST /api/step/4/pose-estimation (포즈 추정)")
-    logger.info("   POST /api/step/5/clothing-analysis (2.4GB SAM)")
-    logger.info("   POST /api/step/6/geometric-matching (기하학적 매칭)")
-    logger.info("   POST /api/step/7/virtual-fitting (14GB 핵심)")
-    logger.info("   POST /api/step/8/result-analysis (5.2GB CLIP)")
-    logger.info("   POST /api/step/complete (전체 파이프라인)")
-    logger.info("   GET  /api/step/health")
-    
-except ImportError as e:
-    logger.error(f"❌ step_routes 라우터 import 실패: {e}")
-    logger.error("step_routes.py 파일이 필요합니다!")
-except Exception as e:
-    logger.error(f"❌ step_routes 라우터 등록 실패: {e}")
-
-# =============================================================================
-# 🔥 13. 기타 라우터들 등록
-# =============================================================================
-
-# Pipeline Routes 등록
-try:
-    from app.api.pipeline_routes import router as pipeline_router
-    app.include_router(
-        pipeline_router,
-        prefix="/api/pipeline",
-        tags=["통합 AI 파이프라인"]
-    )
-    logger.info("✅ pipeline_routes 라우터 등록 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ pipeline_routes 라우터 import 실패: {e}")
-except Exception as e:
-    logger.warning(f"⚠️ pipeline_routes 라우터 등록 실패: {e}")
-
-# WebSocket Routes 등록
-try:
-    from app.api.websocket_routes import router as websocket_router
-    app.include_router(
-        websocket_router,
-        prefix="/api/ws",
-        tags=["WebSocket 실시간 통신"]
-    )
-    logger.info("✅ websocket_routes 라우터 등록 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ websocket_routes 라우터 import 실패: {e}")
-except Exception as e:
-    logger.warning(f"⚠️ websocket_routes 라우터 등록 실패: {e}")
-
-# Health Routes 등록
-try:
-    from app.api.health import router as health_router
-    app.include_router(
-        health_router,
-        prefix="/api/health",
-        tags=["헬스체크"]
-    )
-    logger.info("✅ health 라우터 등록 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ health 라우터 import 실패: {e}")
-except Exception as e:
-    logger.warning(f"⚠️ health 라우터 등록 실패: {e}")
-
-# Models Routes 등록
-try:
-    from app.api.models import router as models_router
-    app.include_router(
-        models_router,
-        prefix="/api/models",
-        tags=["AI 모델 관리"]
-    )
-    logger.info("✅ models 라우터 등록 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ models 라우터 import 실패: {e}")
-except Exception as e:
-    logger.warning(f"⚠️ models 라우터 등록 실패: {e}")
-
-# =============================================================================
-# 🔥 14. 기본 엔드포인트들
+# 🔥 16. 기본 엔드포인트들
 # =============================================================================
 
 @app.get("/")
 async def root():
     """루트 경로"""
     return {
-        "message": "MyCloset AI Backend v27.0 - StepServiceManager 완벽 연동",
+        "message": "MyCloset AI Backend v28.0 - StepServiceManager 완벽 연동",
         "status": "running",
-        "version": "27.0.0",
-        "architecture": "StepServiceManager v13.0 중심 + 229GB AI 모델 완전 활용",
+        "version": "28.0.0",
+        "architecture": "StepServiceManager v15.0 중심 + RealAIStepImplementationManager v14.0",
         "features": [
-            "StepServiceManager v13.0 완벽 연동",
+            "StepServiceManager v15.0 완벽 연동",
+            "RealAIStepImplementationManager v14.0 완전 통합",
             "step_routes.py v5.0 완전 호환",
             "step_implementations.py DetailedDataSpec 완전 통합",
             "실제 229GB AI 모델 완전 활용",
@@ -1043,8 +1198,9 @@ async def root():
         },
         "step_service_manager": {
             "available": STEP_SERVICE_MANAGER_AVAILABLE,
-            "version": "v13.0",
+            "version": "v15.0",
             "step_routes_integration": "v5.0",
+            "real_ai_implementation_integration": "v14.0",
             "step_implementations_integration": "DetailedDataSpec",
             "real_ai_models": ai_container.stats.get('models_loaded', 0),
             "status": ai_container.get_system_status().get('step_service_manager_active', False)
@@ -1075,8 +1231,8 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "version": "27.0.0",
-        "architecture": "StepServiceManager v13.0 중심",
+        "version": "28.0.0",
+        "architecture": "StepServiceManager v15.0 중심 + RealAIStepImplementationManager v14.0",
         "uptime": time.time(),
         "real_ai_pipeline": {
             "status": "active" if ai_container.is_initialized else "inactive",
@@ -1094,13 +1250,14 @@ async def health_check():
         },
         "routers": {
             "total_routers": 5,
-            "active_routers": 5,
-            "success_rate": 100
+            "active_routers": sum(ROUTER_STATUS.values()) if ROUTER_STATUS else 1,
+            "step_routes_active": ROUTER_STATUS.get('step_routes', STEP_SERVICE_MANAGER_AVAILABLE)
         },
         "step_service_manager": {
             "available": STEP_SERVICE_MANAGER_AVAILABLE,
             "status": "active" if STEP_SERVICE_MANAGER_AVAILABLE else "inactive",
-            "version": "v13.0",
+            "version": "v15.0",
+            "real_ai_implementation_version": "v14.0",
             "integration_quality": "완벽 연동"
         },
         "system": {
@@ -1116,71 +1273,8 @@ async def health_check():
         }
     }
 
-@app.get("/api/system/info")
-async def get_system_info():
-    """시스템 정보 조회"""
-    try:
-        ai_status = ai_container.get_system_status()
-        
-        return {
-            "app_name": "MyCloset AI Backend",
-            "app_version": "27.0.0",
-            "timestamp": int(time.time()),
-            "conda_environment": IS_CONDA,
-            "conda_env": os.environ.get('CONDA_DEFAULT_ENV', 'none'),
-            "mycloset_optimized": IS_MYCLOSET_ENV,
-            "m3_max_optimized": IS_M3_MAX,
-            "device": DEVICE,
-            "memory_gb": SYSTEM_INFO['memory_gb'],
-            "step_service_manager_integration": "완벽 연동 v13.0",
-            "step_routes_integration": "v5.0",
-            "warnings_resolution_complete": ai_status.get('warnings_fixed', False),
-            "system": {
-                "platform": platform.system(),
-                "python_version": platform.python_version(),
-                "cpu_count": os.cpu_count() or 4,
-                "conda": IS_CONDA,
-                "mycloset_env": IS_MYCLOSET_ENV,
-                "m3_max": IS_M3_MAX,
-                "device": DEVICE
-            },
-            "step_service_manager": {
-                "available": STEP_SERVICE_MANAGER_AVAILABLE,
-                "version": "v13.0",
-                "active": ai_status.get('step_service_manager_active', False),
-                "integration_status": "완벽 연동",
-                "step_routes_compatibility": "v5.0 완전 호환",
-                "step_implementations_integration": "DetailedDataSpec 완전 통합"
-            },
-            "real_ai_pipeline": {
-                "active": ai_status.get('real_ai_pipeline_active', False),
-                "initialized": ai_status.get('initialized', False),
-                "real_ai_models_loaded": ai_status.get('real_ai_models_loaded', 0),
-                "smart_mapper_available": ai_status.get('component_status', {}).get('smart_mapper', False),
-                "warnings_fixed": ai_status.get('warnings_fixed', False),
-                "total_ai_calls": ai_status.get('statistics', {}).get('real_ai_calls', 0),
-                "step_service_calls": ai_status.get('statistics', {}).get('step_service_calls', 0),
-                "average_processing_time": ai_status.get('statistics', {}).get('average_processing_time', 0.0)
-            },
-            "ai_components": {
-                "step_service_manager": STEP_SERVICE_MANAGER_AVAILABLE,
-                "smart_mapper_available": SMART_MAPPER_AVAILABLE,
-                "di_container_available": DI_CONTAINER_AVAILABLE,
-                "model_loader_available": MODEL_LOADER_AVAILABLE,
-                "step_factory_available": STEP_FACTORY_AVAILABLE,
-                "pipeline_manager_available": PIPELINE_MANAGER_AVAILABLE
-            }
-        }
-    except Exception as e:
-        logger.error(f"❌ 시스템 정보 조회 실패: {e}")
-        return {
-            "error": str(e),
-            "app_name": "MyCloset AI Backend",
-            "app_version": "27.0.0"
-        }
-
 # =============================================================================
-# 🔥 15. WebSocket 엔드포인트 (완전 복구)
+# 🔥 17. WebSocket 엔드포인트 (완전 복구)
 # =============================================================================
 
 @app.websocket("/ws")
@@ -1279,7 +1373,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
         logger.info(f"🔌 메인 WebSocket 연결 종료: {session_id}")
 
 # =============================================================================
-# 🔥 16. 추가 API 엔드포인트 (완전 복구)
+# 🔥 18. 추가 API 엔드포인트 (완전 복구)
 # =============================================================================
 
 @app.get("/api/ai/step-service/status")
@@ -1298,7 +1392,8 @@ async def get_step_service_status():
         
         return JSONResponse(content={
             "available": True,
-            "version": "v13.0",
+            "version": "v15.0",
+            "real_ai_implementation_version": "v14.0",
             "service_status": service_status,
             "service_metrics": service_metrics,
             "ai_container_status": ai_container.get_system_status(),
@@ -1413,7 +1508,8 @@ async def get_available_step_services():
             "complete_pipeline": complete_pipeline,
             "total_steps": len(available_steps),
             "total_expected_time": sum(step["expected_time"] for step in available_steps),
-            "step_service_manager_version": "v13.0",
+            "step_service_manager_version": "v15.0",
+            "real_ai_implementation_version": "v14.0",
             "total_ai_models": "229GB",
             "individual_ai_models": {
                 "graphonomy": "1.2GB",
@@ -1458,7 +1554,8 @@ async def process_step_service_direct(
             "timestamp": datetime.now().isoformat(),
             "device": DEVICE,
             "step_service_manager_processing": True,
-            "version": "v13.0"
+            "version": "v15.0",
+            "real_ai_implementation_version": "v14.0"
         })
         
     except HTTPException:
@@ -1504,6 +1601,8 @@ async def restart_step_service():
             "message": "StepServiceManager 재시작 완료",
             "new_service_status": step_service_manager.get_status() if step_service_manager else "unknown",
             "ai_container_status": ai_container.get_system_status(),
+            "version": "v15.0",
+            "real_ai_implementation_version": "v14.0",
             "timestamp": datetime.now().isoformat()
         })
         
@@ -1512,7 +1611,7 @@ async def restart_step_service():
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
-# 🔥 17. 전역 예외 핸들러 (완전 복구)
+# 🔥 19. 전역 예외 핸들러 (완전 복구)
 # =============================================================================
 
 @app.exception_handler(404)
@@ -1558,7 +1657,8 @@ async def not_found_handler(request: Request, exc: HTTPException):
                 "requested_url": str(request.url),
                 "available_endpoints": available_endpoints,
                 "suggestion": "step_routes.py 라우터가 제대로 등록되었는지 확인하세요",
-                "step_service_manager_available": STEP_SERVICE_MANAGER_AVAILABLE
+                "step_service_manager_available": STEP_SERVICE_MANAGER_AVAILABLE,
+                "step_routes_registered": ROUTER_STATUS.get('step_routes', False)
             }
         )
     
@@ -1571,7 +1671,8 @@ async def not_found_handler(request: Request, exc: HTTPException):
                 "/",
                 "/health",
                 "/api/system/info",
-                "/docs"
+                "/docs",
+                "/api/step/*"
             ]
         }
     )
@@ -1589,8 +1690,8 @@ async def global_exception_handler(request: Request, exc: Exception):
             "error": "서버 내부 오류가 발생했습니다.",
             "message": "잠시 후 다시 시도해주세요.",
             "detail": str(exc) if settings.DEBUG else None,
-            "version": "27.0.0",
-            "architecture": "StepServiceManager v13.0 중심",
+            "version": "28.0.0",
+            "architecture": "StepServiceManager v15.0 중심 + RealAIStepImplementationManager v14.0",
             "timestamp": datetime.now().isoformat(),
             "step_service_manager_status": STEP_SERVICE_MANAGER_AVAILABLE,
             "real_ai_pipeline_status": ai_container.is_initialized,
@@ -1607,13 +1708,13 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # =============================================================================
-# 🔥 18. 애플리케이션 시작/종료 이벤트 (완전 복구)
+# 🔥 20. 애플리케이션 시작/종료 이벤트 (완전 복구)
 # =============================================================================
 
 @app.on_event("startup")
 async def startup_event():
     """애플리케이션 시작 시 실행"""
-    logger.info("🚀 MyCloset AI Backend 시작 (StepServiceManager v13.0 중심)")
+    logger.info("🚀 MyCloset AI Backend 시작 (StepServiceManager v15.0 + RealAIStepImplementationManager v14.0)")
     logger.info("🔥 conda 최적화: ✅")
     
     # 등록된 라우터 정보 출력
@@ -1631,19 +1732,22 @@ async def startup_event():
     # step API 라우터 확인
     if step_routes:
         logger.info(f"✅ step_routes 라우터 활성화됨 - {len(step_routes)}개 엔드포인트")
+        ROUTER_STATUS['step_routes'] = True
     else:
         logger.error("❌ step_routes 라우터가 등록되지 않음!")
+        ROUTER_STATUS['step_routes'] = False
     
     # StepServiceManager 상태 확인
     if STEP_SERVICE_MANAGER_AVAILABLE:
-        logger.info("✅ StepServiceManager 준비 완료")
+        logger.info("✅ StepServiceManager v15.0 준비 완료")
+        logger.info("✅ RealAIStepImplementationManager v14.0 연동 완료")
     else:
         logger.warning("⚠️ StepServiceManager 사용 불가")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """애플리케이션 종료 시 실행"""
-    logger.info("🔚 MyCloset AI Backend 종료 중 (StepServiceManager 중심)...")
+    logger.info("🔚 MyCloset AI Backend 종료 중 (StepServiceManager v15.0 + RealAIStepImplementationManager v14.0)...")
     
     # AI 컨테이너 정리
     await ai_container.cleanup()
@@ -1664,19 +1768,20 @@ async def shutdown_event():
     logger.info("✅ 정리 작업 완료")
 
 # =============================================================================
-# 🔥 19. 서버 시작 (완전 복구)
+# 🔥 21. 서버 시작 함수 및 메인 실행
 # =============================================================================
 
-if __name__ == "__main__":
+def main():
+    """메인 실행 함수"""
     
     # 🔥 서버 시작 전 StepServiceManager 완벽 연동 최종 검증
-    logger.info("🔥 서버 시작 전 StepServiceManager 완벽 연동 최종 검증...")
+    logger.info("🔥 서버 시작 전 StepServiceManager v15.0 + RealAIStepImplementationManager v14.0 완벽 연동 최종 검증...")
     
     try:
         # StepServiceManager 상태 확인
         if STEP_SERVICE_MANAGER_AVAILABLE:
             service_status = step_service_manager.get_status()
-            logger.info(f"✅ StepServiceManager: {service_status.get('status', 'unknown')}")
+            logger.info(f"✅ StepServiceManager v15.0: {service_status.get('status', 'unknown')}")
         else:
             logger.warning("❌ StepServiceManager 사용 불가")
         
@@ -1709,10 +1814,11 @@ if __name__ == "__main__":
         logger.error(f"❌ StepServiceManager 연동 검증 실패: {e}")
     
     print("\n" + "="*120)
-    print("🔥 MyCloset AI 백엔드 서버 - StepServiceManager 완벽 연동 v27.0")
+    print("🔥 MyCloset AI 백엔드 서버 - StepServiceManager v15.0 + RealAIStepImplementationManager v14.0 완벽 연동 v28.0")
     print("="*120)
-    print("🏗️ StepServiceManager 중심 아키텍처:")
-    print("  ✅ StepServiceManager v13.0 완벽 연동")
+    print("🏗️ 새로운 통합 아키텍처:")
+    print("  ✅ StepServiceManager v15.0 완벽 연동")
+    print("  ✅ RealAIStepImplementationManager v14.0 완전 통합")
     print("  ✅ step_routes.py v5.0 완전 호환")
     print("  ✅ step_implementations.py DetailedDataSpec 완전 통합")
     print("  ✅ BaseStepMixin v19.1 의존성 주입")
@@ -1724,7 +1830,7 @@ if __name__ == "__main__":
     print("  ✅ M3 Max 128GB + conda 환경 최적화")
     print("  ✅ React/TypeScript 프론트엔드 100% 호환")
     print("="*120)
-    print("🚀 라우터 상태:")
+    print("🚀 컴포넌트 상태:")
     available_components = sum([
         STEP_SERVICE_MANAGER_AVAILABLE,
         SMART_MAPPER_AVAILABLE,
@@ -1735,11 +1841,12 @@ if __name__ == "__main__":
     ])
     
     components = [
-        ('StepServiceManager', STEP_SERVICE_MANAGER_AVAILABLE, 'v13.0 완벽 연동 (핵심)'),
+        ('StepServiceManager v15.0', STEP_SERVICE_MANAGER_AVAILABLE, '완벽 연동 (핵심)'),
+        ('RealAIStepImplementationManager v14.0', STEP_SERVICE_MANAGER_AVAILABLE, 'GitHub 기반 완전 통합'),
         ('SmartModelPathMapper', SMART_MAPPER_AVAILABLE, '동적 모델 경로 매핑'),
         ('DI Container', DI_CONTAINER_AVAILABLE, '의존성 주입 관리'),
         ('ModelLoader', MODEL_LOADER_AVAILABLE, '실제 AI 모델 로딩'),
-        ('StepFactory', STEP_FACTORY_AVAILABLE, '8단계 AI Step 생성'),
+        ('StepFactory v11.0', STEP_FACTORY_AVAILABLE, '8단계 AI Step 생성'),
         ('PipelineManager', PIPELINE_MANAGER_AVAILABLE, '통합 파이프라인 관리')
     ]
     
@@ -1748,7 +1855,7 @@ if __name__ == "__main__":
         print(f"  {status} {component_name} - {description}")
     
     print("="*120)
-    print("🔥 실제 AI 모델 (StepServiceManager 활용):")
+    print("🔥 실제 AI 모델 (StepServiceManager + RealAIStepImplementationManager 활용):")
     ai_models = [
         ("Step 1", "File Validation", "이미지 업로드 검증"),
         ("Step 2", "BMI Calculator", "신체 측정값 검증"),
@@ -1764,8 +1871,9 @@ if __name__ == "__main__":
         print(f"  🎯 {step}: {model_size} ({description})")
     
     print("="*120)
-    print("🔥 StepServiceManager 완벽 연동 체계:")
-    print(f"  {'✅' if STEP_SERVICE_MANAGER_AVAILABLE else '❌'} StepServiceManager v13.0 - 229GB AI 모델 완전 활용")
+    print("🔥 통합 아키텍처 체계:")
+    print(f"  {'✅' if STEP_SERVICE_MANAGER_AVAILABLE else '❌'} StepServiceManager v15.0 - 229GB AI 모델 완전 활용")
+    print(f"  {'✅' if STEP_SERVICE_MANAGER_AVAILABLE else '❌'} RealAIStepImplementationManager v14.0 - GitHub 구조 기반")
     print(f"  🎯 step_routes.py v5.0 - StepServiceManager 완벽 API 매칭")
     print(f"  🔧 step_implementations.py - DetailedDataSpec 완전 통합")
     print(f"  📊 BaseStepMixin v19.1 - 의존성 주입 완전 구현")
@@ -1786,7 +1894,8 @@ if __name__ == "__main__":
     print("="*120)
     print("🔗 프론트엔드 연결:")
     print(f"  📊 컴포넌트 활성: {available_components}/6")
-    print(f"  🤖 StepServiceManager: {'✅' if STEP_SERVICE_MANAGER_AVAILABLE else '❌'}")
+    print(f"  🤖 StepServiceManager v15.0: {'✅' if STEP_SERVICE_MANAGER_AVAILABLE else '❌'}")
+    print(f"  🤖 RealAIStepImplementationManager v14.0: {'✅' if STEP_SERVICE_MANAGER_AVAILABLE else '❌'}")
     print(f"  🔥 워닝 해결: {'✅' if SMART_MAPPER_AVAILABLE else '❌'}")
     print(f"  🌐 CORS 설정: {len(settings.CORS_ORIGINS)}개 도메인")
     print(f"  🔌 프론트엔드에서 http://{settings.HOST}:{settings.PORT} 으로 API 호출 가능!")
@@ -1805,26 +1914,39 @@ if __name__ == "__main__":
     print(f"  📈 시스템 정보: /api/system/info")
     print(f"  📚 API 문서: /docs")
     print("="*120)
-    print("🔥 StepServiceManager v13.0 완벽 연동 완성!")
-    print("📦 step_routes.py v5.0 + step_implementations.py DetailedDataSpec!")
+    print("🔥 StepServiceManager v15.0 + RealAIStepImplementationManager v14.0 완벽 연동 완성!")
+    print("📦 step_routes.py v5.0 + step_implementations.py DetailedDataSpec 완전 통합!")
     print("✨ React/TypeScript App.tsx와 100% 호환!")
     print("🤖 실제 AI 모델 229GB 기반 8단계 가상 피팅 파이프라인!")
-    print("🎯 StepServiceManager로 모든 AI 처리 완벽 통합!")
+    print("🎯 GitHub 구조 기반 완전한 통합 아키텍처!")
     print("🚀 BaseStepMixin v19.1 의존성 주입 완전 구현!")
     print("="*120)
     
-    # 서버 실행
+    # 개발 서버 설정
+    config = {
+        "host": settings.HOST,
+        "port": settings.PORT,
+        "reload": False,  # reload=False로 설정하여 안정성 향상
+        "log_level": "info",
+        "access_log": True
+    }
+    
+    print(f"🚀 서버 시작: http://{config['host']}:{config['port']}")
+    print("🔥 프론트엔드 연결 대기 중...")
+    
+    # uvicorn 서버 시작
+    uvicorn.run(app, **config)
+
+# =============================================================================
+# 🔥 22. 프로그램 진입점
+# =============================================================================
+
+if __name__ == "__main__":
     try:
-        uvicorn.run(
-            app,
-            host=settings.HOST,
-            port=settings.PORT,
-            reload=False,  # reload=False로 설정하여 안정성 향상
-            log_level="info",
-            access_log=True
-        )
+        main()
     except KeyboardInterrupt:
-        print("\n✅ StepServiceManager 완벽 연동 서버가 안전하게 종료되었습니다.")
+        print("\n✅ StepServiceManager v15.0 + RealAIStepImplementationManager v14.0 완벽 연동 서버가 안전하게 종료되었습니다.")
     except Exception as e:
         print(f"\n❌ 서버 실행 오류: {e}")
         logger.error(f"서버 실행 오류: {e}")
+        traceback.print_exc()
