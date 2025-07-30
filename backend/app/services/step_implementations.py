@@ -75,11 +75,11 @@ if TYPE_CHECKING:
         GitHubStepMapping,
         SafeDetailedDataSpec
     )
-    from ..factories.step_factory import StepFactory
-    from ..steps.base_step_mixin import BaseStepMixin
-    from ..utils.model_loader import ModelLoader
-    from ..utils.memory_manager import MemoryManager
-    from ..utils.data_converter import DataConverter
+    from app.ai_pipeline.factories.step_factory import StepFactory
+    from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.utils.memory_manager import MemoryManager
+    from app.ai_pipeline.utils.data_converter import DataConverter
 
 # =============================================================================
 # 🔥 2단계: 로깅 안전 초기화

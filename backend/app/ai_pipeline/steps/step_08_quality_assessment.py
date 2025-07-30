@@ -33,7 +33,19 @@ from functools import lru_cache, wraps
 import numpy as np
 import base64
 import io
+import os
+from huggingface_hub import login
 
+# 환경변수에서 토큰 로드
+hf_token = os.getenv('HUGGINGFACE_TOKEN')
+if hf_token:
+    login(token=hf_token)
+
+# 또는 로컬 모델 사용
+def load_local_clip_model():
+    # 로컬에 저장된 모델 사용
+    model_path = "ai_models/step_08_quality_assessment/clip_local"
+    return CLIPModel.from_pretrained(model_path)
 # ==============================================
 # 🔥 TYPE_CHECKING으로 순환참조 방지 (기존 유지)
 # ==============================================

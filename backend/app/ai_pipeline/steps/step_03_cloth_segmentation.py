@@ -1986,60 +1986,302 @@ class ClothSegmentationStep(BaseStepMixin):
             
         except Exception:
             return 1.0
-    
     def _create_visualizations(
         self, 
         image: np.ndarray, 
         mask: np.ndarray, 
         roi_box: Optional[Tuple[int, int, int, int]]
     ) -> Dict[str, Any]:
-        """시각화 생성"""
+        """
+        🔥 수정된 시각화 생성 메서드 - NumPy 타입 변환 오류 완전 해결
+        
+        ❌ 기존 문제점:
+        - float32 → uint8 변환 시 범위 검증 없음
+        - mask_colored[:, :, 0] = mask 에서 타입 불일치
+        - 블렌딩 계산에서 오버플로우 발생
+        - PIL 변환 시 타입 검증 부족
+        
+        ✅ 해결책:
+        - 안전한 타입 변환 함수 사용
+        - 범위 클리핑 및 검증 추가
+        - 예외 처리 강화
+        - 폴백 메커니즘 구현
+        """
+        
+        def safe_float_to_uint8(array: np.ndarray) -> np.ndarray:
+            """안전한 float → uint8 변환"""
+            try:
+                if array is None:
+                    return np.zeros((512, 512, 3), dtype=np.uint8)
+                
+                # 이미 uint8이면 그대로 반환
+                if array.dtype == np.uint8:
+                    return array
+                
+                # float 타입 처리
+                if array.dtype in [np.float32, np.float64]:
+                    # 값 범위 자동 감지 및 정규화
+                    min_val, max_val = float(np.min(array)), float(np.max(array))
+                    
+                    if min_val >= 0.0 and max_val <= 1.0:
+                        # [0, 1] 범위 → [0, 255]
+                        normalized = np.clip(array, 0.0, 1.0) * 255.0
+                    elif max_val <= 255.0:
+                        # [0, 255] 범위 → 클리핑만
+                        normalized = np.clip(array, 0.0, 255.0)
+                    else:
+                        # 임의 범위 → 정규화
+                        if max_val > min_val:
+                            normalized = (array - min_val) / (max_val - min_val) * 255.0
+                        else:
+                            normalized = np.full_like(array, 128.0)
+                    
+                    return normalized.astype(np.uint8)
+                
+                # 기타 정수 타입
+                else:
+                    return np.clip(array, 0, 255).astype(np.uint8)
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ 타입 변환 실패: {e}")
+                # 폴백: 기본 크기 배열
+                if hasattr(array, 'shape') and len(array.shape) >= 2:
+                    h, w = array.shape[:2]
+                    if len(array.shape) == 3:
+                        return np.full((h, w, array.shape[2]), 128, dtype=np.uint8)
+                    else:
+                        return np.full((h, w), 128, dtype=np.uint8)
+                else:
+                    return np.full((512, 512, 3), 128, dtype=np.uint8)
+        
+        def safe_blend_images(base: np.ndarray, overlay: np.ndarray, alpha: float) -> np.ndarray:
+            """안전한 이미지 블렌딩"""
+            try:
+                # 알파 값 클리핑
+                alpha = np.clip(alpha, 0.0, 1.0)
+                
+                # float로 계산 후 uint8로 변환 (오버플로우 방지)
+                base_float = base.astype(np.float32)
+                overlay_float = overlay.astype(np.float32)
+                
+                blended = (1.0 - alpha) * base_float + alpha * overlay_float
+                return np.clip(blended, 0, 255).astype(np.uint8)
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️ 블렌딩 실패: {e}")
+                return base
+        
         try:
             visualizations = {}
             
-            # 1. 마스크 오버레이
-            if len(image.shape) == 3:
-                overlay = image.copy()
-                mask_colored = np.zeros_like(image)
-                mask_colored[:, :, 0] = mask  # 빨간색 마스크
+            # 🔧 1. 입력 안전성 확보
+            safe_image = safe_float_to_uint8(image)
+            safe_mask = safe_float_to_uint8(mask)
+            
+            self.logger.debug(f"📊 타입 변환 완료 - 이미지: {image.dtype} → {safe_image.dtype}, 마스크: {mask.dtype} → {safe_mask.dtype}")
+            
+            # 🎨 2. 마스크 오버레이 (수정된 버전)
+            try:
+                if len(safe_image.shape) == 3:
+                    # 컬러 마스크 생성 (안전한 방법)
+                    mask_colored = np.zeros_like(safe_image, dtype=np.uint8)
+                    
+                    # 마스크 이진화 (차원에 따라 처리)
+                    if len(safe_mask.shape) == 2:
+                        mask_binary = safe_mask > 128
+                    elif len(safe_mask.shape) == 3:
+                        mask_binary = np.mean(safe_mask, axis=2) > 128
+                    else:
+                        mask_binary = safe_mask.flatten() > 128
+                        mask_binary = mask_binary.reshape(safe_image.shape[:2])
+                    
+                    # 빨간색 마스크 적용 (안전한 방법)
+                    mask_colored[mask_binary] = [255, 0, 0]
+                    
+                    # 안전한 블렌딩
+                    overlay = safe_blend_images(safe_image, mask_colored, self.config.overlay_opacity)
+                    visualizations['mask_overlay'] = overlay
+                    
+                    self.logger.debug("✅ 마스크 오버레이 생성 완료")
                 
-                # 블렌딩
-                alpha = self.config.overlay_opacity
-                overlay = ((1 - alpha) * image + alpha * mask_colored).astype(np.uint8)
-                visualizations['mask_overlay'] = overlay
+            except Exception as e:
+                self.logger.warning(f"⚠️ 마스크 오버레이 생성 실패: {e}")
+                visualizations['mask_overlay'] = safe_image
             
-            # 2. 분할된 의류만 추출
-            segmented = self._apply_mask_to_image(image, mask)
-            visualizations['segmented_clothing'] = segmented
-            
-            # 3. ROI 시각화
-            if roi_box and PIL_AVAILABLE:
-                roi_vis = Image.fromarray(image)
-                draw = ImageDraw.Draw(roi_vis)
-                draw.rectangle(roi_box, outline=(0, 255, 0), width=3)
-                visualizations['roi_visualization'] = np.array(roi_vis)
-            
-            # 4. 경계선 시각화
-            if NUMPY_AVAILABLE:
-                # 간단한 경계선 추출
-                grad_x = np.abs(np.diff(mask.astype(np.float32), axis=1))
-                grad_y = np.abs(np.diff(mask.astype(np.float32), axis=0))
+            # 🧥 3. 분할된 의류 추출 (안전한 버전)
+            try:
+                segmented = self._apply_mask_to_image_safe(safe_image, safe_mask)
+                visualizations['segmented_clothing'] = segmented
                 
-                edges = np.zeros_like(mask)
-                if grad_x.shape[1] == edges.shape[1] - 1:
-                    edges[:-1, :-1] += grad_x
-                if grad_y.shape[0] == edges.shape[0] - 1:
-                    edges[:-1, :-1] += grad_y
+                self.logger.debug("✅ 분할된 의류 생성 완료")
                 
-                edges = (edges > 10).astype(np.uint8) * 255
-                visualizations['boundaries'] = edges
+            except Exception as e:
+                self.logger.warning(f"⚠️ 분할된 의류 생성 실패: {e}")
+                visualizations['segmented_clothing'] = safe_image
             
+            # 📦 4. ROI 시각화 (안전한 버전)
+            try:
+                if roi_box and PIL_AVAILABLE:
+                    # PIL 변환 시 타입 검증
+                    if safe_image.dtype == np.uint8:
+                        roi_vis = Image.fromarray(safe_image)
+                        draw = ImageDraw.Draw(roi_vis)
+                        
+                        # 좌표 안전성 확보
+                        x1, y1, x2, y2 = roi_box
+                        h, w = safe_image.shape[:2]
+                        x1 = max(0, min(x1, w-1))
+                        y1 = max(0, min(y1, h-1)) 
+                        x2 = max(x1+1, min(x2, w))
+                        y2 = max(y1+1, min(y2, h))
+                        
+                        draw.rectangle([x1, y1, x2, y2], outline=(0, 255, 0), width=3)
+                        visualizations['roi_visualization'] = np.array(roi_vis)
+                        
+                        self.logger.debug("✅ ROI 시각화 생성 완료")
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️ ROI 시각화 생성 실패: {e}")
+            
+            # 📏 5. 경계선 시각화 (안전한 버전)
+            try:
+                if NUMPY_AVAILABLE:
+                    # 마스크를 float32로 안전하게 변환
+                    if len(safe_mask.shape) == 2:
+                        mask_for_grad = safe_mask.astype(np.float32)
+                    else:
+                        mask_for_grad = np.mean(safe_mask, axis=2).astype(np.float32)
+                    
+                    # 그래디언트 계산
+                    grad_x = np.abs(np.diff(mask_for_grad, axis=1))
+                    grad_y = np.abs(np.diff(mask_for_grad, axis=0))
+                    
+                    # 경계선 이미지 생성 (크기 안전성 확보)
+                    h, w = mask_for_grad.shape
+                    edges = np.zeros((h, w), dtype=np.uint8)
+                    
+                    # 안전한 크기 체크 및 할당
+                    if grad_x.shape == (h, w-1):
+                        edges[:, :-1] = np.maximum(edges[:, :-1], (grad_x > 10).astype(np.uint8) * 255)
+                    if grad_y.shape == (h-1, w):
+                        edges[:-1, :] = np.maximum(edges[:-1, :], (grad_y > 10).astype(np.uint8) * 255)
+                    
+                    visualizations['boundaries'] = edges
+                    
+                    self.logger.debug("✅ 경계선 시각화 생성 완료")
+            
+            except Exception as e:
+                self.logger.warning(f"⚠️ 경계선 시각화 생성 실패: {e}")
+            
+            # 📊 6. 통계 정보 추가
+            try:
+                stats_info = self._create_stats_panel(safe_mask)
+                if stats_info is not None:
+                    visualizations['statistics'] = stats_info
+            except Exception as e:
+                self.logger.warning(f"⚠️ 통계 패널 생성 실패: {e}")
+            
+            self.logger.info(f"✅ 시각화 생성 완료 - {len(visualizations)}개 항목")
             return visualizations
             
         except Exception as e:
-            self.logger.warning(f"⚠️ 시각화 생성 실패: {e}")
-            return {}
-    
+            self.logger.error(f"❌ 시각화 생성 전체 실패: {e}")
+            # 🆘 최종 폴백
+            return self._create_emergency_visualizations(image, mask)
+
+    def _apply_mask_to_image_safe(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """안전한 마스크 적용 (타입 오류 방지)"""
+        try:
+            # 타입 안전성 확보
+            if image.dtype != np.uint8:
+                safe_image = np.clip(image, 0, 255).astype(np.uint8)
+            else:
+                safe_image = image.copy()
+            
+            # 마스크 이진화
+            if len(mask.shape) == 2:
+                mask_binary = mask > 128
+            else:
+                mask_binary = np.mean(mask, axis=2) > 128
+            
+            # 마스크 적용
+            if len(safe_image.shape) == 3:
+                # 3채널 이미지
+                masked = safe_image.copy()
+                for c in range(3):
+                    masked[:, :, c] = np.where(mask_binary, safe_image[:, :, c], 0)
+                return masked
+            else:
+                # 그레이스케일
+                return np.where(mask_binary, safe_image, 0).astype(np.uint8)
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 마스크 적용 실패: {e}")
+            return image if image.dtype == np.uint8 else np.clip(image, 0, 255).astype(np.uint8)
+
+    def _create_stats_panel(self, mask: np.ndarray) -> Optional[np.ndarray]:
+        """통계 정보 패널 생성"""
+        try:
+            # 간단한 통계 계산
+            if len(mask.shape) == 2:
+                mask_area = np.sum(mask > 128)
+                total_area = mask.size
+            else:
+                mask_area = np.sum(np.mean(mask, axis=2) > 128)
+                total_area = mask.shape[0] * mask.shape[1]
+            
+            coverage = (mask_area / total_area * 100) if total_area > 0 else 0
+            
+            # 텍스트 기반 패널 생성
+            panel = np.ones((100, 200, 3), dtype=np.uint8) * 240
+            
+            # PIL로 텍스트 추가
+            if PIL_AVAILABLE:
+                panel_pil = Image.fromarray(panel)
+                draw = ImageDraw.Draw(panel_pil)
+                
+                try:
+                    font = ImageFont.load_default()
+                except:
+                    font = None
+                
+                draw.text((5, 5), "세그멘테이션 통계", fill=(50, 50, 50), font=font)
+                draw.text((5, 25), f"커버리지: {coverage:.1f}%", fill=(100, 100, 100), font=font)
+                draw.text((5, 45), f"마스크 픽셀: {mask_area:,}", fill=(100, 100, 100), font=font)
+                
+                return np.array(panel_pil)
+            
+            return panel
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 통계 패널 생성 실패: {e}")
+            return None
+
+    def _create_emergency_visualizations(self, image: np.ndarray, mask: np.ndarray) -> Dict[str, Any]:
+        """비상 시각화 생성 (최후의 수단)"""
+        try:
+            # 최소한의 안전한 시각화
+            h, w = 512, 512
+            if hasattr(image, 'shape'):
+                h, w = image.shape[:2]
+            
+            emergency_vis = {
+                'mask_overlay': np.full((h, w, 3), 128, dtype=np.uint8),
+                'segmented_clothing': np.full((h, w, 3), 64, dtype=np.uint8),
+                'boundaries': np.full((h, w), 192, dtype=np.uint8)
+            }
+            
+            self.logger.info("🆘 비상 시각화 생성 완료")
+            return emergency_vis
+            
+        except Exception as e:
+            self.logger.error(f"❌ 비상 시각화도 실패: {e}")
+            return {
+                'mask_overlay': np.zeros((512, 512, 3), dtype=np.uint8),
+                'segmented_clothing': np.zeros((512, 512, 3), dtype=np.uint8),
+                'boundaries': np.zeros((512, 512), dtype=np.uint8)
+            }
+
     def _apply_mask_to_image(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
         """마스크를 이미지에 적용"""
         try:
