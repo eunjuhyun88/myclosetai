@@ -1,6 +1,6 @@
 {
-  "test_start_time": 1753900376.7147038,
-  "initial_memory_mb": 43.171875,
+  "test_start_time": 1753905535.9681861,
+  "initial_memory_mb": 43.5,
   "step_results": {
     "HumanParsingStep": {
       "step_name": "HumanParsingStep",
@@ -11,8 +11,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 4.8022620677948,
-      "memory_usage_mb": 733.921875,
+      "execution_time": 4.30790901184082,
+      "memory_usage_mb": 1252.3125,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -44,8 +44,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.4636962413787842,
-      "memory_usage_mb": 275.28125,
+      "execution_time": 0.49230265617370605,
+      "memory_usage_mb": 442.875,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -77,8 +77,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.08118987083435059,
-      "memory_usage_mb": 0.953125,
+      "execution_time": 0.08321785926818848,
+      "memory_usage_mb": 0.703125,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -110,8 +110,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.4280130863189697,
-      "memory_usage_mb": 35.75,
+      "execution_time": 0.4021942615509033,
+      "memory_usage_mb": 4.53125,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -143,8 +143,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.09905004501342773,
-      "memory_usage_mb": 17.84375,
+      "execution_time": 0.10268712043762207,
+      "memory_usage_mb": 17.15625,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -176,8 +176,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 10.240681886672974,
-      "memory_usage_mb": 151.625,
+      "execution_time": 10.450321912765503,
+      "memory_usage_mb": 152.828125,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -209,8 +209,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.14736294746398926,
-      "memory_usage_mb": 0.234375,
+      "execution_time": 0.0668027400970459,
+      "memory_usage_mb": 0.125,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -240,7 +240,7 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.07613801956176758,
+      "execution_time": 0.17384910583496094,
       "memory_usage_mb": 0.0,
       "errors": [],
       "warnings": [],
@@ -349,62 +349,62 @@
     "import_success_rate": 100.0,
     "instance_success_rate": 100.0,
     "inference_success_rate": 100.0,
-    "total_execution_time": 16.338394165039062,
-    "total_memory_usage_mb": 1215.609375,
-    "final_memory_mb": 1258.796875,
-    "memory_increase_mb": 1215.625,
+    "total_execution_time": 16.07928466796875,
+    "total_memory_usage_mb": 1870.53125,
+    "final_memory_mb": 1388.796875,
+    "memory_increase_mb": 1345.296875,
     "ai_model_performance": {
       "HumanParsingStep": {
         "model": "Graphonomy/DenseASPP (104MB)",
         "success": true,
-        "time": 4.8022620677948,
-        "memory": 733.921875
+        "time": 4.30790901184082,
+        "memory": 1252.3125
       },
       "PoseEstimationStep": {
         "model": "OpenPose/MediaPipe (3.4GB)",
         "success": true,
-        "time": 0.4636962413787842,
-        "memory": 275.28125
+        "time": 0.49230265617370605,
+        "memory": 442.875
       },
       "ClothSegmentationStep": {
         "model": "U2Net/SAM/DeepLabV3+ Multi-model",
         "success": true,
-        "time": 0.08118987083435059,
-        "memory": 0.953125
+        "time": 0.08321785926818848,
+        "memory": 0.703125
       },
       "GeometricMatchingStep": {
         "model": "GMM/TPS Networks (1.3GB)",
         "success": true,
-        "time": 0.4280130863189697,
-        "memory": 35.75
+        "time": 0.4021942615509033,
+        "memory": 4.53125
       },
       "ClothWarpingStep": {
         "model": "RealVisXL/Diffusion Models (7.0GB)",
         "success": true,
-        "time": 0.09905004501342773,
-        "memory": 17.84375
+        "time": 0.10268712043762207,
+        "memory": 17.15625
       },
       "VirtualFittingStep": {
         "model": "OOTDiffusion (14GB) - UNet×4 + VAE + TextEncoder",
         "success": true,
-        "time": 10.240681886672974,
-        "memory": 151.625
+        "time": 10.450321912765503,
+        "memory": 152.828125
       },
       "PostProcessingStep": {
         "model": "ESRGAN/SwinIR/RealESRGAN (1.5GB)",
         "success": true,
-        "time": 0.14736294746398926,
-        "memory": 0.234375
+        "time": 0.0668027400970459,
+        "memory": 0.125
       },
       "QualityAssessmentStep": {
         "model": "CLIP/ViT Models (8.2GB)",
         "success": true,
-        "time": 0.07613801956176758,
+        "time": 0.17384910583496094,
         "memory": 0.0
       }
     },
-    "average_step_time": 2.042299270629883,
-    "average_memory_per_step": 151.951171875
+    "average_step_time": 2.0099105834960938,
+    "average_memory_per_step": 233.81640625
   },
   "errors": [],
   "warnings": [],
@@ -417,6 +417,6 @@
     "critical_failures": [],
     "success_rate": 100.0
   },
-  "test_completed_at": 1753900393.174196,
-  "total_test_time": 16.477874040603638
+  "test_completed_at": 1753905552.189326,
+  "total_test_time": 16.243883848190308
 }
