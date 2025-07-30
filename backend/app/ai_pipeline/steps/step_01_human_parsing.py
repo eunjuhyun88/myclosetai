@@ -43,6 +43,8 @@ Version: v26.0 (GitHub Structure Full Compatible)
 # ==============================================
 
 import os
+from fix_pytorch_loading import apply_pytorch_patch; apply_pytorch_patch()
+
 import sys
 import gc
 import time

@@ -23,6 +23,8 @@ Version: 5.1 (step_interface.py v5.2 완전 호환)
 """
 
 import os
+from fix_pytorch_loading import apply_pytorch_patch; apply_pytorch_patch()
+
 import sys
 import gc
 import time
@@ -64,23 +66,85 @@ except ImportError:
     PIL_AVAILABLE = False
     Image = None
 
-# PyTorch 안전 import (weights_only 문제 해결)
+
+# ModelLoader의 PyTorch import 부분을 다음으로 교체:
+
+# PyTorch 안전 import (weights_only 문제 완전 해결)
 TORCH_AVAILABLE = False
 try:
     import torch
     TORCH_AVAILABLE = True
     
-    # weights_only 문제 해결
+    # 🔥 PyTorch 2.7 weights_only 문제 완전 해결
     if hasattr(torch, 'load'):
         original_torch_load = torch.load
+        
         def safe_torch_load(f, map_location=None, pickle_module=None, weights_only=None, **kwargs):
+            """PyTorch 2.7 호환 안전 로더"""
+            # weights_only가 None이면 False로 설정 (Legacy 호환)
             if weights_only is None:
                 weights_only = False
-            return original_torch_load(f, map_location=map_location, pickle_module=pickle_module, weights_only=weights_only, **kwargs)
+            
+            try:
+                # 1단계: weights_only=True 시도 (가장 안전)
+                if weights_only:
+                    return original_torch_load(f, map_location=map_location, 
+                                             pickle_module=pickle_module, 
+                                             weights_only=True, **kwargs)
+                
+                # 2단계: weights_only=False 시도 (호환성)
+                return original_torch_load(f, map_location=map_location, 
+                                         pickle_module=pickle_module, 
+                                         weights_only=False, **kwargs)
+                                         
+            except RuntimeError as e:
+                error_msg = str(e).lower()
+                
+                # Legacy .tar 포맷 에러 감지
+                if "legacy .tar format" in error_msg or "weights_only" in error_msg:
+                    print(f"⚠️ Legacy 포맷 감지, weights_only=False로 재시도")
+                    try:
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            return original_torch_load(f, map_location=map_location, 
+                                                     pickle_module=pickle_module, 
+                                                     weights_only=False, **kwargs)
+                    except Exception:
+                        pass
+                
+                # TorchScript 아카이브 에러 감지
+                if "torchscript" in error_msg or "zip file" in error_msg:
+                    print(f"⚠️ TorchScript 아카이브 감지, weights_only=False로 재시도")
+                    try:
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            return original_torch_load(f, map_location=map_location, 
+                                                     pickle_module=pickle_module, 
+                                                     weights_only=False, **kwargs)
+                    except Exception:
+                        pass
+                
+                # 마지막 시도: 모든 파라미터 없이
+                try:
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore")
+                        return original_torch_load(f, map_location=map_location)
+                except Exception:
+                    pass
+                
+                # 원본 에러 다시 발생
+                raise e
+        
+        # torch.load 대체
         torch.load = safe_torch_load
+        print("✅ PyTorch 2.7 weights_only 호환성 패치 적용 완료")
         
 except ImportError:
     torch = None
+    print("⚠️ PyTorch가 설치되지 않음")
 
 # 디바이스 및 시스템 정보
 DEFAULT_DEVICE = "cpu"
@@ -441,14 +505,15 @@ class RealAIModel:
     # ==============================================
     # 🔥 특화 로더들 (step_interface.py 실제 모델 경로 기반)
     # ==============================================
-    
     def _load_pytorch_checkpoint(self) -> Optional[Any]:
-        """PyTorch 체크포인트 로딩 (weights_only 문제 해결)"""
+        """PyTorch 체크포인트 로딩 (PyTorch 2.7 완전 호환)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 사용 불가능")
             return None
         
         try:
+            import warnings
+            
             # 1단계: 안전 모드 (weights_only=True)
             try:
                 checkpoint = torch.load(
@@ -458,30 +523,44 @@ class RealAIModel:
                 )
                 self.logger.debug(f"✅ {self.model_name} 안전 모드 로딩 성공")
                 return checkpoint
-            except:
-                pass
+            except RuntimeError as safe_error:
+                error_msg = str(safe_error).lower()
+                if "legacy .tar format" in error_msg or "torchscript" in error_msg:
+                    self.logger.debug(f"Legacy/TorchScript 파일 감지: {self.model_name}")
+                else:
+                    self.logger.debug(f"안전 모드 실패: {safe_error}")
+            except Exception as e:
+                self.logger.debug(f"안전 모드 예외: {e}")
             
             # 2단계: 호환 모드 (weights_only=False)
             try:
-                checkpoint = torch.load(
-                    self.model_path, 
-                    map_location='cpu',
-                    weights_only=False
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    checkpoint = torch.load(
+                        self.model_path, 
+                        map_location='cpu',
+                        weights_only=False
+                    )
                 self.logger.debug(f"✅ {self.model_name} 호환 모드 로딩 성공")
                 return checkpoint
-            except:
-                pass
+            except Exception as compat_error:
+                self.logger.debug(f"호환 모드 실패: {compat_error}")
             
-            # 3단계: Legacy 모드
-            checkpoint = torch.load(self.model_path, map_location='cpu')
-            self.logger.debug(f"✅ {self.model_name} Legacy 모드 로딩 성공")
-            return checkpoint
+            # 3단계: Legacy 모드 (파라미터 최소화)
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    checkpoint = torch.load(self.model_path, map_location='cpu')
+                self.logger.debug(f"✅ {self.model_name} Legacy 모드 로딩 성공")
+                return checkpoint
+            except Exception as legacy_error:
+                self.logger.error(f"❌ 모든 로딩 방법 실패: {legacy_error}")
+            
+            return None
             
         except Exception as e:
             self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
             return None
-    
     def _load_safetensors(self) -> Optional[Any]:
         """Safetensors 파일 로딩 (RealVisXL, Diffusion 등)"""
         try:

@@ -35,6 +35,8 @@ Version: v31.0 (BaseStepMixin v19.1 Complete Real AI)
 # ==============================================
 
 import os
+from fix_pytorch_loading import apply_pytorch_patch; apply_pytorch_patch()
+
 import gc
 import time
 import logging
