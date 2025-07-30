@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753878628.459502,
+  "timestamp": 1753888763.846839,
   "pytorch_compatibility": "fixed",
   "loading_methods": [
     "secure_mode",
@@ -16,12 +16,12 @@
     },
     "memory": {
       "total_gb": 128.0,
-      "available_gb": 58.0914306640625,
-      "used_percent": 54.6
+      "available_gb": 71.14942932128906,
+      "used_percent": 44.4
     },
     "cpu": {
       "core_count": 16,
-      "usage_percent": 11.9
+      "usage_percent": 5.3
     },
     "python": {
       "version": "3.11.13",
@@ -36,12 +36,12 @@
     "default_device": "mps"
   },
   "model_files_analysis": {
-    "total_files": 136,
-    "total_size_gb": 134.55203161668032,
-    "analyzed_files": 102,
-    "successful_loads": 71,
+    "total_files": 146,
+    "total_size_gb": 144.34615692216903,
+    "analyzed_files": 110,
+    "successful_loads": 78,
     "loading_methods_used": {
-      "safe_mode": 71
+      "safe_mode": 78
     },
     "large_models": [
       {
@@ -75,6 +75,16 @@
         "warnings": 0
       },
       {
+        "name": "open_clip_pytorch_model.bin",
+        "size_mb": 5213.743920326233,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "loading_method": "",
+        "device_compatible": false,
+        "errors": 1,
+        "warnings": 0
+      },
+      {
         "name": "diffusion_pytorch_model.fp16.safetensors",
         "size_mb": 4897.260437011719,
         "step": "step_06_virtual_fitting",
@@ -93,6 +103,16 @@
         "device_compatible": true,
         "errors": 0,
         "warnings": 2
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3303.2670001983643,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
       },
       {
         "name": "diffusion_pytorch_model.safetensors",
@@ -325,16 +345,6 @@
         "warnings": 1
       },
       {
-        "name": "diffusion_pytorch_model.safetensors",
-        "size_mb": 1719.0,
-        "step": "step_06_virtual_fitting",
-        "checkpoint_loaded": false,
-        "loading_method": "",
-        "device_compatible": false,
-        "errors": 1,
-        "warnings": 0
-      },
-      {
         "name": "diffusion_pytorch_model.fp16.safetensors",
         "size_mb": 1639.4856491088867,
         "step": "step_06_virtual_fitting",
@@ -348,6 +358,16 @@
         "name": "pytorch_model.bin",
         "size_mb": 1631.4235677719116,
         "step": "step_08_quality_assessment",
+        "checkpoint_loaded": false,
+        "loading_method": "",
+        "device_compatible": false,
+        "errors": 1,
+        "warnings": 0
+      },
+      {
+        "name": "open_clip_pytorch_model.bin",
+        "size_mb": 1631.3851976394653,
+        "step": "step_01_human_parsing",
         "checkpoint_loaded": false,
         "loading_method": "",
         "device_compatible": false,
@@ -405,16 +425,6 @@
         "warnings": 1
       },
       {
-        "name": "diffusion_pytorch_model.safetensors",
-        "size_mb": 1378.2092323303223,
-        "step": "step_02_pose_estimation",
-        "checkpoint_loaded": true,
-        "loading_method": "safe_mode",
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
-      },
-      {
         "name": "sam_vit_l_0b3195.pth",
         "size_mb": 1191.6395254135132,
         "step": "step_03_cloth_segmentation",
@@ -452,6 +462,16 @@
         "loading_method": "",
         "device_compatible": false,
         "errors": 1,
+        "warnings": 0
+      },
+      {
+        "name": "ViT-L-14.pt",
+        "size_mb": 889.5570125579834,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": false,
+        "errors": 0,
         "warnings": 0
       },
       {
@@ -575,8 +595,38 @@
         "warnings": 1
       },
       {
+        "name": "tps_network.pth",
+        "size_mb": 548.0512247085571,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "vgg19_warping.pth",
+        "size_mb": 548.0512247085571,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
         "name": "vgg16_warping_ultra.pth",
         "size_mb": 527.8031978607178,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "u2net_fallback.pth",
+        "size_mb": 527.7956781387329,
         "step": "step_03_cloth_segmentation",
         "checkpoint_loaded": true,
         "loading_method": "safe_mode",
@@ -595,9 +645,9 @@
         "warnings": 1
       },
       {
-        "name": "tps_network.pth",
+        "name": "vgg16_warping_ultra.pth",
         "size_mb": 527.7956781387329,
-        "step": "step_04_geometric_matching",
+        "step": "step_03_cloth_segmentation",
         "checkpoint_loaded": true,
         "loading_method": "safe_mode",
         "device_compatible": true,
@@ -673,6 +723,16 @@
         "device_compatible": true,
         "errors": 0,
         "warnings": 1
+      },
+      {
+        "name": "ViT-B-32.pt",
+        "size_mb": 337.5783176422119,
+        "step": "step_08_quality_assessment",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 0
       },
       {
         "name": "ViT-B-32.pt",
@@ -755,36 +815,6 @@
         "warnings": 1
       },
       {
-        "name": "lip_model.pth",
-        "size_mb": 255.05957508087158,
-        "step": "step_01_human_parsing",
-        "checkpoint_loaded": true,
-        "loading_method": "safe_mode",
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
-      },
-      {
-        "name": "graphonomy.pth",
-        "size_mb": 255.05957508087158,
-        "step": "step_01_human_parsing",
-        "checkpoint_loaded": true,
-        "loading_method": "safe_mode",
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
-      },
-      {
-        "name": "exp-schp-201908301523-atr.pth",
-        "size_mb": 255.05957508087158,
-        "step": "step_01_human_parsing",
-        "checkpoint_loaded": true,
-        "loading_method": "safe_mode",
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
-      },
-      {
         "name": "inference.pth",
         "size_mb": 255.05957508087158,
         "step": "step_01_human_parsing",
@@ -815,16 +845,6 @@
         "warnings": 1
       },
       {
-        "name": "atr_model.pth",
-        "size_mb": 255.05565357208252,
-        "step": "step_01_human_parsing",
-        "checkpoint_loaded": true,
-        "loading_method": "safe_mode",
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
-      },
-      {
         "name": "model.fp16.safetensors",
         "size_mb": 234.74203491210938,
         "step": "step_06_virtual_fitting",
@@ -838,6 +858,26 @@
         "name": "deeplabv3_resnet101_ultra.pth",
         "size_mb": 233.32293128967285,
         "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "deeplabv3_resnet101_ultra.pth",
+        "size_mb": 233.21679973602295,
+        "step": "step_03_cloth_segmentation",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
+        "name": "exp-schp-201908301523-atr.pth",
+        "size_mb": 233.21679973602295,
+        "step": "step_01_human_parsing",
         "checkpoint_loaded": true,
         "loading_method": "safe_mode",
         "device_compatible": true,
@@ -895,6 +935,16 @@
         "warnings": 2
       },
       {
+        "name": "lip_model.pth",
+        "size_mb": 207.71103382110596,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      {
         "name": "body_pose_model.pth",
         "size_mb": 199.57313060760498,
         "step": "step_02_pose_estimation",
@@ -925,6 +975,26 @@
         "warnings": 1
       },
       {
+        "name": "gmm_final.pth",
+        "size_mb": 170.51118755340576,
+        "step": "step_04_geometric_matching",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "graphonomy.pth",
+        "size_mb": 170.51118755340576,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
         "name": "pytorch_model.bin",
         "size_mb": 168.39410591125488,
         "step": "step_03_cloth_segmentation",
@@ -935,9 +1005,9 @@
         "warnings": 0
       },
       {
-        "name": "u2net_fallback.pth",
-        "size_mb": 160.56964874267578,
-        "step": "step_03_cloth_segmentation",
+        "name": "atr_model.pth",
+        "size_mb": 160.51497650146484,
+        "step": "step_01_human_parsing",
         "checkpoint_loaded": true,
         "loading_method": "safe_mode",
         "device_compatible": true,
@@ -967,6 +1037,16 @@
       {
         "name": "densenet161_enhance.pth",
         "size_mb": 110.58963775634766,
+        "step": "step_07_post_processing",
+        "checkpoint_loaded": true,
+        "loading_method": "safe_mode",
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
+        "name": "densenet161_enhance.pth",
+        "size_mb": 110.36948204040527,
         "step": "step_07_post_processing",
         "checkpoint_loaded": true,
         "loading_method": "safe_mode",
@@ -1068,31 +1148,31 @@
     "step_distribution": {
       "step_02_pose_estimation": {
         "count": 10,
-        "total_size_mb": 5839.360894203186
+        "total_size_mb": 4492.022945404053
       },
       "step_01_human_parsing": {
-        "count": 26,
-        "total_size_mb": 9572.699012756348
+        "count": 28,
+        "total_size_mb": 16169.547749519348
       },
       "step_03_cloth_segmentation": {
-        "count": 25,
-        "total_size_mb": 24241.81364631653
+        "count": 29,
+        "total_size_mb": 25948.948022842407
       },
       "step_06_virtual_fitting": {
         "count": 36,
-        "total_size_mb": 79785.26270866394
-      },
-      "step_07_post_processing": {
-        "count": 11,
-        "total_size_mb": 2665.229146003723
-      },
-      "step_08_quality_assessment": {
-        "count": 7,
-        "total_size_mb": 4196.6455183029175
+        "total_size_mb": 81369.5297088623
       },
       "step_04_geometric_matching": {
         "count": 16,
-        "total_size_mb": 5836.759398460388
+        "total_size_mb": 5982.867929458618
+      },
+      "step_07_post_processing": {
+        "count": 13,
+        "total_size_mb": 2780.257432937622
+      },
+      "step_08_quality_assessment": {
+        "count": 9,
+        "total_size_mb": 5423.780848503113
       },
       "unknown": {
         "count": 5,
@@ -1104,14 +1184,14 @@
   "step_loading_reports": {},
   "overall_summary": {
     "models": {
-      "total_files": 136,
-      "large_models": 102,
-      "analyzed_models": 102,
-      "successful_loads": 71,
-      "load_success_rate": 69.6078431372549,
-      "total_size_gb": 134.55203161668032,
+      "total_files": 146,
+      "large_models": 110,
+      "analyzed_models": 110,
+      "successful_loads": 78,
+      "load_success_rate": 70.9090909090909,
+      "total_size_gb": 144.34615692216903,
       "loading_methods_used": {
-        "safe_mode": 71
+        "safe_mode": 78
       }
     },
     "system_health": {
@@ -1122,12 +1202,12 @@
     }
   },
   "recommendations": [
-    "⚠️ 모델 로딩 개선 필요: 69.6% 성공",
-    "📊 사용된 로딩 방법: safe_mode: 71개",
+    "✅ 모델 로딩 양호: 70.9% 성공",
+    "📊 사용된 로딩 방법: safe_mode: 78개",
     "✅ PyTorch 호환성 문제 해결됨",
     "✅ GPU 가속 사용 가능",
-    "📊 대용량 AI 모델 환경: 134.6GB"
+    "📊 대용량 AI 모델 환경: 144.3GB"
   ],
-  "validation_completed_at": 1753878636.6069162,
-  "total_validation_time": 8.147419214248657
+  "validation_completed_at": 1753888772.003007,
+  "total_validation_time": 8.156172037124634
 }

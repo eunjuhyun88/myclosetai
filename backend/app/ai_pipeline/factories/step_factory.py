@@ -43,13 +43,54 @@ from enum import Enum, IntEnum
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 
+# ==============================================
+# 🔥 safe_copy 함수 정의 (최우선 - DetailedDataSpec 에러 해결)
+# ==============================================
+
+def safe_copy(obj: Any) -> Any:
+    """안전한 복사 함수 - DetailedDataSpec 에러 해결"""
+    try:
+        # 기본 타입들은 그대로 반환
+        if obj is None or isinstance(obj, (bool, int, float, str)):
+            return obj
+        
+        # 리스트나 튜플
+        elif isinstance(obj, (list, tuple)):
+            return type(obj)(safe_copy(item) for item in obj)
+        
+        # 딕셔너리
+        elif isinstance(obj, dict):
+            return {key: safe_copy(value) for key, value in obj.items()}
+        
+        # 집합
+        elif isinstance(obj, set):
+            return {safe_copy(item) for item in obj}
+        
+        # copy 모듈 사용 가능한 경우
+        else:
+            try:
+                return copy.deepcopy(obj)
+            except:
+                try:
+                    return copy.copy(obj)
+                except:
+                    # 복사할 수 없는 경우 원본 반환 (예: 함수, 클래스 등)
+                    return obj
+                    
+    except Exception:
+        # 모든 실패 케이스에서 원본 반환
+        return obj
+
+# 전역으로 사용 가능하도록 설정
+globals()['safe_copy'] = safe_copy
+
 # 🔥 TYPE_CHECKING으로 순환참조 완전 방지  
 if TYPE_CHECKING:
     from ..steps.base_step_mixin import BaseStepMixin, GitHubDependencyManager
     from ..utils.model_loader import ModelLoader
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
-    from ...core.di_container import CircularReferenceFreeDIContainer  # 추가
+    from ...core.di_container import CircularReferenceFreeDIContainer
 else:
     # 런타임에는 Any로 처리
     BaseStepMixin = Any
@@ -62,7 +103,7 @@ else:
 # ==============================================
 # 🔥 step_interface.py v5.2에서 실제 구조 import
 # ==============================================
-    
+
 try:
     from ..interface.step_interface import (
         # 실제 환경 정보
@@ -88,6 +129,8 @@ try:
         GitHubStepModelInterface, GitHubMemoryManager, EmbeddedDependencyManager,
         GitHubStepCreationResult
     )
+
+
     REAL_STEP_INTERFACE_AVAILABLE = True
     logger = logging.getLogger(__name__)
     logger.info("✅ step_interface.py v5.2 실제 구조 import 성공")
@@ -299,7 +342,7 @@ class DynamicImportResolver:
                 self.models = {}
                 self.device = 'cpu'
                 self.is_initialized = True
-            
+
             def get_model(self, model_name: str):
                 if model_name not in self.models:
                     self.models[model_name] = {
@@ -564,7 +607,7 @@ class RealGitHubStepConfig:
         self._load_detailed_data_spec()
     
     def _load_detailed_data_spec(self):
-        """step_model_requirements.py에서 DetailedDataSpec 자동 로딩 (기존 유지)"""
+        """step_model_requirements.py에서 DetailedDataSpec 자동 로딩 (수정됨)"""
         if not STEP_MODEL_REQUIREMENTS:
             logger.warning(f"⚠️ {self.step_name}: step_model_requirements.py 없음, 기본 설정 사용")
             return
@@ -576,29 +619,29 @@ class RealGitHubStepConfig:
                 logger.warning(f"⚠️ {self.step_name}: step_model_requirements에서 설정 없음")
                 return
             
-            # DetailedDataSpec 데이터 복사
+            # DetailedDataSpec 데이터 복사 - 안전한 복사 사용
             data_spec = enhanced_request.data_spec
             
-            self.detailed_data_spec.api_input_mapping = data_spec.api_input_mapping.copy()
-            self.detailed_data_spec.api_output_mapping = data_spec.api_output_mapping.copy()
-            self.detailed_data_spec.accepts_from_previous_step = data_spec.accepts_from_previous_step.copy()
-            self.detailed_data_spec.provides_to_next_step = data_spec.provides_to_next_step.copy()
-            self.detailed_data_spec.step_input_schema = data_spec.step_input_schema.copy()
-            self.detailed_data_spec.step_output_schema = data_spec.step_output_schema.copy()
+            self.detailed_data_spec.api_input_mapping = safe_copy(data_spec.api_input_mapping)
+            self.detailed_data_spec.api_output_mapping = safe_copy(data_spec.api_output_mapping)
+            self.detailed_data_spec.accepts_from_previous_step = safe_copy(data_spec.accepts_from_previous_step)
+            self.detailed_data_spec.provides_to_next_step = safe_copy(data_spec.provides_to_next_step)
+            self.detailed_data_spec.step_input_schema = safe_copy(data_spec.step_input_schema)
+            self.detailed_data_spec.step_output_schema = safe_copy(data_spec.step_output_schema)
             
-            self.detailed_data_spec.input_data_types = data_spec.input_data_types.copy()
-            self.detailed_data_spec.output_data_types = data_spec.output_data_types.copy()
-            self.detailed_data_spec.input_shapes = data_spec.input_shapes.copy()
-            self.detailed_data_spec.output_shapes = data_spec.output_shapes.copy()
-            self.detailed_data_spec.input_value_ranges = data_spec.input_value_ranges.copy()
-            self.detailed_data_spec.output_value_ranges = data_spec.output_value_ranges.copy()
+            self.detailed_data_spec.input_data_types = safe_copy(data_spec.input_data_types)
+            self.detailed_data_spec.output_data_types = safe_copy(data_spec.output_data_types)
+            self.detailed_data_spec.input_shapes = safe_copy(data_spec.input_shapes)
+            self.detailed_data_spec.output_shapes = safe_copy(data_spec.output_shapes)
+            self.detailed_data_spec.input_value_ranges = safe_copy(data_spec.input_value_ranges)
+            self.detailed_data_spec.output_value_ranges = safe_copy(data_spec.output_value_ranges)
             
             self.detailed_data_spec.preprocessing_required = data_spec.preprocessing_required
             self.detailed_data_spec.postprocessing_required = data_spec.postprocessing_required
-            self.detailed_data_spec.preprocessing_steps = data_spec.preprocessing_steps.copy()
-            self.detailed_data_spec.postprocessing_steps = data_spec.postprocessing_steps.copy()
-            self.detailed_data_spec.normalization_mean = data_spec.normalization_mean.copy()
-            self.detailed_data_spec.normalization_std = data_spec.normalization_std.copy()
+            self.detailed_data_spec.preprocessing_steps = safe_copy(data_spec.preprocessing_steps)
+            self.detailed_data_spec.postprocessing_steps = safe_copy(data_spec.postprocessing_steps)
+            self.detailed_data_spec.normalization_mean = safe_copy(data_spec.normalization_mean)  # ✅ 핵심 수정
+            self.detailed_data_spec.normalization_std = safe_copy(data_spec.normalization_std)    # ✅ 핵심 수정
             
             logger.info(f"✅ {self.step_name}: DetailedDataSpec 로딩 완료")
             
@@ -863,9 +906,9 @@ class RealGitHubStepMapping:
         if 'conda_env' not in overrides:
             overrides['conda_env'] = os.environ.get('CONDA_DEFAULT_ENV', 'none')
         
-        # 키워드 충돌 방지 필터링
+        # 키워드 충돌 방지 필터링 - 수정된 부분
         filtered_overrides = {}
-        config_fields = {f.name for f in base_config.__dataclass_fields__}
+        config_fields = set(base_config.__dataclass_fields__.keys())  # 🔥 이 라인이 수정됨
         
         for key, value in overrides.items():
             if key in config_fields:
@@ -913,7 +956,6 @@ class RealGitHubStepMapping:
             return RealGitHubStepConfig(**config_dict)
         
         return base_config
-
 # ==============================================
 # 🔥 실제 의존성 해결기 (순환참조 해결)
 # ==============================================
@@ -1059,9 +1101,9 @@ class RealGitHubDependencyResolver:
                 return self._create_github_emergency_dependencies(config, str(e))
             else:
                 raise
-    
+   
     def _inject_detailed_data_spec_dependencies(self, config: RealGitHubStepConfig, dependencies: Dict[str, Any]):
-        """DetailedDataSpec 의존성 주입 (기존 유지)"""
+        """DetailedDataSpec 의존성 주입 (수정됨 - tuple copy 오류 해결)"""
         try:
             self.logger.info(f"🔄 {config.step_name} DetailedDataSpec 의존성 주입 중...")
             
@@ -1090,23 +1132,23 @@ class RealGitHubDependencyResolver:
             
             # DetailedDataSpec이 있으면 주입
             if data_spec:
-                # API 매핑 주입 (FastAPI ↔ Step 클래스)
+                # API 매핑 주입 (FastAPI ↔ Step 클래스) - 안전한 복사 사용
                 api_input_mapping = getattr(data_spec, 'api_input_mapping', {})
                 api_output_mapping = getattr(data_spec, 'api_output_mapping', {})
                 
                 dependencies.update({
-                    'api_input_mapping': api_input_mapping.copy() if hasattr(api_input_mapping, 'copy') else api_input_mapping,
-                    'api_output_mapping': api_output_mapping.copy() if hasattr(api_output_mapping, 'copy') else api_output_mapping,
+                    'api_input_mapping': safe_copy(api_input_mapping),
+                    'api_output_mapping': safe_copy(api_output_mapping),
                     'fastapi_compatible': len(api_input_mapping) > 0
                 })
                 
-                # Step 간 데이터 흐름 주입
+                # Step 간 데이터 흐름 주입 - 안전한 복사 사용
                 accepts_from_previous_step = getattr(data_spec, 'accepts_from_previous_step', {})
                 provides_to_next_step = getattr(data_spec, 'provides_to_next_step', {})
                 
                 dependencies.update({
-                    'accepts_from_previous_step': accepts_from_previous_step.copy() if hasattr(accepts_from_previous_step, 'copy') else accepts_from_previous_step,
-                    'provides_to_next_step': provides_to_next_step.copy() if hasattr(provides_to_next_step, 'copy') else provides_to_next_step,
+                    'accepts_from_previous_step': safe_copy(accepts_from_previous_step),
+                    'provides_to_next_step': safe_copy(provides_to_next_step),
                     'step_input_schema': getattr(data_spec, 'step_input_schema', {}),
                     'step_output_schema': getattr(data_spec, 'step_output_schema', {}),
                     'step_data_flow': {
@@ -1117,13 +1159,13 @@ class RealGitHubDependencyResolver:
                     }
                 })
                 
-                # 입출력 데이터 사양 주입
+                # 입출력 데이터 사양 주입 - 안전한 복사 사용
                 input_data_types = getattr(data_spec, 'input_data_types', [])
                 output_data_types = getattr(data_spec, 'output_data_types', [])
                 
                 dependencies.update({
-                    'input_data_types': input_data_types.copy() if hasattr(input_data_types, 'copy') else input_data_types,
-                    'output_data_types': output_data_types.copy() if hasattr(output_data_types, 'copy') else output_data_types,
+                    'input_data_types': safe_copy(input_data_types),
+                    'output_data_types': safe_copy(output_data_types),
                     'input_shapes': getattr(data_spec, 'input_shapes', {}),
                     'output_shapes': getattr(data_spec, 'output_shapes', {}),
                     'input_value_ranges': getattr(data_spec, 'input_value_ranges', {}),
@@ -1131,7 +1173,7 @@ class RealGitHubDependencyResolver:
                     'data_validation_enabled': True
                 })
                 
-                # 전처리/후처리 설정 주입
+                # 전처리/후처리 설정 주입 - 안전한 복사 사용 (핵심 수정)
                 preprocessing_steps = getattr(data_spec, 'preprocessing_steps', [])
                 postprocessing_steps = getattr(data_spec, 'postprocessing_steps', [])
                 normalization_mean = getattr(data_spec, 'normalization_mean', (0.485, 0.456, 0.406))
@@ -1140,10 +1182,10 @@ class RealGitHubDependencyResolver:
                 dependencies.update({
                     'preprocessing_required': getattr(data_spec, 'preprocessing_required', []),
                     'postprocessing_required': getattr(data_spec, 'postprocessing_required', []),
-                    'preprocessing_steps': preprocessing_steps.copy() if hasattr(preprocessing_steps, 'copy') else preprocessing_steps,
-                    'postprocessing_steps': postprocessing_steps.copy() if hasattr(postprocessing_steps, 'copy') else postprocessing_steps,
-                    'normalization_mean': normalization_mean,
-                    'normalization_std': normalization_std,
+                    'preprocessing_steps': safe_copy(preprocessing_steps),
+                    'postprocessing_steps': safe_copy(postprocessing_steps),
+                    'normalization_mean': safe_copy(normalization_mean),  # ✅ 핵심 수정
+                    'normalization_std': safe_copy(normalization_std),    # ✅ 핵심 수정
                     'preprocessing_config': {
                         'steps': preprocessing_steps,
                         'normalization': {
@@ -1198,6 +1240,7 @@ class RealGitHubDependencyResolver:
                 'detailed_data_spec_error': str(e),
                 'real_ai_structure_integrated': True
             })
+
 
     def _get_fallback_detailed_data_spec(self, step_name: str):
         """폴백 DetailedDataSpec 제공 (실제 구조 기반)"""
@@ -1786,6 +1829,10 @@ class StepFactory:
         self.class_loader = RealGitHubStepClassLoader()
         self.dependency_resolver = RealGitHubDependencyResolver()
         
+        # 🔥 순환참조 방지를 위한 속성들 (누락된 부분 추가)
+        self._resolving_stack: List[str] = []
+        self._circular_detected: set = set()
+        
         # 실제 GitHub 등록된 Step 클래스들 관리
         self._registered_steps: Dict[str, Type['BaseStepMixin']] = {}
         self._step_type_mapping: Dict[str, StepType] = {}
@@ -1811,7 +1858,8 @@ class StepFactory:
             'm3_max_optimized': IS_M3_MAX_DETECTED,
             'registered_steps': 0,
             'step_model_requirements_available': STEP_MODEL_REQUIREMENTS is not None,
-            'real_step_interface_available': REAL_STEP_INTERFACE_AVAILABLE
+            'real_step_interface_available': REAL_STEP_INTERFACE_AVAILABLE,
+            'circular_references_prevented': 0  # 🔥 순환참조 통계 추가
         }
         
         self.logger.info("🏭 StepFactory v11.1 초기화 완료 (실제 AI 구조 완전 반영 + 순환참조 완전 해결 + DetailedDataSpec 완전 통합 + BaseStepMixin v19.2)")
@@ -1950,7 +1998,6 @@ class StepFactory:
     # 🔥 실제 GitHub Step 생성 메서드들 (기존 유지, 순환참조 해결)
     # ==============================================
 
-
     def create_step(
         self,
         step_type: Union[StepType, str],
@@ -1966,7 +2013,7 @@ class StepFactory:
             if step_key in self._resolving_stack:
                 circular_path = ' -> '.join(self._resolving_stack + [step_key])
                 self._stats['circular_references_prevented'] += 1
-                logger.error(f"❌ 순환참조 감지: {circular_path}")
+                self.logger.error(f"❌ 순환참조 감지: {circular_path}")
                 return RealGitHubStepCreationResult(
                     success=False,
                     error_message=f"순환참조 감지: {circular_path}",
@@ -1979,7 +2026,8 @@ class StepFactory:
                 # 기존 Step 생성 로직...
                 return self._create_step_internal(step_type, use_cache, **kwargs)
             finally:
-                self._resolving_stack.remove(step_key)
+                if step_key in self._resolving_stack:  # 🔥 안전 체크 추가
+                    self._resolving_stack.remove(step_key)
                 
         except Exception as e:
             with self._lock:
@@ -1990,6 +2038,41 @@ class StepFactory:
                 success=False,
                 error_message=f"실제 GitHub Step 생성 예외: {str(e)}",
                 creation_time=time.time() - start_time
+            )
+
+    def _create_step_internal(
+        self,
+        step_type: Union[StepType, str],
+        use_cache: bool = True,
+        **kwargs
+    ) -> RealGitHubStepCreationResult:
+        """내부 Step 생성 로직 (순환참조 해결됨)"""
+        try:
+            # StepType 정규화
+            if isinstance(step_type, str):
+                try:
+                    step_type = StepType(step_type.lower())
+                except ValueError:
+                    return RealGitHubStepCreationResult(
+                        success=False,
+                        error_message=f"잘못된 StepType: {step_type}"
+                    )
+            
+            # Step ID 확인하여 등록된 클래스 우선 사용
+            step_id = self._get_step_id_from_type(step_type)
+            if step_id and self.is_step_registered(step_id):
+                self.logger.info(f"🎯 {step_type.value} 등록된 클래스 사용")
+                return self._create_step_from_registered(step_id, use_cache, **kwargs)
+            
+            # 일반적인 Step 생성
+            self.logger.info(f"🎯 {step_type.value} 동적 로딩으로 생성")
+            return self._create_step_legacy_way(step_type, use_cache, **kwargs)
+            
+        except Exception as e:
+            self.logger.error(f"❌ _create_step_internal 실패: {e}")
+            return RealGitHubStepCreationResult(
+                success=False,
+                error_message=f"내부 Step 생성 실패: {str(e)}"
             )
     
     def _get_step_id_from_type(self, step_type: StepType) -> Optional[str]:
@@ -2630,7 +2713,33 @@ class StepFactory:
                 self._step_cache[step_name] = weakref.ref(step_instance)
         except Exception:
             pass
-    
+
+    def clear_cache(self):
+        """실제 GitHub 캐시 정리"""
+        try:
+            with self._lock:
+                self._step_cache.clear()
+                self.dependency_resolver.clear_cache()
+                
+                # 🔥 순환참조 방지 데이터 정리
+                self._circular_detected.clear()
+                self._resolving_stack.clear()
+                
+                # 실제 GitHub M3 Max 메모리 정리
+                if IS_M3_MAX_DETECTED and MPS_AVAILABLE and PYTORCH_AVAILABLE:
+                    try:
+                        import torch
+                        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                            if hasattr(torch.backends.mps, 'empty_cache'):
+                                torch.backends.mps.empty_cache()
+                    except:
+                        pass
+                
+                gc.collect()
+                self.logger.info("🧹 StepFactory v11.1 실제 GitHub + DetailedDataSpec 캐시 정리 완료")
+        except Exception as e:
+            self.logger.error(f"❌ 실제 GitHub 캐시 정리 실패: {e}")
+
     # ==============================================
     # 🔥 편의 메서드들 (모든 기존 함수명 유지)
     # ==============================================
@@ -2666,70 +2775,7 @@ class StepFactory:
     def create_quality_assessment_step(self, **kwargs) -> RealGitHubStepCreationResult:
         """실제 GitHub Quality Assessment Step 생성"""
         return self.create_step(StepType.QUALITY_ASSESSMENT, **kwargs)
-    
-    def create_full_pipeline(self, device: str = "auto", **kwargs) -> Dict[str, RealGitHubStepCreationResult]:
-        """실제 GitHub 전체 파이프라인 생성"""
-        try:
-            self.logger.info("🚀 실제 GitHub 전체 AI 파이프라인 생성 시작 (DetailedDataSpec 완전 통합)...")
-            
-            pipeline_results = {}
-            total_model_size = 0.0
-            total_real_checkpoints = 0
-            
-            # 우선순위별로 실제 GitHub Step 생성
-            sorted_steps = sorted(
-                StepType,
-                key=lambda x: RealGitHubStepMapping.REAL_GITHUB_STEP_CONFIGS[x].priority.value
-            )
-            
-            for step_type in sorted_steps:
-                try:
-                    result = self.create_step(step_type, device=device, **kwargs)
-                    pipeline_results[step_type.value] = result
-                    
-                    if result.success:
-                        config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-                        total_model_size += config.model_size_gb
-                        total_real_checkpoints += result.real_checkpoints_loaded
-                        self.logger.info(f"✅ {result.step_name} 실제 GitHub 파이프라인 생성 성공 (DetailedDataSpec 통합)")
-                        
-                        # DetailedDataSpec 통합 결과 로깅
-                        if result.detailed_data_spec_loaded:
-                            api_mappings_count = len(result.api_mappings_applied.get('input_mapping', {}))
-                            data_flow_count = len(result.data_flow_configured.get('accepts_from', []))
-                            self.logger.info(f"   - API 매핑: {api_mappings_count}개")
-                            self.logger.info(f"   - 데이터 흐름: {data_flow_count}개")
-                            self.logger.info(f"   - 전처리: {'✅' if result.preprocessing_configured else '❌'}")
-                            self.logger.info(f"   - 후처리: {'✅' if result.postprocessing_configured else '❌'}")
-                            self.logger.info(f"   - 실제 체크포인트: {result.real_checkpoints_loaded}개")
-                            self.logger.info(f"   - 실제 AI 모델: {len(result.real_ai_models_loaded)}개")
-                    else:
-                        self.logger.warning(f"⚠️ {step_type.value} 실제 GitHub 파이프라인 생성 실패")
-                        
-                except Exception as e:
-                    self.logger.error(f"❌ {step_type.value} 실제 GitHub Step 생성 예외: {e}")
-                    pipeline_results[step_type.value] = RealGitHubStepCreationResult(
-                        success=False,
-                        step_name=f"{step_type.value}Step",
-                        step_type=step_type,
-                        error_message=str(e)
-                    )
-            
-            success_count = sum(1 for result in pipeline_results.values() if result.success)
-            total_count = len(pipeline_results)
-            detailed_data_spec_count = sum(1 for result in pipeline_results.values() if result.detailed_data_spec_loaded)
-            
-            self.logger.info(f"🏁 실제 GitHub DetailedDataSpec 통합 파이프라인 생성 완료: {success_count}/{total_count} 성공")
-            self.logger.info(f"🎯 DetailedDataSpec 통합: {detailed_data_spec_count}/{success_count} 성공")
-            self.logger.info(f"🤖 총 AI 모델 크기: {total_model_size:.1f}GB")
-            self.logger.info(f"📊 총 실제 체크포인트: {total_real_checkpoints}개")
-            
-            return pipeline_results
-            
-        except Exception as e:
-            self.logger.error(f"❌ 실제 GitHub 전체 파이프라인 생성 실패: {e}")
-            return {}
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """실제 GitHub 통계 정보 반환"""
         with self._lock:
@@ -2749,6 +2795,11 @@ class StepFactory:
                 'active_cache_entries': len([
                     ref for ref in self._step_cache.values() if ref() is not None
                 ]),
+                'circular_reference_protection': {
+                    'prevented_count': self._stats['circular_references_prevented'],
+                    'current_stack': list(self._resolving_stack),
+                    'detected_keys': list(self._circular_detected)
+                },
                 'real_ai_integration': {
                     'real_checkpoints_loaded': self._stats['real_checkpoints_loaded'],
                     'real_ai_models_loaded': self._stats['real_ai_models_loaded'],
@@ -2789,389 +2840,6 @@ class StepFactory:
             }
             
             return base_stats
-    
-    def clear_cache(self):
-        """실제 GitHub 캐시 정리"""
-        try:
-            with self._lock:
-                self._step_cache.clear()
-                self.dependency_resolver.clear_cache()
-                    
-                self._circular_detected.clear()
-                self._resolving_stack.clear()
-                
-                # 실제 GitHub M3 Max 메모리 정리
-                if IS_M3_MAX_DETECTED and MPS_AVAILABLE and PYTORCH_AVAILABLE:
-                    try:
-                        import torch
-                        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                            if hasattr(torch.backends.mps, 'empty_cache'):
-                                torch.backends.mps.empty_cache()
-                    except:
-                        pass
-                
-                gc.collect()
-                self.logger.info("🧹 StepFactory v11.1 실제 GitHub + DetailedDataSpec 캐시 정리 완료")
-        except Exception as e:
-            self.logger.error(f"❌ 실제 GitHub 캐시 정리 실패: {e}")
-    
-    # ==============================================
-    # 🔥 DetailedDataSpec 전용 메서드들 (기존 유지)
-    # ==============================================
-    
-    def get_step_api_mappings(self, step_type: Union[StepType, str]) -> Dict[str, Any]:
-        """Step별 API 매핑 정보 조회"""
-        try:
-            if isinstance(step_type, str):
-                step_type = StepType(step_type.lower())
-            
-            config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-            
-            return {
-                'step_name': config.step_name,
-                'api_input_mapping': config.detailed_data_spec.api_input_mapping,
-                'api_output_mapping': config.detailed_data_spec.api_output_mapping,
-                'fastapi_compatible': len(config.detailed_data_spec.api_input_mapping) > 0,
-                'supports_file_upload': any("UploadFile" in str(v) for v in config.detailed_data_spec.api_input_mapping.values()),
-                'input_fields_count': len(config.detailed_data_spec.api_input_mapping),
-                'output_fields_count': len(config.detailed_data_spec.api_output_mapping),
-                'real_ai_models_count': len(config.real_ai_models),
-                'total_model_size_gb': config.model_size_gb
-            }
-        except Exception as e:
-            self.logger.error(f"❌ Step API 매핑 조회 실패: {e}")
-            return {}
-    
-    def get_step_data_flow(self, step_type: Union[StepType, str]) -> Dict[str, Any]:
-        """Step별 데이터 흐름 정보 조회"""
-        try:
-            if isinstance(step_type, str):
-                step_type = StepType(step_type.lower())
-            
-            config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-            data_spec = config.detailed_data_spec
-            
-            return {
-                'step_name': config.step_name,
-                'accepts_from_previous_step': data_spec.accepts_from_previous_step,
-                'provides_to_next_step': data_spec.provides_to_next_step,
-                'step_input_schema': data_spec.step_input_schema,
-                'step_output_schema': data_spec.step_output_schema,
-                'is_pipeline_start': len(data_spec.accepts_from_previous_step) == 0,
-                'is_pipeline_end': len(data_spec.provides_to_next_step) == 0,
-                'input_connections': list(data_spec.accepts_from_previous_step.keys()),
-                'output_connections': list(data_spec.provides_to_next_step.keys()),
-                'real_ai_models': [model.model_name for model in config.real_ai_models],
-                'checkpoint_requirements': [model.model_name for model in config.real_ai_models if model.requires_checkpoint]
-            }
-        except Exception as e:
-            self.logger.error(f"❌ Step 데이터 흐름 조회 실패: {e}")
-            return {}
-    
-    def get_step_preprocessing_config(self, step_type: Union[StepType, str]) -> Dict[str, Any]:
-        """Step별 전처리 설정 조회"""
-        try:
-            if isinstance(step_type, str):
-                step_type = StepType(step_type.lower())
-            
-            config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-            data_spec = config.detailed_data_spec
-            
-            # 실제 AI 모델별 전처리 요구사항 수집
-            real_preprocessing_requirements = []
-            for real_ai_model in config.real_ai_models:
-                real_preprocessing_requirements.extend(real_ai_model.preprocessing_required)
-            
-            return {
-                'step_name': config.step_name,
-                'preprocessing_required': data_spec.preprocessing_required,
-                'preprocessing_steps': data_spec.preprocessing_steps,
-                'normalization_mean': data_spec.normalization_mean,
-                'normalization_std': data_spec.normalization_std,
-                'input_data_types': data_spec.input_data_types,
-                'input_shapes': data_spec.input_shapes,
-                'input_value_ranges': data_spec.input_value_ranges,
-                'real_ai_preprocessing': real_preprocessing_requirements,
-                'real_ai_models': [model.model_name for model in config.real_ai_models]
-            }
-        except Exception as e:
-            self.logger.error(f"❌ Step 전처리 설정 조회 실패: {e}")
-            return {}
-    
-    def get_step_postprocessing_config(self, step_type: Union[StepType, str]) -> Dict[str, Any]:
-        """Step별 후처리 설정 조회"""
-        try:
-            if isinstance(step_type, str):
-                step_type = StepType(step_type.lower())
-            
-            config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-            data_spec = config.detailed_data_spec
-            
-            # 실제 AI 모델별 후처리 요구사항 수집
-            real_postprocessing_requirements = []
-            for real_ai_model in config.real_ai_models:
-                real_postprocessing_requirements.extend(real_ai_model.postprocessing_required)
-            
-            return {
-                'step_name': config.step_name,
-                'postprocessing_required': data_spec.postprocessing_required,
-                'postprocessing_steps': data_spec.postprocessing_steps,
-                'output_data_types': data_spec.output_data_types,
-                'output_shapes': data_spec.output_shapes,
-                'output_value_ranges': data_spec.output_value_ranges,
-                'real_ai_postprocessing': real_postprocessing_requirements,
-                'real_ai_models': [model.model_name for model in config.real_ai_models]
-            }
-        except Exception as e:
-            self.logger.error(f"❌ Step 후처리 설정 조회 실패: {e}")
-            return {}
-    
-    def validate_step_data_compatibility(self, from_step: Union[StepType, str], to_step: Union[StepType, str]) -> Dict[str, Any]:
-        """Step 간 데이터 호환성 검증"""
-        try:
-            if isinstance(from_step, str):
-                from_step = StepType(from_step.lower())
-            if isinstance(to_step, str):
-                to_step = StepType(to_step.lower())
-            
-            from_config = RealGitHubStepMapping.get_enhanced_github_config(from_step)
-            to_config = RealGitHubStepMapping.get_enhanced_github_config(to_step)
-            
-            from_outputs = from_config.detailed_data_spec.provides_to_next_step.get(to_config.step_name, {})
-            to_inputs = to_config.detailed_data_spec.accepts_from_previous_step.get(from_config.step_name, {})
-            
-            common_keys = set(from_outputs.keys()) & set(to_inputs.keys())
-            missing_keys = set(to_inputs.keys()) - set(from_outputs.keys())
-            extra_keys = set(from_outputs.keys()) - set(to_inputs.keys())
-            
-            compatibility_score = len(common_keys) / max(1, len(to_inputs)) if to_inputs else 1.0
-            
-            return {
-                'from_step': from_config.step_name,
-                'to_step': to_config.step_name,
-                'compatible': len(missing_keys) == 0,
-                'compatibility_score': round(compatibility_score, 2),
-                'common_data_keys': list(common_keys),
-                'missing_data_keys': list(missing_keys),
-                'extra_data_keys': list(extra_keys),
-                'from_step_outputs': from_outputs,
-                'to_step_inputs': to_inputs,
-                'requires_data_transformation': len(missing_keys) > 0 or len(extra_keys) > 0,
-                'from_real_ai_models': [model.model_name for model in from_config.real_ai_models],
-                'to_real_ai_models': [model.model_name for model in to_config.real_ai_models]
-            }
-        except Exception as e:
-            self.logger.error(f"❌ Step 데이터 호환성 검증 실패: {e}")
-            return {'compatible': False, 'error': str(e)}
-    
-    def get_pipeline_data_flow_analysis(self) -> Dict[str, Any]:
-        """전체 파이프라인 데이터 흐름 분석"""
-        try:
-            pipeline_order = [
-                StepType.HUMAN_PARSING,
-                StepType.POSE_ESTIMATION,
-                StepType.CLOTH_SEGMENTATION,
-                StepType.GEOMETRIC_MATCHING,
-                StepType.CLOTH_WARPING,
-                StepType.VIRTUAL_FITTING,
-                StepType.POST_PROCESSING,
-                StepType.QUALITY_ASSESSMENT
-            ]
-            
-            flow_analysis = {
-                'pipeline_sequence': [step.value for step in pipeline_order],
-                'step_connections': {},
-                'data_transformations': {},
-                'compatibility_matrix': {},
-                'bottlenecks': [],
-                'optimization_opportunities': [],
-                'real_ai_models_summary': {},
-                'total_model_size_gb': 0.0,
-                'total_checkpoint_requirements': 0
-            }
-            
-            # Step 간 연결 분석
-            for i, current_step in enumerate(pipeline_order):
-                if i < len(pipeline_order) - 1:
-                    next_step = pipeline_order[i + 1]
-                    compatibility = self.validate_step_data_compatibility(current_step, next_step)
-                    
-                    connection_key = f"{current_step.value} → {next_step.value}"
-                    flow_analysis['step_connections'][connection_key] = compatibility
-                    
-                    if not compatibility['compatible']:
-                        flow_analysis['bottlenecks'].append({
-                            'connection': connection_key,
-                            'issue': 'Data compatibility mismatch',
-                            'missing_keys': compatibility['missing_data_keys']
-                        })
-                    
-                    if compatibility['requires_data_transformation']:
-                        flow_analysis['data_transformations'][connection_key] = {
-                            'transformation_needed': True,
-                            'missing_keys': compatibility['missing_data_keys'],
-                            'extra_keys': compatibility['extra_data_keys']
-                        }
-            
-            # 호환성 매트릭스 생성 + 실제 AI 모델 정보
-            total_model_size = 0.0
-            total_checkpoints = 0
-            
-            for step in pipeline_order:
-                config = RealGitHubStepMapping.get_enhanced_github_config(step)
-                total_model_size += config.model_size_gb
-                
-                real_ai_models_info = []
-                for real_ai_model in config.real_ai_models:
-                    real_ai_models_info.append({
-                        'name': real_ai_model.model_name,
-                        'type': real_ai_model.model_type,
-                        'size_gb': real_ai_model.size_gb,
-                        'requires_checkpoint': real_ai_model.requires_checkpoint
-                    })
-                    if real_ai_model.requires_checkpoint:
-                        total_checkpoints += 1
-                
-                flow_analysis['compatibility_matrix'][step.value] = {
-                    'input_data_types': config.detailed_data_spec.input_data_types,
-                    'output_data_types': config.detailed_data_spec.output_data_types,
-                    'preprocessing_required': config.detailed_data_spec.preprocessing_required,
-                    'postprocessing_required': config.detailed_data_spec.postprocessing_required,
-                    'api_compatible': len(config.detailed_data_spec.api_input_mapping) > 0,
-                    'real_ai_models': real_ai_models_info,
-                    'model_size_gb': config.model_size_gb
-                }
-                
-                flow_analysis['real_ai_models_summary'][step.value] = {
-                    'models': [model.model_name for model in config.real_ai_models],
-                    'total_size_gb': config.model_size_gb,
-                    'checkpoint_count': len([model for model in config.real_ai_models if model.requires_checkpoint])
-                }
-            
-            flow_analysis['total_model_size_gb'] = round(total_model_size, 1)
-            flow_analysis['total_checkpoint_requirements'] = total_checkpoints
-            
-            # 최적화 기회 식별
-            flow_analysis['optimization_opportunities'] = [
-                "실제 AI 모델 체크포인트 로딩 최적화로 메모리 효율성 향상",
-                "API 매핑 자동 적용으로 FastAPI 호환성 100% 확보",
-                "Step 간 데이터 변환 자동화로 파이프라인 안정성 향상",
-                "전처리/후처리 요구사항 자동 적용으로 개발 효율성 증대",
-                "DetailedDataSpec 기반 데이터 검증으로 런타임 오류 방지",
-                f"총 {total_model_size:.1f}GB AI 모델 메모리 관리 최적화",
-                f"총 {total_checkpoints}개 체크포인트 로딩 병렬화"
-            ]
-            
-            return flow_analysis
-            
-        except Exception as e:
-            self.logger.error(f"❌ 파이프라인 데이터 흐름 분석 실패: {e}")
-            return {'error': str(e)}
-    
-    # ==============================================
-    # 🔥 실제 AI 모델 정보 함수들 (새로 추가)
-    # ==============================================
-    
-    def get_real_ai_model_info(self, step_type: Union[StepType, str]) -> Dict[str, Any]:
-        """실제 AI 모델 정보 조회"""
-        try:
-            if isinstance(step_type, str):
-                step_type = StepType(step_type.lower())
-            
-            config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-            
-            real_ai_models_info = []
-            total_size_gb = 0.0
-            checkpoint_count = 0
-            
-            for real_ai_model in config.real_ai_models:
-                model_info = {
-                    'model_name': real_ai_model.model_name,
-                    'model_path': real_ai_model.model_path,
-                    'model_type': real_ai_model.model_type,
-                    'size_gb': real_ai_model.size_gb,
-                    'device': real_ai_model.device,
-                    'requires_checkpoint': real_ai_model.requires_checkpoint,
-                    'checkpoint_key': real_ai_model.checkpoint_key,
-                    'preprocessing_required': real_ai_model.preprocessing_required,
-                    'postprocessing_required': real_ai_model.postprocessing_required,
-                    'full_path': f"{AI_MODELS_ROOT if REAL_STEP_INTERFACE_AVAILABLE else 'ai_models'}/{real_ai_model.model_path}"
-                }
-                real_ai_models_info.append(model_info)
-                total_size_gb += real_ai_model.size_gb
-                if real_ai_model.requires_checkpoint:
-                    checkpoint_count += 1
-            
-            return {
-                'step_name': config.step_name,
-                'step_type': step_type.value,
-                'real_ai_models': real_ai_models_info,
-                'total_models': len(real_ai_models_info),
-                'total_size_gb': round(total_size_gb, 2),
-                'checkpoint_requirements': checkpoint_count,
-                'legacy_ai_models': config.ai_models,
-                'priority': config.priority.name,
-                'device_optimization': config.device,
-                'requires_model_loader': config.require_model_loader,
-                'requires_memory_manager': config.require_memory_manager
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 정보 조회 실패: {e}")
-            return {}
-    
-    def get_real_checkpoint_requirements(self) -> Dict[str, Any]:
-        """실제 체크포인트 요구사항 조회"""
-        try:
-            checkpoint_requirements = {}
-            total_checkpoints = 0
-            total_size_gb = 0.0
-            
-            for step_type in StepType:
-                config = RealGitHubStepMapping.get_enhanced_github_config(step_type)
-                
-                step_checkpoints = []
-                step_size = 0.0
-                
-                for real_ai_model in config.real_ai_models:
-                    if real_ai_model.requires_checkpoint:
-                        checkpoint_info = {
-                            'model_name': real_ai_model.model_name,
-                            'model_path': real_ai_model.model_path,
-                            'size_gb': real_ai_model.size_gb,
-                            'checkpoint_key': real_ai_model.checkpoint_key,
-                            'full_path': f"{AI_MODELS_ROOT if REAL_STEP_INTERFACE_AVAILABLE else 'ai_models'}/{real_ai_model.model_path}"
-                        }
-                        step_checkpoints.append(checkpoint_info)
-                        step_size += real_ai_model.size_gb
-                        total_checkpoints += 1
-                        total_size_gb += real_ai_model.size_gb
-                
-                if step_checkpoints:
-                    checkpoint_requirements[step_type.value] = {
-                        'step_name': config.step_name,
-                        'checkpoints': step_checkpoints,
-                        'checkpoint_count': len(step_checkpoints),
-                        'total_size_gb': round(step_size, 2),
-                        'priority': config.priority.name
-                    }
-            
-            return {
-                'total_steps_with_checkpoints': len(checkpoint_requirements),
-                'total_checkpoints': total_checkpoints,
-                'total_size_gb': round(total_size_gb, 2),
-                'checkpoint_requirements': checkpoint_requirements,
-                'memory_requirements': {
-                    'minimum_gb': round(total_size_gb * 0.7, 1),  # 70% 효율
-                    'recommended_gb': round(total_size_gb * 1.2, 1),  # 120% 여유
-                    'm3_max_128gb_compatible': total_size_gb <= 100.0
-                }
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 실제 체크포인트 요구사항 조회 실패: {e}")
-            return {}
-
 # ==============================================
 # 🔥 전역 StepFactory 관리 (실제 구조, 순환참조 해결)
 # ==============================================

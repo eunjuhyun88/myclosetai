@@ -161,7 +161,7 @@ STEP_MODEL_PATHS = {
     "post_processing_upscaler": AI_MODELS_DIR / "step_07_post_processing" / "upscaler_models",
     
     # Step 8: Quality Assessment (7.0GB - 6개 파일)
-    "quality_assessment_clip": AI_MODELS_DIR / "step_08_quality_assessment" / "ultra_models" / "open_clip_pytorch_model.bin",  # 5.2GB 대형
+    "quality_assessment_clip": AI_MODELS_DIR / "step_08_quality_assessment" / "clip_vit_g14" / "open_clip_pytorch_model.bin",
     "quality_assessment_vit": AI_MODELS_DIR / "step_08_quality_assessment" / "ultra_models" / "ViT-L-14.pt",  # 공유
 }
 

@@ -172,12 +172,10 @@ CONDA_INFO = {
     'project_path': str(Path(__file__).parent.parent.parent.parent)
 }
 
-# 4. GitHub 프로젝트 경로
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 AI_PIPELINE_ROOT = BACKEND_ROOT / "app" / "ai_pipeline"
 AI_MODELS_ROOT = BACKEND_ROOT / "ai_models"
-
 logger.info(f"🔧 실제 환경 정보: conda={CONDA_INFO['conda_env']}, M3_Max={IS_M3_MAX}, MPS={MPS_AVAILABLE}")
 
 # =============================================================================
@@ -1023,6 +1021,273 @@ class RealMemoryManager:
                 'real_ai_optimized': True,
                 'allocation_count': len(self.allocation_history)
             }
+
+# GitHubMemoryManager 구현 - step_interface.py에 추가할 부분
+# 기존 step_interface.py 파일의 RealMemoryManager 클래스 바로 뒤에 추가하세요
+
+class GitHubMemoryManager(RealMemoryManager):
+    """
+    GitHubMemoryManager - RealMemoryManager 기반 GitHub 프로젝트 특화 메모리 관리자
+    
+    ✅ StepFactory v11.0에서 요구하는 GitHubMemoryManager 클래스
+    ✅ BaseStepMixin v19.3 의존성 주입 패턴 완전 호환
+    ✅ M3 Max 128GB 메모리 최적화
+    ✅ 실제 AI 모델 파일 메모리 관리
+    """
+    
+    def __init__(self, device: str = "auto", memory_limit_gb: float = None, **kwargs):
+        # RealMemoryManager 초기화
+        super().__init__(memory_limit_gb)
+        
+        # GitHub 특화 설정
+        self.github_optimizations_enabled = True
+        self.github_project_mode = True
+        self.device = device if device != "auto" else DEVICE
+        
+        # M3 Max 특별 최적화
+        if IS_M3_MAX and MEMORY_GB >= 128:
+            self.max_memory_gb = min(115.0, MEMORY_GB * 0.9)
+            self.github_m3_max_mode = True
+        elif IS_M3_MAX and MEMORY_GB >= 64:
+            self.max_memory_gb = MEMORY_GB * 0.85
+            self.github_m3_max_mode = True
+        else:
+            self.github_m3_max_mode = False
+        
+        # conda 환경 최적화
+        if CONDA_INFO['is_target_env']:
+            self.conda_optimized = True
+            self.optimization_enabled = True
+        else:
+            self.conda_optimized = False
+        
+        self.logger.info(f"✅ GitHubMemoryManager 초기화 - 디바이스: {self.device}, 메모리: {self.max_memory_gb:.1f}GB")
+        if self.github_m3_max_mode:
+            self.logger.info(f"🍎 M3 Max GitHub 최적화 모드 활성화")
+        if self.conda_optimized:
+            self.logger.info(f"🐍 conda mycloset-ai-clean 최적화 모드 활성화")
+    
+    def github_optimize_memory(self):
+        """GitHub 프로젝트 특화 메모리 최적화"""
+        try:
+            optimizations = []
+            
+            # 기본 메모리 최적화 실행
+            self.optimize_for_real_ai_models()
+            optimizations.append("기본 AI 모델 최적화")
+            
+            # GitHub M3 Max 특별 최적화
+            if self.github_m3_max_mode:
+                # MPS 메모리 정리
+                if MPS_AVAILABLE and PYTORCH_AVAILABLE:
+                    try:
+                        import torch
+                        if hasattr(torch.backends.mps, 'empty_cache'):
+                            torch.backends.mps.empty_cache()
+                        optimizations.append("M3 Max MPS 캐시 정리")
+                    except Exception as e:
+                        self.logger.debug(f"MPS 캐시 정리 실패: {e}")
+                
+                # 메모리 풀 확장
+                if MEMORY_GB >= 128:
+                    self.max_memory_gb = min(115.0, MEMORY_GB * 0.9)
+                    optimizations.append(f"M3 Max 메모리 풀 확장: {self.max_memory_gb:.1f}GB")
+            
+            # conda 환경 특별 최적화
+            if self.conda_optimized:
+                # Python GC 강화
+                import gc
+                gc.collect()
+                gc.collect()  # 2번 실행
+                optimizations.append("conda 환경 GC 강화")
+            
+            # GitHub 프로젝트 파일 캐시 정리
+            if hasattr(self, 'memory_pool'):
+                # 사용하지 않는 모델 캐시 정리
+                unused_models = []
+                for owner, size_gb in self.memory_pool.items():
+                    if 'cache' in owner.lower() or 'temp' in owner.lower():
+                        unused_models.append(owner)
+                
+                for owner in unused_models:
+                    self.deallocate_memory(owner)
+                    optimizations.append(f"미사용 캐시 정리: {owner}")
+            
+            if optimizations:
+                self.logger.info(f"🔧 GitHub 메모리 최적화 완료: {', '.join(optimizations)}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ GitHub 메모리 최적화 실패: {e}")
+            return False
+    
+    def allocate_for_github_model(self, model_name: str, size_gb: float, step_name: str = None) -> bool:
+        """GitHub AI 모델 전용 메모리 할당"""
+        try:
+            # GitHub 모델 메타데이터
+            owner_id = f"github_model_{model_name}"
+            if step_name:
+                owner_id = f"github_{step_name}_{model_name}"
+            
+            # 기본 할당 시도
+            success = self.allocate_memory(size_gb, owner_id)
+            
+            if success:
+                # GitHub 특별 처리
+                if hasattr(self, 'allocation_history'):
+                    self.allocation_history.append({
+                        'model_name': model_name,
+                        'step_name': step_name,
+                        'size_gb': size_gb,
+                        'github_mode': True,
+                        'timestamp': time.time()
+                    })
+                
+                self.logger.debug(f"✅ GitHub 모델 메모리 할당: {model_name} ({size_gb:.1f}GB)")
+            else:
+                self.logger.warning(f"❌ GitHub 모델 메모리 할당 실패: {model_name} ({size_gb:.1f}GB)")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"❌ GitHub 모델 메모리 할당 오류: {model_name} - {e}")
+            return False
+    
+    def deallocate_github_model(self, model_name: str, step_name: str = None) -> bool:
+        """GitHub AI 모델 메모리 해제"""
+        try:
+            owner_id = f"github_model_{model_name}"
+            if step_name:
+                owner_id = f"github_{step_name}_{model_name}"
+            
+            size_gb = self.deallocate_memory(owner_id)
+            
+            if size_gb > 0:
+                self.logger.debug(f"✅ GitHub 모델 메모리 해제: {model_name} ({size_gb:.1f}GB)")
+                return True
+            else:
+                self.logger.debug(f"⚠️ GitHub 모델 메모리 해제 대상 없음: {model_name}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ GitHub 모델 메모리 해제 오류: {model_name} - {e}")
+            return False
+    
+    def get_github_memory_stats(self) -> Dict[str, Any]:
+        """GitHub 프로젝트 특화 메모리 통계"""
+        try:
+            # 기본 통계 가져오기
+            base_stats = self.get_memory_stats()
+            
+            # GitHub 특화 정보 추가
+            github_stats = {
+                **base_stats,
+                'github_optimizations_enabled': self.github_optimizations_enabled,
+                'github_project_mode': self.github_project_mode,
+                'github_m3_max_mode': self.github_m3_max_mode,
+                'conda_optimized': self.conda_optimized,
+                'conda_env': CONDA_INFO['conda_env'],
+                'github_device': self.device,
+                'github_memory_limit_gb': self.max_memory_gb,
+                'system_memory_gb': MEMORY_GB,
+                'mps_available': MPS_AVAILABLE,
+                'pytorch_available': PYTORCH_AVAILABLE
+            }
+            
+            # GitHub 모델 메모리 분석
+            github_models = {}
+            if hasattr(self, 'memory_pool'):
+                for owner, size_gb in self.memory_pool.items():
+                    if 'github' in owner.lower():
+                        github_models[owner] = size_gb
+            
+            github_stats['github_models'] = github_models
+            github_stats['github_models_count'] = len(github_models)
+            github_stats['github_models_total_gb'] = sum(github_models.values())
+            
+            return github_stats
+            
+        except Exception as e:
+            self.logger.error(f"❌ GitHub 메모리 통계 조회 실패: {e}")
+            return {'error': str(e), 'github_mode': True}
+    
+    def configure_for_step(self, step_name: str, step_id: int = None) -> bool:
+        """특정 Step에 맞는 메모리 설정"""
+        try:
+            # Step별 메모리 요구사항
+            step_memory_configs = {
+                'HumanParsingStep': {'memory_gb': 8.0, 'models_gb': 1.4},
+                'PoseEstimationStep': {'memory_gb': 8.0, 'models_gb': 6.2},
+                'ClothSegmentationStep': {'memory_gb': 16.0, 'models_gb': 178.4},
+                'GeometricMatchingStep': {'memory_gb': 8.0, 'models_gb': 1.3},
+                'ClothWarpingStep': {'memory_gb': 12.0, 'models_gb': 6.5},
+                'VirtualFittingStep': {'memory_gb': 16.0, 'models_gb': 8.8},
+                'PostProcessingStep': {'memory_gb': 16.0, 'models_gb': 64.0},
+                'QualityAssessmentStep': {'memory_gb': 8.0, 'models_gb': 0.9}
+            }
+            
+            config = step_memory_configs.get(step_name, {'memory_gb': 8.0, 'models_gb': 1.0})
+            
+            # M3 Max에서는 더 큰 메모리 할당
+            if self.github_m3_max_mode:
+                required_memory = config['memory_gb'] * 1.5
+                if required_memory <= self.max_memory_gb:
+                    config['memory_gb'] = required_memory
+            
+            # Step 설정 적용
+            self.step_name = step_name
+            self.step_memory_gb = config['memory_gb']
+            self.step_models_gb = config['models_gb']
+            
+            self.logger.info(f"🔧 GitHub Step 메모리 설정: {step_name} ({config['memory_gb']:.1f}GB)")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step 메모리 설정 실패: {step_name} - {e}")
+            return False
+    
+    # BaseStepMixin 호환성을 위한 메서드들
+    def optimize(self):
+        """기본 최적화 메서드 - BaseStepMixin 호환"""
+        return self.github_optimize_memory()
+    
+    def allocate(self, size_gb: float, name: str = None) -> bool:
+        """기본 할당 메서드 - BaseStepMixin 호환"""
+        return self.allocate_memory(size_gb, name or "unknown")
+    
+    def deallocate(self, name: str) -> bool:
+        """기본 해제 메서드 - BaseStepMixin 호환"""
+        return self.deallocate_memory(name) > 0
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """기본 통계 메서드 - BaseStepMixin 호환"""
+        return self.get_github_memory_stats()
+
+
+# EmbeddedDependencyManager 별칭도 추가
+class EmbeddedDependencyManager(RealDependencyManager):
+    """EmbeddedDependencyManager - RealDependencyManager의 별칭 (BaseStepMixin 호환)"""
+    
+    def __init__(self, step_name: str, **kwargs):
+        super().__init__(step_name, **kwargs)
+        self.embedded_mode = True
+        self.github_compatible = True
+        
+        self.logger.info(f"✅ EmbeddedDependencyManager 초기화: {step_name} (GitHub 호환)")
+
+
+# GitHubDependencyManager 별칭도 추가  
+class GitHubDependencyManager(RealDependencyManager):
+    """GitHubDependencyManager - RealDependencyManager의 별칭 (BaseStepMixin 호환)"""
+    
+    def __init__(self, step_name: str, **kwargs):
+        super().__init__(step_name, **kwargs)
+        self.github_mode = True
+        self.github_compatible = True
+        
+        self.logger.info(f"✅ GitHubDependencyManager 초기화: {step_name} (GitHub 프로젝트 모드)")
+
 
 # =============================================================================
 # 🔥 11단계: 실제 Step Model Interface (ModelLoader v3.0 완전 반영)
@@ -1914,6 +2179,26 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ StepInterface 별칭 설정 실패 - 폴백 모드: {e}")
 
+
+
+class GitHubMemoryManager(RealMemoryManager):
+    """GitHubMemoryManager - RealMemoryManager의 별칭"""
+    
+    def __init__(self, device: str = "auto", memory_gb: float = 16.0):
+        super().__init__(device, memory_gb)
+        self._github_optimizations_enabled = True
+        
+    def configure_github_m3_max(self, memory_gb: float = 128.0):
+        """GitHub M3 Max 특별 최적화 설정"""
+        self.memory_gb = memory_gb
+        self.device = "mps" if MPS_AVAILABLE else "cpu"
+        logger.info(f"🍎 GitHub M3 Max 메모리 최적화: {memory_gb}GB, {self.device}")
+
+class GitHubDependencyManager(RealDependencyManager):
+    """GitHubDependencyManager - RealDependencyManager의 별칭"""
+    pass
+
+
 # =============================================================================
 # 🔥 18단계: Export (함수명/클래스명 100% 유지) - 오류 해결
 # =============================================================================
@@ -2017,6 +2302,13 @@ def create_step_model_interface(step_name: str) -> RealStepModelInterface:
     """Step Model Interface 생성 - 기본 팩토리"""
     return create_github_step_interface_circular_reference_free(step_name)
 
+GitHubStepCreationResult = RealStepCreationResult
+
+# 추가 호환성 별칭들
+GitHubStepModelInterface = RealStepModelInterface
+StepCreationResult = RealStepCreationResult
+StepModelInterface = RealStepModelInterface
+
 # =============================================================================
 # 🔥 GeometricMatchingStep 호환성 해결
 # =============================================================================
@@ -2041,7 +2333,9 @@ __all__ = [
     'GitHubStepModelInterface',  # 별칭
     'StepModelInterface',        # 별칭  
     'BaseStepModelInterface',    # 별칭
-
+    'GitHubStepCreationResult',  # 🔥 추가
+    'StepCreationResult',        # 🔥 추가
+    
     # 호환성 클래스들 (함수명 유지)
     'GitHubStepModelInterface',  # = RealStepModelInterface
     'GitHubMemoryManager',       # = RealMemoryManager
@@ -2093,6 +2387,8 @@ __all__ = [
     'BACKEND_ROOT',
     'AI_PIPELINE_ROOT',
     'AI_MODELS_ROOT',
+    'GitHubMemoryManager',
+    'GitHubDependencyManager', 
     
     # Logger
     'logger'

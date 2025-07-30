@@ -39,7 +39,76 @@ from typing import Dict, Any, Optional, List, Tuple, Union, Set, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
+# backend/app/ai_pipeline/utils/step_model_requests.py 파일 맨 위에 추가할 내용
 
+import copy
+from typing import Any
+
+def safe_copy(data: Any, deep: bool = True) -> Any:
+    """안전한 데이터 복사 함수 (순환참조 방지)"""
+    try:
+        if data is None:
+            return None
+        
+        # 기본 타입들은 그대로 반환
+        if isinstance(data, (str, int, float, bool)):
+            return data
+        
+        # 딕셔너리 처리
+        if isinstance(data, dict):
+            if deep:
+                return {k: safe_copy(v, deep=True) for k, v in data.items()}
+            else:
+                return dict(data)
+        
+        # 리스트 처리
+        if isinstance(data, list):
+            if deep:
+                return [safe_copy(item, deep=True) for item in data]
+            else:
+                return list(data)
+        
+        # 튜플 처리
+        if isinstance(data, tuple):
+            if deep:
+                return tuple(safe_copy(item, deep=True) for item in data)
+            else:
+                return tuple(data)
+        
+        # 세트 처리
+        if isinstance(data, set):
+            if deep:
+                return {safe_copy(item, deep=True) for item in data}
+            else:
+                return set(data)
+        
+        # copy 메서드 시도
+        if hasattr(data, 'copy'):
+            try:
+                return data.copy()
+            except Exception:
+                pass
+        
+        # deepcopy 시도
+        if deep:
+            try:
+                return copy.deepcopy(data)
+            except Exception:
+                pass
+        
+        # shallow copy 시도
+        try:
+            return copy.copy(data)
+        except Exception:
+            pass
+        
+        # 모든 방법이 실패하면 원본 반환
+        logger.warning(f"⚠️ safe_copy 실패, 원본 반환: {type(data)}")
+        return data
+        
+    except Exception as e:
+        logger.error(f"❌ safe_copy 오류: {e}, 원본 반환")
+        return data
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:
     from ..steps.base_step_mixin import BaseStepMixin

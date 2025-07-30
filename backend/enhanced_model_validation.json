@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753882337.7132952,
+  "timestamp": 1753889350.375208,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -9,12 +9,12 @@
     },
     "memory": {
       "total_gb": 128.0,
-      "available_gb": 64.54368591308594,
-      "used_percent": 49.6
+      "available_gb": 70.49346923828125,
+      "used_percent": 44.9
     },
     "cpu": {
       "core_count": 16,
-      "usage_percent": 4.7
+      "usage_percent": 5.0
     },
     "python": {
       "version": "3.11.13",
@@ -30,7 +30,7 @@
   },
   "model_files_analysis": {
     "total_files": 146,
-    "total_size_gb": 140.0958985099569,
+    "total_size_gb": 144.34615692216903,
     "analyzed_files": 110,
     "large_models": [
       {
@@ -61,6 +61,15 @@
         "warnings": 1
       },
       {
+        "name": "open_clip_pytorch_model.bin",
+        "size_mb": 5213.743920326233,
+        "step": "step_01_human_parsing",
+        "checkpoint_loaded": false,
+        "device_compatible": false,
+        "errors": 0,
+        "warnings": 1
+      },
+      {
         "name": "diffusion_pytorch_model.fp16.safetensors",
         "size_mb": 4897.260437011719,
         "step": "step_06_virtual_fitting",
@@ -77,6 +86,15 @@
         "device_compatible": true,
         "errors": 0,
         "warnings": 2
+      },
+      {
+        "name": "diffusion_pytorch_model.safetensors",
+        "size_mb": 3303.2670001983643,
+        "step": "step_06_virtual_fitting",
+        "checkpoint_loaded": true,
+        "device_compatible": true,
+        "errors": 0,
+        "warnings": 1
       },
       {
         "name": "diffusion_pytorch_model.safetensors",
@@ -268,15 +286,6 @@
         "warnings": 1
       },
       {
-        "name": "sam_vit_h_4b8939.pth",
-        "size_mb": 2445.7463064193726,
-        "step": "step_03_cloth_segmentation",
-        "checkpoint_loaded": true,
-        "device_compatible": true,
-        "errors": 0,
-        "warnings": 1
-      },
-      {
         "name": "diffusion_pytorch_model.fp16.safetensors",
         "size_mb": 2386.225830078125,
         "step": "step_06_virtual_fitting",
@@ -293,15 +302,6 @@
         "device_compatible": true,
         "errors": 0,
         "warnings": 1
-      },
-      {
-        "name": "diffusion_pytorch_model.safetensors",
-        "size_mb": 1719.0,
-        "step": "step_06_virtual_fitting",
-        "checkpoint_loaded": false,
-        "device_compatible": false,
-        "errors": 0,
-        "warnings": 0
       },
       {
         "name": "diffusion_pytorch_model.fp16.safetensors",
@@ -1030,16 +1030,16 @@
         "total_size_mb": 4492.022945404053
       },
       "step_01_human_parsing": {
-        "count": 27,
-        "total_size_mb": 10955.803829193115
+        "count": 28,
+        "total_size_mb": 16169.547749519348
       },
       "step_03_cloth_segmentation": {
-        "count": 30,
-        "total_size_mb": 28394.69432926178
+        "count": 29,
+        "total_size_mb": 25948.948022842407
       },
       "step_06_virtual_fitting": {
         "count": 36,
-        "total_size_mb": 79785.26270866394
+        "total_size_mb": 81369.5297088623
       },
       "step_04_geometric_matching": {
         "count": 16,
@@ -1061,10 +1061,10 @@
     "loading_test_results": []
   },
   "step_loading_reports": {
-    "HumanParsingStep": "StepLoadingReport(step_name='HumanParsingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.0003361701965332031, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])",
-    "PoseEstimationStep": "StepLoadingReport(step_name='PoseEstimationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.09485983848571777, inference_test_passed=True, inference_test_time=1.1920928955078125e-06, step_errors=[])",
-    "ClothSegmentationStep": "StepLoadingReport(step_name='ClothSegmentationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00017404556274414062, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])",
-    "GeometricMatchingStep": "StepLoadingReport(step_name='GeometricMatchingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.4000129699707031, inference_test_passed=True, inference_test_time=2.1457672119140625e-06, step_errors=[])"
+    "HumanParsingStep": "StepLoadingReport(step_name='HumanParsingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00034999847412109375, inference_test_passed=True, inference_test_time=1.1920928955078125e-06, step_errors=[])",
+    "PoseEstimationStep": "StepLoadingReport(step_name='PoseEstimationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.09501075744628906, inference_test_passed=True, inference_test_time=6.198883056640625e-06, step_errors=[])",
+    "ClothSegmentationStep": "StepLoadingReport(step_name='ClothSegmentationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00014591217041015625, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])",
+    "GeometricMatchingStep": "StepLoadingReport(step_name='GeometricMatchingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.4138660430908203, inference_test_passed=True, inference_test_time=1.9073486328125e-06, step_errors=[])"
   },
   "overall_summary": {
     "steps": {
@@ -1081,7 +1081,7 @@
       "analyzed_models": 110,
       "successful_loads": 78,
       "load_success_rate": 70.9090909090909,
-      "total_size_gb": 140.0958985099569
+      "total_size_gb": 144.34615692216903
     },
     "system_health": {
       "pytorch_available": true,
@@ -1093,6 +1093,6 @@
     "✅ 모든 Step 초기화 성공 (4개)",
     "⚠️ 일부 모델 로딩 실패: 70.9% 성공"
   ],
-  "validation_completed_at": 1753882351.090324,
-  "total_validation_time": 13.377034902572632
+  "validation_completed_at": 1753889362.063777,
+  "total_validation_time": 11.68857192993164
 }

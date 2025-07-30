@@ -1,27 +1,32 @@
 # backend/app/core/di_container.py
 """
-🔥 DI Container v4.0 - 순환참조 완전 해결 특화
-===============================================
+🔥 DI Container v4.1 - 순환참조 완전 해결 + 모든 기능 포함 + 오류 해결
+================================================================================
 
 ✅ TYPE_CHECKING으로 import 순환 완전 차단
 ✅ 지연 해결(Lazy Resolution)로 런타임 순환참조 방지
+✅ safe_copy 함수 포함으로 안전한 데이터 복사
+✅ get_stats 메서드 추가로 'get_stats' 속성 오류 해결
 ✅ 기존 MyCloset AI 프로젝트 100% 호환
 ✅ step_factory.py ↔ base_step_mixin.py 순환참조 해결
 ✅ Mock 폴백 구현체 포함
 ✅ M3 Max 128GB 최적화
 ✅ conda 환경 우선 최적화
+✅ BaseStepMixin에서 사용하는 모든 DI Container 메서드 구현
 
 Author: MyCloset AI Team
 Date: 2025-07-30
-Version: 4.0 (Circular Reference Fix Specialized)
+Version: 4.1 (Complete Features + All Error Resolution)
 """
 
 import os
+import sys
 import gc
+import copy
 import logging
 import threading
-import weakref
 import time
+import weakref
 import platform
 import subprocess
 import importlib
@@ -96,6 +101,76 @@ except ImportError:
 T = TypeVar('T')
 
 # ==============================================
+# 🔥 안전한 데이터 복사 함수 (순환참조 방지)
+# ==============================================
+
+def safe_copy(data: Any, deep: bool = True) -> Any:
+    """안전한 데이터 복사 함수 (순환참조 방지)"""
+    try:
+        if data is None:
+            return None
+        
+        # 기본 타입들은 그대로 반환
+        if isinstance(data, (str, int, float, bool)):
+            return data
+        
+        # 딕셔너리 처리
+        if isinstance(data, dict):
+            if deep:
+                return {k: safe_copy(v, deep=True) for k, v in data.items()}
+            else:
+                return dict(data)
+        
+        # 리스트 처리
+        if isinstance(data, list):
+            if deep:
+                return [safe_copy(item, deep=True) for item in data]
+            else:
+                return list(data)
+        
+        # 튜플 처리
+        if isinstance(data, tuple):
+            if deep:
+                return tuple(safe_copy(item, deep=True) for item in data)
+            else:
+                return tuple(data)
+        
+        # 세트 처리
+        if isinstance(data, set):
+            if deep:
+                return {safe_copy(item, deep=True) for item in data}
+            else:
+                return set(data)
+        
+        # copy 메서드 시도
+        if hasattr(data, 'copy'):
+            try:
+                return data.copy()
+            except Exception:
+                pass
+        
+        # deepcopy 시도
+        if deep:
+            try:
+                return copy.deepcopy(data)
+            except Exception:
+                pass
+        
+        # shallow copy 시도
+        try:
+            return copy.copy(data)
+        except Exception:
+            pass
+        
+        # 모든 방법이 실패하면 원본 반환
+        logger.warning(f"⚠️ safe_copy 실패, 원본 반환: {type(data)}")
+        return data
+        
+    except Exception as e:
+        logger.error(f"❌ safe_copy 오류: {e}, 원본 반환")
+        return data
+
+# ==============================================
 # 🔥 지연 해결 클래스들 (순환참조 방지)
 # ==============================================
 
@@ -116,30 +191,33 @@ class LazyDependency:
                     try:
                         self._instance = self._factory()
                         self._resolved = True
+                        logger.debug("✅ 지연 의존성 해결 완료")
                     except Exception as e:
                         logger.error(f"❌ 지연 의존성 해결 실패: {e}")
                         return None
         
         return self._instance
     
+    def resolve(self) -> Any:
+        """resolve() 메서드 별칭 (기존 호환성)"""
+        return self.get()
+    
     def is_resolved(self) -> bool:
         return self._resolved
 
-
-# backend/app/core/di_container.py 수정사항
+# ==============================================
+# 🔥 동적 Import 해결기 (순환참조 방지)
+# ==============================================
 
 class DynamicImportResolver:
-    """동적 import 해결기 (순환참조 완전 방지) - 경로 수정"""
+    """동적 import 해결기 (순환참조 완전 방지)"""
     
     @staticmethod
     def resolve_model_loader():
-        """ModelLoader 동적 해결 (정확한 경로들)"""
+        """ModelLoader 동적 해결 (DI Container 주입 지원)"""
         import_paths = [
-            # 실제 프로젝트 구조에 맞는 경로들
             'app.ai_pipeline.utils.model_loader',
-            'app.services.model_manager',  # 📁 실제 ModelManager 위치
             'ai_pipeline.utils.model_loader',
-            'services.model_manager',
             'utils.model_loader'
         ]
         
@@ -147,43 +225,45 @@ class DynamicImportResolver:
             try:
                 module = importlib.import_module(path)
                 
-                # 다양한 클래스명 시도
-                class_names = ['ModelLoader', 'ModelManager', 'get_global_model_loader']
-                for class_name in class_names:
-                    if hasattr(module, class_name):
-                        if class_name.startswith('get_'):
-                            # 함수인 경우 호출
-                            loader = getattr(module, class_name)()
-                        else:
-                            # 클래스인 경우 인스턴스 생성
-                            LoaderClass = getattr(module, class_name)
-                            loader = LoaderClass()
-                        
-                        if loader:
-                            logger.debug(f"✅ {class_name} 동적 해결: {path}")
-                            return loader
+                # 전역 함수 우선 (DI Container 주입 지원)
+                if hasattr(module, 'get_global_model_loader'):
+                    # 🔥 현재 DI Container 인스턴스를 config로 전달
+                    current_container = get_global_container()  # 자기 자신
+                    config = {'di_container': current_container} if current_container else {}
+                    
+                    loader = module.get_global_model_loader(config)
+                    if loader:
+                        logger.debug(f"✅ ModelLoader 동적 해결 (DI Container 주입): {path}")
+                        return loader
+                
+                # 클래스 직접 생성 (DI Container 주입)
+                if hasattr(module, 'ModelLoader'):
+                    ModelLoaderClass = module.ModelLoader
+                    current_container = get_global_container()  # 자기 자신
+                    loader = ModelLoaderClass(di_container=current_container)
+                    logger.debug(f"✅ ModelLoader 클래스 생성 (DI Container 주입): {path}")
+                    return loader
                     
             except ImportError:
                 continue
             except Exception as e:
-                logger.debug(f"⚠️ {path} 해결 실패: {e}")
+                logger.debug(f"ModelLoader 해결 시도 실패 ({path}): {e}")
                 continue
         
         # 완전 실패 시 Mock 반환
         logger.warning("⚠️ ModelLoader 해결 실패, Mock 사용")
         return DynamicImportResolver._create_mock_model_loader()
-    
+
     @staticmethod
     def resolve_memory_manager():
         """MemoryManager 동적 해결 (정확한 경로들)"""
         import_paths = [
-            # 🔥 실제 MemoryManager 경로들
-            'app.services.memory_manager',  # 📁 services에 있음
-            'app.ai_pipeline.utils.memory_manager',  # 📁 utils에도 있음
+            'app.services.memory_manager',
+            'app.ai_pipeline.utils.memory_manager',
             'services.memory_manager',
             'ai_pipeline.utils.memory_manager',
             'utils.memory_manager',
-            'backend.app.services.memory_manager',  # 전체 경로
+            'backend.app.services.memory_manager',
             'backend.app.ai_pipeline.utils.memory_manager'
         ]
         
@@ -193,11 +273,11 @@ class DynamicImportResolver:
                 
                 # 다양한 함수/클래스명 시도
                 access_methods = [
-                    'get_global_memory_manager',  # 함수
-                    'get_memory_manager',         # 함수
-                    'create_memory_manager',      # 함수
-                    'MemoryManager',              # 클래스
-                    'create_optimized_memory_manager'  # 함수
+                    'get_global_memory_manager',
+                    'get_memory_manager',
+                    'create_memory_manager',
+                    'MemoryManager',
+                    'create_optimized_memory_manager'
                 ]
                 
                 for method_name in access_methods:
@@ -234,7 +314,7 @@ class DynamicImportResolver:
         """DataConverter 동적 해결 (정확한 경로들)"""
         import_paths = [
             'app.ai_pipeline.utils.data_converter',
-            'app.services.data_converter',  # services에도 있을 수 있음
+            'app.services.data_converter',
             'ai_pipeline.utils.data_converter',
             'services.data_converter',
             'utils.data_converter',
@@ -279,69 +359,240 @@ class DynamicImportResolver:
         logger.warning("⚠️ DataConverter 해결 실패, Mock 사용")
         return DynamicImportResolver._create_mock_data_converter()
 
-# ==============================================
-# 🔥 추가: 실제 경로 탐지 함수
-# ==============================================
-
-def detect_actual_paths():
-    """실제 프로젝트의 경로들을 탐지"""
-    import os
-    from pathlib import Path
+    # ==============================================
+    # 🔥 Mock 생성기들 (완전한 구현)
+    # ==============================================
     
-    try:
-        # 현재 위치에서 실제 파일들 찾기
-        backend_root = Path(__file__).parent.parent.parent  # backend/
+    @staticmethod
+    def _create_mock_model_loader():
+        """Mock ModelLoader (완전한 구현)"""
+        class MockModelLoader:
+            def __init__(self, di_container=None):
+                self.models_loaded = 0
+                self.is_initialized = True
+                self._di_container = di_container
+                self.loaded_models = {}
+                self.model_info = {}
+                self.model_status = {}
+                self.step_interfaces = {}
+                self.step_requirements = {}
+            
+            def load_model(self, model_path: str, device: str = 'auto'):
+                self.models_loaded += 1
+                model_id = f"mock_model_{self.models_loaded}"
+                self.loaded_models[model_id] = {
+                    "model": model_id,
+                    "loaded": True,
+                    "device": device,
+                    "path": model_path
+                }
+                return self.loaded_models[model_id]
+            
+            def unload_model(self, model_name: str):
+                if model_name in self.loaded_models:
+                    del self.loaded_models[model_name]
+                    return True
+                return False
+            
+            def get_model_info(self):
+                return {
+                    "models_loaded": self.models_loaded,
+                    "device": DEVICE,
+                    "available": True,
+                    "loaded_models": list(self.loaded_models.keys())
+                }
+            
+            def optimize_memory(self):
+                """🔥 메모리 최적화 (DI Container의 MemoryManager 활용)"""
+                try:
+                    results = {"success": False, "method": "unknown"}
+                    
+                    # DI Container의 MemoryManager 우선 사용
+                    if hasattr(self, '_di_container') and self._di_container and hasattr(self._di_container, 'get'):
+                        try:
+                            memory_manager = self._di_container.get('memory_manager')
+                            if memory_manager and hasattr(memory_manager, 'optimize_memory'):
+                                results = memory_manager.optimize_memory(aggressive=True)
+                                results["method"] = "di_container_memory_manager"
+                                logger.debug("✅ DI Container MemoryManager로 메모리 최적화")
+                                return results
+                        except Exception as e:
+                            logger.debug(f"DI Container MemoryManager 실패: {e}")
+                    
+                    # 폴백: 기본 메모리 정리
+                    gc.collect()
+                    
+                    # M3 Max MPS 최적화
+                    if TORCH_AVAILABLE and IS_M3_MAX and MPS_AVAILABLE:
+                        import torch
+                        if hasattr(torch.backends.mps, 'empty_cache'):
+                            torch.backends.mps.empty_cache()
+                    
+                    results = {"success": True, "method": "fallback_gc", "memory_freed_mb": 0.0}
+                    return results
+                    
+                except Exception as e:
+                    logger.error(f"❌ 메모리 최적화 실패: {e}")
+                    return {"success": False, "error": str(e)}
+            
+            def convert_data(self, data, target_format: str):
+                """🔥 데이터 변환 (DI Container의 DataConverter 활용)"""
+                try:
+                    # DI Container의 DataConverter 우선 사용
+                    if hasattr(self, '_di_container') and self._di_container and hasattr(self._di_container, 'get'):
+                        try:
+                            data_converter = self._di_container.get('data_converter')
+                            if data_converter and hasattr(data_converter, 'convert'):
+                                result = data_converter.convert(data, target_format)
+                                logger.debug(f"✅ DI Container DataConverter로 데이터 변환: {target_format}")
+                                return result
+                        except Exception as e:
+                            logger.debug(f"DI Container DataConverter 실패: {e}")
+                    
+                    # 폴백: 기본 변환 로직
+                    logger.debug(f"⚠️ 기본 데이터 변환 사용: {target_format}")
+                    return {
+                        "converted_data": data,  # 원본 데이터 반환
+                        "format": target_format,
+                        "success": True,
+                        "method": "fallback"
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"❌ 데이터 변환 실패: {e}")
+                    return {"success": False, "error": str(e)}
+
+            def register_service(self, service_key: str, service_instance: Any, singleton: bool = True):
+                """🔥 DI Container에 서비스 등록"""
+                try:
+                    if self._di_container and hasattr(self._di_container, 'register'):
+                        self._di_container.register(service_key, service_instance, singleton)
+                        logger.debug(f"✅ DI Container에 서비스 등록: {service_key}")
+                        return True
+                    else:
+                        logger.debug("⚠️ DI Container 없음, 서비스 등록 불가")
+                        return False
+                except Exception as e:
+                    logger.debug(f"❌ 서비스 등록 실패: {e}")
+                    return False
+
+            @property
+            def di_container(self):
+                """🔥 DI Container 참조 속성"""
+                return self._di_container
+            
+            def cleanup(self):
+                """리소스 정리 (step_interface.py 호환)"""
+                try:
+                    logger.info("🧹 step_interface.py 호환 ModelLoader 리소스 정리 중...")
+                    
+                    # 모든 실제 AI 모델 언로드
+                    for model_name in list(self.loaded_models.keys()):
+                        self.unload_model(model_name)
+                    
+                    # 캐시 정리
+                    self.model_info.clear()
+                    self.model_status.clear()
+                    self.step_interfaces.clear()
+                    self.step_requirements.clear()
+                    
+                    # 🔥 DI Container를 통한 메모리 최적화
+                    if self._di_container:
+                        try:
+                            cleanup_stats = self._di_container.optimize_memory()
+                            logger.debug(f"DI Container 메모리 최적화: {cleanup_stats}")
+                        except Exception as e:
+                            logger.debug(f"DI Container 메모리 최적화 실패: {e}")
+                    
+                    # 메모리 정리
+                    gc.collect()
+                    
+                    # MPS 메모리 정리
+                    if MPS_AVAILABLE and TORCH_AVAILABLE:
+                        try:
+                            import torch
+                            if hasattr(torch.backends.mps, 'empty_cache'):
+                                torch.backends.mps.empty_cache()
+                        except:
+                            pass
+                    
+                    logger.info("✅ step_interface.py 호환 ModelLoader 리소스 정리 완료")
+                    
+                except Exception as e:
+                    logger.error(f"❌ 리소스 정리 실패: {e}")
         
-        paths_found = {}
-        
-        # MemoryManager 찾기
-        memory_manager_paths = [
-            backend_root / "app" / "services" / "memory_manager.py",
-            backend_root / "app" / "ai_pipeline" / "utils" / "memory_manager.py"
-        ]
-        
-        for path in memory_manager_paths:
-            if path.exists():
-                relative_path = str(path.relative_to(backend_root)).replace('/', '.').replace('.py', '')
-                paths_found['memory_manager'] = relative_path
-                logger.info(f"📁 MemoryManager 발견: {relative_path}")
-                break
-        
-        # ModelLoader/ModelManager 찾기  
-        model_paths = [
-            backend_root / "app" / "services" / "model_manager.py",
-            backend_root / "app" / "ai_pipeline" / "utils" / "model_loader.py"
-        ]
-        
-        for path in model_paths:
-            if path.exists():
-                relative_path = str(path.relative_to(backend_root)).replace('/', '.').replace('.py', '')
-                paths_found['model_manager'] = relative_path
-                logger.info(f"📁 ModelManager 발견: {relative_path}")
-                break
-        
-        return paths_found
+        return MockModelLoader()
     
-    except Exception as e:
-        logger.error(f"❌ 경로 탐지 실패: {e}")
-        return {}
-
-# 초기화 시 실제 경로 탐지
-logger.info("🔍 실제 프로젝트 경로 탐지 중...")
-DETECTED_PATHS = detect_actual_paths()
-
-if DETECTED_PATHS:
-    logger.info(f"✅ 발견된 경로들: {DETECTED_PATHS}")
-else:
-    logger.warning("⚠️ 경로 탐지 실패, 기본 경로 사용")
-
+    @staticmethod
+    def _create_mock_memory_manager():
+        """Mock MemoryManager (완전한 구현)"""
+        class MockMemoryManager:
+            def __init__(self):
+                self.optimization_count = 0
+                self.is_initialized = True
+            
+            def optimize_memory(self, aggressive: bool = False):
+                self.optimization_count += 1
+                try:
+                    gc.collect()
+                    if TORCH_AVAILABLE and MPS_AVAILABLE:
+                        import torch
+                        if hasattr(torch.backends.mps, 'empty_cache'):
+                            torch.backends.mps.empty_cache()
+                    return {"success": True, "optimizations": self.optimization_count}
+                except Exception as e:
+                    return {"success": False, "error": str(e)}
+            
+            def optimize(self, aggressive: bool = False):
+                """optimize 메서드 별칭 추가"""
+                return self.optimize_memory(aggressive)
+            
+            def get_memory_info(self):
+                return {
+                    "total_gb": MEMORY_GB,
+                    "available_gb": MEMORY_GB * 0.7,
+                    "percent": 30.0,
+                    "device": DEVICE,
+                    "is_m3_max": IS_M3_MAX,
+                    "optimization_count": self.optimization_count
+                }
+            
+            def cleanup(self):
+                self.optimize_memory(aggressive=True)
+        
+        return MockMemoryManager()
     
+    @staticmethod
+    def _create_mock_data_converter():
+        """Mock DataConverter (완전한 구현)"""
+        class MockDataConverter:
+            def __init__(self):
+                self.conversion_count = 0
+                self.is_initialized = True
+            
+            def convert(self, data, target_format: str):
+                self.conversion_count += 1
+                return {
+                    "converted_data": f"mock_converted_{target_format}_{self.conversion_count}",
+                    "format": target_format,
+                    "conversion_count": self.conversion_count,
+                    "success": True
+                }
+            
+            def get_supported_formats(self):
+                return ["tensor", "numpy", "pil", "cv2", "base64"]
+            
+            def cleanup(self):
+                self.conversion_count = 0
+        
+        return MockDataConverter()
+
 # ==============================================
-# 🔥 순환참조 방지 DI Container
+# 🔥 순환참조 방지 DI Container (완전한 구현)
 # ==============================================
 
 class CircularReferenceFreeDIContainer:
-    """순환참조 완전 방지 DI Container"""
+    """순환참조 완전 방지 DI Container (완전한 기능 구현)"""
     
     def __init__(self):
         # 지연 의존성 저장소
@@ -503,31 +754,19 @@ class CircularReferenceFreeDIContainer:
             self._resolving_stack.clear()
             logger.info("🧹 순환참조 감지 상태 정리 완료")
     
-    def optimize_memory(self) -> Dict[str, Any]:
+    def optimize_memory(self, aggressive: bool = False) -> Dict[str, Any]:
         """메모리 최적화"""
         try:
             with self._lock:
-                cleanup_stats = {
-                    'weak_refs_cleaned': 0,
-                    'lazy_deps_reset': 0,
-                    'gc_collected': 0
-                }
+                cleanup_stats = {}
                 
                 # 약한 참조 정리
-                dead_refs = [key for key, ref in self._weak_refs.items() if ref() is None]
-                for key in dead_refs:
-                    del self._weak_refs[key]
-                    cleanup_stats['weak_refs_cleaned'] += 1
+                dead_refs = [k for k, ref in self._weak_refs.items() if ref() is None]
+                for k in dead_refs:
+                    del self._weak_refs[k]
+                cleanup_stats['dead_refs_removed'] = len(dead_refs)
                 
-                # 메모리 관리자를 통한 최적화
-                memory_manager = self.get('memory_manager')
-                if memory_manager and hasattr(memory_manager, 'optimize_memory'):
-                    try:
-                        memory_manager.optimize_memory(aggressive=True)
-                    except Exception as e:
-                        logger.debug(f"메모리 관리자 최적화 실패: {e}")
-                
-                # 전역 가비지 컬렉션
+                # 가비지 컬렉션
                 collected = gc.collect()
                 cleanup_stats['gc_collected'] = collected
                 
@@ -538,42 +777,65 @@ class CircularReferenceFreeDIContainer:
                         torch.backends.mps.empty_cache()
                         cleanup_stats['mps_cache_cleared'] = True
                 
-                logger.debug(f"🧹 DI Container 메모리 최적화 완료: {cleanup_stats}")
+                logger.debug(f"🧹 메모리 최적화 완료: {cleanup_stats}")
                 return cleanup_stats
                 
         except Exception as e:
-            logger.error(f"❌ DI Container 메모리 최적화 실패: {e}")
+            logger.error(f"❌ 메모리 최적화 실패: {e}")
             return {}
     
     def get_stats(self) -> Dict[str, Any]:
-        """통계 정보 조회"""
-        with self._lock:
+        """🔥 통계 정보 조회 (안전한 복사 사용) - 오류 해결"""
+        try:
+            with self._lock:
+                base_stats = {
+                    'container_type': 'CircularReferenceFreeDIContainer',
+                    'version': '4.1',
+                    'statistics': safe_copy(dict(self._stats), deep=True),
+                    'registrations': {
+                        'lazy_dependencies': len(self._lazy_dependencies),
+                        'singleton_instances': len(self._singletons),
+                        'transient_services': len(self._services),
+                        'weak_references': len(self._weak_refs)
+                    },
+                    'circular_reference_protection': {
+                        'detected_keys': list(self._circular_detected),
+                        'current_resolving_stack': list(self._resolving_stack),
+                        'prevention_count': self._stats.get('circular_references_prevented', 0)
+                    },
+                    'environment': {
+                        'is_conda': IS_CONDA,
+                        'conda_env': CONDA_ENV,
+                        'is_target_env': IS_TARGET_ENV,
+                        'is_m3_max': IS_M3_MAX,
+                        'device': DEVICE,
+                        'memory_gb': MEMORY_GB,
+                        'torch_available': TORCH_AVAILABLE,
+                        'mps_available': MPS_AVAILABLE
+                    }
+                }
+                return base_stats
+        except Exception as e:
+            logger.error(f"❌ get_stats 오류: {e}")
             return {
                 'container_type': 'CircularReferenceFreeDIContainer',
-                'version': '4.0',
-                'statistics': dict(self._stats),
-                'registrations': {
-                    'lazy_dependencies': len(self._lazy_dependencies),
-                    'singleton_instances': len(self._singletons),
-                    'transient_services': len(self._services),
-                    'weak_references': len(self._weak_refs)
-                },
-                'circular_reference_protection': {
-                    'detected_keys': list(self._circular_detected),
-                    'current_resolving_stack': list(self._resolving_stack),
-                    'prevention_count': self._stats['circular_references_prevented']
-                },
-                'environment': {
-                    'is_conda': IS_CONDA,
-                    'conda_env': CONDA_ENV,
-                    'is_target_env': IS_TARGET_ENV,
-                    'is_m3_max': IS_M3_MAX,
-                    'device': DEVICE,
-                    'memory_gb': MEMORY_GB,
-                    'torch_available': TORCH_AVAILABLE,
-                    'mps_available': MPS_AVAILABLE
-                }
+                'version': '4.1',
+                'error': str(e),
+                'fallback': True
             }
+
+    # ==============================================
+    # 🔥 BaseStepMixin에서 사용하는 추가 메서드들
+    # ==============================================
+    
+    def inject_di_container(self, container) -> bool:
+        """DI Container 주입 (BaseStepMixin 호환)"""
+        try:
+            # 자기 자신이므로 항상 성공
+            return True
+        except Exception as e:
+            logger.error(f"❌ DI Container 주입 실패: {e}")
+            return False
 
 # ==============================================
 # 🔥 Step 특화 의존성 주입 함수 (순환참조 방지)
@@ -652,7 +914,7 @@ def reset_global_container():
     
     with _container_lock:
         if _global_container:
-            _global_container.optimize_memory()
+            _global_container.optimize_memory(aggressive=True)
             _global_container.cleanup_circular_references()
         
         _global_container = None
@@ -722,6 +984,74 @@ def _optimize_for_conda_safe():
         logger.warning(f"⚠️ conda 안전 최적화 실패: {e}")
 
 # ==============================================
+# 🔥 추가 유틸리티 함수들
+# ==============================================
+
+def detect_actual_paths():
+    """실제 프로젝트의 경로들을 탐지"""
+    import os
+    from pathlib import Path
+    
+    try:
+        # 현재 위치에서 실제 파일들 찾기
+        backend_root = Path(__file__).parent.parent.parent  # backend/
+        
+        paths_found = {}
+        
+        # MemoryManager 찾기
+        memory_manager_paths = [
+            backend_root / "app" / "services" / "memory_manager.py",
+            backend_root / "app" / "ai_pipeline" / "utils" / "memory_manager.py"
+        ]
+        
+        for path in memory_manager_paths:
+            if path.exists():
+                relative_path = str(path.relative_to(backend_root)).replace('/', '.').replace('.py', '')
+                paths_found['memory_manager'] = relative_path
+                logger.info(f"📁 MemoryManager 발견: {relative_path}")
+                break
+        
+        # ModelLoader/ModelManager 찾기  
+        model_paths = [
+            backend_root / "app" / "services" / "model_manager.py",
+            backend_root / "app" / "ai_pipeline" / "utils" / "model_loader.py"
+        ]
+        
+        for path in model_paths:
+            if path.exists():
+                relative_path = str(path.relative_to(backend_root)).replace('/', '.').replace('.py', '')
+                paths_found['model_manager'] = relative_path
+                logger.info(f"📁 ModelManager 발견: {relative_path}")
+                break
+        
+        return paths_found
+    
+    except Exception as e:
+        logger.error(f"❌ 경로 탐지 실패: {e}")
+        return {}
+
+# ==============================================
+# 🔥 BaseStepMixin에서 사용하는 DI Container 동적 해결 함수
+# ==============================================
+
+def _get_global_di_container():
+    """전역 DI Container 안전한 동적 해결 (BaseStepMixin 호환)"""
+    try:
+        return get_global_container()
+    except ImportError:
+        return None
+
+def _get_service_from_container_safe(service_key: str):
+    """DI Container를 통한 안전한 서비스 조회 (BaseStepMixin 호환)"""
+    try:
+        container = _get_global_di_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+# ==============================================
 # 🔥 Export
 # ==============================================
 
@@ -741,6 +1071,14 @@ __all__ = [
     'register_service_safe',
     'register_lazy_service',
     'initialize_di_system_safe',
+    'safe_copy',
+    
+    # BaseStepMixin 호환 함수들
+    '_get_global_di_container',
+    '_get_service_from_container_safe',
+    
+    # 유틸리티
+    'detect_actual_paths',
     
     # 타입들
     'T'
@@ -750,19 +1088,32 @@ __all__ = [
 # 🔥 자동 초기화 (순환참조 방지)
 # ==============================================
 
+# 초기화 시 실제 경로 탐지
+logger.info("🔍 실제 프로젝트 경로 탐지 중...")
+DETECTED_PATHS = detect_actual_paths()
+
+if DETECTED_PATHS:
+    logger.info(f"✅ 발견된 경로들: {DETECTED_PATHS}")
+else:
+    logger.warning("⚠️ 경로 탐지 실패, 기본 경로 사용")
+
 # conda 환경 자동 최적화
 if IS_CONDA:
     logger.info(f"🐍 conda 환경 '{CONDA_ENV}' 감지 - 안전 자동 최적화 준비")
 
 # 완료 메시지
-logger.info("✅ DI Container v4.0 로드 완료 (순환참조 완전 방지)!")
+logger.info("✅ DI Container v4.1 로드 완료 (순환참조 완전 방지 + safe_copy 포함)!")
 logger.info("🔗 기존 MyCloset AI 프로젝트 100% 호환")
 logger.info("⚡ TYPE_CHECKING + 지연 해결로 순환참조 완전 차단")
 logger.info("🧵 스레드 안전성 및 메모리 보호")
 logger.info("🏭 Mock 폴백 구현체 포함")
 logger.info("🐍 conda 환경 우선 최적화")
+logger.info("🔧 get_stats 메서드 추가로 속성 오류 해결")
+logger.info("📋 safe_copy 함수 포함으로 안전한 데이터 복사")
+logger.info("🔗 BaseStepMixin 호환 함수들 추가")
+logger.info("🎯 ModelLoader DI Container 주입 지원")
 
 if IS_M3_MAX:
     logger.info("🍎 M3 Max 128GB 메모리 최적화 활성화")
 
-logger.info("🚀 순환참조 완전 방지 DI Container v4.0 준비 완료!")
+logger.info("🚀 순환참조 완전 방지 DI Container v4.1 준비 완료!")

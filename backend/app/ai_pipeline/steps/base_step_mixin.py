@@ -664,6 +664,11 @@ class GitHubDependencyManager:
             with self._lock:
                 self.validation_attempts += 1
                 
+                container = self._get_di_container()
+                if container:
+                    print(f"🔍 validate_dependencies - Container type: {type(container).__name__}")
+                    print(f"🔍 validate_dependencies - Has get_stats: {hasattr(container, 'get_stats')}")
+                
                 # Step 인스턴스 확인
                 if not self.step_instance:
                     dependencies = {
@@ -717,7 +722,7 @@ class GitHubDependencyManager:
                         'failures': self.injection_failures,
                         'validation_attempts': self.validation_attempts
                     },
-                    'di_container_stats': container.get_stats() if container else {},
+                    'di_container_stats': container.get_stats() if container and hasattr(container, 'get_stats') else {'error': 'get_stats method not available'},
                     'timestamp': time.time()
                 }
                 
@@ -730,12 +735,17 @@ class GitHubDependencyManager:
                 'di_container_based': True,
                 'step_name': self.step_name
             }
-    
+
     def get_dependency_status(self) -> Dict[str, Any]:
         """의존성 상태 조회 (DI Container 기반)"""
         try:
             with self._lock:
                 container = self._get_di_container()
+                
+                # 🔍 디버깅 정보 추가
+                if container:
+                    print(f"🔍 get_dependency_status - Container type: {type(container).__name__}")
+                    print(f"🔍 get_dependency_status - Has get_stats: {hasattr(container, 'get_stats')}")
                 
                 return {
                     'step_name': self.step_name,
@@ -754,7 +764,7 @@ class GitHubDependencyManager:
                     'di_container_info': {
                         'connected': container is not None,
                         'initialized': self._container_initialized,
-                        'stats': container.get_stats() if container else {}
+                        'stats': container.get_stats() if container and hasattr(container, 'get_stats') else {'error': 'get_stats method not available'}
                     },
                     'metrics': {
                         'dependencies_injected': self.dependencies_injected,
@@ -772,7 +782,6 @@ class GitHubDependencyManager:
                 'di_container_based': True,
                 'timestamp': time.time()
             }
-    
     # ==============================================
     # 🔥 리소스 정리 (DI Container 기반)
     # ==============================================

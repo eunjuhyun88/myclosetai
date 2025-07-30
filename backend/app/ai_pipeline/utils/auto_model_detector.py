@@ -323,11 +323,9 @@ class RealFileMapper:
                 "ai_class": "RealGFPGANModel",
                 "model_load_method": "load_models"
             },
-            
-            # Step 08: Quality Assessment (실제 확인됨 - CLIP 5.2GB!)
             "quality_assessment_clip": {
                 "actual_files": [
-                    "open_clip_pytorch_model.bin",
+                    "open_clip_pytorch_model.bin",  # ✅ 이 파일이 여기에 있어야 함
                     "lpips_vgg.pth",
                     "lpips_alex.pth",
                     "pytorch_model.bin"
@@ -341,19 +339,24 @@ class RealFileMapper:
                     "open_clip_checkpoint.bin"
                 ],
                 "search_paths": [
+                    "step_08_quality_assessment/clip_vit_g14",  # ✅ 실제 파일 위치
+
                     "step_08_quality_assessment",
                     "step_08_quality_assessment/ultra_models",
-                    "step_08_quality_assessment/clip_vit_g14",
                     "step_08_quality_assessment/checkpoints",
                     "checkpoints/step_08_quality_assessment",
                     "clip/checkpoints",
                     "lpips/checkpoints"
                 ],
-                "patterns": [r".*open_clip.*\.bin$", r".*lpips.*\.pth$", r".*checkpoint.*\.(pth|bin)$"],
-                "size_range": (100, 5300),
+                "patterns": [
+                    r".*open_clip.*\.bin$",     # ✅ open_clip 파일 패턴
+                    r".*lpips.*\.pth$", 
+                    r".*checkpoint.*\.(pth|bin)$"
+                ],
+                "size_range": (100, 5300),  # ✅ 5.2GB 파일 허용
                 "min_size_mb": 100,
                 "priority": 1,
-                "step_class": "QualityAssessmentStep",
+                "step_class": "QualityAssessmentStep",  # ✅ 올바른 Step 클래스
                 "ai_class": "RealCLIPModel",
                 "model_load_method": "load_models"
             },
@@ -403,62 +406,41 @@ class RealFileMapper:
         self.logger.info(f"✅ 실제 파일 구조 기반 매핑 초기화: {len(self.step_file_mappings)}개 패턴 (체크포인트 완전 지원)")
 
     def find_actual_file(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
-        """🔥 실제 파일 구조 기반 파일 찾기 (터미널 확인 결과 반영 + 체크포인트 우선 지원)"""
+        """실제 파일 찾기 - 경로 우선순위 개선"""
         try:
-            # 🔥 경로 검증 및 자동 수정
-            if not ai_models_root.exists():
-                self.logger.warning(f"⚠️ AI 모델 루트 없음: {ai_models_root}")
-                return None
-            
             # 직접 매핑 확인
             if request_name in self.step_file_mappings:
                 mapping = self.step_file_mappings[request_name]
                 found_candidates = []
                 
-                # 🔥 1. 체크포인트 파일 우선 검색
-                for filename in mapping.get("checkpoint_files", []):
-                    for search_path in mapping["search_paths"]:
-                        full_path = ai_models_root / search_path / filename
-                        if full_path.exists() and full_path.is_file():
-                            file_size_mb = full_path.stat().st_size / (1024 * 1024)
-                            
-                            # 크기 검증
-                            min_size, max_size = mapping["size_range"]
-                            if min_size <= file_size_mb <= max_size:
-                                found_candidates.append((full_path, file_size_mb, "checkpoint_match"))
-                                self.logger.info(f"✅ 체크포인트 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
+                # 🔥 실제 파일 경로 우선 검색
+                for search_path in mapping["search_paths"]:
+                    search_dir = ai_models_root / search_path
+                    if search_dir.exists():
+                        for filename in mapping["actual_files"]:
+                            full_path = search_dir / filename
+                            if full_path.exists() and full_path.is_file():
+                                file_size_mb = full_path.stat().st_size / (1024 * 1024)
+                                
+                                # 크기 검증
+                                min_size, max_size = mapping["size_range"]
+                                if min_size <= file_size_mb <= max_size:
+                                    # 🔥 경로 기반 Step 검증
+                                    inferred_step = self._infer_step_from_path(full_path)
+                                    expected_step = mapping.get("step_class", "").replace("Step", "").lower()
+                                    
+                                    # Step 매칭 확인
+                                    if expected_step in inferred_step or inferred_step in expected_step:
+                                        found_candidates.append((full_path, file_size_mb, "exact_match"))
+                                        self.logger.info(f"✅ 정확한 경로 매칭: {request_name} → {full_path}")
                 
-                # 🔥 2. 실제 모델 파일 검색
-                for filename in mapping["actual_files"]:
-                    for search_path in mapping["search_paths"]:
-                        full_path = ai_models_root / search_path / filename
-                        if full_path.exists() and full_path.is_file():
-                            file_size_mb = full_path.stat().st_size / (1024 * 1024)
-                            
-                            # 크기 검증
-                            min_size, max_size = mapping["size_range"]
-                            if min_size <= file_size_mb <= max_size:
-                                found_candidates.append((full_path, file_size_mb, "exact_match"))
-                                self.logger.info(f"✅ 정확한 매칭: {request_name} → {full_path} ({file_size_mb:.1f}MB)")
-                
-                # 🔥 3. 우선순위 정렬: 체크포인트 > 크기 > 정확도
                 if found_candidates:
-                    # 체크포인트를 우선으로, 그 다음 크기 순
-                    def sort_priority(candidate):
-                        path, size, match_type = candidate
-                        if match_type == "checkpoint_match":
-                            return (1, size)  # 체크포인트 최우선
-                        else:
-                            return (0, size)  # 일반 파일은 크기순
-                    
-                    found_candidates.sort(key=sort_priority, reverse=True)
-                    best_match = found_candidates[0]
-                    self.logger.info(f"🏆 최적 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB, {best_match[2]})")
-                    return best_match[0]
+                    # 크기 순으로 정렬
+                    found_candidates.sort(key=lambda x: x[1], reverse=True)
+                    return found_candidates[0][0]
             
-            # 폴백: 전체 검색
-            return self._fallback_search_with_checkpoints(request_name, ai_models_root)
-                
+            return None
+            
         except Exception as e:
             self.logger.error(f"❌ {request_name} 파일 찾기 실패: {e}")
             return None
@@ -613,6 +595,111 @@ class RealFileMapper:
                 checkpoint_map[model_name] = found_checkpoints
         
         return checkpoint_map
+
+
+    def _infer_step_from_path(self, file_path: Path) -> str:
+        """파일 경로로부터 정확한 Step 추론"""
+        path_str = str(file_path).lower()
+        
+        # 🔥 경로 기반 우선 매핑 (가장 정확함)
+        step_path_mappings = {
+            "step_01_human_parsing": "step_01_human_parsing",
+            "step_02_pose_estimation": "step_02_pose_estimation", 
+            "step_03_cloth_segmentation": "step_03_cloth_segmentation",
+            "step_04_geometric_matching": "step_04_geometric_matching",
+            "step_05_cloth_warping": "step_05_cloth_warping",
+            "step_06_virtual_fitting": "step_06_virtual_fitting",
+            "step_07_post_processing": "step_07_post_processing",
+            "step_08_quality_assessment": "step_08_quality_assessment"  # ✅ 이게 중요!
+        }
+        
+        # 경로에서 step 폴더 찾기
+        for step_folder, step_name in step_path_mappings.items():
+            if step_folder in path_str:
+                return step_name
+        
+        # 🔥 파일명 기반 보조 매핑 (경로 매핑 실패시만)
+        filename = file_path.name.lower()
+        
+        # CLIP 모델들 → Quality Assessment (Step 08)
+        if any(pattern in filename for pattern in ['open_clip', 'clip_vit', 'vit-b-32', 'vit-l-14']):
+            return "step_08_quality_assessment"  # ✅ 수정됨!
+        
+        # Human Parsing 모델들 → Step 01
+        if any(pattern in filename for pattern in ['schp', 'atr', 'lip', 'graphonomy', 'human_parsing']):
+            return "step_01_human_parsing"
+        
+        # Pose 모델들 → Step 02  
+        if any(pattern in filename for pattern in ['openpose', 'body_pose', 'pose', 'hrnet', 'yolov8']):
+            return "step_02_pose_estimation"
+        
+        # Cloth Segmentation 모델들 → Step 03
+        if any(pattern in filename for pattern in ['sam', 'u2net', 'segmentation', 'cloth_seg']):
+            return "step_03_cloth_segmentation"
+        
+        # Geometric Matching 모델들 → Step 04
+        if any(pattern in filename for pattern in ['gmm', 'geometric', 'matching', 'tps']):
+            return "step_04_geometric_matching"
+        
+        # Cloth Warping 모델들 → Step 05
+        if any(pattern in filename for pattern in ['realvis', 'warping', 'xl', 'stable_diffusion']):
+            return "step_05_cloth_warping"
+        
+        # Virtual Fitting 모델들 → Step 06
+        if any(pattern in filename for pattern in ['ootd', 'virtual', 'fitting', 'hrviton', 'diffusion']):
+            return "step_06_virtual_fitting"
+        
+        # Post Processing 모델들 → Step 07
+        if any(pattern in filename for pattern in ['gfpgan', 'esrgan', 'enhance', 'post_process']):
+            return "step_07_post_processing"
+        
+        # Quality Assessment 모델들 → Step 08
+        if any(pattern in filename for pattern in ['quality', 'assessment', 'lpips', 'clip']):
+            return "step_08_quality_assessment"
+        
+        # 기본값
+        return "UnknownStep"
+
+    def _fallback_search_with_checkpoints(self, request_name: str, ai_models_root: Path) -> Optional[Path]:
+        """폴백 검색 (키워드 기반 + 체크포인트 우선)"""
+        try:
+            keywords = request_name.lower().split('_')
+            candidates = []
+            
+            extensions = ['.pth', '.bin', '.safetensors', '.pt', '.ckpt']
+            
+            for ext in extensions:
+                for model_file in ai_models_root.rglob(f"*{ext}"):
+                    if model_file.is_file():
+                        file_size_mb = model_file.stat().st_size / (1024 * 1024)
+                        if file_size_mb >= self.size_priority_threshold:
+                            filename_lower = model_file.name.lower()
+                            
+                            # 키워드 매칭 점수
+                            score = sum(1 for keyword in keywords if keyword in filename_lower)
+                            
+                            # 체크포인트 보너스 점수
+                            is_checkpoint = any(pattern.replace(r'.*', '').replace(r'\.', '.').replace('$', '') in filename_lower 
+                                              for pattern in self.checkpoint_patterns)
+                            checkpoint_bonus = 10 if is_checkpoint else 0
+                            
+                            if score > 0:
+                                total_score = score + checkpoint_bonus
+                                match_type = "checkpoint_fallback" if is_checkpoint else "keyword_fallback"
+                                candidates.append((model_file, file_size_mb, total_score, match_type))
+            
+            if candidates:
+                # 총점 우선, 크기 차선으로 정렬
+                candidates.sort(key=lambda x: (x[2], x[1]), reverse=True)
+                best_match = candidates[0]
+                self.logger.info(f"🔍 폴백 매칭: {request_name} → {best_match[0]} ({best_match[1]:.1f}MB, {best_match[3]})")
+                return best_match[0]
+                
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"폴백 검색 실패: {e}")
+            return None
 
     def validate_model_files(self, ai_models_root: Path = None) -> Dict[str, Any]:
         """모델 파일 유효성 검증"""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """#backend/app/ai_pipeline/steps/__init__.py
 #!/usr/bin/env python3
-🔥 MyCloset AI Pipeline Steps v5.0 - DI Container v4.0 완전 통합
+🔥 MyCloset AI Pipeline Steps v5.1 - DI Container v4.0 완전 통합 + 버그 수정
 ================================================================
 
 ✅ CircularReferenceFreeDIContainer 완전 적용
@@ -13,10 +13,12 @@
 ✅ logger 에러 완전 해결
 ✅ M3 Max 128GB + conda 환경 최적화
 ✅ GitHub 프로젝트 구조 100% 호환
+✅ safe_copy 함수 추가 (DetailedDataSpec 에러 해결)
+✅ get_stats 메서드 호출 안전성 강화
 
 Author: MyCloset AI Team
 Date: 2025-07-30
-Version: 5.0 (DI Container v4.0 Complete Integration)
+Version: 5.1 (DI Container v4.0 Complete Integration + Bug Fixes)
 """
 
 import os
@@ -28,6 +30,7 @@ import time
 import warnings
 import sys
 import asyncio
+import copy
 from typing import Dict, Any, Optional, Type, TypeVar, Callable, Union, List, TYPE_CHECKING
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -38,6 +41,48 @@ warnings.filterwarnings('ignore', message='.*deprecated.*')
 
 # Logger 최우선 초기화 (에러 방지)
 logger = logging.getLogger(__name__)
+
+# ==============================================
+# 🔥 safe_copy 함수 정의 (DetailedDataSpec 에러 해결)
+# ==============================================
+
+def safe_copy(obj: Any) -> Any:
+    """안전한 복사 함수 - DetailedDataSpec 에러 해결"""
+    try:
+        # 기본 타입들은 그대로 반환
+        if obj is None or isinstance(obj, (bool, int, float, str)):
+            return obj
+        
+        # 리스트나 튜플
+        elif isinstance(obj, (list, tuple)):
+            return type(obj)(safe_copy(item) for item in obj)
+        
+        # 딕셔너리
+        elif isinstance(obj, dict):
+            return {key: safe_copy(value) for key, value in obj.items()}
+        
+        # 집합
+        elif isinstance(obj, set):
+            return {safe_copy(item) for item in obj}
+        
+        # copy 모듈 사용 가능한 경우
+        else:
+            try:
+                return copy.deepcopy(obj)
+            except:
+                try:
+                    return copy.copy(obj)
+                except:
+                    # 복사할 수 없는 경우 원본 반환 (예: 함수, 클래스 등)
+                    logger.debug(f"⚠️ safe_copy: 복사 불가능한 객체 - {type(obj)}")
+                    return obj
+                    
+    except Exception as e:
+        logger.warning(f"⚠️ safe_copy 실패: {e}, 원본 반환")
+        return obj
+
+# 전역으로 사용 가능하도록 설정
+globals()['safe_copy'] = safe_copy
 
 # 🔥 TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
@@ -140,7 +185,7 @@ T = TypeVar('T')
 # ==============================================
 
 class StepsCircularReferenceFreeDIContainer:
-    """Steps 전용 순환참조 완전 방지 DI Container v5.0"""
+    """Steps 전용 순환참조 완전 방지 DI Container v5.1"""
     
     def __init__(self):
         # 지연 의존성 저장소
@@ -173,7 +218,7 @@ class StepsCircularReferenceFreeDIContainer:
         # 초기화
         self._setup_steps_dependencies()
         
-        logger.info("🔗 StepsCircularReferenceFreeDIContainer v5.0 초기화 완료")
+        logger.info("🔗 StepsCircularReferenceFreeDIContainer v5.1 초기화 완료")
     
     def _setup_steps_dependencies(self):
         """Steps 의존성들 지연 등록 (순환참조 방지)"""
@@ -532,7 +577,7 @@ class StepsCircularReferenceFreeDIContainer:
         with self._lock:
             return {
                 'container_type': 'StepsCircularReferenceFreeDIContainer',
-                'version': '5.0',
+                'version': '5.1',
                 'step_loading_stats': dict(self._step_loading_stats),
                 'registrations': {
                     'lazy_dependencies': len(self._lazy_dependencies),
@@ -617,7 +662,16 @@ def inject_dependencies_to_step_safe_advanced(step_instance):
 
 def get_step_info() -> Dict[str, Any]:
     """Step 정보 반환 (DI 기반 지연 로딩)"""
-    stats = _steps_container.get_stats()
+    try:
+        stats = _steps_container.get_stats()
+    except Exception as e:
+        logger.warning(f"⚠️ get_stats 호출 실패: {e}")
+        stats = {
+            'container_type': 'StepsCircularReferenceFreeDIContainer',
+            'version': '5.1',
+            'error': str(e),
+            'step_loading_stats': _steps_container._step_loading_stats if hasattr(_steps_container, '_step_loading_stats') else {}
+        }
     
     available_steps = []
     failed_steps = []
@@ -658,7 +712,8 @@ def get_step_error_summary() -> Dict[str, Any]:
         'logger_errors_resolved': True,
         'circular_reference_resolved': True,
         'di_container_integrated': step_info['di_container_integrated'],
-        'di_container_v4_available': DI_CONTAINER_AVAILABLE
+        'di_container_v4_available': DI_CONTAINER_AVAILABLE,
+        'safe_copy_function_added': True  # 새로 추가된 해결 사항
     }
 
 # ==============================================
@@ -941,6 +996,9 @@ __all__ = [
     'BASESTEP_AVAILABLE',
     'DI_CONTAINER_AVAILABLE',
     
+    # 새로 추가된 함수들
+    'safe_copy',  # DetailedDataSpec 에러 해결
+    
     # 타입들
     'T'
 ]
@@ -989,7 +1047,7 @@ step_info = get_step_info()
 error_summary = get_step_error_summary()
 
 logger.info("=" * 80)
-logger.info("🔥 MyCloset AI Pipeline Steps v5.0 초기화 완료 (DI Container v4.0 완전 통합)")
+logger.info("🔥 MyCloset AI Pipeline Steps v5.1 초기화 완료 (DI Container v4.0 완전 통합 + 버그 수정)")
 logger.info("=" * 80)
 logger.info(f"🔗 DI Container v4.0: {'✅ 활성화' if DI_CONTAINER_AVAILABLE else '❌ 비활성화'}")
 logger.info(f"📊 Step 로딩 결과: {step_info['available_steps']}/{step_info['total_steps']}개 ({step_info['success_rate']:.1f}%)")
@@ -997,6 +1055,7 @@ logger.info(f"🔧 BaseStepMixin: {'✅ 정상' if error_summary['basestep_avail
 logger.info(f"🔑 Logger 에러: {'✅ 해결됨' if error_summary['logger_errors_resolved'] else '❌ 미해결'}")
 logger.info(f"🔗 순환참조: {'✅ 해결됨' if error_summary['circular_reference_resolved'] else '❌ 미해결'}")
 logger.info(f"💉 DI Container: {'✅ 통합됨' if error_summary['di_container_integrated'] else '❌ 미통합'}")
+logger.info(f"📋 safe_copy 함수: {'✅ 추가됨' if error_summary['safe_copy_function_added'] else '❌ 누락'}")
 
 # DI Container 통계
 if DI_CONTAINER_AVAILABLE:
@@ -1042,8 +1101,8 @@ logger.info("=" * 80)
 
 # 최종 상태 체크
 if step_info['available_steps'] > 0:
-    logger.info("✅ Steps 모듈 DI v5.0 초기화 성공 - 순환참조 완전 해결 및 DI Container 통합")
+    logger.info("✅ Steps 모듈 DI v5.1 초기화 성공 - 순환참조 완전 해결 및 DI Container 통합 + 버그 수정")
 else:
-    logger.error("❌ Steps 모듈 DI v5.0 초기화 실패 - 모든 Step이 사용 불가")
+    logger.error("❌ Steps 모듈 DI v5.1 초기화 실패 - 모든 Step이 사용 불가")
 
-logger.info("🔥 MyCloset AI Pipeline Steps v5.0 with DI Container v4.0 - 순환참조 완전 해결 및 완전 통합 완료!")
+logger.info("🔥 MyCloset AI Pipeline Steps v5.1 with DI Container v4.0 - 순환참조 완전 해결 및 완전 통합 + 버그 수정 완료!")
