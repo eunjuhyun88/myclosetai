@@ -1,5 +1,5 @@
 {
-  "timestamp": 1753889350.375208,
+  "timestamp": 1753890766.128275,
   "system_info": {
     "platform": {
       "system": "Darwin",
@@ -9,12 +9,12 @@
     },
     "memory": {
       "total_gb": 128.0,
-      "available_gb": 70.49346923828125,
-      "used_percent": 44.9
+      "available_gb": 70.16242980957031,
+      "used_percent": 45.2
     },
     "cpu": {
       "core_count": 16,
-      "usage_percent": 5.0
+      "usage_percent": 6.8
     },
     "python": {
       "version": "3.11.13",
@@ -1061,10 +1061,10 @@
     "loading_test_results": []
   },
   "step_loading_reports": {
-    "HumanParsingStep": "StepLoadingReport(step_name='HumanParsingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00034999847412109375, inference_test_passed=True, inference_test_time=1.1920928955078125e-06, step_errors=[])",
-    "PoseEstimationStep": "StepLoadingReport(step_name='PoseEstimationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.09501075744628906, inference_test_passed=True, inference_test_time=6.198883056640625e-06, step_errors=[])",
-    "ClothSegmentationStep": "StepLoadingReport(step_name='ClothSegmentationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00014591217041015625, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])",
-    "GeometricMatchingStep": "StepLoadingReport(step_name='GeometricMatchingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.4138660430908203, inference_test_passed=True, inference_test_time=1.9073486328125e-06, step_errors=[])"
+    "HumanParsingStep": "StepLoadingReport(step_name='HumanParsingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.0003299713134765625, inference_test_passed=True, inference_test_time=1.9073486328125e-06, step_errors=[])",
+    "PoseEstimationStep": "StepLoadingReport(step_name='PoseEstimationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.09819698333740234, inference_test_passed=True, inference_test_time=1.6689300537109375e-06, step_errors=[])",
+    "ClothSegmentationStep": "StepLoadingReport(step_name='ClothSegmentationStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.00013875961303710938, inference_test_passed=True, inference_test_time=9.5367431640625e-07, step_errors=[])",
+    "GeometricMatchingStep": "StepLoadingReport(step_name='GeometricMatchingStep', step_id=0, import_success=True, instance_created=True, initialized=True, models=[], total_models=0, loaded_models=0, failed_models=0, total_memory_mb=0.0, total_load_time=0.3999359607696533, inference_test_passed=True, inference_test_time=1.1920928955078125e-06, step_errors=[])"
   },
   "overall_summary": {
     "steps": {
@@ -1093,6 +1093,6 @@
     "✅ 모든 Step 초기화 성공 (4개)",
     "⚠️ 일부 모델 로딩 실패: 70.9% 성공"
   ],
-  "validation_completed_at": 1753889362.063777,
-  "total_validation_time": 11.68857192993164
+  "validation_completed_at": 1753890777.8757088,
+  "total_validation_time": 11.747438669204712
 }

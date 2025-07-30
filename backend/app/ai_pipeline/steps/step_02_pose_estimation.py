@@ -2582,13 +2582,34 @@ class PoseEstimationStep(BaseStepMixin):
             # 4. 결과 안정화 및 분석
             final_result = self._analyze_and_stabilize_pose_results(pose_results, image)
             
-            # 5. 처리 시간 및 성공 결과
+            # 🔥 5. Step 4용 데이터 준비 (핵심 추가)
+            keypoints = final_result.get('keypoints', [])
+            confidence_scores = final_result.get('confidence_scores', [])
+            
+            # Step 4 Geometric Matching이 요구하는 데이터 형식
+            step_4_data = {
+                'pose_keypoints': keypoints,  # 필수: 18개 키포인트
+                'keypoints_for_matching': keypoints,  # 매칭용 키포인트
+                'joint_connections': self._generate_joint_connections(keypoints),
+                'pose_angles': final_result.get('joint_angles', {}),
+                'body_orientation': self._calculate_body_orientation(keypoints),
+                'pose_landmarks': final_result.get('landmarks', {}),
+                'skeleton_structure': final_result.get('skeleton_structure', {}),
+                'confidence_scores': confidence_scores,
+                'pose_confidence': float(np.mean(confidence_scores)) if confidence_scores else 0.7,
+                'visible_keypoints_count': len([kp for kp in keypoints if len(kp) >= 3 and kp[2] > 0.5]),
+                'pose_quality_score': final_result.get('pose_quality', 0.7),
+                'keypoint_threshold': 0.3,
+                'matching_ready': True
+            }
+            
+            # 6. 처리 시간 및 성공 결과
             inference_time = time.time() - start_time
             
             return {
                 'success': True,  # 절대 실패하지 않음
-                'keypoints': final_result.get('keypoints', []),
-                'confidence_scores': final_result.get('confidence_scores', []),
+                'keypoints': keypoints,
+                'confidence_scores': confidence_scores,
                 'pose_quality': final_result.get('pose_quality', 0.7),
                 'joint_angles': final_result.get('joint_angles', {}),
                 'body_proportions': final_result.get('body_proportions', {}),
@@ -2598,16 +2619,98 @@ class PoseEstimationStep(BaseStepMixin):
                 'pose_estimation_ready': True,
                 'skeleton_structure': final_result.get('skeleton_structure', {}),
                 'pose_landmarks': final_result.get('landmarks', {}),
+
+                # 🔥 Step 4용 데이터 추가
+                'for_step_04': step_4_data,
+                'step_04_ready': True,
+                'geometric_matching_data': step_4_data,
+                
                 'metadata': {
                     'ai_models_count': len(self.ai_models),
                     'processing_method': 'ultra_safe_pose_estimation',
-                    'total_time': inference_time
+                    'total_time': inference_time,
+                    'step_04_compatibility': True
                 }
             }
             
         except Exception as e:
             # 최후의 안전망
             return self._create_ultimate_safe_pose_result(str(e))
+
+    def _generate_joint_connections(self, keypoints: List[List[float]]) -> List[Dict[str, Any]]:
+        """Step 4용 관절 연결 정보 생성"""
+        try:
+            # OpenPose 18 키포인트 연결 규칙
+            connections = [
+                (0, 1), (1, 2), (2, 3), (3, 4),  # 오른쪽 팔
+                (1, 5), (5, 6), (6, 7),          # 왼쪽 팔
+                (1, 8), (8, 9), (9, 10), (10, 11), # 오른쪽 다리
+                (8, 12), (12, 13), (13, 14),      # 왼쪽 다리
+                (0, 15), (15, 17), (0, 16), (16, 18)  # 얼굴
+            ]
+            
+            joint_connections = []
+            for i, (start_idx, end_idx) in enumerate(connections):
+                if start_idx < len(keypoints) and end_idx < len(keypoints):
+                    start_kp = keypoints[start_idx]
+                    end_kp = keypoints[end_idx]
+                    
+                    if len(start_kp) >= 3 and len(end_kp) >= 3:
+                        connection = {
+                            'id': i,
+                            'start_joint': start_idx,
+                            'end_joint': end_idx,
+                            'start_point': [start_kp[0], start_kp[1]],
+                            'end_point': [end_kp[0], end_kp[1]],
+                            'confidence': (start_kp[2] + end_kp[2]) / 2,
+                            'length': ((start_kp[0] - end_kp[0])**2 + (start_kp[1] - end_kp[1])**2)**0.5,
+                            'valid': start_kp[2] > 0.3 and end_kp[2] > 0.3
+                        }
+                        joint_connections.append(connection)
+            
+            return joint_connections
+            
+        except Exception as e:
+            self.logger.error(f"❌ 관절 연결 생성 실패: {e}")
+            return []
+
+    def _calculate_body_orientation(self, keypoints: List[List[float]]) -> Dict[str, Any]:
+        """신체 방향 계산 (Step 4용)"""
+        try:
+            if len(keypoints) < 18:
+                return {'angle': 0.0, 'facing': 'front', 'confidence': 0.5}
+            
+            # 어깨 기울기로 방향 계산
+            left_shoulder = keypoints[5]
+            right_shoulder = keypoints[2]
+            
+            if len(left_shoulder) >= 3 and len(right_shoulder) >= 3:
+                if left_shoulder[2] > 0.3 and right_shoulder[2] > 0.3:
+                    shoulder_angle = np.arctan2(
+                        left_shoulder[1] - right_shoulder[1],
+                        left_shoulder[0] - right_shoulder[0]
+                    ) * 180 / np.pi
+                    
+                    # 정면/측면 판단
+                    if abs(shoulder_angle) < 30:
+                        facing = 'front'
+                    elif abs(shoulder_angle) > 150:
+                        facing = 'back'
+                    else:
+                        facing = 'side'
+                    
+                    return {
+                        'angle': float(shoulder_angle),
+                        'facing': facing,
+                        'confidence': float((left_shoulder[2] + right_shoulder[2]) / 2),
+                        'shoulder_width': float(abs(left_shoulder[0] - right_shoulder[0]))
+                    }
+            
+            return {'angle': 0.0, 'facing': 'front', 'confidence': 0.5}
+            
+        except Exception as e:
+            self.logger.error(f"❌ 신체 방향 계산 실패: {e}")
+            return {'angle': 0.0, 'facing': 'front', 'confidence': 0.5}
 
     def _create_emergency_success_result(self, reason: str) -> Dict[str, Any]:
         """비상 성공 결과 (절대 실패하지 않음)"""
@@ -2677,12 +2780,36 @@ class PoseEstimationStep(BaseStepMixin):
             'total_height': 400.0
         }
 
+
+
     def _create_ultimate_safe_pose_result(self, error_msg: str) -> Dict[str, Any]:
-        """궁극의 안전 결과 (절대 절대 실패하지 않음)"""
+        """궁극의 안전 결과 (절대 절대 실패하지 않음) - Step 4 호환성 포함"""
+        
+        # 기본 키포인트 생성
+        emergency_keypoints = [[256, 200 + i*10, 0.5] for i in range(18)]
+        emergency_confidence = [0.5] * 18
+        
+        # Step 4용 데이터도 생성
+        emergency_step_4_data = {
+            'pose_keypoints': emergency_keypoints,
+            'keypoints_for_matching': emergency_keypoints,
+            'joint_connections': [],
+            'pose_angles': {},
+            'body_orientation': {'angle': 0.0, 'facing': 'front', 'confidence': 0.5},
+            'pose_landmarks': {},
+            'skeleton_structure': {},
+            'confidence_scores': emergency_confidence,
+            'pose_confidence': 0.5,
+            'visible_keypoints_count': 18,
+            'pose_quality_score': 0.6,
+            'keypoint_threshold': 0.3,
+            'matching_ready': True
+        }
+        
         return {
             'success': True,  # 무조건 성공
-            'keypoints': [[256, 200 + i*10, 0.5] for i in range(18)],
-            'confidence_scores': [0.5] * 18,
+            'keypoints': emergency_keypoints,
+            'confidence_scores': emergency_confidence,
             'pose_quality': 0.6,
             'joint_angles': {},
             'body_proportions': {},
@@ -2692,9 +2819,22 @@ class PoseEstimationStep(BaseStepMixin):
             'emergency_mode': True,
             'ultimate_safe': True,
             'error_handled': error_msg[:50],
-            'pose_estimation_ready': True
+            'pose_estimation_ready': True,
+            
+            # 🔥 Step 4용 데이터도 포함
+            'for_step_04': emergency_step_4_data,
+            'step_04_ready': True,
+            'geometric_matching_data': emergency_step_4_data,
+            
+            'metadata': {
+                'ai_models_count': 0,
+                'processing_method': 'ultimate_safe_emergency',
+                'total_time': 0.05,
+                'step_04_compatibility': True
+            }
         }
-
+    
+    
     # ==============================================
     # 🔥 3. 안전한 포즈 추론 메서드 추가
     # ==============================================

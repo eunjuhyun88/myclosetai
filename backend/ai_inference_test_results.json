@@ -1,6 +1,6 @@
 {
-  "test_start_time": 1753889387.61402,
-  "initial_memory_mb": 42.734375,
+  "test_start_time": 1753890800.993768,
+  "initial_memory_mb": 42.34375,
   "step_results": {
     "HumanParsingStep": {
       "step_name": "HumanParsingStep",
@@ -10,8 +10,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 3.281144142150879,
-      "memory_usage_mb": 428.890625,
+      "execution_time": 3.2504167556762695,
+      "memory_usage_mb": 428.984375,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -36,14 +36,14 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.5111141204833984,
-      "memory_usage_mb": 495.75,
+      "execution_time": 0.49631595611572266,
+      "memory_usage_mb": 494.296875,
       "errors": [],
       "warnings": [],
       "output_info": {
         "type": "dict",
         "expected_type": "pose_keypoints",
-        "size_info": "13 keys",
+        "size_info": "16 keys",
         "content_summary": [
           "success",
           "keypoints",
@@ -62,8 +62,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.08015584945678711,
-      "memory_usage_mb": 2.359375,
+      "execution_time": 0.0788118839263916,
+      "memory_usage_mb": 2.375,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -88,8 +88,8 @@
       "model_loaded": true,
       "inference_success": true,
       "output_generated": true,
-      "execution_time": 0.04826188087463379,
-      "memory_usage_mb": 3.59375,
+      "execution_time": 0.045332908630371094,
+      "memory_usage_mb": 3.484375,
       "errors": [],
       "warnings": [],
       "output_info": {
@@ -115,13 +115,13 @@
     "import_success_rate": 100.0,
     "instance_success_rate": 100.0,
     "inference_success_rate": 100.0,
-    "total_execution_time": 3.9206759929656982,
-    "total_memory_usage_mb": 930.59375,
-    "final_memory_mb": 973.71875,
-    "memory_increase_mb": 930.984375
+    "total_execution_time": 3.870877504348755,
+    "total_memory_usage_mb": 929.140625,
+    "final_memory_mb": 971.890625,
+    "memory_increase_mb": 929.546875
   },
   "errors": [],
   "warnings": [],
-  "test_completed_at": 1753889391.660906,
-  "total_test_time": 4.065399169921875
+  "test_completed_at": 1753890804.983459,
+  "total_test_time": 4.017406940460205
 }

@@ -12,7 +12,6 @@
 ✅ 에러 핸들링 및 로깅
 
 API 엔드포인트:
-- /api/v1/virtual-tryon: 가상 피팅 API
 - /api/v1/pipeline: AI 파이프라인 API
 - /ws: WebSocket 실시간 통신
 - /api/v1/health: 헬스 체크
@@ -30,7 +29,23 @@ import warnings
 
 # 경고 무시
 warnings.filterwarnings('ignore')
-
+# 절대 경로로 변경
+try:
+    from app.core.di_container import (
+        CircularReferenceFreeDIContainer,
+        LazyDependency,
+        DynamicImportResolver,
+        get_global_container,
+        inject_dependencies_to_step_safe,
+        get_service_safe,
+        register_service_safe,
+        register_lazy_service
+    )
+    DI_CONTAINER_AVAILABLE = True
+    logger.info("✅ DI Container v4.0 Core Import 성공")
+except ImportError as e:
+    logger.error(f"❌ DI Container v4.0 Core Import 실패: {e}")
+    DI_CONTAINER_AVAILABLE = False
 # =============================================================================
 # 🔥 기본 설정 및 시스템 정보
 # =============================================================================

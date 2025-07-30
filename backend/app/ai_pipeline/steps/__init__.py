@@ -92,7 +92,6 @@ if TYPE_CHECKING:
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
     from ..factories.step_factory import StepFactory
-    from ...core.di_container import DIContainer
 else:
     # 런타임에는 Any로 처리 (순환참조 방지)
     BaseStepMixin = Any
@@ -103,6 +102,25 @@ else:
     StepFactory = Any
     DIContainer = Any
 
+# 절대 경로로 변경
+try:
+    from app.core.di_container import (
+        CircularReferenceFreeDIContainer,
+        LazyDependency,
+        DynamicImportResolver,
+        get_global_container,
+        reset_global_container,
+        inject_dependencies_to_step_safe,
+        get_service_safe,
+        register_service_safe,
+        register_lazy_service,
+        initialize_di_system_safe
+    )
+    DI_CONTAINER_AVAILABLE = True
+    logger.info("✅ DI Container v4.0 Core 시스템 로드 성공")
+except ImportError as e:
+    logger.error(f"❌ DI Container v4.0 Core 시스템 로드 실패: {e}")
+    DI_CONTAINER_AVAILABLE = False
 # ==============================================
 # 🔥 DI Container v4.0 Import (순환참조 방지)
 # ==============================================

@@ -90,7 +90,7 @@ if TYPE_CHECKING:
     from ..utils.model_loader import ModelLoader
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
-    from ...core.di_container import CircularReferenceFreeDIContainer
+    from app.core.di_container import CircularReferenceFreeDIContainer
 else:
     # 런타임에는 Any로 처리
     BaseStepMixin = Any
