@@ -1333,7 +1333,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 'Procrustes Analysis'
             ]
         }
-    
+  
     def _initialize_geometric_matching_specifics(self, **kwargs):
         """GeometricMatching 특화 초기화"""
         try:
@@ -1346,7 +1346,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         if hasattr(self.config, key):
                             setattr(self.config, key, value)
             
-            # 상태 관리
+            # 🔧 수정: status 객체 먼저 생성
             self.status = ProcessingStatus()
             
             # 디바이스 설정
@@ -1363,7 +1363,10 @@ class GeometricMatchingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ GeometricMatching 특화 초기화 실패: {e}")
-    
+            # 🔧 수정: 실패 시에도 status 객체 생성
+            if not hasattr(self, 'status'):
+                self.status = ProcessingStatus()
+
     def _detect_optimal_device(self) -> str:
         """최적 디바이스 감지"""
         try:
@@ -2597,13 +2600,17 @@ class GeometricMatchingStep(BaseStepMixin):
             
             self.logger.info(f"🚀 {self.step_name} v8.0 초기화 시작")
             
+            # 🔧 수정: status 객체가 없으면 생성
+            if not hasattr(self, 'status'):
+                self.status = ProcessingStatus()
+            
             # M3 Max 최적화 적용
             if self.device == "mps" or IS_M3_MAX:
                 self._apply_m3_max_optimization()
             
             self.is_initialized = True
             self.is_ready = True
-            self.status.initialization_complete = True
+            self.status.initialization_complete = True  # 이제 안전하게 접근 가능
             
             self.logger.info(f"✅ {self.step_name} v8.0 초기화 완료 (로딩된 모델: {len(self.loaded_models)}개)")
             return True
@@ -2611,6 +2618,7 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} v8.0 초기화 실패: {e}")
             return False
+
 
     def _apply_m3_max_optimization(self):
         """M3 Max 최적화 적용 (v27.1 완전 복원)"""

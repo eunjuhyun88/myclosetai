@@ -48,8 +48,364 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
-# BaseStepMixin import
-from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+# 추가할 코드
+import importlib
+import logging
+
+
+# ==============================================
+# 🔥 Central Hub DI Container 안전 import (순환참조 방지) - ClothWarping 특화
+# ==============================================
+
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결 - ClothWarping용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입 - ClothWarping용"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회 - ClothWarping용"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+# BaseStepMixin 동적 import (순환참조 완전 방지) - ClothWarping용
+def get_base_step_mixin_class():
+    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - ClothWarping용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
+        return getattr(module, 'BaseStepMixin', None)
+    except ImportError:
+        try:
+            # 폴백: 상대 경로
+            from .base_step_mixin import BaseStepMixin
+            return BaseStepMixin
+        except ImportError:
+            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
+            return None
+
+BaseStepMixin = get_base_step_mixin_class()
+
+# BaseStepMixin 폴백 클래스 (ClothWarping 특화)
+if BaseStepMixin is None:
+    class BaseStepMixin:
+        """ClothWarpingStep용 BaseStepMixin 폴백 클래스"""
+        
+        def __init__(self, **kwargs):
+            # 기본 속성들
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'ClothWarpingStep')
+            self.step_id = kwargs.get('step_id', 5)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (ClothWarping이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {
+                'tps_network': False,
+                'raft_network': False,
+                'vgg_matching': False,
+                'densenet_quality': False,
+                'physics_simulation': False,
+                'tps_checkpoint': False,
+                'viton_checkpoint': False,
+                'mock_model': False
+            }
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # ClothWarping 특화 속성들
+            self.warping_models = {}
+            self.warping_ready = False
+            self.warping_cache = {}
+            self.transformation_matrices = {}
+            self.depth_estimator = None
+            self.quality_enhancer = None
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.performance_stats = {
+                'total_processed': 0,
+                'successful_warps': 0,
+                'avg_processing_time': 0.0,
+                'avg_warping_quality': 0.0,
+                'tps_control_points': 25,
+                'raft_iterations_avg': 12,
+                'quality_score_avg': 0.0,
+                'physics_simulation_applied': 0,
+                'multi_network_fusion_used': 0,
+                'error_count': 0,
+                'models_loaded': 0
+            }
+            
+            # 통계 시스템
+            self.statistics = {
+                'total_processed': 0,
+                'successful_warps': 0,
+                'average_quality': 0.0,
+                'total_processing_time': 0.0,
+                'ai_model_calls': 0,
+                'error_count': 0,
+                'model_creation_success': False,
+                'real_ai_models_used': True,
+                'algorithm_type': 'advanced_multi_network_cloth_warping',
+                'features': [
+                    'AdvancedTPSWarpingNetwork (정밀한 TPS 변형)',
+                    'RAFTFlowWarpingNetwork (옵티컬 플로우 기반)',
+                    'VGGClothBodyMatchingNetwork (의류-인체 매칭)',
+                    'DenseNetQualityAssessment (품질 평가)',
+                    'PhysicsBasedFabricSimulation (물리 시뮬레이션)',
+                    'Multi-Network Fusion System',
+                    '15가지 변형 방법 지원',
+                    '향상된 품질 메트릭',
+                    '원단 타입별 물리 속성',
+                    '5가지 품질 레벨',
+                    '멀티 네트워크 융합',
+                    '완전 AI 추론 지원'
+                ]
+            }
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
+        
+        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(data)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
+                
+                # Central Hub를 통한 의존성 주입 시도
+                injected_count = _inject_dependencies_safe(self)
+                if injected_count > 0:
+                    self.logger.info(f"✅ Central Hub 의존성 주입: {injected_count}개")
+                
+                # ClothWarping 모델들 로딩 (실제 구현에서는 _load_warping_models_via_central_hub 호출)
+                if hasattr(self, '_load_warping_models_via_central_hub'):
+                    self._load_warping_models_via_central_hub()
+                
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
+                
+                # AI 모델들 정리
+                for model_name, model in self.ai_models.items():
+                    try:
+                        if hasattr(model, 'cleanup'):
+                            model.cleanup()
+                        del model
+                    except Exception as e:
+                        self.logger.debug(f"모델 정리 실패 ({model_name}): {e}")
+                
+                # 캐시 정리
+                self.ai_models.clear()
+                if hasattr(self, 'warping_models'):
+                    self.warping_models.clear()
+                if hasattr(self, 'warping_cache'):
+                    self.warping_cache.clear()
+                if hasattr(self, 'transformation_matrices'):
+                    self.transformation_matrices.clear()
+                
+                # GPU 메모리 정리
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except:
+                    pass
+                
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'warping_ready': getattr(self, 'warping_ready', False),
+                'models_loaded': len(getattr(self, 'loaded_models', [])),
+                'warping_models': list(getattr(self, 'warping_models', {}).keys()),
+                'algorithm_type': 'advanced_multi_network_cloth_warping',
+                'fallback_mode': True
+            }
+        
+        # BaseStepMixin 호환 메서드들
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.model_loader = model_loader
+                self.logger.info("✅ ModelLoader 의존성 주입 완료")
+                
+                # Step 인터페이스 생성 시도
+                if hasattr(model_loader, 'create_step_interface'):
+                    try:
+                        self.model_interface = model_loader.create_step_interface(self.step_name)
+                        self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                        self.model_interface = model_loader
+                else:
+                    self.model_interface = model_loader
+                    
+            except Exception as e:
+                self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+                self.model_loader = None
+                self.model_interface = None
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.memory_manager = memory_manager
+                self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.data_converter = data_converter
+                self.logger.info("✅ DataConverter 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            try:
+                self.di_container = di_container
+                self.logger.info("✅ DI Container 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
+
+        def _get_step_requirements(self) -> Dict[str, Any]:
+            """Step 05 Enhanced Cloth Warping 요구사항 반환 (BaseStepMixin 호환)"""
+            return {
+                "required_models": [
+                    "tps_transformation.pth",
+                    "dpt_hybrid_midas.pth",
+                    "viton_hd_warping.pth"
+                ],
+                "primary_model": "tps_transformation.pth",
+                "model_configs": {
+                    "tps_transformation.pth": {
+                        "size_mb": 1843.2,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "precision": "high",
+                        "ai_algorithm": "Thin Plate Spline"
+                    },
+                    "dpt_hybrid_midas.pth": {
+                        "size_mb": 512.7,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "real_time": True,
+                        "ai_algorithm": "Dense Prediction Transformer"
+                    },
+                    "viton_hd_warping.pth": {
+                        "size_mb": 2147.8,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "quality": "ultra",
+                        "ai_algorithm": "Virtual Try-On HD"
+                    }
+                },
+                "verified_paths": [
+                    "step_05_enhanced_cloth_warping/tps_transformation.pth",
+                    "step_05_enhanced_cloth_warping/dpt_hybrid_midas.pth",
+                    "step_05_enhanced_cloth_warping/viton_hd_warping.pth"
+                ],
+                "advanced_networks": [
+                    "AdvancedTPSWarpingNetwork",
+                    "RAFTFlowWarpingNetwork", 
+                    "VGGClothBodyMatchingNetwork",
+                    "DenseNetQualityAssessment",
+                    "PhysicsBasedFabricSimulation"
+                ]
+            }
 
 # ==============================================
 # 🔥 고급 AI 알고리즘 네트워크 클래스들 - 완전 AI 추론 가능

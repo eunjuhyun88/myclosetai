@@ -20,6 +20,7 @@ Author: MyCloset AI Team
 Date: 2025-08-01
 Version: 8.1 (Bug Fixes)
 """
+import threading
 
 import os
 import gc

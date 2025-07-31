@@ -50,15 +50,46 @@ except Exception as e:
     logger.warning(f"⚠️ PyTorch 로딩 패치 실패: {e}")
 
 # ==============================================
-# 🔥 섹션 2: BaseStepMixin 연동 (Central Hub DI Container v7.0)
+# 🔥 Central Hub DI Container 안전 import (순환참조 방지) - ClothSegmentation 특화
 # ==============================================
 
-# ==============================================
-# 🔥 섹션 2: BaseStepMixin 연동 (Central Hub DI Container v7.0) - 수정
-# ==============================================
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결 - ClothSegmentation용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
 
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입 - ClothSegmentation용"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회 - ClothSegmentation용"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+# BaseStepMixin 동적 import (순환참조 완전 방지) - ClothSegmentation용
 def get_base_step_mixin_class():
-    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지)"""
+    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - ClothSegmentation용"""
     try:
         # 여러 경로 시도
         import_paths = [
@@ -69,6 +100,7 @@ def get_base_step_mixin_class():
         
         for import_path in import_paths:
             try:
+                import importlib
                 if import_path.startswith('.'):
                     module = importlib.import_module(import_path, package='app.ai_pipeline.steps')
                 else:
@@ -86,35 +118,68 @@ def get_base_step_mixin_class():
 
 BaseStepMixin = get_base_step_mixin_class()
 
-# 긴급 폴백 BaseStepMixin (최소 기능) - 확장
+# BaseStepMixin 폴백 클래스 (ClothSegmentation 특화)
 if BaseStepMixin is None:
     class BaseStepMixin:
+        """ClothSegmentationStep용 BaseStepMixin 폴백 클래스"""
+        
         def __init__(self, **kwargs):
+            # 기본 속성들
             self.logger = logging.getLogger(self.__class__.__name__)
-            self.step_name = kwargs.get('step_name', 'BaseStep')
-            self.step_id = kwargs.get('step_id', 0)
+            self.step_name = kwargs.get('step_name', 'ClothSegmentationStep')
+            self.step_id = kwargs.get('step_id', 3)
             self.device = kwargs.get('device', 'cpu')
-            self.is_initialized = False
-            self.is_ready = False
-            self.model_loader = None
+            
+            # AI 모델 관련 속성들 (ClothSegmentation이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {
+                'deeplabv3plus': False,
+                'maskrcnn': False,
+                'sam_huge': False,
+                'u2net_cloth': False,
+                'total_loaded': 0,
+                'loading_errors': []
+            }
             self.model_interface = None
             self.loaded_models = {}
-            self.ai_models = {}
             
-        def initialize(self): 
-            self.is_initialized = True
-            return True
-        
-        def set_model_loader(self, model_loader): 
-            self.model_loader = model_loader
-        
-        def _preprocess_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
-            """입력 전처리 - 기본 구현"""
-            return data
-        
-        def _postprocess_output(self, result: Dict[str, Any]) -> Dict[str, Any]:
-            """출력 후처리 - 기본 구현"""
-            return result
+            # ClothSegmentation 특화 속성들
+            self.segmentation_models = {}
+            self.segmentation_ready = False
+            self.cloth_cache = {}
+            
+            # 의류 카테고리 정의
+            self.cloth_categories = {
+                0: 'background',
+                1: 'shirt', 2: 't_shirt', 3: 'sweater', 4: 'hoodie',
+                5: 'jacket', 6: 'coat', 7: 'dress', 8: 'skirt',
+                9: 'pants', 10: 'jeans', 11: 'shorts',
+                12: 'shoes', 13: 'boots', 14: 'sneakers',
+                15: 'bag', 16: 'hat', 17: 'glasses', 18: 'scarf', 19: 'belt'
+            }
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 통계
+            self.ai_stats = {
+                'total_processed': 0,
+                'deeplabv3_calls': 0,
+                'sam_calls': 0,
+                'u2net_calls': 0,
+                'average_confidence': 0.0
+            }
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
         
         def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
             """AI 추론 실행 - 폴백 구현"""
@@ -124,21 +189,214 @@ if BaseStepMixin is None:
                 "step": self.step_name,
                 "fallback_mode": True
             }
-            
-        async def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
-            """BaseStepMixin의 표준 process 메서드"""
+        
+        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
             try:
-                processed_input = self._preprocess_input(data)
-                result = self._run_ai_inference(processed_input)
-                return self._postprocess_output(result)
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(data)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
             except Exception as e:
-                self.logger.error(f"❌ Process 실패: {e}")
-                return {"success": False, "error": str(e)}
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
+                
+                # Central Hub를 통한 의존성 주입 시도
+                injected_count = _inject_dependencies_safe(self)
+                if injected_count > 0:
+                    self.logger.info(f"✅ Central Hub 의존성 주입: {injected_count}개")
+                
+                # Cloth Segmentation 모델들 로딩 (실제 구현에서는 _load_segmentation_models_via_central_hub 호출)
+                if hasattr(self, '_load_segmentation_models_via_central_hub'):
+                    self._load_segmentation_models_via_central_hub()
+                
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
+                
+                # AI 모델들 정리
+                for model_name, model in self.ai_models.items():
+                    try:
+                        if hasattr(model, 'cleanup'):
+                            model.cleanup()
+                        del model
+                    except Exception as e:
+                        self.logger.debug(f"모델 정리 실패 ({model_name}): {e}")
+                
+                # 캐시 정리
+                self.ai_models.clear()
+                if hasattr(self, 'segmentation_models'):
+                    self.segmentation_models.clear()
+                if hasattr(self, 'cloth_cache'):
+                    self.cloth_cache.clear()
+                
+                # GPU 메모리 정리
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except:
+                    pass
+                
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'segmentation_ready': getattr(self, 'segmentation_ready', False),
+                'models_loaded': len(getattr(self, 'loaded_models', {})),
+                'segmentation_models': list(getattr(self, 'segmentation_models', {}).keys()),
+                'cloth_categories': len(getattr(self, 'cloth_categories', {})),
+                'fallback_mode': True
+            }
+        
+        # BaseStepMixin 호환 메서드들
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.model_loader = model_loader
+                self.logger.info("✅ ModelLoader 의존성 주입 완료")
+                
+                # Step 인터페이스 생성 시도
+                if hasattr(model_loader, 'create_step_interface'):
+                    try:
+                        self.model_interface = model_loader.create_step_interface(self.step_name)
+                        self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                        self.model_interface = model_loader
+                else:
+                    self.model_interface = model_loader
+                    
+            except Exception as e:
+                self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+                self.model_loader = None
+                self.model_interface = None
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.memory_manager = memory_manager
+                self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.data_converter = data_converter
+                self.logger.info("✅ DataConverter 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            try:
+                self.di_container = di_container
+                self.logger.info("✅ DI Container 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
 
-
-# 로거 설정
-logger = logging.getLogger(__name__)
-
+        def _get_step_requirements(self) -> Dict[str, Any]:
+            """Step 03 ClothSegmentation 요구사항 반환 (BaseStepMixin 호환)"""
+            return {
+                "required_models": [
+                    "deeplabv3plus_resnet101.pth",
+                    "sam_vit_h_4b8939.pth",
+                    "u2net.pth",
+                    "maskrcnn_resnet50_fpn.pth"
+                ],
+                "primary_model": "deeplabv3plus_resnet101.pth",
+                "model_configs": {
+                    "deeplabv3plus_resnet101.pth": {
+                        "size_mb": 233.3,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "precision": "high",
+                        "num_classes": 20
+                    },
+                    "sam_vit_h_4b8939.pth": {
+                        "size_mb": 2445.7,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "shared_with": ["step_04_geometric_matching"]
+                    },
+                    "u2net.pth": {
+                        "size_mb": 168.1,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "cloth_specialized": True
+                    },
+                    "maskrcnn_resnet50_fpn.pth": {
+                        "size_mb": 328.4,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "instance_segmentation": True
+                    }
+                },
+                "verified_paths": [
+                    "step_03_cloth_segmentation/deeplabv3plus_resnet101.pth",
+                    "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                    "step_03_cloth_segmentation/u2net.pth",
+                    "step_03_cloth_segmentation/maskrcnn_resnet50_fpn.pth"
+                ],
+                "cloth_categories": {
+                    0: "background", 1: "shirt", 2: "t_shirt", 3: "sweater", 4: "hoodie",
+                    5: "jacket", 6: "coat", 7: "dress", 8: "skirt", 9: "pants",
+                    10: "jeans", 11: "shorts", 12: "shoes", 13: "boots", 14: "sneakers",
+                    15: "bag", 16: "hat", 17: "glasses", 18: "scarf", 19: "belt"
+                }
+            }
 # ==============================================
 # 🔥 섹션 3: 시스템 환경 및 라이브러리 Import
 # ==============================================

@@ -12,7 +12,7 @@
 ✅ 순환참조 완전 해결
 ✅ GitHubDependencyManager 완전 제거
 """
-
+import cv2 
 import os
 import sys
 import time
@@ -50,8 +50,370 @@ try:
 except ImportError:
     DIFFUSERS_AVAILABLE = False
 
-# BaseStepMixin import
-from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+
+import importlib  # 추가
+import logging    # 추가
+
+# ==============================================
+# 🔥 Central Hub DI Container 안전 import (순환참조 방지) - VirtualFitting 특화
+# ==============================================
+
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결 - VirtualFitting용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입 - VirtualFitting용"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회 - VirtualFitting용"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+# BaseStepMixin 동적 import (순환참조 완전 방지) - VirtualFitting용
+def get_base_step_mixin_class():
+    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - VirtualFitting용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
+        return getattr(module, 'BaseStepMixin', None)
+    except ImportError:
+        try:
+            # 폴백: 상대 경로
+            from .base_step_mixin import BaseStepMixin
+            return BaseStepMixin
+        except ImportError:
+            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
+            return None
+
+BaseStepMixin = get_base_step_mixin_class()
+
+# BaseStepMixin 폴백 클래스 (VirtualFitting 특화)
+if BaseStepMixin is None:
+    class BaseStepMixin:
+        """VirtualFittingStep용 BaseStepMixin 폴백 클래스"""
+        
+        def __init__(self, **kwargs):
+            # 기본 속성들
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'VirtualFittingStep')
+            self.step_id = kwargs.get('step_id', 6)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (VirtualFitting이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {
+                'ootd': False,
+                'viton_hd': False,
+                'diffusion': False,
+                'tps_warping': False,
+                'cloth_analyzer': False,
+                'quality_assessor': False,
+                'mock_model': False
+            }
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # VirtualFitting 특화 속성들
+            self.fitting_models = {}
+            self.fitting_ready = False
+            self.fitting_cache = {}
+            self.pose_processor = None
+            self.lighting_adapter = None
+            self.texture_enhancer = None
+            self.diffusion_pipeline = None
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.performance_stats = {
+                'total_processed': 0,
+                'successful_fittings': 0,
+                'avg_processing_time': 0.0,
+                'avg_fitting_quality': 0.0,
+                'ootd_calls': 0,
+                'viton_hd_calls': 0,
+                'diffusion_calls': 0,
+                'tps_warping_applied': 0,
+                'quality_assessments': 0,
+                'cloth_analysis_performed': 0,
+                'error_count': 0,
+                'models_loaded': 0
+            }
+            
+            # 통계 시스템
+            self.statistics = {
+                'total_processed': 0,
+                'successful_fittings': 0,
+                'average_quality': 0.0,
+                'total_processing_time': 0.0,
+                'ai_model_calls': 0,
+                'error_count': 0,
+                'model_creation_success': False,
+                'real_ai_models_used': True,
+                'algorithm_type': 'advanced_virtual_fitting_with_tps_analysis',
+                'features': [
+                    'OOTD (Outfit Of The Day) 모델 - 3.2GB',
+                    'VITON-HD 모델 - 2.1GB (고품질 Virtual Try-On)',
+                    'Stable Diffusion 모델 - 4.8GB (고급 이미지 생성)',
+                    'TPS (Thin Plate Spline) 워핑 알고리즘',
+                    '고급 의류 분석 시스템 (색상/텍스처/패턴)',
+                    'AI 품질 평가 시스템 (SSIM 기반)',
+                    'FFT 기반 패턴 감지',
+                    '라플라시안 분산 선명도 평가',
+                    '바이리니어 보간 워핑 엔진',
+                    'K-means 색상 클러스터링',
+                    '다중 의류 아이템 동시 피팅',
+                    '실시간 가상 피팅 처리'
+                ]
+            }
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
+        
+        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(data)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
+                
+                # Central Hub를 통한 의존성 주입 시도
+                injected_count = _inject_dependencies_safe(self)
+                if injected_count > 0:
+                    self.logger.info(f"✅ Central Hub 의존성 주입: {injected_count}개")
+                
+                # VirtualFitting 모델들 로딩 (실제 구현에서는 _load_virtual_fitting_models_via_central_hub 호출)
+                if hasattr(self, '_load_virtual_fitting_models_via_central_hub'):
+                    self._load_virtual_fitting_models_via_central_hub()
+                
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
+                
+                # AI 모델들 정리
+                for model_name, model in self.ai_models.items():
+                    try:
+                        if hasattr(model, 'cleanup'):
+                            model.cleanup()
+                        del model
+                    except Exception as e:
+                        self.logger.debug(f"모델 정리 실패 ({model_name}): {e}")
+                
+                # 캐시 정리
+                self.ai_models.clear()
+                if hasattr(self, 'fitting_models'):
+                    self.fitting_models.clear()
+                if hasattr(self, 'fitting_cache'):
+                    self.fitting_cache.clear()
+                
+                # Diffusion 파이프라인 정리
+                if hasattr(self, 'diffusion_pipeline') and self.diffusion_pipeline:
+                    del self.diffusion_pipeline
+                    self.diffusion_pipeline = None
+                
+                # GPU 메모리 정리
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except:
+                    pass
+                
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'fitting_ready': getattr(self, 'fitting_ready', False),
+                'models_loaded': len(getattr(self, 'loaded_models', [])),
+                'fitting_models': list(getattr(self, 'fitting_models', {}).keys()),
+                'auxiliary_processors': {
+                    'pose_processor': getattr(self, 'pose_processor', None) is not None,
+                    'lighting_adapter': getattr(self, 'lighting_adapter', None) is not None,
+                    'texture_enhancer': getattr(self, 'texture_enhancer', None) is not None
+                },
+                'algorithm_type': 'advanced_virtual_fitting_with_tps_analysis',
+                'fallback_mode': True
+            }
+        
+        # BaseStepMixin 호환 메서드들
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.model_loader = model_loader
+                self.logger.info("✅ ModelLoader 의존성 주입 완료")
+                
+                # Step 인터페이스 생성 시도
+                if hasattr(model_loader, 'create_step_interface'):
+                    try:
+                        self.model_interface = model_loader.create_step_interface(self.step_name)
+                        self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                        self.model_interface = model_loader
+                else:
+                    self.model_interface = model_loader
+                    
+            except Exception as e:
+                self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+                self.model_loader = None
+                self.model_interface = None
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.memory_manager = memory_manager
+                self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.data_converter = data_converter
+                self.logger.info("✅ DataConverter 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            try:
+                self.di_container = di_container
+                self.logger.info("✅ DI Container 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
+
+        def _get_step_requirements(self) -> Dict[str, Any]:
+            """Step 06 Virtual Fitting 요구사항 반환 (BaseStepMixin 호환)"""
+            return {
+                "required_models": [
+                    "ootd_diffusion.pth",
+                    "viton_hd_final.pth",
+                    "stable_diffusion_inpainting.pth"
+                ],
+                "primary_model": "ootd_diffusion.pth",
+                "model_configs": {
+                    "ootd_diffusion.pth": {
+                        "size_mb": 3276.8,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "precision": "high",
+                        "ai_algorithm": "Outfit Of The Day Diffusion"
+                    },
+                    "viton_hd_final.pth": {
+                        "size_mb": 2147.5,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "real_time": False,
+                        "ai_algorithm": "Virtual Try-On HD"
+                    },
+                    "stable_diffusion_inpainting.pth": {
+                        "size_mb": 4835.2,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "quality": "ultra",
+                        "ai_algorithm": "Stable Diffusion Inpainting"
+                    }
+                },
+                "verified_paths": [
+                    "step_06_virtual_fitting/ootd_diffusion.pth",
+                    "step_06_virtual_fitting/viton_hd_final.pth",
+                    "step_06_virtual_fitting/stable_diffusion_inpainting.pth"
+                ],
+                "advanced_algorithms": [
+                    "TPSWarping",
+                    "AdvancedClothAnalyzer", 
+                    "AIQualityAssessment"
+                ]
+            }
 
 # ==============================================
 # 🔥 데이터 클래스들
@@ -1970,25 +2332,58 @@ class VirtualFittingStep(BaseStepMixin):
             return "cpu"
         except:
             return "cpu"
-    
+ 
+
     def _emergency_setup(self, **kwargs):
-        """긴급 설정 (초기화 실패시)"""
-        self.step_name = "VirtualFittingStep"
-        self.step_id = 6
-        self.device = "cpu"
-        self.ai_models = {}
-        self.models_loading_status = {'emergency': True}
-        self.model_interface = None
-        self.loaded_models = []
-        self.config = VirtualFittingConfig()
-        self.logger = logging.getLogger(f"{__name__}.VirtualFittingStep")
-        self.fitting_models = {}
-        self.fitting_ready = False
-        self.fitting_cache = {}
-        self.pose_processor = None
-        self.lighting_adapter = None
-        self.texture_enhancer = None
-        self.diffusion_pipeline = None
+        """긴급 설정 (초기화 실패시 폴백)"""
+        try:
+            self.logger.warning("⚠️ VirtualFittingStep 긴급 설정 모드 활성화")
+            
+            # 기본 속성들 설정
+            self.step_name = "VirtualFittingStep"
+            self.step_id = 6
+            self.device = "cpu"
+            self.config = VirtualFittingConfig()
+            
+            # 빈 모델 컨테이너들
+            self.ai_models = {}
+            self.models_loading_status = {'emergency': True}  
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # Virtual Fitting 특화 속성들
+            self.fitting_models = {}
+            self.fitting_ready = False
+            self.fitting_cache = {}
+            self.pose_processor = None
+            self.lighting_adapter = None
+            self.texture_enhancer = None
+            self.diffusion_pipeline = None
+            
+            # 고급 AI 알고리즘들도 기본값으로
+            try:
+                self.tps_warping = TPSWarping()
+                self.cloth_analyzer = AdvancedClothAnalyzer()
+                self.quality_assessor = AIQualityAssessment()
+            except:
+                self.tps_warping = None
+                self.cloth_analyzer = None
+                self.quality_assessor = None
+            
+            # Mock 모델 생성
+            self._create_mock_virtual_fitting_models()
+            
+            self.logger.warning("✅ VirtualFittingStep 긴급 설정 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 긴급 설정도 실패: {e}")
+            # 최소한의 속성들만
+            self.step_name = "VirtualFittingStep"
+            self.step_id = 6
+            self.device = "cpu"
+            self.ai_models = {}
+            self.loaded_models = []
+            self.fitting_ready = False
 
     # ==============================================
     # 🔥 Central Hub DI Container 연동 AI 모델 로딩
@@ -2084,6 +2479,206 @@ class VirtualFittingStep(BaseStepMixin):
             self.logger.error(f"❌ Central Hub Virtual Fitting 모델 로딩 실패: {e}")
             self._create_mock_virtual_fitting_models()
 
+    async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        🔥 VirtualFittingStep 메인 처리 메서드 (BaseStepMixin 표준)
+        외부에서 호출하는 핵심 인터페이스
+        """
+        try:
+            self.logger.info(f"🚀 {self.step_name} 처리 시작")
+            
+            # 1. 입력 데이터 검증
+            if not input_data:
+                raise ValueError("입력 데이터가 없습니다")
+            
+            # 2. 필수 필드 확인
+            required_fields = ['person_image', 'cloth_image']
+            for field in required_fields:
+                if field not in input_data:
+                    raise ValueError(f"필수 필드 '{field}'가 없습니다")
+            
+            # 3. 전처리 적용 (BaseStepMixin 표준)
+            if hasattr(self, '_apply_preprocessing'):
+                processed_input = await self._apply_preprocessing(input_data)
+            else:
+                processed_input = input_data.copy()
+            
+            # 4. AI 추론 실행 (핵심 로직)
+            result = self._run_ai_inference(processed_input)
+            
+            # 5. 후처리 적용 (BaseStepMixin 표준)
+            if hasattr(self, '_apply_postprocessing'):
+                final_result = await self._apply_postprocessing(result, input_data)
+            else:
+                final_result = result
+            
+            # 6. 성공 응답 반환
+            if final_result.get('success', True):
+                self.logger.info(f"✅ {self.step_name} 처리 완료")
+                return final_result
+            else:
+                self.logger.error(f"❌ {self.step_name} 처리 실패: {final_result.get('error')}")
+                return final_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 처리 중 오류: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': 0.0
+            }
+
+              
+    def initialize(self) -> bool:
+        """Step 초기화 (BaseStepMixin 표준)"""
+        try:
+            if self.is_initialized:
+                return True
+            
+            # 모델 로딩 확인
+            if not self.fitting_ready:
+                self.logger.warning("⚠️ Virtual Fitting 모델이 준비되지 않음")
+            
+            self.is_initialized = True
+            self.is_ready = self.fitting_ready
+            
+            self.logger.info(f"✅ {self.step_name} 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+            return False
+
+    def cleanup(self):
+        """Step 정리 (BaseStepMixin 표준)"""
+        try:
+            # AI 모델들 정리
+            if hasattr(self, 'ai_models'):
+                for model_name, model in self.ai_models.items():
+                    if hasattr(model, 'cleanup'):
+                        model.cleanup()
+            
+            # 메모리 정리
+            if TORCH_AVAILABLE:
+                try:
+                    import torch
+                    if torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                    elif torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except:
+                    pass
+            
+            self.logger.info(f"✅ {self.step_name} 정리 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Step 상태 반환 (BaseStepMixin 표준)"""
+        return {
+            'step_name': self.step_name,
+            'step_id': self.step_id,
+            'is_initialized': self.is_initialized,
+            'is_ready': self.is_ready,
+            'fitting_ready': self.fitting_ready,
+            'models_loaded': len(self.loaded_models),
+            'device': self.device,
+            'auxiliary_processors': {
+                'pose_processor': self.pose_processor is not None,
+                'lighting_adapter': self.lighting_adapter is not None,
+                'texture_enhancer': self.texture_enhancer is not None
+            }
+        }
+
+    async def _apply_preprocessing(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """전처리 적용 (BaseStepMixin 표준)"""
+        try:
+            processed = input_data.copy()
+            
+            # 기본 검증
+            if 'person_image' in processed and 'cloth_image' in processed:
+                # 이미지 전처리
+                processed['person_image'] = self._preprocess_image(processed['person_image'])
+                processed['cloth_image'] = self._preprocess_image(processed['cloth_image'])
+            
+            self.logger.debug(f"✅ {self.step_name} 전처리 완료")
+            return processed
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 전처리 실패: {e}")
+            return input_data
+        
+    async def _apply_postprocessing(self, ai_result: Dict[str, Any], original_input: Dict[str, Any]) -> Dict[str, Any]:
+        """후처리 적용 (BaseStepMixin 표준)"""
+        try:
+            processed = ai_result.copy()
+            
+            # 이미지 결과가 있으면 Base64로 변환 (API 응답용)
+            if 'fitted_image' in processed and processed['fitted_image'] is not None:
+                # Base64 변환은 필요시에만
+                pass
+            
+            self.logger.debug(f"✅ {self.step_name} 후처리 완료")
+            return processed
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 후처리 실패: {e}")
+            return ai_result
+    
+
+    def _load_detailed_data_spec_from_kwargs(self, **kwargs):
+        """DetailedDataSpec 로드 (BaseStepMixin 호환)"""
+        try:
+            # VirtualFittingStep용 기본 스펙
+            class VirtualFittingDataSpec:
+                def __init__(self):
+                    self.input_data_types = {
+                        'person_image': 'PIL.Image.Image',
+                        'cloth_image': 'PIL.Image.Image',
+                        'fitting_mode': 'str',
+                        'quality_level': 'str'
+                    }
+                    self.output_data_types = {
+                        'fitted_image': 'numpy.ndarray',
+                        'fitting_confidence': 'float',
+                        'success': 'bool'
+                    }
+                    self.preprocessing_steps = ['resize_768x1024', 'normalize']
+                    self.postprocessing_steps = ['denormalize', 'format_output']
+                    self.api_input_mapping = {
+                        'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
+                        'cloth_image': 'fastapi.UploadFile -> PIL.Image.Image'
+                    }
+                    self.api_output_mapping = {
+                        'fitted_image': 'numpy.ndarray -> base64_string',
+                        'success': 'bool -> bool'
+                    }
+            
+            return VirtualFittingDataSpec()
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DetailedDataSpec 로드 실패: {e}")
+            return None
+    
+    def _initialize_performance_stats(self):
+        """성능 통계 초기화 (BaseStepMixin 호환)"""
+        try:
+            self.performance_stats = {
+                'total_requests': 0,
+                'successful_requests': 0,
+                'failed_requests': 0,
+                'average_processing_time': 0.0,
+                'last_processing_time': 0.0
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 성능 통계 초기화 실패: {e}")
+            self.performance_stats = {}
+  
+    
     def _setup_diffusion_pipeline(self, diffusion_model):
         """Stable Diffusion 파이프라인 설정"""
         try:

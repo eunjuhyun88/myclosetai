@@ -52,23 +52,144 @@ if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader
     from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
 
-def _get_central_hub_container():
-    """Central Hub DI Container 안전한 동적 해결"""
+def get_base_step_mixin_class():
+    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - HumanParsing용"""
     try:
         import importlib
-        module = importlib.import_module('app.core.di_container')
-        get_global_fn = getattr(module, 'get_global_container', None)
-        if get_global_fn:
-            return get_global_fn()
-        return None
+        module = importlib.import_module('.base_step_mixin', package='app.ai_pipeline.steps')
+        return getattr(module, 'BaseStepMixin', None)
     except ImportError:
-        return None
-    except Exception:
-        return None
+        try:
+            # 폴백: 상대 경로
+            from .base_step_mixin import BaseStepMixin
+            return BaseStepMixin
+        except ImportError:
+            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
+            return None
+
+BaseStepMixin = get_base_step_mixin_class()
 
 # ==============================================
 # 🔥 필수 라이브러리 import
 # ==============================================
+# BaseStepMixin 폴백 클래스 (step_01_human_parsing.py용)
+if BaseStepMixin is None:
+    import asyncio
+    from typing import Dict, Any, Optional
+    
+    class BaseStepMixin:
+        """HumanParsingStep용 BaseStepMixin 폴백 클래스"""
+        
+        def __init__(self, **kwargs):
+            # 기본 속성들
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'HumanParsingStep')
+            self.step_id = kwargs.get('step_id', 1)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (HumanParsingStep이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {}
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.performance_stats = {
+                'total_processed': 0,
+                'avg_processing_time': 0.0,
+                'error_count': 0,
+                'success_rate': 1.0
+            }
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
+        
+        async def process(self, **kwargs) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(kwargs)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        async def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                # AI 모델들 정리
+                self.ai_models.clear()
+                self.loaded_models.clear()
+                
+                # 메모리 정리
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'models_loaded': len(self.loaded_models),
+                'fallback_mode': True
+            }
+
 
 # NumPy 필수
 try:

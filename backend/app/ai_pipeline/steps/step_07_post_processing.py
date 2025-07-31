@@ -60,10 +60,46 @@ if TYPE_CHECKING:
     from ..factories.step_factory import StepFactory
 
 # ==============================================
-# 🔥 BaseStepMixin 동적 import (순환참조 방지)
+# 🔥 Central Hub DI Container 안전 import (순환참조 방지) - PostProcessing 특화
 # ==============================================
+
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결 - PostProcessing용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입 - PostProcessing용"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회 - PostProcessing용"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+# BaseStepMixin 동적 import (순환참조 완전 방지) - PostProcessing 특화
 def get_base_step_mixin_class():
-    """BaseStepMixin 클래스를 동적으로 가져오기"""
+    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - PostProcessing용"""
     try:
         import importlib
         module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
@@ -74,39 +110,411 @@ def get_base_step_mixin_class():
 
 BaseStepMixin = get_base_step_mixin_class()
 
+# BaseStepMixin 폴백 클래스 (PostProcessing 특화)
 if BaseStepMixin is None:
-    # 폴백 클래스 정의
     class BaseStepMixin:
+        """PostProcessingStep용 BaseStepMixin 폴백 클래스"""
+        
         def __init__(self, **kwargs):
+            # 기본 속성들
             self.logger = logging.getLogger(self.__class__.__name__)
             self.step_name = kwargs.get('step_name', 'PostProcessingStep')
             self.step_id = kwargs.get('step_id', 7)
             self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (PostProcessing이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {
+                'esrgan': False,
+                'swinir': False,
+                'face_enhancement': False,
+                'real_esrgan': False,
+                'densenet': False
+            }
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # PostProcessing 특화 속성들
+            self.esrgan_model = None
+            self.swinir_model = None
+            self.face_enhancement_model = None
+            self.face_detector = None
+            self.enhancement_cache = {}
+            
+            # 상태 관련 속성들
             self.is_initialized = False
             self.is_ready = False
             self.has_model = False
             self.model_loaded = False
             self.warmup_completed = False
-            self.detailed_data_spec = None
             
-        async def initialize(self):
-            self.is_initialized = True
-            return True
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.processing_stats = {
+                'total_processed': 0,
+                'successful_enhancements': 0,
+                'average_improvement': 0.0,
+                'ai_inference_count': 0,
+                'cache_hits': 0
+            }
+            
+            # PostProcessing 설정
+            self.config = None
+            self.quality_level = 'high'
+            self.upscale_factor = 4
+            self.enhancement_strength = 0.8
+            self.enable_face_detection = True
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
         
-        def set_model_loader(self, model_loader):
-            self.model_loader = model_loader
+        def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+            """AI 추론 실행 - 폴백 구현"""
+            return {
+                "success": False,
+                "error": "BaseStepMixin 폴백 모드 - 실제 AI 모델 없음",
+                "step": self.step_name,
+                "enhanced_image": processed_input.get('fitted_image'),
+                "enhancement_quality": 0.0,
+                "enhancement_methods_used": [],
+                "inference_time": 0.0,
+                "ai_models_used": [],
+                "device": self.device,
+                "fallback_mode": True
+            }
         
-        def set_memory_manager(self, memory_manager):
-            self.memory_manager = memory_manager
+        async def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
+                
+                # Central Hub를 통한 의존성 주입 시도
+                injected_count = _inject_dependencies_safe(self)
+                if injected_count > 0:
+                    self.logger.info(f"✅ Central Hub 의존성 주입: {injected_count}개")
+                
+                # PostProcessing AI 모델들 로딩 (실제 구현에서는 _load_real_ai_models 호출)
+                if hasattr(self, '_load_real_ai_models'):
+                    await self._load_real_ai_models()
+                
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
         
-        def set_data_converter(self, data_converter):
-            self.data_converter = data_converter
-        
-        def set_di_container(self, di_container):
-            self.di_container = di_container
+        async def process(
+            self, 
+            fitting_result: Dict[str, Any],
+            enhancement_options: Optional[Dict[str, Any]] = None,
+            **kwargs
+        ) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # 입력 데이터 처리
+                processed_input = self._process_input_data(fitting_result) if hasattr(self, '_process_input_data') else {
+                    'fitted_image': fitting_result.get('fitted_image') or fitting_result.get('result_image'),
+                    'enhancement_options': enhancement_options
+                }
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(processed_input)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    # 결과 포맷팅
+                    if hasattr(self, '_format_result'):
+                        return self._format_result(result)
+                    else:
+                        return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
         
         async def cleanup(self):
-            pass
+            """정리 메서드"""
+            try:
+                self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
+                
+                # AI 모델들 정리
+                for model_name, model in self.ai_models.items():
+                    try:
+                        if hasattr(model, 'cleanup'):
+                            model.cleanup()
+                        if hasattr(model, 'cpu'):
+                            model.cpu()
+                        del model
+                    except Exception as e:
+                        self.logger.debug(f"모델 정리 실패 ({model_name}): {e}")
+                
+                # 개별 모델들 정리
+                models_to_clean = ['esrgan_model', 'swinir_model', 'face_enhancement_model', 'face_detector']
+                for model_attr in models_to_clean:
+                    if hasattr(self, model_attr):
+                        model = getattr(self, model_attr)
+                        if model is not None:
+                            try:
+                                if hasattr(model, 'cpu'):
+                                    model.cpu()
+                                del model
+                                setattr(self, model_attr, None)
+                            except Exception as e:
+                                self.logger.debug(f"{model_attr} 정리 실패: {e}")
+                
+                # 캐시 정리
+                self.ai_models.clear()
+                if hasattr(self, 'enhancement_cache'):
+                    self.enhancement_cache.clear()
+                
+                # GPU 메모리 정리
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except:
+                    pass
+                
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'models_loaded': len(getattr(self, 'ai_models', {})),
+                'enhancement_methods': [
+                    'super_resolution', 'face_enhancement', 
+                    'detail_enhancement', 'color_correction',
+                    'contrast_enhancement', 'noise_reduction'
+                ],
+                'quality_level': getattr(self, 'quality_level', 'high'),
+                'upscale_factor': getattr(self, 'upscale_factor', 4),
+                'enhancement_strength': getattr(self, 'enhancement_strength', 0.8),
+                'fallback_mode': True
+            }
+        
+        # BaseStepMixin 호환 메서드들
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.model_loader = model_loader
+                self.logger.info("✅ ModelLoader 의존성 주입 완료")
+                
+                # Step 인터페이스 생성 시도
+                if hasattr(model_loader, 'create_step_interface'):
+                    try:
+                        self.model_interface = model_loader.create_step_interface(self.step_name)
+                        self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                        self.model_interface = model_loader
+                else:
+                    self.model_interface = model_loader
+                    
+            except Exception as e:
+                self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+                self.model_loader = None
+                self.model_interface = None
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.memory_manager = memory_manager
+                self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.data_converter = data_converter
+                self.logger.info("✅ DataConverter 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            try:
+                self.di_container = di_container
+                self.logger.info("✅ DI Container 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
+
+        def _get_step_requirements(self) -> Dict[str, Any]:
+            """Step 07 PostProcessing 요구사항 반환 (BaseStepMixin 호환)"""
+            return {
+                "required_models": [
+                    "ESRGAN_x8.pth",
+                    "RealESRGAN_x4plus.pth",
+                    "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+                    "densenet161_enhance.pth",
+                    "pytorch_model.bin"
+                ],
+                "primary_model": "ESRGAN_x8.pth",
+                "model_configs": {
+                    "ESRGAN_x8.pth": {
+                        "size_mb": 135.9,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "upscale_factor": 8,
+                        "model_type": "super_resolution"
+                    },
+                    "RealESRGAN_x4plus.pth": {
+                        "size_mb": 63.9,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "upscale_factor": 4,
+                        "model_type": "super_resolution"
+                    },
+                    "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth": {
+                        "size_mb": 56.8,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "model_type": "detail_enhancement"
+                    },
+                    "densenet161_enhance.pth": {
+                        "size_mb": 110.6,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "model_type": "face_enhancement"
+                    },
+                    "pytorch_model.bin": {
+                        "size_mb": 823.0,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "model_type": "unified_post_processing"
+                    }
+                },
+                "verified_paths": [
+                    "step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth",
+                    "step_07_post_processing/ultra_models/RealESRGAN_x4plus.pth",
+                    "step_07_post_processing/ultra_models/001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+                    "step_07_post_processing/ultra_models/densenet161_enhance.pth",
+                    "step_07_post_processing/ultra_models/pytorch_model.bin"
+                ],
+                "enhancement_methods": [
+                    "super_resolution",
+                    "face_enhancement", 
+                    "detail_enhancement",
+                    "noise_reduction",
+                    "color_correction",
+                    "contrast_enhancement",
+                    "sharpening"
+                ],
+                "quality_levels": ["fast", "balanced", "high", "ultra"],
+                "upscale_factors": [2, 4, 8],
+                "face_detection": {
+                    "enabled": True,
+                    "method": "opencv_haar_cascade",
+                    "confidence_threshold": 0.5
+                }
+            }
+
+        def get_model(self, model_name: Optional[str] = None):
+            """모델 가져오기"""
+            if not model_name:
+                return getattr(self, 'esrgan_model', None) or \
+                       getattr(self, 'swinir_model', None) or \
+                       getattr(self, 'face_enhancement_model', None)
+            
+            return self.ai_models.get(model_name)
+        
+        async def get_model_async(self, model_name: Optional[str] = None):
+            """모델 가져오기 (비동기)"""
+            return self.get_model(model_name)
+
+        def _process_input_data(self, fitting_result: Dict[str, Any]) -> Dict[str, Any]:
+            """입력 데이터 처리 - 기본 구현"""
+            try:
+                fitted_image = fitting_result.get('fitted_image') or fitting_result.get('result_image')
+                
+                if fitted_image is None:
+                    raise ValueError("피팅된 이미지가 없습니다")
+                
+                return {
+                    'fitted_image': fitted_image,
+                    'metadata': fitting_result.get('metadata', {}),
+                    'confidence': fitting_result.get('confidence', 1.0)
+                }
+                
+            except Exception as e:
+                self.logger.error(f"입력 데이터 처리 실패: {e}")
+                raise
+
+        def _format_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+            """결과 포맷팅 - 기본 구현"""
+            try:
+                formatted_result = {
+                    'success': result.get('success', False),
+                    'message': f'후처리 완료 - 품질 개선: {result.get("enhancement_quality", 0):.1%}' if result.get('success') else result.get('error', '처리 실패'),
+                    'confidence': min(1.0, max(0.0, result.get('enhancement_quality', 0) + 0.7)) if result.get('success') else 0.0,
+                    'processing_time': result.get('inference_time', 0),
+                    'details': {
+                        'result_image': '',
+                        'overlay_image': '',
+                        'applied_methods': result.get('enhancement_methods_used', []),
+                        'quality_improvement': result.get('enhancement_quality', 0),
+                        'step_info': {
+                            'step_name': 'post_processing',
+                            'step_number': 7,
+                            'device': self.device,
+                            'fallback_mode': True
+                        }
+                    }
+                }
+                
+                if not result.get('success', False):
+                    formatted_result['error_message'] = result.get('error', '알 수 없는 오류')
+                
+                return formatted_result
+                
+            except Exception as e:
+                self.logger.error(f"결과 포맷팅 실패: {e}")
+                return {
+                    'success': False,
+                    'message': f'결과 포맷팅 실패: {e}',
+                    'confidence': 0.0,
+                    'processing_time': 0.0,
+                    'error_message': str(e)
+                }
+
 
 # ==============================================
 # 🔥 환경 및 시스템 정보
@@ -2341,6 +2749,7 @@ class PostProcessingStep(BaseStepMixin):
         """모델 가져오기 (비동기)"""
         return self.get_model(model_name)
     
+
     def get_status(self) -> Dict[str, Any]:
         """Step 상태 조회"""
         return {
@@ -2350,7 +2759,7 @@ class PostProcessingStep(BaseStepMixin):
             'is_ready': self.is_ready,
             'has_model': self.has_model,
             'device': self.device,
-            'ai_models_loaded': list(self.ai_models.keys()),
+            'ai_models_loaded': list(self.ai_models.keys()),  # 🔧 수정: eys() → keys()
             'models_count': len(self.ai_models),
             'processing_stats': self.processing_stats,
             'config': {
@@ -2367,7 +2776,10 @@ class PostProcessingStep(BaseStepMixin):
                 'mps_available': MPS_AVAILABLE
             }
         }
-    
+
+
+
+
     async def cleanup(self):
         """리소스 정리"""
         try:
@@ -2416,7 +2828,7 @@ class PostProcessingStep(BaseStepMixin):
             self.logger.info("✅ 후처리 시스템 정리 완료")
             
         except Exception as e:
-            self.logger.error(f"정리 과정에서 오류 발생: {e}")
+            self.logger.error(f"❌ 정리 작업 실패: {e}")
     
     def __del__(self):
         """소멸자"""
@@ -2810,4 +3222,4 @@ if __name__ == "__main__":
 
 🎯 MyCloset AI - Step 07 Post Processing v5.0
    BaseStepMixin v19.1 완전 호환 + 실제 AI 추론 시스템 완성!
-"""import threading
+"""

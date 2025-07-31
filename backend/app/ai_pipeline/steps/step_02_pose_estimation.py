@@ -55,6 +55,42 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+logger = logging.getLogger(__name__)
+
 # BaseStepMixin 동적 import (순환참조 완전 방지)
 def get_base_step_mixin_class():
     """BaseStepMixin 클래스를 동적으로 가져오기"""
@@ -67,6 +103,247 @@ def get_base_step_mixin_class():
         return None
 
 BaseStepMixin = get_base_step_mixin_class()
+
+# BaseStepMixin 폴백 클래스 (step_02_pose_estimation.py용)
+if BaseStepMixin is None:
+    import asyncio
+    from typing import Dict, Any, Optional, List
+    
+    class BaseStepMixin:
+        """PoseEstimationStep용 BaseStepMixin 폴백 클래스"""
+        
+        def __init__(self, **kwargs):
+            # 기본 속성들
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'PoseEstimationStep')
+            self.step_id = kwargs.get('step_id', 2)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (PoseEstimationStep이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {
+                'mediapipe': False,
+                'openpose': False,
+                'yolov8': False,
+                'hrnet': False,
+                'total_loaded': 0,
+                'loading_errors': []
+            }
+            self.model_interface = None
+            self.loaded_models = {}
+            
+            # Pose Estimation 특화 속성들
+            self.pose_models = {}
+            self.pose_ready = False
+            self.keypoints_cache = {}
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.performance_stats = {
+                'total_processed': 0,
+                'avg_processing_time': 0.0,
+                'error_count': 0,
+                'success_rate': 1.0
+            }
+            
+            # Pose Estimation 설정
+            self.confidence_threshold = 0.5
+            self.use_subpixel = True
+            
+            # 모델 우선순위 (MediaPipe 우선)
+            self.model_priority = [
+                'mediapipe',
+                'yolov8_pose', 
+                'openpose',
+                'hrnet'
+            ]
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
+        
+        async def process(self, **kwargs) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(kwargs)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        async def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
+                
+                # 포즈 모델들 로딩 (실제 구현에서는 _load_pose_models_via_central_hub 호출)
+                if hasattr(self, '_load_pose_models_via_central_hub'):
+                    loaded_count = self._load_pose_models_via_central_hub()
+                    if loaded_count == 0:
+                        self.logger.error("❌ 포즈 모델 로딩 실패 - 초기화 실패")
+                        return False
+                
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
+                
+                # AI 모델들 정리
+                for model_name, model in self.ai_models.items():
+                    try:
+                        if hasattr(model, 'cleanup'):
+                            model.cleanup()
+                        del model
+                    except Exception as e:
+                        self.logger.debug(f"모델 정리 실패 ({model_name}): {e}")
+                
+                # 캐시 정리
+                self.ai_models.clear()
+                if hasattr(self, 'pose_models'):
+                    self.pose_models.clear()
+                if hasattr(self, 'keypoints_cache'):
+                    self.keypoints_cache.clear()
+                
+                # GPU 메모리 정리
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except:
+                    pass
+                
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'pose_ready': getattr(self, 'pose_ready', False),
+                'models_loaded': len(getattr(self, 'loaded_models', {})),
+                'model_priority': getattr(self, 'model_priority', []),
+                'confidence_threshold': getattr(self, 'confidence_threshold', 0.5),
+                'use_subpixel': getattr(self, 'use_subpixel', True),
+                'fallback_mode': True
+            }
+        
+        def get_model_status(self) -> Dict[str, Any]:
+            """모델 상태 조회 (PoseEstimationStep 호환)"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'pose_ready': getattr(self, 'pose_ready', False),
+                'models_loading_status': getattr(self, 'models_loading_status', {}),
+                'loaded_models': list(getattr(self, 'ai_models', {}).keys()),
+                'model_priority': getattr(self, 'model_priority', []),
+                'confidence_threshold': getattr(self, 'confidence_threshold', 0.5),
+                'use_subpixel': getattr(self, 'use_subpixel', True)
+            }
+        
+        # BaseStepMixin 호환 메서드들
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.model_loader = model_loader
+                self.logger.info("✅ ModelLoader 의존성 주입 완료")
+                
+                # Step 인터페이스 생성 시도
+                if hasattr(model_loader, 'create_step_interface'):
+                    try:
+                        self.model_interface = model_loader.create_step_interface(self.step_name)
+                        self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                        self.model_interface = model_loader
+                else:
+                    self.model_interface = model_loader
+                    
+            except Exception as e:
+                self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+                self.model_loader = None
+                self.model_interface = None
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.memory_manager = memory_manager
+                self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.data_converter = data_converter
+                self.logger.info("✅ DataConverter 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            try:
+                self.di_container = di_container
+                self.logger.info("✅ DI Container 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
 
 # 필수 라이브러리 import
 try:

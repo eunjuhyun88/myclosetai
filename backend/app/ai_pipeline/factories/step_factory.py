@@ -443,6 +443,8 @@ class CentralHubStepConfig:
     optimization_enabled: bool = True
     quality_level: str = "balanced"
     strict_mode: bool = False
+    class_name: str = ""  # ← 이 필드 추가
+    module_path: str = ""  # ← 이 필드도 확인
     
     # Central Hub DI Container 설정
     auto_inject_dependencies: bool = True
@@ -1313,8 +1315,8 @@ class CentralHubStepMapping:
         StepType.HUMAN_PARSING: CentralHubStepConfig(
             step_name="HumanParsingStep",
             step_id=1,
-            class_name="HumanParsingStep",
             module_path="step_01_human_parsing",
+            class_name="HumanParsingStep",  # ← 지우면 안됨!
             require_model_loader=True,
             require_memory_manager=True
         ),

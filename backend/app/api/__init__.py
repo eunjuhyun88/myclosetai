@@ -23,6 +23,7 @@ API 엔드포인트:
 날짜: 2025-07-31
 버전: v8.1.0 (NameError Fixed)
 """
+import threading
 
 import logging
 import sys
