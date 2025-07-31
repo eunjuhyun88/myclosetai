@@ -249,9 +249,9 @@ if BaseStepMixin is None:
                     # 결과 포맷팅
                     if hasattr(self, '_format_result'):
                         return self._format_result(result)
-                    else:
+                        else:
                         return result
-                else:
+                    else:
                     # 기본 응답
                     return {
                         'success': False,
@@ -312,7 +312,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                except:
+                    except:
                     pass
                 
                 import gc
@@ -357,7 +357,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                else:
+                    else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -653,13 +653,13 @@ if TORCH_AVAILABLE:
                         self.load_state_dict(checkpoint['state_dict'], strict=False)
                     elif 'model' in checkpoint:
                         self.load_state_dict(checkpoint['model'], strict=False)
-                    else:
+                        else:
                         self.load_state_dict(checkpoint, strict=False)
                     
                     self.checkpoint_loaded = True
                     self.logger.info(f"✅ 지각적 품질 모델 체크포인트 로드 성공: {checkpoint_path}")
                     return True
-                else:
+                    else:
                     self.logger.warning(f"⚠️ 체크포인트 파일 없음: {checkpoint_path}")
                     return False
             except Exception as e:
@@ -759,7 +759,7 @@ if TORCH_AVAILABLE:
                     self.checkpoint_loaded = True
                     self.logger.info(f"✅ 미적 품질 모델 체크포인트 로드 성공: {checkpoint_path}")
                     return True
-                else:
+                    else:
                     self.logger.warning(f"⚠️ 체크포인트 파일 없음: {checkpoint_path}")
                     return False
             except Exception as e:
@@ -884,7 +884,7 @@ class TechnicalQualityAnalyzer:
         try:
             if len(image.shape) == 3:
                 gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-            else:
+                else:
                 gray = image
             
             laplacian = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_64F)
@@ -910,7 +910,7 @@ class TechnicalQualityAnalyzer:
                     noise_levels.append(noise_level)
                 
                 avg_noise = np.mean(noise_levels)
-            else:
+                else:
                 avg_noise = np.std(image) / 255.0
             
             # 노이즈가 적을수록 품질이 좋음 (역순)
@@ -924,7 +924,7 @@ class TechnicalQualityAnalyzer:
         try:
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-            else:
+                else:
                 gray = image
             
             contrast = np.std(gray)
@@ -934,7 +934,7 @@ class TechnicalQualityAnalyzer:
                 contrast_score = 1.0
             elif contrast < 30:
                 contrast_score = contrast / 30.0
-            else:
+                else:
                 contrast_score = max(0.3, 1.0 - (contrast - 80) / 100.0)
             
             return max(0.0, min(1.0, contrast_score))
@@ -952,7 +952,7 @@ class TechnicalQualityAnalyzer:
                 brightness_score = 1.0
             elif brightness < 100:
                 brightness_score = brightness / 100.0
-            else:
+                else:
                 brightness_score = max(0.3, 1.0 - (brightness - 160) / 95.0)
             
             return max(0.0, min(1.0, brightness_score))
@@ -983,7 +983,7 @@ class TechnicalQualityAnalyzer:
             # 정규화
             if total_weight > 0:
                 final_score = total_score / total_weight
-            else:
+                else:
                 final_score = 0.5
             
             return max(0.0, min(1.0, final_score))
@@ -1094,7 +1094,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 elif torch.cuda.is_available():
                     return "cuda"
             return "cpu"
-        except:
+            except:
             return "cpu"
     
     def _detect_m3_max(self) -> bool:
@@ -1111,11 +1111,11 @@ class QualityAssessmentStep(BaseStepMixin):
                                       capture_output=True, text=True, timeout=5)
                 cpu_info = result.stdout.strip().lower()
                 return 'apple m3' in cpu_info or 'apple m' in cpu_info
-            except:
+                except:
                 pass
             
             return TORCH_AVAILABLE and torch.backends.mps.is_available()
-        except:
+            except:
             return False
     
     def _emergency_setup(self, **kwargs):
@@ -1158,7 +1158,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     self.models_loading_status['perceptual_quality'] = True
                     self.loaded_models.append('perceptual_quality')
                     self.logger.info("✅ Perceptual Quality 모델 로딩 완료 (5.2GB)")
-                else:
+                    else:
                     self.logger.warning("⚠️ Perceptual Quality 모델 로딩 실패")
                     
             except Exception as e:
@@ -1442,7 +1442,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 image_array = np.array(image_pil)
             elif isinstance(image, np.ndarray):
                 image_array = image
-            else:
+                else:
                 raise ValueError("지원하지 않는 이미지 형식")
             
             # 크기 조정 (품질 평가 표준)
@@ -1468,7 +1468,7 @@ class QualityAssessmentStep(BaseStepMixin):
         try:
             if self.technical_analyzer:
                 return self.technical_analyzer.analyze(image)
-            else:
+                else:
                 return {
                     'sharpness': 0.6,
                     'noise_level': 0.7,
@@ -1511,7 +1511,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 pytorch_results = self._run_pytorch_perceptual_model(perceptual_model, image)
                 advanced_metrics = self._calculate_advanced_quality_metrics(image)
                 return {**pytorch_results, **advanced_metrics}
-            else:
+                else:
                 # 폴백 결과 (고급 메트릭 포함)
                 return {
                     'perceptual_overall': 0.7,
@@ -1583,7 +1583,7 @@ class QualityAssessmentStep(BaseStepMixin):
             if clip_model and hasattr(clip_model, 'checkpoint_loaded') and clip_model.checkpoint_loaded:
                 # 실제 CLIP 모델을 사용한 점수 계산
                 return self._calculate_real_clip_score(image, clip_model)
-            else:
+                else:
                 # 간소화된 CLIP Score 추정
                 return self._calculate_simplified_clip_score(image)
                 
@@ -1612,7 +1612,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 if image_tensor.shape[2] == 3:  # HWC -> CHW
                     image_tensor = image_tensor.permute(2, 0, 1)
                 image_tensor = image_tensor.unsqueeze(0)  # 배치 차원
-            else:
+                else:
                 image_tensor = torch.from_numpy(image).unsqueeze(0).unsqueeze(0).float()
             
             image_tensor = image_tensor.to(self.device)
@@ -1632,7 +1632,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     image_features = clip_model.feature_extractor(image_tensor)
                     if len(image_features.shape) > 1:
                         image_features = image_features.flatten(1)  # (batch, features)
-                else:
+                    else:
                     # 폴백: 간단한 특징 추출
                     image_features = torch.mean(image_tensor.view(image_tensor.size(0), -1), dim=1, keepdim=True)
             
@@ -1652,7 +1652,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     # 자연스러움 관련 프롬프트
                     feature_variance = torch.std(image_features).item()
                     score = min(1.0, 1.0 - feature_variance * 0.5)
-                else:
+                    else:
                     # 기본 점수
                     score = torch.sigmoid(torch.mean(image_features)).item()
                 
@@ -1697,7 +1697,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 clip_score = 0.4 + clip_score * 0.5
                 
                 return max(0.0, min(1.0, clip_score))
-            else:
+                else:
                 return 0.65  # 기본값
                 
         except Exception:
@@ -1709,7 +1709,7 @@ class QualityAssessmentStep(BaseStepMixin):
             # 간단한 PSNR 계산 (참조 이미지가 없으므로 자체 노이즈 기준)
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-            else:
+                else:
                 gray = image
             
             # 이미지의 신호 품질 추정
@@ -1719,7 +1719,7 @@ class QualityAssessmentStep(BaseStepMixin):
             if noise_estimate > 0:
                 psnr = 10 * np.log10(signal_power / noise_estimate)
                 return max(15.0, min(40.0, psnr))  # 15-40 dB 범위로 클리핑
-            else:
+                else:
                 return 35.0  # 기본값
                 
         except Exception:
@@ -1746,7 +1746,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 
                 fid_estimate = np.sqrt(mean_diff + var_diff) / 10.0
                 return max(5.0, min(50.0, fid_estimate))
-            else:
+                else:
                 return 15.6  # 기본값
                 
         except Exception:
@@ -1771,7 +1771,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 
                 inception_score = 2.0 + 2.0 * (diversity_score + complexity_score)
                 return max(1.0, min(5.0, inception_score))
-            else:
+                else:
                 return 3.2  # 기본값
                 
         except Exception:
@@ -1805,7 +1805,7 @@ class QualityAssessmentStep(BaseStepMixin):
         try:
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-            else:
+                else:
                 gray = image
             
             # 텍스처 분석을 위한 gradient 계산
@@ -1830,7 +1830,7 @@ class QualityAssessmentStep(BaseStepMixin):
         try:
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-            else:
+                else:
                 gray = image
             
             # Canny edge detection (간소화)
@@ -1846,7 +1846,7 @@ class QualityAssessmentStep(BaseStepMixin):
             if np.any(strong_edges):
                 edge_smoothness = 1.0 - np.std(gradient_magnitude[strong_edges]) / (np.mean(gradient_magnitude[strong_edges]) + 1e-8)
                 return max(0.0, min(1.0, edge_smoothness))
-            else:
+                else:
                 return 0.8  # 경계가 거의 없으면 자연스럽다고 가정
                 
         except Exception:
@@ -1858,7 +1858,7 @@ class QualityAssessmentStep(BaseStepMixin):
             # 이미지의 세부사항 보존 정도 측정
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-            else:
+                else:
                 gray = image
             
             # 고주파 성분 분석
@@ -1898,7 +1898,7 @@ class QualityAssessmentStep(BaseStepMixin):
             elif aesthetic_model and TORCH_AVAILABLE:
                 # 실제 PyTorch 모델인 경우
                 return self._run_pytorch_aesthetic_model(aesthetic_model, image)
-            else:
+                else:
                 # 폴백 결과
                 return {
                     'aesthetic_overall': 0.75,
@@ -1939,7 +1939,7 @@ class QualityAssessmentStep(BaseStepMixin):
             similarities = [v for k, v in results.items() if 'similarity' in k or 'quality' in k]
             if similarities:
                 results['comparison_overall'] = np.mean(similarities)
-            else:
+                else:
                 results['comparison_overall'] = 0.7  # 기본값
             
             return results
@@ -1968,7 +1968,7 @@ class QualityAssessmentStep(BaseStepMixin):
             fit_scores = [v for k, v in metrics.items() if k.startswith('fit_') and k != 'fit_overall']
             if fit_scores:
                 metrics['fit_overall'] = np.mean(fit_scores)
-            else:
+                else:
                 metrics['fit_overall'] = 0.75
             
             return metrics
@@ -2001,7 +2001,7 @@ class QualityAssessmentStep(BaseStepMixin):
                         return min(1.0, coverage_ratio / 0.3)
                     elif coverage_ratio < 0.1:
                         return coverage_ratio / 0.1
-                    else:
+                        else:
                         return max(0.7, 1.0 - (coverage_ratio - 0.4) / 0.3)
             
             # Step 01 (Human Parsing) 데이터 활용
@@ -2100,7 +2100,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 # 약간의 보정 (사용자는 보통 조금 더 까다로움)
                 satisfaction = satisfaction * 0.95
                 return max(0.0, min(1.0, satisfaction))
-            else:
+                else:
                 return 0.83
                 
         except Exception:
@@ -2151,7 +2151,7 @@ class QualityAssessmentStep(BaseStepMixin):
         try:
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-            else:
+                else:
                 gray = image
             
             # 수직선과 수평선의 일관성 확인
@@ -2178,7 +2178,7 @@ class QualityAssessmentStep(BaseStepMixin):
             # 일반적인 인체 비율과 비교 (7-8 head heights)
             if 1.2 <= aspect_ratio <= 2.5:  # 적절한 인체 비율
                 ratio_score = 1.0
-            else:
+                else:
                 ratio_score = max(0.5, 1.0 - abs(aspect_ratio - 1.8) / 2.0)
             
             return max(0.0, min(1.0, ratio_score))
@@ -2226,7 +2226,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     'realism': float(output.get('realism', torch.tensor(0.7)).item()),
                     'perceptual_confidence': float(output.get('confidence', torch.tensor(0.6)).item())
                 }
-            else:
+                else:
                 # 단일 텐서 출력
                 score = float(output.item()) if hasattr(output, 'item') else float(output)
                 return {
@@ -2255,7 +2255,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 for key, value in output.items():
                     if hasattr(value, 'item'):
                         results[f'aesthetic_{key}'] = float(value.item())
-                    else:
+                        else:
                         results[f'aesthetic_{key}'] = float(value)
                 
                 # 종합 점수 계산
@@ -2264,7 +2264,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     results['aesthetic_overall'] = np.mean(aesthetic_scores) if aesthetic_scores else 0.75
                 
                 return results
-            else:
+                else:
                 # 단일 텐서 출력
                 score = float(output.item()) if hasattr(output, 'item') else float(output)
                 return {
@@ -2312,9 +2312,9 @@ class QualityAssessmentStep(BaseStepMixin):
                         channel_sim = ssim(image1[:, :, i], image2[:, :, i], data_range=255)
                         similarity += channel_sim
                     similarity /= 3
-                else:
+                    else:
                     similarity = ssim(image1, image2, data_range=255)
-            else:
+                else:
                 # 간단한 MSE 기반 유사도
                 mse = np.mean((image1.astype(float) - image2.astype(float)) ** 2)
                 similarity = max(0.0, 1.0 - mse / 65025.0)  # 255^2로 정규화
@@ -2348,7 +2348,7 @@ class QualityAssessmentStep(BaseStepMixin):
             # 정규화
             if total_weight > 0:
                 overall_score = weighted_sum / total_weight
-            else:
+                else:
                 overall_score = 0.6  # 폴백 점수
             
             return max(0.0, min(1.0, overall_score))
@@ -2373,7 +2373,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 std_dev = np.std(all_scores)
                 confidence = max(0.3, 1.0 - std_dev)
                 return min(1.0, confidence)
-            else:
+                else:
                 return 0.6
         except Exception:
             return 0.6
@@ -2392,7 +2392,7 @@ class QualityAssessmentStep(BaseStepMixin):
                 recommendations.append("👍 양호한 품질의 결과입니다.")
             elif overall_quality >= 0.6:
                 recommendations.append("⚠️ 품질을 개선할 여지가 있습니다.")
-            else:
+                else:
                 recommendations.append("🔧 품질 개선이 필요합니다.")            
             # 세부 영역별 권장사항
             if technical.get('sharpness', 0.5) < 0.6:
@@ -2411,7 +2411,7 @@ class QualityAssessmentStep(BaseStepMixin):
             if len(recommendations) == 1:
                 if overall_quality >= 0.8:
                     recommendations.append("• 현재 설정을 유지하시면 좋겠습니다.")
-                else:
+                    else:
                     recommendations.append("• 더 높은 해상도의 이미지를 사용해보세요.")
             
             return recommendations
@@ -2429,7 +2429,7 @@ class QualityAssessmentStep(BaseStepMixin):
             return QualityGrade.ACCEPTABLE.value
         elif overall_quality >= self.quality_thresholds['poor']:
             return QualityGrade.POOR.value
-        else:
+            else:
             return QualityGrade.FAILED.value
 
     def _create_error_response(self, error_message: str, processing_time: float = 0.0) -> Dict[str, Any]:
@@ -2506,7 +2506,7 @@ class QualityAssessmentStep(BaseStepMixin):
                     if hasattr(model, 'cpu'):
                         model.cpu()
                     del model
-                except:
+                    except:
                     pass
             
             self.ai_models.clear()

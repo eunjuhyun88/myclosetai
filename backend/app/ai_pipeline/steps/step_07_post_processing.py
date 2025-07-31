@@ -56,7 +56,7 @@ from contextlib import asynccontextmanager
 # 🔥 TYPE_CHECKING으로 순환참조 방지
 # ==============================================
 if TYPE_CHECKING:
-    from app.ai_pipeline.utils.model_loader import ModelLoader
+    # from app.ai_pipeline.utils.model_loader import ModelLoader  # 순환참조로 지연 import
     from ..factories.step_factory import StepFactory
 
 # ==============================================
@@ -241,9 +241,9 @@ if BaseStepMixin is None:
                     # 결과 포맷팅
                     if hasattr(self, '_format_result'):
                         return self._format_result(result)
-                    else:
+                        else:
                         return result
-                else:
+                    else:
                     # 기본 응답
                     return {
                         'success': False,
@@ -305,7 +305,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                except:
+                    except:
                     pass
                 
                 import gc
@@ -350,7 +350,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                else:
+                    else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -537,7 +537,7 @@ def detect_m3_max() -> bool:
                 capture_output=True, text=True, timeout=5
             )
             return 'M3' in result.stdout
-    except:
+        except:
         pass
     return False
 
@@ -992,7 +992,7 @@ class PostProcessingStep(BaseStepMixin):
                 try:
                     if hasattr(self.model_loader, 'get_model_async'):
                         checkpoint = await self.model_loader.get_model_async('post_processing_esrgan')
-                    else:
+                        else:
                         checkpoint = self.model_loader.get_model('post_processing_esrgan')
                 except Exception as e:
                     self.logger.debug(f"ModelLoader를 통한 ESRGAN 로딩 실패: {e}")
@@ -1022,7 +1022,7 @@ class PostProcessingStep(BaseStepMixin):
                 self.esrgan_model.eval()
                 self.ai_models['esrgan'] = self.esrgan_model
                 self.logger.info("✅ ESRGAN 모델 로딩 성공")
-            else:
+                else:
                 # 기본 모델 생성
                 self.esrgan_model = ESRGANModel(upscale=4).to(self.device)
                 self.esrgan_model.eval()
@@ -1107,7 +1107,7 @@ class PostProcessingStep(BaseStepMixin):
             if self.face_detector.empty():
                 self.face_detector = None
                 self.logger.warning("⚠️ 얼굴 검출기 로드 실패")
-            else:
+                else:
                 self.logger.info("✅ 얼굴 검출기 초기화 완료")
                 
         except Exception as e:
@@ -1121,7 +1121,7 @@ class PostProcessingStep(BaseStepMixin):
                 self.logger.info("🍎 M3 Max MPS 가속 준비 완료")
             elif self.device == 'cuda':
                 self.logger.info("🚀 CUDA 가속 준비 완료")
-            else:
+                else:
                 self.logger.info("💻 CPU 모드에서 실행")
                 
         except Exception as e:
@@ -1300,13 +1300,13 @@ class PostProcessingStep(BaseStepMixin):
                 if image.dtype != np.uint8:
                     if image.max() <= 1.0:
                         image = (image * 255).astype(np.uint8)
-                    else:
+                        else:
                         image = np.clip(image, 0, 255).astype(np.uint8)
                 
                 pil_image = Image.fromarray(image)
                 return self._preprocess_image_for_ai(pil_image)
             
-            else:
+                else:
                 raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
                 
         except Exception as e:
@@ -1419,7 +1419,7 @@ class PostProcessingStep(BaseStepMixin):
             # 0-255 범위로 변환
             if image_np.max() <= 1.0:
                 image_np = (image_np * 255).astype(np.uint8)
-            else:
+                else:
                 image_np = image_np.astype(np.uint8)
             
             # 그레이스케일 변환
@@ -1530,7 +1530,7 @@ class PostProcessingStep(BaseStepMixin):
                 original_np = np.array(original_image)
             elif isinstance(original_image, np.ndarray):
                 original_np = original_image
-            else:
+                else:
                 return 0.5
             
             # 크기 맞춤
@@ -1539,7 +1539,7 @@ class PostProcessingStep(BaseStepMixin):
                     original_pil = Image.fromarray(original_np)
                     original_pil = original_pil.resize(enhanced_image.shape[:2][::-1], Image.LANCZOS)
                     original_np = np.array(original_pil)
-                else:
+                    else:
                     return 0.5
             
             # 간단한 품질 메트릭
@@ -1579,12 +1579,12 @@ class PostProcessingStep(BaseStepMixin):
                 # OpenCV bilateral filter
                 denoised = cv2.bilateralFilter(image, 9, 75, 75)
                 return denoised
-            else:
+                else:
                 # 기본적인 가우시안 블러
                 if SCIPY_AVAILABLE:
                     denoised = gaussian_filter(image, sigma=1.0)
                     return denoised.astype(np.uint8)
-                else:
+                    else:
                     return image
                 
         except Exception as e:
@@ -1772,7 +1772,7 @@ class PostProcessingStep(BaseStepMixin):
                         x2 = int(detections[0, 0, i, 5] * w)
                         y2 = int(detections[0, 0, i, 6] * h)
                         faces.append((x1, y1, x2 - x1, y2 - y1))
-            else:
+                else:
                 # Haar Cascade 검출기
                 gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
                 detected_faces = self.face_detector.detectMultiScale(
@@ -1950,7 +1950,7 @@ class PostProcessingStep(BaseStepMixin):
                         original_image, enhanced_image, result
                     )
                     visualizations['before_after_comparison'] = self._numpy_to_base64(before_after)
-                else:
+                    else:
                     visualizations['before_after_comparison'] = ''
                 
                 # 2. 향상 세부사항 시각화
@@ -1959,7 +1959,7 @@ class PostProcessingStep(BaseStepMixin):
                         original_image, enhanced_image, result, options
                     )
                     visualizations['enhancement_details'] = self._numpy_to_base64(enhancement_details)
-                else:
+                    else:
                     visualizations['enhancement_details'] = ''
                 
                 # 3. 품질 메트릭 시각화
@@ -2016,12 +2016,12 @@ class PostProcessingStep(BaseStepMixin):
                 title_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
                 subtitle_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 16)
                 text_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 14)
-            except:
+                except:
                 try:
                     title_font = ImageFont.load_default()
                     subtitle_font = ImageFont.load_default()
                     text_font = ImageFont.load_default()
-                except:
+                    except:
                     # 텍스트 없이 이미지만 반환
                     return np.array(canvas_pil)
             
@@ -2052,7 +2052,7 @@ class PostProcessingStep(BaseStepMixin):
             # 폴백: 기본 이미지
             if NUMPY_AVAILABLE:
                 return np.ones((600, 1100, 3), dtype=np.uint8) * 200
-            else:
+                else:
                 return None
     
     def _create_enhancement_details_visualization(
@@ -2087,7 +2087,7 @@ class PostProcessingStep(BaseStepMixin):
             
             try:
                 font = ImageFont.load_default()
-            except:
+                except:
                 return np.array(canvas_pil)
             
             # 라벨
@@ -2109,7 +2109,7 @@ class PostProcessingStep(BaseStepMixin):
             self.logger.warning(f"⚠️ 향상 세부사항 시각화 실패: {e}")
             if NUMPY_AVAILABLE:
                 return np.ones((400, 800, 3), dtype=np.uint8) * 200
-            else:
+                else:
                 return None
     
     def _create_quality_metrics_visualization(
@@ -2134,7 +2134,7 @@ class PostProcessingStep(BaseStepMixin):
             try:
                 title_font = ImageFont.load_default()
                 text_font = ImageFont.load_default()
-            except:
+                except:
                 return np.array(canvas_pil)
             
             # 제목
@@ -2167,7 +2167,7 @@ class PostProcessingStep(BaseStepMixin):
             self.logger.warning(f"⚠️ 품질 메트릭 시각화 실패: {e}")
             if NUMPY_AVAILABLE:
                 return np.ones((300, 400, 3), dtype=np.uint8) * 200
-            else:
+                else:
                 return None
     
     def _numpy_to_base64(self, image) -> str:
@@ -2187,7 +2187,7 @@ class PostProcessingStep(BaseStepMixin):
                 # float 타입인 경우 0-1 범위를 0-255로 변환
                 if image.max() <= 1.0:
                     image = (image * 255).astype(np.uint8)
-                else:
+                    else:
                     image = np.clip(image, 0, 255).astype(np.uint8)
             
             # 3. 차원 검증 및 수정
@@ -2358,14 +2358,14 @@ class PostProcessingStep(BaseStepMixin):
                 if PIL_AVAILABLE:
                     image_pil = Image.open(BytesIO(image_data)).convert('RGB')
                     fitted_image = np.array(image_pil) if NUMPY_AVAILABLE else image_pil
-                else:
+                    else:
                     raise ValueError("PIL이 없어서 base64 이미지 처리 불가")
                     
             elif TORCH_AVAILABLE and isinstance(fitted_image, torch.Tensor):
                 # PyTorch 텐서 처리
                 if self.data_converter:
                     fitted_image = self.data_converter.tensor_to_numpy(fitted_image)
-                else:
+                    else:
                     fitted_image = fitted_image.detach().cpu().numpy()
                     if fitted_image.ndim == 4:
                         fitted_image = fitted_image.squeeze(0)
@@ -2376,7 +2376,7 @@ class PostProcessingStep(BaseStepMixin):
             elif PIL_AVAILABLE and isinstance(fitted_image, Image.Image):
                 if NUMPY_AVAILABLE:
                     fitted_image = np.array(fitted_image.convert('RGB'))
-                else:
+                    else:
                     fitted_image = fitted_image.convert('RGB')
                     
             elif not NUMPY_AVAILABLE or not isinstance(fitted_image, np.ndarray):
@@ -2554,7 +2554,7 @@ class PostProcessingStep(BaseStepMixin):
                 image_hash = hashlib.md5(fitted_image.encode()).hexdigest()[:16]
             elif NUMPY_AVAILABLE and isinstance(fitted_image, np.ndarray):
                 image_hash = hashlib.md5(fitted_image.tobytes()).hexdigest()[:16]
-            else:
+                else:
                 image_hash = str(hash(str(fitted_image)))[:16]
             
             # 옵션 해시
@@ -2690,14 +2690,14 @@ class PostProcessingStep(BaseStepMixin):
                 if enhanced_image is not None:
                     if NUMPY_AVAILABLE and isinstance(enhanced_image, np.ndarray):
                         formatted_result['enhanced_image'] = enhanced_image.tolist()
-                    else:
+                        else:
                         formatted_result['enhanced_image'] = enhanced_image
                 
                 formatted_result.update({
                     'applied_methods': result.get('enhancement_methods_used', []),
                     'metadata': result.get('metadata', {})
                 })
-            else:
+                else:
                 # 에러 시 기본 구조
                 formatted_result['details'] = {
                     'result_image': '',
@@ -3044,7 +3044,7 @@ if __name__ == "__main__":
                     print(f"   - 추론 시간: {ai_result['inference_time']:.3f}초")
                     print(f"   - 사용된 AI 모델: {ai_result['ai_models_used']}")
                     print(f"   - 출력 해상도: {ai_result['metadata']['output_resolution']}")
-                else:
+                    else:
                     print(f"❌ AI 추론 실패: {ai_result.get('error', 'Unknown error')}")
             
             # 정리
@@ -3118,7 +3118,7 @@ if __name__ == "__main__":
             
             if not missing_methods:
                 print("✅ 필수 메서드 모두 구현됨")
-            else:
+                else:
                 print(f"❌ 누락된 메서드: {missing_methods}")
             
             # 동기 _run_ai_inference 확인

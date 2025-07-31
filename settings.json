@@ -1,6 +1,6 @@
 // settings.json에 추가
 {
     "files.hotExit": "off",
-    "files.autoSave": "onFocusChange",
+    "files.autoSave": "off",
     "files.enableTrash": false
 }

@@ -49,7 +49,7 @@ from contextlib import asynccontextmanager
 
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:
-    from app.ai_pipeline.utils.model_loader import ModelLoader
+    # from app.ai_pipeline.utils.model_loader import ModelLoader  # 순환참조로 지연 import
     from ..factories.step_factory import StepFactory
     from ..steps.base_step_mixin import BaseStepMixin
 
@@ -188,7 +188,7 @@ if BaseStepMixin is None:
                         result['step_id'] = self.step_id
                     
                     return result
-                else:
+                    else:
                     # 기본 응답
                     return {
                         'success': False,
@@ -259,7 +259,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                except:
+                    except:
                     pass
                 
                 import gc
@@ -313,7 +313,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                else:
+                    else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -362,7 +362,7 @@ try:
         torch.mps.set_per_process_memory_fraction(0.7)
     elif torch.cuda.is_available():
         DEVICE = "cuda"
-    else:
+        else:
         DEVICE = "cpu"
         
 except ImportError as e:
@@ -534,7 +534,7 @@ class MediaPoseModel:
                 if image_np.shape[0] == 3:  # CHW -> HWC
                     image_np = np.transpose(image_np, (1, 2, 0))
                 image_np = (image_np * 255).astype(np.uint8)
-            else:
+                else:
                 image_np = image
             
             # RGB 변환
@@ -630,7 +630,7 @@ class YOLOv8PoseModel:
             if self.model_path and self.model_path.exists():
                 self.model = YOLO(str(self.model_path))
                 self.logger.info(f"✅ YOLOv8 체크포인트 로딩: {self.model_path}")
-            else:
+                else:
                 # 사전 훈련된 모델 사용
                 self.model = YOLO('yolov8n-pose.pt')
                 self.logger.info("✅ YOLOv8 사전 훈련 모델 로딩")
@@ -715,7 +715,7 @@ class OpenPoseModel:
                 self.loaded = True
                 self.logger.info(f"✅ OpenPose 체크포인트 로딩: {self.model_path}")
                 return True
-            else:
+                else:
                 # 간단한 모델 생성 (체크포인트 없는 경우)
                 self.model = self._create_simple_pose_model()
                 self.model.eval()
@@ -791,7 +791,7 @@ class OpenPoseModel:
                 image_tensor = to_tensor(image).unsqueeze(0).to(DEVICE)
             elif isinstance(image, np.ndarray):
                 image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float().to(DEVICE) / 255.0
-            else:
+                else:
                 image_tensor = image.to(DEVICE)
             
             # 실제 AI 추론 실행
@@ -800,7 +800,7 @@ class OpenPoseModel:
                 
                 if len(output.shape) == 4:  # 히트맵 출력
                     keypoints = self._extract_keypoints_from_heatmaps(output[0])
-                else:  # 직접 좌표 출력
+                    else:  # 직접 좌표 출력
                     keypoints = output[0].cpu().numpy()
                     # 좌표 정규화
                     h, w = image_tensor.shape[-2:]
@@ -848,7 +848,7 @@ class OpenPoseModel:
                 y = float(y_idx / h * 512)
                 
                 keypoints.append([x, y, confidence])
-            else:
+                else:
                 keypoints.append([0.0, 0.0, 0.0])
         
         return keypoints
@@ -872,7 +872,7 @@ class HRNetModel:
                 checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
                 self.model.load_state_dict(checkpoint, strict=False)
                 self.logger.info(f"✅ HRNet 체크포인트 로딩: {self.model_path}")
-            else:
+                else:
                 self.logger.info("✅ HRNet 베이스 모델 생성")
             
             self.model.eval()
@@ -923,7 +923,7 @@ class HRNetModel:
                 image_tensor = transforms.ToTensor()(image).unsqueeze(0).to(DEVICE)
             elif isinstance(image, np.ndarray):
                 image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float().to(DEVICE) / 255.0
-            else:
+                else:
                 image_tensor = image.to(DEVICE)
             
             # 입력 크기 정규화 (256x192)
@@ -941,7 +941,7 @@ class HRNetModel:
                 orig_w, orig_h = image.size
             elif isinstance(image, np.ndarray):
                 orig_h, orig_w = image.shape[:2]
-            else:
+                else:
                 orig_h, orig_w = 256, 192
             
             # 좌표 스케일링
@@ -1002,7 +1002,7 @@ class HRNetModel:
                     # 서브픽셀 좌표
                     x_subpixel = x_idx + dx
                     y_subpixel = y_idx + dy
-                else:
+                    else:
                     x_subpixel = x_idx
                     y_subpixel = y_idx
                 
@@ -1016,7 +1016,7 @@ class HRNetModel:
                 confidence = float(max_val)
                 
                 keypoints.append([x_coord, y_coord, confidence])
-            else:
+                else:
                 keypoints.append([0.0, 0.0, 0.0])
         
         return keypoints
@@ -1044,7 +1044,7 @@ class PoseAnalyzer:
                 angle = np.arccos(cos_angle)
                 
                 return np.degrees(angle)
-            except:
+                except:
                 return 0.0
         
         if len(keypoints) >= 17:
@@ -1094,7 +1094,7 @@ class PoseAnalyzer:
                     height = np.linalg.norm(
                         np.array(keypoints[0][:2]) - np.array(keypoints[15][:2])
                     )
-                else:
+                    else:
                     height = np.linalg.norm(
                         np.array(keypoints[0][:2]) - np.array(keypoints[16][:2])
                     )
@@ -1133,7 +1133,7 @@ class PoseAnalyzer:
             quality_grade = PoseQuality.GOOD
         elif overall_score >= 0.6:
             quality_grade = PoseQuality.ACCEPTABLE
-        else:
+            else:
             quality_grade = PoseQuality.POOR
         
         assessment.update({
@@ -1275,7 +1275,7 @@ class PoseEstimationStep(BaseStepMixin):
                 self.logger.warning(f"⚠️ HRNet 모델 로딩 실패: {e}")
                 self.models_loading_status['loading_errors'].append(f"HRNet: {e}")
         
-        else:
+            else:
             # 폴백: MediaPipe만 로딩 시도
             self.logger.warning("⚠️ ModelLoader가 없음 - MediaPipe만 로딩 시도")
             try:
@@ -1292,7 +1292,7 @@ class PoseEstimationStep(BaseStepMixin):
         
         if loaded_count > 0:
             self.logger.info(f"🎉 포즈 모델 로딩 완료: {loaded_count}개")
-        else:
+            else:
             self.logger.error("❌ 모든 포즈 모델 로딩 실패")
         
         return loaded_count
@@ -1375,7 +1375,7 @@ class PoseEstimationStep(BaseStepMixin):
                             
                             self.logger.debug(f"✅ {model_key} 성공 (신뢰도: {confidence:.3f})")
                             
-                        else:
+                            else:
                             self.logger.debug(f"⚠️ {model_key} 실패: {result.get('error', 'Unknown')}")
                             
                     except Exception as e:
@@ -1511,7 +1511,7 @@ class PoseEstimationStep(BaseStepMixin):
                 except Exception as e:
                     self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                     self.model_interface = model_loader
-            else:
+                else:
                 self.model_interface = model_loader
                 
         except Exception as e:
@@ -1623,7 +1623,7 @@ def draw_pose_on_image(
     try:
         if isinstance(image, np.ndarray):
             pil_image = Image.fromarray(image)
-        else:
+            else:
             pil_image = image.copy()
         
         draw = ImageDraw.Draw(pil_image)
@@ -1917,7 +1917,7 @@ async def test_pose_estimation():
             print(f"🏆 사용된 모델: {result.get('model_used', 'unknown')}")
             print(f"⚡ 추론 시간: {result.get('processing_time', 0):.3f}초")
             print(f"🔍 실제 AI 추론: {result.get('real_ai_inference', False)}")
-        else:
+            else:
             print(f"❌ 포즈 추정 실패: {result.get('error', 'Unknown')}")
         
         await step.cleanup()

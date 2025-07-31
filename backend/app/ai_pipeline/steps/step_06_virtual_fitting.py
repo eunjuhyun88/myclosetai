@@ -219,7 +219,7 @@ if BaseStepMixin is None:
                         result['step_id'] = self.step_id
                     
                     return result
-                else:
+                    else:
                     # 기본 응답
                     return {
                         'success': False,
@@ -297,7 +297,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                except:
+                    except:
                     pass
                 
                 import gc
@@ -342,7 +342,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                else:
+                    else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -736,7 +736,7 @@ class TPSWarping:
                                      wb * image[y0, x1, c] + 
                                      wc * image[y1, x0, c] + 
                                      wd * image[y1, x1, c])
-            else:
+                else:
                 warped = (wa * image[y0, x0] + 
                          wb * image[y0, x1] + 
                          wc * image[y1, x0] + 
@@ -1116,7 +1116,7 @@ class AIQualityAssessment:
             if len(fitted_image.shape) == 3:
                 fitted_gray = np.mean(fitted_image, axis=2)
                 person_gray = np.mean(person_image, axis=2)
-            else:
+                else:
                 fitted_gray = fitted_image
                 person_gray = person_image
             
@@ -1297,7 +1297,7 @@ class AIQualityAssessment:
                 prompt = f"{base_prompt} fashionable pants, high quality, realistic, well-fitted"
             elif fitting_mode == 'full_outfit':
                 prompt = f"{base_prompt} a complete outfit, high quality, realistic, well-fitted, fashionable"
-            else:
+                else:
                 prompt = f"{base_prompt} clothing, high quality, realistic, well-fitted"
             
             return prompt
@@ -1348,7 +1348,7 @@ class AIQualityAssessment:
             # (H, W, C) -> (C, H, W)
             if len(image_array.shape) == 3:
                 tensor = torch.from_numpy(image_array).permute(2, 0, 1).float()
-            else:
+                else:
                 tensor = torch.from_numpy(image_array).float()
             
             # 배치 차원 추가
@@ -1610,7 +1610,7 @@ class TPSWarping:
                                      wb * image[y0, x1, c] + 
                                      wc * image[y1, x0, c] + 
                                      wd * image[y1, x1, c])
-            else:
+                else:
                 warped = (wa * image[y0, x0] + 
                          wb * image[y0, x1] + 
                          wc * image[y1, x0] + 
@@ -1990,7 +1990,7 @@ class AIQualityAssessment:
             if len(fitted_image.shape) == 3:
                 fitted_gray = np.mean(fitted_image, axis=2)
                 person_gray = np.mean(person_image, axis=2)
-            else:
+                else:
                 fitted_gray = fitted_image
                 person_gray = person_image
             
@@ -2175,7 +2175,7 @@ class AIQualityAssessment:
                 prompt = f"{base_prompt} fashionable pants, high quality, realistic, well-fitted"
             elif fitting_mode == 'full_outfit':
                 prompt = f"{base_prompt} a complete outfit, high quality, realistic, well-fitted, fashionable"
-            else:
+                else:
                 prompt = f"{base_prompt} clothing, high quality, realistic, well-fitted"
             
             return prompt
@@ -2226,7 +2226,7 @@ class AIQualityAssessment:
             # (H, W, C) -> (C, H, W)
             if len(image_array.shape) == 3:
                 tensor = torch.from_numpy(image_array).permute(2, 0, 1).float()
-            else:
+                else:
                 tensor = torch.from_numpy(image_array).float()
             
             # 배치 차원 추가
@@ -2330,7 +2330,7 @@ class VirtualFittingStep(BaseStepMixin):
                 elif torch.cuda.is_available():
                     return "cuda"
             return "cpu"
-        except:
+            except:
             return "cpu"
  
 
@@ -2365,7 +2365,7 @@ class VirtualFittingStep(BaseStepMixin):
                 self.tps_warping = TPSWarping()
                 self.cloth_analyzer = AdvancedClothAnalyzer()
                 self.quality_assessor = AIQualityAssessment()
-            except:
+                except:
                 self.tps_warping = None
                 self.cloth_analyzer = None
                 self.quality_assessor = None
@@ -2413,7 +2413,7 @@ class VirtualFittingStep(BaseStepMixin):
                     self.models_loading_status['ootd'] = True
                     self.loaded_models.append('ootd')
                     self.logger.info("✅ OOTD 모델 로딩 완료 (3.2GB)")
-                else:
+                    else:
                     self.logger.warning("⚠️ OOTD 모델 로딩 실패")
                     
             except Exception as e:
@@ -2500,7 +2500,7 @@ class VirtualFittingStep(BaseStepMixin):
             # 3. 전처리 적용 (BaseStepMixin 표준)
             if hasattr(self, '_apply_preprocessing'):
                 processed_input = await self._apply_preprocessing(input_data)
-            else:
+                else:
                 processed_input = input_data.copy()
             
             # 4. AI 추론 실행 (핵심 로직)
@@ -2509,14 +2509,14 @@ class VirtualFittingStep(BaseStepMixin):
             # 5. 후처리 적용 (BaseStepMixin 표준)
             if hasattr(self, '_apply_postprocessing'):
                 final_result = await self._apply_postprocessing(result, input_data)
-            else:
+                else:
                 final_result = result
             
             # 6. 성공 응답 반환
             if final_result.get('success', True):
                 self.logger.info(f"✅ {self.step_name} 처리 완료")
                 return final_result
-            else:
+                else:
                 self.logger.error(f"❌ {self.step_name} 처리 실패: {final_result.get('error')}")
                 return final_result
             
@@ -2568,7 +2568,7 @@ class VirtualFittingStep(BaseStepMixin):
                         torch.mps.empty_cache()
                     elif torch.cuda.is_available():
                         torch.cuda.empty_cache()
-                except:
+                    except:
                     pass
             
             self.logger.info(f"✅ {self.step_name} 정리 완료")
@@ -2791,7 +2791,7 @@ class VirtualFittingStep(BaseStepMixin):
                         elif fitting_mode == 'lower_body':
                             cloth_resized = cv2.resize(cloth_image, (w//3, h//2))
                             overlay_region = (h//2, h, w//3, 2*w//3)
-                        else:  # single_item or full_outfit
+                            else:  # single_item or full_outfit
                             cloth_resized = cv2.resize(cloth_image, (w//2, 2*h//3))
                             overlay_region = (h//6, 5*h//6, w//4, 3*w//4)
                         
@@ -2969,14 +2969,14 @@ class VirtualFittingStep(BaseStepMixin):
             elif 'mock_ootd' in self.loaded_models:
                 model = self.ai_models['mock_ootd']
                 model_name = 'mock_ootd'
-            else:
+                else:
                 raise ValueError("사용 가능한 모델이 없습니다")
             
             # 🔥 6. 고급 AI 모델 추론 실행 (TPS 워핑된 의류 사용)
             if hasattr(model, 'predict'):
                 # Mock 모델인 경우 - TPS 워핑된 의류 사용
                 result = model.predict(person_image, tps_warped_clothing, pose_keypoints, fitting_mode)
-            else:
+                else:
                 # 실제 PyTorch 모델인 경우
                 result = self._run_pytorch_virtual_fitting_inference(
                     model, person_image, tps_warped_clothing, pose_keypoints, fitting_mode, model_name, quality_config
@@ -3057,7 +3057,7 @@ class VirtualFittingStep(BaseStepMixin):
                     fitted_tensor, metrics = self._run_diffusion_inference(
                         model, person_tensor, cloth_tensor, pose_tensor, fitting_mode, quality_config
                     )
-                else:
+                    else:
                     # 기본 추론
                     fitted_tensor, metrics = self._run_basic_fitting_inference(
                         model, person_tensor, cloth_tensor, pose_tensor, fitting_mode, quality_config
@@ -3129,14 +3129,14 @@ class VirtualFittingStep(BaseStepMixin):
             elif 'mock_ootd' in self.loaded_models:
                 model = self.ai_models['mock_ootd']
                 model_name = 'mock_ootd'
-            else:
+                else:
                 raise ValueError("사용 가능한 모델이 없습니다")
             
             # 🔥 6. 고급 AI 모델 추론 실행 (TPS 워핑된 의류 사용)
             if hasattr(model, 'predict'):
                 # Mock 모델인 경우 - TPS 워핑된 의류 사용
                 result = model.predict(person_image, tps_warped_clothing, pose_keypoints, fitting_mode)
-            else:
+                else:
                 # 실제 PyTorch 모델인 경우
                 result = self._run_pytorch_virtual_fitting_inference(
                     model, person_image, tps_warped_clothing, pose_keypoints, fitting_mode, model_name, quality_config
@@ -3179,7 +3179,7 @@ class VirtualFittingStep(BaseStepMixin):
         try:
             if len(person_image.shape) == 3:
                 gray = np.mean(person_image, axis=2)
-            else:
+                else:
                 gray = person_image
             
             # 간단한 임계값 처리
@@ -3198,7 +3198,7 @@ class VirtualFittingStep(BaseStepMixin):
         try:
             if len(clothing_image.shape) == 3:
                 gray = np.mean(clothing_image, axis=2)
-            else:
+                else:
                 gray = clothing_image
             
             # 간단한 임계값 처리
@@ -3231,7 +3231,7 @@ class VirtualFittingStep(BaseStepMixin):
                     guidance_scale=quality_config.get('guidance_scale', 10.0),
                     num_inference_steps=quality_config.get('inference_steps', 30)
                 )
-            else:
+                else:
                 output = model(
                     processed_inputs['person'], 
                     processed_inputs['cloth'],
@@ -3243,7 +3243,7 @@ class VirtualFittingStep(BaseStepMixin):
             if isinstance(output, dict):
                 fitted_tensor = output['images']
                 metrics = output.get('metrics', {})
-            else:
+                else:
                 fitted_tensor = output
                 metrics = self._calculate_default_metrics()
             
@@ -3276,7 +3276,7 @@ class VirtualFittingStep(BaseStepMixin):
                     'texture_quality': float(output.get('texture_quality', 0.9)),
                     'overall_quality': float(output.get('overall_quality', 0.85))
                 }
-            else:
+                else:
                 fitted_tensor = output
                 metrics = self._calculate_default_metrics()
             
@@ -3341,7 +3341,7 @@ class VirtualFittingStep(BaseStepMixin):
                     'fitting_quality': float(metrics_dict.get('quality', 0.75)),
                     'overall_quality': float(metrics_dict.get('overall', 0.75))
                 }
-            else:
+                else:
                 fitted_tensor = output
                 metrics = self._calculate_default_metrics()
             
@@ -3364,7 +3364,7 @@ class VirtualFittingStep(BaseStepMixin):
                 image_array = np.array(image_pil)
             elif isinstance(image, np.ndarray):
                 image_array = image
-            else:
+                else:
                 raise ValueError("지원하지 않는 이미지 형식")
             
             # 크기 조정
@@ -3395,7 +3395,7 @@ class VirtualFittingStep(BaseStepMixin):
                 original_size = original_person.size  # PIL Image
             elif isinstance(original_person, np.ndarray):
                 original_size = (original_person.shape[1], original_person.shape[0])  # (width, height)
-            else:
+                else:
                 original_size = self.config.input_size
             
             # 크기 조정
@@ -3448,7 +3448,7 @@ class VirtualFittingStep(BaseStepMixin):
                 recommendations.append("Great fit! Consider this style for special occasions.")
             elif overall_quality >= 0.7:
                 recommendations.append("Good fit! This style suits you well.")
-            else:
+                else:
                 recommendations.append("The fit could be improved. Try adjusting the pose or lighting.")
             
             # 피팅 모드별 추천
@@ -3550,7 +3550,7 @@ class VirtualFittingStep(BaseStepMixin):
             if len(image.shape) == 3:
                 # (H, W, C) -> (C, H, W)
                 tensor = torch.from_numpy(image).permute(2, 0, 1).float()
-            else:
+                else:
                 tensor = torch.from_numpy(image).float()
             
             # 배치 차원 추가
@@ -3590,7 +3590,7 @@ class VirtualFittingStep(BaseStepMixin):
             # 0-255 범위로 변환
             if image.max() <= 1.0:
                 image = (image * 255).astype(np.uint8)
-            else:
+                else:
                 image = np.clip(image, 0, 255).astype(np.uint8)
             
             return image
@@ -3611,7 +3611,7 @@ class VirtualFittingStep(BaseStepMixin):
             elif fitting_mode == 'lower_body':
                 cloth_resized = cv2.resize(cloth_image, (w//3, h//2))
                 overlay_region = (h//2, h, w//3, 2*w//3)
-            else:
+                else:
                 cloth_resized = cv2.resize(cloth_image, (w//2, 2*h//3))
                 overlay_region = (h//6, 5*h//6, w//4, 3*w//4)
             
@@ -3903,7 +3903,7 @@ if __name__ == "__main__":
                 print(f"   - 출력 크기: {result['fitted_image'].shape}")
                 print(f"   - 추천사항: {len(result['recommendations'])}개")
                 print(f"   - 대안 스타일: {len(result['alternative_styles'])}개")
-            else:
+                else:
                 print(f"❌ AI 추론 실패: {result.get('error', 'Unknown')}")
             
             print("✅ 테스트 완료")
