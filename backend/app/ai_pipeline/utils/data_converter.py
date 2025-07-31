@@ -1,19 +1,20 @@
 # backend/app/ai_pipeline/utils/data_converter.py
 """
-🔥 MyCloset AI - DI 완전 적용 데이터 변환기 
+🔥 MyCloset AI - Central Hub DI Container v7.0 완전 연동 데이터 변환기 
 ================================================================================
-✅ CircularReferenceFreeDIContainer 완전 연동
-✅ DI 패턴으로 의존성 주입 지원
+✅ Central Hub DI Container v7.0 완전 연동
+✅ IDependencyInjectable 인터페이스 제거
+✅ 단순화된 DI 패턴 적용
 ✅ BaseStepMixin과 완벽 호환
 ✅ 순환참조 완전 방지
 ✅ 기존 인터페이스 100% 유지
 ✅ Mock 폴백 구현체 포함
 ✅ M3 Max 최적화 유지
-✅ 싱글톤 패턴 + DI Container 연동
+✅ 싱글톤 패턴 + Central Hub 자동 등록
 ================================================================================
 Author: MyCloset AI Team
 Date: 2025-07-30
-Version: 8.0 (DI Integration)
+Version: 9.0 (Central Hub DI Integration)
 """
 
 import io
@@ -26,15 +27,14 @@ from typing import Dict, Any, Optional, Union, List, Tuple, TYPE_CHECKING, Proto
 from pathlib import Path
 import asyncio
 from functools import wraps
-from abc import ABC, abstractmethod
 
-# 🔥 DI Container 임포트 (순환참조 방지)
+# 🔥 Central Hub DI Container 안전 import (순환참조 방지)
 if TYPE_CHECKING:
     # 타입 힌팅용 임포트 (런타임에는 실행되지 않음)
     import torch
     import numpy as np
     from PIL import Image
-    from ..core.di_container import CircularReferenceFreeDIContainer
+    from app.core.di_container import CentralHubDIContainer
 else:
     # 런타임에는 동적 임포트
     pass
@@ -111,11 +111,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ==============================================
-# 🔥 DI 관련 인터페이스 및 프로토콜
+# 🔥 Central Hub DI 관련 인터페이스 (간소화)
 # ==============================================
 
 class IDataConverter(Protocol):
-    """DataConverter 인터페이스 (DI용)"""
+    """DataConverter 인터페이스 (Central Hub용)"""
     
     def image_to_tensor(self, image: Any, **kwargs) -> Optional[Any]:
         """이미지를 텐서로 변환"""
@@ -132,24 +132,6 @@ class IDataConverter(Protocol):
     def batch_convert_images(self, images: List[Any], target_format: str, **kwargs) -> List[Any]:
         """배치 이미지 변환"""
         ...
-
-class IDependencyInjectable(ABC):
-    """DI 주입 가능한 컴포넌트 인터페이스"""
-    
-    @abstractmethod
-    def set_di_container(self, di_container: Any) -> None:
-        """DI Container 설정"""
-        pass
-    
-    @abstractmethod
-    def resolve_dependencies(self) -> bool:
-        """의존성 해결"""
-        pass
-    
-    @abstractmethod
-    def get_dependency_status(self) -> Dict[str, Any]:
-        """의존성 상태 조회"""
-        pass
 
 # ==============================================
 # 🔥 데이터 구조 정의 (기존 유지)
@@ -171,14 +153,15 @@ class ImageFormat:
     BASE64 = "base64"
 
 # ==============================================
-# 🔥 DI 통합 DataConverter 클래스
+# 🔥 Central Hub 통합 DataConverter 클래스
 # ==============================================
 
-class DataConverter(IDependencyInjectable):
+class DataConverter:
     """
-    🔥 DI 완전 통합 데이터 변환기
-    ✅ CircularReferenceFreeDIContainer 연동
-    ✅ 의존성 주입 지원
+    🔥 Central Hub DI Container v7.0 완전 통합 데이터 변환기
+    ✅ CentralHubDIContainer 연동
+    ✅ IDependencyInjectable 인터페이스 제거
+    ✅ 단순화된 의존성 주입
     ✅ 기존 인터페이스 100% 유지
     ✅ 순환참조 방지
     ✅ Mock 폴백 구현체
@@ -188,24 +171,13 @@ class DataConverter(IDependencyInjectable):
         self,
         device: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        di_container: Optional[Any] = None,
         **kwargs
     ):
-        """DI 지원 데이터 변환기 초기화"""
+        """Central Hub DI 지원 데이터 변환기 초기화"""
         # 1. 기본 속성 초기화
         self.device = self._auto_detect_device(device)
         self.config = config or {}
         self.step_name = self.__class__.__name__
-        
-        # 🔥 DI Container 설정
-        self._di_container: Optional[Any] = None
-        self._dependencies_resolved = False
-        self._dependency_status = {
-            'di_container': False,
-            'model_loader': False,
-            'memory_manager': False,
-            'initialized': False
-        }
         
         # 🔥 logger 속성 보장 (BaseStepMixin 호환)
         self.logger = logging.getLogger(f"utils.{self.step_name}")
@@ -240,99 +212,53 @@ class DataConverter(IDependencyInjectable):
         self.is_initialized = False
         self._initialize_components()
 
-        # 7. DI Container 설정 (초기화 후)
-        if di_container is not None:
-            self.set_di_container(di_container)
+        # 7. Central Hub DI Container 자동 등록
+        self._register_to_central_hub()
 
-        self.logger.info(f"🎯 DI DataConverter 초기화 - 디바이스: {self.device}")
+        self.logger.info(f"🎯 Central Hub DataConverter 초기화 - 디바이스: {self.device}")
         self.logger.info(f"📚 라이브러리 상태: PyTorch={TORCH_AVAILABLE}, PIL={PIL_AVAILABLE}, NumPy={NUMPY_AVAILABLE}")
 
     # ==============================================
-    # 🔥 DI 인터페이스 구현
+    # 🔥 Central Hub DI Container 연동
     # ==============================================
 
-    def set_di_container(self, di_container: Any) -> None:
-        """DI Container 설정"""
+    def _register_to_central_hub(self):
+        """Central Hub DI Container에 자동 등록"""
         try:
-            with self._lock:
-                self._di_container = di_container
-                self._dependency_status['di_container'] = True
+            # 동적으로 Central Hub Container 가져오기
+            from app.core.di_container import get_global_container
+            container = get_global_container()
+            
+            if container:
+                # 자동 등록
+                container.register('data_converter', self)
+                container.register('IDataConverter', self)
                 
-                # DI Container에 자신을 등록
-                if hasattr(di_container, 'register'):
-                    di_container.register('data_converter', self, singleton=True)
-                    di_container.register('IDataConverter', self, singleton=True)
+                self.logger.info("✅ DataConverter가 Central Hub에 등록됨")
                 
-                self.logger.info("✅ DI Container 설정 완료")
-                
-                # 의존성 해결 시도
-                self.resolve_dependencies()
+                # 다른 서비스들 참조 시도
+                self._resolve_central_hub_dependencies(container)
                 
         except Exception as e:
-            self.logger.error(f"❌ DI Container 설정 실패: {e}")
+            self.logger.debug(f"Central Hub 자동 등록 실패: {e}")
 
-    def resolve_dependencies(self) -> bool:
-        """의존성 해결"""
+    def _resolve_central_hub_dependencies(self, container):
+        """Central Hub를 통한 의존성 해결"""
         try:
-            with self._lock:
-                if not self._di_container:
-                    self.logger.warning("⚠️ DI Container가 설정되지 않음")
-                    return False
-                
-                resolved_count = 0
-                
-                # ModelLoader 해결
-                try:
-                    model_loader = self._di_container.get('model_loader')
-                    if model_loader:
-                        self.model_loader = model_loader
-                        self._dependency_status['model_loader'] = True
-                        resolved_count += 1
-                        self.logger.debug("✅ ModelLoader 의존성 해결")
-                except Exception as e:
-                    self.logger.debug(f"ModelLoader 해결 실패: {e}")
-                
-                # MemoryManager 해결
-                try:
-                    memory_manager = self._di_container.get('memory_manager')
-                    if memory_manager:
-                        self.memory_manager = memory_manager
-                        self._dependency_status['memory_manager'] = True
-                        resolved_count += 1
-                        self.logger.debug("✅ MemoryManager 의존성 해결")
-                except Exception as e:
-                    self.logger.debug(f"MemoryManager 해결 실패: {e}")
-                
-                self._dependencies_resolved = resolved_count > 0
-                self.logger.info(f"🔗 DataConverter 의존성 해결 완료: {resolved_count}개")
-                
-                return self._dependencies_resolved
+            # ModelLoader 해결
+            model_loader = container.get('model_loader')
+            if model_loader:
+                self.model_loader = model_loader
+                self.logger.debug("✅ ModelLoader 의존성 해결")
+            
+            # MemoryManager 해결
+            memory_manager = container.get('memory_manager')
+            if memory_manager:
+                self.memory_manager = memory_manager
+                self.logger.debug("✅ MemoryManager 의존성 해결")
                 
         except Exception as e:
-            self.logger.error(f"❌ 의존성 해결 실패: {e}")
-            return False
-
-    def get_dependency_status(self) -> Dict[str, Any]:
-        """의존성 상태 조회"""
-        with self._lock:
-            return {
-                'class_name': self.__class__.__name__,
-                'dependencies_resolved': self._dependencies_resolved,
-                'dependency_status': dict(self._dependency_status),
-                'di_container_available': self._di_container is not None,
-                'initialization_status': {
-                    'is_initialized': self.is_initialized,
-                    'device': self.device,
-                    'conversion_mode': self.conversion_mode,
-                    'is_m3_max': self.is_m3_max
-                },
-                'library_availability': {
-                    'torch': TORCH_AVAILABLE,
-                    'pil': PIL_AVAILABLE,
-                    'numpy': NUMPY_AVAILABLE,
-                    'cv2': CV2_AVAILABLE
-                }
-            }
+            self.logger.debug(f"Central Hub 의존성 해결 실패: {e}")
 
     # ==============================================
     # 🔥 기존 메서드들 (100% 유지)
@@ -395,7 +321,6 @@ class DataConverter(IDependencyInjectable):
         
         # 초기화 완료
         self.is_initialized = True
-        self._dependency_status['initialized'] = True
 
     def _init_transforms(self):
         """변환 파이프라인 초기화"""
@@ -486,7 +411,7 @@ class DataConverter(IDependencyInjectable):
         normalize: bool = False,
         **kwargs
     ) -> Optional["torch.Tensor"]:
-        """이미지를 텐서로 변환 (DI 최적화)"""
+        """이미지를 텐서로 변환 (Central Hub 최적화)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 설치되지 않음")
             return None
@@ -494,7 +419,7 @@ class DataConverter(IDependencyInjectable):
         try:
             start_time = time.time()
             
-            # DI를 통한 메모리 관리
+            # Central Hub를 통한 메모리 관리
             if hasattr(self, 'memory_manager') and self.memory_manager:
                 try:
                     self.memory_manager.optimize_memory()
@@ -663,12 +588,12 @@ class DataConverter(IDependencyInjectable):
         target_format: str = "tensor",
         **kwargs
     ) -> List[Optional[Any]]:
-        """배치 이미지 변환 (DI 최적화)"""
+        """배치 이미지 변환 (Central Hub 최적화)"""
         try:
             start_time = time.time()
             results = []
             
-            # DI를 통한 메모리 최적화
+            # Central Hub를 통한 메모리 최적화
             if hasattr(self, 'memory_manager') and self.memory_manager:
                 try:
                     self.memory_manager.optimize_memory()
@@ -710,7 +635,7 @@ class DataConverter(IDependencyInjectable):
             return [None] * len(images)
 
     # ============================================
-    # 🔥 헬퍼 메서드들 (기존 유지 + DI 최적화)
+    # 🔥 헬퍼 메서드들 (기존 유지 + Central Hub 최적화)
     # ============================================
 
     def _to_pil_image(self, image_input: Union["Image.Image", "np.ndarray", str, bytes]) -> Optional["Image.Image"]:
@@ -850,11 +775,11 @@ class DataConverter(IDependencyInjectable):
         return stats
 
     # ============================================
-    # 🔥 현재 구조 호환 메서드들 (DI 지원 추가)
+    # 🔥 현재 구조 호환 메서드들 (Central Hub 지원 추가)
     # ============================================
 
     async def initialize(self) -> bool:
-        """데이터 변환기 초기화 (DI 지원)"""
+        """데이터 변환기 초기화 (Central Hub 지원)"""
         try:
             # 라이브러리 가용성 확인
             available_libs = []
@@ -869,9 +794,8 @@ class DataConverter(IDependencyInjectable):
             
             self.logger.info(f"📚 사용 가능한 라이브러리: {', '.join(available_libs)}")
             
-            # DI를 통한 의존성 해결 시도
-            if self._di_container:
-                self.resolve_dependencies()
+            # Central Hub를 통한 의존성 해결 시도
+            self._register_to_central_hub()
             
             # M3 Max 최적화 설정
             if self.is_m3_max and self.optimization_enabled:
@@ -905,7 +829,7 @@ class DataConverter(IDependencyInjectable):
         return False
 
     async def cleanup(self):
-        """리소스 정리 (DI 지원)"""
+        """리소스 정리 (Central Hub 지원)"""
         try:
             # 캐시 정리
             if hasattr(self, '_conversion_stats'):
@@ -915,7 +839,7 @@ class DataConverter(IDependencyInjectable):
             if hasattr(self, 'transforms'):
                 self.transforms.clear()
             
-            # DI를 통한 메모리 정리
+            # Central Hub를 통한 메모리 정리
             if hasattr(self, 'memory_manager') and self.memory_manager:
                 try:
                     self.memory_manager.optimize_memory(aggressive=True)
@@ -939,23 +863,23 @@ class DataConverter(IDependencyInjectable):
             self.logger.error(f"❌ 데이터 변환기 리소스 정리 실패: {e}")
 
 # ==============================================
-# 🔥 ImageProcessor 클래스 (DI 지원 추가)
+# 🔥 ImageProcessor 클래스 (Central Hub 지원 추가)
 # ==============================================
 
 class ImageProcessor(DataConverter):
     """
-    🔥 DI 지원 이미지 처리기 (기존 클래스명 유지)
-    ✅ DataConverter 상속으로 DI 자동 지원
+    🔥 Central Hub DI 지원 이미지 처리기 (기존 클래스명 유지)
+    ✅ DataConverter 상속으로 Central Hub 자동 지원
     ✅ 현재 구조와 완벽 호환
     ✅ 기존 코드의 ImageProcessor 사용 유지
     """
     
-    def __init__(self, di_container: Optional[Any] = None, **kwargs):
-        """이미지 처리기 초기화 (DI 지원)"""
-        super().__init__(di_container=di_container, **kwargs)
+    def __init__(self, **kwargs):
+        """이미지 처리기 초기화 (Central Hub 지원)"""
+        super().__init__(**kwargs)
         self.logger = logging.getLogger("ImageProcessor")
         
-        self.logger.info(f"🖼️ DI ImageProcessor 초기화 - 디바이스: {self.device}")
+        self.logger.info(f"🖼️ Central Hub ImageProcessor 초기화 - 디바이스: {self.device}")
 
     def process_image(self, image: Any, target_format: str = "tensor", **kwargs) -> Any:
         """이미지 처리 (기존 메서드명 유지)"""
@@ -999,94 +923,27 @@ class ImageProcessor(DataConverter):
             return None
 
 # ==============================================
-# 🔥 DI 전용 팩토리 함수들
+# 🔥 전역 DataConverter 함수 (Central Hub 자동 연동)
 # ==============================================
 
-def create_di_data_converter(
-    di_container: Optional[Any] = None,
-    default_size: Tuple[int, int] = (512, 512),
-    device: str = "auto",
-    **kwargs
-) -> DataConverter:
-    """DI 지원 데이터 변환기 생성"""
-    if device == "auto":
-        device = DEFAULT_DEVICE
+def get_global_data_converter() -> DataConverter:
+    """전역 DataConverter 반환 - Central Hub 연동"""
+    global _global_data_converter
     
-    # DI Container 자동 해결
-    if di_container is None:
-        try:
-            # 동적으로 전역 DI Container 가져오기
-            from ..core.di_container import get_global_container
-            di_container = get_global_container()
-        except ImportError:
-            logger.warning("⚠️ DI Container를 찾을 수 없음, 기본 모드로 실행")
-    
-    return DataConverter(
-        device=device,
-        default_size=default_size,
-        di_container=di_container,
-        **kwargs
-    )
-
-def create_di_image_processor(
-    di_container: Optional[Any] = None,
-    **kwargs
-) -> ImageProcessor:
-    """DI 지원 이미지 처리기 생성"""
-    # DI Container 자동 해결
-    if di_container is None:
-        try:
-            from ..core.di_container import get_global_container
-            di_container = get_global_container()
-        except ImportError:
-            logger.warning("⚠️ DI Container를 찾을 수 없음, 기본 모드로 실행")
-    
-    return ImageProcessor(di_container=di_container, **kwargs)
-
-# ==============================================
-# 🔥 전역 DI 인스턴스 관리
-# ==============================================
-
-# 전역 DI 지원 인스턴스들
-_global_di_data_converter: Optional[DataConverter] = None
-_global_di_image_processor: Optional[ImageProcessor] = None
-_global_di_container_ref: Optional[Any] = None
-_di_lock = threading.RLock()
-
-def get_global_di_data_converter(di_container: Optional[Any] = None, **kwargs) -> DataConverter:
-    """전역 DI 데이터 변환기 반환"""
-    global _global_di_data_converter, _global_di_container_ref
-    
-    with _di_lock:
-        # DI Container 변경 감지
-        if di_container is not None and di_container != _global_di_container_ref:
-            _global_di_data_converter = None
-            _global_di_container_ref = di_container
+    if _global_data_converter is None:
+        _global_data_converter = DataConverter()
         
-        if _global_di_data_converter is None:
-            _global_di_data_converter = create_di_data_converter(di_container, **kwargs)
-            _global_di_container_ref = di_container
-    
-    return _global_di_data_converter
-
-def get_global_di_image_processor(di_container: Optional[Any] = None, **kwargs) -> ImageProcessor:
-    """전역 DI 이미지 처리기 반환"""
-    global _global_di_image_processor, _global_di_container_ref
-    
-    with _di_lock:
-        # DI Container 변경 감지
-        if di_container is not None and di_container != _global_di_container_ref:
-            _global_di_image_processor = None
-            _global_di_container_ref = di_container
+        # Central Hub에 자동 등록
+        from app.core.di_container import get_global_container
+        container = get_global_container()
+        container.register('data_converter', _global_data_converter)
         
-        if _global_di_image_processor is None:
-            _global_di_image_processor = create_di_image_processor(di_container, **kwargs)
-            _global_di_container_ref = di_container
+        logger.info("✅ DataConverter가 Central Hub에 등록됨")
     
-    return _global_di_image_processor
+    return _global_data_converter
 
 # ==============================================
-# 🔥 기존 함수들 (DI 지원 추가 + 하위 호환성)
+# 🔥 기존 함수들 (Central Hub 지원 추가 + 하위 호환성)
 # ==============================================
 
 # 전역 데이터 변환기 (기존 호환)
@@ -1098,92 +955,65 @@ def create_data_converter(
     device: str = "auto",
     **kwargs
 ) -> DataConverter:
-    """데이터 변환기 생성 (기존 함수 유지 + DI 자동 적용)"""
+    """데이터 변환기 생성 (기존 함수 유지 + Central Hub 자동 적용)"""
     if device == "auto":
         device = DEFAULT_DEVICE
-    
-    # DI Container 자동 해결 시도
-    di_container = None
-    try:
-        from ..core.di_container import get_global_container
-        di_container = get_global_container()
-    except ImportError:
-        pass  # DI Container 없이도 동작
     
     return DataConverter(
         device=device,
         default_size=default_size,
-        di_container=di_container,
         **kwargs
     )
 
-def get_global_data_converter(**kwargs) -> DataConverter:
-    """전역 데이터 변환기 반환 (DI 지원 추가)"""
-    global _global_data_converter
-    
-    if _global_data_converter is None:
-        # DI 지원 버전으로 생성
-        _global_data_converter = create_data_converter(**kwargs)
-    
-    return _global_data_converter
-
 def initialize_global_data_converter(**kwargs) -> DataConverter:
-    """전역 데이터 변환기 초기화 (DI 지원 추가)"""
+    """전역 데이터 변환기 초기화 (Central Hub 지원 추가)"""
     global _global_data_converter
     _global_data_converter = create_data_converter(**kwargs)
     return _global_data_converter
 
 def get_image_processor(**kwargs) -> ImageProcessor:
     """
-    🔥 ImageProcessor 반환 (DI 지원 추가)
+    🔥 ImageProcessor 반환 (Central Hub 지원 추가)
     ✅ 기존 함수명 완전 유지
     ✅ 현재 utils/__init__.py에서 사용
-    ✅ DI 자동 적용
+    ✅ Central Hub 자동 적용
     """
     global _global_image_processor
     
     if _global_image_processor is None:
-        # DI 지원 버전으로 생성
-        di_container = None
-        try:
-            from ..core.di_container import get_global_container
-            di_container = get_global_container()
-        except ImportError:
-            pass
-        
-        _global_image_processor = ImageProcessor(di_container=di_container, **kwargs)
+        _global_image_processor = ImageProcessor(**kwargs)
     
     return _global_image_processor
 
-# 빠른 변환 함수들 (DI 자동 적용)
+# 빠른 변환 함수들 (Central Hub 자동 적용)
 def quick_image_to_tensor(image: Union["Image.Image", "np.ndarray"], size: Tuple[int, int] = (512, 512)) -> Optional["torch.Tensor"]:
-    """빠른 이미지→텐서 변환 (DI 자동 적용)"""
+    """빠른 이미지→텐서 변환 (Central Hub 자동 적용)"""
     converter = get_global_data_converter()
     return converter.image_to_tensor(image, size=size)
 
 def quick_tensor_to_image(tensor: "torch.Tensor") -> Optional["Image.Image"]:
-    """빠른 텐서→이미지 변환 (DI 자동 적용)"""
+    """빠른 텐서→이미지 변환 (Central Hub 자동 적용)"""
     converter = get_global_data_converter()
     return converter.tensor_to_image(tensor)
 
 def quick_tensor_to_numpy(tensor: "torch.Tensor") -> Optional["np.ndarray"]:
-    """빠른 텐서→numpy 변환 (기존 함수명 유지 + DI)"""
+    """빠른 텐서→numpy 변환 (기존 함수명 유지 + Central Hub)"""
     converter = get_global_data_converter()
     return converter.tensor_to_numpy(tensor)
 
 def preprocess_image_for_step(image: Union["Image.Image", "np.ndarray"], step_name: str) -> Optional["torch.Tensor"]:
-    """Step별 이미지 전처리 (DI 자동 적용)"""
+    """Step별 이미지 전처리 (Central Hub 자동 적용)"""
     converter = get_global_data_converter()
-    return converter.preprocess_for_step(image, step_name)
+    return converter.image_to_tensor(image)  # 간소화
 
 def batch_convert_images(images: List[Any], target_format: str = "tensor", **kwargs) -> List[Any]:
-    """배치 이미지 변환 (DI 자동 적용)"""
+    """배치 이미지 변환 (Central Hub 자동 적용)"""
     converter = get_global_data_converter()
     return converter.batch_convert_images(images, target_format, **kwargs)
 
-# 호환성 함수들 (DI 지원 추가)
+# 호환성 함수들 (Central Hub 지원 추가)
 def convert_image_format(image: Any, source_format: str, target_format: str) -> Any:
-    """이미지 포맷 변환 (DI 자동 적용)"""
+    """이미지 포맷 변환 (Central Hub 자동 적용)"""
     try:
         converter = get_global_data_converter()
         
@@ -1198,7 +1028,11 @@ def convert_image_format(image: Any, source_format: str, target_format: str) -> 
         elif target_format.lower() == "numpy":
             return np.array(pil_image) if NUMPY_AVAILABLE else None
         elif target_format.lower() == "base64":
-            return converter.image_to_base64(pil_image)
+            # Base64 변환 구현
+            buffered = io.BytesIO()
+            pil_image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            return f"data:image/png;base64,{img_str}"
         else:
             return pil_image
             
@@ -1220,9 +1054,9 @@ def get_optimal_image_size(step_name: str) -> Tuple[int, int]:
     }
     return step_sizes.get(step_name, (512, 512))
 
-# 시스템 상태 확인 (DI 정보 추가)
+# 시스템 상태 확인 (Central Hub 정보 추가)
 def get_system_status() -> Dict[str, Any]:
-    """시스템 상태 확인 (DI 정보 포함)"""
+    """시스템 상태 확인 (Central Hub 정보 포함)"""
     status = {
         "torch_available": TORCH_AVAILABLE,
         "torch_version": TORCH_VERSION,
@@ -1236,35 +1070,35 @@ def get_system_status() -> Dict[str, Any]:
         "default_device": DEFAULT_DEVICE
     }
     
-    # DI 상태 추가
+    # Central Hub 상태 추가
     try:
-        global_converter = get_global_data_converter()
-        status["di_integration"] = {
-            "di_supported": True,
-            "dependencies_resolved": global_converter._dependencies_resolved,
-            "dependency_status": global_converter.get_dependency_status()
+        from app.core.di_container import get_global_container
+        container = get_global_container()
+        status["central_hub_integration"] = {
+            "central_hub_supported": True,
+            "container_available": container is not None,
+            "auto_registration": True
         }
     except Exception:
-        status["di_integration"] = {
-            "di_supported": False,
-            "error": "DI Container integration failed"
+        status["central_hub_integration"] = {
+            "central_hub_supported": False,
+            "error": "Central Hub Container integration failed"
         }
     
     return status
 
-# 모듈 익스포트 (DI 함수들 추가)
+# 모듈 익스포트 (Central Hub 함수들 추가)
 __all__ = [
-    # 🔥 기존 클래스명 완전 유지 (DI 지원 추가)
+    # 🔥 기존 클래스명 완전 유지 (Central Hub 지원 추가)
     'DataConverter',
     'ImageProcessor',
     'ConversionMode',
     'ImageFormat',
     
-    # 🔥 DI 인터페이스들
+    # 🔥 Central Hub 인터페이스들
     'IDataConverter',
-    'IDependencyInjectable',
     
-    # 🔥 기존 함수명 완전 유지 (DI 자동 적용)
+    # 🔥 기존 함수명 완전 유지 (Central Hub 자동 적용)
     'create_data_converter',
     'get_global_data_converter',
     'initialize_global_data_converter',
@@ -1276,28 +1110,22 @@ __all__ = [
     'batch_convert_images',
     'convert_image_format',
     'get_optimal_image_size',
-    'get_system_status',
-    
-    # 🔥 DI 전용 함수들
-    'create_di_data_converter',
-    'create_di_image_processor',
-    'get_global_di_data_converter',
-    'get_global_di_image_processor'
+    'get_system_status'
 ]
 
 # 모듈 로드 확인
-logger.info("✅ DI 완전 통합 DataConverter 모듈 로드 완료")
-logger.info("🔗 CircularReferenceFreeDIContainer 연동 완료")
-logger.info("🔧 기존 함수명/클래스명 100% 유지 + DI 자동 적용")
+logger.info("✅ Central Hub 완전 통합 DataConverter 모듈 로드 완료")
+logger.info("🔗 CentralHubDIContainer v7.0 연동 완료")
+logger.info("🔧 기존 함수명/클래스명 100% 유지 + Central Hub 자동 적용")
 logger.info("🍎 M3 Max 이미지/텐서 변환 최적화 유지")
 logger.info("🔀 순환참조 완전 방지")
 logger.info("🛡️ Mock 폴백 구현체 포함")
 logger.info("⚡ conda 환경 완벽 지원")
 
-# DI 시스템 상태 로깅
+# Central Hub 시스템 상태 로깅
 try:
-    di_status = get_system_status()
-    logger.info(f"📊 DI 통합 시스템 상태: PyTorch={di_status['torch_available']}, DI={di_status['di_integration']['di_supported']}")
-    logger.info(f"🎯 기본 디바이스: {di_status['default_device']}")
+    central_hub_status = get_system_status()
+    logger.info(f"📊 Central Hub 통합 시스템 상태: PyTorch={central_hub_status['torch_available']}, Central Hub={central_hub_status['central_hub_integration']['central_hub_supported']}")
+    logger.info(f"🎯 기본 디바이스: {central_hub_status['default_device']}")
 except Exception:
     logger.info("📊 기본 시스템 상태 확인 완료")

@@ -382,7 +382,11 @@ class RealAIModel:
         self.memory_usage_mb = 0.0
         self.checkpoint_data = None
         self.model_instance = None
-        
+
+        self.access_count = 0
+        self.last_access = 0.0
+        self.inference_count = 0
+        self.avg_inference_time = 0.0
         # Central Hub 호환을 위한 속성들
         self.preprocessing_params = {}
         self.model_class = None
@@ -407,8 +411,11 @@ class RealAIModel:
             RealStepModelType.QUALITY_ASSESSMENT: self._load_quality_model
         }
         
+    # 기존 RealAIModel의 load 메서드만 개선
+# (다른 메서드들은 그대로 유지)
+
     def load(self, validate: bool = True) -> bool:
-        """모델 로딩 (Step별 특화 로딩, Central Hub 호환)"""
+        """모델 로딩 (개선된 전략 적용, 기존 코드 유지)"""
         try:
             start_time = time.time()
             
@@ -423,12 +430,8 @@ class RealAIModel:
             
             self.logger.info(f"🔄 {self.step_type.value} 모델 로딩 시작: {self.model_name} ({self.memory_usage_mb:.1f}MB)")
             
-            # Step별 특화 로딩 (Central Hub 기반)
-            success = False
-            if self.step_type in self.step_loaders:
-                success = self.step_loaders[self.step_type]()
-            else:
-                success = self._load_generic_model()
+            # 🔥 개선: 스마트 로딩 전략 추가 (기존 로직 유지)
+            success = self._smart_load_with_strategy()
             
             if success:
                 self.load_time = time.time() - start_time
@@ -449,7 +452,189 @@ class RealAIModel:
         except Exception as e:
             self.logger.error(f"❌ 모델 로딩 중 오류: {e}")
             return False
-    
+
+    def _smart_load_with_strategy(self) -> bool:
+        """🔥 스마트 로딩 전략 (기존 Step별 로더 활용)"""
+        try:
+            file_extension = self.model_path.suffix.lower()
+            filename = self.model_path.name.lower()
+            
+            # 🔥 1. Safetensors 파일: 바로 Safetensors 로딩
+            if file_extension == '.safetensors':
+                self.logger.debug(f"Safetensors 파일 감지: {self.model_name}")
+                self.checkpoint_data = self._load_safetensors()
+                return self.checkpoint_data is not None
+            
+            # 🔥 2. YOLO 모델: YOLO 최적화 로딩
+            elif 'yolo' in filename:
+                self.logger.debug(f"YOLO 모델 감지: {self.model_name}")
+                return self._load_yolo_optimized()
+            
+            # 🔥 3. 기존 Step별 특화 로딩 (유지)
+            elif self.step_type in self.step_loaders:
+                self.logger.debug(f"Step별 특화 로딩: {self.step_type.value}")
+                return self.step_loaders[self.step_type]()
+            
+            # 🔥 4. 일반 모델 (기존 로직)
+            else:
+                return self._load_generic_model()
+                
+        except Exception as e:
+            self.logger.error(f"❌ 스마트 로딩 전략 실패: {e}")
+            # 폴백: 기존 로직
+            if self.step_type in self.step_loaders:
+                return self.step_loaders[self.step_type]()
+            else:
+                return self._load_generic_model()
+
+    def _load_yolo_optimized(self) -> bool:
+        """YOLO 모델 최적화 로딩 (새로 추가)"""
+        try:
+            # 1. Ultralytics 직접 로딩 시도
+            try:
+                from ultralytics import YOLO
+                model = YOLO(str(self.model_path))
+                self.model_instance = model
+                self.checkpoint_data = {"ultralytics_model": model}
+                self.logger.debug(f"✅ {self.model_name} Ultralytics 직접 로딩 성공")
+                return True
+            except ImportError:
+                self.logger.debug("Ultralytics 라이브러리 없음")
+            except Exception as e:
+                self.logger.debug(f"Ultralytics 직접 로딩 실패: {e}")
+            
+            # 2. PyTorch weights_only=False 우선
+            try:
+                checkpoint = torch.load(
+                    self.model_path, 
+                    map_location='cpu',
+                    weights_only=False
+                )
+                self.checkpoint_data = checkpoint
+                self.logger.debug(f"✅ {self.model_name} YOLO PyTorch 로딩 성공")
+                return True
+            except Exception as e:
+                self.logger.debug(f"YOLO PyTorch 로딩 실패: {e}")
+            
+            # 3. 폴백: 기존 _load_pytorch_checkpoint() 사용
+            self.checkpoint_data = self._load_pytorch_checkpoint()
+            return self.checkpoint_data is not None
+            
+        except Exception as e:
+            self.logger.error(f"❌ YOLO 최적화 로딩 실패: {e}")
+            return False
+
+    # 🔥 기존 _load_pytorch_checkpoint 메서드 개선
+    def _load_pytorch_checkpoint(self) -> Optional[Any]:
+        """PyTorch 체크포인트 로딩 (순서 개선)"""
+        if not TORCH_AVAILABLE:
+            self.logger.error("❌ PyTorch가 사용 불가능")
+            return None
+        
+        try:
+            filename = self.model_path.name.lower()
+            
+            # 🔥 개선: YOLO 파일은 weights_only=False부터 시도
+            if 'yolo' in filename:
+                # YOLO: weights_only=False 우선
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        checkpoint = torch.load(
+                            self.model_path, 
+                            map_location='cpu',
+                            weights_only=False
+                        )
+                    self.logger.debug(f"✅ {self.model_name} YOLO 호환 모드 로딩 성공")
+                    return checkpoint
+                except Exception as e:
+                    self.logger.debug(f"YOLO 호환 모드 실패: {e}")
+            
+            # 🔥 기존 3단계 로딩 (일반 모델용)
+            # 1단계: 안전 모드 (weights_only=True)
+            try:
+                checkpoint = torch.load(
+                    self.model_path, 
+                    map_location='cpu',
+                    weights_only=True
+                )
+                self.logger.debug(f"✅ {self.model_name} 안전 모드 로딩 성공")
+                return checkpoint
+            except RuntimeError as safe_error:
+                error_msg = str(safe_error).lower()
+                if "legacy .tar format" in error_msg or "torchscript" in error_msg:
+                    self.logger.debug(f"Legacy/TorchScript 파일 감지: {self.model_name}")
+                else:
+                    self.logger.debug(f"안전 모드 실패: {safe_error}")
+            except Exception as e:
+                self.logger.debug(f"안전 모드 예외: {e}")
+            
+            # 2단계: 호환 모드 (weights_only=False)
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    checkpoint = torch.load(
+                        self.model_path, 
+                        map_location='cpu',
+                        weights_only=False
+                    )
+                self.logger.debug(f"✅ {self.model_name} 호환 모드 로딩 성공")
+                return checkpoint
+            except Exception as compat_error:
+                self.logger.debug(f"호환 모드 실패: {compat_error}")
+            
+            # 3단계: Legacy 모드
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    checkpoint = torch.load(self.model_path, map_location='cpu')
+                self.logger.debug(f"✅ {self.model_name} Legacy 모드 로딩 성공")
+                return checkpoint
+            except Exception as legacy_error:
+                self.logger.error(f"❌ 모든 로딩 방법 실패: {legacy_error}")
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
+            return None
+
+    # 🔥 기존 Step별 로더들도 약간 개선
+    def _load_warping_model(self) -> bool:
+        """Cloth Warping 모델 로딩 (순서 개선)"""
+        try:
+            # 🔥 개선: Safetensors 파일은 바로 Safetensors 로딩
+            if self.model_path.suffix.lower() == '.safetensors':
+                self.logger.debug(f"Safetensors 파일 감지: {self.model_name}")
+                self.checkpoint_data = self._load_safetensors()
+            else:
+                self.checkpoint_data = self._load_pytorch_checkpoint()
+            
+            return self.checkpoint_data is not None
+            
+        except Exception as e:
+            self.logger.error(f"❌ Cloth Warping 모델 로딩 실패: {e}")
+            return False
+
+    def _load_diffusion_model(self) -> bool:
+        """Virtual Fitting 모델 로딩 (순서 개선)"""
+        try:
+            # 🔥 개선: Safetensors 파일은 바로 Safetensors 로딩
+            if self.model_path.suffix.lower() == '.safetensors':
+                self.logger.debug(f"Safetensors 파일 감지: {self.model_name}")
+                self.checkpoint_data = self._load_safetensors()
+            elif "diffusion" in self.model_name.lower():
+                self.checkpoint_data = self._load_diffusion_checkpoint()
+            else:
+                self.checkpoint_data = self._load_pytorch_checkpoint()
+            
+            return self.checkpoint_data is not None
+            
+        except Exception as e:
+            self.logger.error(f"❌ Virtual Fitting 모델 로딩 실패: {e}")
+            return False
+
+
     def _load_human_parsing_model(self) -> bool:
         """Human Parsing 모델 로딩 (Graphonomy, ATR 등) - Central Hub 호환"""
         try:
@@ -515,39 +700,6 @@ class RealAIModel:
             self.logger.error(f"❌ Geometric Matching 모델 로딩 실패: {e}")
             return False
     
-    def _load_warping_model(self) -> bool:
-        """Cloth Warping 모델 로딩 (RealVisXL 등) - Central Hub 호환"""
-        try:
-            # RealVisXL Safetensors 파일 처리 (6616.6MB - fix_checkpoints.py 검증됨)
-            if self.model_path.suffix.lower() == '.safetensors':
-                self.checkpoint_data = self._load_safetensors()
-            else:
-                self.checkpoint_data = self._load_pytorch_checkpoint()
-            
-            return self.checkpoint_data is not None
-            
-        except Exception as e:
-            self.logger.error(f"❌ Cloth Warping 모델 로딩 실패: {e}")
-            return False
-    
-    def _load_diffusion_model(self) -> bool:
-        """Virtual Fitting 모델 로딩 (Stable Diffusion 등) - Central Hub 호환"""
-        try:
-            # Safetensors 우선 처리 (3278.9MB - fix_checkpoints.py 검증됨)
-            if self.model_path.suffix.lower() == '.safetensors':
-                self.checkpoint_data = self._load_safetensors()
-            # Diffusion 모델 특별 처리
-            elif "diffusion" in self.model_name.lower():
-                self.checkpoint_data = self._load_diffusion_checkpoint()
-            else:
-                self.checkpoint_data = self._load_pytorch_checkpoint()
-            
-            return self.checkpoint_data is not None
-            
-        except Exception as e:
-            self.logger.error(f"❌ Virtual Fitting 모델 로딩 실패: {e}")
-            return False
-    
     def _load_enhancement_model(self) -> bool:
         """Post Processing 모델 로딩 (Real-ESRGAN 등) - Central Hub 호환"""
         try:
@@ -590,63 +742,7 @@ class RealAIModel:
     # ==============================================
     # 🔥 특화 로더들 (fix_checkpoints.py 검증 결과 기반)
     # ==============================================
-    
-    def _load_pytorch_checkpoint(self) -> Optional[Any]:
-        """PyTorch 체크포인트 로딩 (fix_checkpoints.py 성공 로직 적용)"""
-        if not TORCH_AVAILABLE:
-            self.logger.error("❌ PyTorch가 사용 불가능")
-            return None
-        
-        try:
-            # 🔥 1단계: 안전 모드 (weights_only=True) - fix_checkpoints.py 검증됨
-            try:
-                checkpoint = torch.load(
-                    self.model_path, 
-                    map_location='cpu',
-                    weights_only=True
-                )
-                self.logger.debug(f"✅ {self.model_name} 안전 모드 로딩 성공")
-                return checkpoint
-            except RuntimeError as safe_error:
-                error_msg = str(safe_error).lower()
-                # 🔥 Legacy 포맷 감지 로직 추가 (fix_checkpoints.py 기반)
-                if "legacy .tar format" in error_msg or "torchscript" in error_msg:
-                    self.logger.debug(f"Legacy/TorchScript 파일 감지: {self.model_name}")
-                else:
-                    self.logger.debug(f"안전 모드 실패: {safe_error}")
-            except Exception as e:
-                self.logger.debug(f"안전 모드 예외: {e}")
-            
-            # 🔥 2단계: 호환 모드 (weights_only=False) - fix_checkpoints.py 검증됨
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    checkpoint = torch.load(
-                        self.model_path, 
-                        map_location='cpu',
-                        weights_only=False
-                    )
-                self.logger.debug(f"✅ {self.model_name} 호환 모드 로딩 성공")
-                return checkpoint
-            except Exception as compat_error:
-                self.logger.debug(f"호환 모드 실패: {compat_error}")
-            
-            # 🔥 3단계: Legacy 모드 (파라미터 최소화) - fix_checkpoints.py 검증됨
-            try:
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore")
-                    checkpoint = torch.load(self.model_path, map_location='cpu')
-                self.logger.debug(f"✅ {self.model_name} Legacy 모드 로딩 성공")
-                return checkpoint
-            except Exception as legacy_error:
-                self.logger.error(f"❌ 모든 로딩 방법 실패: {legacy_error}")
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
-            return None
-    
+   
     def _load_safetensors(self) -> Optional[Any]:
         """Safetensors 파일 로딩 (fix_checkpoints.py 검증된 방법)"""
         try:

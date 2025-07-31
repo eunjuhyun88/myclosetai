@@ -677,7 +677,720 @@ class CentralHubDependencyManager:
             self.logger.error(f"❌ {self.step_name} Central Hub 기반 의존성 관리자 정리 실패: {e}")
 
 # ==============================================
-# 🔥 BaseStepMixin v20.0 - Central Hub DI Container 완전 연동
+# 🔥 기존 속성 보장 시스템 - BaseStepMixin에 추가할 코드
+# ==============================================
+
+class StepPropertyGuarantee:
+    """Step 속성 보장 시스템 - 모든 기존 속성들 자동 초기화"""
+    
+    # 🔥 모든 Step에서 필요한 필수 속성들 정의 (프로젝트 지식 분석 결과)
+    ESSENTIAL_PROPERTIES = {
+        # AI 모델 관련 (HumanParsingStep 등에서 필수)
+        'ai_models': dict,
+        'models_loading_status': dict,
+        'loaded_models': dict,
+        'model_interface': type(None),
+        'model_loader': type(None),
+        
+        # 메모리 및 리소스 관리
+        'memory_manager': type(None),
+        'data_converter': type(None),
+        'di_container': type(None),
+        
+        # Step 상태 관리 (모든 Step에서 사용)
+        'is_initialized': bool,
+        'is_ready': bool,
+        'has_model': bool,
+        'model_loaded': bool,
+        'warmup_completed': bool,
+        
+        # 성능 및 통계 (PostProcessingStep 등에서 필수)
+        'ai_stats': dict,
+        'performance_metrics': dict,
+        'performance_stats': dict,
+        'process_count': int,
+        'success_count': int,
+        'error_count': int,
+        'total_processing_count': int,
+        'last_processing_time': float,
+        
+        # 의존성 상태 추적
+        'dependencies_injected': dict,
+        'dependency_status': dict,
+        'dependency_manager': type(None),
+        
+        # 설정 및 환경
+        'config': dict,
+        'device': str,
+        'strict_mode': bool,
+        'step_name': str,
+        'step_id': int,
+        
+        # GitHub 호환성 및 DetailedDataSpec
+        'github_compatible': bool,
+        'detailed_data_spec': type(None),
+        'data_conversion_ready': bool,
+        'real_ai_pipeline_ready': bool,
+        
+        # 추가 실행 관련 속성들
+        'executor': type(None),
+        'parsing_cache': dict,
+        'segmentation_cache': dict,
+        'quality_cache': dict,
+        'available_methods': list,
+        'fabric_properties': dict,
+        
+        # 환경 정보
+        'is_m3_max': bool,
+        'memory_gb': float,
+        'conda_info': dict,
+        
+        # DetailedDataSpec 관련
+        'api_input_mapping': dict,
+        'api_output_mapping': dict,
+        'preprocessing_steps': list,
+        'postprocessing_steps': list,
+        
+        # 기타 중요 속성들
+        'logger': type(None),
+        'initialization_time': float,
+        'processing_results': dict,
+    }
+    
+    # 🔥 특별한 기본값 생성 함수들 (Step별 요구사항 반영)
+    @staticmethod
+    def _create_ai_models():
+        """AI 모델 딕셔너리 생성 - 모든 가능한 AI 모델 슬롯"""
+        return {
+            # Step 01 - Human Parsing
+            'graphonomy': None,
+            'primary_model': None,
+            'parsing_model': None,
+            
+            # Step 03 - Cloth Segmentation  
+            'u2net': None,
+            'sam_model': None,
+            'segmentation_model': None,
+            'u2net_alternative': None,
+            
+            # Step 05 - Cloth Warping
+            'realvisx_model': None,
+            'warping_model': None,
+            'fabric_simulation_model': None,
+            
+            # Step 06 - Virtual Fitting
+            'ootd_diffusion': None,
+            'fitting_model': None,
+            'diffusion_model': None,
+            
+            # Step 07 - Post Processing
+            'esrgan_model': None,
+            'swinir_model': None,
+            'real_esrgan_model': None,
+            'enhancement_model': None,
+            
+            # Step 08 - Quality Assessment
+            'clip_model': None,
+            'quality_model': None,
+            'assessment_model': None,
+            
+            # 공통 모델들
+            'secondary_model': None,
+            'backup_model': None,
+            'classification_model': None,
+            'pose_model': None,
+        }
+    
+    @staticmethod
+    def _create_models_loading_status():
+        """모델 로딩 상태 딕셔너리 생성 - 모든 모델의 로딩 상태 추적"""
+        return {
+            # 로딩 통계
+            'total_models': 0,
+            'loaded_models': 0,
+            'failed_models': 0,
+            'loading_errors': [],
+            'loading_time': 0.0,
+            'success_rate': 0.0,
+            
+            # Step 01 - Human Parsing 모델들
+            'graphonomy': False,
+            'parsing_model': False,
+            
+            # Step 03 - Cloth Segmentation 모델들
+            'u2net': False,
+            'sam_model': False,
+            'segmentation_model': False,
+            'u2net_alternative': False,
+            
+            # Step 05 - Cloth Warping 모델들
+            'realvisx_model': False,
+            'warping_model': False,
+            'fabric_simulation_model': False,
+            
+            # Step 06 - Virtual Fitting 모델들
+            'ootd_diffusion': False,
+            'fitting_model': False,
+            'diffusion_model': False,
+            
+            # Step 07 - Post Processing 모델들
+            'esrgan_model': False,
+            'swinir_model': False,
+            'real_esrgan_model': False,
+            'enhancement_model': False,
+            
+            # Step 08 - Quality Assessment 모델들
+            'clip_model': False,
+            'quality_model': False,
+            'assessment_model': False,
+            
+            # 공통 모델들
+            'pose_model': False,
+            'classification_model': False,
+            'primary_model': False,
+            'secondary_model': False,
+            'backup_model': False,
+        }
+    
+    @staticmethod
+    def _create_ai_stats():
+        """AI 통계 딕셔너리 생성 - ModelLoader 및 팩토리 패턴 통계"""
+        return {
+            'model_loader_calls': 0,
+            'factory_pattern_calls': 0,
+            'inference_calls': 0,
+            'total_processing_time': 0.0,
+            'average_processing_time': 0.0,
+            'memory_usage_mb': 0.0,
+            'gpu_utilization': 0.0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'step_interface_calls': 0,
+            'di_container_requests': 0,
+            'dependency_injections': 0,
+            'real_ai_inferences': 0,
+            'fallback_usages': 0,
+        }
+    
+    @staticmethod
+    def _create_performance_metrics():
+        """성능 메트릭 딕셔너리 생성 - 상세한 성능 추적"""
+        return {
+            'initialization_time': 0.0,
+            'first_inference_time': 0.0,
+            'warmup_time': 0.0,
+            'total_inference_time': 0.0,
+            'average_inference_time': 0.0,
+            'peak_memory_usage': 0.0,
+            'model_load_time': 0.0,
+            'data_conversion_time': 0.0,
+            'preprocessing_time': 0.0,
+            'postprocessing_time': 0.0,
+            'api_response_time': 0.0,
+            'step_to_step_time': 0.0,
+            'dependency_injection_time': 0.0,
+        }
+    
+    @staticmethod
+    def _create_performance_stats():
+        """성능 통계 딕셔너리 생성 - 기존 호환성 유지"""
+        return {
+            'total_processed': 0,
+            'avg_processing_time': 0.0,
+            'error_count': 0,
+            'success_rate': 1.0,
+            'memory_usage_mb': 0.0,
+            'models_loaded': 0,
+            'cache_hits': 0,
+            'ai_inference_count': 0,
+            'torch_errors': 0,
+            'mps_optimizations': 0,
+            'conda_optimizations': 0,
+        }
+    
+    @staticmethod
+    def _create_dependencies_injected():
+        """의존성 주입 상태 딕셔너리 생성 - Central Hub 호환"""
+        return {
+            'model_loader': False,
+            'memory_manager': False,
+            'data_converter': False,
+            'di_container': False,
+            'central_hub_container': False,
+            'step_interface': False,
+            'dependency_manager': False,
+            'base_step_mixin': True,  # 기본값 True
+            'github_compatible': True,  # 기본값 True
+            'property_injection': False,
+        }
+    
+    @staticmethod
+    def _create_dependency_status():
+        """의존성 상태 딕셔너리 생성 - 상세한 의존성 추적"""
+        return {
+            'base_initialized': False,
+            'github_compatible': True,
+            'detailed_data_spec_loaded': False,
+            'data_conversion_ready': False,
+            'model_loader': False,
+            'memory_manager': False,
+            'data_converter': False,
+            'di_container': False,
+            'central_hub_connected': False,
+            'property_injection_completed': False,
+            'model_interface_ready': False,
+            'checkpoint_loading_ready': False,
+            'auto_injection_attempted': False,
+            'manual_injection_attempted': False,
+        }
+    
+    @staticmethod
+    def _create_detailed_data_spec():
+        """DetailedDataSpec 딕셔너리 생성 - 기본 데이터 스펙"""
+        return {
+            'loaded': False,
+            'api_input_mapping': {
+                'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
+                'clothing_image': 'fastapi.UploadFile -> PIL.Image.Image',
+                'data': 'Dict[str, Any] -> Dict[str, Any]'
+            },
+            'api_output_mapping': {
+                'result': 'numpy.ndarray -> base64_string',
+                'success': 'bool -> bool',
+                'processing_time': 'float -> float',
+                'confidence': 'float -> float',
+                'quality_score': 'float -> float'
+            },
+            'preprocessing_requirements': {
+                'resize_512x512': True,
+                'normalize_imagenet': True,
+                'to_tensor': True
+            },
+            'postprocessing_requirements': {
+                'to_numpy': True,
+                'clip_0_1': True,
+                'resize_original': True
+            },
+            'data_flow': {
+                'input_validation': True,
+                'output_formatting': True,
+                'error_handling': True
+            },
+            'step_specific_config': {}
+        }
+    
+    @staticmethod
+    def _create_conda_info():
+        """Conda 환경 정보 생성"""
+        import os
+        return {
+            'conda_env': os.environ.get('CONDA_DEFAULT_ENV', 'none'),
+            'conda_prefix': os.environ.get('CONDA_PREFIX', 'none'),
+            'is_target_env': os.environ.get('CONDA_DEFAULT_ENV') == 'mycloset-ai-clean',
+            'conda_optimized': False
+        }
+    
+    @staticmethod
+    def _create_processing_results():
+        """처리 결과 캐시 생성"""
+        return {
+            'last_result': None,
+            'cached_results': {},
+            'result_history': [],
+            'error_history': [],
+            'timing_history': [],
+            'memory_snapshots': []
+        }
+    
+    @classmethod
+    def guarantee_properties(cls, step_instance):
+        """Step 인스턴스의 모든 속성 보장"""
+        try:
+            guaranteed_count = 0
+            missing_properties = []
+            
+            for prop_name, prop_type in cls.ESSENTIAL_PROPERTIES.items():
+                if not hasattr(step_instance, prop_name):
+                    # 속성이 없으면 기본값으로 생성
+                    default_value = cls._get_default_value(prop_name, prop_type)
+                    setattr(step_instance, prop_name, default_value)
+                    guaranteed_count += 1
+                    missing_properties.append(prop_name)
+                elif getattr(step_instance, prop_name) is None and prop_type != type(None):
+                    # 속성이 None인데 None이 아니어야 하는 경우
+                    default_value = cls._get_default_value(prop_name, prop_type)
+                    setattr(step_instance, prop_name, default_value)
+                    guaranteed_count += 1
+                    missing_properties.append(f"{prop_name}(None->filled)")
+            
+            # 로거가 없으면 생성
+            if not hasattr(step_instance, 'logger') or step_instance.logger is None:
+                import logging
+                step_instance.logger = logging.getLogger(step_instance.__class__.__name__)
+                guaranteed_count += 1
+                missing_properties.append('logger')
+            
+            # Step 기본 정보 설정
+            if not hasattr(step_instance, 'step_name') or not step_instance.step_name:
+                step_instance.step_name = step_instance.__class__.__name__
+                guaranteed_count += 1
+                missing_properties.append('step_name')
+            
+            if guaranteed_count > 0:
+                step_instance.logger.info(f"✅ 속성 보장 완료: {guaranteed_count}개 속성 초기화")
+                step_instance.logger.debug(f"🔧 보장된 속성들: {missing_properties}")
+            
+            # 의존성 상태 업데이트
+            if hasattr(step_instance, 'dependency_status'):
+                step_instance.dependency_status['property_injection_completed'] = True
+                step_instance.dependency_status['base_initialized'] = True
+            
+            return guaranteed_count
+            
+        except Exception as e:
+            # 로거가 없을 수 있으므로 print 사용
+            print(f"❌ 속성 보장 실패: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
+    
+    @classmethod
+    def _get_default_value(cls, prop_name: str, prop_type: type):
+        """속성별 기본값 반환"""
+        # 특별한 생성 함수가 있는 속성들
+        special_creators = {
+            'ai_models': cls._create_ai_models,
+            'models_loading_status': cls._create_models_loading_status,
+            'loaded_models': lambda: {},
+            'ai_stats': cls._create_ai_stats,
+            'performance_metrics': cls._create_performance_metrics,
+            'performance_stats': cls._create_performance_stats,
+            'dependencies_injected': cls._create_dependencies_injected,
+            'dependency_status': cls._create_dependency_status,
+            'detailed_data_spec': cls._create_detailed_data_spec,
+            'config': lambda: {},
+            'parsing_cache': lambda: {},
+            'segmentation_cache': lambda: {},
+            'quality_cache': lambda: {},
+            'conda_info': cls._create_conda_info,
+            'processing_results': cls._create_processing_results,
+            'api_input_mapping': lambda: {},
+            'api_output_mapping': lambda: {},
+            'preprocessing_steps': lambda: [],
+            'postprocessing_steps': lambda: [],
+            'available_methods': lambda: [],
+            'fabric_properties': lambda: {},
+        }
+        
+        if prop_name in special_creators:
+            return special_creators[prop_name]()
+        
+        # 타입별 기본값
+        if prop_type == dict:
+            return {}
+        elif prop_type == list:
+            return []
+        elif prop_type == bool:
+            # 기본적으로 False, 특별한 경우만 True
+            if prop_name in ['github_compatible', 'data_conversion_ready']:
+                return True
+            return False
+        elif prop_type == int:
+            if prop_name == 'step_id':
+                return 0
+            return 0
+        elif prop_type == float:
+            if prop_name == 'memory_gb':
+                return 16.0  # 기본 메모리
+            return 0.0
+        elif prop_type == str:
+            if prop_name == 'device':
+                return "cpu"
+            elif prop_name == 'step_name':
+                return "BaseStep"
+            return ""
+        else:
+            return None
+
+# ==============================================
+# 🔥 BaseStepMixin에 추가할 초기화 코드
+# ==============================================
+
+def enhance_base_step_mixin_init(original_init):
+    """BaseStepMixin.__init__ 메서드를 강화하는 데코레이터"""
+    def enhanced_init(self, *args, **kwargs):
+        # 🔥 1단계: 원본 초기화 실행
+        try:
+            original_init(self, *args, **kwargs)
+        except Exception as e:
+            # 원본 초기화 실패 시에도 속성 보장은 실행
+            print(f"⚠️ 원본 초기화 실패, 속성 보장 진행: {e}")
+        
+        # 🔥 2단계: 모든 기존 속성들 보장 (에러 방지)
+        guaranteed_count = StepPropertyGuarantee.guarantee_properties(self)
+        
+        # 🔥 3단계: 추가 호환성 보장
+        try:
+            # M3 Max 환경 감지
+            if not hasattr(self, 'is_m3_max'):
+                import platform
+                import subprocess
+                try:
+                    if platform.system() == 'Darwin':
+                        result = subprocess.run(
+                            ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        self.is_m3_max = 'M3' in result.stdout
+                    else:
+                        self.is_m3_max = False
+                except:
+                    self.is_m3_max = False
+            
+            # 메모리 정보 설정
+            if not hasattr(self, 'memory_gb') or self.memory_gb == 0.0:
+                self.memory_gb = 128.0 if self.is_m3_max else 16.0
+            
+            # 로거 메시지
+            if guaranteed_count > 0:
+                self.logger.info(f"🛡️ BaseStepMixin 속성 보장 시스템 활성화: {guaranteed_count}개 속성 자동 생성")
+                self.logger.info(f"🔧 환경: M3 Max={self.is_m3_max}, 메모리={self.memory_gb:.1f}GB")
+            
+        except Exception as e:
+            if hasattr(self, 'logger'):
+                self.logger.debug(f"⚠️ 추가 호환성 보장 실패: {e}")
+    
+    return enhanced_init
+
+# ==============================================
+# 🔥 사용법 - BaseStepMixin 클래스에 적용
+# ==============================================
+
+# BaseStepMixin 클래스 정의에서 __init__ 메서드에 다음 코드 추가:
+
+class BaseStepMixin:
+        
+    def __init__(self, device: str = "auto", strict_mode: bool = False, **kwargs):
+        """BaseStepMixin 초기화 - PropertyInjectionMixin 기능 직접 내장"""
+        try:
+            # 🔥 1. PropertyInjectionMixin 기능을 직접 내장
+            self._di_container = None
+            self.central_hub_container = None
+            self.di_container = None  # 기존 호환성
+            
+            # 🔥 2. 의존성 주입된 서비스들 직접 선언
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            
+            # 🔥 3. 기존 BaseStepMixin 초기화 코드는 그대로 유지
+            self.config = self._create_central_hub_config(**kwargs)
+            self.step_name = kwargs.get('step_name', self.__class__.__name__)
+            self.step_id = kwargs.get('step_id', getattr(self, 'STEP_ID', 0))
+            
+            # Logger 설정 (제일 먼저)
+            self.logger = logging.getLogger(f"steps.{self.step_name}")
+            if not self.logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                handler.setFormatter(formatter)
+                self.logger.addHandler(handler)
+                self.logger.setLevel(logging.INFO)
+
+            # 🔥 의존성 주입 상태 추적 (Central Hub 기반)
+            self.dependencies_injected = {
+                'model_loader': False,
+                'memory_manager': False,
+                'data_converter': False,
+                'central_hub_container': False
+            }
+
+            # 기본 속성들 초기화
+            self.device = device if device != "auto" else ("mps" if TORCH_AVAILABLE and MPS_AVAILABLE else "cpu")
+            self.strict_mode = strict_mode
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+
+            # GitHub 호환 속성들 (Central Hub 기반)
+            self.model_interface = None
+
+            # 성능 통계 초기화
+            self._initialize_performance_stats()
+
+            # 🔥 DetailedDataSpec 정보 저장
+            self.detailed_data_spec = self._load_detailed_data_spec_from_kwargs(**kwargs)
+            
+            # 🔥 Central Hub 기반 의존성 관리자 (순환참조 해결)
+            self.dependency_manager = CentralHubDependencyManager(self.step_name)
+            self.dependency_manager.set_step_instance(self)
+
+            # 시스템 정보
+            self.is_m3_max = IS_M3_MAX
+            self.memory_gb = MEMORY_GB
+            self.conda_info = CONDA_INFO
+            
+            # GitHub 호환성을 위한 속성들
+            self.github_compatible = True
+            self.real_ai_pipeline_ready = False
+            self.process_method_signature = self.config.process_method_signature
+            
+            # Central Hub 호환 성능 메트릭
+            self.performance_metrics = CentralHubPerformanceMetrics()
+            
+            # 🔥 DetailedDataSpec 상태
+            self.data_conversion_ready = self._validate_data_conversion_readiness()
+            
+            # 환경 최적화 적용
+            self._apply_central_hub_environment_optimization()
+            
+            # 🔥 4. PropertyInjectionMixin 기능 직접 구현 - Central Hub DI Container 자동 연동
+            self._auto_connect_central_hub()
+            
+            self.logger.info(f"✅ {self.step_name} 초기화 완료 (PropertyInjectionMixin 기능 내장)")
+            
+        except Exception as e:
+            self._central_hub_emergency_setup(e)
+
+    def _auto_connect_central_hub(self):
+        """Central Hub DI Container 자동 연결 - PropertyInjectionMixin 기능 대체"""
+        try:
+            container = _get_central_hub_container()
+            if container:
+                self.set_di_container(container)
+                self.logger.debug(f"✅ {self.step_name} Central Hub 자동 연결 완료")
+        except Exception as e:
+            # 오류 발생 시 조용히 무시 (의존성 주입은 선택사항)
+            self.logger.debug(f"Central Hub 자동 연결 실패: {e}")
+
+    def set_di_container(self, container):
+        """DI Container 설정 - PropertyInjectionMixin 기능 내장"""
+        try:
+            self._di_container = container
+            self.central_hub_container = container
+            self.di_container = container  # 기존 호환성
+            self._auto_inject_properties()
+            
+            # dependency_manager 업데이트
+            if hasattr(self, 'dependency_manager') and self.dependency_manager:
+                self.dependency_manager._central_hub_container = container
+                self.dependency_manager._container_initialized = True
+                self.dependency_manager.dependency_status.central_hub_connected = True
+            
+            self.dependencies_injected['central_hub_container'] = True
+            self.logger.debug(f"✅ {self.step_name} DI Container 설정 완료")
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} DI Container 설정 실패: {e}")
+            return False
+
+    def _auto_inject_properties(self):
+        """자동 속성 주입 - PropertyInjectionMixin 기능 내장"""
+        if not self._di_container:
+            return
+        
+        injection_map = {
+            'model_loader': 'model_loader',
+            'memory_manager': 'memory_manager', 
+            'data_converter': 'data_converter'
+        }
+        
+        for attr_name, service_key in injection_map.items():
+            if not hasattr(self, attr_name) or getattr(self, attr_name) is None:
+                try:
+                    service = self._di_container.get(service_key)
+                    if service:
+                        setattr(self, attr_name, service)
+                        self.dependencies_injected[attr_name] = True
+                        self.logger.debug(f"✅ {self.step_name} {attr_name} 자동 주입 완료")
+                except Exception as e:
+                    # 서비스를 찾을 수 없어도 계속 진행
+                    self.logger.debug(f"⚠️ {self.step_name} {attr_name} 자동 주입 실패: {e}")
+
+# ==============================================
+# 🔥 검증 함수들
+# ==============================================
+
+def validate_step_properties(step_instance) -> Dict[str, Any]:
+    """Step 속성 검증"""
+    try:
+        missing_properties = []
+        present_properties = []
+        
+        for prop_name in StepPropertyGuarantee.ESSENTIAL_PROPERTIES:
+            if hasattr(step_instance, prop_name):
+                present_properties.append(prop_name)
+            else:
+                missing_properties.append(prop_name)
+        
+        return {
+            'valid': len(missing_properties) == 0,
+            'missing_properties': missing_properties,
+            'present_properties': present_properties,
+            'total_properties': len(StepPropertyGuarantee.ESSENTIAL_PROPERTIES),
+            'coverage_percentage': (len(present_properties) / len(StepPropertyGuarantee.ESSENTIAL_PROPERTIES)) * 100,
+            'critical_properties_status': {
+                'ai_models': hasattr(step_instance, 'ai_models'),
+                'models_loading_status': hasattr(step_instance, 'models_loading_status'),
+                'dependencies_injected': hasattr(step_instance, 'dependencies_injected'),
+                'logger': hasattr(step_instance, 'logger') and step_instance.logger is not None,
+            }
+        }
+        
+    except Exception as e:
+        return {
+            'valid': False,
+            'error': str(e),
+            'missing_properties': [],
+            'present_properties': [],
+            'coverage_percentage': 0
+        }
+
+def create_step_with_guaranteed_properties(step_class, **kwargs):
+    """속성 보장과 함께 Step 생성"""
+    try:
+        # Step 인스턴스 생성
+        step_instance = step_class(**kwargs)
+        
+        # 추가 속성 보장 (생성자에서 누락될 수 있는 경우 대비)
+        StepPropertyGuarantee.guarantee_properties(step_instance)
+        
+        return step_instance
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("StepCreator")
+        logger.error(f"❌ Step 생성 실패: {e}")
+        return None
+
+def fix_step_attribute_errors(step_instance):
+    """기존 Step 인스턴스의 속성 에러 수정"""
+    try:
+        # 속성 보장 실행
+        guaranteed_count = StepPropertyGuarantee.guarantee_properties(step_instance)
+        
+        # 검증 실행
+        validation_result = validate_step_properties(step_instance)
+        
+        return {
+            'success': True,
+            'guaranteed_properties': guaranteed_count,
+            'validation_result': validation_result,
+            'fixed': guaranteed_count > 0
+        }
+        
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e),
+            'guaranteed_properties': 0,
+            'fixed': False
+        }
+
+# ==============================================
+# 🔥 Export
 # ==============================================
 
 class BaseStepMixin:
@@ -3296,6 +4009,11 @@ __all__ = [
     'DependencyValidationFormat',
     'DataConversionMethod',
     
+    'StepPropertyGuarantee',
+    'enhance_base_step_mixin_init',
+    'validate_step_properties',
+    'create_step_with_guaranteed_properties',
+    'fix_step_attribute_errors'
     # 상수들
     'TORCH_AVAILABLE',
     'MPS_AVAILABLE',

@@ -1078,6 +1078,8 @@ class FixedModelDetector:
             self.logger.error(f"❌ {request_name} 모델 생성 실패: {e}")
             return None
     
+
+    
     def _calculate_size_based_confidence(self, file_size_mb: float, step_info: Optional[Dict], ai_class: Optional[str]) -> float:
         """크기 기반 신뢰도 계산"""
         confidence = 0.5  # 기본값
@@ -1117,6 +1119,8 @@ class FixedModelDetector:
             confidence += 0.1
         
         return min(confidence, 1.0)
+    
+
     
     def _extract_step_name(self, request_name: str) -> str:
         """요청명에서 Step 이름 추출"""
@@ -1203,6 +1207,8 @@ class FixedModelDetector:
         except Exception as e:
             self.logger.debug(f"대형 파일 스캔 오류: {e}")
     
+
+            # backend/app/ai_pipeline/utils/auto_model_detector.py에 추가할 코드
     def _infer_ai_class_from_filename(self, filename: str) -> str:
         """파일명으로부터 AI 클래스 추론"""
         filename_lower = filename.lower()
@@ -1221,3 +1227,167 @@ class FixedModelDetector:
             "RealHRVITONModel": ["hrviton", "hr_viton"],
             "RealStableDiffusionModel": ["v1-5-pruned", "stable_diffusion", "diffusion_pytorch_model"]
         }
+        
+        # 패턴 매칭
+        for ai_class, patterns in ai_class_patterns.items():
+            if any(pattern in filename_lower for pattern in patterns):
+                return ai_class
+        
+        return "BaseRealAIModel"
+
+    def _sort_models_by_priority(self):
+        """모델을 우선순위 점수로 정렬"""
+        try:
+            sorted_models = dict(sorted(
+                self.detected_models.items(),
+                key=lambda x: x[1].priority_score,
+                reverse=True  # 높은 점수부터
+            ))
+            self.detected_models = sorted_models
+            self.logger.debug(f"✅ 모델 우선순위 정렬 완료: {len(sorted_models)}개")
+        except Exception as e:
+            self.logger.error(f"❌ 모델 정렬 실패: {e}")
+
+
+    # ==============================================
+    # 🔥 전역 인스턴스 및 편의 함수들 (누락된 부분 추가)
+    # ==============================================
+
+# 전역 인스턴스
+_global_detector: Optional[FixedModelDetector] = None
+_detector_lock = threading.Lock()
+
+def get_global_detector(config: Optional[Dict[str, Any]] = None) -> Optional[FixedModelDetector]:
+    """전역 FixedModelDetector 인스턴스 반환 (ModelLoader 호환)"""
+    global _global_detector
+    
+    with _detector_lock:
+        if _global_detector is None:
+            try:
+                _global_detector = FixedModelDetector()
+                logger.info("✅ 전역 FixedModelDetector 생성 성공")
+            except Exception as e:
+                logger.error(f"❌ 전역 FixedModelDetector 생성 실패: {e}")
+                return None
+        
+        return _global_detector
+
+def quick_model_detection(step_class: Optional[str] = None, model_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    """빠른 모델 탐지 (__init__.py 호환)"""
+    try:
+        detector = get_global_detector()
+        if not detector:
+            return []
+        
+        detected_models = detector.detect_all_models()
+        results = []
+        
+        for model_name, detected_model in detected_models.items():
+            try:
+                model_info = detected_model.to_dict()
+                
+                # 필터링
+                if step_class and model_info.get("step_class") != step_class:
+                    continue
+                if model_type and model_info.get("model_type") != model_type:
+                    continue
+                
+                results.append(model_info)
+                
+            except Exception as e:
+                logger.debug(f"모델 정보 변환 실패 {model_name}: {e}")
+                continue
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"❌ 빠른 모델 탐지 실패: {e}")
+        return []
+
+def detect_available_models(step_class: Optional[str] = None) -> List[Dict[str, Any]]:
+    """사용 가능한 모델 탐지 (별칭 함수)"""
+    return quick_model_detection(step_class=step_class)
+
+def create_global_detector(**kwargs) -> FixedModelDetector:
+    """전역 탐지기 생성 (설정 적용)"""
+    global _global_detector
+    
+    with _detector_lock:
+        try:
+            _global_detector = FixedModelDetector()
+            
+            # 설정 적용
+            for key, value in kwargs.items():
+                if hasattr(_global_detector, key):
+                    setattr(_global_detector, key, value)
+            
+            logger.info("✅ 설정 적용된 전역 탐지기 생성 완료")
+            return _global_detector
+            
+        except Exception as e:
+            logger.error(f"❌ 전역 탐지기 생성 실패: {e}")
+            return FixedModelDetector()  # 폴백
+
+def cleanup_global_detector():
+    """전역 탐지기 정리"""
+    global _global_detector
+    
+    with _detector_lock:
+        if _global_detector:
+            try:
+                # 메모리 정리
+                _global_detector.detected_models.clear()
+                _global_detector.detection_stats = {}
+                _global_detector = None
+                logger.info("✅ 전역 탐지기 정리 완료")
+            except Exception as e:
+                logger.error(f"❌ 전역 탐지기 정리 실패: {e}")
+
+
+    # ==============================================
+# 🔥 __all__ 업데이트
+# ==============================================
+
+__all__ = [
+    # 핵심 클래스들
+    'RealFileMapper',
+    'DetectedModel', 
+    'FixedModelDetector',
+    
+    # 🔥 전역 함수들 (추가)
+    'get_global_detector',
+    'quick_model_detection',
+    'detect_available_models',
+    'create_global_detector',
+    'cleanup_global_detector',
+    
+    # 상수들
+    'TORCH_AVAILABLE',
+    'NUMPY_AVAILABLE'
+]
+
+# ==============================================
+# 🔥 모듈 초기화 메시지 업데이트
+# ==============================================
+
+logger.info("🚀 auto_model_detector v4.0 초기화 완료!")
+logger.info("✅ get_global_detector() 함수 지원")
+logger.info("✅ quick_model_detection() 함수 지원") 
+logger.info("✅ ModelLoader v5.1 완전 호환")
+logger.info("✅ __init__.py 완전 호환")
+
+# 초기화 테스트
+try:
+    _test_detector = get_global_detector()
+    if _test_detector:
+        logger.info("🎉 전역 탐지기 초기화 테스트 성공!")
+        logger.info(f"   AI 모델 루트: {_test_detector.ai_models_root}")
+        logger.info(f"   파일 매퍼 초기화: ✅")
+        logger.info(f"   크기 우선순위: {_test_detector.min_model_size_mb}MB 이상")
+    else:
+        logger.warning("⚠️ 전역 탐지기 초기화 실패")
+        
+except Exception as e:
+    logger.error(f"❌ 초기화 테스트 실패: {e}")
+
+logger.info("🔥 auto_model_detector v4.0 모듈 로드 완료!")

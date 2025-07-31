@@ -2,7 +2,7 @@
 #backend/app/ai_pipeline/__init__.py
 #!/usr/bin/env python3
 """
-🔥 MyCloset AI Pipeline System v8.0 - DI Container v4.0 완전 적용
+🔥 MyCloset AI Pipeline System v8.1 - DI Container v4.0 완전 적용 + 오류 수정
 ================================================================
 
 ✅ CircularReferenceFreeDIContainer 완전 통합
@@ -12,10 +12,13 @@
 ✅ 안전한 의존성 주입 시스템
 ✅ M3 Max 128GB + conda 환경 최적화
 ✅ GitHub 프로젝트 구조 100% 호환
+✅ SCIPY_AVAILABLE 오류 수정
+✅ 상대 임포트 오류 수정
+✅ DI Container 폴백 시스템 추가
 
 Author: MyCloset AI Team
-Date: 2025-07-30
-Version: 8.0 (DI Container v4.0 Integration)
+Date: 2025-08-01
+Version: 8.1 (Bug Fixes)
 """
 
 import os
@@ -36,7 +39,23 @@ warnings.filterwarnings('ignore', message='.*deprecated.*')
 # Logger 최우선 초기화 (에러 방지)
 logger = logging.getLogger(__name__)
 
+# ==============================================
+# 🔥 SCIPY_AVAILABLE 변수 정의 (오류 수정)
+# ==============================================
+
+# SciPy 가용성 확인
+try:
+    import scipy
+    SCIPY_AVAILABLE = True
+    logger.debug("✅ SciPy 사용 가능")
+except ImportError:
+    SCIPY_AVAILABLE = False
+    logger.debug("⚠️ SciPy 사용 불가 - 기본 기능으로 동작")
+
+# ==============================================
 # 🔥 TYPE_CHECKING으로 순환참조 완전 방지
+# ==============================================
+
 if TYPE_CHECKING:
     # 오직 타입 체크 시에만 import
     from .steps.base_step_mixin import BaseStepMixin
@@ -55,11 +74,12 @@ else:
     PipelineManager = Any
 
 # ==============================================
-# 🔥 DI Container v4.0 Core 시스템 Import
+# 🔥 DI Container v4.0 Core 시스템 Import (오류 수정)
 # ==============================================
 
 try:
-    from ..core.di_container import (
+    # 절대 임포트 시도
+    from app.core.di_container import (
         CircularReferenceFreeDIContainer,
         LazyDependency,
         DynamicImportResolver,
@@ -72,69 +92,130 @@ try:
         initialize_di_system_safe
     )
     DI_CONTAINER_AVAILABLE = True
-    logger.info("✅ DI Container v4.0 Core 시스템 로드 성공")
-except ImportError as e:
-    logger.error(f"❌ DI Container v4.0 Core 시스템 로드 실패: {e}")
-    DI_CONTAINER_AVAILABLE = False
-    # 폴백 처리
-    def inject_dependencies_to_step_safe(step_instance, container=None):
-        logger.warning("⚠️ DI Container 없음 - 의존성 주입 스킵")
-    
-    def get_service_safe(key: str):
-        logger.warning(f"⚠️ DI Container 없음 - 서비스 조회 실패: {key}")
-        return None
+    logger.info("✅ DI Container v4.0 Core 시스템 로드 성공 (절대 임포트)")
+except ImportError:
+    try:
+        # 상대 임포트 시도 (폴백)
+        from ..core.di_container import (
+            CircularReferenceFreeDIContainer,
+            LazyDependency,
+            DynamicImportResolver,
+            get_global_container,
+            reset_global_container,
+            inject_dependencies_to_step_safe,
+            get_service_safe,
+            register_service_safe,
+            register_lazy_service,
+            initialize_di_system_safe
+        )
+        DI_CONTAINER_AVAILABLE = True
+        logger.info("✅ DI Container v4.0 Core 시스템 로드 성공 (상대 임포트)")
+    except ImportError as e:
+        logger.error(f"❌ DI Container v4.0 Core 시스템 로드 실패: {e}")
+        DI_CONTAINER_AVAILABLE = False
+        
+        # 폴백 처리
+        def inject_dependencies_to_step_safe(step_instance, container=None):
+            logger.warning("⚠️ DI Container 없음 - 의존성 주입 스킵")
+        
+        def get_service_safe(key: str):
+            logger.warning(f"⚠️ DI Container 없음 - 서비스 조회 실패: {key}")
+            return None
+        
+        def register_service_safe(key: str, service):
+            logger.warning(f"⚠️ DI Container 없음 - 서비스 등록 스킵: {key}")
+        
+        def register_lazy_service(key: str, factory):
+            logger.warning(f"⚠️ DI Container 없음 - 지연 서비스 등록 스킵: {key}")
+        
+        def initialize_di_system_safe():
+            logger.warning("⚠️ DI Container 없음 - 시스템 초기화 스킵")
+        
+        def get_global_container():
+            logger.warning("⚠️ DI Container 없음 - 글로벌 컨테이너 없음")
+            return None
 
 # ==============================================
-# 🔥 환경 설정 (DI Container 통합)
+# 🔥 환경 설정 (DI Container 통합) - 오류 수정
 # ==============================================
 
-# 시스템 정보 가져오기 (상위 패키지)
+# 시스템 정보 가져오기 (상위 패키지) - 오류 수정
 try:
-    from .. import get_system_info, is_conda_environment, is_m3_max, get_device
+    # 절대 임포트 시도
+    from app import get_system_info, is_conda_environment, is_m3_max, get_device
     SYSTEM_INFO = get_system_info()
     IS_CONDA = is_conda_environment()
     IS_M3_MAX = is_m3_max()
     DEVICE = get_device()
-    logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공")
-except ImportError as e:
-    logger.warning(f"⚠️ 상위 패키지 로드 실패, 기본값 사용: {e}")
-    # 기본값 설정
-    CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
-    IS_CONDA = CONDA_ENV != 'none'
-    IS_TARGET_ENV = CONDA_ENV == 'mycloset-ai-clean'
-    
-    # M3 Max 감지
-    def _detect_m3_max() -> bool:
+    logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공 (절대 임포트)")
+except ImportError:
+    try:
+        # 상대 임포트 시도 (폴백)
+        from .. import get_system_info, is_conda_environment, is_m3_max, get_device
+        SYSTEM_INFO = get_system_info()
+        IS_CONDA = is_conda_environment()
+        IS_M3_MAX = is_m3_max()
+        DEVICE = get_device()
+        logger.info("✅ 상위 패키지에서 시스템 정보 로드 성공 (상대 임포트)")
+    except ImportError as e:
+        logger.warning(f"⚠️ 상위 패키지 로드 실패, 기본값 사용: {e}")
+        
+        # 기본값 설정
+        CONDA_ENV = os.environ.get('CONDA_DEFAULT_ENV', 'none')
+        IS_CONDA = CONDA_ENV != 'none'
+        IS_TARGET_ENV = CONDA_ENV == 'mycloset-ai-clean'
+        
+        # M3 Max 감지
+        def _detect_m3_max() -> bool:
+            try:
+                if platform.system() == 'Darwin':
+                    import subprocess
+                    result = subprocess.run(
+                        ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    return 'M3' in result.stdout and 'Max' in result.stdout
+            except Exception:
+                pass
+            return False
+        
+        IS_M3_MAX = _detect_m3_max()
+        MEMORY_GB = 128.0 if IS_M3_MAX else 16.0
+        
+        # 디바이스 감지
         try:
-            if platform.system() == 'Darwin':
-                import subprocess
-                result = subprocess.run(
-                    ['sysctl', '-n', 'machdep.cpu.brand_string'],
-                    capture_output=True, text=True, timeout=5
-                )
-                return 'M3' in result.stdout and 'Max' in result.stdout
-        except Exception:
-            pass
-        return False
-    
-    IS_M3_MAX = _detect_m3_max()
-    MEMORY_GB = 128.0 if IS_M3_MAX else 16.0
-    DEVICE = 'mps' if IS_M3_MAX else 'cpu'
-    
-    SYSTEM_INFO = {
-        'device': DEVICE,
-        'is_m3_max': IS_M3_MAX,
-        'memory_gb': MEMORY_GB,
-        'is_conda': IS_CONDA,
-        'conda_env': CONDA_ENV
-    }
+            import torch
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                DEVICE = 'mps'
+            else:
+                DEVICE = 'cpu'
+        except ImportError:
+            DEVICE = 'cpu'
+        
+        SYSTEM_INFO = {
+            'device': DEVICE,
+            'is_m3_max': IS_M3_MAX,
+            'memory_gb': MEMORY_GB,
+            'is_conda': IS_CONDA,
+            'conda_env': CONDA_ENV
+        }
 
-# PyTorch 최적화 설정
+# PyTorch 최적화 설정 (오류 수정)
 TORCH_AVAILABLE = False
 MPS_AVAILABLE = False
 try:
     import torch
     TORCH_AVAILABLE = True
+    
+    # PyTorch 2.7 weights_only 호환성 패치
+    if hasattr(torch, 'load'):
+        original_load = torch.load
+        def patched_load(*args, **kwargs):
+            if 'weights_only' not in kwargs:
+                kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        torch.load = patched_load
+        logger.info("✅ PyTorch 2.7 weights_only 호환성 패치 적용 완료")
     
     if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         MPS_AVAILABLE = True
@@ -147,11 +228,45 @@ except ImportError:
     logger.warning("⚠️ PyTorch 없음 - conda install pytorch 권장")
 
 # ==============================================
+# 🔥 안전한 지연 의존성 해결 클래스 (오류 수정)
+# ==============================================
+
+class SafeLazyDependency:
+    """안전한 지연 의존성 해결 (LazyDependency 오류 방지)"""
+    
+    def __init__(self, resolver_func, fallback_value=None):
+        self.resolver_func = resolver_func
+        self.fallback_value = fallback_value
+        self._resolved = False
+        self._value = None
+        self._lock = threading.Lock()
+    
+    def resolve(self):
+        """의존성 해결"""
+        if self._resolved:
+            return self._value
+        
+        with self._lock:
+            if self._resolved:
+                return self._value
+            
+            try:
+                self._value = self.resolver_func()
+                self._resolved = True
+                logger.debug(f"✅ SafeLazyDependency 해결 성공")
+                return self._value
+            except Exception as e:
+                logger.warning(f"⚠️ SafeLazyDependency 해결 실패: {e}")
+                self._value = self.fallback_value
+                self._resolved = True
+                return self._value
+
+# ==============================================
 # 🔥 DI Container 기반 Step 로딩 시스템
 # ==============================================
 
 class DIBasedStepLoader:
-    """DI Container 기반 Step 로더 v4.0"""
+    """DI Container 기반 Step 로더 v4.1 (오류 수정)"""
     
     def __init__(self):
         self._container: Optional[CircularReferenceFreeDIContainer] = None
@@ -167,23 +282,27 @@ class DIBasedStepLoader:
         self._setup_step_mapping()
     
     def _initialize_container(self):
-        """DI Container 초기화"""
+        """DI Container 초기화 (오류 수정)"""
         try:
             if DI_CONTAINER_AVAILABLE:
                 self._container = get_global_container()
                 
                 # 시스템 정보 등록
-                self._container.register('device', DEVICE)
-                self._container.register('is_m3_max', IS_M3_MAX)
-                self._container.register('memory_gb', SYSTEM_INFO.get('memory_gb', 16.0))
-                self._container.register('is_conda', IS_CONDA)
-                self._container.register('torch_available', TORCH_AVAILABLE)
-                self._container.register('mps_available', MPS_AVAILABLE)
-                
-                # DI 시스템 초기화
-                initialize_di_system_safe()
-                
-                self.logger.info("✅ DI Container v4.0 초기화 완료")
+                if self._container:
+                    self._container.register('device', DEVICE)
+                    self._container.register('is_m3_max', IS_M3_MAX)
+                    self._container.register('memory_gb', SYSTEM_INFO.get('memory_gb', 16.0))
+                    self._container.register('is_conda', IS_CONDA)
+                    self._container.register('torch_available', TORCH_AVAILABLE)
+                    self._container.register('mps_available', MPS_AVAILABLE)
+                    self._container.register('scipy_available', SCIPY_AVAILABLE)  # 추가
+                    
+                    # DI 시스템 초기화
+                    initialize_di_system_safe()
+                    
+                    self.logger.info("✅ DI Container v4.0 초기화 완료")
+                else:
+                    self.logger.warning("⚠️ DI Container 가져오기 실패")
             else:
                 self.logger.warning("⚠️ DI Container 사용 불가 - 폴백 모드")
                 
@@ -258,7 +377,7 @@ class DIBasedStepLoader:
         )
     
     def safe_import_step(self, step_id: str) -> Optional[Type]:
-        """DI Container 기반 안전한 Step import"""
+        """DI Container 기반 안전한 Step import (오류 수정)"""
         if step_id in self._loaded_steps:
             return self._loaded_steps[step_id]
         
@@ -273,15 +392,21 @@ class DIBasedStepLoader:
             
             # DI Container 기반 동적 import
             if self._container:
-                # 지연 로딩으로 Step 클래스 등록
+                # 안전한 지연 로딩으로 Step 클래스 등록
                 def step_factory():
                     return self._dynamic_import_step(step_info['module'], step_info['class'])
                 
                 step_key = f"step_class_{step_id}"
-                self._container.register_lazy(step_key, step_factory)
                 
-                # 지연 해결
-                step_class = self._container.get(step_key)
+                # SafeLazyDependency 사용
+                lazy_dep = SafeLazyDependency(step_factory)
+                
+                try:
+                    self._container.register_lazy(step_key, step_factory)
+                    step_class = self._container.get(step_key)
+                except Exception:
+                    # 폴백: SafeLazyDependency 직접 사용
+                    step_class = lazy_dep.resolve()
                 
                 if step_class:
                     self._loaded_steps[step_id] = step_class
@@ -304,7 +429,7 @@ class DIBasedStepLoader:
         return None
     
     def _dynamic_import_step(self, module_name: str, class_name: str) -> Optional[Type]:
-        """동적 Step import (순환참조 방지)"""
+        """동적 Step import (순환참조 방지, 오류 수정)"""
         import_paths = [
             module_name,
             module_name.replace('app.', ''),
@@ -367,7 +492,8 @@ class DIBasedStepLoader:
                 'device': DEVICE,
                 'is_m3_max': IS_M3_MAX,
                 'memory_gb': SYSTEM_INFO.get('memory_gb', 16.0),
-                'conda_optimized': IS_CONDA
+                'conda_optimized': IS_CONDA,
+                'scipy_available': SCIPY_AVAILABLE  # 추가
             }
             default_config.update(kwargs)
             
@@ -390,7 +516,15 @@ class DIBasedStepLoader:
     def get_container_stats(self) -> Dict[str, Any]:
         """DI Container 통계 반환"""
         if self._container:
-            return self._container.get_stats()
+            try:
+                return self._container.get_stats()
+            except Exception as e:
+                return {
+                    'container_available': True,
+                    'stats_error': str(e),
+                    'loaded_steps': len(self._loaded_steps),
+                    'failed_steps': len(self._failed_steps)
+                }
         else:
             return {
                 'container_available': False,
@@ -425,9 +559,9 @@ def _safe_import_utils_with_di():
         
         if container:
             # DI Container에서 유틸리티 서비스 조회
-            model_loader = container.get('model_loader')
-            memory_manager = container.get('memory_manager')
-            data_converter = container.get('data_converter')
+            model_loader = get_service_safe('model_loader')
+            memory_manager = get_service_safe('memory_manager')
+            data_converter = get_service_safe('data_converter')
             
             if model_loader:
                 utils_status['model_loader'] = True
@@ -509,6 +643,7 @@ def get_pipeline_status() -> Dict[str, Any]:
         'conda_optimized': IS_CONDA,
         'm3_max_optimized': IS_M3_MAX,
         'device': DEVICE,
+        'scipy_available': SCIPY_AVAILABLE,  # 추가
         'total_steps': len(_di_step_loader._step_mapping),
         'available_steps': len(available_steps),
         'loaded_steps': available_steps,
@@ -615,9 +750,12 @@ async def cleanup_pipeline_system() -> None:
         # DI Container 메모리 최적화
         if DI_CONTAINER_AVAILABLE:
             container = get_global_container()
-            if container:
-                cleanup_stats = container.optimize_memory()
-                logger.info(f"🧹 DI Container 메모리 최적화: {cleanup_stats}")
+            if container and hasattr(container, 'optimize_memory'):
+                try:
+                    cleanup_stats = container.optimize_memory()
+                    logger.info(f"🧹 DI Container 메모리 최적화: {cleanup_stats}")
+                except Exception as e:
+                    logger.debug(f"DI Container 메모리 최적화 실패: {e}")
         
         # Step 로더 캐시 정리
         _di_step_loader._loaded_steps.clear()
@@ -699,6 +837,7 @@ __all__ = [
     'SYSTEM_INFO',
     'STEP_AVAILABILITY',
     'AVAILABLE_STEPS',
+    'SCIPY_AVAILABLE',  # 추가
     
     # 🔧 파이프라인 관리 함수들 (DI 기반)
     'get_pipeline_status',
@@ -717,6 +856,7 @@ __all__ = [
     
     # 🔗 DI Container 관련
     'DIBasedStepLoader',
+    'SafeLazyDependency',  # 추가
     'inject_dependencies_to_step_safe',
     'get_service_safe',
     'register_service_safe',
@@ -750,20 +890,23 @@ def _print_initialization_summary():
     success_rate = status['success_rate']
     di_stats = status.get('di_container_stats', {})
     
-    print(f"\n🔥 MyCloset AI 파이프라인 시스템 v8.0 초기화 완료!")
+    print(f"\n🔥 MyCloset AI 파이프라인 시스템 v8.1 초기화 완료! (오류 수정)")
     print(f"🔗 DI Container v4.0: {'✅ 활성화' if DI_CONTAINER_AVAILABLE else '❌ 비활성화'}")
     print(f"📊 사용 가능한 Step: {available_count}/{total_count}개 ({success_rate:.1f}%)")
     print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'}")
     print(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
     print(f"🖥️ 디바이스: {DEVICE}")
     print(f"⚡ PyTorch MPS: {'✅' if MPS_AVAILABLE else '❌'}")
+    print(f"🔬 SciPy: {'✅' if SCIPY_AVAILABLE else '❌'}")  # 추가
     print(f"🛠️ 유틸리티: {sum(UTILS_STATUS.values())}/4개 사용 가능")
     
     if DI_CONTAINER_AVAILABLE and di_stats:
-        lazy_resolutions = di_stats.get('statistics', {}).get('lazy_resolutions', 0)
-        circular_prevented = di_stats.get('statistics', {}).get('circular_references_prevented', 0)
-        print(f"🔗 DI 지연 해결: {lazy_resolutions}회")
-        print(f"🚫 순환참조 차단: {circular_prevented}회")
+        if 'statistics' in di_stats:
+            stats = di_stats['statistics']
+            lazy_resolutions = stats.get('lazy_resolutions', 0)
+            circular_prevented = stats.get('circular_references_prevented', 0)
+            print(f"🔗 DI 지연 해결: {lazy_resolutions}회")
+            print(f"🚫 순환참조 차단: {circular_prevented}회")
     
     if available_count > 0:
         print(f"✅ 로드된 Steps: {', '.join(status['loaded_steps'])}")
@@ -800,4 +943,4 @@ if IS_CONDA and DI_CONTAINER_AVAILABLE:
     except Exception as e:
         logger.warning(f"⚠️ conda 자동 최적화 실패: {e}")
 
-logger.info("🔥 MyCloset AI Pipeline System v8.0 with DI Container v4.0 초기화 완료!")
+logger.info("🔥 MyCloset AI Pipeline System v8.1 with DI Container v4.0 초기화 완료! (Bug Fixed)")

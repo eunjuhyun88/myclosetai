@@ -108,6 +108,7 @@ except ImportError:
 try:
     import cv2
     OPENCV_AVAILABLE = True
+
 except ImportError:
     # OpenCV 폴백 시스템 (기존 완전 유지)
     class OpenCVFallback:
@@ -169,6 +170,12 @@ try:
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
+try:
+    from scipy import ndimage
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    ndimage = None
 
 # ==============================================
 # 🔥 GPU 안전 연산 유틸리티 (기존 완전 유지)
