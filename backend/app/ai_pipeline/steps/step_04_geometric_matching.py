@@ -46,16 +46,363 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache, wraps
 
+# 최상단에 추가
+import logging
+logger = logging.getLogger(__name__)
+
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:
-    # from app.ai_pipeline.utils.model_loader import ModelLoader  # 순환참조로 지연 import
+    from app.ai_pipeline.utils.model_loader import ModelLoader
     from app.ai_pipeline.utils.memory_manager import MemoryManager
     from app.ai_pipeline.utils.data_converter import DataConverter
     from app.core.di_container import CentralHubDIContainer
 
+# BaseStepMixin 동적 import (순환참조 완전 방지) - GeometricMatching용
+def get_base_step_mixin_class():
+    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - GeometricMatching용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
+        return getattr(module, 'BaseStepMixin', None)
+    except ImportError:
+        try:
+            # 폴백: 상대 경로
+            from .base_step_mixin import BaseStepMixin
+            return BaseStepMixin
+        except ImportError:
+            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
+            return None
+
+BaseStepMixin = get_base_step_mixin_class()
+
+# BaseStepMixin 폴백 클래스 (GeometricMatching 특화)
+if BaseStepMixin is None:
+    class BaseStepMixin:
+        """GeometricMatchingStep용 BaseStepMixin 폴백 클래스"""
+        
+        def __init__(self, **kwargs):
+            # 기본 속성들
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'GeometricMatchingStep')
+            self.step_id = kwargs.get('step_id', 4)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (GeometricMatching이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {
+                'gmm': False,
+                'tps': False,
+                'optical_flow': False,
+                'keypoint': False,
+                'advanced_ai': False,
+                'mock_model': False
+            }
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # GeometricMatching 특화 속성들
+            self.geometric_models = {}
+            self.matching_ready = False
+            self.matching_cache = {}
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.performance_stats = {
+                'total_processed': 0,
+                'successful_matches': 0,
+                'avg_processing_time': 0.0,
+                'avg_transformation_quality': 0.0,
+                'keypoint_match_rate': 0.0,
+                'optical_flow_accuracy': 0.0,
+                'cache_hit_rate': 0.0,
+                'error_count': 0,
+                'models_loaded': 0
+            }
+            
+            # 통계 시스템
+            self.statistics = {
+                'total_processed': 0,
+                'successful_matches': 0,
+                'average_quality': 0.0,
+                'total_processing_time': 0.0,
+                'ai_model_calls': 0,
+                'error_count': 0,
+                'model_creation_success': False,
+                'real_ai_models_used': True,
+                'algorithm_type': 'advanced_deeplab_aspp_self_attention',
+                'features': [
+                    'GMM (Geometric Matching Module)',
+                    'TPS (Thin-Plate Spline) Transformation', 
+                    'Keypoint-based Matching',
+                    'Optical Flow Calculation',
+                    'RANSAC Outlier Removal',
+                    'DeepLabV3+ Backbone',
+                    'ASPP Multi-scale Context',
+                    'Self-Attention Keypoint Matching',
+                    'Edge-Aware Transformation',
+                    'Progressive Geometric Refinement',
+                    'Procrustes Analysis'
+                ]
+            }
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
+        
+        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(data)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                if self.is_initialized:
+                    return True
+                
+                self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
+                
+                # Central Hub를 통한 의존성 주입 시도
+                injected_count = _inject_dependencies_safe(self)
+                if injected_count > 0:
+                    self.logger.info(f"✅ Central Hub 의존성 주입: {injected_count}개")
+                
+                # Geometric Matching 모델들 로딩 (실제 구현에서는 _load_geometric_matching_models_via_central_hub 호출)
+                if hasattr(self, '_load_geometric_matching_models_via_central_hub'):
+                    self._load_geometric_matching_models_via_central_hub()
+                
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
+                
+                # AI 모델들 정리
+                for model_name, model in self.ai_models.items():
+                    try:
+                        if hasattr(model, 'cleanup'):
+                            model.cleanup()
+                        del model
+                    except Exception as e:
+                        self.logger.debug(f"모델 정리 실패 ({model_name}): {e}")
+                
+                # 캐시 정리
+                self.ai_models.clear()
+                if hasattr(self, 'geometric_models'):
+                    self.geometric_models.clear()
+                if hasattr(self, 'matching_cache'):
+                    self.matching_cache.clear()
+                
+                # GPU 메모리 정리
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except:
+                    pass
+                
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'matching_ready': getattr(self, 'matching_ready', False),
+                'models_loaded': len(getattr(self, 'loaded_models', [])),
+                'geometric_models': list(getattr(self, 'geometric_models', {}).keys()),
+                'algorithm_type': 'advanced_deeplab_aspp_self_attention',
+                'fallback_mode': True
+            }
+        
+        # BaseStepMixin 호환 메서드들
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.model_loader = model_loader
+                self.logger.info("✅ ModelLoader 의존성 주입 완료")
+                
+                # Step 인터페이스 생성 시도
+                if hasattr(model_loader, 'create_step_interface'):
+                    try:
+                        self.model_interface = model_loader.create_step_interface(self.step_name)
+                        self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                        self.model_interface = model_loader
+                else:
+                    self.model_interface = model_loader
+                    
+            except Exception as e:
+                self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
+                self.model_loader = None
+                self.model_interface = None
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.memory_manager = memory_manager
+                self.logger.info("✅ MemoryManager 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+            try:
+                self.data_converter = data_converter
+                self.logger.info("✅ DataConverter 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            try:
+                self.di_container = di_container
+                self.logger.info("✅ DI Container 의존성 주입 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
+
+        def _get_step_requirements(self) -> Dict[str, Any]:
+            """Step 04 GeometricMatching 요구사항 반환 (BaseStepMixin 호환)"""
+            return {
+                "required_models": [
+                    "gmm_final.pth",
+                    "tps_network.pth", 
+                    "sam_vit_h_4b8939.pth",
+                    "raft-things.pth",
+                    "resnet101_geometric.pth"
+                ],
+                "primary_model": "gmm_final.pth",
+                "model_configs": {
+                    "gmm_final.pth": {
+                        "size_mb": 44.7,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "precision": "high"
+                    },
+                    "tps_network.pth": {
+                        "size_mb": 527.8,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "real_time": False
+                    },
+                    "sam_vit_h_4b8939.pth": {
+                        "size_mb": 2445.7,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "shared_with": ["step_03_cloth_segmentation"]
+                    },
+                    "raft-things.pth": {
+                        "size_mb": 20.1,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "real_time": True
+                    },
+                    "resnet101_geometric.pth": {
+                        "size_mb": 170.5,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "backbone": True
+                    }
+                },
+                "verified_paths": [
+                    "step_04_geometric_matching/gmm_final.pth",
+                    "step_04_geometric_matching/tps_network.pth", 
+                    "step_04_geometric_matching/ultra_models/raft-things.pth",
+                    "step_04_geometric_matching/ultra_models/resnet101_geometric.pth",
+                    "step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+                ]
+            }
+
 # ==============================================
 # 🔥 2. 필수 라이브러리 및 환경 설정
 # ==============================================
+
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결 - GeometricMatching용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입 - GeometricMatching용"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회 - GeometricMatching용"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
 
 # conda 환경 정보
 CONDA_INFO = {
@@ -74,7 +421,7 @@ def detect_m3_max() -> bool:
                 capture_output=True, text=True, timeout=5
             )
             return 'M3' in result.stdout
-        except:
+    except:
         pass
     return False
 
@@ -133,44 +480,6 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
-
-# ==============================================
-# 🔥 3. BaseStepMixin 동적 Import (순환참조 방지)
-# ==============================================
-
-def get_base_step_mixin_class():
-    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지)"""
-    try:
-        import importlib
-        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
-        return getattr(module, 'BaseStepMixin', None)
-    except ImportError:
-        try:
-            # 폴백: 상대 경로
-            from .base_step_mixin import BaseStepMixin
-            return BaseStepMixin
-        except ImportError:
-            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
-            return None
-
-BaseStepMixin = get_base_step_mixin_class()
-
-# BaseStepMixin 폴백 클래스
-if BaseStepMixin is None:
-    class BaseStepMixin:
-        def __init__(self, **kwargs):
-            self.logger = logging.getLogger(self.__class__.__name__)
-            self.step_name = kwargs.get('step_name', 'GeometricMatchingStep')
-            self.step_id = kwargs.get('step_id', 4)
-            self.device = kwargs.get('device', 'cpu')
-            self.ai_models = {}
-            self.models_loading_status = {}
-            self.model_interface = None
-            self.loaded_models = []
-            self.is_initialized = False
-            self.is_ready = False
-            self.has_model = False
-            self.model_loaded = False
 
 # ==============================================
 # 🔥 4. 상수 및 데이터 클래스들
@@ -1112,7 +1421,7 @@ class AdvancedGeometricMatcher:
                 
                 if keypoints:
                     keypoints_batch.append(np.array(keypoints))
-                    else:
+                else:
                     # 기본 키포인트 생성
                     keypoints_batch.append(np.array([[128, 96, 0.5]]))
             
@@ -1217,9 +1526,9 @@ class AdvancedGeometricMatcher:
                         [scale * cos_r, -scale * sin_r, tx],
                         [scale * sin_r, scale * cos_r, ty]
                     ])
-                    else:
-                    transform_matrix = np.array([[1, 0, 0], [0, 1, 0]])
                 else:
+                    transform_matrix = np.array([[1, 0, 0], [0, 1, 0]])
+            else:
                 # 간단한 최소제곱법
                 ones = np.ones((src_np.shape[0], 1))
                 src_homogeneous = np.hstack([src_np, ones])
@@ -1367,18 +1676,19 @@ class GeometricMatchingStep(BaseStepMixin):
             if not hasattr(self, 'status'):
                 self.status = ProcessingStatus()
 
+   
     def _detect_optimal_device(self) -> str:
         """최적 디바이스 감지"""
         try:
             if TORCH_AVAILABLE:
-                if torch.backends.mps.is_available():
+                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                     return "mps"
                 elif torch.cuda.is_available():
                     return "cuda"
             return "cpu"
-            except:
+        except:
             return "cpu"
-    
+        
     def _emergency_setup(self, **kwargs):
         """긴급 설정 (초기화 실패시)"""
         self.step_name = "GeometricMatchingStep"
@@ -1419,7 +1729,7 @@ class GeometricMatchingStep(BaseStepMixin):
                     self.models_loading_status['gmm'] = True
                     self.loaded_models.append('gmm')
                     self.logger.info("✅ GMM 모델 로딩 완료 (44.7MB)")
-                    else:
+                else:
                     self.logger.warning("⚠️ GMM 모델 로딩 실패")
                     
             except Exception as e:
@@ -1534,9 +1844,9 @@ class GeometricMatchingStep(BaseStepMixin):
                     state_dict = checkpoint['state_dict']
                 elif 'generator' in checkpoint:
                     state_dict = checkpoint['generator']
-                    else:
-                    state_dict = checkpoint
                 else:
+                    state_dict = checkpoint
+            else:
                 state_dict = checkpoint
             
             # 키 이름 매핑
@@ -1565,7 +1875,7 @@ class GeometricMatchingStep(BaseStepMixin):
                     model_dict.update(compatible_dict)
                     self.ai_models['advanced_ai'].load_state_dict(model_dict)
                     self.logger.info(f"✅ 고급 AI 체크포인트 부분 로딩: {len(compatible_dict)}/{len(new_state_dict)}개 레이어")
-                    else:
+                else:
                     self.logger.warning("⚠️ 호환 가능한 레이어 없음 - 랜덤 초기화 유지")
                     
         except Exception as e:
@@ -1690,7 +2000,7 @@ class GeometricMatchingStep(BaseStepMixin):
                     'step_id': self.step_id,
                     'central_hub_di_container': True
                 }
-                else:
+            else:
                 return {
                     'success': False,
                     'error': ai_result.get('error', 'AI 추론 실패'),
@@ -1812,7 +2122,7 @@ class GeometricMatchingStep(BaseStepMixin):
         try:
             if hasattr(self.gmm_model, 'forward'):
                 gmm_result = self.gmm_model(person_tensor, clothing_tensor)
-                else:
+            else:
                 # Mock 모델인 경우
                 gmm_result = self.gmm_model.predict(person_tensor.cpu().numpy(), clothing_tensor.cpu().numpy())
             self.logger.info("✅ GMM 기반 기하학적 매칭 완료")
@@ -1836,7 +2146,7 @@ class GeometricMatchingStep(BaseStepMixin):
         try:
             if hasattr(self.optical_flow_model, 'forward'):
                 flow_result = self.optical_flow_model(person_tensor, clothing_tensor)
-                else:
+            else:
                 # Mock 모델인 경우
                 flow_result = self.optical_flow_model.predict(person_tensor.cpu().numpy(), clothing_tensor.cpu().numpy())
             self.logger.info("✅ Optical Flow 계산 완료")
@@ -1852,7 +2162,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 advanced_result = self.advanced_geometric_ai(person_tensor, clothing_tensor)
             elif 'advanced_ai' in self.ai_models:
                 advanced_result = self.ai_models['advanced_ai'].predict(person_tensor.cpu().numpy(), clothing_tensor.cpu().numpy())
-                else:
+            else:
                 return {}
             
             self.logger.info("✅ CompleteAdvancedGeometricMatchingAI 실행 완료")
@@ -2017,7 +2327,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 transformation_matrix = self.geometric_matcher.compute_transformation_matrix(
                     filtered_clothing, filtered_person
                 )
-                else:
+            else:
                 transformation_matrix = np.eye(3)
             
             return {
@@ -2066,7 +2376,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 det = torch.det(transform[:, :2, :2])
                 stability = torch.clamp(1.0 / (torch.abs(det) + 1e-8), 0, 1)
                 confidences.append(stability.mean().item())
-                except:
+            except:
                 confidences.append(0.7)
         
         return float(np.mean(confidences)) if confidences else 0.8
@@ -2334,7 +2644,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 if tensor.dim() == 3:
                     tensor = tensor.unsqueeze(0)
             
-                else:
+            else:
                 raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
             
             # 크기 조정
@@ -2359,7 +2669,7 @@ class GeometricMatchingStep(BaseStepMixin):
         if hasattr(self, 'config'):
             if hasattr(self.config, '__dict__'):
                 full_config.update(self.config.__dict__)
-                else:
+            else:
                 full_config.update(vars(self.config))
         return full_config
 
@@ -2436,7 +2746,7 @@ class GeometricMatchingStep(BaseStepMixin):
             if stats['total_processed'] > 0:
                 stats['average_processing_time'] = stats['total_processing_time'] / stats['total_processed']
                 stats['success_rate'] = stats['successful_matches'] / stats['total_processed']
-                else:
+            else:
                 stats['average_processing_time'] = 0.0
                 stats['success_rate'] = 0.0
             
@@ -2480,7 +2790,7 @@ class GeometricMatchingStep(BaseStepMixin):
             if not getattr(self, 'is_initialized', False):
                 issues.append('Step이 초기화되지 않음')
                 health_status['checks']['initialization'] = 'failed'
-                else:
+            else:
                 health_status['checks']['initialization'] = 'passed'
             
             # AI 모델 로딩 상태 체크
@@ -2496,7 +2806,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 health_status['checks']['ai_models'] = 'failed'
             elif models_loaded < 3:
                 health_status['checks']['ai_models'] = 'warning'
-                else:
+            else:
                 health_status['checks']['ai_models'] = 'passed'
             
             # 의존성 체크
@@ -2507,7 +2817,7 @@ class GeometricMatchingStep(BaseStepMixin):
             if missing_deps:
                 issues.append(f'필수 의존성 없음: {missing_deps}')
                 health_status['checks']['dependencies'] = 'failed'
-                else:
+            else:
                 health_status['checks']['dependencies'] = 'passed'
             
             # 디바이스 상태 체크
@@ -2517,7 +2827,7 @@ class GeometricMatchingStep(BaseStepMixin):
             elif self.device == "cuda" and not torch.cuda.is_available():
                 issues.append('CUDA 디바이스 사용할 수 없음')
                 health_status['checks']['device'] = 'warning'
-                else:
+            else:
                 health_status['checks']['device'] = 'passed'
             
             # 전체 상태 결정
@@ -2576,7 +2886,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         torch.mps.empty_cache()
                     elif hasattr(torch.mps, 'synchronize'):
                         torch.mps.synchronize()
-                    except:
+                except:
                     pass
             elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -2667,7 +2977,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 image_array = np.array(image_pil)
             elif isinstance(image, np.ndarray):
                 image_array = image
-                else:
+            else:
                 raise ValueError("지원하지 않는 이미지 형식")
             
             # 크기 조정
@@ -2696,7 +3006,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 original_size = original_person.size  # PIL Image
             elif isinstance(original_person, np.ndarray):
                 original_size = (original_person.shape[1], original_person.shape[0])  # (width, height)
-                else:
+            else:
                 original_size = self.config.input_size
             
             # 결과 조정
@@ -2874,7 +3184,7 @@ class GeometricMatchingStep(BaseStepMixin):
                     if hasattr(model, 'cpu'):
                         model.cpu()
                     del model
-                    except:
+                except:
                     pass
             
             self.ai_models.clear()
@@ -2888,7 +3198,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 try:
                     if hasattr(torch.mps, 'empty_cache'):
                         torch.mps.empty_cache()
-                    except:
+                except:
                     pass
             
             self.logger.info("✅ GeometricMatchingStep 리소스 정리 완료")
@@ -2952,7 +3262,7 @@ def test_geometric_matching_step():
         if PIL_AVAILABLE:
             test_person = Image.new('RGB', (256, 192), (128, 128, 128))
             test_clothing = Image.new('RGB', (256, 192), (64, 64, 64))
-            else:
+        else:
             test_person = np.random.randint(0, 255, (192, 256, 3), dtype=np.uint8)
             test_clothing = np.random.randint(0, 255, (192, 256, 3), dtype=np.uint8)
         
@@ -2975,7 +3285,7 @@ def test_geometric_matching_step():
             # 결과 검증
             result_valid = step.validate_matching_result(result)
             print(f"   - 결과 유효성: {'✅' if result_valid else '❌'}")
-            else:
+        else:
             print(f"❌ 처리 실패: {result['error']}")
         
         # 리소스 정리

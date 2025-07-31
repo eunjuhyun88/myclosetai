@@ -49,8 +49,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 if TYPE_CHECKING:
     from app.core.di_container import CentralHubDIContainer
-    # from app.ai_pipeline.utils.model_loader import ModelLoader  # 순환참조로 지연 import
-    from .base_step_mixin import BaseStepMixin
+    from app.ai_pipeline.utils.model_loader import ModelLoader
+    from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
 
 def get_base_step_mixin_class():
     """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - HumanParsing용"""
@@ -68,129 +68,6 @@ def get_base_step_mixin_class():
             return None
 
 BaseStepMixin = get_base_step_mixin_class()
-
-# ==============================================
-# 🔥 필수 라이브러리 import
-# ==============================================
-# BaseStepMixin 폴백 클래스 (step_01_human_parsing.py용)
-if BaseStepMixin is None:
-    import asyncio
-    from typing import Dict, Any, Optional
-    
-    class BaseStepMixin:
-        """HumanParsingStep용 BaseStepMixin 폴백 클래스"""
-        
-        def __init__(self, **kwargs):
-            # 기본 속성들
-            self.logger = logging.getLogger(self.__class__.__name__)
-            self.step_name = kwargs.get('step_name', 'HumanParsingStep')
-            self.step_id = kwargs.get('step_id', 1)
-            self.device = kwargs.get('device', 'cpu')
-            
-            # AI 모델 관련 속성들 (HumanParsingStep이 필요로 하는)
-            self.ai_models = {}
-            self.models_loading_status = {}
-            self.model_interface = None
-            self.loaded_models = []
-            
-            # 상태 관련 속성들
-            self.is_initialized = False
-            self.is_ready = False
-            self.has_model = False
-            self.model_loaded = False
-            self.warmup_completed = False
-            
-            # Central Hub DI Container 관련
-            self.model_loader = None
-            self.memory_manager = None
-            self.data_converter = None
-            self.di_container = None
-            
-            # 성능 통계
-            self.performance_stats = {
-                'total_processed': 0,
-                'avg_processing_time': 0.0,
-                'error_count': 0,
-                'success_rate': 1.0
-            }
-            
-            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
-        
-        async def process(self, **kwargs) -> Dict[str, Any]:
-            """기본 process 메서드 - _run_ai_inference 호출"""
-            try:
-                start_time = time.time()
-                
-                # _run_ai_inference 메서드가 있으면 호출
-                if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(kwargs)
-                    
-                    # 처리 시간 추가
-                    if isinstance(result, dict):
-                        result['processing_time'] = time.time() - start_time
-                        result['step_name'] = self.step_name
-                        result['step_id'] = self.step_id
-                    
-                    return result
-                    else:
-                    # 기본 응답
-                    return {
-                        'success': False,
-                        'error': '_run_ai_inference 메서드가 구현되지 않음',
-                        'processing_time': time.time() - start_time,
-                        'step_name': self.step_name,
-                        'step_id': self.step_id
-                    }
-                    
-            except Exception as e:
-                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
-                return {
-                    'success': False,
-                    'error': str(e),
-                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
-                    'step_name': self.step_name,
-                    'step_id': self.step_id
-                }
-        
-        async def initialize(self) -> bool:
-            """초기화 메서드"""
-            try:
-                self.is_initialized = True
-                self.is_ready = True
-                self.logger.info(f"✅ {self.step_name} 초기화 완료")
-                return True
-            except Exception as e:
-                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
-                return False
-        
-        def cleanup(self):
-            """정리 메서드"""
-            try:
-                # AI 모델들 정리
-                self.ai_models.clear()
-                self.loaded_models.clear()
-                
-                # 메모리 정리
-                import gc
-                gc.collect()
-                
-                self.logger.info(f"✅ {self.step_name} 정리 완료")
-            except Exception as e:
-                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
-        
-        def get_status(self) -> Dict[str, Any]:
-            """상태 조회"""
-            return {
-                'step_name': self.step_name,
-                'step_id': self.step_id,
-                'is_initialized': self.is_initialized,
-                'is_ready': self.is_ready,
-                'device': self.device,
-                'models_loaded': len(self.loaded_models),
-                'fallback_mode': True
-            }
-
-
 # NumPy 필수
 try:
     import numpy as np
@@ -247,17 +124,150 @@ try:
 except ImportError:
     SKIMAGE_AVAILABLE = False
 
-# BaseStepMixin 동적 import
-def get_base_step_mixin_class():
-    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지)"""
-    try:
-        import importlib
-        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
-        return getattr(module, 'BaseStepMixin', None)
-    except ImportError:
-        return None
+# ==============================================
+# 🔥 필수 라이브러리 import
+# ==============================================
+# BaseStepMixin 폴백 클래스 (step_01_human_parsing.py용)
+if BaseStepMixin is None:
+    import asyncio
+    import time
+    from typing import Dict, Any, Optional
+    
+    class BaseStepMixin:
+        """HumanParsingStep용 BaseStepMixin 폴백 클래스 - 완전 구현"""
+        
+        def __init__(self, **kwargs):
+            # 기본 속성들
+            self.logger = logging.getLogger(self.__class__.__name__)
+            self.step_name = kwargs.get('step_name', 'HumanParsingStep')
+            self.step_id = kwargs.get('step_id', 1)
+            self.device = kwargs.get('device', 'cpu')
+            
+            # AI 모델 관련 속성들 (HumanParsingStep이 필요로 하는)
+            self.ai_models = {}
+            self.models_loading_status = {}
+            self.model_interface = None
+            self.loaded_models = []
+            
+            # 상태 관련 속성들
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            
+            # Central Hub DI Container 관련
+            self.model_loader = None
+            self.memory_manager = None
+            self.data_converter = None
+            self.di_container = None
+            
+            # 성능 통계
+            self.performance_stats = {
+                'total_processed': 0,
+                'avg_processing_time': 0.0,
+                'error_count': 0,
+                'success_rate': 1.0
+            }
+            
+            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
+        
+        async def process(self, **kwargs) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출"""
+            try:
+                start_time = time.time()
+                
+                # _run_ai_inference 메서드가 있으면 호출
+                if hasattr(self, '_run_ai_inference'):
+                    result = self._run_ai_inference(kwargs)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                else:
+                    # 기본 응답
+                    return {
+                        'success': False,
+                        'error': '_run_ai_inference 메서드가 구현되지 않음',
+                        'processing_time': time.time() - start_time,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+        
+        async def initialize(self) -> bool:
+            """초기화 메서드"""
+            try:
+                self.is_initialized = True
+                self.is_ready = True
+                self.logger.info(f"✅ {self.step_name} 초기화 완료")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                return False
+        
+        def cleanup(self):
+            """정리 메서드"""
+            try:
+                # AI 모델들 정리
+                self.ai_models.clear()
+                self.loaded_models.clear()
+                
+                # 메모리 정리
+                import gc
+                gc.collect()
+                
+                self.logger.info(f"✅ {self.step_name} 정리 완료")
+            except Exception as e:
+                self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+        
+        def get_status(self) -> Dict[str, Any]:
+            """상태 조회"""
+            return {
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'is_initialized': self.is_initialized,
+                'is_ready': self.is_ready,
+                'device': self.device,
+                'models_loaded': len(self.loaded_models),
+                'fallback_mode': True
+            }
+        
+        # BaseStepMixin 호환 메서드들 추가
+        def set_model_loader(self, model_loader):
+            """ModelLoader 의존성 주입"""
+            self.model_loader = model_loader
+            self.logger.info("✅ ModelLoader 의존성 주입 완료")
+        
+        def set_memory_manager(self, memory_manager):
+            """MemoryManager 의존성 주입"""
+            self.memory_manager = memory_manager
+            self.logger.info("✅ MemoryManager 의존성 주입 완료")
+        
+        def set_data_converter(self, data_converter):
+            """DataConverter 의존성 주입"""
+            self.data_converter = data_converter
+            self.logger.info("✅ DataConverter 의존성 주입 완료")
+        
+        def set_di_container(self, di_container):
+            """DI Container 의존성 주입"""
+            self.di_container = di_container
+            self.logger.info("✅ DI Container 의존성 주입 완료")
 
-BaseStepMixin = get_base_step_mixin_class()
+
 
 # ==============================================
 # 🔥 환경 설정 및 최적화
@@ -273,7 +283,7 @@ def detect_m3_max() -> bool:
                 capture_output=True, text=True, timeout=5
             )
             return 'M3' in result.stdout
-        except:
+    except:
         pass
     return False
 
@@ -674,7 +684,7 @@ class IterativeRefinementModule(nn.Module):
             # 이전 결과와 함께 입력
             if i == 0:
                 refine_input = torch.cat([current_parsing, current_parsing], dim=1)
-                else:
+            else:
                 refine_input = torch.cat([current_parsing, iteration_results[-1]['parsing']], dim=1)
             
             # 정제
@@ -960,7 +970,7 @@ class AdvancedPostProcessor:
                     
                     # 원본 크기로 복원
                     processed = np.array(Image.fromarray(scaled_parsing).resize((w, h), Image.NEAREST))
-                    else:
+                else:
                     processed = initial_parsing
                 
                 processed_parsings.append(processed.astype(np.float32))
@@ -973,7 +983,7 @@ class AdvancedPostProcessor:
                 
                 # 가장 많은 투표를 받은 클래스로 결정
                 final_parsing = (votes / len(processed_parsings)).astype(np.uint8)
-                else:
+            else:
                 final_parsing = processed_parsings[0].astype(np.uint8)
             
             return final_parsing
@@ -1087,7 +1097,7 @@ class AdvancedPostProcessor:
                     # 가우시안 필터로 부드럽게
                     smoothed = gaussian(enhanced_map.astype(np.float64), sigma=0.5)
                     enhanced_map = np.round(smoothed).astype(np.uint8)
-                    except:
+                except:
                     pass
             
             return enhanced_map
@@ -1277,7 +1287,7 @@ if BaseStepMixin:
                         self.loaded_models.append('graphonomy')
                         success_count += 1
                         self.logger.info("✅ Graphonomy 모델 로딩 성공")
-                        else:
+                    else:
                         self.logger.warning("⚠️ Graphonomy 모델 로딩 실패")
                 except Exception as e:
                     self.logger.warning(f"⚠️ Graphonomy 모델 로딩 실패: {e}")
@@ -1291,7 +1301,7 @@ if BaseStepMixin:
                         self.loaded_models.append('u2net')
                         success_count += 1
                         self.logger.info("✅ U2Net 모델 로딩 성공")
-                        else:
+                    else:
                         self.logger.warning("⚠️ U2Net 모델 로딩 실패")
                 except Exception as e:
                     self.logger.warning(f"⚠️ U2Net 모델 로딩 실패: {e}")
@@ -1300,7 +1310,7 @@ if BaseStepMixin:
                 if success_count > 0:
                     self.logger.info(f"✅ Central Hub 기반 AI 모델 로딩 완료: {success_count}개 모델")
                     return True
-                    else:
+                else:
                     self.logger.warning("⚠️ 모든 실제 AI 모델 로딩 실패 - Mock 모델 사용")
                     return self._load_fallback_models()
                 
@@ -1327,7 +1337,7 @@ if BaseStepMixin:
                 elif loaded_model and hasattr(loaded_model, 'checkpoint_data'):
                     # 체크포인트 데이터에서 모델 생성
                     return self._create_graphonomy_from_checkpoint(loaded_model.checkpoint_data)
-                    else:
+                else:
                     # 폴백: 아키텍처만 생성
                     self.logger.warning("⚠️ 체크포인트 로딩 실패 - 아키텍처만 생성")
                     return self._create_empty_graphonomy_model()
@@ -1351,7 +1361,7 @@ if BaseStepMixin:
                 
                 if loaded_model and hasattr(loaded_model, 'model'):
                     return loaded_model.model
-                    else:
+                else:
                     # 폴백: U2Net 아키텍처 생성
                     return self._create_u2net_model()
                 
@@ -1386,7 +1396,7 @@ if BaseStepMixin:
         def _create_graphonomy_from_checkpoint(self, checkpoint_data) -> Optional[nn.Module]:
             """체크포인트 데이터에서 Graphonomy 모델 생성"""
             try:
-                model = GraphonomyResNetASPP(num_classes=20)
+                model = AdvancedGraphonomyResNetASPP(num_classes=20)
                 
                 # 체크포인트 데이터 로딩
                 if isinstance(checkpoint_data, dict):
@@ -1394,9 +1404,9 @@ if BaseStepMixin:
                         state_dict = checkpoint_data['state_dict']
                     elif 'model' in checkpoint_data:
                         state_dict = checkpoint_data['model']
-                        else:
-                        state_dict = checkpoint_data
                     else:
+                        state_dict = checkpoint_data
+                else:
                     state_dict = checkpoint_data
                 
                 # state_dict 로딩 (strict=False로 호환성 보장)
@@ -1412,7 +1422,7 @@ if BaseStepMixin:
         
         def _create_empty_graphonomy_model(self) -> nn.Module:
             """빈 Graphonomy 모델 생성 (아키텍처만)"""
-            model = GraphonomyResNetASPP(num_classes=20)
+            model = AdvancedGraphonomyResNetASPP(num_classes=20)
             model.to(self.device)
             model.eval()
             return model
@@ -1532,13 +1542,13 @@ if BaseStepMixin:
                 if not isinstance(image, Image.Image):
                     if hasattr(image, 'convert'):
                         image = image.convert('RGB')
-                        else:
+                    else:
                         # numpy array인 경우
                         if isinstance(image, np.ndarray):
                             if image.dtype != np.uint8:
                                 image = (image * 255).astype(np.uint8)
                             image = Image.fromarray(image)
-                            else:
+                        else:
                             raise ValueError("지원하지 않는 이미지 타입")
                 
                 # 원본 이미지 저장 (후처리용)
@@ -1606,9 +1616,9 @@ if BaseStepMixin:
                         state_dict = checkpoint_data['state_dict']
                     elif 'model' in checkpoint_data:
                         state_dict = checkpoint_data['model']
-                        else:
-                        state_dict = checkpoint_data
                     else:
+                        state_dict = checkpoint_data
+                else:
                     state_dict = checkpoint_data
                 
                 # 🔥 고급 Graphonomy 모델 아키텍처 생성
@@ -1626,7 +1636,7 @@ if BaseStepMixin:
                     for k, v in state_dict.items():
                         if k in model_dict and model_dict[k].shape == v.shape:
                             filtered_dict[k] = v
-                            else:
+                        else:
                             # 키 변환 시도
                             new_key = self._convert_checkpoint_key(k)
                             if new_key in model_dict and model_dict[new_key].shape == v.shape:
@@ -1645,9 +1655,9 @@ if BaseStepMixin:
                         try:
                             with torch.autocast(device_type='mps', dtype=torch.float16):
                                 output = model(input_tensor)
-                            except:
+                        except:
                             output = model(input_tensor)
-                        else:
+                    else:
                         output = model(input_tensor)
                     
                     # 출력 처리 (고급 모델의 복합 출력)
@@ -1657,7 +1667,7 @@ if BaseStepMixin:
                         progressive_results = output.get('progressive_results', [])
                         correction_confidence = output.get('correction_confidence')
                         refinement_results = output.get('refinement_results', [])
-                        else:
+                    else:
                         parsing_logits = output
                         edge_output = None
                         progressive_results = []
@@ -1766,7 +1776,7 @@ if BaseStepMixin:
             
             return BasicGraphonomy(num_classes=20)
         
-        def _postprocess_graphonomy_output(self, parsing_output, original_size):
+        def _postprocess_graphonomy_output(self, parsing_output: Dict[str, Any], original_size: Tuple[int, int]) -> Dict[str, Any]:
             """Graphonomy 출력 후처리 (고급 알고리즘 완전 적용)"""
             try:
                 parsing_pred = parsing_output['parsing_pred']
@@ -1801,7 +1811,7 @@ if BaseStepMixin:
                         # 원본 이미지 필요 (RGB)
                         if hasattr(self, '_last_processed_image'):
                             original_image = self._last_processed_image
-                            else:
+                        else:
                             original_image = np.random.randint(0, 255, (original_size[0], original_size[1], 3), dtype=np.uint8)
                         
                         parsing_result = self.postprocessor.apply_crf_postprocessing(
@@ -1817,7 +1827,7 @@ if BaseStepMixin:
                     try:
                         if hasattr(self, '_last_processed_image'):
                             original_image = self._last_processed_image
-                            else:
+                        else:
                             original_image = np.random.randint(0, 255, (original_size[0], original_size[1], 3), dtype=np.uint8)
                         
                         parsing_result = self.postprocessor.apply_multiscale_processing(
@@ -1894,7 +1904,8 @@ if BaseStepMixin:
             except Exception as e:
                 self.logger.error(f"❌ Graphonomy 후처리 실패: {e}")
                 raise
-        
+
+
         def _calculate_parsing_confidence(self, parsing_output):
             """Human Parsing 신뢰도 계산 (고급 메트릭 포함)"""
             try:
@@ -1920,9 +1931,9 @@ if BaseStepMixin:
                             
                             # 가중 평균 (기본 신뢰도 70%, 엔트로피 신뢰도 30%)
                             final_confidence = avg_confidence * 0.7 + entropy_confidence * 0.3
-                            except:
+                        except:
                             final_confidence = avg_confidence
-                        else:
+                    else:
                         final_confidence = avg_confidence
                     
                     # 3. 클래스별 신뢰도 분석
@@ -1942,7 +1953,7 @@ if BaseStepMixin:
                             important_conf = [class_confidences.get(cls, 0.5) for cls in important_classes]
                             if important_conf and min(important_conf) < 0.4:
                                 final_confidence *= 0.8  # 20% 페널티
-                        except:
+                    except:
                         pass
                     
                     return min(max(final_confidence, 0.0), 1.0)
@@ -1965,14 +1976,14 @@ if BaseStepMixin:
                 # 블러 정도 측정 (라플라시안 분산)
                 if len(image.shape) == 3:
                     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if CV2_AVAILABLE else np.mean(image, axis=2)
-                    else:
+                else:
                     gray = image
                 
                 # 선명도 (라플라시안 분산)
                 if CV2_AVAILABLE:
                     laplacian_var = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_64F).var()
                     quality_scores['sharpness'] = min(laplacian_var / 1000.0, 1.0)
-                    else:
+                else:
                     # 그래디언트 기반 선명도
                     grad_x = np.abs(np.diff(gray, axis=1))
                     grad_y = np.abs(np.diff(gray, axis=0))
@@ -1995,7 +2006,7 @@ if BaseStepMixin:
                     channel_stds = np.std(image, axis=(0, 1))
                     lighting_uniformity = 1.0 - (np.std(channel_means) / 255.0)
                     quality_scores['lighting'] = max(lighting_uniformity, 0.0)
-                    else:
+                else:
                     quality_scores['lighting'] = 0.7
                 
                 # 전체 품질 점수
@@ -2024,7 +2035,7 @@ if BaseStepMixin:
                     # RGB로 변환
                     normalized = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
                     return normalized
-                    else:
+                else:
                     # 간단한 히스토그램 평활화
                     if len(image.shape) == 3:
                         normalized = np.zeros_like(image)
@@ -2033,14 +2044,14 @@ if BaseStepMixin:
                             channel_min, channel_max = channel.min(), channel.max()
                             if channel_max > channel_min:
                                 normalized[:, :, i] = ((channel - channel_min) / (channel_max - channel_min) * 255).astype(np.uint8)
-                                else:
+                            else:
                                 normalized[:, :, i] = channel
                         return normalized
-                        else:
+                    else:
                         img_min, img_max = image.min(), image.max()
                         if img_max > img_min:
                             return ((image - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-                            else:
+                        else:
                             return image
                     
             except Exception as e:
@@ -2102,7 +2113,7 @@ if BaseStepMixin:
                             y2 = min(h, y + h_roi + margin_h)
                             
                             return (x1, y1, x2, y2)
-                        except:
+                    except:
                         pass
                 
                 # 폴백: 중앙 80% 영역
@@ -2186,7 +2197,7 @@ if BaseStepMixin:
                     connectivity = 0.0
                 elif num_labels == 2:  # 하나의 연결 성분
                     connectivity = 1.0
-                    else:  # 여러 연결 성분
+                else:  # 여러 연결 성분
                     component_sizes = [np.sum(labels == i) for i in range(1, num_labels)]
                     largest_ratio = max(component_sizes) / np.sum(mask)
                     connectivity = largest_ratio
@@ -2201,9 +2212,9 @@ if BaseStepMixin:
                     if perimeter > 0:
                         compactness = 4 * np.pi * area / (perimeter * perimeter)
                         compactness = min(compactness, 1.0)
-                        else:
-                        compactness = 0.0
                     else:
+                        compactness = 0.0
+                else:
                     compactness = 0.0
                 
                 # 종합 품질
@@ -2282,7 +2293,7 @@ if BaseStepMixin:
                     entropy = -np.sum(class_probs * np.log2(class_probs + 1e-8))
                     max_entropy = np.log2(20)  # 20개 클래스
                     metrics['class_diversity'] = entropy / max_entropy
-                    else:
+                else:
                     metrics['class_diversity'] = 0.0
                 
                 # 3. 경계선 품질
@@ -2290,7 +2301,7 @@ if BaseStepMixin:
                     edges = cv2.Canny((parsing_map * 12).astype(np.uint8), 30, 100)
                     edge_density = np.sum(edges > 0) / edges.size
                     metrics['edge_quality'] = min(edge_density * 10, 1.0)  # 정규화
-                    else:
+                else:
                     metrics['edge_quality'] = 0.7
                 
                 # 4. 영역 연결성
@@ -2328,7 +2339,7 @@ if BaseStepMixin:
                     pil_image = Image.fromarray(image)
                 elif hasattr(image, 'convert'):
                     pil_image = image.convert('RGB')
-                    else:
+                else:
                     raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
                 
                 # 전처리 파이프라인
@@ -2362,7 +2373,7 @@ if BaseStepMixin:
                     elif 'mock' in self.ai_models:
                         model = self.ai_models['mock']
                         model_name = 'mock'
-                        else:
+                    else:
                         raise ValueError("사용 가능한 AI 모델 없음")
                     
                     # 모델 추론
@@ -2371,7 +2382,7 @@ if BaseStepMixin:
                     # 출력 처리
                     if isinstance(output, dict) and 'parsing' in output:
                         parsing_logits = output['parsing']
-                        else:
+                    else:
                         parsing_logits = output
                     
                     # Softmax + Argmax
@@ -2408,7 +2419,7 @@ if BaseStepMixin:
                     original_size = original_image.size[::-1]  # (width, height) -> (height, width)
                 elif isinstance(original_image, np.ndarray):
                     original_size = original_image.shape[:2]
-                    else:
+                else:
                     original_size = (512, 512)
                 
                 if parsing_map.shape != original_size:
@@ -2569,7 +2580,7 @@ if BaseStepMixin:
                         if hasattr(model, 'cpu'):
                             model.cpu()
                         del model
-                        except:
+                    except:
                         pass
                 
                 self.ai_models.clear()
@@ -2584,7 +2595,7 @@ if BaseStepMixin:
                 if TORCH_AVAILABLE and MPS_AVAILABLE:
                     try:
                         torch.mps.empty_cache()
-                        except:
+                    except:
                         pass
                 
                 self.logger.info("✅ HumanParsingStep 리소스 정리 완료")
@@ -2633,7 +2644,7 @@ def create_optimized_human_parsing_step(**kwargs) -> HumanParsingStep:
     
     if 'parsing_config' in kwargs:
         kwargs['parsing_config'].update(optimized_config)
-        else:
+    else:
         kwargs['parsing_config'] = optimized_config
     
     return HumanParsingStep(**kwargs)
@@ -2649,10 +2660,10 @@ def optimize_memory():
         if TORCH_AVAILABLE and MPS_AVAILABLE:
             try:
                 torch.mps.empty_cache()
-                except:
+            except:
                 pass
         return True
-        except:
+    except:
         return False
 
 # ==============================================

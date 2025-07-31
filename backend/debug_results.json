@@ -1,10 +1,458 @@
 {
-  "timestamp": 1753642790.747184,
-  "quick_diagnostics": {
-    "python_path": [
-      "/Users/gimdudeul/MVP/mycloset-ai/backend",
-      "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai-clean/lib/python310.zip",
-      "/opt/homebrew/Caskroom/miniforge/base/envs/mycloset-ai-clean/lib/python3.10"
-    ],
-    "working_directory": "/Users/gimdudeul/MVP/mycloset-ai/backend",
-    "environment": 
+  "timestamp": "2025-08-01T06:59:16.668897",
+  "project_root": "/Users/gimdudeul/MVP/mycloset-ai",
+  "backend_root": "/Users/gimdudeul/MVP/mycloset-ai/backend",
+  "ai_models_root": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models",
+  "execution_time": 7.257646083831787,
+  "results": [
+    {
+      "name": "프로젝트 루트",
+      "status": "PASS",
+      "message": "감지됨: /Users/gimdudeul/MVP/mycloset-ai",
+      "details": {
+        "디렉토리": "/Users/gimdudeul/MVP/mycloset-ai"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "백엔드 디렉토리",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "경로": "/Users/gimdudeul/MVP/mycloset-ai/backend"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "프론트엔드 디렉토리",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "경로": "/Users/gimdudeul/MVP/mycloset-ai/frontend"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "AI 파이프라인 디렉토리",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "경로": "/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "AI 모델 디렉토리",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "경로": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Python 버전",
+      "status": "PASS",
+      "message": "호환 가능: 3.11.13",
+      "details": {
+        "버전": "3.11.13"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "conda 환경",
+      "status": "PASS",
+      "message": "활성화됨: mycloset-ai-clean",
+      "details": {
+        "환경명": "mycloset-ai-clean"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "PyTorch 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "2.7.1"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "TorchVision 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "0.22.0"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "NumPy 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "1.26.4"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Pillow 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "11.3.0"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "OpenCV 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "4.8.1"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "FastAPI 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "0.116.1"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Pydantic 패키지",
+      "status": "PASS",
+      "message": "설치됨",
+      "details": {
+        "버전": "2.11.7"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "파이프라인 디렉토리: app/ai_pipeline",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "Python 파일 수": 2,
+        "파일들": [
+          "__init__.py",
+          "pipeline_manager.py"
+        ]
+      },
+      "recommendations": null
+    },
+    {
+      "name": "파이프라인 디렉토리: app/ai_pipeline/steps",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "Python 파일 수": 10,
+        "파일들": [
+          "step_06_virtual_fitting.py",
+          "step_05_cloth_warping.py",
+          "step_04_geometric_matching.py",
+          "step_03_cloth_segmentation.py",
+          "step_02_pose_estimation.py"
+        ]
+      },
+      "recommendations": null
+    },
+    {
+      "name": "파이프라인 디렉토리: app/ai_pipeline/utils",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "Python 파일 수": 22,
+        "파일들": [
+          "pytorch_compatibility.py",
+          "data_converter.py",
+          "pytorch_safe_ops.py",
+          "memory_manager.py",
+          "model_registry_update.py"
+        ]
+      },
+      "recommendations": null
+    },
+    {
+      "name": "파이프라인 디렉토리: app/ai_pipeline/interface",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "Python 파일 수": 2,
+        "파일들": [
+          "__init__.py",
+          "step_interface.py"
+        ]
+      },
+      "recommendations": null
+    },
+    {
+      "name": "파이프라인 디렉토리: app/core",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "Python 파일 수": 16,
+        "파일들": [
+          "warmup_safe_patch.py",
+          "config.py",
+          "logging_config.py",
+          "di_container.py",
+          "async_context_fix.py"
+        ]
+      },
+      "recommendations": null
+    },
+    {
+      "name": "파이프라인 디렉토리: app/services",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "Python 파일 수": 12,
+        "파일들": [
+          "pipeline_service.py",
+          "image_processor.py",
+          "step_implementations.py",
+          "step_service.py",
+          "__init__.py"
+        ]
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_01_human_parsing.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "119,769 bytes",
+        "라인 수": 2776,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_02_pose_estimation.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "83,239 bytes",
+        "라인 수": 2116,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_03_cloth_segmentation.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "128,459 bytes",
+        "라인 수": 3094,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_04_geometric_matching.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "146,426 bytes",
+        "라인 수": 3543,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_05_cloth_warping.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "157,571 bytes",
+        "라인 수": 3633,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_06_virtual_fitting.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "162,070 bytes",
+        "라인 수": 3921,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_07_post_processing.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "138,094 bytes",
+        "라인 수": 3316,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: step_08_quality_assessment.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "114,972 bytes",
+        "라인 수": 2699,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: __init__.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "39,770 bytes",
+        "라인 수": 1065,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step 파일: base_step_mixin.py",
+      "status": "PASS",
+      "message": "정상",
+      "details": {
+        "파일 크기": "185,525 bytes",
+        "라인 수": 4083,
+        "구문 검사": "통과"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "AI 모델 파일들",
+      "status": "PASS",
+      "message": "160개 모델 파일 발견",
+      "details": {
+        "총 파일 수": 160,
+        "총 크기": "149.5 GB",
+        "대형 모델 (100MB+)": 119,
+        "가장 큰 파일": "v1-5-pruned.safetensors"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Step별 모델 분포",
+      "status": "INFO",
+      "message": "8개 Step에 모델 분포",
+      "details": {
+        "step_06_virtual_fitting": 21,
+        "step_03_cloth_segmentation": 16,
+        "step_04_geometric_matching": 21,
+        "step_07_post_processing": 13,
+        "step_08_quality_assessment": 13,
+        "step_01_human_parsing": 12,
+        "step_02_pose_estimation": 13,
+        "step_05_cloth_warping": 11
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Import 테스트: 모델 경로 설정",
+      "status": "PASS",
+      "message": "성공",
+      "details": {
+        "모듈": "app.core.model_paths"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Import 테스트: AI 파이프라인 Steps",
+      "status": "PASS",
+      "message": "성공",
+      "details": {
+        "모듈": "app.ai_pipeline.steps"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Import 테스트: Step 서비스",
+      "status": "PASS",
+      "message": "성공",
+      "details": {
+        "모듈": "app.services.step_service"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "Import 테스트: Step 인터페이스",
+      "status": "PASS",
+      "message": "성공",
+      "details": {
+        "모듈": "app.ai_pipeline.interface.step_interface"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "설정 파일: Python 패키지 의존성",
+      "status": "FAIL",
+      "message": "존재하지 않음",
+      "details": {
+        "예상 경로": "/Users/gimdudeul/MVP/mycloset-ai/requirements.txt"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "설정 파일: 백엔드 의존성",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "파일": "backend/requirements.txt",
+        "크기": "6,067 bytes"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "설정 파일: Git 무시 파일",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "파일": ".gitignore",
+        "크기": "8,959 bytes"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "설정 파일: 프로젝트 문서",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "파일": "README.md",
+        "크기": "2,649 bytes"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "설정 파일: 백엔드 설정",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "파일": "backend/app/core/config.py",
+        "크기": "35,860 bytes"
+      },
+      "recommendations": null
+    },
+    {
+      "name": "설정 파일: 프론트엔드 의존성",
+      "status": "PASS",
+      "message": "존재함",
+      "details": {
+        "파일": "frontend/package.json",
+        "크기": "2,724 bytes"
+      },
+      "recommendations": null
+    }
+  ]
+}

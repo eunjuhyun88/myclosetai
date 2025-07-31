@@ -217,7 +217,7 @@ if BaseStepMixin is None:
                         result['step_id'] = self.step_id
                     
                     return result
-                    else:
+                else:
                     # 기본 응답
                     return {
                         'success': False,
@@ -292,7 +292,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                    except:
+                except:
                     pass
                 
                 import gc
@@ -332,7 +332,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                    else:
+                else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -364,13 +364,14 @@ if BaseStepMixin is None:
             except Exception as e:
                 self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
 
+       
         def _get_step_requirements(self) -> Dict[str, Any]:
             """Step 05 Enhanced Cloth Warping 요구사항 반환 (BaseStepMixin 호환)"""
             return {
                 "required_models": [
                     "tps_transformation.pth",
                     "dpt_hybrid_midas.pth",
-                    "viton_hd_warping.pth"
+                    "viton_hd_warging.pth"
                 ],
                 "primary_model": "tps_transformation.pth",
                 "model_configs": {
@@ -406,7 +407,6 @@ if BaseStepMixin is None:
                     "PhysicsBasedFabricSimulation"
                 ]
             }
-
 # ==============================================
 # 🔥 고급 AI 알고리즘 네트워크 클래스들 - 완전 AI 추론 가능
 # ==============================================
@@ -675,7 +675,7 @@ class AdvancedTPSWarpingNetwork(nn.Module):
                 # 가장자리 강화
                 if i == 0 or i == grid_size - 1 or j == 0 or j == grid_size - 1:
                     points.append([x, y])
-                    else:
+                else:
                     # 내부 점들은 약간의 랜덤성 추가
                     noise_x = (torch.rand(1).item() - 0.5) * 0.1
                     noise_y = (torch.rand(1).item() - 0.5) * 0.1
@@ -729,7 +729,7 @@ class RAFTFlowWarpingNetwork(nn.Module):
         """향상된 특징 인코더 구축"""
         if self.small_model:
             dims = [32, 32, 64, 96, 128]
-            else:
+        else:
             dims = [64, 64, 96, 128, 160]
         
         layers = []
@@ -1010,7 +1010,7 @@ class VGGClothBodyMatchingNetwork(nn.Module):
         if self.vgg_type == "vgg19":
             cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 
                    512, 512, 512, 512, 'M', 512, 512, 512, 512]
-            else:  # vgg16
+        else:  # vgg16
             cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 
                    512, 512, 512, 'M', 512, 512, 512]
         
@@ -1020,7 +1020,7 @@ class VGGClothBodyMatchingNetwork(nn.Module):
         for v in cfg:
             if v == 'M':
                 layers.append(nn.MaxPool2d(2, 2))
-                else:
+            else:
                 layers.extend([
                     nn.Conv2d(in_channels, v, 3, 1, 1),
                     nn.BatchNorm2d(v),  # BatchNorm 추가
@@ -1160,7 +1160,7 @@ class DenseNetQualityAssessment(nn.Module):
             block_config = (6, 12, 32, 32)
         elif num_layers == 201:
             block_config = (6, 12, 48, 32)
-            else:
+        else:
             block_config = (6, 12, 24, 16)
         
         # 초기 컨볼루션 (더 큰 커널로 전역 특징 추출)
@@ -1787,7 +1787,7 @@ class ClothWarpingStep(BaseStepMixin):
                 elif torch.cuda.is_available():
                     return "cuda"
             return "cpu"
-            except:
+        except:
             return "cpu"
     
     def _emergency_setup(self, **kwargs):
@@ -2255,7 +2255,7 @@ class ClothWarpingStep(BaseStepMixin):
                     result['quality_level'] = quality_level
                     result['inference_type'] = 'mock_fallback'
                     return result
-                    else:
+                else:
                     raise ValueError("사용 가능한 AI 네트워크가 없습니다")
             
             # 3. 멀티 네트워크 AI 추론 실행
@@ -2267,7 +2267,7 @@ class ClothWarpingStep(BaseStepMixin):
                         # Mock/체크포인트 모델
                         result = network.predict(cloth_image, person_image, keypoints)
                         network_results[network_name] = result
-                        else:
+                    else:
                         # 실제 PyTorch 네트워크
                         result = self._run_advanced_pytorch_inference(
                             network, cloth_image, person_image, keypoints, network_name
@@ -2292,7 +2292,7 @@ class ClothWarpingStep(BaseStepMixin):
                 fused_result['model_used'] = network_name
                 fused_result['networks_used'] = [network_name]
                 fused_result['inference_type'] = 'single_network'
-                else:
+            else:
                 raise ValueError("모든 AI 네트워크 추론이 실패했습니다")
             
             # 5. 물리 시뮬레이션 적용 (선택적)
@@ -2433,12 +2433,12 @@ class ClothWarpingStep(BaseStepMixin):
                         }
                     }
                     
-                    else:
+                else:
                     # 체크포인트 모델 또는 알 수 없는 네트워크
                     try:
                         if hasattr(network, 'forward'):
                             result = network(cloth_tensor, person_tensor)
-                            else:
+                        else:
                             result = network.predict(cloth_image, person_image, keypoints)
                         
                         if isinstance(result, dict) and 'warped_cloth' in result:
@@ -2447,7 +2447,7 @@ class ClothWarpingStep(BaseStepMixin):
                                 warped_cloth = self._tensor_to_image(warped_cloth)
                         elif torch.is_tensor(result):
                             warped_cloth = self._tensor_to_image(result)
-                            else:
+                        else:
                             warped_cloth = cloth_image
                         
                         return {
@@ -2460,7 +2460,7 @@ class ClothWarpingStep(BaseStepMixin):
                             'model_type': f'{network_name}_checkpoint',
                             'enhanced_features': {}
                         }
-                        except:
+                    except:
                         raise ValueError(f"알 수 없는 네트워크 타입: {network_name}")
             
         except Exception as e:
@@ -2502,7 +2502,7 @@ class ClothWarpingStep(BaseStepMixin):
             if total_weight > 0:
                 for name in weights:
                     weights[name] /= total_weight
-                else:
+            else:
                 # 균등 가중치
                 equal_weight = 1.0 / len(network_results)
                 weights = {name: equal_weight for name in network_results.keys()}
@@ -2528,13 +2528,13 @@ class ClothWarpingStep(BaseStepMixin):
                 for i, cloth in enumerate(valid_cloths):
                     if cloth.shape == fused_cloth.shape:
                         fused_cloth += cloth * valid_weights[i]
-                        else:
+                    else:
                         # 크기가 다르면 리사이즈 후 융합
                         resized_cloth = cv2.resize(cloth, (fused_cloth.shape[1], fused_cloth.shape[0]))
                         fused_cloth += resized_cloth.astype(np.float32) * valid_weights[i]
                 
                 fused_cloth = np.clip(fused_cloth, 0, 255).astype(np.uint8)
-                else:
+            else:
                 # 가장 신뢰도 높은 결과 사용
                 best_network = max(network_results.keys(), key=lambda x: network_results[x].get('warping_confidence', 0))
                 fused_cloth = network_results[best_network]['warped_cloth']
@@ -2552,7 +2552,7 @@ class ClothWarpingStep(BaseStepMixin):
             
             if matrix_weight_sum > 0:
                 fused_matrix /= matrix_weight_sum
-                else:
+            else:
                 fused_matrix = np.eye(3)
             
             # 4. 품질 메트릭 융합 (향상된 버전)
@@ -2619,7 +2619,7 @@ class ClothWarpingStep(BaseStepMixin):
                 best_result['model_type'] = 'fusion_fallback'
                 best_result['fusion_error'] = str(e)
                 return best_result
-                else:
+            else:
                 raise ValueError("융합 폴백도 실패")
 
     def _apply_physics_simulation_to_result(self, result: Dict[str, Any], original_cloth: np.ndarray) -> Dict[str, Any]:
@@ -2753,9 +2753,9 @@ class ClothWarpingStep(BaseStepMixin):
                     [0.0, 0.0, 1.0]
                 ])
                 return matrix
-                else:
+            else:
                 return np.eye(3)
-            except:
+        except:
             return np.eye(3)
 
     def _flow_to_transformation_matrix(self, flow_field: torch.Tensor) -> np.ndarray:
@@ -2772,7 +2772,7 @@ class ClothWarpingStep(BaseStepMixin):
                 [0.0, 0.0, 1.0]
             ])
             return matrix
-            except:
+        except:
             return np.eye(3)
 
     def _grid_to_transformation_matrix(self, warping_grid: torch.Tensor) -> np.ndarray:
@@ -2791,7 +2791,7 @@ class ClothWarpingStep(BaseStepMixin):
                 [0.0, 0.0, 1.0]
             ])
             return matrix
-            except:
+        except:
             return np.eye(3)
 
     def _calculate_tps_quality_metrics(self, tps_result: Dict[str, torch.Tensor]) -> Dict[str, float]:
@@ -2806,7 +2806,7 @@ class ClothWarpingStep(BaseStepMixin):
                 'boundary_smoothness': 0.85,
                 'overall_quality': (confidence.mean().item() + quality_score.mean().item()) / 2
             }
-            except:
+        except:
             return {
                 'geometric_accuracy': 0.8,
                 'texture_preservation': 0.8,
@@ -2832,7 +2832,7 @@ class ClothWarpingStep(BaseStepMixin):
                 'boundary_smoothness': flow_consistency,
                 'overall_quality': (confidence.mean().item() + flow_consistency) / 2
             }
-            except:
+        except:
             return {
                 'geometric_accuracy': 0.75,
                 'texture_preservation': 0.75,
@@ -2857,7 +2857,7 @@ class ClothWarpingStep(BaseStepMixin):
                 'boundary_smoothness': 0.75,
                 'overall_quality': (confidence.mean().item() + matching_quality) / 2
             }
-            except:
+        except:
             return {
                 'geometric_accuracy': 0.7,
                 'texture_preservation': 0.7,
@@ -2917,7 +2917,7 @@ class ClothWarpingStep(BaseStepMixin):
             if len(image.shape) == 3:
                 # (H, W, C) -> (C, H, W)
                 tensor = torch.from_numpy(image).permute(2, 0, 1).float()
-                else:
+            else:
                 tensor = torch.from_numpy(image).float()
             
             # 배치 차원 추가
@@ -2957,7 +2957,7 @@ class ClothWarpingStep(BaseStepMixin):
             # 0-255 범위로 변환
             if image.max() <= 1.0:
                 image = (image * 255).astype(np.uint8)
-                else:
+            else:
                 image = np.clip(image, 0, 255).astype(np.uint8)
             
             return image
@@ -2975,7 +2975,7 @@ class ClothWarpingStep(BaseStepMixin):
                 image_array = np.array(image_pil)
             elif isinstance(image, np.ndarray):
                 image_array = image
-                else:
+            else:
                 raise ValueError("지원하지 않는 이미지 형식")
             
             # 크기 조정
@@ -3006,7 +3006,7 @@ class ClothWarpingStep(BaseStepMixin):
                 original_size = original_person.size  # PIL Image
             elif isinstance(original_person, np.ndarray):
                 original_size = (original_person.shape[1], original_person.shape[0])  # (width, height)
-                else:
+            else:
                 original_size = self.config.input_size
             
             # 크기 조정
@@ -3079,9 +3079,9 @@ class ClothWarpingStep(BaseStepMixin):
                 det = np.linalg.det(transformation_matrix[:2, :2])
                 if abs(det) > 0.001:  # 특이값 방지
                     accuracy = min(1.0, 1.0 / abs(det))
-                    else:
-                    accuracy = 0.0
                 else:
+                    accuracy = 0.0
+            else:
                 accuracy = 0.5
             
             return max(0.0, min(1.0, accuracy))
@@ -3099,7 +3099,7 @@ class ClothWarpingStep(BaseStepMixin):
                     original_pil = Image.fromarray(original)
                     original_resized = original_pil.resize((warped.shape[1], warped.shape[0]), Image.Resampling.LANCZOS)
                     original = np.array(original_resized)
-                    else:
+                else:
                     original = cv2.resize(original, (warped.shape[1], warped.shape[0]))
             
             mse = np.mean((original.astype(float) - warped.astype(float)) ** 2)
@@ -3117,7 +3117,7 @@ class ClothWarpingStep(BaseStepMixin):
             # Sobel 연산자로 엣지 감지
             if len(image.shape) == 3:
                 gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-                else:
+            else:
                 gray = image
             
             sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
@@ -3321,7 +3321,7 @@ class ClothWarpingStep(BaseStepMixin):
                 if hasattr(self, 'config'):
                     self.config.quality_level = quality_level
                 self.logger.info(f"✅ 품질 레벨 변경: {quality_level}")
-                else:
+            else:
                 available_levels = list(WARPING_QUALITY_LEVELS.keys())
                 raise ValueError(f"지원하지 않는 품질 레벨. 사용 가능: {available_levels}")
             
@@ -3337,7 +3337,7 @@ class ClothWarpingStep(BaseStepMixin):
                     if hasattr(model, 'cpu'):
                         model.cpu()
                     del model
-                    except:
+                except:
                     pass
             
             self.ai_models.clear()
@@ -3352,7 +3352,7 @@ class ClothWarpingStep(BaseStepMixin):
                     if network and hasattr(network, 'cpu'):
                         try:
                             network.cpu()
-                            except:
+                        except:
                             pass
                     setattr(self, network_attr, None)
             
@@ -3402,7 +3402,7 @@ class ClothWarpingStep(BaseStepMixin):
 # 🔥 팩토리 함수들
 # ==============================================
 
-async def create_enhanced_cloth_warping_step(**kwargs) -> ClothWarpingStep:
+def create_enhanced_cloth_warping_step(**kwargs) -> ClothWarpingStep:
     """ClothWarpingStep 생성 (Central Hub DI Container 연동)"""
     try:
         step = ClothWarpingStep(**kwargs)
@@ -3464,7 +3464,7 @@ async def test_cloth_warping_step():
         if PIL_AVAILABLE:
             cloth_image = Image.new('RGB', (512, 512), (255, 100, 100))  # 빨간 옷
             person_image = Image.new('RGB', (768, 1024), (100, 100, 255))  # 파란 사람
-            else:
+        else:
             cloth_image = np.full((512, 512, 3), [255, 100, 100], dtype=np.uint8)
             person_image = np.full((768, 1024, 3), [100, 100, 255], dtype=np.uint8)
         
@@ -3506,7 +3506,7 @@ async def test_cloth_warping_step():
             # 변형 매트릭스 검증
             matrix_valid = step.validate_transformation_matrix(result['transformation_matrix'])
             print(f"   - 변형 매트릭스 유효성: {'✅' if matrix_valid else '❌'}")
-            else:
+        else:
             print(f"❌ AI 추론 실패: {result['error']}")
         
         # 다양한 품질 레벨 테스트
@@ -3521,7 +3521,7 @@ async def test_cloth_warping_step():
                     confidence = test_result['warping_confidence']
                     model_used = test_result['model_used']
                     print(f"   - {quality_level}: ✅ (신뢰도: {confidence:.3f}, 모델: {model_used})")
-                    else:
+                else:
                     print(f"   - {quality_level}: ❌ ({test_result.get('error', 'Unknown')})")
                     
             except Exception as e:
@@ -3539,10 +3539,10 @@ async def test_cloth_warping_step():
         # BaseStepMixin process() 메서드도 테스트 (호환성 확인)
         print("\n🔄 BaseStepMixin process() 메서드 호환성 테스트...")
         try:
-            process_result = await step.process(**processed_input)
+            process_result = step.process(**processed_input)  # await 제거
             if process_result['success']:
                 print("✅ BaseStepMixin process() 호환성 확인!")
-                else:
+            else:
                 print(f"⚠️ process() 실행 실패: {process_result.get('error', 'Unknown')}")
         except Exception as e:
             print(f"⚠️ process() 호환성 테스트 실패: {e}")
@@ -3554,7 +3554,7 @@ async def test_cloth_warping_step():
         print(f"✅ _run_ai_inference 동기 메서드: {not is_async} ({'✅ 올바름' if not is_async else '❌ 비동기임'})")
         
         # 리소스 정리
-        await step.cleanup_resources()
+        step.cleanup_resources()  # await 제거
         
         print("✅ ClothWarpingStep v8.0 완전 테스트 완료!")
         
@@ -3601,7 +3601,10 @@ if __name__ == "__main__":
     print("=" * 80)
     
     try:
-        asyncio.run(test_cloth_warping_step())
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(test_cloth_warping_step())    
     except Exception as e:
         print(f"❌ 테스트 실행 실패: {e}")
         import traceback

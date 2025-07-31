@@ -203,42 +203,27 @@ if BaseStepMixin is None:
             
             self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
         
-        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
-            """기본 process 메서드 - _run_ai_inference 호출"""
+        # BaseStepMixin v20.0 표준에 맞춰 동기 버전만 유지
+        def process(self, **kwargs) -> Dict[str, Any]:
+            """BaseStepMixin v20.0 호환 process() 메서드 (동기 버전)"""
             try:
-                start_time = time.time()
+                if hasattr(super(), 'process'):
+                    return super().process(**kwargs)
                 
-                # _run_ai_inference 메서드가 있으면 호출
-                if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(data)
-                    
-                    # 처리 시간 추가
-                    if isinstance(result, dict):
-                        result['processing_time'] = time.time() - start_time
-                        result['step_name'] = self.step_name
-                        result['step_id'] = self.step_id
-                    
-                    return result
-                    else:
-                    # 기본 응답
-                    return {
-                        'success': False,
-                        'error': '_run_ai_inference 메서드가 구현되지 않음',
-                        'processing_time': time.time() - start_time,
-                        'step_name': self.step_name,
-                        'step_id': self.step_id
-                    }
-                    
+                # 독립 실행 모드
+                processed_input = kwargs
+                result = self._run_ai_inference(processed_input)
+                return result
+                
             except Exception as e:
-                self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+                self.logger.error(f"❌ Cloth Warping process 실패: {e}")
                 return {
                     'success': False,
                     'error': str(e),
-                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
                     'step_name': self.step_name,
                     'step_id': self.step_id
                 }
-        
+            
         def initialize(self) -> bool:
             """초기화 메서드"""
             try:
@@ -297,7 +282,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                    except:
+                except:
                     pass
                 
                 import gc
@@ -342,7 +327,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                    else:
+                else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -415,81 +400,14 @@ if BaseStepMixin is None:
                 ]
             }
 
-# ==============================================
-# 🔥 데이터 클래스들
-# ==============================================
 
-@dataclass
-class VirtualFittingConfig:
-    """Virtual Fitting 설정"""
-    input_size: tuple = (768, 1024)  # OOTD 입력 크기
-    fitting_quality: str = "high"  # fast, balanced, high, ultra
-    enable_multi_items: bool = True
-    enable_pose_adaptation: bool = True
-    enable_lighting_adaptation: bool = True
-    enable_texture_preservation: bool = True
-    device: str = "auto"
 
-# Virtual Fitting 모드 정의
-FITTING_MODES = {
-    0: 'single_item',      # 단일 의류 아이템
-    1: 'multi_item',       # 다중의류 아이템
-    2: 'full_outfit',      # 전체 의상
-    3: 'accessory_only',   # 액세서리만
-    4: 'upper_body',       # 상체만
-    5: 'lower_body',       # 하체만
-    6: 'mixed_style',      # 혼합 스타일
-    7: 'seasonal_adapt',   # 계절별 적응
-    8: 'occasion_based',   # 상황별 맞춤
-    9: 'ai_recommended'    # AI 추천 기반
-}
-
-# Virtual Fitting 품질 레벨
-FITTING_QUALITY_LEVELS = {
-    'fast': {
-        'models': ['ootd'],
-        'resolution': (512, 512),
-        'inference_steps': 20,
-        'guidance_scale': 7.5
-    },
-    'balanced': {
-        'models': ['ootd', 'viton_hd'],
-        'resolution': (768, 1024),
-        'inference_steps': 30,
-        'guidance_scale': 10.0
-    },
-    'high': {
-        'models': ['ootd', 'viton_hd', 'diffusion'],
-        'resolution': (768, 1024),
-        'inference_steps': 50,
-        'guidance_scale': 12.5
-    },
-    'ultra': {
-        'models': ['ootd', 'viton_hd', 'diffusion'],
-        'resolution': (1024, 1536),
-        'inference_steps': 100,
-        'guidance_scale': 15.0
-    }
-}
-
-# 의류 아이템 타입
-CLOTHING_ITEM_TYPES = {
-    'tops': ['t-shirt', 'shirt', 'blouse', 'sweater', 'hoodie', 'jacket', 'coat'],
-    'bottoms': ['pants', 'jeans', 'shorts', 'skirt', 'leggings'],
-    'dresses': ['dress', 'gown', 'sundress', 'cocktail_dress'],
-    'outerwear': ['jacket', 'coat', 'blazer', 'cardigan', 'vest'],
-    'accessories': ['hat', 'scarf', 'bag', 'glasses', 'jewelry'],
-    'footwear': ['shoes', 'boots', 'sneakers', 'heels', 'sandals']
-}
 
 # ==============================================
 # 🔥 VirtualFittingStep 클래스
 # ==============================================
 
-    # ==============================================
-    # 🔥 핵심 고급 AI 알고리즘들 (프로젝트 지식 기반)
-    # ==============================================
-
+   
 class TPSWarping:
     """TPS (Thin Plate Spline) 기반 의류 워핑 알고리즘 - 고급 구현"""
     
@@ -736,7 +654,7 @@ class TPSWarping:
                                      wb * image[y0, x1, c] + 
                                      wc * image[y1, x0, c] + 
                                      wd * image[y1, x1, c])
-                else:
+            else:
                 warped = (wa * image[y0, x0] + 
                          wb * image[y0, x1] + 
                          wc * image[y1, x0] + 
@@ -1116,7 +1034,7 @@ class AIQualityAssessment:
             if len(fitted_image.shape) == 3:
                 fitted_gray = np.mean(fitted_image, axis=2)
                 person_gray = np.mean(person_image, axis=2)
-                else:
+            else:
                 fitted_gray = fitted_image
                 person_gray = person_image
             
@@ -1297,7 +1215,7 @@ class AIQualityAssessment:
                 prompt = f"{base_prompt} fashionable pants, high quality, realistic, well-fitted"
             elif fitting_mode == 'full_outfit':
                 prompt = f"{base_prompt} a complete outfit, high quality, realistic, well-fitted, fashionable"
-                else:
+            else:
                 prompt = f"{base_prompt} clothing, high quality, realistic, well-fitted"
             
             return prompt
@@ -1348,7 +1266,7 @@ class AIQualityAssessment:
             # (H, W, C) -> (C, H, W)
             if len(image_array.shape) == 3:
                 tensor = torch.from_numpy(image_array).permute(2, 0, 1).float()
-                else:
+            else:
                 tensor = torch.from_numpy(image_array).float()
             
             # 배치 차원 추가
@@ -1610,7 +1528,7 @@ class TPSWarping:
                                      wb * image[y0, x1, c] + 
                                      wc * image[y1, x0, c] + 
                                      wd * image[y1, x1, c])
-                else:
+            else:
                 warped = (wa * image[y0, x0] + 
                          wb * image[y0, x1] + 
                          wc * image[y1, x0] + 
@@ -1990,7 +1908,7 @@ class AIQualityAssessment:
             if len(fitted_image.shape) == 3:
                 fitted_gray = np.mean(fitted_image, axis=2)
                 person_gray = np.mean(person_image, axis=2)
-                else:
+            else:
                 fitted_gray = fitted_image
                 person_gray = person_image
             
@@ -2175,7 +2093,7 @@ class AIQualityAssessment:
                 prompt = f"{base_prompt} fashionable pants, high quality, realistic, well-fitted"
             elif fitting_mode == 'full_outfit':
                 prompt = f"{base_prompt} a complete outfit, high quality, realistic, well-fitted, fashionable"
-                else:
+            else:
                 prompt = f"{base_prompt} clothing, high quality, realistic, well-fitted"
             
             return prompt
@@ -2226,7 +2144,7 @@ class AIQualityAssessment:
             # (H, W, C) -> (C, H, W)
             if len(image_array.shape) == 3:
                 tensor = torch.from_numpy(image_array).permute(2, 0, 1).float()
-                else:
+            else:
                 tensor = torch.from_numpy(image_array).float()
             
             # 배치 차원 추가
@@ -2241,6 +2159,76 @@ class AIQualityAssessment:
         except Exception as e:
             self.logger.error(f"❌ PIL 텐서 변환 실패: {e}")
             return torch.zeros((1, 3, 512, 512), device=self.device)
+
+
+# ==============================================
+# 🔥 데이터 클래스들
+# ==============================================
+
+@dataclass
+class VirtualFittingConfig:
+    """Virtual Fitting 설정"""
+    input_size: tuple = (768, 1024)  # OOTD 입력 크기
+    fitting_quality: str = "high"  # fast, balanced, high, ultra
+    enable_multi_items: bool = True
+    enable_pose_adaptation: bool = True
+    enable_lighting_adaptation: bool = True
+    enable_texture_preservation: bool = True
+    device: str = "auto"
+
+# Virtual Fitting 모드 정의
+FITTING_MODES = {
+    0: 'single_item',      # 단일 의류 아이템
+    1: 'multi_item',       # 다중의류 아이템
+    2: 'full_outfit',      # 전체 의상
+    3: 'accessory_only',   # 액세서리만
+    4: 'upper_body',       # 상체만
+    5: 'lower_body',       # 하체만
+    6: 'mixed_style',      # 혼합 스타일
+    7: 'seasonal_adapt',   # 계절별 적응
+    8: 'occasion_based',   # 상황별 맞춤
+    9: 'ai_recommended'    # AI 추천 기반
+}
+
+# Virtual Fitting 품질 레벨
+FITTING_QUALITY_LEVELS = {
+    'fast': {
+        'models': ['ootd'],
+        'resolution': (512, 512),
+        'inference_steps': 20,
+        'guidance_scale': 7.5
+    },
+    'balanced': {
+        'models': ['ootd', 'viton_hd'],
+        'resolution': (768, 1024),
+        'inference_steps': 30,
+        'guidance_scale': 10.0
+    },
+    'high': {
+        'models': ['ootd', 'viton_hd', 'diffusion'],
+        'resolution': (768, 1024),
+        'inference_steps': 50,
+        'guidance_scale': 12.5
+    },
+    'ultra': {
+        'models': ['ootd', 'viton_hd', 'diffusion'],
+        'resolution': (1024, 1536),
+        'inference_steps': 100,
+        'guidance_scale': 15.0
+    }
+}
+
+# 의류 아이템 타입
+CLOTHING_ITEM_TYPES = {
+    'tops': ['t-shirt', 'shirt', 'blouse', 'sweater', 'hoodie', 'jacket', 'coat'],
+    'bottoms': ['pants', 'jeans', 'shorts', 'skirt', 'leggings'],
+    'dresses': ['dress', 'gown', 'sundress', 'cocktail_dress'],
+    'outerwear': ['jacket', 'coat', 'blazer', 'cardigan', 'vest'],
+    'accessories': ['hat', 'scarf', 'bag', 'glasses', 'jewelry'],
+    'footwear': ['shoes', 'boots', 'sneakers', 'heels', 'sandals']
+}
+
+
 
 class VirtualFittingStep(BaseStepMixin):
     """
@@ -2330,10 +2318,9 @@ class VirtualFittingStep(BaseStepMixin):
                 elif torch.cuda.is_available():
                     return "cuda"
             return "cpu"
-            except:
+        except:
             return "cpu"
  
-
     def _emergency_setup(self, **kwargs):
         """긴급 설정 (초기화 실패시 폴백)"""
         try:
@@ -2365,7 +2352,7 @@ class VirtualFittingStep(BaseStepMixin):
                 self.tps_warping = TPSWarping()
                 self.cloth_analyzer = AdvancedClothAnalyzer()
                 self.quality_assessor = AIQualityAssessment()
-                except:
+            except:
                 self.tps_warping = None
                 self.cloth_analyzer = None
                 self.quality_assessor = None
@@ -2413,7 +2400,7 @@ class VirtualFittingStep(BaseStepMixin):
                     self.models_loading_status['ootd'] = True
                     self.loaded_models.append('ootd')
                     self.logger.info("✅ OOTD 모델 로딩 완료 (3.2GB)")
-                    else:
+                else:
                     self.logger.warning("⚠️ OOTD 모델 로딩 실패")
                     
             except Exception as e:
@@ -2479,254 +2466,6 @@ class VirtualFittingStep(BaseStepMixin):
             self.logger.error(f"❌ Central Hub Virtual Fitting 모델 로딩 실패: {e}")
             self._create_mock_virtual_fitting_models()
 
-    async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        🔥 VirtualFittingStep 메인 처리 메서드 (BaseStepMixin 표준)
-        외부에서 호출하는 핵심 인터페이스
-        """
-        try:
-            self.logger.info(f"🚀 {self.step_name} 처리 시작")
-            
-            # 1. 입력 데이터 검증
-            if not input_data:
-                raise ValueError("입력 데이터가 없습니다")
-            
-            # 2. 필수 필드 확인
-            required_fields = ['person_image', 'cloth_image']
-            for field in required_fields:
-                if field not in input_data:
-                    raise ValueError(f"필수 필드 '{field}'가 없습니다")
-            
-            # 3. 전처리 적용 (BaseStepMixin 표준)
-            if hasattr(self, '_apply_preprocessing'):
-                processed_input = await self._apply_preprocessing(input_data)
-                else:
-                processed_input = input_data.copy()
-            
-            # 4. AI 추론 실행 (핵심 로직)
-            result = self._run_ai_inference(processed_input)
-            
-            # 5. 후처리 적용 (BaseStepMixin 표준)
-            if hasattr(self, '_apply_postprocessing'):
-                final_result = await self._apply_postprocessing(result, input_data)
-                else:
-                final_result = result
-            
-            # 6. 성공 응답 반환
-            if final_result.get('success', True):
-                self.logger.info(f"✅ {self.step_name} 처리 완료")
-                return final_result
-                else:
-                self.logger.error(f"❌ {self.step_name} 처리 실패: {final_result.get('error')}")
-                return final_result
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 처리 중 오류: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'step_name': self.step_name,
-                'step_id': self.step_id,
-                'processing_time': 0.0
-            }
-
-              
-    def initialize(self) -> bool:
-        """Step 초기화 (BaseStepMixin 표준)"""
-        try:
-            if self.is_initialized:
-                return True
-            
-            # 모델 로딩 확인
-            if not self.fitting_ready:
-                self.logger.warning("⚠️ Virtual Fitting 모델이 준비되지 않음")
-            
-            self.is_initialized = True
-            self.is_ready = self.fitting_ready
-            
-            self.logger.info(f"✅ {self.step_name} 초기화 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
-            return False
-
-    def cleanup(self):
-        """Step 정리 (BaseStepMixin 표준)"""
-        try:
-            # AI 모델들 정리
-            if hasattr(self, 'ai_models'):
-                for model_name, model in self.ai_models.items():
-                    if hasattr(model, 'cleanup'):
-                        model.cleanup()
-            
-            # 메모리 정리
-            if TORCH_AVAILABLE:
-                try:
-                    import torch
-                    if torch.backends.mps.is_available():
-                        torch.mps.empty_cache()
-                    elif torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    except:
-                    pass
-            
-            self.logger.info(f"✅ {self.step_name} 정리 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
-
-    def get_status(self) -> Dict[str, Any]:
-        """Step 상태 반환 (BaseStepMixin 표준)"""
-        return {
-            'step_name': self.step_name,
-            'step_id': self.step_id,
-            'is_initialized': self.is_initialized,
-            'is_ready': self.is_ready,
-            'fitting_ready': self.fitting_ready,
-            'models_loaded': len(self.loaded_models),
-            'device': self.device,
-            'auxiliary_processors': {
-                'pose_processor': self.pose_processor is not None,
-                'lighting_adapter': self.lighting_adapter is not None,
-                'texture_enhancer': self.texture_enhancer is not None
-            }
-        }
-
-    async def _apply_preprocessing(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """전처리 적용 (BaseStepMixin 표준)"""
-        try:
-            processed = input_data.copy()
-            
-            # 기본 검증
-            if 'person_image' in processed and 'cloth_image' in processed:
-                # 이미지 전처리
-                processed['person_image'] = self._preprocess_image(processed['person_image'])
-                processed['cloth_image'] = self._preprocess_image(processed['cloth_image'])
-            
-            self.logger.debug(f"✅ {self.step_name} 전처리 완료")
-            return processed
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 전처리 실패: {e}")
-            return input_data
-        
-    async def _apply_postprocessing(self, ai_result: Dict[str, Any], original_input: Dict[str, Any]) -> Dict[str, Any]:
-        """후처리 적용 (BaseStepMixin 표준)"""
-        try:
-            processed = ai_result.copy()
-            
-            # 이미지 결과가 있으면 Base64로 변환 (API 응답용)
-            if 'fitted_image' in processed and processed['fitted_image'] is not None:
-                # Base64 변환은 필요시에만
-                pass
-            
-            self.logger.debug(f"✅ {self.step_name} 후처리 완료")
-            return processed
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 후처리 실패: {e}")
-            return ai_result
-    
-
-    def _load_detailed_data_spec_from_kwargs(self, **kwargs):
-        """DetailedDataSpec 로드 (BaseStepMixin 호환)"""
-        try:
-            # VirtualFittingStep용 기본 스펙
-            class VirtualFittingDataSpec:
-                def __init__(self):
-                    self.input_data_types = {
-                        'person_image': 'PIL.Image.Image',
-                        'cloth_image': 'PIL.Image.Image',
-                        'fitting_mode': 'str',
-                        'quality_level': 'str'
-                    }
-                    self.output_data_types = {
-                        'fitted_image': 'numpy.ndarray',
-                        'fitting_confidence': 'float',
-                        'success': 'bool'
-                    }
-                    self.preprocessing_steps = ['resize_768x1024', 'normalize']
-                    self.postprocessing_steps = ['denormalize', 'format_output']
-                    self.api_input_mapping = {
-                        'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
-                        'cloth_image': 'fastapi.UploadFile -> PIL.Image.Image'
-                    }
-                    self.api_output_mapping = {
-                        'fitted_image': 'numpy.ndarray -> base64_string',
-                        'success': 'bool -> bool'
-                    }
-            
-            return VirtualFittingDataSpec()
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ DetailedDataSpec 로드 실패: {e}")
-            return None
-    
-    def _initialize_performance_stats(self):
-        """성능 통계 초기화 (BaseStepMixin 호환)"""
-        try:
-            self.performance_stats = {
-                'total_requests': 0,
-                'successful_requests': 0,
-                'failed_requests': 0,
-                'average_processing_time': 0.0,
-                'last_processing_time': 0.0
-            }
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 성능 통계 초기화 실패: {e}")
-            self.performance_stats = {}
-  
-    
-    def _setup_diffusion_pipeline(self, diffusion_model):
-        """Stable Diffusion 파이프라인 설정"""
-        try:
-            if not DIFFUSERS_AVAILABLE:
-                self.logger.warning("⚠️ Diffusers 라이브러리 없음 - Diffusion 파이프라인 스킵")
-                return
-            
-            # Stable Diffusion 파이프라인 초기화
-            self.diffusion_pipeline = StableDiffusionPipeline.from_pretrained(
-                "stabilityai/stable-diffusion-2-inpainting",
-                torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
-                safety_checker=None,
-                requires_safety_checker=False
-            ).to(self.device)
-            
-            # 스케줄러 최적화
-            self.diffusion_pipeline.scheduler = DDIMScheduler.from_config(
-                self.diffusion_pipeline.scheduler.config
-            )
-            
-            # 메모리 효율성 개선
-            if hasattr(self.diffusion_pipeline, 'enable_model_cpu_offload'):
-                self.diffusion_pipeline.enable_model_cpu_offload()
-            
-            self.logger.info("✅ Stable Diffusion 파이프라인 설정 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ Diffusion 파이프라인 설정 실패: {e}")
-
-    def _initialize_auxiliary_processors(self):
-        """보조 프로세서들 초기화"""
-        try:
-            # 포즈 프로세서 초기화
-            if 'ootd' in self.loaded_models or 'viton_hd' in self.loaded_models:
-                self.pose_processor = self._create_pose_processor()
-            
-            # 조명 적응 프로세서
-            if self.config.enable_lighting_adaptation:
-                self.lighting_adapter = self._create_lighting_adapter()
-            
-            # 텍스처 향상 프로세서
-            if self.config.enable_texture_preservation:
-                self.texture_enhancer = self._create_texture_enhancer()
-            
-            self.logger.info("✅ 보조 프로세서들 초기화 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ 보조 프로세서 초기화 실패: {e}")
 
     def _create_mock_virtual_fitting_models(self):
         """Mock Virtual Fitting 모델 생성 (실제 모델 로딩 실패시 폴백)"""
@@ -2791,7 +2530,7 @@ class VirtualFittingStep(BaseStepMixin):
                         elif fitting_mode == 'lower_body':
                             cloth_resized = cv2.resize(cloth_image, (w//3, h//2))
                             overlay_region = (h//2, h, w//3, 2*w//3)
-                            else:  # single_item or full_outfit
+                        else:  # single_item or full_outfit
                             cloth_resized = cv2.resize(cloth_image, (w//2, 2*h//3))
                             overlay_region = (h//6, 5*h//6, w//4, 3*w//4)
                         
@@ -2842,10 +2581,6 @@ class VirtualFittingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"❌ Mock Virtual Fitting 모델 생성 실패: {e}")
-
-    # ==============================================
-    # 🔥 BaseStepMixin v20.0 표준 _run_ai_inference() 메서드
-    # ==============================================
 
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -2928,6 +2663,7 @@ class VirtualFittingStep(BaseStepMixin):
                 'central_hub_di_container': True
             }
 
+
     def _run_virtual_fitting_inference(
     self, 
     person_image: np.ndarray, 
@@ -2969,14 +2705,14 @@ class VirtualFittingStep(BaseStepMixin):
             elif 'mock_ootd' in self.loaded_models:
                 model = self.ai_models['mock_ootd']
                 model_name = 'mock_ootd'
-                else:
+            else:
                 raise ValueError("사용 가능한 모델이 없습니다")
             
             # 🔥 6. 고급 AI 모델 추론 실행 (TPS 워핑된 의류 사용)
             if hasattr(model, 'predict'):
                 # Mock 모델인 경우 - TPS 워핑된 의류 사용
                 result = model.predict(person_image, tps_warped_clothing, pose_keypoints, fitting_mode)
-                else:
+            else:
                 # 실제 PyTorch 모델인 경우
                 result = self._run_pytorch_virtual_fitting_inference(
                     model, person_image, tps_warped_clothing, pose_keypoints, fitting_mode, model_name, quality_config
@@ -3014,7 +2750,7 @@ class VirtualFittingStep(BaseStepMixin):
             # 응급 처리 - 기본 추론으로 폴백
             return self._create_emergency_fitting_result(person_image, cloth_image, fitting_mode)
         
-        
+
     def _run_pytorch_virtual_fitting_inference(
     self, 
     model, 
@@ -3057,7 +2793,7 @@ class VirtualFittingStep(BaseStepMixin):
                     fitted_tensor, metrics = self._run_diffusion_inference(
                         model, person_tensor, cloth_tensor, pose_tensor, fitting_mode, quality_config
                     )
-                    else:
+                else:
                     # 기본 추론
                     fitted_tensor, metrics = self._run_basic_fitting_inference(
                         model, person_tensor, cloth_tensor, pose_tensor, fitting_mode, quality_config
@@ -3087,6 +2823,336 @@ class VirtualFittingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ PyTorch Virtual Fitting 모델 추론 실패: {e}")
             return self._create_emergency_fitting_result(person_image, cloth_image, fitting_mode)
+
+    def _preprocess_image(self, image) -> np.ndarray:
+        """이미지 전처리"""
+        try:
+            # PIL Image를 numpy array로 변환
+            if PIL_AVAILABLE and hasattr(image, 'convert'):
+                image_pil = image.convert('RGB')
+                image_array = np.array(image_pil)
+            elif isinstance(image, np.ndarray):
+                image_array = image
+            else:
+                raise ValueError("지원하지 않는 이미지 형식")
+            
+            # 크기 조정
+            target_size = self.config.input_size
+            if PIL_AVAILABLE:
+                image_pil = Image.fromarray(image_array)
+                image_resized = image_pil.resize((target_size[1], target_size[0]), Image.Resampling.LANCZOS)
+                image_array = np.array(image_resized)
+            
+            # 정규화 (0-255 범위 확인)
+            if image_array.max() <= 1.0:
+                image_array = (image_array * 255).astype(np.uint8)
+            
+            return image_array
+            
+        except Exception as e:
+            self.logger.error(f"❌ 이미지 전처리 실패: {e}")
+            # 기본 이미지 반환
+            return np.zeros((*self.config.input_size, 3), dtype=np.uint8)
+
+    def _postprocess_fitting_result(self, fitting_result: Dict[str, Any], original_person: Any, original_cloth: Any) -> Dict[str, Any]:
+        """Virtual Fitting 결과 후처리"""
+        try:
+            fitted_image = fitting_result['fitted_image']
+            
+            # 원본 이미지 크기로 복원
+            if hasattr(original_person, 'size'):
+                original_size = original_person.size  # PIL Image
+            elif isinstance(original_person, np.ndarray):
+                original_size = (original_person.shape[1], original_person.shape[0])  # (width, height)
+            else:
+                original_size = self.config.input_size
+            
+            # 크기 조정
+            if PIL_AVAILABLE and fitted_image.shape[:2] != original_size[::-1]:
+                fitted_pil = Image.fromarray(fitted_image.astype(np.uint8))
+                fitted_resized = fitted_pil.resize(original_size, Image.Resampling.LANCZOS)
+                fitted_image = np.array(fitted_resized)
+            
+            # 품질 향상 후처리 적용
+            if self.config.enable_texture_preservation:
+                fitted_image = self._enhance_texture_quality(fitted_image)
+            
+            if self.config.enable_lighting_adaptation:
+                fitted_image = self._adapt_lighting(fitted_image, original_person)
+            
+            return {
+                'fitted_image': fitted_image,
+                'fitting_confidence': fitting_result.get('fitting_confidence', 0.75),
+                'fitting_mode': fitting_result.get('fitting_mode', 'single_item'),
+                'fitting_metrics': fitting_result.get('fitting_metrics', {}),
+                'processing_stages': fitting_result.get('processing_stages', []),
+                'recommendations': fitting_result.get('recommendations', []),
+                'alternative_styles': fitting_result.get('alternative_styles', []),
+                'model_used': fitting_result.get('model_used', 'unknown')
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Virtual Fitting 결과 후처리 실패: {e}")
+            return {
+                'fitted_image': fitting_result.get('fitted_image', original_person),
+                'fitting_confidence': 0.5,
+                'fitting_mode': 'error',
+                'fitting_metrics': {},
+                'processing_stages': [],
+                'recommendations': [],
+                'alternative_styles': [],
+                'model_used': 'error'
+            }
+        
+    async def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        🔥 VirtualFittingStep 메인 처리 메서드 (BaseStepMixin 표준)
+        외부에서 호출하는 핵심 인터페이스
+        """
+        try:
+            self.logger.info(f"🚀 {self.step_name} 처리 시작")
+            
+            # 1. 입력 데이터 검증
+            if not input_data:
+                raise ValueError("입력 데이터가 없습니다")
+            
+            # 2. 필수 필드 확인
+            required_fields = ['person_image', 'cloth_image']
+            for field in required_fields:
+                if field not in input_data:
+                    raise ValueError(f"필수 필드 '{field}'가 없습니다")
+            
+            # 3. 전처리 적용 (BaseStepMixin 표준)
+            if hasattr(self, '_apply_preprocessing'):
+                processed_input = await self._apply_preprocessing(input_data)
+            else:
+                processed_input = input_data.copy()
+            
+            # 4. AI 추론 실행 (핵심 로직)
+            result = self._run_ai_inference(processed_input)
+            
+            # 5. 후처리 적용 (BaseStepMixin 표준)
+            if hasattr(self, '_apply_postprocessing'):
+                final_result = await self._apply_postprocessing(result, input_data)
+            else:
+                final_result = result
+            
+            # 6. 성공 응답 반환
+            if final_result.get('success', True):
+                self.logger.info(f"✅ {self.step_name} 처리 완료")
+                return final_result
+            else:
+                self.logger.error(f"❌ {self.step_name} 처리 실패: {final_result.get('error')}")
+                return final_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 처리 중 오류: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': 0.0
+            }
+
+    def initialize(self) -> bool:
+        """Step 초기화 (BaseStepMixin 표준)"""
+        try:
+            if self.is_initialized:
+                return True
+            
+            # 모델 로딩 확인
+            if not self.fitting_ready:
+                self.logger.warning("⚠️ Virtual Fitting 모델이 준비되지 않음")
+            
+            self.is_initialized = True
+            self.is_ready = self.fitting_ready
+            
+            self.logger.info(f"✅ {self.step_name} 초기화 완료")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+            return False
+
+    def cleanup(self):
+        """Step 정리 (BaseStepMixin 표준)"""
+        try:
+            # AI 모델들 정리
+            if hasattr(self, 'ai_models'):
+                for model_name, model in self.ai_models.items():
+                    if hasattr(model, 'cleanup'):
+                        model.cleanup()
+            
+            # 메모리 정리
+            if TORCH_AVAILABLE:
+                try:
+                    import torch
+                    if torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                    elif torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except:
+                    pass
+            
+            self.logger.info(f"✅ {self.step_name} 정리 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 정리 실패: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Step 상태 반환 (BaseStepMixin 표준)"""
+        return {
+            'step_name': self.step_name,
+            'step_id': self.step_id,
+            'is_initialized': self.is_initialized,
+            'is_ready': self.is_ready,
+            'fitting_ready': self.fitting_ready,
+            'models_loaded': len(self.loaded_models),
+            'device': self.device,
+            'auxiliary_processors': {
+                'pose_processor': self.pose_processor is not None,
+                'lighting_adapter': self.lighting_adapter is not None,
+                'texture_enhancer': self.texture_enhancer is not None
+            }
+        }
+
+    async def _apply_preprocessing(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """전처리 적용 (BaseStepMixin 표준)"""
+        try:
+            processed = input_data.copy()
+            
+            # 기본 검증
+            if 'person_image' in processed and 'cloth_image' in processed:
+                # 이미지 전처리
+                processed['person_image'] = self._preprocess_image(processed['person_image'])
+                processed['cloth_image'] = self._preprocess_image(processed['cloth_image'])
+            
+            self.logger.debug(f"✅ {self.step_name} 전처리 완료")
+            return processed
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 전처리 실패: {e}")
+            return input_data
+        
+    async def _apply_postprocessing(self, ai_result: Dict[str, Any], original_input: Dict[str, Any]) -> Dict[str, Any]:
+        """후처리 적용 (BaseStepMixin 표준)"""
+        try:
+            processed = ai_result.copy()
+            
+            # 이미지 결과가 있으면 Base64로 변환 (API 응답용)
+            if 'fitted_image' in processed and processed['fitted_image'] is not None:
+                # Base64 변환은 필요시에만
+                pass
+            
+            self.logger.debug(f"✅ {self.step_name} 후처리 완료")
+            return processed
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} 후처리 실패: {e}")
+            return ai_result
+
+    def _load_detailed_data_spec_from_kwargs(self, **kwargs):
+        """DetailedDataSpec 로드 (BaseStepMixin 호환)"""
+        try:
+            # VirtualFittingStep용 기본 스펙
+            class VirtualFittingDataSpec:
+                def __init__(self):
+                    self.input_data_types = {
+                        'person_image': 'PIL.Image.Image',
+                        'cloth_image': 'PIL.Image.Image',
+                        'fitting_mode': 'str',
+                        'quality_level': 'str'
+                    }
+                    self.output_data_types = {
+                        'fitted_image': 'numpy.ndarray',
+                        'fitting_confidence': 'float',
+                        'success': 'bool'
+                    }
+                    self.preprocessing_steps = ['resize_768x1024', 'normalize']
+                    self.postprocessing_steps = ['denormalize', 'format_output']
+                    self.api_input_mapping = {
+                        'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
+                        'cloth_image': 'fastapi.UploadFile -> PIL.Image.Image'
+                    }
+                    self.api_output_mapping = {
+                        'fitted_image': 'numpy.ndarray -> base64_string',
+                        'success': 'bool -> bool'
+                    }
+            
+            return VirtualFittingDataSpec()
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DetailedDataSpec 로드 실패: {e}")
+            return None
+    
+    def _initialize_performance_stats(self):
+        """성능 통계 초기화 (BaseStepMixin 호환)"""
+        try:
+            self.performance_stats = {
+                'total_requests': 0,
+                'successful_requests': 0,
+                'failed_requests': 0,
+                'average_processing_time': 0.0,
+                'last_processing_time': 0.0
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 성능 통계 초기화 실패: {e}")
+            self.performance_stats = {}
+    
+    def _setup_diffusion_pipeline(self, diffusion_model):
+        """Stable Diffusion 파이프라인 설정"""
+        try:
+            if not DIFFUSERS_AVAILABLE:
+                self.logger.warning("⚠️ Diffusers 라이브러리 없음 - Diffusion 파이프라인 스킵")
+                return
+            
+            # Stable Diffusion 파이프라인 초기화
+            self.diffusion_pipeline = StableDiffusionPipeline.from_pretrained(
+                "stabilityai/stable-diffusion-2-inpainting",
+                torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
+                safety_checker=None,
+                requires_safety_checker=False
+            ).to(self.device)
+            
+            # 스케줄러 최적화
+            self.diffusion_pipeline.scheduler = DDIMScheduler.from_config(
+                self.diffusion_pipeline.scheduler.config
+            )
+            
+            # 메모리 효율성 개선
+            if hasattr(self.diffusion_pipeline, 'enable_model_cpu_offload'):
+                self.diffusion_pipeline.enable_model_cpu_offload()
+            
+            self.logger.info("✅ Stable Diffusion 파이프라인 설정 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Diffusion 파이프라인 설정 실패: {e}")
+
+    def _initialize_auxiliary_processors(self):
+        """보조 프로세서들 초기화"""
+        try:
+            # 포즈 프로세서 초기화
+            if 'ootd' in self.loaded_models or 'viton_hd' in self.loaded_models:
+                self.pose_processor = self._create_pose_processor()
+            
+            # 조명 적응 프로세서
+            if self.config.enable_lighting_adaptation:
+                self.lighting_adapter = self._create_lighting_adapter()
+            
+            # 텍스처 향상 프로세서
+            if self.config.enable_texture_preservation:
+                self.texture_enhancer = self._create_texture_enhancer()
+            
+            self.logger.info("✅ 보조 프로세서들 초기화 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 보조 프로세서 초기화 실패: {e}")
+
+    # ==============================================
+    # 🔥 BaseStepMixin v20.0 표준 _run_ai_inference() 메서드
+    # ==============================================
 
     def _run_advanced_virtual_fitting_inference(
         self, 
@@ -3129,14 +3195,14 @@ class VirtualFittingStep(BaseStepMixin):
             elif 'mock_ootd' in self.loaded_models:
                 model = self.ai_models['mock_ootd']
                 model_name = 'mock_ootd'
-                else:
+            else:
                 raise ValueError("사용 가능한 모델이 없습니다")
             
             # 🔥 6. 고급 AI 모델 추론 실행 (TPS 워핑된 의류 사용)
             if hasattr(model, 'predict'):
                 # Mock 모델인 경우 - TPS 워핑된 의류 사용
                 result = model.predict(person_image, tps_warped_clothing, pose_keypoints, fitting_mode)
-                else:
+            else:
                 # 실제 PyTorch 모델인 경우
                 result = self._run_pytorch_virtual_fitting_inference(
                     model, person_image, tps_warped_clothing, pose_keypoints, fitting_mode, model_name, quality_config
@@ -3179,7 +3245,7 @@ class VirtualFittingStep(BaseStepMixin):
         try:
             if len(person_image.shape) == 3:
                 gray = np.mean(person_image, axis=2)
-                else:
+            else:
                 gray = person_image
             
             # 간단한 임계값 처리
@@ -3198,7 +3264,7 @@ class VirtualFittingStep(BaseStepMixin):
         try:
             if len(clothing_image.shape) == 3:
                 gray = np.mean(clothing_image, axis=2)
-                else:
+            else:
                 gray = clothing_image
             
             # 간단한 임계값 처리
@@ -3231,7 +3297,7 @@ class VirtualFittingStep(BaseStepMixin):
                     guidance_scale=quality_config.get('guidance_scale', 10.0),
                     num_inference_steps=quality_config.get('inference_steps', 30)
                 )
-                else:
+            else:
                 output = model(
                     processed_inputs['person'], 
                     processed_inputs['cloth'],
@@ -3243,7 +3309,7 @@ class VirtualFittingStep(BaseStepMixin):
             if isinstance(output, dict):
                 fitted_tensor = output['images']
                 metrics = output.get('metrics', {})
-                else:
+            else:
                 fitted_tensor = output
                 metrics = self._calculate_default_metrics()
             
@@ -3276,7 +3342,7 @@ class VirtualFittingStep(BaseStepMixin):
                     'texture_quality': float(output.get('texture_quality', 0.9)),
                     'overall_quality': float(output.get('overall_quality', 0.85))
                 }
-                else:
+            else:
                 fitted_tensor = output
                 metrics = self._calculate_default_metrics()
             
@@ -3341,7 +3407,7 @@ class VirtualFittingStep(BaseStepMixin):
                     'fitting_quality': float(metrics_dict.get('quality', 0.75)),
                     'overall_quality': float(metrics_dict.get('overall', 0.75))
                 }
-                else:
+            else:
                 fitted_tensor = output
                 metrics = self._calculate_default_metrics()
             
@@ -3354,86 +3420,6 @@ class VirtualFittingStep(BaseStepMixin):
     # ==============================================
     # 🔥 전처리, 후처리 및 유틸리티 메서드들
     # ==============================================
-
-    def _preprocess_image(self, image) -> np.ndarray:
-        """이미지 전처리"""
-        try:
-            # PIL Image를 numpy array로 변환
-            if PIL_AVAILABLE and hasattr(image, 'convert'):
-                image_pil = image.convert('RGB')
-                image_array = np.array(image_pil)
-            elif isinstance(image, np.ndarray):
-                image_array = image
-                else:
-                raise ValueError("지원하지 않는 이미지 형식")
-            
-            # 크기 조정
-            target_size = self.config.input_size
-            if PIL_AVAILABLE:
-                image_pil = Image.fromarray(image_array)
-                image_resized = image_pil.resize((target_size[1], target_size[0]), Image.Resampling.LANCZOS)
-                image_array = np.array(image_resized)
-            
-            # 정규화 (0-255 범위 확인)
-            if image_array.max() <= 1.0:
-                image_array = (image_array * 255).astype(np.uint8)
-            
-            return image_array
-            
-        except Exception as e:
-            self.logger.error(f"❌ 이미지 전처리 실패: {e}")
-            # 기본 이미지 반환
-            return np.zeros((*self.config.input_size, 3), dtype=np.uint8)
-
-    def _postprocess_fitting_result(self, fitting_result: Dict[str, Any], original_person: Any, original_cloth: Any) -> Dict[str, Any]:
-        """Virtual Fitting 결과 후처리"""
-        try:
-            fitted_image = fitting_result['fitted_image']
-            
-            # 원본 이미지 크기로 복원
-            if hasattr(original_person, 'size'):
-                original_size = original_person.size  # PIL Image
-            elif isinstance(original_person, np.ndarray):
-                original_size = (original_person.shape[1], original_person.shape[0])  # (width, height)
-                else:
-                original_size = self.config.input_size
-            
-            # 크기 조정
-            if PIL_AVAILABLE and fitted_image.shape[:2] != original_size[::-1]:
-                fitted_pil = Image.fromarray(fitted_image.astype(np.uint8))
-                fitted_resized = fitted_pil.resize(original_size, Image.Resampling.LANCZOS)
-                fitted_image = np.array(fitted_resized)
-            
-            # 품질 향상 후처리 적용
-            if self.config.enable_texture_preservation:
-                fitted_image = self._enhance_texture_quality(fitted_image)
-            
-            if self.config.enable_lighting_adaptation:
-                fitted_image = self._adapt_lighting(fitted_image, original_person)
-            
-            return {
-                'fitted_image': fitted_image,
-                'fitting_confidence': fitting_result.get('fitting_confidence', 0.75),
-                'fitting_mode': fitting_result.get('fitting_mode', 'single_item'),
-                'fitting_metrics': fitting_result.get('fitting_metrics', {}),
-                'processing_stages': fitting_result.get('processing_stages', []),
-                'recommendations': fitting_result.get('recommendations', []),
-                'alternative_styles': fitting_result.get('alternative_styles', []),
-                'model_used': fitting_result.get('model_used', 'unknown')
-            }
-            
-        except Exception as e:
-            self.logger.error(f"❌ Virtual Fitting 결과 후처리 실패: {e}")
-            return {
-                'fitted_image': fitting_result.get('fitted_image', original_person),
-                'fitting_confidence': 0.5,
-                'fitting_mode': 'error',
-                'fitting_metrics': {},
-                'processing_stages': [],
-                'recommendations': [],
-                'alternative_styles': [],
-                'model_used': 'error'
-            }
 
     def _generate_fitting_recommendations(self, fitted_image: np.ndarray, metrics: Dict[str, float], fitting_mode: str) -> List[str]:
         """피팅 추천사항 생성"""
@@ -3448,7 +3434,7 @@ class VirtualFittingStep(BaseStepMixin):
                 recommendations.append("Great fit! Consider this style for special occasions.")
             elif overall_quality >= 0.7:
                 recommendations.append("Good fit! This style suits you well.")
-                else:
+            else:
                 recommendations.append("The fit could be improved. Try adjusting the pose or lighting.")
             
             # 피팅 모드별 추천
@@ -3550,7 +3536,7 @@ class VirtualFittingStep(BaseStepMixin):
             if len(image.shape) == 3:
                 # (H, W, C) -> (C, H, W)
                 tensor = torch.from_numpy(image).permute(2, 0, 1).float()
-                else:
+            else:
                 tensor = torch.from_numpy(image).float()
             
             # 배치 차원 추가
@@ -3590,7 +3576,7 @@ class VirtualFittingStep(BaseStepMixin):
             # 0-255 범위로 변환
             if image.max() <= 1.0:
                 image = (image * 255).astype(np.uint8)
-                else:
+            else:
                 image = np.clip(image, 0, 255).astype(np.uint8)
             
             return image
@@ -3611,7 +3597,7 @@ class VirtualFittingStep(BaseStepMixin):
             elif fitting_mode == 'lower_body':
                 cloth_resized = cv2.resize(cloth_image, (w//3, h//2))
                 overlay_region = (h//2, h, w//3, 2*w//3)
-                else:
+            else:
                 cloth_resized = cv2.resize(cloth_image, (w//2, 2*h//3))
                 overlay_region = (h//6, 5*h//6, w//4, 3*w//4)
             
@@ -3761,6 +3747,7 @@ class VirtualFittingStep(BaseStepMixin):
         return self._create_texture_enhancer()
 
 
+
 # ==============================================
 # 🔥 편의 함수들
 # ==============================================
@@ -3903,7 +3890,7 @@ if __name__ == "__main__":
                 print(f"   - 출력 크기: {result['fitted_image'].shape}")
                 print(f"   - 추천사항: {len(result['recommendations'])}개")
                 print(f"   - 대안 스타일: {len(result['alternative_styles'])}개")
-                else:
+            else:
                 print(f"❌ AI 추론 실패: {result.get('error', 'Unknown')}")
             
             print("✅ 테스트 완료")

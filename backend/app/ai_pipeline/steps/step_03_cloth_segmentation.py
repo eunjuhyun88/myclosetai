@@ -40,6 +40,26 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 
+# 최상단에 추가
+import logging
+logger = logging.getLogger(__name__)
+def detect_m3_max():
+    """M3 Max 감지"""
+    try:
+        import platform, subprocess
+        if platform.system() == 'Darwin':
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                capture_output=True, text=True, timeout=5
+            )
+            return 'M3' in result.stdout
+    except:
+        pass
+    return False
+
+IS_M3_MAX = detect_m3_max()
+MEMORY_GB = 16.0
+
 # 🔥 PyTorch 로딩 최적화 - 수정
 try:
     from fix_pytorch_loading import apply_pytorch_patch
@@ -48,44 +68,6 @@ except ImportError:
     logger.warning("⚠️ fix_pytorch_loading 모듈 없음 - 기본 PyTorch 로딩 사용")
 except Exception as e:
     logger.warning(f"⚠️ PyTorch 로딩 패치 실패: {e}")
-
-# ==============================================
-# 🔥 Central Hub DI Container 안전 import (순환참조 방지) - ClothSegmentation 특화
-# ==============================================
-
-def _get_central_hub_container():
-    """Central Hub DI Container 안전한 동적 해결 - ClothSegmentation용"""
-    try:
-        import importlib
-        module = importlib.import_module('app.core.di_container')
-        get_global_fn = getattr(module, 'get_global_container', None)
-        if get_global_fn:
-            return get_global_fn()
-        return None
-    except ImportError:
-        return None
-    except Exception:
-        return None
-
-def _inject_dependencies_safe(step_instance):
-    """Central Hub DI Container를 통한 안전한 의존성 주입 - ClothSegmentation용"""
-    try:
-        container = _get_central_hub_container()
-        if container and hasattr(container, 'inject_to_step'):
-            return container.inject_to_step(step_instance)
-        return 0
-    except Exception:
-        return 0
-
-def _get_service_from_central_hub(service_key: str):
-    """Central Hub를 통한 안전한 서비스 조회 - ClothSegmentation용"""
-    try:
-        container = _get_central_hub_container()
-        if container:
-            return container.get(service_key)
-        return None
-    except Exception:
-        return None
 
 # BaseStepMixin 동적 import (순환참조 완전 방지) - ClothSegmentation용
 def get_base_step_mixin_class():
@@ -103,7 +85,7 @@ def get_base_step_mixin_class():
                 import importlib
                 if import_path.startswith('.'):
                     module = importlib.import_module(import_path, package='app.ai_pipeline.steps')
-                    else:
+                else:
                     module = importlib.import_module(import_path)
                 base_step_mixin = getattr(module, 'BaseStepMixin', None)
                 if base_step_mixin:
@@ -206,7 +188,7 @@ if BaseStepMixin is None:
                         result['step_id'] = self.step_id
                     
                     return result
-                    else:
+                else:
                     # 기본 응답
                     return {
                         'success': False,
@@ -279,7 +261,7 @@ if BaseStepMixin is None:
                         torch.cuda.empty_cache()
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         torch.mps.empty_cache()
-                    except:
+                except:
                     pass
                 
                 import gc
@@ -319,7 +301,7 @@ if BaseStepMixin is None:
                     except Exception as e:
                         self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
                         self.model_interface = model_loader
-                    else:
+                else:
                     self.model_interface = model_loader
                     
             except Exception as e:
@@ -397,26 +379,49 @@ if BaseStepMixin is None:
                     15: "bag", 16: "hat", 17: "glasses", 18: "scarf", 19: "belt"
                 }
             }
+        
+# ==============================================
+# 🔥 Central Hub DI Container 안전 import (순환참조 방지) - ClothSegmentation 특화
+# ==============================================
+
+def _get_central_hub_container():
+    """Central Hub DI Container 안전한 동적 해결 - ClothSegmentation용"""
+    try:
+        import importlib
+        module = importlib.import_module('app.core.di_container')
+        get_global_fn = getattr(module, 'get_global_container', None)
+        if get_global_fn:
+            return get_global_fn()
+        return None
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """Central Hub DI Container를 통한 안전한 의존성 주입 - ClothSegmentation용"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
+
+def _get_service_from_central_hub(service_key: str):
+    """Central Hub를 통한 안전한 서비스 조회 - ClothSegmentation용"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+    
 # ==============================================
 # 🔥 섹션 3: 시스템 환경 및 라이브러리 Import
 # ==============================================
 
-def detect_m3_max():
-    """M3 Max 감지"""
-    try:
-        import platform, subprocess
-        if platform.system() == 'Darwin':
-            result = subprocess.run(
-                ['sysctl', '-n', 'machdep.cpu.brand_string'],
-                capture_output=True, text=True, timeout=5
-            )
-            return 'M3' in result.stdout
-        except:
-        pass
-    return False
-
-IS_M3_MAX = detect_m3_max()
-MEMORY_GB = 16.0
 
 # PyTorch (필수)
 TORCH_AVAILABLE = False
@@ -972,7 +977,7 @@ class AdvancedPostProcessor:
                     
                     # 원본 크기로 복원
                     processed = np.array(Image.fromarray(scaled_mask).resize((w, h), Image.Resampling.NEAREST))
-                    else:
+                else:
                     processed = initial_mask
                 
                 processed_masks.append(processed.astype(np.float32) / 255.0)
@@ -986,7 +991,7 @@ class AdvancedPostProcessor:
                     combined += mask * weight
                 
                 final_mask = (combined > 0.5).astype(np.uint8) * 255
-                else:
+            else:
                 final_mask = (processed_masks[0] > 0.5).astype(np.uint8) * 255
             
             return final_mask
@@ -1014,7 +1019,7 @@ class AdvancedPostProcessor:
             if 'confidence' in parsing_result:
                 confidence = parsing_result['confidence']
                 refined_parsing = parsing * confidence + medium_parsing * (1 - confidence)
-                else:
+            else:
                 refined_parsing = (parsing + medium_parsing) / 2.0
             
             parsing_result['parsing'] = refined_parsing
@@ -1041,7 +1046,7 @@ class AdvancedPostProcessor:
                 if SKIMAGE_AVAILABLE:
                     edges = filters.sobel(mask.astype(np.float32) / 255.0)
                     edges = (edges > 0.1).astype(np.uint8) * 255
-                    else:
+                else:
                     # 간단한 경계선 검출
                     kernel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
                     kernel_y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
@@ -1080,7 +1085,7 @@ class AdvancedPostProcessor:
             for features in features_list:
                 if features.shape[2:] != target_size:
                     resized = F.interpolate(features, size=target_size, mode='bilinear', align_corners=False)
-                    else:
+                else:
                     resized = features
                 resized_features.append(resized)
             
@@ -1103,7 +1108,7 @@ class AdvancedPostProcessor:
                     fused_features += features * normalized_weight
                 
                 return fused_features
-                else:
+            else:
                 return resized_features[0]
                 
         except Exception as e:
@@ -1133,7 +1138,7 @@ class RealDeepLabV3PlusModel:
             if os.path.exists(self.model_path):
                 try:
                     checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
-                    except:
+                except:
                     checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
                 
                 # MPS 호환성
@@ -1353,7 +1358,7 @@ class RealU2NetClothModel:
             if os.path.exists(self.model_path):
                 try:
                     checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
-                    except:
+                except:
                     checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
                 
                 # MPS 호환성
@@ -1424,7 +1429,7 @@ class RealU2NetClothModel:
             # 전처리
             if isinstance(image, np.ndarray):
                 pil_image = Image.fromarray(image.astype(np.uint8))
-                else:
+            else:
                 pil_image = image
             
             transform = transforms.Compose([
@@ -1691,7 +1696,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 # 🔥 4. 체크포인트 경로 탐지
                 self._detect_model_paths()
                 
-                else:
+            else:
                 logger.warning("⚠️ Central Hub ModelLoader 없음 - 폴백 모델 생성")
                 self._create_fallback_models()
                 
@@ -1904,7 +1909,7 @@ class ClothSegmentationStep(BaseStepMixin):
             elif PIL_AVAILABLE and isinstance(image, Image.Image):
                 pil_image = image
                 image_array = np.array(image)
-                else:
+            else:
                 return self._create_emergency_result("지원하지 않는 이미지 형식")
             
             # 이전 Step 데이터
@@ -2089,7 +2094,7 @@ class ClothSegmentationStep(BaseStepMixin):
             # 블러 정도 측정
             if len(image.shape) == 3:
                 gray = np.mean(image, axis=2)
-                else:
+            else:
                 gray = image
             
             # 그래디언트 크기
@@ -2098,7 +2103,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 grad_y = np.abs(np.diff(gray, axis=0))
                 sharpness = np.mean(grad_x) + np.mean(grad_y)
                 quality_scores['sharpness'] = min(sharpness / 100.0, 1.0)
-                else:
+            else:
                 quality_scores['sharpness'] = 0.5
             
             # 대비 측정
@@ -2133,14 +2138,14 @@ class ClothSegmentationStep(BaseStepMixin):
                     channel_min, channel_max = channel.min(), channel.max()
                     if channel_max > channel_min:
                         normalized[:, :, i] = ((channel - channel_min) / (channel_max - channel_min) * 255).astype(np.uint8)
-                        else:
+                    else:
                         normalized[:, :, i] = channel
                 return normalized
-                else:
+            else:
                 img_min, img_max = image.min(), image.max()
                 if img_max > img_min:
                     return ((image - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-                    else:
+                else:
                     return image
                 
         except Exception as e:
@@ -2162,7 +2167,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 enhanced = enhancer.enhance(1.1)
                 
                 return np.array(enhanced)
-                else:
+            else:
                 return image
                 
         except Exception as e:
@@ -2192,7 +2197,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 return QualityLevel.HIGH
             elif overall_quality > 0.4:
                 return QualityLevel.BALANCED
-                else:
+            else:
                 return QualityLevel.FAST
                 
         except Exception as e:
@@ -2237,7 +2242,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 result['method_used'] = 'u2net_cloth'
                 return result
                 
-                else:
+            else:
                 # 하이브리드 앙상블 (여러 모델 조합)
                 return self._run_hybrid_ensemble_sync(image, person_parsing)
                 
@@ -2450,7 +2455,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 size_ratio = np.sum(mask > 128) / mask.size if NUMPY_AVAILABLE and mask.size > 0 else 0
                 if 0.1 <= size_ratio <= 0.7:  # 적절한 크기 범위
                     quality_metrics['size_appropriateness'] = 1.0
-                    else:
+                else:
                     quality_metrics['size_appropriateness'] = max(0.0, 1.0 - abs(size_ratio - 0.3) / 0.3)
                 
                 # 2. 연속성 (연결된 구성요소)
@@ -2462,9 +2467,9 @@ class ClothSegmentationStep(BaseStepMixin):
                         component_sizes = [np.sum(labeled == i) for i in range(1, num_components + 1)]
                         largest_component = max(component_sizes) if component_sizes else 0
                         quality_metrics['continuity'] = largest_component / total_area if total_area > 0 else 0.0
-                        else:
-                        quality_metrics['continuity'] = 0.0
                     else:
+                        quality_metrics['continuity'] = 0.0
+                else:
                     quality_metrics['continuity'] = 0.5
                 
                 # 3. 경계선 품질
@@ -2476,15 +2481,15 @@ class ClothSegmentationStep(BaseStepMixin):
                     if area > 0:
                         boundary_ratio = edge_length / np.sqrt(area)
                         quality_metrics['boundary_quality'] = min(1.0, max(0.0, 1.0 - boundary_ratio / 10.0))
-                        else:
-                        quality_metrics['boundary_quality'] = 0.0
                     else:
+                        quality_metrics['boundary_quality'] = 0.0
+                else:
                     quality_metrics['boundary_quality'] = 0.5
             
             # 전체 품질 점수
             if quality_metrics:
                 quality_metrics['overall'] = np.mean(list(quality_metrics.values())) if NUMPY_AVAILABLE else 0.5
-                else:
+            else:
                 quality_metrics['overall'] = 0.5
             
             return quality_metrics
@@ -2610,7 +2615,7 @@ class ClothSegmentationStep(BaseStepMixin):
                                 float(np.mean(masked_pixels[:, 1])),
                                 float(np.mean(masked_pixels[:, 2]))
                             ]
-                            else:
+                        else:
                             features['dominant_color'] = [0.0, 0.0, 0.0]
             
             return features
@@ -2733,9 +2738,9 @@ class ClothSegmentationStep(BaseStepMixin):
                     'is_loaded': self.models_loading_status.get(model_key, False),
                     'model_type': self._get_model_type(model_key)
                 }
-                else:
-                return {}
             else:
+                return {}
+        else:
             return {
                 key: {
                     'model_path': self.model_paths.get(key, 'unknown'),
@@ -2902,7 +2907,7 @@ def test_cloth_segmentation_ai():
                              if isinstance(status, bool))
             success_rate = (loaded_count / total_models * 100) if total_models > 0 else 0
             print(f"   - 모델 로딩 성공률: {loaded_count}/{total_models} ({success_rate:.1f}%)")
-            else:
+        else:
             print(f"❌ Step 초기화 실패")
             return
         
@@ -2928,7 +2933,7 @@ def test_cloth_segmentation_ai():
             print(f"   - 탐지된 아이템: {result.get('items_detected', 0)}개")
             print(f"   - 카테고리: {result.get('cloth_categories', [])}")
             print(f"   - Central Hub 연결: {result.get('metadata', {}).get('central_hub_connected', False)}")
-            else:
+        else:
             print(f"❌ AI 추론 실패")
         
     except Exception as e:
