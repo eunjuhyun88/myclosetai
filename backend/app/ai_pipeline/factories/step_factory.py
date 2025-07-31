@@ -177,27 +177,261 @@ try:
 except:
     pass
 
-# 🔥 step_model_requirements 동적 로딩 (순환참조 방지)
+# backend/app/ai_pipeline/factories/step_factory.py에서 수정할 부분
+# 라인 80-90 부근의 STEP_MODEL_REQUIREMENTS 정의를 다음과 같이 수정:
+
+# 🔥 step_model_requirements 동적 로딩 (순환참조 방지) - 안전한 처리
 def _load_step_model_requirements():
-    """step_model_requirements.py 안전한 동적 로딩"""
+    """step_model_requests.py 안전한 동적 로딩 (수정된 함수)"""
     try:
-        from ..utils.step_model_requests import (
-            get_enhanced_step_request,
-            REAL_STEP_MODEL_REQUESTS
-        )
-        return {
-            'get_enhanced_step_request': get_enhanced_step_request,
-            'REAL_STEP_MODEL_REQUESTS': REAL_STEP_MODEL_REQUESTS
+        # 🔥 올바른 파일명으로 수정: step_model_requests (not requirements)
+        import_paths = [
+            'app.ai_pipeline.utils.step_model_requests',
+            'ai_pipeline.utils.step_model_requests', 
+            'utils.step_model_requests',
+            '..utils.step_model_requests',
+            'backend.app.ai_pipeline.utils.step_model_requests'
+        ]
+        
+        for import_path in import_paths:
+            try:
+                logger.debug(f"🔍 step_model_requests 로딩 시도: {import_path}")
+                
+                if import_path.startswith('..'):
+                    # 상대 import
+                    import importlib
+                    module = importlib.import_module(import_path, package=__name__)
+                else:
+                    # 절대 import
+                    from importlib import import_module
+                    module = import_module(import_path)
+                
+                # 필수 함수들 확인
+                if hasattr(module, 'get_enhanced_step_request') and hasattr(module, 'REAL_STEP_MODEL_REQUESTS'):
+                    logger.info(f"✅ step_model_requests 로딩 성공: {import_path}")
+                    return {
+                        'get_enhanced_step_request': module.get_enhanced_step_request,
+                        'REAL_STEP_MODEL_REQUESTS': module.REAL_STEP_MODEL_REQUESTS
+                    }
+                else:
+                    logger.debug(f"⚠️ {import_path}에 필수 함수들 없음")
+                    
+            except ImportError as e:
+                logger.debug(f"⚠️ {import_path} import 실패: {e}")
+                continue
+            except Exception as e:
+                logger.debug(f"⚠️ {import_path} 로딩 중 오류: {e}")
+                continue
+        
+        # 모든 경로 실패 시 - GeometricMatchingStep 전용 폴백 생성
+        logger.warning("⚠️ step_model_requests.py 모든 경로에서 로딩 실패, 폴백 생성")
+        return create_hardcoded_fallback_requirements()
+        
+    except Exception as e:
+        logger.error(f"❌ step_model_requests.py 로딩 완전 실패: {e}")
+        return create_hardcoded_fallback_requirements()
+
+def create_hardcoded_fallback_requirements():
+    """하드코딩된 폴백 요구사항 (GeometricMatchingStep 중심) - 안전한 생성"""
+    try:
+        logger.info("🔧 하드코딩된 폴백 step_model_requirements 생성 중...")
+        
+        # 간단한 DetailedDataSpec 클래스
+        class FallbackDetailedDataSpec:
+            def __init__(self):
+                # GeometricMatchingStep용 완전한 API 매핑
+                self.api_input_mapping = {
+                    'person_image': 'UploadFile',
+                    'clothing_image': 'UploadFile',
+                    'pose_keypoints': 'Optional[List[Dict[str, float]]]',
+                    'parsing_mask': 'Optional[np.ndarray]'
+                }
+                self.api_output_mapping = {
+                    'matched_points': 'List[Dict[str, Any]]',
+                    'transformation_matrix': 'np.ndarray',
+                    'transformation_grid': 'np.ndarray', 
+                    'warped_clothing': 'np.ndarray',
+                    'flow_field': 'np.ndarray',
+                    'confidence': 'float',
+                    'matching_score': 'float',
+                    'quality_score': 'float'
+                }
+                
+                # Step 간 데이터 흐름
+                self.accepts_from_previous_step = {
+                    'step_01': {
+                        'parsing_mask': 'np.ndarray',
+                        'person_mask': 'np.ndarray'
+                    },
+                    'step_02': {
+                        'pose_keypoints': 'List[Dict[str, float]]',
+                        'pose_heatmap': 'np.ndarray'
+                    },
+                    'step_03': {
+                        'clothing_mask': 'np.ndarray',
+                        'clothing_features': 'np.ndarray'
+                    }
+                }
+                self.provides_to_next_step = {
+                    'step_05': {
+                        'transformation_matrix': 'np.ndarray',
+                        'transformation_grid': 'np.ndarray',
+                        'warped_clothing': 'np.ndarray',
+                        'matching_metadata': 'Dict[str, Any]'
+                    },
+                    'step_06': {
+                        'geometric_features': 'np.ndarray',
+                        'correspondence_map': 'np.ndarray',
+                        'flow_field': 'np.ndarray'
+                    }
+                }
+                
+                # 기본 속성들
+                self.step_input_schema = self.accepts_from_previous_step
+                self.step_output_schema = self.provides_to_next_step
+                self.input_data_types = ['PIL.Image', 'PIL.Image', 'Optional[List[Dict]]', 'Optional[np.ndarray]']
+                self.output_data_types = ['List[Dict[str, Any]]', 'np.ndarray', 'np.ndarray', 'np.ndarray', 'np.ndarray', 'float', 'float', 'float']
+                self.input_shapes = {'person_image': (768, 1024, 3), 'clothing_image': (768, 1024, 3)}
+                self.output_shapes = {'transformation_matrix': (3, 3), 'warped_clothing': (768, 1024, 3)}
+                self.input_value_ranges = {'person_image': (0.0, 255.0), 'clothing_image': (0.0, 255.0)}
+                self.output_value_ranges = {'warped_clothing': (0.0, 255.0), 'confidence': (0.0, 1.0)}
+                self.preprocessing_required = True
+                self.postprocessing_required = True
+                self.preprocessing_steps = [
+                    'resize_768x1024',
+                    'normalize_imagenet',
+                    'to_tensor', 
+                    'extract_pose_features',
+                    'prepare_geometric_inputs'
+                ]
+                self.postprocessing_steps = [
+                    'denormalize_output',
+                    'apply_transformation',
+                    'compute_flow_field',
+                    'calculate_matching_score',
+                    'generate_quality_metrics'
+                ]
+                self.normalization_mean = (0.485, 0.456, 0.406)
+                self.normalization_std = (0.229, 0.224, 0.225)
+        
+        # 간단한 EnhancedStepRequest 클래스  
+        class FallbackEnhancedStepRequest:
+            def __init__(self, step_name, step_id, custom_data_spec=None):
+                self.step_name = step_name
+                self.step_id = step_id
+                self.data_spec = custom_data_spec if custom_data_spec else FallbackDetailedDataSpec()
+                self.required_models = []
+                self.model_requirements = {}
+                self.preprocessing_config = {}
+                self.postprocessing_config = {}
+                
+                # GeometricMatchingStep 전용 모델 설정
+                if step_name == "GeometricMatchingStep":
+                    self.required_models = [
+                        'sam_vit_h_4b8939.pth',
+                        'resnet101_geometric.pth', 
+                        'raft-things.pth',
+                        'ViT-L-14.pt'
+                    ]
+        
+        # 기본 DataSpec (다른 Step용)
+        class BasicDataSpec:
+            def __init__(self):
+                self.api_input_mapping = {'input_image': 'UploadFile'}
+                self.api_output_mapping = {'result': 'base64_string'}
+                self.accepts_from_previous_step = {}
+                self.provides_to_next_step = {}
+                self.step_input_schema = {}
+                self.step_output_schema = {}
+                self.input_data_types = ['PIL.Image']
+                self.output_data_types = ['np.ndarray']
+                self.input_shapes = {}
+                self.output_shapes = {}
+                self.input_value_ranges = {}
+                self.output_value_ranges = {}
+                self.preprocessing_required = True
+                self.postprocessing_required = True
+                self.preprocessing_steps = ['resize', 'normalize']
+                self.postprocessing_steps = ['denormalize', 'convert']
+                self.normalization_mean = (0.485, 0.456, 0.406)
+                self.normalization_std = (0.229, 0.224, 0.225)
+        
+        # 폴백 요구사항 딕셔너리
+        FALLBACK_REAL_STEP_MODEL_REQUESTS = {
+            "GeometricMatchingStep": FallbackEnhancedStepRequest("GeometricMatchingStep", 4, FallbackDetailedDataSpec()),
+            "HumanParsingStep": FallbackEnhancedStepRequest("HumanParsingStep", 1, BasicDataSpec()),
+            "PoseEstimationStep": FallbackEnhancedStepRequest("PoseEstimationStep", 2, BasicDataSpec()),
+            "ClothSegmentationStep": FallbackEnhancedStepRequest("ClothSegmentationStep", 3, BasicDataSpec()),
+            "ClothWarpingStep": FallbackEnhancedStepRequest("ClothWarpingStep", 5, BasicDataSpec()),
+            "VirtualFittingStep": FallbackEnhancedStepRequest("VirtualFittingStep", 6, BasicDataSpec()),
+            "PostProcessingStep": FallbackEnhancedStepRequest("PostProcessingStep", 7, BasicDataSpec()),
+            "QualityAssessmentStep": FallbackEnhancedStepRequest("QualityAssessmentStep", 8, BasicDataSpec()),
         }
-    except ImportError as e:
-        logger.warning(f"⚠️ step_model_requirements.py 로딩 실패: {e}")
-        return None
+        
+        def fallback_get_enhanced_step_request(step_name: str):
+            """폴백 get_enhanced_step_request 함수"""
+            result = FALLBACK_REAL_STEP_MODEL_REQUESTS.get(step_name)
+            if result:
+                logger.debug(f"✅ {step_name} 폴백 DetailedDataSpec 반환")
+            else:
+                logger.warning(f"⚠️ {step_name} 폴백에서도 찾을 수 없음")
+            return result
+        
+        logger.info("✅ 하드코딩된 폴백 step_model_requirements 생성 완료")
+        logger.info(f"   - GeometricMatchingStep: ✅ (완전한 DetailedDataSpec + 4개 모델)")
+        logger.info(f"   - API 입력: {len(FallbackDetailedDataSpec().api_input_mapping)}개")
+        logger.info(f"   - API 출력: {len(FallbackDetailedDataSpec().api_output_mapping)}개")
+        logger.info(f"   - 총 Step: {len(FALLBACK_REAL_STEP_MODEL_REQUESTS)}개")
+        
+        return {
+            'get_enhanced_step_request': fallback_get_enhanced_step_request,
+            'REAL_STEP_MODEL_REQUESTS': FALLBACK_REAL_STEP_MODEL_REQUESTS
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 하드코딩된 폴백 생성 실패: {e}")
+        # 최후의 수단 - 완전 기본 딕셔너리
+        return {
+            'get_enhanced_step_request': lambda x: None,
+            'REAL_STEP_MODEL_REQUESTS': {}
+        }
 
-STEP_MODEL_REQUIREMENTS = _load_step_model_requirements()
+# 🔥 안전한 STEP_MODEL_REQUIREMENTS 정의 (에러 방지)
+try:
+    STEP_MODEL_REQUIREMENTS = _load_step_model_requirements()
+    if STEP_MODEL_REQUIREMENTS is None:
+        logger.warning("⚠️ step_model_requirements 로딩 실패, 빈 딕셔너리로 초기화")
+        STEP_MODEL_REQUIREMENTS = {
+            'get_enhanced_step_request': lambda x: None,
+            'REAL_STEP_MODEL_REQUESTS': {}
+        }
+except Exception as e:
+    logger.error(f"❌ STEP_MODEL_REQUIREMENTS 초기화 완전 실패: {e}")
+    # 최후의 안전장치
+    STEP_MODEL_REQUIREMENTS = {
+        'get_enhanced_step_request': lambda x: None,
+        'REAL_STEP_MODEL_REQUESTS': {}
+    }
 
-logger.info(f"🔧 StepFactory v11.1 실제 구조 반영: {'✅ 성공' if STEP_MODEL_REQUIREMENTS else '❌ 실패'}")
+# 🔥 모듈 export 시 안전성 보장
+if STEP_MODEL_REQUIREMENTS is None:
+    logger.error("❌ STEP_MODEL_REQUIREMENTS가 None입니다. 빈 딕셔너리로 대체합니다.")
+    STEP_MODEL_REQUIREMENTS = {
+        'get_enhanced_step_request': lambda x: None,
+        'REAL_STEP_MODEL_REQUESTS': {}
+    }
+
+logger.info(f"🔧 StepFactory v11.1 실제 구조 반영: {'✅ 성공' if STEP_MODEL_REQUIREMENTS and STEP_MODEL_REQUIREMENTS.get('REAL_STEP_MODEL_REQUESTS') else '❌ 실패 (폴백 사용)'}")
 logger.info(f"🔧 환경: conda={CONDA_INFO['conda_env']}, M3 Max={IS_M3_MAX_DETECTED}, 메모리={MEMORY_GB:.1f}GB")
+logger.info(f"🔧 STEP_MODEL_REQUIREMENTS 상태: {'✅ 로딩됨' if STEP_MODEL_REQUIREMENTS else '❌ None'}")
 
+# 🔥 추가 안전 검사
+if not isinstance(STEP_MODEL_REQUIREMENTS, dict):
+    logger.error(f"❌ STEP_MODEL_REQUIREMENTS가 딕셔너리가 아닙니다: {type(STEP_MODEL_REQUIREMENTS)}")
+    STEP_MODEL_REQUIREMENTS = {
+        'get_enhanced_step_request': lambda x: None,
+        'REAL_STEP_MODEL_REQUESTS': {}
+    }
 
 # ==============================================
 # 🔥 동적 Import 해결기 (순환참조 완전 방지)
@@ -992,7 +1226,7 @@ class RealGitHubDependencyResolver:
                             
                 except ImportError:
                     try:
-                        module = importlib.import_module('...core.di_container', package=__name__)
+                        module = importlib.import_module('app.core.di_container', package=__name__)
                         if hasattr(module, 'get_global_container'):
                             di_container = module.get_global_container()
                             if di_container:
@@ -1540,7 +1774,7 @@ class RealGitHubDependencyResolver:
                             
                 except ImportError:
                     try:
-                        module = importlib.import_module('...core.di_container', package=__name__)
+                        module = importlib.import_module('app.core.di_container', package=__name__)
                         if hasattr(module, 'get_global_di_container'):
                             di_container = module.get_global_di_container()
                             if di_container:
@@ -2840,6 +3074,9 @@ class StepFactory:
             }
             
             return base_stats
+
+
+
 # ==============================================
 # 🔥 전역 StepFactory 관리 (실제 구조, 순환참조 해결)
 # ==============================================

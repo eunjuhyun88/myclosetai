@@ -1,0 +1,5 @@
+✅ AI 모델 파일 탐색 완료
+echo ⏰ 완료 시간: #오후
+echo 
+echo 💡 사용법:
+echo  bash find_models.sh

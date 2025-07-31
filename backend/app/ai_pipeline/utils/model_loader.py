@@ -1041,27 +1041,14 @@ StepModelInterface = RealStepModelInterface
 # ==============================================
 # 🔥 5. 완전 개선된 ModelLoader 클래스 v5.1 (step_interface.py 완전 호환)
 # ==============================================
-
+    
 class ModelLoader:
-    """
-    🔥 완전 개선된 ModelLoader v5.1 - step_interface.py v5.2 완전 호환
-    
-    핵심 개선사항:
-    - step_interface.py RealStepModelInterface 요구사항 100% 반영
-    - GitHubStepMapping 실제 AI 모델 경로 완전 매핑 
-    - 229GB AI 모델 파일들 정확한 로딩 지원
-    - BaseStepMixin v19.2 완벽 호환
-    - StepFactory 의존성 주입 완벽 지원
-    - auto_model_detector 완전 연동
-    - 모든 기능 완전 작동
-    """
-    
     def __init__(self, 
                  device: str = "auto",
                  model_cache_dir: Optional[str] = None,
                  max_cached_models: int = 10,
                  enable_optimization: bool = True,
-                 **kwargs):
+                 **kwargs):  # 🔥 수정: di_container를 kwargs로 받음
         """ModelLoader 초기화 (step_interface.py 완전 호환)"""
         
         # 기본 설정
@@ -1070,7 +1057,28 @@ class ModelLoader:
         self.enable_optimization = enable_optimization
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
         
-        # 모델 캐시 디렉토리 설정 (step_interface.py AI_MODELS_ROOT 호환)
+        # 🔥 DI Container 처리 (kwargs에서 안전하게 추출)
+        self._di_container = kwargs.pop('di_container', None)  # pop을 사용해서 중복 방지
+        
+        # DI Container 자동 등록 시도
+        if self._di_container:
+            try:
+                # 자기 자신을 DI Container에 등록
+                success = self._di_container.force_register_model_loader(self)
+                if success:
+                    self.logger.info("✅ ModelLoader가 DI Container에 자동 등록됨")
+                else:
+                    self.logger.warning("⚠️ ModelLoader DI Container 자동 등록 실패")
+            except Exception as e:
+                self.logger.debug(f"⚠️ DI Container 자동 등록 중 오류: {e}")
+        
+        # 나머지 kwargs 처리 (기존 코드와 호환성 유지)
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                self.logger.debug(f"⚠️ 알 수 없는 파라미터 무시: {key}={value}")
+                # 모델 캐시 디렉토리 설정 (step_interface.py AI_MODELS_ROOT 호환)
         if model_cache_dir:
             self.model_cache_dir = Path(model_cache_dir)
         else:
@@ -1080,6 +1088,9 @@ class ModelLoader:
             self.model_cache_dir = backend_root / "ai_models"
             
         self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 🔥 DI Container로부터 의존성들 초기화
+        self._initialize_dependencies_from_di_container()
         
         # 실제 AI 모델 관리 (step_interface.py 호환)
         self.loaded_models: Dict[str, RealAIModel] = {}
@@ -1117,7 +1128,75 @@ class ModelLoader:
         self.logger.info(f"📱 Device: {self.device} (M3 Max: {IS_M3_MAX}, MPS: {MPS_AVAILABLE})")
         self.logger.info(f"📁 모델 캐시: {self.model_cache_dir}")
         self.logger.info(f"🎯 step_interface.py 실제 AI Step 호환 모드")
+        
+        # 🔥 DI Container 연동 로그
+        if self._di_container:
+            self.logger.info("✅ DI Container 연동 완료")
+        else:
+            self.logger.debug("⚠️ DI Container 없음, 기본 모드")
+
+    def _initialize_dependencies_from_di_container(self):
+        """🔥 DI Container로부터 의존성들 조회 및 초기화"""
+        try:
+            if self._di_container:
+                # MemoryManager 조회
+                memory_manager = self._di_container.get('memory_manager')
+                if memory_manager:
+                    self.memory_manager = memory_manager
+                    self.logger.debug("✅ DI Container로부터 MemoryManager 조회 성공")
+                else:
+                    self.memory_manager = None
+                    self.logger.debug("⚠️ DI Container에 MemoryManager 없음")
+                
+                # DataConverter 조회
+                data_converter = self._di_container.get('data_converter')
+                if data_converter:
+                    self.data_converter = data_converter
+                    self.logger.debug("✅ DI Container로부터 DataConverter 조회 성공")
+                else:
+                    self.data_converter = None
+                    self.logger.debug("⚠️ DI Container에 DataConverter 없음")
+                
+                # 시스템 정보도 DI Container로부터
+                self.device_info = self._di_container.get('device') or self.device
+                self.memory_gb = self._di_container.get('memory_gb') or 16.0
+                self.is_m3_max = self._di_container.get('is_m3_max') or False
+                
+                self.logger.debug("✅ DI Container로부터 의존성 조회 완료")
+            else:
+                self.logger.debug("⚠️ DI Container 없음, 기본값 사용")
+                self.memory_manager = None
+                self.data_converter = None
+                
+        except Exception as e:
+            self.logger.debug(f"⚠️ DI Container 의존성 조회 실패: {e}")
+            self.memory_manager = None
+            self.data_converter = None
+
+    def set_di_container(self, di_container):
+        """🔥 DI Container 설정 (나중에 주입받을 때)"""
+        try:
+            self._di_container = di_container
+            self._initialize_dependencies_from_di_container()
+            self.logger.debug("✅ DI Container 재설정 완료")
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 설정 실패: {e}")
+            return False
     
+    def get_service(self, service_key: str):
+        """🔥 DI Container로부터 서비스 조회"""
+        try:
+            if self._di_container:
+                return self._di_container.get(service_key)
+            return None
+        except Exception as e:
+            self.logger.debug(f"서비스 조회 실패 ({service_key}): {e}")
+            return None
+
+    # ... 나머지 메서드들은 기존 그대로 유지 ...
+
+
     def _initialize_auto_detector(self):
         """auto_model_detector 초기화 (step_interface.py 호환)"""
         try:
@@ -1471,6 +1550,34 @@ class ModelLoader:
             self.model_status[model_name] = RealModelStatus.ERROR
             self.performance_metrics['error_count'] += 1
             return None
+
+
+    def validate_di_container_integration(self) -> Dict[str, Any]:
+        """DI Container 연동 상태 검증"""
+        try:
+            validation_result = {
+                'di_container_available': self._di_container is not None,
+                'registered_in_container': False,
+                'can_inject_to_steps': False,
+                'container_stats': {}
+            }
+            
+            if self._di_container:
+                # Container에 등록 확인
+                model_loader_from_container = self._di_container.get('model_loader')
+                validation_result['registered_in_container'] = model_loader_from_container is not None
+                
+                # Step 주입 테스트 (가상)
+                validation_result['can_inject_to_steps'] = hasattr(self._di_container, 'inject_to_step')
+                
+                # Container 통계
+                if hasattr(self._di_container, 'get_stats'):
+                    validation_result['container_stats'] = self._di_container.get_stats()
+            
+            return validation_result
+            
+        except Exception as e:
+            return {'error': str(e), 'di_container_available': False}
 
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[RealAIModel]:
         """비동기 모델 로딩 (step_interface.py 호환)"""
@@ -1903,6 +2010,17 @@ class ModelLoader:
             self.logger.error(f"❌ 모델 요구사항 등록 실패: {e}")
             return False
     
+    def force_register_to_di_container(self) -> bool:
+        """DI Container에 강제 등록"""
+        try:
+            if not self._di_container:
+                return False
+            
+            return self._di_container.force_register_model_loader(self)
+            
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 강제 등록 실패: {e}")
+            return False
     def validate_model_compatibility(self, model_name: str, step_name: str) -> bool:
         """실제 AI 모델 호환성 검증 (step_interface.py 호환)"""
         try:
@@ -2109,31 +2227,68 @@ _global_model_loader: Optional[ModelLoader] = None
 _loader_lock = threading.Lock()
 
 def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoader:
-    """전역 ModelLoader 인스턴스 반환 (step_interface.py 호환)"""
-    global _global_model_loader
-    
-    with _loader_lock:
-        if _global_model_loader is None:
-            try:
-                # 설정 적용
-                loader_config = config or {}
-                
-                _global_model_loader = ModelLoader(
-                    device=loader_config.get('device', 'auto'),
-                    max_cached_models=loader_config.get('max_cached_models', 10),
-                    enable_optimization=loader_config.get('enable_optimization', True),
-                    **loader_config
-                )
-                
-                logger.info("✅ 전역 step_interface.py 호환 ModelLoader v5.1 생성 성공")
-                
-            except Exception as e:
-                logger.error(f"❌ 전역 ModelLoader 생성 실패: {e}")
-                # 기본 설정으로 폴백
-                _global_model_loader = ModelLoader(device="cpu")
-                
-        return _global_model_loader
-
+   """전역 ModelLoader 인스턴스 반환 (step_interface.py 호환)"""
+   global _global_model_loader
+   
+   with _loader_lock:
+       if _global_model_loader is None:
+           try:
+               # 설정 적용
+               loader_config = config or {}
+               
+               # 🔥 DI Container 조회해서 주입
+               di_container = None
+               try:
+                   # 순환참조 방지를 위한 동적 import
+                   import importlib
+                   di_module = importlib.import_module('app.core.di_container')
+                   get_global_container = getattr(di_module, 'get_global_container', None)
+                   if get_global_container:
+                       di_container = get_global_container()
+                       logger.debug("✅ DI Container 조회 성공")
+                   else:
+                       logger.debug("⚠️ get_global_container 함수 없음")
+               except ImportError as e:
+                   logger.debug(f"⚠️ DI Container 모듈 import 실패: {e}")
+               except Exception as e:
+                   logger.debug(f"⚠️ DI Container 조회 실패: {e}")
+               
+               # 🔥 ModelLoader 생성 시 DI Container 주입
+               _global_model_loader = ModelLoader(
+                   device=loader_config.get('device', 'auto'),
+                   max_cached_models=loader_config.get('max_cached_models', 10),
+                   enable_optimization=loader_config.get('enable_optimization', True),
+                   di_container=di_container,  # 🔥 DI Container 주입
+                   **loader_config
+               )
+               
+               # 🔥 DI Container에 등록 확인 및 강제 등록
+               if di_container:
+                   try:
+                       # ModelLoader를 DI Container에 강제 등록
+                       success = di_container.force_register_model_loader(_global_model_loader)
+                       if success:
+                           logger.info("✅ ModelLoader가 DI Container에 강제 등록됨")
+                       else:
+                           logger.warning("⚠️ ModelLoader DI Container 강제 등록 실패")
+                       
+                       # 등록 확인
+                       ensure_model_loader_registration = getattr(di_module, 'ensure_model_loader_registration', None)
+                       if ensure_model_loader_registration:
+                           ensure_model_loader_registration()
+                           
+                   except Exception as e:
+                       logger.debug(f"⚠️ ModelLoader 등록 확인 실패: {e}")
+               
+               logger.info("✅ 전역 step_interface.py 호환 ModelLoader v5.1 생성 성공 (DI Container 연동)")
+               
+           except Exception as e:
+               logger.error(f"❌ 전역 ModelLoader 생성 실패: {e}")
+               # 기본 설정으로 폴백 (DI Container 없이)
+               _global_model_loader = ModelLoader(device="cpu", di_container=None)
+               
+       return _global_model_loader
+   
 def initialize_global_model_loader(**kwargs) -> bool:
     """전역 ModelLoader 초기화 (step_interface.py 호환)"""
     try:
@@ -2294,6 +2449,10 @@ logger.info("=" * 80)
 # 초기화 테스트
 try:
     _test_loader = get_global_model_loader()
+    if hasattr(_test_loader, 'validate_di_container_integration'):
+        di_integration = _test_loader.validate_di_container_integration()
+        logger.info(f"🔗 DI Container 연동 상태: {di_integration.get('registered_in_container', False)}")
+   
     logger.info(f"🎉 step_interface.py v5.2 완전 호환 ModelLoader v5.1 준비 완료!")
     logger.info(f"   디바이스: {_test_loader.device}")
     logger.info(f"   모델 캐시: {_test_loader.model_cache_dir}")

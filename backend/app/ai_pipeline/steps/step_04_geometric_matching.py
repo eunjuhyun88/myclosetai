@@ -1757,18 +1757,17 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} v27.1 초기화 실패: {e}")
             return False
-    
     def _detect_model_paths(self):
-        """실제 AI 모델 경로 탐지"""
+        """실제 AI 모델 경로 탐지 - 수정된 버전"""
         try:
             ai_models_root = Path("ai_models")
             step_dir = ai_models_root / "step_04_geometric_matching"
             ultra_dir = step_dir / "ultra_models"
             
-            # 주요 모델 파일들
+            # 🔥 수정된 모델 파일 매핑 (메인 디렉토리 우선 검색)
             model_files = {
-                'gmm': ['gmm_final.pth'],
-                'tps': ['tps_network.pth'],
+                'gmm': ['gmm_final.pth'],  # 메인 디렉토리에 있음
+                'tps': ['tps_network.pth'],  # 메인 디렉토리에 있음
                 'sam': ['sam_vit_h_4b8939.pth'],
                 'resnet': ['resnet101_geometric.pth', 'resnet50_geometric_ultra.pth'],
                 'raft': ['raft-things.pth'],
@@ -1777,77 +1776,200 @@ class GeometricMatchingStep(BaseStepMixin):
             
             for model_key, filenames in model_files.items():
                 for filename in filenames:
-                    # 메인 디렉토리에서 찾기
+                    found = False
+                    
+                    # 🔥 1순위: 메인 디렉토리에서 찾기 (gmm_final.pth, tps_network.pth)
                     main_path = step_dir / filename
                     if main_path.exists():
                         self.model_paths[model_key] = main_path
                         size_mb = main_path.stat().st_size / (1024**2)
                         self.logger.info(f"✅ {model_key} 모델 발견: {filename} ({size_mb:.1f}MB)")
+                        found = True
                         break
                     
-                    # ultra_models에서 찾기
+                    # 🔥 2순위: ultra_models에서 찾기
                     ultra_path = ultra_dir / filename
                     if ultra_path.exists():
                         self.model_paths[model_key] = ultra_path
                         size_mb = ultra_path.stat().st_size / (1024**2)
                         self.logger.info(f"✅ {model_key} 모델 발견: ultra_models/{filename} ({size_mb:.1f}MB)")
+                        found = True
                         break
                     
-                    # 하위 디렉토리에서 재귀 검색
-                    try:
-                        for found_path in step_dir.rglob(filename):
-                            if found_path.is_file():
-                                self.model_paths[model_key] = found_path
-                                size_mb = found_path.stat().st_size / (1024**2)
-                                self.logger.info(f"✅ {model_key} 모델 발견: {found_path.relative_to(ai_models_root)} ({size_mb:.1f}MB)")
-                                break
-                    except Exception:
-                        continue
+                    # 🔥 3순위: 하위 디렉토리에서 재귀 검색
+                    if not found:
+                        try:
+                            for found_path in step_dir.rglob(filename):
+                                if found_path.is_file():
+                                    self.model_paths[model_key] = found_path
+                                    size_mb = found_path.stat().st_size / (1024**2)
+                                    self.logger.info(f"✅ {model_key} 모델 발견: {found_path.relative_to(ai_models_root)} ({size_mb:.1f}MB)")
+                                    found = True
+                                    break
+                        except Exception as e:
+                            self.logger.debug(f"재귀 검색 실패 {filename}: {e}")
+                            continue
+                    
+                    if found:
+                        break
             
+            # 🔥 중요: 경로 유효성 검증
+            valid_paths = {}
+            for key, path in self.model_paths.items():
+                if path and path.exists():
+                    valid_paths[key] = path
+                else:
+                    self.logger.warning(f"⚠️ {key} 모델 파일 없음: {path}")
+            
+            self.model_paths = valid_paths
             self.logger.info(f"📁 총 {len(self.model_paths)}개 모델 파일 탐지 완료")
+            
+            # 🔥 핵심 모델 파일 확인
+            critical_models = ['gmm', 'tps']
+            missing_critical = [model for model in critical_models if model not in self.model_paths]
+            
+            if missing_critical:
+                self.logger.error(f"❌ 핵심 모델 파일 누락: {missing_critical}")
+                # 수동 경로 확인
+                self._manual_path_check(step_dir)
+            else:
+                self.logger.info("✅ 모든 핵심 모델 파일 발견")
             
         except Exception as e:
             self.logger.error(f"❌ 모델 경로 탐지 실패: {e}")
             self.model_paths = {}
-        
+
+    def _manual_path_check(self, step_dir: Path):
+        """수동 경로 확인 (디버깅용)"""
+        try:
+            self.logger.info(f"🔍 수동 경로 확인: {step_dir}")
+            
+            # 디렉토리 존재 확인
+            if not step_dir.exists():
+                self.logger.error(f"❌ 디렉토리 없음: {step_dir}")
+                return
+            
+            # 파일 목록 확인
+            files = list(step_dir.glob("*.pth"))
+            self.logger.info(f"📁 {step_dir}에서 발견된 .pth 파일들:")
+            for file in files:
+                size_mb = file.stat().st_size / (1024**2)
+                self.logger.info(f"   - {file.name} ({size_mb:.1f}MB)")
+                
+                # 수동으로 핵심 파일 매핑
+                if file.name == 'gmm_final.pth' and 'gmm' not in self.model_paths:
+                    self.model_paths['gmm'] = file
+                    self.logger.info(f"✅ 수동 매핑: gmm -> {file.name}")
+                elif file.name == 'tps_network.pth' and 'tps' not in self.model_paths:
+                    self.model_paths['tps'] = file
+                    self.logger.info(f"✅ 수동 매핑: tps -> {file.name}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 수동 경로 확인 실패: {e}")
+
     def _load_ai_models_sync(self) -> bool:
-        """실제 AI 모델 로딩 (동기 버전)"""
+        """실제 AI 모델 로딩 (동기 버전) - 개선된 버전"""
         try:
             self.logger.info("🔄 실제 AI 모델 체크포인트 로딩 시작 (동기 버전)")
             
             loaded_count = 0
             
-            # GMM (Geometric Matching Module) 로딩
-            if 'gmm' in self.model_paths:
-                loaded_count += self._load_gmm_model()
+            # 🔥 핵심 모델 우선 로딩
             
-            # TPS Network 로딩
+            # GMM (Geometric Matching Module) 로딩 - 최우선
+            if 'gmm' in self.model_paths:
+                try:
+                    self.gmm_model = GeometricMatchingModule(input_nc=6, output_nc=1).to(self.device)
+                    checkpoint = self._safe_load_checkpoint(self.model_paths['gmm'])
+                    if checkpoint is not None:
+                        self._load_model_weights(self.gmm_model, checkpoint, 'gmm')
+                    self.gmm_model.eval()
+                    loaded_count += 1
+                    self.logger.info(f"✅ GMM 모델 동기 로딩 완료: {self.model_paths['gmm'].name}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ GMM 모델 동기 로딩 실패: {e}")
+            else:
+                self.logger.error("❌ GMM 모델 파일을 찾을 수 없습니다!")
+            
+            # TPS Network 로딩 - 2순위
             if 'tps' in self.model_paths:
-                loaded_count += self._load_tps_network()
+                try:
+                    # TPS는 독립적으로 로딩
+                    self.tps_network = TPSGridGenerator().to(self.device)
+                    checkpoint = self._safe_load_checkpoint(self.model_paths['tps'])
+                    if checkpoint is not None:
+                        self._load_model_weights(self.tps_network, checkpoint, 'tps')
+                    loaded_count += 1
+                    self.logger.info(f"✅ TPS Network 동기 로딩 완료: {self.model_paths['tps'].name}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ TPS Network 동기 로딩 실패: {e}")
+            else:
+                self.logger.error("❌ TPS Network 파일을 찾을 수 없습니다!")
+            
+            # 나머지 모델들 로딩
             
             # Optical Flow Network 로딩
             if 'raft' in self.model_paths:
-                loaded_count += self._load_optical_flow_model()
+                try:
+                    self.optical_flow_model = OpticalFlowNetwork().to(self.device)
+                    checkpoint = self._safe_load_checkpoint(self.model_paths['raft'])
+                    if checkpoint is not None:
+                        self._load_model_weights(self.optical_flow_model, checkpoint, 'optical_flow')
+                    self.optical_flow_model.eval()
+                    loaded_count += 1
+                    self.logger.info("✅ Optical Flow 모델 동기 로딩 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Optical Flow 모델 동기 로딩 실패: {e}")
             
             # Keypoint Matching Network 로딩
-            loaded_count += self._load_keypoint_matcher()
+            try:
+                self.keypoint_matcher = KeypointMatchingNetwork(num_keypoints=18).to(self.device)
+                self.keypoint_matcher.eval()
+                loaded_count += 1
+                self.logger.info("✅ Keypoint Matching 네트워크 동기 로딩 완료")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Keypoint Matching 네트워크 동기 로딩 실패: {e}")
             
             # CompleteAdvancedGeometricMatchingAI 로딩
-            loaded_count += self._load_advanced_geometric_ai()
+            try:
+                self.advanced_geometric_ai = CompleteAdvancedGeometricMatchingAI(
+                    input_nc=6, num_keypoints=20
+                ).to(self.device)
+                self.advanced_geometric_ai.eval()
+                loaded_count += 1
+                self.logger.info("✅ CompleteAdvancedGeometricMatchingAI 동기 로딩 완료")
+                
+                # 실제 체크포인트 로딩 시도 (가능한 경우)
+                if 'gmm' in self.model_paths:
+                    self._load_pretrained_weights(self.model_paths['gmm'])
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ CompleteAdvancedGeometricMatchingAI 동기 로딩 실패: {e}")
             
             # 상태 업데이트
-            self._update_model_loading_status(loaded_count)
+            self.performance_stats['models_loaded'] = loaded_count
+            self.status.models_loaded = loaded_count > 0
+            self.status.advanced_ai_loaded = self.advanced_geometric_ai is not None
+            self.status.model_creation_success = loaded_count > 0
             
-            if loaded_count > 0:
-                self.logger.info(f"✅ 실제 AI 모델 로딩 완료: {loaded_count}개")
+            # 🔥 로딩 결과 검증
+            critical_models_loaded = sum([
+                self.gmm_model is not None,
+                self.tps_network is not None
+            ])
+            
+            if critical_models_loaded >= 2:
+                self.logger.info(f"✅ 핵심 모델 로딩 성공: GMM + TPS")
+                self.logger.info(f"✅ 전체 동기식 실제 AI 모델 로딩 완료: {loaded_count}개")
                 return True
             else:
-                self.logger.error("❌ 로딩된 실제 AI 모델이 없습니다")
+                self.logger.error(f"❌ 핵심 모델 로딩 실패 - GMM: {self.gmm_model is not None}, TPS: {self.tps_network is not None}")
                 return False
                 
         except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 로딩 실패: {e}")
+            self.logger.error(f"❌ 동기식 실제 AI 모델 로딩 실패: {e}")
             return False
+
 
     def _load_gmm_model(self) -> int:
         """GMM 모델 로딩"""

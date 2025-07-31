@@ -1,20 +1,20 @@
 {
-  "timestamp": 1753894271.252482,
+  "timestamp": 1753938135.2887838,
   "debug_version": "4.0",
   "system_analysis": {
     "cpu_info": {
       "physical_cores": 16,
       "logical_cores": 16,
-      "usage_percent": 4.7,
+      "usage_percent": 14.2,
       "architecture": "arm64",
       "processor": "arm",
       "is_apple_silicon": true
     },
     "memory_info": {
       "total_gb": 128.0,
-      "available_gb": 68.13876342773438,
-      "used_gb": 49.15199279785156,
-      "usage_percent": 46.8,
+      "available_gb": 72.82940673828125,
+      "used_gb": 44.21449279785156,
+      "usage_percent": 43.1,
       "sufficient_for_ai": true
     },
     "pytorch_info": {
@@ -30,7 +30,7 @@
       "backend_exists": true,
       "frontend_exists": true,
       "ai_models_dir": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models",
-      "ai_models_size_gb": 171.33390284702182,
+      "ai_models_size_gb": 174.36180674284697,
       "step_modules": [
         "step_06_virtual_fitting",
         "step_05_cloth_warping",
@@ -67,7 +67,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 1.8567290306091309,
+        "time": 3.9552829265594482,
         "errors": []
       },
       "class_analysis": {
@@ -86,7 +86,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.0003991127014160156,
+        "time": 0.9962799549102783,
         "errors": []
       },
       "ai_models": {
@@ -117,7 +117,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 5.0067901611328125e-06,
+        "time": 9.059906005859375e-06,
         "errors": []
       },
       "class_analysis": {
@@ -136,20 +136,24 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.11531186103820801,
+        "time": 0.7453088760375977,
         "errors": []
       },
       "ai_models": {
         "detected": [
+          "hrnet_w48_coco_384x288.pth",
+          "hrnet_w32_coco_256x192.pth",
+          "hrnet_w48_coco_256x192.pth",
+          "yolov8m-pose.pt",
           "yolov8s-pose.pt",
           "diffusion_pytorch_model.fp16.safetensors",
           "diffusion_pytorch_model.safetensors",
           "diffusion_pytorch_model.fp16.bin",
           "diffusion_pytorch_model.bin"
         ],
-        "total_size_gb": 4.059839207679033,
-        "checkpoint_count": 5,
-        "successful_checkpoints": 3
+        "total_size_gb": 4.691240718588233,
+        "checkpoint_count": 9,
+        "successful_checkpoints": 4
       },
       "performance": {
         "memory_footprint_mb": 0.0,
@@ -166,7 +170,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 6.198883056640625e-06,
+        "time": 1.1920928955078125e-05,
         "errors": []
       },
       "class_analysis": {
@@ -185,7 +189,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.0001690387725830078,
+        "time": 0.0011630058288574219,
         "errors": []
       },
       "ai_models": {
@@ -217,7 +221,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 8.821487426757812e-06,
+        "time": 2.002716064453125e-05,
         "errors": []
       },
       "class_analysis": {
@@ -236,24 +240,22 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.39511561393737793,
+        "time": 1.1817739009857178,
         "errors": []
       },
       "ai_models": {
         "detected": [
+          "sam_vit_h_4b8939.pth",
           "raft-things.pth",
           "sam_vit_h_4b8939.pth",
           "resnet101_geometric.pth",
           "resnet50_geometric_ultra.pth",
           "efficientnet_b0_ultra.pth",
           "RealESRGAN_x4plus.pth",
-          "raft-things.pth",
-          "raft-chairs.pth",
-          "raft-kitti.pth",
-          "raft-sintel.pth"
+          "raft-things.pth"
         ],
-        "total_size_gb": 0.792038531973958,
-        "checkpoint_count": 10,
+        "total_size_gb": 3.121487588621676,
+        "checkpoint_count": 8,
         "successful_checkpoints": 0
       },
       "performance": {
@@ -271,7 +273,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 4.0531158447265625e-06,
+        "time": 9.059906005859375e-06,
         "errors": []
       },
       "class_analysis": {
@@ -290,7 +292,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.4684610366821289,
+        "time": 0.8678610324859619,
         "errors": []
       },
       "ai_models": {
@@ -321,7 +323,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 8.821487426757812e-06,
+        "time": 1.2159347534179688e-05,
         "errors": []
       },
       "class_analysis": {
@@ -340,7 +342,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 5.798722982406616,
+        "time": 20.0684711933136,
         "errors": []
       },
       "ai_models": {
@@ -374,7 +376,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 5.245208740234375e-06,
+        "time": 1.0967254638671875e-05,
         "errors": []
       },
       "class_analysis": {
@@ -393,7 +395,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 1.498840093612671,
+        "time": 10.57214903831482,
         "errors": []
       },
       "ai_models": {
@@ -427,7 +429,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 5.7220458984375e-06,
+        "time": 1.2874603271484375e-05,
         "errors": []
       },
       "class_analysis": {
@@ -446,7 +448,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.059034109115600586,
+        "time": 0.11212897300720215,
         "errors": []
       },
       "ai_models": {
@@ -477,11 +479,11 @@
       "success_rate": 100.0
     },
     "models": {
-      "total_detected": 59,
-      "total_size_gb": 55.256536327302456,
-      "successful_checkpoints": 10,
-      "total_checkpoints": 59,
-      "checkpoint_success_rate": 16.94915254237288
+      "total_detected": 61,
+      "total_size_gb": 58.217386894859374,
+      "successful_checkpoints": 11,
+      "total_checkpoints": 61,
+      "checkpoint_success_rate": 18.0327868852459
     },
     "health": {
       "average_score": 93.75,
@@ -491,13 +493,13 @@
   },
   "critical_issues": [],
   "recommendations": [
-    "💾 메모리 최적화: 55.3GB 모델 - 배치 크기 조정 및 캐싱 전략 필요",
+    "💾 메모리 최적화: 58.2GB 모델 - 배치 크기 조정 및 캐싱 전략 필요",
     "🔧 PyTorch 호환성: 2개 체크포인트에서 weights_only 문제 - PyTorch 업데이트 필요"
   ],
   "performance_metrics": {
-    "total_analysis_time_seconds": 33.35351490974426,
-    "average_step_analysis_time": 1.2741033434867859,
+    "total_analysis_time_seconds": 109.544273853302,
+    "average_step_analysis_time": 4.812563121318817,
     "system_analysis_efficiency": "efficient",
-    "memory_usage_peak_gb": 1.425750732421875
+    "memory_usage_peak_gb": 2.0508880615234375
   }
 }
