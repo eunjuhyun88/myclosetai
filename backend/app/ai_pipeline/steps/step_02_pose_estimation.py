@@ -31,6 +31,7 @@ import gc
 import time
 import asyncio
 import logging
+import threading
 import traceback
 import hashlib
 import json
@@ -890,7 +891,8 @@ class PoseEstimationStep(BaseStepMixin):
     
     def __init__(self, **kwargs):
         """포즈 추정 Step 초기화"""
-        
+        self._lock = threading.RLock()  # ✅ threading 사용
+
         # 🔥 1. 필수 속성들 초기화 (에러 방지)
         self._initialize_step_attributes()
         

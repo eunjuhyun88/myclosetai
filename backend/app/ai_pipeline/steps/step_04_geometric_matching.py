@@ -1283,7 +1283,13 @@ class GeometricMatchingStep(BaseStepMixin):
         self.model_interface = None
         self.loaded_models = []
         self.logger = logging.getLogger(f"{__name__}.GeometricMatchingStep")
-        
+            
+        self.gmm_model = None
+        self.tps_network = None  
+        self.optical_flow_model = None
+        self.keypoint_matcher = None
+        self.sam_model = None
+        self.advanced_geometric_ai = None
         # GeometricMatching 특화 속성들
         self.geometric_models = {}
         self.matching_ready = False

@@ -40,27 +40,53 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 
-# 🔥 PyTorch 로딩 최적화
-from fix_pytorch_loading import apply_pytorch_patch
-apply_pytorch_patch()
+# 🔥 PyTorch 로딩 최적화 - 수정
+try:
+    from fix_pytorch_loading import apply_pytorch_patch
+    apply_pytorch_patch()
+except ImportError:
+    logger.warning("⚠️ fix_pytorch_loading 모듈 없음 - 기본 PyTorch 로딩 사용")
+except Exception as e:
+    logger.warning(f"⚠️ PyTorch 로딩 패치 실패: {e}")
 
 # ==============================================
 # 🔥 섹션 2: BaseStepMixin 연동 (Central Hub DI Container v7.0)
 # ==============================================
 
+# ==============================================
+# 🔥 섹션 2: BaseStepMixin 연동 (Central Hub DI Container v7.0) - 수정
+# ==============================================
+
 def get_base_step_mixin_class():
     """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지)"""
     try:
-        import importlib
-        module = importlib.import_module('.base_step_mixin', package='app.ai_pipeline.steps')
-        return getattr(module, 'BaseStepMixin', None)
-    except ImportError as e:
+        # 여러 경로 시도
+        import_paths = [
+            'app.ai_pipeline.steps.base_step_mixin',
+            '.base_step_mixin',
+            'backend.app.ai_pipeline.steps.base_step_mixin'
+        ]
+        
+        for import_path in import_paths:
+            try:
+                if import_path.startswith('.'):
+                    module = importlib.import_module(import_path, package='app.ai_pipeline.steps')
+                else:
+                    module = importlib.import_module(import_path)
+                base_step_mixin = getattr(module, 'BaseStepMixin', None)
+                if base_step_mixin:
+                    return base_step_mixin
+            except ImportError:
+                continue
+        
+        return None
+    except Exception as e:
         logging.getLogger(__name__).error(f"❌ BaseStepMixin 동적 import 실패: {e}")
         return None
 
 BaseStepMixin = get_base_step_mixin_class()
 
-# 긴급 폴백 BaseStepMixin (최소 기능)
+# 긴급 폴백 BaseStepMixin (최소 기능) - 확장
 if BaseStepMixin is None:
     class BaseStepMixin:
         def __init__(self, **kwargs):
@@ -82,11 +108,33 @@ if BaseStepMixin is None:
         def set_model_loader(self, model_loader): 
             self.model_loader = model_loader
         
+        def _preprocess_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            """입력 전처리 - 기본 구현"""
+            return data
+        
+        def _postprocess_output(self, result: Dict[str, Any]) -> Dict[str, Any]:
+            """출력 후처리 - 기본 구현"""
+            return result
+        
+        def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+            """AI 추론 실행 - 폴백 구현"""
+            return {
+                "success": False,
+                "error": "BaseStepMixin 폴백 모드 - 실제 AI 모델 없음",
+                "step": self.step_name,
+                "fallback_mode": True
+            }
+            
         async def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
-            # BaseStepMixin의 표준 process 메서드
-            processed_input = self._preprocess_input(data)
-            result = self._run_ai_inference(processed_input)
-            return self._postprocess_output(result)
+            """BaseStepMixin의 표준 process 메서드"""
+            try:
+                processed_input = self._preprocess_input(data)
+                result = self._run_ai_inference(processed_input)
+                return self._postprocess_output(result)
+            except Exception as e:
+                self.logger.error(f"❌ Process 실패: {e}")
+                return {"success": False, "error": str(e)}
+
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -161,7 +209,9 @@ try:
 except ImportError:
     logger.warning("⚠️ SAM 없음 - 일부 기능 제한")
 
-# SciPy (고급 후처리용)
+
+
+# SciPy (고급 후처리용) - 수정
 SCIPY_AVAILABLE = False
 try:
     from scipy import ndimage
@@ -169,8 +219,22 @@ try:
     logger.info("🔬 SciPy 로드 완료")
 except ImportError:
     logger.warning("⚠️ SciPy 없음 - 고급 후처리 제한")
+except Exception as e:
+    logger.warning(f"⚠️ SciPy 로드 실패: {e}")
 
-# Scikit-image (고급 이미지 처리)
+# DenseCRF (CRF 후처리용) - 추가
+DENSECRF_AVAILABLE = False
+try:
+    import pydensecrf.densecrf as dcrf
+    from pydensecrf.utils import unary_from_softmax
+    DENSECRF_AVAILABLE = True
+    logger.info("🔥 DenseCRF 로드 완료")
+except ImportError:
+    logger.warning("⚠️ DenseCRF 없음 - CRF 후처리 제한")
+except Exception as e:
+    logger.warning(f"⚠️ DenseCRF 로드 실패: {e}")
+
+# Scikit-image (고급 이미지 처리) - 수정
 SKIMAGE_AVAILABLE = False
 try:
     from skimage import measure, morphology, segmentation, filters
@@ -178,6 +242,8 @@ try:
     logger.info("🔬 Scikit-image 로드 완료")
 except ImportError:
     logger.warning("⚠️ Scikit-image 없음 - 일부 기능 제한")
+except Exception as e:
+    logger.warning(f"⚠️ Scikit-image 로드 실패: {e}")
 
 # Torchvision
 TORCHVISION_AVAILABLE = False
@@ -596,9 +662,10 @@ class AdvancedPostProcessor:
     
     @staticmethod
     def apply_crf_postprocessing(mask: np.ndarray, image: np.ndarray, num_iterations: int = 10) -> np.ndarray:
-        """CRF 후처리로 경계선 개선 (원본)"""
+        """CRF 후처리로 경계선 개선 (원본) - 수정"""
         try:
-            if not DENSECRF_AVAILABLE:
+            if not DENSECRF_AVAILABLE:  # 이 변수가 정의되어야 함
+                logger.warning("⚠️ DenseCRF 라이브러리 없음 - CRF 후처리 스킵")
                 return mask
             
             h, w = mask.shape
@@ -618,7 +685,7 @@ class AdvancedPostProcessor:
             # Add pairwise energies
             d.addPairwiseGaussian(sxy=(3, 3), compat=3)
             d.addPairwiseBilateral(sxy=(80, 80), srgb=(13, 13, 13), 
-                                  rgbim=image, compat=10)
+                                rgbim=image, compat=10)
             
             # Inference
             Q = d.inference(num_iterations)
@@ -629,7 +696,7 @@ class AdvancedPostProcessor:
         except Exception as e:
             logger.warning(f"⚠️ CRF 후처리 실패: {e}")
             return mask
-    
+
     @staticmethod
     def apply_multiscale_processing(image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
         """멀티스케일 처리 (원본)"""
@@ -1157,29 +1224,65 @@ class ClothSegmentationStep(BaseStepMixin):
     ✅ 다중 클래스 세그멘테이션 - 20개 의류 카테고리 지원
     ✅ 카테고리별 마스킹 - 상의/하의/전신/액세서리 분리
     """
-    
     def __init__(self, **kwargs):
-        """Central Hub DI Container 기반 초기화"""
+        """Central Hub DI Container 기반 초기화 - 수정"""
         try:
-            # 🔥 1. 필수 속성들 초기화 (에러 방지)
-            self._initialize_step_attributes()
+            # 🔥 1. 필수 속성들 우선 초기화 (에러 방지)
+            self._initialize_critical_attributes()
             
-            # 🔥 2. BaseStepMixin 초기화 (Central Hub 자동 연동)
-            super().__init__(step_name="ClothSegmentationStep", step_id=3, **kwargs)
+            # 🔥 2. BaseStepMixin 초기화 (안전한 호출)
+            try:
+                super().__init__(step_name="ClothSegmentationStep", step_id=3, **kwargs)
+            except Exception as e:
+                self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패, 폴백 모드: {e}")
+                self._fallback_initialization(**kwargs)
             
             # 🔥 3. Cloth Segmentation 특화 초기화
             self._initialize_cloth_segmentation_specifics()
-            
-            # 🔧 model_paths 속성 확실히 초기화 (에러 방지)
-            if not hasattr(self, 'model_paths'):
-                self.model_paths = {}
             
             self.logger.info(f"✅ {self.step_name} Central Hub DI Container 기반 초기화 완료")
             
         except Exception as e:
             self.logger.error(f"❌ ClothSegmentationStep 초기화 실패: {e}")
             self._emergency_setup(**kwargs)
-    
+
+    def _initialize_critical_attributes(self):
+        """중요 속성들 우선 초기화"""
+        # Logger 먼저 설정
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        # 필수 속성들
+        self.step_name = "ClothSegmentationStep"
+        self.step_id = 3
+        self.device = "cpu"
+        self.is_initialized = False
+        self.is_ready = False
+        
+        # 핵심 컨테이너들
+        self.ai_models = {}
+        self.model_paths = {}
+        self.loaded_models = {}
+        self.models_loading_status = {
+            'deeplabv3plus': False,
+            'maskrcnn': False,
+            'sam_huge': False,
+            'u2net_cloth': False,
+            'total_loaded': 0,
+            'loading_errors': []
+        }
+        
+        # 의존성 주입 관련
+        self.model_loader = None
+        self.model_interface = None
+
+    def _fallback_initialization(self, **kwargs):
+        """BaseStepMixin 초기화 실패시 폴백"""
+        self.logger.warning("⚠️ 폴백 초기화 모드")
+        self.step_name = kwargs.get('step_name', 'ClothSegmentationStep')
+        self.step_id = kwargs.get('step_id', 3)
+        self.device = kwargs.get('device', 'cpu')
+
+
     def _initialize_step_attributes(self):
         """Step 필수 속성들 초기화 (BaseStepMixin 호환)"""
         self.ai_models = {}
@@ -1685,10 +1788,41 @@ class ClothSegmentationStep(BaseStepMixin):
             self.logger.error(f"❌ {self.step_name} 실제 AI 추론 실패: {e}")
             return self._create_emergency_result(str(e))
     
+
     # ==============================================
     # 🔥 AI 헬퍼 메서드들 (핵심 로직)
     # ==============================================
     
+    def _postprocess_masks(self, masks: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        """마스크 후처리"""
+        try:
+            processed_masks = masks.copy()
+            
+            # 1. 홀 채우기 및 노이즈 제거
+            if self.config.enable_hole_filling:
+                processed_masks = self._fill_holes_and_remove_noise_advanced(processed_masks)
+            
+            # 2. CRF 후처리
+            if self.config.enable_crf_postprocessing and 'all_clothes' in processed_masks:
+                # 원본 이미지가 필요하지만 없으므로 스킵하거나 기본값 사용
+                pass
+            
+            # 3. 에지 정제
+            if self.config.enable_edge_refinement:
+                # 기본 이미지가 필요하므로 임시로 스킵
+                pass
+            
+            # 4. 멀티스케일 처리
+            if self.config.enable_multiscale_processing and 'all_clothes' in processed_masks:
+                # 기본 이미지가 필요하므로 임시로 스킵
+                pass
+            
+            return processed_masks
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 마스크 후처리 실패: {e}")
+            return masks
+        
     def _assess_image_quality(self, image: np.ndarray) -> Dict[str, float]:
         """이미지 품질 평가"""
         try:

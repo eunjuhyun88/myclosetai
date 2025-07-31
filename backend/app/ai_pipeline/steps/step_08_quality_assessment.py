@@ -25,6 +25,7 @@ import os
 import sys
 import time
 import logging
+import threading
 import asyncio
 import numpy as np
 from pathlib import Path
@@ -2211,4 +2212,4 @@ if __name__ == "__main__":
     print("🚀 체크포인트 로딩 및 검증 시스템")
     print("🔧 순환참조 완전 해결 (TYPE_CHECKING)")
     print("💾 M3 Max 128GB 메모리 최적화")
-    print("=" * 80)
+    print("=" * 80)import threading

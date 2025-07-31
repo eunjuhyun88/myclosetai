@@ -32,9 +32,10 @@ import sys
 import gc
 import time
 import logging
-import warnings
 import threading
 import traceback
+import warnings
+
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union, TYPE_CHECKING
 from dataclasses import dataclass, field
@@ -104,9 +105,11 @@ except ImportError:
     
 try:
     import scipy
+    import scipy.ndimage as ndimage  # 홀 채우기에서 사용
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
+    ndimage = None
 
 # DenseCRF 고급 후처리
 try:
@@ -899,7 +902,7 @@ class AdvancedPostProcessor:
     def apply_hole_filling_and_noise_removal(parsing_map: np.ndarray) -> np.ndarray:
         """홀 채우기 및 노이즈 제거 (Human Parsing 특화)"""
         try:
-            if not SCIPY_AVAILABLE:
+            if not SCIPY_AVAILABLE or ndimage is None:
                 return parsing_map
             
             # 클래스별로 처리
@@ -915,16 +918,13 @@ class AdvancedPostProcessor:
                 filled = ndimage.binary_fill_holes(mask)
                 
                 # 작은 노이즈 제거 (morphological operations)
-                if SCIPY_AVAILABLE:
-                    structure = ndimage.generate_binary_structure(2, 2)
-                    # 열기 연산 (노이즈 제거)
-                    opened = ndimage.binary_opening(filled, structure=structure, iterations=1)
-                    # 닫기 연산 (홀 채우기)
-                    closed = ndimage.binary_closing(opened, structure=structure, iterations=2)
-                    
-                    processed_map[closed] = class_id
-                else:
-                    processed_map[filled] = class_id
+                structure = ndimage.generate_binary_structure(2, 2)
+                # 열기 연산 (노이즈 제거)
+                opened = ndimage.binary_opening(filled, structure=structure, iterations=1)
+                # 닫기 연산 (홀 채우기)
+                closed = ndimage.binary_closing(opened, structure=structure, iterations=2)
+                
+                processed_map[closed] = class_id
             
             # 배경 처리
             processed_map[processed_map == 0] = 0
@@ -934,7 +934,10 @@ class AdvancedPostProcessor:
         except Exception as e:
             logging.getLogger(__name__).warning(f"⚠️ 홀 채우기 및 노이즈 제거 실패: {e}")
             return parsing_map
-    
+
+
+
+
     @staticmethod
     def apply_quality_enhancement(parsing_map: np.ndarray, image: np.ndarray, confidence_map: Optional[np.ndarray] = None) -> np.ndarray:
         """품질 향상 알고리즘"""
@@ -2537,15 +2540,15 @@ def optimize_memory():
 
 __all__ = [
     # 메인 클래스
-    'HumanParsingStep',
+    'EnhancedHumanParsingConfig',
     
     # 모델 클래스들
-    'GraphonomyResNetASPP',
+    'AdvancedGraphonomyResNetASPP',
     'U2NetForParsing', 
     'MockHumanParsingModel',
     
     # 설정 클래스들
-    'HumanParsingConfig',
+    'EnhancedHumanParsingConfig',
     'HumanParsingModel',
     'QualityLevel',
     

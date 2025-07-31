@@ -2,7 +2,7 @@
 """
 🔥 MyCloset AI - Step 05: Enhanced Cloth Warping v8.0 - Central Hub DI Container 완전 연동
 ===============================================================================
-
+step_05_cloth_warping.py
 ✅ Central Hub DI Container v7.0 완전 연동
 ✅ BaseStepMixin v20.0 완전 호환 - _run_ai_inference() 동기 메서드 구현
 ✅ 간소화된 아키텍처 (복잡한 DI 로직 제거)
@@ -24,6 +24,7 @@ import sys
 import time
 import logging
 import asyncio
+import threading
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union, Tuple
@@ -1327,10 +1328,10 @@ WARPING_QUALITY_LEVELS = {
 }
 
 # ==============================================
-# 🔥 EnhancedClothWarpingStep 클래스
+# 🔥 ClothWarpingStep 클래스
 # ==============================================
 
-class EnhancedClothWarpingStep(BaseStepMixin):
+class ClothWarpingStep(BaseStepMixin):
     """
     🔥 Step 05: Enhanced Cloth Warping v8.0 - Central Hub DI Container 완전 연동
     
@@ -1347,7 +1348,6 @@ class EnhancedClothWarpingStep(BaseStepMixin):
     ✅ DenseNetQualityAssessment - 품질 평가
     ✅ PhysicsBasedFabricSimulation - 물리 시뮬레이션
     """
-    
     def __init__(self, **kwargs):
         """Central Hub DI Container v7.0 기반 초기화"""
         try:
@@ -1356,20 +1356,21 @@ class EnhancedClothWarpingStep(BaseStepMixin):
             
             # 2. BaseStepMixin 초기화 (Central Hub DI Container 연동)
             super().__init__(
-                step_name="EnhancedClothWarpingStep",
+                step_name="ClothWarpingStep",
                 step_id=5,
                 **kwargs
             )
             
-            # 3. Enhanced Cloth Warping 특화 초기화
+            # 3. Cloth Warping 특화 초기화
             self._initialize_warping_specifics(**kwargs)
             
-            self.logger.info("✅ EnhancedClothWarpingStep v8.0 Central Hub DI Container 초기화 완료")
+            self.logger.info("✅ ClothWarpingStep v8.0 Central Hub DI Container 초기화 완료")
             
         except Exception as e:
-            self.logger.error(f"❌ EnhancedClothWarpingStep 초기화 실패: {e}")
+            self.logger.error(f"❌ ClothWarpingStep 초기화 실패: {e}")
             self._emergency_setup(**kwargs)
-    
+
+
     def _initialize_step_attributes(self):
         """필수 속성들 초기화 (BaseStepMixin 요구사항)"""
         self.ai_models = {}
@@ -1383,7 +1384,7 @@ class EnhancedClothWarpingStep(BaseStepMixin):
         }
         self.model_interface = None
         self.loaded_models = []
-        self.logger = logging.getLogger(f"{__name__}.EnhancedClothWarpingStep")
+        self.logger = logging.getLogger(f"{__name__}.ClothWarpingStep")
         
         # Enhanced Cloth Warping 특화 속성들
         self.warping_models = {}
@@ -1435,7 +1436,7 @@ class EnhancedClothWarpingStep(BaseStepMixin):
     
     def _emergency_setup(self, **kwargs):
         """긴급 설정 (초기화 실패시)"""
-        self.step_name = "EnhancedClothWarpingStep"
+        self.step_name = "ClothWarpingStep"
         self.step_id = 5
         self.device = "cpu"
         self.ai_models = {}
@@ -1443,7 +1444,7 @@ class EnhancedClothWarpingStep(BaseStepMixin):
         self.model_interface = None
         self.loaded_models = []
         self.config = EnhancedClothWarpingConfig()
-        self.logger = logging.getLogger(f"{__name__}.EnhancedClothWarpingStep")
+        self.logger = logging.getLogger(f"{__name__}.ClothWarpingStep")
         self.warping_models = {}
         self.warping_ready = False
         self.warping_cache = {}
@@ -1476,7 +1477,7 @@ class EnhancedClothWarpingStep(BaseStepMixin):
                 # TPS 체크포인트 로딩 (1.8GB)
                 tps_model = self.model_loader.load_model(
                     model_name="tps_transformation.pth",
-                    step_name="EnhancedClothWarpingStep",
+                    step_name="ClothWarpingStep",
                     model_type="cloth_warping"
                 )
                 
@@ -1494,7 +1495,7 @@ class EnhancedClothWarpingStep(BaseStepMixin):
                 # VITON-HD 체크포인트 로딩 (2.1GB)
                 viton_model = self.model_loader.load_model(
                     model_name="viton_hd_warping.pth",
-                    step_name="EnhancedClothWarpingStep",
+                    step_name="ClothWarpingStep",
                     model_type="virtual_try_on"
                 )
                 
@@ -1513,7 +1514,7 @@ class EnhancedClothWarpingStep(BaseStepMixin):
             
             # Model Interface 설정
             if hasattr(self.model_loader, 'create_step_interface'):
-                self.model_interface = self.model_loader.create_step_interface("EnhancedClothWarpingStep")
+                self.model_interface = self.model_loader.create_step_interface("ClothWarpingStep")
             
             # Warping 준비 상태 업데이트
             self.warping_ready = len(self.loaded_models) > 0
@@ -3008,24 +3009,22 @@ class EnhancedClothWarpingStep(BaseStepMixin):
             if TORCH_AVAILABLE and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            self.logger.info("✅ EnhancedClothWarpingStep 리소스 정리 완료")
+            self.logger.info("✅ ClothWarpingStep 리소스 정리 완료")
             
         except Exception as e:
             self.logger.warning(f"⚠️ 리소스 정리 실패: {e}")
 
-    # BaseStepMixin 호환성 메서드
-    async def process(self, **kwargs) -> Dict[str, Any]:
+   # 파일: backend/app/ai_pipeline/steps/step_05_cloth_warping.py
+# line 3276 근처
+
+    def process(self, **kwargs) -> Dict[str, Any]:  # async 제거
         """
-        BaseStepMixin v20.0 호환 process() 메서드
-        
-주의: 이 메서드는 BaseStepMixin에서 자동으로 제공되므로
-        실제로는 _run_ai_inference()만 구현하면 됩니다.
-        여기서는 독립 실행을 위해 제공합니다.
+        BaseStepMixin v20.0 호환 process() 메서드 (동기 버전)
         """
         try:
             # BaseStepMixin의 process() 메서드 호출 시도
             if hasattr(super(), 'process'):
-                return await super().process(**kwargs)
+                return super().process(**kwargs)  # await 제거
             
             # 독립 실행 모드 (BaseStepMixin 없는 경우)
             processed_input = kwargs
@@ -3033,24 +3032,24 @@ class EnhancedClothWarpingStep(BaseStepMixin):
             return result
             
         except Exception as e:
-            self.logger.error(f"❌ Enhanced Cloth Warping process 실패: {e}")
+            self.logger.error(f"❌ Cloth Warping process 실패: {e}")
             return {
                 'success': False,
                 'error': str(e),
                 'step_name': self.step_name,
                 'step_id': self.step_id,
-                'central_hub_di_container': True,
-                'advanced_ai_networks': False
+                'central_hub_di_container': True
             }
+
 
 # ==============================================
 # 🔥 팩토리 함수들
 # ==============================================
 
-async def create_enhanced_cloth_warping_step(**kwargs) -> EnhancedClothWarpingStep:
-    """EnhancedClothWarpingStep 생성 (Central Hub DI Container 연동)"""
+async def create_enhanced_cloth_warping_step(**kwargs) -> ClothWarpingStep:
+    """ClothWarpingStep 생성 (Central Hub DI Container 연동)"""
     try:
-        step = EnhancedClothWarpingStep(**kwargs)
+        step = ClothWarpingStep(**kwargs)
         
         # Central Hub DI Container가 자동으로 의존성을 주입함
         # 별도의 초기화 작업 불필요
@@ -3059,11 +3058,11 @@ async def create_enhanced_cloth_warping_step(**kwargs) -> EnhancedClothWarpingSt
         
     except Exception as e:
         logger = logging.getLogger(__name__)
-        logger.error(f"❌ EnhancedClothWarpingStep 생성 실패: {e}")
+        logger.error(f"❌ ClothWarpingStep 생성 실패: {e}")
         raise
 
-def create_enhanced_cloth_warping_step_sync(**kwargs) -> EnhancedClothWarpingStep:
-    """동기식 EnhancedClothWarpingStep 생성"""
+def create_enhanced_cloth_warping_step_sync(**kwargs) -> ClothWarpingStep:
+    """동기식 ClothWarpingStep 생성"""
     try:
         import asyncio
         
@@ -3077,21 +3076,21 @@ def create_enhanced_cloth_warping_step_sync(**kwargs) -> EnhancedClothWarpingSte
         
     except Exception as e:
         logger = logging.getLogger(__name__)
-        logger.error(f"❌ 동기식 EnhancedClothWarpingStep 생성 실패: {e}")
+        logger.error(f"❌ 동기식 ClothWarpingStep 생성 실패: {e}")
         raise
 
 # ==============================================
 # 🔥 테스트 함수
 # ==============================================
 
-async def test_enhanced_cloth_warping_step():
-    """EnhancedClothWarpingStep 테스트"""
+async def test_cloth_warping_step():
+    """ClothWarpingStep 테스트"""
     try:
-        print("🧪 EnhancedClothWarpingStep v8.0 Central Hub DI Container 테스트")
+        print("🧪 ClothWarpingStep v8.0 Central Hub DI Container 테스트")
         print("=" * 70)
         
         # Step 생성
-        step = await create_enhanced_cloth_warping_step()
+        step = await create_cloth_warping_step()
         
         print(f"✅ Step 생성 완료: {step.step_name}")
         print(f"✅ 로드된 모델: {step.get_loaded_models()}")
@@ -3201,7 +3200,7 @@ async def test_enhanced_cloth_warping_step():
         # 리소스 정리
         await step.cleanup_resources()
         
-        print("✅ EnhancedClothWarpingStep v8.0 완전 테스트 완료!")
+        print("✅ ClothWarpingStep v8.0 완전 테스트 완료!")
         
     except Exception as e:
         print(f"❌ 테스트 실패: {e}")
@@ -3214,7 +3213,7 @@ async def test_enhanced_cloth_warping_step():
 
 __all__ = [
     # 주요 클래스들
-    'EnhancedClothWarpingStep',
+    'ClothWarpingStep',
     'EnhancedClothWarpingConfig',
     
     # 고급 AI 네트워크 클래스들
@@ -3233,7 +3232,7 @@ __all__ = [
     'create_enhanced_cloth_warping_step_sync',
     
     # 테스트 함수
-    'test_enhanced_cloth_warping_step'
+    'create_cloth_warping_step'
 ]
 
 # ==============================================
@@ -3242,11 +3241,11 @@ __all__ = [
 
 if __name__ == "__main__":
     print("=" * 80)
-    print("🔥 EnhancedClothWarpingStep v8.0 - Central Hub DI Container 완전 연동")
+    print("🔥 ClothWarpingStep v8.0 - Central Hub DI Container 완전 연동")
     print("=" * 80)
     
     try:
-        asyncio.run(test_enhanced_cloth_warping_step())
+        asyncio.run(test_cloth_warping_step())
     except Exception as e:
         print(f"❌ 테스트 실행 실패: {e}")
         import traceback
