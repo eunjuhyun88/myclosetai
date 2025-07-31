@@ -1090,10 +1090,6 @@ class ModelLoaderCompatiblePathMapper:
 # ==============================================
 # 🔥 HumanParsingStep - BaseStepMixin ModelLoader 팩토리 패턴 완전 적용
 # ==============================================
-    # ==============================================
-    # 🔥 BaseStepMixin ModelLoader 팩토리 패턴 의존성 주입
-    # ==============================================
-    
     def set_model_loader(self, model_loader: 'ModelLoader'):
         """ModelLoader 팩토리 패턴 의존성 주입 (GitHub 표준)"""
         try:
@@ -1693,7 +1689,44 @@ if BaseStepMixin:
         # ==============================================
         # 🔥 핵심: 동기 _run_ai_inference() 메서드 (프로젝트 표준)
         # ==============================================
-        
+                
+        # ==============================================
+        # 🔥 1단계: _get_step_requirements 메서드 추가 (_run_ai_inference 메서드 **이전**에)
+        # ==============================================
+
+        def _get_step_requirements(self) -> Dict[str, Any]:
+            """Step 01 Human Parsing 요구사항 반환 (BaseStepMixin v19.2 호환)"""
+            return {
+                "required_models": [
+                    "graphonomy.pth",
+                    "exp-schp-201908301523-atr.pth", 
+                    "u2net.pth"
+                ],
+                "primary_model": "graphonomy.pth",
+                "model_configs": {
+                    "graphonomy.pth": {
+                        "size_mb": 1173.5,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "precision": "high"
+                    },
+                    "exp-schp-201908301523-atr.pth": {
+                        "size_mb": 255.0,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "real_time": True
+                    },
+                    "u2net.pth": {
+                        "size_mb": 168.1,
+                        "device_compatible": ["cpu", "mps", "cuda"],
+                        "quality": "balanced"
+                    }
+                },
+                "verified_paths": [
+                    "step_01_human_parsing/graphonomy.pth",
+                    "step_01_human_parsing/exp-schp-201908301523-atr.pth",
+                    "step_01_human_parsing/u2net.pth"
+                ]
+            }
+
         def _run_ai_inference(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
             """🔥 실제 체크포인트 데이터를 사용한 AI 추론 (Mock 완전 제거)"""
             try:
