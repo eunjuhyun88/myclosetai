@@ -665,6 +665,7 @@ class ContextualDIContainer:
         """팩토리 등록"""
         self.factory.register_factory(service_key, factory_func, is_singleton)
     
+    
     def inject_to_step(self, step_instance) -> int:
         """Step에 의존성 주입"""
         injections_made = 0
@@ -725,6 +726,15 @@ class ContextualDIContainer:
         
         return injections_made
     
+    def force_register_model_loader(self, model_loader):
+        """ModelLoader 강제 등록 (구 버전 호환)"""
+        try:
+            self.register_instance('model_loader', model_loader)
+            self.logger.info("✅ ModelLoader 강제 등록 완료")
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 강제 등록 실패: {e}")
+            return False
 
 
         # backend/app/core/di_container.py의 ContextualDIContainer 클래스에 추가할 메서드들
@@ -1211,6 +1221,13 @@ class CircularReferenceFreeDIContainer:
             get_global_manager().optimize_all_contexts()
         return {"optimized": True}
     
+    def force_register_model_loader(self, model_loader):
+        """ModelLoader 강제 등록 (Legacy 호환)"""
+        try:
+            self._container.register_instance('model_loader', model_loader)
+            return True
+        except Exception as e:
+            return False
     def cleanup_circular_references(self):
         pass  # Event-driven에서는 불필요
 

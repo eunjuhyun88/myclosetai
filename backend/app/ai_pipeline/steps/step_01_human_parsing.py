@@ -478,19 +478,62 @@ class ModelLoaderAwareAIModel:
             self.logger.error(f"❌ 체크포인트에서 모델 생성 실패: {e}")
             return None
     
+    
     def _fallback_load(self) -> bool:
         """폴백 로딩 (서브클래스에서 구현)"""
         return False
+        # ==============================================
+    # 🔥 5. 실제 검증된 모델 경로 매핑 (fix_checkpoints.py 결과 기반)
+    # ==============================================
+
+
 
 class GraphonomyModelWithFactory(ModelLoaderAwareAIModel):
-    """ModelLoader 팩토리 패턴을 사용하는 Graphonomy 모델"""
+    """ModelLoader 팩토리 패턴을 사용하는 Graphonomy 모델 (체크포인트 로딩 개선)"""
     
     def __init__(self, model_path: str, device: str = "cpu"):
         super().__init__("graphonomy", device)
         self.model_path = model_path
         
+    def load_via_model_loader(self) -> bool:
+        """ModelLoader 팩토리 패턴을 통한 모델 로딩 (PyTorch weights_only 문제 해결)"""
+        try:
+            if not self.model_loader:
+                self.logger.warning(f"⚠️ ModelLoader가 설정되지 않음 - 폴백 로딩 시도")
+                return self._fallback_load()
+            
+            # ModelLoader 팩토리 패턴으로 모델 로딩
+            if hasattr(self.model_loader, 'load_model'):
+                loaded_model = self.model_loader.load_model(
+                    model_name=self.model_name,
+                    device=self.device,
+                    model_type='human_parsing'
+                )
+                
+                if loaded_model:
+                    # RealAIModel 객체의 실제 PyTorch 모델 추출
+                    if hasattr(loaded_model, 'model') and loaded_model.model is not None:
+                        self.model = loaded_model.model
+                        self.is_loaded = True
+                        self.logger.info(f"✅ {self.model_name} ModelLoader 팩토리 패턴 로딩 성공")
+                        return True
+                    elif hasattr(loaded_model, 'checkpoint_data'):
+                        # checkpoint_data에서 PyTorch 모델 생성
+                        self.model = self._create_model_from_checkpoint(loaded_model.checkpoint_data)
+                        if self.model:
+                            self.is_loaded = True
+                            self.logger.info(f"✅ {self.model_name} ModelLoader 팩토리 패턴 체크포인트 로딩 성공")
+                            return True
+            
+            # 폴백 로딩
+            return self._fallback_load()
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.model_name} ModelLoader 팩토리 패턴 로딩 실패: {e}")
+            return self._fallback_load()
+    
     def _fallback_load(self) -> bool:
-        """폴백: 직접 Graphonomy 모델 로딩"""
+        """폴백: PyTorch weights_only 문제를 해결한 안전 로딩"""
         try:
             if not TORCH_AVAILABLE or not os.path.exists(self.model_path):
                 return False
@@ -498,17 +541,10 @@ class GraphonomyModelWithFactory(ModelLoaderAwareAIModel):
             # Graphonomy 아키텍처 생성
             self.model = self._create_graphonomy_architecture()
             
-            # 체크포인트 로딩 (3단계 안전 로딩)
-            try:
-                # 1단계: 최신 보안 기준
-                checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
-            except:
-                try:
-                    # 2단계: Legacy 포맷 지원
-                    checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=False)
-                except:
-                    # 3단계: 원시 로딩
-                    checkpoint = torch.load(self.model_path, map_location='cpu')
+            # 체크포인트 로딩 (3단계 안전 로딩 - fix_checkpoints.py 방법)
+            checkpoint = self._load_checkpoint_safely()
+            if not checkpoint:
+                return False
             
             # state_dict 추출 및 로딩
             if isinstance(checkpoint, dict):
@@ -539,203 +575,60 @@ class GraphonomyModelWithFactory(ModelLoaderAwareAIModel):
             self.logger.error(f"❌ {self.model_name} 폴백 로딩 실패: {e}")
             return False
     
-    def _create_graphonomy_architecture(self):
-        """Graphonomy 아키텍처 생성"""
-        class GraphonomyNetwork(nn.Module):
-            def __init__(self, num_classes: int = 20):
-                super().__init__()
-                self.num_classes = num_classes
-                
-                # ResNet-101 백본
-                self.backbone = self._create_resnet_backbone()
-                
-                # ASPP
-                self.aspp = self._create_aspp()
-                
-                # 디코더
-                self.decoder = self._create_decoder()
-                
-                # 분류기
-                self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
-                
-                # 엣지 검출
-                self.edge_classifier = nn.Conv2d(256, 1, kernel_size=1)
-            
-            def _create_resnet_backbone(self):
-                """ResNet-101 백본 생성"""
-                return nn.Sequential(
-                    nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
-                    nn.BatchNorm2d(64),
-                    nn.ReLU(inplace=True),
-                    nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
-                    self._make_layer(64, 64, 3),
-                    self._make_layer(256, 128, 4, stride=2),
-                    self._make_layer(512, 256, 23, stride=2),
-                    self._make_layer(1024, 512, 3, stride=1, dilation=2)
-                )
-            
-            def _make_layer(self, inplanes, planes, blocks, stride=1, dilation=1):
-                """ResNet layer 생성"""
-                layers = []
-                for i in range(blocks):
-                    if i == 0:
-                        layers.append(self._bottleneck(inplanes, planes, stride, dilation))
-                        inplanes = planes * 4
-                    else:
-                        layers.append(self._bottleneck(inplanes, planes, 1, dilation))
-                return nn.Sequential(*layers)
-            
-            def _bottleneck(self, inplanes, planes, stride=1, dilation=1):
-                """Bottleneck block"""
-                return nn.Sequential(
-                    nn.Conv2d(inplanes, planes, kernel_size=1, bias=False),
-                    nn.BatchNorm2d(planes),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(planes, planes, kernel_size=3, stride=stride, 
-                             padding=dilation, dilation=dilation, bias=False),
-                    nn.BatchNorm2d(planes),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False),
-                    nn.BatchNorm2d(planes * 4)
-                )
-            
-            def _create_aspp(self):
-                """ASPP 생성"""
-                return nn.ModuleList([
-                    nn.Sequential(
-                        nn.Conv2d(2048, 256, 1, bias=False),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True)
-                    ),
-                    nn.Sequential(
-                        nn.Conv2d(2048, 256, 3, padding=6, dilation=6, bias=False),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True)
-                    ),
-                    nn.Sequential(
-                        nn.Conv2d(2048, 256, 3, padding=12, dilation=12, bias=False),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True)
-                    ),
-                    nn.Sequential(
-                        nn.Conv2d(2048, 256, 3, padding=18, dilation=18, bias=False),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True)
-                    ),
-                    nn.Sequential(
-                        nn.AdaptiveAvgPool2d(1),
-                        nn.Conv2d(2048, 256, 1, bias=False),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True)
-                    )
-                ])
-            
-            def _create_decoder(self):
-                """디코더 생성"""
-                return nn.Sequential(
-                    nn.Conv2d(256 * 5, 256, 1, bias=False),
-                    nn.BatchNorm2d(256),
-                    nn.ReLU(inplace=True),
-                    nn.Dropout(0.5),
-                    nn.Conv2d(256, 256, 3, padding=1, bias=False),
-                    nn.BatchNorm2d(256),
-                    nn.ReLU(inplace=True),
-                    nn.Dropout(0.1)
-                )
-            
-            def forward(self, x):
-                input_size = x.shape[2:]
-                
-                # 백본
-                features = self.backbone(x)
-                
-                # ASPP
-                aspp_features = []
-                for aspp_conv in self.aspp[:-1]:
-                    aspp_features.append(aspp_conv(features))
-                
-                # Global pooling
-                global_feat = self.aspp[-1](features)
-                global_feat = F.interpolate(global_feat, size=features.shape[2:], 
-                                           mode='bilinear', align_corners=False)
-                aspp_features.append(global_feat)
-                
-                # 특징 결합
-                concat_features = torch.cat(aspp_features, dim=1)
-                
-                # 디코더
-                decoded = self.decoder(concat_features)
-                
-                # 분류
-                parsing_logits = self.classifier(decoded)
-                edge_logits = self.edge_classifier(decoded)
-                
-                # 업샘플링
-                parsing_logits = F.interpolate(parsing_logits, size=input_size, 
-                                             mode='bilinear', align_corners=False)
-                edge_logits = F.interpolate(edge_logits, size=input_size, 
-                                          mode='bilinear', align_corners=False)
-                
-                return {
-                    'parsing': parsing_logits,
-                    'edge': edge_logits
-                }
-        
-        return GraphonomyNetwork(num_classes=20)
-    
-    def predict(self, image: np.ndarray) -> Dict[str, Any]:
-        """Graphonomy 예측 실행"""
+    def _load_checkpoint_safely(self):
+        """PyTorch weights_only 문제를 해결한 안전한 체크포인트 로딩"""
         try:
-            if not self.is_loaded:
-                return {"parsing_map": None, "confidence": 0.0}
+            import warnings
             
-            # 전처리
-            if isinstance(image, np.ndarray):
-                pil_image = Image.fromarray(image.astype(np.uint8))
-            else:
-                pil_image = image
+            # 1단계: 안전 모드 (weights_only=True)
+            try:
+                checkpoint = torch.load(
+                    self.model_path, 
+                    map_location='cpu',
+                    weights_only=True
+                )
+                self.logger.debug(f"✅ {self.model_name} 안전 모드 로딩 성공")
+                return checkpoint
+            except RuntimeError as safe_error:
+                error_msg = str(safe_error).lower()
+                if "legacy .tar format" in error_msg or "torchscript" in error_msg:
+                    self.logger.debug(f"Legacy/TorchScript 파일 감지: {self.model_name}")
+                else:
+                    self.logger.debug(f"안전 모드 실패: {safe_error}")
+            except Exception as e:
+                self.logger.debug(f"안전 모드 예외: {e}")
             
-            transform = transforms.Compose([
-                transforms.Resize((512, 512)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                   std=[0.229, 0.224, 0.225])
-            ])
+            # 2단계: 호환 모드 (weights_only=False)
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    checkpoint = torch.load(
+                        self.model_path, 
+                        map_location='cpu',
+                        weights_only=False
+                    )
+                self.logger.debug(f"✅ {self.model_name} 호환 모드 로딩 성공")
+                return checkpoint
+            except Exception as compat_error:
+                self.logger.debug(f"호환 모드 실패: {compat_error}")
             
-            input_tensor = transform(pil_image).unsqueeze(0).to(self.device)
+            # 3단계: Legacy 모드 (파라미터 최소화)
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore")
+                    checkpoint = torch.load(self.model_path, map_location='cpu')
+                self.logger.debug(f"✅ {self.model_name} Legacy 모드 로딩 성공")
+                return checkpoint
+            except Exception as legacy_error:
+                self.logger.error(f"❌ 모든 로딩 방법 실패: {legacy_error}")
             
-            # 예측
-            with torch.no_grad():
-                outputs = self.model(input_tensor)
-                
-            # 결과 추출
-            parsing_logits = outputs['parsing']
-            edge_logits = outputs['edge']
-            
-            # 후처리
-            parsing_probs = torch.softmax(parsing_logits, dim=1)
-            parsing_map = torch.argmax(parsing_probs, dim=1).squeeze().cpu().numpy()
-            
-            # 원본 크기로 리사이즈
-            original_size = image.shape[:2]
-            map_pil = Image.fromarray(parsing_map.astype(np.uint8))
-            map_resized = map_pil.resize((original_size[1], original_size[0]), Image.Resampling.NEAREST)
-            parsing_map_resized = np.array(map_resized)
-            
-            # 신뢰도 계산
-            max_probs = torch.max(parsing_probs, dim=1)[0]
-            confidence = float(torch.mean(max_probs).cpu())
-            
-            return {
-                "parsing_map": parsing_map_resized,
-                "confidence": confidence,
-                "edge_map": edge_logits.squeeze().cpu().numpy() if edge_logits is not None else None,
-                "model_loader_used": self.model_loader is not None
-            }
+            return None
             
         except Exception as e:
-            self.logger.error(f"❌ Graphonomy 예측 실패: {e}")
-            return {"parsing_map": None, "confidence": 0.0}
+            self.logger.error(f"❌ 체크포인트 안전 로딩 실패: {e}")
+            return None
+
+
 
 class U2NetModelWithFactory(ModelLoaderAwareAIModel):
     """ModelLoader 팩토리 패턴을 사용하는 U2Net 모델"""
@@ -1075,6 +968,37 @@ def safe_mps_empty_cache():
         return {"success": False, "error": str(e)}
 
 # ==============================================
+# 🔥 검증된 모델 경로 함수 (클래스 밖에 정의)
+# ==============================================
+
+def get_verified_model_paths_for_human_parsing() -> Dict[str, Optional[Path]]:
+    """fix_checkpoints.py에서 검증된 실제 모델 경로 반환"""
+    
+    ai_models_root = Path.cwd() / "ai_models"
+    
+    # fix_checkpoints.py에서 검증된 실제 경로들
+    VERIFIED_PATHS = {
+        # Human Parsing (✅ 170.5MB 검증됨)
+        "graphonomy": "checkpoints/step_01_human_parsing/graphonomy.pth",
+        
+        # 대체 Human Parsing 모델들
+        "schp_atr": "checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth",
+        "u2net_alternative": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+    }
+    
+    model_paths = {}
+    
+    for model_name, rel_path in VERIFIED_PATHS.items():
+        full_path = ai_models_root / rel_path
+        if full_path.exists() and full_path.is_file():
+            size_mb = full_path.stat().st_size / (1024**2)
+            if size_mb > 1.0:  # 1MB 이상만 유효
+                model_paths[model_name] = full_path.resolve()
+                logging.getLogger(__name__).info(f"✅ {model_name} 모델 발견: {full_path} ({size_mb:.1f}MB)")
+    
+    return model_paths
+
+# ==============================================
 # 🔥 ModelLoader 팩토리 패턴 모델 경로 매핑 시스템
 # ==============================================
 
@@ -1166,6 +1090,264 @@ class ModelLoaderCompatiblePathMapper:
 # ==============================================
 # 🔥 HumanParsingStep - BaseStepMixin ModelLoader 팩토리 패턴 완전 적용
 # ==============================================
+    # ==============================================
+    # 🔥 BaseStepMixin ModelLoader 팩토리 패턴 의존성 주입
+    # ==============================================
+    
+    def set_model_loader(self, model_loader: 'ModelLoader'):
+        """ModelLoader 팩토리 패턴 의존성 주입 (GitHub 표준)"""
+        try:
+            self.model_loader = model_loader
+            self.dependencies_injected['model_loader'] = True
+            self.ai_stats['model_loader_calls'] += 1
+            self.logger.info("✅ ModelLoader 팩토리 패턴 의존성 주입 완료")
+            
+            # Step 인터페이스 생성 시도 (ModelLoader 팩토리 패턴)
+            if hasattr(model_loader, 'create_step_interface'):
+                try:
+                    self.model_interface = model_loader.create_step_interface(self.step_name)
+                    self.ai_stats['factory_pattern_calls'] += 1
+                    self.logger.info("✅ ModelLoader 팩토리 패턴 Step 인터페이스 생성 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
+                    self.model_interface = model_loader
+            else:
+                self.logger.debug("ModelLoader에 create_step_interface 메서드 없음, 직접 사용")
+                self.model_interface = model_loader
+                
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 팩토리 패턴 의존성 주입 실패: {e}")
+            self.dependencies_injected['model_loader'] = False
+    
+    def set_memory_manager(self, memory_manager: 'MemoryManager'):
+        """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
+        try:
+            self.memory_manager = memory_manager
+            self.dependencies_injected['memory_manager'] = True
+            self.logger.info("✅ MemoryManager 의존성 주입 완료")
+        except Exception as e:
+            self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
+            self.dependencies_injected['memory_manager'] = False
+    
+    def set_data_converter(self, data_converter: 'DataConverter'):
+        """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
+        try:
+            self.data_converter = data_converter
+            self.dependencies_injected['data_converter'] = True
+            self.logger.info("✅ DataConverter 의존성 주입 완료")
+        except Exception as e:
+            self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
+            self.dependencies_injected['data_converter'] = False
+    
+    def set_di_container(self, di_container: 'DIContainer'):
+        """DI Container 의존성 주입"""
+        try:
+            self.di_container = di_container
+            self.dependencies_injected['di_container'] = True
+            self.logger.info("✅ DI Container 의존성 주입 완료")
+            
+            # DI Container가 주입되면 자동으로 다른 의존성들도 해결 시도
+            self._try_auto_resolve_dependencies()
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
+            self.dependencies_injected['di_container'] = False
+    
+    def _try_auto_resolve_dependencies(self):
+        """DI Container를 통한 자동 의존성 해결"""
+        try:
+            if not self.di_container:
+                return
+            
+            self.logger.info("🔄 DI Container를 통한 자동 의존성 해결 시도...")
+            
+            # ModelLoader 자동 해결
+            if not self.dependencies_injected.get('model_loader', False):
+                try:
+                    model_loader = self.di_container.get('model_loader')
+                    if model_loader:
+                        self.set_model_loader(model_loader)
+                        self.logger.info("✅ DI Container를 통한 ModelLoader 자동 해결 성공")
+                except Exception as e:
+                    self.logger.debug(f"ModelLoader 자동 해결 실패: {e}")
+            
+            # MemoryManager 자동 해결
+            if not self.dependencies_injected.get('memory_manager', False):
+                try:
+                    memory_manager = self.di_container.get('memory_manager')
+                    if memory_manager:
+                        self.set_memory_manager(memory_manager)
+                        self.logger.info("✅ DI Container를 통한 MemoryManager 자동 해결 성공")
+                except Exception as e:
+                    self.logger.debug(f"MemoryManager 자동 해결 실패: {e}")
+            
+            # DataConverter 자동 해결
+            if not self.dependencies_injected.get('data_converter', False):
+                try:
+                    data_converter = self.di_container.get('data_converter')
+                    if data_converter:
+                        self.set_data_converter(data_converter)
+                        self.logger.info("✅ DI Container를 통한 DataConverter 자동 해결 성공")
+                except Exception as e:
+                    self.logger.debug(f"DataConverter 자동 해결 실패: {e}")
+            
+            resolved_count = sum(1 for v in self.dependencies_injected.values() if v)
+            total_count = len(self.dependencies_injected)
+            self.logger.info(f"✅ DI Container 자동 의존성 해결 완료: {resolved_count}/{total_count}")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DI Container 자동 의존성 해결 실패: {e}")
+
+    def _connect_model_loader_directly(self) -> bool:
+        """DI Container 우회하여 직접 ModelLoader 팩토리 연결"""
+        try:
+            self.logger.info("🔄 직접 ModelLoader 팩토리 연결 시도...")
+            
+            # 방법 1: 글로벌 ModelLoader 함수 시도
+            try:
+                import importlib
+                model_loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
+                
+                if hasattr(model_loader_module, 'get_global_model_loader'):
+                    get_global_model_loader = model_loader_module.get_global_model_loader
+                    model_loader = get_global_model_loader()
+                    
+                    if model_loader:
+                        self.set_model_loader(model_loader)
+                        self.logger.info("✅ 글로벌 ModelLoader 함수를 통한 직접 연결 성공")
+                        return True
+            except Exception as e:
+                self.logger.debug(f"글로벌 ModelLoader 함수 실패: {e}")
+            
+            # 방법 2: ModelLoader 클래스 직접 생성
+            try:
+                import importlib
+                model_loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
+                
+                if hasattr(model_loader_module, 'ModelLoader'):
+                    ModelLoaderClass = model_loader_module.ModelLoader
+                    model_loader = ModelLoaderClass(device=self.device)
+                    
+                    if model_loader:
+                        self.set_model_loader(model_loader)
+                        self.logger.info("✅ ModelLoader 클래스 직접 생성을 통한 연결 성공")
+                        return True
+            except Exception as e:
+                self.logger.debug(f"ModelLoader 클래스 직접 생성 실패: {e}")
+            
+            # 방법 3: 상위 패키지에서 ModelLoader 가져오기
+            try:
+                from app.ai_pipeline.utils import get_step_model_interface
+                model_interface = get_step_model_interface(self.step_name)
+                
+                if model_interface and hasattr(model_interface, 'model_loader'):
+                    model_loader = model_interface.model_loader
+                    if model_loader:
+                        self.set_model_loader(model_loader)
+                        self.logger.info("✅ Step 모델 인터페이스를 통한 ModelLoader 연결 성공")
+                        return True
+            except Exception as e:
+                self.logger.debug(f"Step 모델 인터페이스 ModelLoader 실패: {e}")
+            
+            self.logger.warning("⚠️ 모든 직접 ModelLoader 연결 방법 실패")
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ 직접 ModelLoader 연결 중 오류: {e}")
+            return False
+    
+    def _simulate_di_container_connection(self) -> bool:
+        """DI Container 연결을 시뮬레이션 (임시 해결책)"""
+        try:
+            self.logger.info("🔄 DI Container 연결 시뮬레이션 시도...")
+            
+            # 이미 ModelLoader가 주입되어 있으면 DI Container도 연결된 것으로 간주
+            if self.dependencies_injected.get('model_loader', False):
+                # 가짜 DI Container 객체 생성
+                class MockDIContainer:
+                    def __init__(self):
+                        self.services = {}
+                    
+                    def get(self, key):
+                        return self.services.get(key)
+                    
+                    def register(self, key, value, singleton=True):
+                        self.services[key] = value
+                
+                mock_container = MockDIContainer()
+                mock_container.register('model_loader', self.model_loader)
+                mock_container.register('memory_manager', self.memory_manager)
+                mock_container.register('data_converter', self.data_converter)
+                
+                # Mock DI Container 설정
+                self.di_container = mock_container
+                self.dependencies_injected['di_container'] = True
+                
+                self.logger.info("✅ DI Container 연결 시뮬레이션 완료 (Mock DI Container)")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ DI Container 시뮬레이션 실패: {e}")
+            return False
+    
+    def force_di_container_connection(self) -> bool:
+        """DI Container 강제 연결 시도"""
+        try:
+            self.logger.info("🔄 DI Container 강제 연결 시도...")
+            
+            # DI 시스템 사용 가능 여부 확인
+            if not DI_SYSTEM.get('available', False):
+                self.logger.error("❌ DI Container 시스템이 사용 불가능합니다")
+                return False
+            
+            # 글로벌 컨테이너 가져오기
+            get_global_container = DI_SYSTEM.get('get_global_container')
+            if not get_global_container:
+                self.logger.error("❌ get_global_container 함수가 없습니다")
+                return False
+            
+            # 컨테이너 연결
+            global_container = get_global_container()
+            if not global_container:
+                self.logger.error("❌ 글로벌 DI Container가 None입니다")
+                return False
+            
+            # DI Container 설정
+            self.set_di_container(global_container)
+            
+            # 초기화 함수 호출
+            initialize_di_system_safe = DI_SYSTEM.get('initialize_di_system_safe')
+            if initialize_di_system_safe:
+                try:
+                    initialize_di_system_safe()
+                    self.logger.info("✅ DI Container 시스템 초기화 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DI Container 시스템 초기화 실패: {e}")
+            
+            # 안전한 의존성 주입
+            inject_dependencies_to_step_safe = DI_SYSTEM.get('inject_dependencies_to_step_safe')
+            if inject_dependencies_to_step_safe:
+                try:
+                    inject_dependencies_to_step_safe(self, global_container)
+                    self.logger.info("✅ DI Container 기반 안전한 의존성 주입 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DI Container 기반 의존성 주입 실패: {e}")
+            
+            # 연결 상태 확인
+            di_connected = self.dependencies_injected.get('di_container', False)
+            if di_connected:
+                self.logger.info("✅ DI Container 강제 연결 성공!")
+                return True
+            else:
+                self.logger.warning("⚠️ DI Container 연결되었지만 상태가 업데이트되지 않음")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 강제 연결 실패: {e}")
+            return False
+    
 
 if BaseStepMixin:
     class HumanParsingStep(BaseStepMixin):
@@ -1206,9 +1388,25 @@ if BaseStepMixin:
                 
                 # AI 모델 및 시스템 (ModelLoader 팩토리 패턴 기반)
                 self.ai_models = {}
-                self.model_paths = {}
                 self.available_methods = []
                 self.postprocessor = AdvancedPostProcessor()
+                
+                # 🔥 검증된 모델 경로 (fix_checkpoints.py 결과 기반)
+                ai_models_root = Path.cwd() / "ai_models"
+                self.model_paths = {}
+                verified_paths = {
+                    "graphonomy": "checkpoints/step_01_human_parsing/graphonomy.pth",
+                    "schp_atr": "checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth", 
+                    "u2net_alternative": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                }
+                
+                for model_name, rel_path in verified_paths.items():
+                    full_path = ai_models_root / rel_path
+                    if full_path.exists() and full_path.is_file():
+                        size_mb = full_path.stat().st_size / (1024**2)
+                        if size_mb > 1.0:  # 1MB 이상만 유효
+                            self.model_paths[model_name] = full_path.resolve()
+                            self.logger.info(f"✅ {model_name} 모델 발견: {full_path} ({size_mb:.1f}MB)")
                 
                 # ModelLoader 팩토리 패턴 의존성 주입 상태
                 self.model_loader = None
@@ -1222,6 +1420,20 @@ if BaseStepMixin:
                     'memory_manager': False,
                     'data_converter': False,
                     'di_container': False
+                }
+                
+                # 🔥 ai_stats 속성 초기화 (의존성 주입 직후 - 필수!)
+                self.ai_stats = {
+                    'total_processed': 0,
+                    'preprocessing_time': 0.0,
+                    'parsing_time': 0.0,
+                    'postprocessing_time': 0.0,
+                    'graphonomy_calls': 0,
+                    'u2net_calls': 0,
+                    'hybrid_calls': 0,
+                    'average_confidence': 0.0,
+                    'model_loader_calls': 0,
+                    'factory_pattern_calls': 0
                 }
                 
                 # 모델 로딩 상태
@@ -1244,20 +1456,6 @@ if BaseStepMixin:
                 self.parsing_cache = {}
                 self.cache_lock = threading.RLock()
                 
-                # 통계
-                self.ai_stats = {
-                    'total_processed': 0,
-                    'preprocessing_time': 0.0,
-                    'parsing_time': 0.0,
-                    'postprocessing_time': 0.0,
-                    'graphonomy_calls': 0,
-                    'u2net_calls': 0,
-                    'hybrid_calls': 0,
-                    'average_confidence': 0.0,
-                    'model_loader_calls': 0,
-                    'factory_pattern_calls': 0
-                }
-                
                 self.logger.info(f"✅ {self.step_name} ModelLoader 팩토리 패턴 기반 초기화 완료")
                 self.logger.info(f"   - Device: {self.device}")
                 self.logger.info(f"   - M3 Max: {self.is_m3_max}")
@@ -1265,7 +1463,8 @@ if BaseStepMixin:
             except Exception as e:
                 self.logger.error(f"❌ HumanParsingStep 초기화 실패: {e}")
                 self._emergency_setup(**kwargs)
-        
+
+
         def _emergency_setup(self, **kwargs):
             """긴급 설정"""
             try:
@@ -1288,265 +1487,7 @@ if BaseStepMixin:
                 }
             except Exception as e:
                 print(f"❌ 긴급 설정도 실패: {e}")
-        
-        # ==============================================
-        # 🔥 BaseStepMixin ModelLoader 팩토리 패턴 의존성 주입
-        # ==============================================
-        
-        def set_model_loader(self, model_loader: 'ModelLoader'):
-            """ModelLoader 팩토리 패턴 의존성 주입 (GitHub 표준)"""
-            try:
-                self.model_loader = model_loader
-                self.dependencies_injected['model_loader'] = True
-                self.ai_stats['model_loader_calls'] += 1
-                self.logger.info("✅ ModelLoader 팩토리 패턴 의존성 주입 완료")
-                
-                # Step 인터페이스 생성 시도 (ModelLoader 팩토리 패턴)
-                if hasattr(model_loader, 'create_step_interface'):
-                    try:
-                        self.model_interface = model_loader.create_step_interface(self.step_name)
-                        self.ai_stats['factory_pattern_calls'] += 1
-                        self.logger.info("✅ ModelLoader 팩토리 패턴 Step 인터페이스 생성 완료")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ Step 인터페이스 생성 실패, ModelLoader 직접 사용: {e}")
-                        self.model_interface = model_loader
-                else:
-                    self.logger.debug("ModelLoader에 create_step_interface 메서드 없음, 직접 사용")
-                    self.model_interface = model_loader
-                    
-            except Exception as e:
-                self.logger.error(f"❌ ModelLoader 팩토리 패턴 의존성 주입 실패: {e}")
-                self.dependencies_injected['model_loader'] = False
-        
-        def set_memory_manager(self, memory_manager: 'MemoryManager'):
-            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
-            try:
-                self.memory_manager = memory_manager
-                self.dependencies_injected['memory_manager'] = True
-                self.logger.info("✅ MemoryManager 의존성 주입 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ MemoryManager 의존성 주입 실패: {e}")
-                self.dependencies_injected['memory_manager'] = False
-        
-        def set_data_converter(self, data_converter: 'DataConverter'):
-            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
-            try:
-                self.data_converter = data_converter
-                self.dependencies_injected['data_converter'] = True
-                self.logger.info("✅ DataConverter 의존성 주입 완료")
-            except Exception as e:
-                self.logger.warning(f"⚠️ DataConverter 의존성 주입 실패: {e}")
-                self.dependencies_injected['data_converter'] = False
-        
-        def set_di_container(self, di_container: 'DIContainer'):
-            """DI Container 의존성 주입"""
-            try:
-                self.di_container = di_container
-                self.dependencies_injected['di_container'] = True
-                self.logger.info("✅ DI Container 의존성 주입 완료")
-                
-                # DI Container가 주입되면 자동으로 다른 의존성들도 해결 시도
-                self._try_auto_resolve_dependencies()
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ DI Container 의존성 주입 실패: {e}")
-                self.dependencies_injected['di_container'] = False
-        
-        def _try_auto_resolve_dependencies(self):
-            """DI Container를 통한 자동 의존성 해결"""
-            try:
-                if not self.di_container:
-                    return
-                
-                self.logger.info("🔄 DI Container를 통한 자동 의존성 해결 시도...")
-                
-                # ModelLoader 자동 해결
-                if not self.dependencies_injected.get('model_loader', False):
-                    try:
-                        model_loader = self.di_container.get('model_loader')
-                        if model_loader:
-                            self.set_model_loader(model_loader)
-                            self.logger.info("✅ DI Container를 통한 ModelLoader 자동 해결 성공")
-                    except Exception as e:
-                        self.logger.debug(f"ModelLoader 자동 해결 실패: {e}")
-                
-                # MemoryManager 자동 해결
-                if not self.dependencies_injected.get('memory_manager', False):
-                    try:
-                        memory_manager = self.di_container.get('memory_manager')
-                        if memory_manager:
-                            self.set_memory_manager(memory_manager)
-                            self.logger.info("✅ DI Container를 통한 MemoryManager 자동 해결 성공")
-                    except Exception as e:
-                        self.logger.debug(f"MemoryManager 자동 해결 실패: {e}")
-                
-                # DataConverter 자동 해결
-                if not self.dependencies_injected.get('data_converter', False):
-                    try:
-                        data_converter = self.di_container.get('data_converter')
-                        if data_converter:
-                            self.set_data_converter(data_converter)
-                            self.logger.info("✅ DI Container를 통한 DataConverter 자동 해결 성공")
-                    except Exception as e:
-                        self.logger.debug(f"DataConverter 자동 해결 실패: {e}")
-                
-                resolved_count = sum(1 for v in self.dependencies_injected.values() if v)
-                total_count = len(self.dependencies_injected)
-                self.logger.info(f"✅ DI Container 자동 의존성 해결 완료: {resolved_count}/{total_count}")
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ DI Container 자동 의존성 해결 실패: {e}")
-
-        def _connect_model_loader_directly(self) -> bool:
-            """DI Container 우회하여 직접 ModelLoader 팩토리 연결"""
-            try:
-                self.logger.info("🔄 직접 ModelLoader 팩토리 연결 시도...")
-                
-                # 방법 1: 글로벌 ModelLoader 함수 시도
-                try:
-                    import importlib
-                    model_loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-                    
-                    if hasattr(model_loader_module, 'get_global_model_loader'):
-                        get_global_model_loader = model_loader_module.get_global_model_loader
-                        model_loader = get_global_model_loader()
-                        
-                        if model_loader:
-                            self.set_model_loader(model_loader)
-                            self.logger.info("✅ 글로벌 ModelLoader 함수를 통한 직접 연결 성공")
-                            return True
-                except Exception as e:
-                    self.logger.debug(f"글로벌 ModelLoader 함수 실패: {e}")
-                
-                # 방법 2: ModelLoader 클래스 직접 생성
-                try:
-                    import importlib
-                    model_loader_module = importlib.import_module('app.ai_pipeline.utils.model_loader')
-                    
-                    if hasattr(model_loader_module, 'ModelLoader'):
-                        ModelLoaderClass = model_loader_module.ModelLoader
-                        model_loader = ModelLoaderClass(device=self.device)
-                        
-                        if model_loader:
-                            self.set_model_loader(model_loader)
-                            self.logger.info("✅ ModelLoader 클래스 직접 생성을 통한 연결 성공")
-                            return True
-                except Exception as e:
-                    self.logger.debug(f"ModelLoader 클래스 직접 생성 실패: {e}")
-                
-                # 방법 3: 상위 패키지에서 ModelLoader 가져오기
-                try:
-                    from app.ai_pipeline.utils import get_step_model_interface
-                    model_interface = get_step_model_interface(self.step_name)
-                    
-                    if model_interface and hasattr(model_interface, 'model_loader'):
-                        model_loader = model_interface.model_loader
-                        if model_loader:
-                            self.set_model_loader(model_loader)
-                            self.logger.info("✅ Step 모델 인터페이스를 통한 ModelLoader 연결 성공")
-                            return True
-                except Exception as e:
-                    self.logger.debug(f"Step 모델 인터페이스 ModelLoader 실패: {e}")
-                
-                self.logger.warning("⚠️ 모든 직접 ModelLoader 연결 방법 실패")
-                return False
-                
-            except Exception as e:
-                self.logger.error(f"❌ 직접 ModelLoader 연결 중 오류: {e}")
-                return False
-        
-        def _simulate_di_container_connection(self) -> bool:
-            """DI Container 연결을 시뮬레이션 (임시 해결책)"""
-            try:
-                self.logger.info("🔄 DI Container 연결 시뮬레이션 시도...")
-                
-                # 이미 ModelLoader가 주입되어 있으면 DI Container도 연결된 것으로 간주
-                if self.dependencies_injected.get('model_loader', False):
-                    # 가짜 DI Container 객체 생성
-                    class MockDIContainer:
-                        def __init__(self):
-                            self.services = {}
-                        
-                        def get(self, key):
-                            return self.services.get(key)
-                        
-                        def register(self, key, value, singleton=True):
-                            self.services[key] = value
-                    
-                    mock_container = MockDIContainer()
-                    mock_container.register('model_loader', self.model_loader)
-                    mock_container.register('memory_manager', self.memory_manager)
-                    mock_container.register('data_converter', self.data_converter)
-                    
-                    # Mock DI Container 설정
-                    self.di_container = mock_container
-                    self.dependencies_injected['di_container'] = True
-                    
-                    self.logger.info("✅ DI Container 연결 시뮬레이션 완료 (Mock DI Container)")
-                    return True
-                
-                return False
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ DI Container 시뮬레이션 실패: {e}")
-                return False
-        
-        def force_di_container_connection(self) -> bool:
-            """DI Container 강제 연결 시도"""
-            try:
-                self.logger.info("🔄 DI Container 강제 연결 시도...")
-                
-                # DI 시스템 사용 가능 여부 확인
-                if not DI_SYSTEM.get('available', False):
-                    self.logger.error("❌ DI Container 시스템이 사용 불가능합니다")
-                    return False
-                
-                # 글로벌 컨테이너 가져오기
-                get_global_container = DI_SYSTEM.get('get_global_container')
-                if not get_global_container:
-                    self.logger.error("❌ get_global_container 함수가 없습니다")
-                    return False
-                
-                # 컨테이너 연결
-                global_container = get_global_container()
-                if not global_container:
-                    self.logger.error("❌ 글로벌 DI Container가 None입니다")
-                    return False
-                
-                # DI Container 설정
-                self.set_di_container(global_container)
-                
-                # 초기화 함수 호출
-                initialize_di_system_safe = DI_SYSTEM.get('initialize_di_system_safe')
-                if initialize_di_system_safe:
-                    try:
-                        initialize_di_system_safe()
-                        self.logger.info("✅ DI Container 시스템 초기화 완료")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ DI Container 시스템 초기화 실패: {e}")
-                
-                # 안전한 의존성 주입
-                inject_dependencies_to_step_safe = DI_SYSTEM.get('inject_dependencies_to_step_safe')
-                if inject_dependencies_to_step_safe:
-                    try:
-                        inject_dependencies_to_step_safe(self, global_container)
-                        self.logger.info("✅ DI Container 기반 안전한 의존성 주입 완료")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ DI Container 기반 의존성 주입 실패: {e}")
-                
-                # 연결 상태 확인
-                di_connected = self.dependencies_injected.get('di_container', False)
-                if di_connected:
-                    self.logger.info("✅ DI Container 강제 연결 성공!")
-                    return True
-                else:
-                    self.logger.warning("⚠️ DI Container 연결되었지만 상태가 업데이트되지 않음")
-                    return False
-                    
-            except Exception as e:
-                self.logger.error(f"❌ DI Container 강제 연결 실패: {e}")
-                return False
-        
+     
         # ==============================================
         # 🔥 ModelLoader 팩토리 패턴 기반 초기화
         # ==============================================
@@ -1620,8 +1561,7 @@ if BaseStepMixin:
                     self.logger.info("✅ ModelLoader가 이미 주입되어 있음")
                 
                 # 1. 모델 경로 탐지 (ModelLoader 팩토리 패턴 호환)
-                path_mapper = ModelLoaderCompatiblePathMapper()
-                self.model_paths = path_mapper.get_model_paths_for_factory()
+                self.model_paths = get_verified_model_paths_for_human_parsing()
                 
                 # 2. ModelLoader 팩토리 패턴으로 AI 모델 로딩
                 self._load_ai_models_via_factory()
@@ -1667,9 +1607,9 @@ if BaseStepMixin:
                 self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
                 self.is_initialized = False
                 return False
-        
+       
         def _load_ai_models_via_factory(self):
-            """ModelLoader 팩토리 패턴을 통한 AI 모델 로딩"""
+            """ModelLoader 팩토리 패턴을 통한 AI 모델 로딩 (체크포인트 검증 기반)"""
             try:
                 if not TORCH_AVAILABLE:
                     self.logger.error("❌ PyTorch가 없어서 AI 모델 로딩 불가")
@@ -1677,11 +1617,14 @@ if BaseStepMixin:
                 
                 self.logger.info("🔄 ModelLoader 팩토리 패턴 기반 AI 모델 로딩 시작...")
                 
+                # 검증된 모델 경로 가져오기
+                verified_paths = get_verified_model_paths_for_human_parsing()
+                
                 # 1. Graphonomy 모델 로딩 (ModelLoader 팩토리 패턴)
-                if 'graphonomy' in self.model_paths:
+                if 'graphonomy' in verified_paths:
                     try:
                         graphonomy_model = GraphonomyModelWithFactory(
-                            str(self.model_paths['graphonomy']), 
+                            str(verified_paths['graphonomy']), 
                             self.device
                         )
                         
@@ -1699,27 +1642,23 @@ if BaseStepMixin:
                     except Exception as e:
                         self.logger.error(f"❌ Graphonomy ModelLoader 팩토리 패턴 로딩 실패: {e}")
                 
-                # 2. U2Net 모델 로딩 (ModelLoader 팩토리 패턴)
-                if 'u2net' in self.model_paths:
+                # 2. U2Net 대체 모델 로딩
+                if 'u2net_alternative' in verified_paths:
                     try:
                         u2net_model = U2NetModelWithFactory(
-                            str(self.model_paths['u2net']), 
+                            str(verified_paths['u2net_alternative']), 
                             self.device
                         )
                         
-                        # ModelLoader 팩토리 패턴 의존성 주입
                         if self.model_loader:
                             u2net_model.set_model_loader(self.model_loader)
                         
-                        # ModelLoader 팩토리 패턴으로 로딩 시도
                         if u2net_model.load_via_model_loader():
                             self.ai_models['u2net'] = u2net_model
                             self.models_loading_status['u2net'] = True
-                            self.logger.info("✅ U2Net ModelLoader 팩토리 패턴 로딩 완료")
-                        else:
-                            self.logger.warning("⚠️ U2Net ModelLoader 팩토리 패턴 로딩 실패")
+                            self.logger.info("✅ U2Net Alternative ModelLoader 팩토리 패턴 로딩 완료")
                     except Exception as e:
-                        self.logger.error(f"❌ U2Net ModelLoader 팩토리 패턴 로딩 실패: {e}")
+                        self.logger.error(f"❌ U2Net Alternative 로딩 실패: {e}")
                 
                 loaded_count = sum(self.models_loading_status.values())
                 total_models = len(self.models_loading_status)
@@ -1730,7 +1669,7 @@ if BaseStepMixin:
                 
             except Exception as e:
                 self.logger.error(f"❌ ModelLoader 팩토리 패턴 기반 AI 모델 로딩 실패: {e}")
-        
+
         def _detect_available_methods(self) -> List[HumanParsingModel]:
             """사용 가능한 파싱 방법 감지"""
             methods = []
@@ -1755,200 +1694,144 @@ if BaseStepMixin:
         # 🔥 핵심: 동기 _run_ai_inference() 메서드 (프로젝트 표준)
         # ==============================================
         
-        def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-            """
-            🔥 동기 AI 추론 로직 - BaseStepMixin v19.1에서 호출됨 (프로젝트 표준)
-            
-            ModelLoader 팩토리 패턴 기반 AI 강화된 파이프라인:
-            1. 고급 전처리 (품질 평가, 조명 정규화)
-            2. ModelLoader 팩토리 패턴 멀티모델 파싱 (Graphonomy + U2Net + SCHP)
-            3. 하이브리드 앙상블
-            4. 고급 후처리 (CRF + 멀티스케일)
-            5. 품질 검증 및 자동 재시도
-            """
+        def _run_ai_inference(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+            """🔥 실제 체크포인트 데이터를 사용한 AI 추론 (Mock 완전 제거)"""
             try:
-                self.logger.info(f"🧠 {self.step_name} ModelLoader 팩토리 패턴 기반 실제 AI 추론 시작")
+                # 1. ModelLoader 의존성 확인
+                if not hasattr(self, 'model_loader') or not self.model_loader:
+                    raise ValueError("ModelLoader가 주입되지 않음 - DI Container 연동 필요")
+                
+                # 2. 입력 데이터 검증
+                image = input_data.get('image')
+                if image is None:
+                    raise ValueError("입력 이미지 없음")
+                
+                self.logger.info("🔄 Human Parsing 실제 AI 추론 시작")
                 start_time = time.time()
                 
-                # 0. 입력 데이터 검증
-                if 'image' not in processed_input:
-                    return self._create_emergency_result("image가 없음")
+                # 3. 실제 Graphonomy 모델 로딩 (체크포인트 사용)
+                graphonomy_model = self._load_graphonomy_model_real()
+                if not graphonomy_model:
+                    raise ValueError("Graphonomy 모델 로딩 실패")
                 
-                image = processed_input['image']
+                # 4. 실제 체크포인트 데이터 사용
+                checkpoint_data = graphonomy_model.get_checkpoint_data()
+                if not checkpoint_data:
+                    raise ValueError("체크포인트 데이터 없음")
                 
-                # PIL Image로 변환
-                if isinstance(image, np.ndarray):
-                    pil_image = Image.fromarray(image.astype(np.uint8))
-                    image_array = image
-                elif PIL_AVAILABLE and isinstance(image, Image.Image):
-                    pil_image = image
-                    image_array = np.array(image)
-                else:
-                    return self._create_emergency_result("지원하지 않는 이미지 형식")
+                # 5. GPU/MPS 디바이스 설정
+                device = 'mps' if torch.backends.mps.is_available() else 'cpu'
                 
-                # ==============================================
-                # 🔥 Phase 1: 고급 전처리
-                # ==============================================
-                
-                preprocessing_start = time.time()
-                
-                # 1.1 이미지 품질 평가
-                quality_scores = self._assess_image_quality(image_array)
-                
-                # 1.2 조명 정규화
-                processed_image = self._normalize_lighting(image_array)
-                
-                # 1.3 색상 보정
-                if self.config.enable_color_correction:
-                    processed_image = self._correct_colors(processed_image)
-                
-                # 1.4 ROI 검출
-                roi_box = self._detect_roi(processed_image) if self.config.enable_roi_detection else None
-                
-                preprocessing_time = time.time() - preprocessing_start
-                self.ai_stats['preprocessing_time'] += preprocessing_time
-                
-                # ==============================================
-                # 🔥 Phase 2: ModelLoader 팩토리 패턴 실제 AI 멀티모델 파싱
-                # ==============================================
-                
-                parsing_start = time.time()
-                
-                # 품질 레벨 결정
-                quality_level = self._determine_quality_level(processed_input, quality_scores)
-                
-                # ModelLoader 팩토리 패턴 실제 AI 파싱 실행 (동기)
-                parsing_map, confidence, method_used = self._run_factory_ai_parsing_sync(
-                    processed_image, quality_level, roi_box
-                )
-                
-                if parsing_map is None:
-                    # 폴백: 기본 파싱 맵 생성
-                    parsing_map = self._create_fallback_parsing_map(processed_image)
-                    confidence = 0.3
-                    method_used = "fallback"
-                
-                parsing_time = time.time() - parsing_start
-                self.ai_stats['parsing_time'] += parsing_time
-                
-                # ==============================================
-                # 🔥 Phase 3: 고급 후처리
-                # ==============================================
-                
-                postprocessing_start = time.time()
-                
-                final_parsing_map = parsing_map
-                
-                # CRF 후처리
-                if self.config.enable_crf_postprocessing and DENSECRF_AVAILABLE:
-                    final_parsing_map = self.postprocessor.apply_crf_postprocessing(final_parsing_map, processed_image)
+                # 6. 실제 Graphonomy AI 추론 수행
+                with torch.no_grad():
+                    # 전처리
+                    processed_input = self._preprocess_image_for_graphonomy(image, device)
                     
-                # 멀티스케일 처리
-                if self.config.enable_multiscale_processing:
-                    final_parsing_map = self.postprocessor.apply_multiscale_processing(processed_image, final_parsing_map)
+                    # 모델 추론 (실제 체크포인트 사용)
+                    parsing_output = self._run_graphonomy_inference(processed_input, checkpoint_data, device)
+                    
+                    # 후처리
+                    parsing_result = self._postprocess_graphonomy_output(parsing_output, image.size if hasattr(image, 'size') else (512, 512))
                 
-                # 홀 채우기 및 노이즈 제거
-                if self.config.enable_hole_filling:
-                    final_parsing_map = self._fill_holes_and_remove_noise(final_parsing_map)
+                # 신뢰도 계산
+                confidence = self._calculate_parsing_confidence(parsing_output)
                 
-                postprocessing_time = time.time() - postprocessing_start
-                self.ai_stats['postprocessing_time'] += postprocessing_time
+                inference_time = time.time() - start_time
                 
-                # ==============================================
-                # 🔥 Phase 4: 옷 갈아입히기 분석
-                # ==============================================
-                
-                # 옷 갈아입히기 특화 분석
-                clothing_analysis = self._analyze_for_clothing_change(final_parsing_map)
-                
-                # 감지된 부위 분석 (20개 부위)
-                detected_parts = self._get_detected_parts(final_parsing_map)
-                
-                # 신체 마스크 생성 (다음 Step용)
-                body_masks = self._create_body_masks(final_parsing_map)
-                
-                # 품질 분석
-                quality_metrics = self._evaluate_parsing_quality(
-                    final_parsing_map, 
-                    detected_parts, 
-                    confidence
-                )
-                
-                # 시각화 생성
-                visualizations = self._create_visualizations(processed_image, final_parsing_map, roi_box)
-                
-                # 통계 업데이트
-                total_time = time.time() - start_time
-                self._update_ai_stats(method_used, confidence, total_time, quality_metrics)
-                
-                # ==============================================
-                # 🔥 최종 결과 반환 (BaseStepMixin 표준)
-                # ==============================================
-                
-                ai_result = {
-                    # 핵심 결과
-                    'parsing_map': final_parsing_map,
-                    'detected_parts': detected_parts,
-                    'body_masks': body_masks,
-                    'clothing_analysis': clothing_analysis,
+                return {
+                    'success': True,
+                    'parsing_result': parsing_result,
                     'confidence': confidence,
-                    'method_used': method_used,
-                    'processing_time': total_time,
-                    
-                    # 품질 메트릭
-                    'quality_score': quality_metrics.get('overall_score', 0.5),
-                    'quality_metrics': quality_metrics,
-                    'image_quality_scores': quality_scores,
-                    'parsing_coverage_ratio': np.sum(final_parsing_map > 0) / final_parsing_map.size if NUMPY_AVAILABLE else 0.0,
-                    
-                    # 전처리 결과
-                    'preprocessing_results': {
-                        'roi_box': roi_box,
-                        'lighting_normalized': self.config.enable_lighting_normalization,
-                        'color_corrected': self.config.enable_color_correction
-                    },
-                    
-                    # 성능 메트릭
-                    'performance_breakdown': {
-                        'preprocessing_time': preprocessing_time,
-                        'parsing_time': parsing_time,
-                        'postprocessing_time': postprocessing_time
-                    },
-                    
-                    # 시각화
-                    **visualizations,
-                    
-                    # ModelLoader 팩토리 패턴 메타데이터
-                    'metadata': {
-                        'ai_models_used': list(self.ai_models.keys()),
-                        'device': self.device,
-                        'is_m3_max': self.is_m3_max,
-                        'ai_enhanced': True,
-                        'quality_level': quality_level.value,
-                        'version': '32.0',
-                        'model_loader_factory_used': self.dependencies_injected.get('model_loader', False),
-                        'factory_pattern_calls': self.ai_stats['factory_pattern_calls'],
-                        'dependencies_injected': self.dependencies_injected.copy()
-                    },
-                    
-                    # Step 간 연동 데이터
-                    'parsing_features': self._extract_parsing_features(final_parsing_map, processed_image),
-                    'clothing_change_ready': clothing_analysis.calculate_change_feasibility() > 0.7,
-                    'recommended_next_steps': self._get_recommended_next_steps(clothing_analysis)
+                    'processing_time': inference_time,
+                    'device_used': device,
+                    'model_loaded': True,
+                    'checkpoint_used': True,
+                    'step_name': self.step_name,
+                    'model_info': {
+                        'model_name': 'Graphonomy',
+                        'checkpoint_size_mb': graphonomy_model.memory_usage_mb,
+                        'load_time': graphonomy_model.load_time
+                    }
                 }
                 
-                self.logger.info(f"✅ {self.step_name} ModelLoader 팩토리 패턴 기반 실제 AI 추론 완료 - {total_time:.2f}초")
-                self.logger.info(f"   - 방법: {method_used}")
-                self.logger.info(f"   - 신뢰도: {confidence:.3f}")
-                self.logger.info(f"   - 품질: {quality_metrics.get('overall_score', 0.5):.3f}")
-                self.logger.info(f"   - ModelLoader 팩토리 패턴 사용: {self.dependencies_injected.get('model_loader', False)}")
+            except Exception as e:
+                self.logger.error(f"❌ Human Parsing AI 추론 실패: {e}")
+                return self._create_error_response(str(e))
+
+
+        def _load_graphonomy_model_real(self):
+            """실제 Graphonomy 모델 로딩 (체크포인트 사용)"""
+            try:
+                # Step 인터페이스를 통한 모델 로딩
+                if hasattr(self, 'model_interface') and self.model_interface:
+                    return self.model_interface.get_model('graphonomy.pth')
                 
-                return ai_result
+                # 직접 ModelLoader 사용
+                elif hasattr(self, 'model_loader') and self.model_loader:
+                    return self.model_loader.load_model(
+                        'graphonomy.pth',
+                        step_name=self.step_name,
+                        step_type='human_parsing',
+                        validate=True
+                    )
+                
+                return None
                 
             except Exception as e:
-                self.logger.error(f"❌ {self.step_name} ModelLoader 팩토리 패턴 기반 실제 AI 추론 실패: {e}")
-                return self._create_emergency_result(str(e))
-        
+                self.logger.error(f"❌ Graphonomy 모델 로딩 실패: {e}")
+                return None
+
+        # ==============================================
+        # 🔥 3. 실제 Graphonomy 추론 메서드 (PyTorch weights_only 문제 해결)
+        # ==============================================
+
+        def _run_graphonomy_inference(self, input_tensor, checkpoint_data, device: str):
+            """실제 Graphonomy 모델 추론 (체크포인트 데이터 사용)"""
+            try:
+                import torch
+                import torch.nn.functional as F
+                
+                # 체크포인트에서 모델 state_dict 추출
+                if isinstance(checkpoint_data, dict):
+                    if 'state_dict' in checkpoint_data:
+                        state_dict = checkpoint_data['state_dict']
+                    elif 'model' in checkpoint_data:
+                        state_dict = checkpoint_data['model']
+                    else:
+                        state_dict = checkpoint_data
+                else:
+                    state_dict = checkpoint_data
+                
+                # Graphonomy 모델 아키텍처 생성
+                model = self._create_graphonomy_model()
+                
+                # 체크포인트 로드 (안전 로딩)
+                model.load_state_dict(state_dict, strict=False)
+                model.eval()
+                model.to(device)
+                
+                # 추론 수행
+                with torch.no_grad():
+                    output = model(input_tensor)
+                    
+                    # Softmax 적용
+                    if isinstance(output, tuple):
+                        output = output[0]  # 첫 번째 출력만 사용
+                    
+                    # Human parsing 결과 (20개 클래스)
+                    parsing_logits = F.softmax(output, dim=1)
+                    parsing_pred = torch.argmax(parsing_logits, dim=1)
+                
+                return {
+                    'parsing_pred': parsing_pred,
+                    'parsing_logits': parsing_logits,
+                    'confidence_map': torch.max(parsing_logits, dim=1)[0]
+                }
+                
+            except Exception as e:
+                self.logger.error(f"❌ Graphonomy 추론 실패: {e}")
+                raise
+
         # ==============================================
         # 🔥 ModelLoader 팩토리 패턴 기반 AI 헬퍼 메서드들
         # ==============================================

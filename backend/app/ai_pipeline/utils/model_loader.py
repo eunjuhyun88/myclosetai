@@ -73,6 +73,10 @@ try:
     import torch
     TORCH_AVAILABLE = True
     
+    # 🔥 YOLOv8 오류 방지를 위해 기본값을 False로 설정
+    import os
+    os.environ['PYTORCH_DISABLE_WEIGHTS_ONLY_LOAD'] = '1'
+    
     # 🔥 PyTorch 2.7 weights_only 문제 완전 해결
     if hasattr(torch, 'load'):
         original_torch_load = torch.load
@@ -86,6 +90,20 @@ try:
             try:
                 # 1단계: weights_only=True 시도 (가장 안전)
                 if weights_only:
+                    # 🔥 YOLOv8/Ultralytics 모델용 안전 글로벌 추가
+                    try:
+                        if hasattr(torch, 'serialization') and hasattr(torch.serialization, 'add_safe_globals'):
+                            torch.serialization.add_safe_globals([
+                                'ultralytics.nn.tasks.PoseModel',
+                                'ultralytics.nn.tasks.DetectionModel',
+                                'ultralytics.nn.tasks.SegmentationModel',
+                                'ultralytics.nn.modules.head.Pose',
+                                'ultralytics.nn.modules.block.C2f',
+                                'ultralytics.nn.modules.conv.Conv'
+                            ])
+                    except Exception:
+                        pass
+                    
                     return original_torch_load(f, map_location=map_location, 
                                              pickle_module=pickle_module, 
                                              weights_only=True, **kwargs)
@@ -135,6 +153,24 @@ try:
                 
                 # 원본 에러 다시 발생
                 raise e
+            except Exception as e:
+                # UnpicklingError 등 다른 예외 처리
+                error_msg = str(e).lower()
+                
+                if "unpicklingerror" in error_msg or "unsupported global" in error_msg:
+                    print(f"⚠️ Unpickling 오류 감지, weights_only=False로 재시도")
+                    try:
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            return original_torch_load(f, map_location=map_location, 
+                                                     pickle_module=pickle_module, 
+                                                     weights_only=False, **kwargs)
+                    except Exception:
+                        pass
+                
+                # 원본 에러 다시 발생
+                raise e
         
         # torch.load 대체
         torch.load = safe_torch_load
@@ -143,7 +179,7 @@ try:
 except ImportError:
     torch = None
     print("⚠️ PyTorch가 설치되지 않음")
-
+    
 # 디바이스 및 시스템 정보
 DEFAULT_DEVICE = "cpu"
 IS_M3_MAX = False
@@ -504,7 +540,7 @@ class RealAIModel:
     # 🔥 특화 로더들 (step_interface.py 실제 모델 경로 기반)
     # ==============================================
     def _load_pytorch_checkpoint(self) -> Optional[Any]:
-        """PyTorch 체크포인트 로딩 (PyTorch 2.7 완전 호환)"""
+        """PyTorch 체크포인트 로딩 (fix_checkpoints.py 성공 로직 적용)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 사용 불가능")
             return None
@@ -512,7 +548,7 @@ class RealAIModel:
         try:
             import warnings
             
-            # 1단계: 안전 모드 (weights_only=True)
+            # 🔥 1단계: 안전 모드 (weights_only=True) - fix_checkpoints.py 검증됨
             try:
                 checkpoint = torch.load(
                     self.model_path, 
@@ -523,6 +559,7 @@ class RealAIModel:
                 return checkpoint
             except RuntimeError as safe_error:
                 error_msg = str(safe_error).lower()
+                # 🔥 Legacy 포맷 감지 로직 추가 (fix_checkpoints.py 기반)
                 if "legacy .tar format" in error_msg or "torchscript" in error_msg:
                     self.logger.debug(f"Legacy/TorchScript 파일 감지: {self.model_name}")
                 else:
@@ -530,7 +567,7 @@ class RealAIModel:
             except Exception as e:
                 self.logger.debug(f"안전 모드 예외: {e}")
             
-            # 2단계: 호환 모드 (weights_only=False)
+            # 🔥 2단계: 호환 모드 (weights_only=False) - fix_checkpoints.py 검증됨
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
@@ -544,7 +581,7 @@ class RealAIModel:
             except Exception as compat_error:
                 self.logger.debug(f"호환 모드 실패: {compat_error}")
             
-            # 3단계: Legacy 모드 (파라미터 최소화)
+            # 🔥 3단계: Legacy 모드 (파라미터 최소화) - fix_checkpoints.py 검증됨
             try:
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore")
@@ -559,12 +596,17 @@ class RealAIModel:
         except Exception as e:
             self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
             return None
-        
+
     def _load_safetensors(self) -> Optional[Any]:
-        """Safetensors 파일 로딩 (RealVisXL, Diffusion 등)"""
+        """Safetensors 파일 로딩 (fix_checkpoints.py 검증된 방법)"""
         try:
             import safetensors.torch
-            checkpoint = safetensors.torch.load_file(str(self.model_path))
+            
+            # 🔥 Safetensors 로딩 (fix_checkpoints.py에서 성공 확인됨)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                checkpoint = safetensors.torch.load_file(str(self.model_path))
+            
             self.logger.debug(f"✅ {self.model_name} Safetensors 로딩 성공")
             return checkpoint
         except ImportError:
@@ -572,8 +614,11 @@ class RealAIModel:
             return self._load_pytorch_checkpoint()
         except Exception as e:
             self.logger.error(f"❌ Safetensors 로딩 실패: {e}")
-            return None
-    
+            # 🔥 Safetensors 실패 시 PyTorch 로딩 폴백
+            self.logger.info("🔄 PyTorch 로딩으로 폴백 시도")
+            return self._load_pytorch_checkpoint()
+
+
     def _load_graphonomy_ultra_safe(self) -> bool:
         """Graphonomy 1.2GB 모델 초안전 로딩 (step_interface.py 경로 기반)"""
         try:
@@ -1594,13 +1639,68 @@ class ModelLoader:
             return None
     
     def _find_model_path(self, model_name: str, **kwargs) -> Optional[str]:
-        """실제 파일 구조 기반 모델 경로 찾기 - 단순하고 효율적"""
+        """
+        실제 파일 구조 기반 모델 경로 찾기 - fix_checkpoints.py에서 검증된 경로들 우선 사용
+        """
         try:
             # 직접 경로 지정된 경우
             if 'model_path' in kwargs:
                 path = Path(kwargs['model_path'])
                 if path.exists():
                     return str(path)
+            
+            # 🔥 fix_checkpoints.py에서 검증된 실제 파일 경로들
+            VERIFIED_MODEL_PATHS = {
+                # Human Parsing (✅ 170.5MB 검증됨)
+                "graphonomy": "checkpoints/step_01_human_parsing/graphonomy.pth",
+                "graphonomy.pth": "checkpoints/step_01_human_parsing/graphonomy.pth",
+                
+                # Cloth Segmentation (✅ 2445.7MB 검증됨)
+                "sam": "checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "sam_vit_h_4b8939": "checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "sam_vit_h_4b8939.pth": "checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                
+                # U2Net alternative (✅ 38.8MB 검증됨)
+                "u2net": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                "u2net_alternative": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                "u2net_alternative.pth": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                
+                # Cloth Warping (✅ 6616.6MB 검증됨)
+                "realvis": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "realvisxl": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "RealVisXL_V4.0": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "RealVisXL_V4.0.safetensors": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                
+                # Virtual Fitting (✅ 3278.9MB 검증됨 - 4개 파일)
+                "diffusion_unet_vton": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_garm": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_vton_dc": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_garm_dc": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+                "diffusion_main": "step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
+                
+                # Quality Assessment (✅ 5213.7MB 검증됨)
+                "clip": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "open_clip": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "open_clip_pytorch_model": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "open_clip_pytorch_model.bin": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                
+                # Stable Diffusion (✅ 4067.6MB 검증됨)
+                "stable_diffusion": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "v1-5-pruned": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "v1-5-pruned-emaonly": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "v1-5-pruned-emaonly.safetensors": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                
+                # Pose Estimation (✅ 1378.2MB 검증됨)
+                "diffusion_pose": "step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors",
+                "diffusion_pytorch_model": "step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+            }
+            
+            # 🔥 검증된 경로에서 먼저 찾기
+            if model_name in VERIFIED_MODEL_PATHS:
+                verified_path = self.model_cache_dir / VERIFIED_MODEL_PATHS[model_name]
+                if verified_path.exists():
+                    self.logger.info(f"✅ 검증된 경로에서 모델 발견: {model_name} → {verified_path}")
+                    return str(verified_path)
             
             # 캐시된 경로가 있는 경우
             if hasattr(self, '_model_path_cache') and model_name in self._model_path_cache:
@@ -1612,115 +1712,47 @@ class ModelLoader:
             if not hasattr(self, '_model_path_cache'):
                 self._model_path_cache = {}
             
-            # 실제 파일명 매핑 (현재 구조 기반)
+            # 🔥 기존 매핑 방식도 유지 (하위 호환성)
             model_name_mappings = {
                 # Human Parsing 모델들
                 'graphonomy': [
+                    'checkpoints/step_01_human_parsing/graphonomy.pth',  # ✅ 검증됨
                     'checkpoints/step_01_human_parsing/graphonomy_alternative.pth',
                     'step_01_human_parsing/graphonomy_fixed.pth',
                     'step_01_human_parsing/graphonomy_new.pth',
                     'Graphonomy/inference.pth'
                 ],
-                'schp_atr': [
-                    'exp-schp-201908301523-atr.pth',
-                    'Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth'
-                ],
-                'atr_model': [
-                    'exp-schp-201908301523-atr.pth',
-                    'Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth'
-                ],
-                'schp_lip': [
-                    'step_06_virtual_fitting/ootdiffusion/checkpoints/humanparsing/exp-schp-201908261155-lip.pth'
-                ],
-                
-                # Pose Estimation 모델들
-                'hrnet': [
-                    'step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth',
-                    'step_02_pose_estimation/yolov8s-pose.pt'
-                ],
-                'openpose': [
-                    'step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth'
-                ],
-                'body_pose_model': [
-                    'step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth'
-                ],
                 
                 # Cloth Segmentation 모델들
                 'sam': [
-                    'checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',
+                    'checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',  # ✅ 검증됨
                     'step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth',
                     'step_03_cloth_segmentation/ultra_models/sam_vit_h_4b8939.pth'
                 ],
-                'sam_vit_h': [
-                    'checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',
-                    'step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth'
-                ],
-                'sam_vit_l': [
-                    'checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth'
-                ],
-                'mobile_sam': [
-                    'checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt',
-                    'step_03_cloth_segmentation/mobile_sam.pt'
-                ],
                 'u2net': [
-                    'checkpoints/step_03_cloth_segmentation/u2net_fallback.pth',
+                    'checkpoints/step_03_cloth_segmentation/u2net_alternative.pth',  # ✅ 검증됨
                     'step_03_cloth_segmentation/u2net.pth'
-                ],
-                
-                # Geometric Matching 모델들
-                'resnet': [
-                    'step_04_geometric_matching/ultra_models/resnet101_geometric.pth'
-                ],
-                'raft': [
-                    'step_04_geometric_matching/ultra_models/raft-things.pth'
-                ],
-                'vit': [
-                    'step_04_geometric_matching/ultra_models/ViT-L-14.pt',
-                    'step_08_quality_assessment/ultra_models/ViT-L-14.pt'
-                ],
-                'efficientnet': [
-                    'step_04_geometric_matching/ultra_models/efficientnet_b0_ultra.pth'
-                ],
-                
-                # Cloth Warping 모델들
-                'tom': [
-                    'checkpoints/step_05_cloth_warping/tom_final.pth'
-                ],
-                'hrviton': [
-                    'checkpoints/step_06_virtual_fitting/hrviton_final.pth'
-                ],
-                'vgg': [
-                    'step_05_cloth_warping/ultra_models/vgg19_warping.pth',
-                    'step_05_cloth_warping/ultra_models/vgg16_warping_ultra.pth'
                 ],
                 
                 # Virtual Fitting 모델들
                 'ootdiffusion': [
-                    'step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin',
-                    'checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors'
-                ],
-                'stable_diffusion': [
-                    'checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors',
-                    'checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors'
-                ],
-                
-                # Post Processing 모델들
-                'esrgan': [
-                    'step_07_post_processing/esrgan_x8_ultra/ESRGAN_x8.pth',
-                    'step_07_post_processing/ultra_models/RealESRGAN_x4plus.pth'
-                ],
-                'gfpgan': [
-                    'checkpoints/step_07_post_processing/GFPGAN.pth'
+                    'step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors',  # ✅ 검증됨
+                    'step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors',  # ✅ 검증됨
+                    'step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors',  # ✅ 검증됨
+                    'step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin'
                 ],
                 
                 # Quality Assessment 모델들
                 'clip': [
+                    'step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin',  # ✅ 검증됨 5.2GB
                     'step_08_quality_assessment/clip_vit_g14/open_clip_pytorch_model.bin',
                     'step_08_quality_assessment/clip_vit_b32.pth'
                 ],
-                'lpips': [
-                    'checkpoints/step_08_quality_assessment/lpips_vgg.pth',
-                    'checkpoints/step_08_quality_assessment/lpips_alex.pth'
+                
+                # Stable Diffusion 모델들
+                'stable_diffusion': [
+                    'checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors',  # ✅ 검증됨 4.1GB
+                    'checkpoints/stable-diffusion-v1-5/v1-5-pruned.safetensors'
                 ]
             }
             
@@ -1733,7 +1765,7 @@ class ModelLoader:
                         self.logger.info(f"✅ 모델 발견: {model_name} → {full_path}")
                         return str(full_path)
             
-            # 매핑에 없는 경우 - 파일명으로 직접 검색 (최후 수단)
+            # 매핑에 없는 경우 - 파일명으로 직접 검색
             search_patterns = [
                 f"**/{model_name}.pth",
                 f"**/{model_name}.pt", 
@@ -1761,6 +1793,9 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 모델 경로 찾기 실패 {model_name}: {e}")
             return None
+
+
+
 
     # 추가: 모델 캐시 초기화 함수
     def clear_model_cache(self):
@@ -2011,16 +2046,25 @@ class ModelLoader:
             return False
     
     def force_register_to_di_container(self) -> bool:
-        """DI Container에 강제 등록"""
+        """🔥 DI Container에 강제 등록 (BaseStepMixin 연동을 위해)"""
         try:
             if not self._di_container:
                 return False
             
-            return self._di_container.force_register_model_loader(self)
-            
+            # ModelLoader를 DI Container에 강제 등록
+            success = self._di_container.force_register_model_loader(self)
+            if success:
+                self.logger.info("✅ ModelLoader가 DI Container에 강제 등록됨")
+                return True
+            else:
+                self.logger.warning("⚠️ ModelLoader DI Container 강제 등록 실패")
+                return False
+                
         except Exception as e:
             self.logger.error(f"❌ DI Container 강제 등록 실패: {e}")
             return False
+
+
     def validate_model_compatibility(self, model_name: str, step_name: str) -> bool:
         """실제 AI 모델 호환성 검증 (step_interface.py 호환)"""
         try:
@@ -2227,68 +2271,110 @@ _global_model_loader: Optional[ModelLoader] = None
 _loader_lock = threading.Lock()
 
 def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoader:
-   """전역 ModelLoader 인스턴스 반환 (step_interface.py 호환)"""
-   global _global_model_loader
-   
-   with _loader_lock:
-       if _global_model_loader is None:
-           try:
-               # 설정 적용
-               loader_config = config or {}
-               
-               # 🔥 DI Container 조회해서 주입
-               di_container = None
-               try:
-                   # 순환참조 방지를 위한 동적 import
-                   import importlib
-                   di_module = importlib.import_module('app.core.di_container')
-                   get_global_container = getattr(di_module, 'get_global_container', None)
-                   if get_global_container:
-                       di_container = get_global_container()
-                       logger.debug("✅ DI Container 조회 성공")
-                   else:
-                       logger.debug("⚠️ get_global_container 함수 없음")
-               except ImportError as e:
-                   logger.debug(f"⚠️ DI Container 모듈 import 실패: {e}")
-               except Exception as e:
-                   logger.debug(f"⚠️ DI Container 조회 실패: {e}")
-               
-               # 🔥 ModelLoader 생성 시 DI Container 주입
-               _global_model_loader = ModelLoader(
-                   device=loader_config.get('device', 'auto'),
-                   max_cached_models=loader_config.get('max_cached_models', 10),
-                   enable_optimization=loader_config.get('enable_optimization', True),
-                   di_container=di_container,  # 🔥 DI Container 주입
-                   **loader_config
-               )
-               
-               # 🔥 DI Container에 등록 확인 및 강제 등록
-               if di_container:
-                   try:
-                       # ModelLoader를 DI Container에 강제 등록
-                       success = di_container.force_register_model_loader(_global_model_loader)
-                       if success:
-                           logger.info("✅ ModelLoader가 DI Container에 강제 등록됨")
-                       else:
-                           logger.warning("⚠️ ModelLoader DI Container 강제 등록 실패")
-                       
-                       # 등록 확인
-                       ensure_model_loader_registration = getattr(di_module, 'ensure_model_loader_registration', None)
-                       if ensure_model_loader_registration:
-                           ensure_model_loader_registration()
-                           
-                   except Exception as e:
-                       logger.debug(f"⚠️ ModelLoader 등록 확인 실패: {e}")
-               
-               logger.info("✅ 전역 step_interface.py 호환 ModelLoader v5.1 생성 성공 (DI Container 연동)")
-               
-           except Exception as e:
-               logger.error(f"❌ 전역 ModelLoader 생성 실패: {e}")
-               # 기본 설정으로 폴백 (DI Container 없이)
-               _global_model_loader = ModelLoader(device="cpu", di_container=None)
-               
-       return _global_model_loader
-   
+    """전역 ModelLoader 인스턴스 반환 (step_interface.py 호환, TypeError 해결)"""
+    global _global_model_loader
+    
+    with _loader_lock:
+        if _global_model_loader is None:
+            try:
+                # 설정 적용 (안전한 복사)
+                loader_config = config.copy() if config else {}
+                
+                # 🔥 DI Container 안전 추출 (중복 키 방지)
+                di_container = loader_config.pop('di_container', None)
+                
+                # DI Container 조회 시도 (config에 없는 경우)
+                if di_container is None:
+                    try:
+                        import importlib
+                        di_module = importlib.import_module('app.core.di_container')
+                        get_global_container = getattr(di_module, 'get_global_container', None)
+                        if get_global_container:
+                            di_container = get_global_container()
+                            logger.debug("✅ DI Container 조회 성공")
+                    except Exception as e:
+                        logger.debug(f"⚠️ DI Container 조회 실패: {e}")
+                
+                # 🔥 ModelLoader 생성 파라미터 (안전한 방식)
+                creation_params = {
+                    'device': loader_config.get('device', 'auto'),
+                    'max_cached_models': loader_config.get('max_cached_models', 10),
+                    'enable_optimization': loader_config.get('enable_optimization', True),
+                }
+                
+                # 추가 config 파라미터들 병합 (di_container 제외)
+                for key, value in loader_config.items():
+                    if key not in creation_params:  # 중복 방지
+                        creation_params[key] = value
+                
+                # 🔥 ModelLoader 생성 (di_container 분리 생성)
+                _global_model_loader = ModelLoader(**creation_params)
+                
+                # 🔥 생성 후 DI Container 설정 (TypeError 방지)
+                if di_container:
+                    try:
+                        # ModelLoader에 DI Container 설정
+                        if hasattr(_global_model_loader, 'set_di_container'):
+                            _global_model_loader.set_di_container(di_container)
+                        
+                        # DI Container에 ModelLoader 등록
+                        if hasattr(di_container, 'force_register_model_loader'):
+                            success = di_container.force_register_model_loader(_global_model_loader)
+                            if success:
+                                logger.info("✅ ModelLoader가 DI Container에 강제 등록됨")
+                        
+                        # 등록 확인
+                        if hasattr(di_module, 'ensure_model_loader_registration'):
+                            di_module.ensure_model_loader_registration()
+                            
+                    except Exception as e:
+                        logger.debug(f"⚠️ ModelLoader DI Container 연동 실패: {e}")
+                
+                logger.info("✅ 전역 step_interface.py 호환 ModelLoader v5.1 생성 성공")
+                
+            except TypeError as type_error:
+                # 🔥 TypeError 발생 시 안전한 폴백 처리
+                if "multiple values" in str(type_error) or "di_container" in str(type_error):
+                    logger.warning(f"ModelLoader 생성 TypeError 감지: {type_error}")
+                    logger.info("🔄 기본 설정으로 ModelLoader 재생성 시도...")
+                    
+                    try:
+                        # 최소 파라미터로 생성
+                        _global_model_loader = ModelLoader(device="cpu")
+                        
+                        # 생성 후 설정 적용
+                        if hasattr(_global_model_loader, 'device') and loader_config.get('device'):
+                            _global_model_loader.device = loader_config['device']
+                        
+                        # DI Container 설정
+                        if di_container and hasattr(_global_model_loader, 'set_di_container'):
+                            _global_model_loader.set_di_container(di_container)
+                            logger.info("✅ ModelLoader 기본 생성 후 DI Container 설정 완료")
+                        
+                        logger.info("✅ ModelLoader TypeError 폴백 생성 성공")
+                        
+                    except Exception as fallback_error:
+                        logger.error(f"❌ ModelLoader 폴백 생성도 실패: {fallback_error}")
+                        # 최후 수단: 완전 기본 설정
+                        _global_model_loader = ModelLoader(device="cpu")
+                        logger.warning("⚠️ ModelLoader 최소 기본 설정으로 생성됨")
+                        
+                else:
+                    # 다른 TypeError는 그대로 전파
+                    raise type_error
+                    
+            except Exception as e:
+                logger.error(f"❌ 전역 ModelLoader 생성 실패: {e}")
+                # 완전 폴백: 기본 설정으로 생성
+                try:
+                    _global_model_loader = ModelLoader(device="cpu")
+                    logger.warning("⚠️ ModelLoader 완전 폴백 생성")
+                except Exception as final_error:
+                    logger.error(f"❌ ModelLoader 완전 폴백도 실패: {final_error}")
+                    raise RuntimeError("ModelLoader 생성 완전 실패")
+                
+        return _global_model_loader
+
 def initialize_global_model_loader(**kwargs) -> bool:
     """전역 ModelLoader 초기화 (step_interface.py 호환)"""
     try:
