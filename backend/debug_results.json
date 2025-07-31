@@ -1,9 +1,9 @@
 {
-  "timestamp": "2025-08-01T06:59:16.668897",
+  "timestamp": "2025-08-01T07:48:01.750179",
   "project_root": "/Users/gimdudeul/MVP/mycloset-ai",
   "backend_root": "/Users/gimdudeul/MVP/mycloset-ai/backend",
   "ai_models_root": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models",
-  "execution_time": 7.257646083831787,
+  "execution_time": 8.139247179031372,
   "results": [
     {
       "name": "프로젝트 루트",
