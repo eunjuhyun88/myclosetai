@@ -67,7 +67,14 @@ def get_base_step_mixin_class():
             logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
             return None
 
-BaseStepMixin = get_base_step_mixin_class()
+# 🔥 Central Hub v7.0 - 중앙 집중식 BaseStepMixin 관리 사용
+try:
+    from . import get_central_base_step_mixin
+    BaseStepMixin = get_central_base_step_mixin()
+    if BaseStepMixin is None:
+        BaseStepMixin = get_base_step_mixin_class()
+except ImportError:
+    BaseStepMixin = get_base_step_mixin_class()
 # NumPy 필수
 try:
     import numpy as np
@@ -2671,18 +2678,18 @@ def optimize_memory():
 # ==============================================
 
 __all__ = [
-    # 메인 클래스
-    'EnhancedHumanParsingConfig',
-    
-    # 모델 클래스들
-    'AdvancedGraphonomyResNetASPP',
-    'U2NetForParsing', 
-    'MockHumanParsingModel',
+    # 메인 Step 클래스 (핵심)
+    'HumanParsingStep',
     
     # 설정 클래스들
     'EnhancedHumanParsingConfig',
     'HumanParsingModel',
     'QualityLevel',
+    
+    # 모델 클래스들
+    'AdvancedGraphonomyResNetASPP',
+    'U2NetForParsing', 
+    'MockHumanParsingModel',
     
     # 팩토리 함수들
     'create_human_parsing_step',

@@ -43,6 +43,7 @@ import json
 import base64
 import weakref
 import math
+import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
@@ -968,7 +969,7 @@ class PostProcessingStep(BaseStepMixin):
             return False
     
     async def _load_real_ai_models(self):
-        """🔥 실제 AI 모델들 로딩 - 검증 강화"""
+        """🔥 실제 AI 모델들 로딩 - 비동기 처리 개선"""
         try:
             self.logger.info("🧠 실제 AI 모델 로딩 시작...")
             
@@ -978,82 +979,133 @@ class PostProcessingStep(BaseStepMixin):
                 await self._create_default_models()
                 return
             
-            # 체크포인트 경로 검증
-            required_models = [
-                'ESRGAN_x8.pth',
-                'RealESRGAN_x4plus.pth', 
-                '001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth'
-            ]
+            # 1. 먼저 모델 파일 경로 검증
+            path_status = self._validate_model_paths()
+            available_models = [model for model, exists in path_status.items() if exists]
             
+            if not available_models:
+                self.logger.warning("⚠️ 사용 가능한 모델 파일이 없음 - 기본 모델로 폴백")
+                await self._create_default_models()
+                return
+            
+            self.logger.info(f"📁 사용 가능한 모델: {len(available_models)}/{len(path_status)}")
+            
+            # 2. 사용 가능한 모델들만 로딩 시도
             loaded_count = 0
-            for model_name in required_models:
+            for model_name in available_models:
                 try:
                     success = await self._load_single_model(model_name)
                     if success:
                         loaded_count += 1
+                    else:
+                        self.logger.warning(f"⚠️ {model_name} 로딩 실패")
                 except Exception as e:
-                    self.logger.warning(f"⚠️ {model_name} 로딩 실패: {e}")
+                    self.logger.warning(f"⚠️ {model_name} 로딩 중 예외 발생: {e}")
             
             self.has_model = loaded_count > 0
             self.model_loaded = self.has_model
             
-            self.logger.info(f"✅ AI 모델 로딩 완료: {loaded_count}/{len(required_models)}")
+            if loaded_count == 0:
+                self.logger.warning("⚠️ 모든 모델 로딩 실패 - 기본 모델로 폴백")
+                await self._create_default_models()
+            
+            self.logger.info(f"✅ AI 모델 로딩 완료: {loaded_count}/{len(available_models)}")
             
         except Exception as e:
             self.logger.error(f"❌ AI 모델 로딩 실패: {e}")
             await self._create_default_models()
-   
-    def _load_single_model(self, model_path: str, model_type: str = "post_processing") -> bool:
-        """단일 모델 로딩"""
+
+    def _validate_model_paths(self) -> Dict[str, bool]:
+        """모델 파일 경로 존재 여부 확인"""
+        model_paths = {
+            'ESRGAN_x8.pth': self.checkpoint_path / "esrgan_x8_ultra" / "ESRGAN_x8.pth",
+            'RealESRGAN_x4plus.pth': self.checkpoint_path / "ultra_models" / "RealESRGAN_x4plus.pth",
+            '001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth': self.checkpoint_path / "ultra_models" / "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth"
+        }
+        
+        path_status = {}
+        for model_name, path in model_paths.items():
+            exists = path.exists() if path else False
+            path_status[model_name] = exists
+            if not exists:
+                self.logger.warning(f"❌ 모델을 찾을 수 없음: {model_name}")
+                self.logger.error(f"❌ 모델 경로를 찾을 수 없음: {model_name}")
+            else:
+                self.logger.info(f"✅ 모델 파일 확인: {model_name}")
+        
+        return path_status
+            
+    async def _load_single_model(self, model_name: str, model_type: str = "post_processing") -> bool:
+        """단일 모델 로딩 - 비동기 호출 수정"""
         try:
             if not self.model_loader:
                 self.logger.warning("⚠️ ModelLoader 없음")
                 return False
                 
-            model = self.model_loader.load_model(
-                model_name=model_path,
-                step_name="PostProcessingStep",
-                model_type=model_type
-            )
+            # 비동기 메서드 확인 및 호출
+            if hasattr(self.model_loader, 'get_model_async'):
+                try:
+                    model = await self.model_loader.get_model_async(model_name)
+                except Exception as async_error:
+                    self.logger.warning(f"⚠️ 비동기 로딩 실패, 동기 방식으로 재시도: {async_error}")
+                    model = self.model_loader.get_model(model_name) if hasattr(self.model_loader, 'get_model') else None
+            else:
+                # 동기 메서드 사용
+                model = self.model_loader.get_model(model_name) if hasattr(self.model_loader, 'get_model') else None
             
             if model:
                 self.ai_models[model_type] = model
-                self.logger.info(f"✅ {model_path} 로딩 성공")
+                self.logger.info(f"✅ {model_name} 로딩 성공")
                 return True
             else:
-                self.logger.warning(f"⚠️ {model_path} 로딩 실패")
+                self.logger.warning(f"⚠️ {model_name} 로딩 실패")
                 return False
                 
         except Exception as e:
-            self.logger.error(f"❌ {model_path} 로딩 오류: {e}")
+            self.logger.error(f"❌ {model_name} 로딩 오류: {e}")
             return False
-        
+
     async def _create_default_models(self):
-        """기본 AI 모델 생성 (폴백)"""
+        """기본 AI 모델 생성 (폴백) - 오류 처리 강화"""
         try:
             if TORCH_AVAILABLE:
-                self.esrgan_model = ESRGANModel(upscale=4).to(self.device)
-                self.swinir_model = SwinIRModel().to(self.device)
-                self.face_enhancement_model = FaceEnhancementModel().to(self.device)
+                # 기본 모델들 생성
+                try:
+                    self.esrgan_model = ESRGANModel(upscale=4).to(self.device)
+                    self.esrgan_model.eval()
+                    self.ai_models['esrgan'] = self.esrgan_model
+                    self.logger.info("✅ ESRGAN 기본 모델 생성 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ ESRGAN 기본 모델 생성 실패: {e}")
                 
-                for model in [self.esrgan_model, self.swinir_model, self.face_enhancement_model]:
-                    model.eval()
+                try:
+                    self.swinir_model = SwinIRModel().to(self.device)
+                    self.swinir_model.eval()
+                    self.ai_models['swinir'] = self.swinir_model
+                    self.logger.info("✅ SwinIR 기본 모델 생성 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ SwinIR 기본 모델 생성 실패: {e}")
                 
-                self.ai_models = {
-                    'esrgan': self.esrgan_model,
-                    'swinir': self.swinir_model,
-                    'face_enhancement': self.face_enhancement_model
-                }
+                try:
+                    self.face_enhancement_model = FaceEnhancementModel().to(self.device)
+                    self.face_enhancement_model.eval()
+                    self.ai_models['face_enhancement'] = self.face_enhancement_model
+                    self.logger.info("✅ FaceEnhancement 기본 모델 생성 완료")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ FaceEnhancement 기본 모델 생성 실패: {e}")
                 
-                self.has_model = True
-                self.model_loaded = True
-                self.logger.info("✅ 기본 AI 모델 생성 완료")
+                self.has_model = len(self.ai_models) > 0
+                self.model_loaded = self.has_model
+                self.logger.info(f"✅ 기본 AI 모델 생성 완료 - {len(self.ai_models)}개 모델")
             else:
                 self.logger.warning("⚠️ PyTorch 없음 - Mock 모델로 폴백")
+                self.has_model = False
+                self.model_loaded = False
                 
         except Exception as e:
             self.logger.error(f"❌ 기본 모델 생성 실패: {e}")
-
+            self.has_model = False
+            self.model_loaded = False
     
     async def _load_esrgan_model(self):
         """ESRGAN 모델 로딩"""

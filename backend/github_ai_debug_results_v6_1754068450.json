@@ -1,12 +1,12 @@
 {
-  "timestamp": 1754057848.780829,
+  "timestamp": 1754068425.850413,
   "debug_version": "6.0",
   "github_project": "MyCloset AI Pipeline",
   "system_environment": {
     "hardware": {
       "is_m3_max": true,
       "total_memory_gb": 128.0,
-      "available_memory_gb": 69.00093078613281,
+      "available_memory_gb": 41.677001953125,
       "cpu_cores": 16
     },
     "software": {
@@ -80,7 +80,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 1.1920928955078125e-05,
+        "time": 1.8835067749023438e-05,
         "errors": []
       },
       "class_analysis": {
@@ -100,7 +100,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 3.4809112548828125e-05,
+        "time": 3.314018249511719e-05,
         "errors": []
       },
       "dependencies": {
@@ -140,8 +140,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 9.100675821304321,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 8.682474851608276,
             "access_count": 88,
             "injection_count": 7,
             "registry_stats": {
@@ -151,149 +151,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 5,
-                  "last_accessed": 1754057849.729564
+                  "last_accessed": 1754068426.785523
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 16,
-                  "last_accessed": 1754057850.16066
+                  "last_accessed": 1754068427.210796
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 15,
-                  "last_accessed": 1754057850.160665
+                  "last_accessed": 1754068427.2108018
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -306,18 +306,18 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057850.160937
+          "timestamp": 1754068427.211087
         }
       },
       "ai_models": {
         "detected_files": [
-          "graphonomy.pth",
           "deeplab_resnet101.pth",
-          "graphonomy_new.pth",
-          "fcn_resnet101_ultra.pth",
+          "graphonomy_fixed.pth",
+          "pytorch_model.bin",
+          "graphonomy.pth",
           "pytorch_model.bin"
         ],
-        "total_size_gb": 0.8013097513467073,
+        "total_size_gb": 0.8475427646189928,
         "checkpoint_count": 5,
         "loading_success_rate": 100.0
       },
@@ -344,7 +344,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 1.5020370483398438e-05,
+        "time": 2.09808349609375e-05,
         "errors": []
       },
       "class_analysis": {
@@ -364,12 +364,12 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.06178402900695801,
+        "time": 0.00030612945556640625,
         "errors": []
       },
       "dependencies": {
         "model_loader_injected": true,
-        "central_hub_connected": false,
+        "central_hub_connected": true,
         "validation_result": {
           "success": true,
           "dependencies": {
@@ -377,7 +377,7 @@
             "memory_manager": true,
             "data_converter": true,
             "step_interface": true,
-            "central_hub_container": false
+            "central_hub_container": true
           },
           "github_compatible": true,
           "central_hub_integrated": true,
@@ -404,8 +404,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 11.297871828079224,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 10.177882671356201,
             "access_count": 97,
             "injection_count": 10,
             "registry_stats": {
@@ -415,149 +415,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 8,
-                  "last_accessed": 1754057852.357949
+                  "last_accessed": 1754068428.7063339
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 19,
-                  "last_accessed": 1754057852.357952
+                  "last_accessed": 1754068428.706336
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 18,
-                  "last_accessed": 1754057852.357955
+                  "last_accessed": 1754068428.706337
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -570,24 +570,23 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057852.358133
+          "timestamp": 1754068428.706495
         }
       },
       "ai_models": {
         "detected_files": [
-          "diffusion_pytorch_model.fp16.bin",
           "hrnet_w48_coco_256x192.pth",
-          "diffusion_pytorch_model.safetensors",
-          "yolov8m-pose.pt",
+          "yolov8s-pose.pt",
+          "diffusion_pytorch_model.fp16.bin",
           "hrnet_w48_coco_384x288.pth"
         ],
-        "total_size_gb": 2.5435776356607676,
-        "checkpoint_count": 5,
-        "loading_success_rate": 80.0
+        "total_size_gb": 1.1699569104239345,
+        "checkpoint_count": 4,
+        "loading_success_rate": 75.0
       },
       "performance": {
         "memory_footprint_mb": 0.0,
-        "health_score": 91.0
+        "health_score": 98.0
       },
       "status": "success",
       "recommendations": []
@@ -608,7 +607,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 1.71661376953125e-05,
+        "time": 2.6226043701171875e-05,
         "errors": []
       },
       "class_analysis": {
@@ -628,7 +627,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 8.821487426757812e-06,
+        "time": 1.0013580322265625e-05,
         "errors": []
       },
       "dependencies": {
@@ -668,8 +667,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 15.182596921920776,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 12.697277784347534,
             "access_count": 106,
             "injection_count": 13,
             "registry_stats": {
@@ -679,149 +678,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 11,
-                  "last_accessed": 1754057855.773118
+                  "last_accessed": 1754068430.764181
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 22,
-                  "last_accessed": 1754057856.200939
+                  "last_accessed": 1754068431.183281
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 21,
-                  "last_accessed": 1754057856.200945
+                  "last_accessed": 1754068431.183286
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -834,19 +833,18 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057856.242858
+          "timestamp": 1754068431.2258902
         }
       },
       "ai_models": {
         "detected_files": [
           "deeplabv3_resnet101_ultra.pth",
-          "pytorch_model 복사본.bin",
           "u2net.pth",
-          "mobile_sam.pt",
-          "sam_vit_h_4b8939.pth"
+          "pytorch_model.bin",
+          "pytorch_model 복사본.bin"
         ],
-        "total_size_gb": 2.8565881540998816,
-        "checkpoint_count": 5,
+        "total_size_gb": 2.81867020111531,
+        "checkpoint_count": 4,
         "loading_success_rate": 100.0
       },
       "performance": {
@@ -892,7 +890,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 1.0967254638671875e-05,
+        "time": 1.3113021850585938e-05,
         "errors": []
       },
       "dependencies": {
@@ -913,12 +911,11 @@
       "ai_models": {
         "detected_files": [
           "sam_vit_h_4b8939.pth",
-          "diffusion_pytorch_model.safetensors",
-          "raft-kitti.pth",
-          "pytorch_model.bin"
+          "diffusion_pytorch_model.bin",
+          "raft-kitti.pth"
         ],
-        "total_size_gb": 2.848704846575856,
-        "checkpoint_count": 4,
+        "total_size_gb": 1.7149423733353615,
+        "checkpoint_count": 3,
         "loading_success_rate": 100.0
       },
       "performance": {
@@ -944,7 +941,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 2.002716064453125e-05,
+        "time": 2.5033950805664062e-05,
         "errors": []
       },
       "class_analysis": {
@@ -964,7 +961,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 1.0967254638671875e-05,
+        "time": 1.0013580322265625e-05,
         "errors": []
       },
       "dependencies": {
@@ -1004,8 +1001,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 24.7181179523468,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 21.220094919204712,
             "access_count": 124,
             "injection_count": 19,
             "registry_stats": {
@@ -1015,149 +1012,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 17,
-                  "last_accessed": 1754057864.759042
+                  "last_accessed": 1754068438.651613
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 28,
-                  "last_accessed": 1754057865.21793
+                  "last_accessed": 1754068439.110729
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 27,
-                  "last_accessed": 1754057865.217935
+                  "last_accessed": 1754068439.110733
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -1170,18 +1167,18 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057865.778379
+          "timestamp": 1754068439.748707
         }
       },
       "ai_models": {
         "detected_files": [
-          "vgg16_warping_ultra.pth",
+          "diffusion_pytorch_model.bin",
           "model.fp16.safetensors",
-          "RealESRGAN_x4plus.pth",
+          "vgg19_warping.pth",
           "densenet121_ultra.pth",
-          "diffusion_pytorch_model.bin"
+          "vgg16_warping_ultra.pth"
         ],
-        "total_size_gb": 4.376685859635472,
+        "total_size_gb": 4.849463705904782,
         "checkpoint_count": 5,
         "loading_success_rate": 100.0
       },
@@ -1208,7 +1205,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 2.002716064453125e-05,
+        "time": 2.2172927856445312e-05,
         "errors": []
       },
       "class_analysis": {
@@ -1268,8 +1265,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 27.67657995223999,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 23.626429796218872,
             "access_count": 133,
             "injection_count": 22,
             "registry_stats": {
@@ -1279,149 +1276,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 20,
-                  "last_accessed": 1754057868.3030279
+                  "last_accessed": 1754068441.699158
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 31,
-                  "last_accessed": 1754057868.7366662
+                  "last_accessed": 1754068442.1548579
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 30,
-                  "last_accessed": 1754057868.736671
+                  "last_accessed": 1754068442.154863
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -1434,18 +1431,18 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057868.736841
+          "timestamp": 1754068442.155042
         }
       },
       "ai_models": {
         "detected_files": [
+          "body_pose_model.pth",
           "diffusion_pytorch_model.safetensors",
           "diffusion_pytorch_model.safetensors",
-          "pytorch_model.bin",
           "diffusion_pytorch_model.bin",
           "diffusion_pytorch_model.bin"
         ],
-        "total_size_gb": 13.144092340953648,
+        "total_size_gb": 10.112924040295184,
         "checkpoint_count": 5,
         "loading_success_rate": 100.0
       },
@@ -1472,7 +1469,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 2.0265579223632812e-05,
+        "time": 1.9311904907226562e-05,
         "errors": []
       },
       "class_analysis": {
@@ -1492,7 +1489,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 0.22742390632629395,
+        "time": 0.0001590251922607422,
         "errors": []
       },
       "dependencies": {
@@ -1532,8 +1529,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 31.90273094177246,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 26.669126749038696,
             "access_count": 142,
             "injection_count": 25,
             "registry_stats": {
@@ -1543,149 +1540,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 23,
-                  "last_accessed": 1754057872.527343
+                  "last_accessed": 1754068444.750593
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 34,
-                  "last_accessed": 1754057872.9627268
+                  "last_accessed": 1754068445.1974652
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 33,
-                  "last_accessed": 1754057872.9627311
+                  "last_accessed": 1754068445.19747
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -1698,18 +1695,19 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057872.962993
+          "timestamp": 1754068445.1977391
         }
       },
       "ai_models": {
         "detected_files": [
-          "pytorch_model.bin",
           "densenet161_enhance.pth",
-          "resnet101_enhance_ultra.pth",
-          "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth"
+          "ESRGAN_x8.pth",
+          "RealESRGAN_x4plus.pth",
+          "mobilenet_v3_ultra.pth",
+          "resnet101_enhance_ultra.pth"
         ],
-        "total_size_gb": 1.133748671039939,
-        "checkpoint_count": 4,
+        "total_size_gb": 0.490283515304327,
+        "checkpoint_count": 5,
         "loading_success_rate": 100.0
       },
       "performance": {
@@ -1735,7 +1733,7 @@
       },
       "import_analysis": {
         "success": true,
-        "time": 1.8835067749023438e-05,
+        "time": 2.2172927856445312e-05,
         "errors": []
       },
       "class_analysis": {
@@ -1755,7 +1753,7 @@
       },
       "initialization": {
         "success": true,
-        "time": 8.916854858398438e-05,
+        "time": 4.696846008300781e-05,
         "errors": []
       },
       "dependencies": {
@@ -1795,8 +1793,8 @@
             "container_id": "default",
             "container_type": "CentralHubDIContainer",
             "version": "7.0",
-            "creation_time": 1754057841.06026,
-            "lifetime_seconds": 35.15984392166138,
+            "creation_time": 1754068418.5286112,
+            "lifetime_seconds": 29.32973575592041,
             "access_count": 151,
             "injection_count": 28,
             "registry_stats": {
@@ -1806,149 +1804,149 @@
                 "device": {
                   "type": "str",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169759,
+                  "created_at": 1754068425.119884,
                   "access_count": 1,
-                  "last_accessed": 1754057848.084011
+                  "last_accessed": 1754068425.188427
                 },
                 "memory_gb": {
                   "type": "float",
                   "is_singleton": true,
-                  "created_at": 1754057848.016983,
+                  "created_at": 1754068425.119891,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840142
+                  "last_accessed": 1754068425.188429
                 },
                 "is_m3_max": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016981,
+                  "created_at": 1754068425.1198888,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0840168
+                  "last_accessed": 1754068425.188434
                 },
                 "torch_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169861,
+                  "created_at": 1754068425.119894,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169861
+                  "last_accessed": 1754068425.119894
                 },
                 "mps_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169978,
+                  "created_at": 1754068425.1198962,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169978
+                  "last_accessed": 1754068425.1198962
                 },
                 "model_loader": {
                   "type": "ModelLoader",
                   "is_singleton": true,
-                  "created_at": 1754057848.083951,
+                  "created_at": 1754068425.188396,
                   "access_count": 26,
-                  "last_accessed": 1754057875.6383638
+                  "last_accessed": 1754068447.300438
                 },
                 "memory_manager": {
                   "type": "MemoryManager",
                   "is_singleton": true,
-                  "created_at": 1754057841.186075,
+                  "created_at": 1754068418.599062,
                   "access_count": 37,
-                  "last_accessed": 1754057876.1034591
+                  "last_accessed": 1754068447.750776
                 },
                 "data_converter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393436,
+                  "created_at": 1754068419.678167,
                   "access_count": 36,
-                  "last_accessed": 1754057876.1034722
+                  "last_accessed": 1754068447.750793
                 },
                 "IDataConverter": {
                   "type": "DataConverter",
                   "is_singleton": true,
-                  "created_at": 1754057842.393396,
+                  "created_at": 1754068419.67813,
                   "access_count": 0,
-                  "last_accessed": 1754057842.393396
+                  "last_accessed": 1754068419.67813
                 },
                 "is_conda": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.0169852,
+                  "created_at": 1754068425.119893,
                   "access_count": 0,
-                  "last_accessed": 1754057848.0169852
+                  "last_accessed": 1754068425.119893
                 },
                 "scipy_available": {
                   "type": "bool",
                   "is_singleton": true,
-                  "created_at": 1754057848.016999,
+                  "created_at": 1754068425.1198971,
                   "access_count": 0,
-                  "last_accessed": 1754057848.016999
+                  "last_accessed": 1754068425.1198971
                 },
                 "step_class_step_06": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017083,
+                  "created_at": 1754068425.119979,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017087
+                  "last_accessed": 1754068425.119981
                 },
                 "step_class_step_01": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.01709,
+                  "created_at": 1754068425.1199841,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017094
+                  "last_accessed": 1754068425.119987
                 },
                 "step_class_step_03": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017096,
+                  "created_at": 1754068425.119993,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171
+                  "last_accessed": 1754068425.1199949
                 },
                 "step_class_step_02": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.0171032,
+                  "created_at": 1754068425.119997,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017107
+                  "last_accessed": 1754068425.119999
                 },
                 "step_class_step_07": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017109,
+                  "created_at": 1754068425.120001,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017111
+                  "last_accessed": 1754068425.120003
                 },
                 "step_class_step_08": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017113,
+                  "created_at": 1754068425.1200051,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171158
+                  "last_accessed": 1754068425.1200068
                 },
                 "step_class_step_04": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017119,
+                  "created_at": 1754068425.120009,
                   "access_count": 1,
-                  "last_accessed": 1754057848.017121
+                  "last_accessed": 1754068425.12001
                 },
                 "step_class_step_05": {
                   "type": "LazyDependency",
                   "is_singleton": true,
-                  "created_at": 1754057848.017123,
+                  "created_at": 1754068425.120012,
                   "access_count": 1,
-                  "last_accessed": 1754057848.0171251
+                  "last_accessed": 1754068425.1200142
                 },
                 "step_factory": {
                   "type": "StepFactory",
                   "is_singleton": true,
-                  "created_at": 1754057848.668989,
+                  "created_at": 1754068425.751125,
                   "access_count": 0,
-                  "last_accessed": 1754057848.668989
+                  "last_accessed": 1754068425.751126
                 },
                 "detailed_data_spec": {
                   "type": "module",
                   "is_singleton": true,
-                  "created_at": 1754057848.669046,
+                  "created_at": 1754068425.7511659,
                   "access_count": 0,
-                  "last_accessed": 1754057848.669046
+                  "last_accessed": 1754068425.7511659
                 }
               }
             },
@@ -1961,20 +1959,19 @@
               "conda_env": "myclosetlast"
             }
           },
-          "timestamp": 1754057876.22012
+          "timestamp": 1754068447.858351
         }
       },
       "ai_models": {
         "detected_files": [
+          "ViT-B-32.pt",
           "pytorch_model.bin",
-          "open_clip_pytorch_model.bin",
-          "ViT-L-14.pt",
-          "pytorch_model.bin",
-          "open_clip_pytorch_model.bin"
+          "clip_vit_b32.pth",
+          "ViT-L-14.pt"
         ],
-        "total_size_gb": 13.208668952807784,
-        "checkpoint_count": 5,
-        "loading_success_rate": 80.0
+        "total_size_gb": 2.325723636895418,
+        "checkpoint_count": 4,
+        "loading_success_rate": 100.0
       },
       "performance": {
         "memory_footprint_mb": 0.0,
@@ -2000,18 +1997,18 @@
       "total_fixes_applied": 0
     },
     "models": {
-      "total_detected": 38,
-      "total_size_gb": 40.913376212120056,
+      "total_detected": 35,
+      "total_size_gb": 24.32950714789331,
       "expected_size_gb": 30.45,
-      "size_coverage": 134.3624834552383
+      "size_coverage": 79.89985927058558
     },
     "checkpoints": {
-      "total": 38,
-      "successful": 36,
-      "success_rate": 94.73684210526315
+      "total": 35,
+      "successful": 34,
+      "success_rate": 97.14285714285714
     },
     "health": {
-      "average_score": 97.125,
+      "average_score": 98.0,
       "system_ready": true,
       "github_integration_ready": true,
       "ai_pipeline_ready": true
@@ -2034,18 +2031,18 @@
   ],
   "performance_metrics": {
     "analysis_time": {
-      "total_seconds": 36.35813093185425,
-      "average_import_time": 1.767277717590332e-05,
-      "average_init_time": 0.03617158532142639,
+      "total_seconds": 24.231870889663696,
+      "average_import_time": 2.16066837310791e-05,
+      "average_init_time": 7.355213165283203e-05,
       "efficiency_rating": "excellent"
     },
     "memory_usage": {
-      "current_gb": 1.0668182373046875,
+      "current_gb": 1.00677490234375,
       "efficiency": "good"
     },
     "model_loading": {
-      "checkpoint_success_rate": 94.73684210526315,
-      "total_checkpoints_tested": 38,
+      "checkpoint_success_rate": 97.14285714285714,
+      "total_checkpoints_tested": 35,
       "loading_efficiency": "excellent"
     },
     "file_fixes": {
@@ -2069,7 +2066,7 @@
   },
   "advanced_analyses": {
     "detailed_data_spec": {
-      "overall_integration_score": 12.5,
+      "overall_integration_score": 0.0,
       "step_results": {
         "HumanParsingStep": {
           "step_name": "HumanParsingStep",
@@ -2080,10 +2077,10 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
-            "DetailedDataSpec 로딩 실패: module 'app.ai_pipeline.interface.step_interface' has no attribute 'loggerget_github_environment_info'"
+            "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
           "recommendations": [
             "DetailedDataSpec 정의 필요: HumanParsingStep",
@@ -2100,8 +2097,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2120,8 +2117,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2140,8 +2137,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2160,8 +2157,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2180,8 +2177,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2200,8 +2197,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2220,8 +2217,8 @@
           "postprocessing_steps_defined": false,
           "step_interface_v5_3_compatible": false,
           "data_conversion_ready": false,
-          "emergency_fallback_available": true,
-          "integration_score": 12.5,
+          "emergency_fallback_available": false,
+          "integration_score": 0.0,
           "issues": [
             "DetailedDataSpec 로딩 실패: cannot import name 'get_safe_detailed_data_spec' from 'app.ai_pipeline.interface.step_interface' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/ai_pipeline/interface/step_interface.py)"
           ],
@@ -2234,11 +2231,11 @@
       },
       "api_mapping_ready_count": 0,
       "data_conversion_ready_count": 0,
-      "emergency_fallback_count": 8
+      "emergency_fallback_count": 0
     },
     "di_container": {
       "di_container_available": true,
-      "central_hub_connected": false,
+      "central_hub_connected": true,
       "global_container_accessible": true,
       "step_injection_working": true,
       "service_resolution_working": true,
@@ -2246,25 +2243,21 @@
       "stats_reporting_available": true,
       "circular_reference_protection": false,
       "container_version": "unknown",
-      "integration_score": 75.0,
+      "integration_score": 87.5,
       "services_registered": [
         "model_loader",
         "memory_manager",
         "data_converter"
       ],
-      "issues": [
-        "Central Hub 연결 실패: cannot import name '_get_central_hub_container' from 'app.core.di_container' (/Users/gimdudeul/MVP/mycloset-ai/backend/app/core/di_container.py)"
-      ],
-      "recommendations": [
-        "Central Hub 연결 설정 확인"
-      ],
+      "issues": [],
+      "recommendations": [],
       "container_stats": {
         "container_id": "default",
         "container_type": "CentralHubDIContainer",
         "version": "7.0",
-        "creation_time": 1754057841.06026,
-        "lifetime_seconds": 44.078502893447876,
-        "access_count": 181,
+        "creation_time": 1754068418.5286112,
+        "lifetime_seconds": 31.55339789390564,
+        "access_count": 157,
         "injection_count": 29,
         "registry_stats": {
           "registered_services": 21,
@@ -2273,149 +2266,149 @@
             "device": {
               "type": "str",
               "is_singleton": true,
-              "created_at": 1754057848.0169759,
+              "created_at": 1754068425.119884,
               "access_count": 1,
-              "last_accessed": 1754057848.084011
+              "last_accessed": 1754068425.188427
             },
             "memory_gb": {
               "type": "float",
               "is_singleton": true,
-              "created_at": 1754057848.016983,
+              "created_at": 1754068425.119891,
               "access_count": 1,
-              "last_accessed": 1754057848.0840142
+              "last_accessed": 1754068425.188429
             },
             "is_m3_max": {
               "type": "bool",
               "is_singleton": true,
-              "created_at": 1754057848.016981,
+              "created_at": 1754068425.1198888,
               "access_count": 1,
-              "last_accessed": 1754057848.0840168
+              "last_accessed": 1754068425.188434
             },
             "torch_available": {
               "type": "bool",
               "is_singleton": true,
-              "created_at": 1754057848.0169861,
+              "created_at": 1754068425.119894,
               "access_count": 0,
-              "last_accessed": 1754057848.0169861
+              "last_accessed": 1754068425.119894
             },
             "mps_available": {
               "type": "bool",
               "is_singleton": true,
-              "created_at": 1754057848.0169978,
+              "created_at": 1754068425.1198962,
               "access_count": 0,
-              "last_accessed": 1754057848.0169978
+              "last_accessed": 1754068425.1198962
             },
             "model_loader": {
               "type": "ModelLoader",
               "is_singleton": true,
-              "created_at": 1754057848.083951,
-              "access_count": 36,
-              "last_accessed": 1754057885.138745
+              "created_at": 1754068425.188396,
+              "access_count": 28,
+              "last_accessed": 1754068450.08199
             },
             "memory_manager": {
               "type": "MemoryManager",
               "is_singleton": true,
-              "created_at": 1754057841.186075,
-              "access_count": 47,
-              "last_accessed": 1754057885.138747
+              "created_at": 1754068418.599062,
+              "access_count": 39,
+              "last_accessed": 1754068450.081992
             },
             "data_converter": {
               "type": "DataConverter",
               "is_singleton": true,
-              "created_at": 1754057842.393436,
-              "access_count": 46,
-              "last_accessed": 1754057885.138747
+              "created_at": 1754068419.678167,
+              "access_count": 38,
+              "last_accessed": 1754068450.081994
             },
             "IDataConverter": {
               "type": "DataConverter",
               "is_singleton": true,
-              "created_at": 1754057842.393396,
+              "created_at": 1754068419.67813,
               "access_count": 0,
-              "last_accessed": 1754057842.393396
+              "last_accessed": 1754068419.67813
             },
             "is_conda": {
               "type": "bool",
               "is_singleton": true,
-              "created_at": 1754057848.0169852,
+              "created_at": 1754068425.119893,
               "access_count": 0,
-              "last_accessed": 1754057848.0169852
+              "last_accessed": 1754068425.119893
             },
             "scipy_available": {
               "type": "bool",
               "is_singleton": true,
-              "created_at": 1754057848.016999,
+              "created_at": 1754068425.1198971,
               "access_count": 0,
-              "last_accessed": 1754057848.016999
+              "last_accessed": 1754068425.1198971
             },
             "step_class_step_06": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.017083,
+              "created_at": 1754068425.119979,
               "access_count": 1,
-              "last_accessed": 1754057848.017087
+              "last_accessed": 1754068425.119981
             },
             "step_class_step_01": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.01709,
+              "created_at": 1754068425.1199841,
               "access_count": 1,
-              "last_accessed": 1754057848.017094
+              "last_accessed": 1754068425.119987
             },
             "step_class_step_03": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.017096,
+              "created_at": 1754068425.119993,
               "access_count": 1,
-              "last_accessed": 1754057848.0171
+              "last_accessed": 1754068425.1199949
             },
             "step_class_step_02": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.0171032,
+              "created_at": 1754068425.119997,
               "access_count": 1,
-              "last_accessed": 1754057848.017107
+              "last_accessed": 1754068425.119999
             },
             "step_class_step_07": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.017109,
+              "created_at": 1754068425.120001,
               "access_count": 1,
-              "last_accessed": 1754057848.017111
+              "last_accessed": 1754068425.120003
             },
             "step_class_step_08": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.017113,
+              "created_at": 1754068425.1200051,
               "access_count": 1,
-              "last_accessed": 1754057848.0171158
+              "last_accessed": 1754068425.1200068
             },
             "step_class_step_04": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.017119,
+              "created_at": 1754068425.120009,
               "access_count": 1,
-              "last_accessed": 1754057848.017121
+              "last_accessed": 1754068425.12001
             },
             "step_class_step_05": {
               "type": "LazyDependency",
               "is_singleton": true,
-              "created_at": 1754057848.017123,
+              "created_at": 1754068425.120012,
               "access_count": 1,
-              "last_accessed": 1754057848.0171251
+              "last_accessed": 1754068425.1200142
             },
             "step_factory": {
               "type": "StepFactory",
               "is_singleton": true,
-              "created_at": 1754057848.668989,
+              "created_at": 1754068425.751125,
               "access_count": 0,
-              "last_accessed": 1754057848.668989
+              "last_accessed": 1754068425.751126
             },
             "detailed_data_spec": {
               "type": "module",
               "is_singleton": true,
-              "created_at": 1754057848.669046,
+              "created_at": 1754068425.7511659,
               "access_count": 0,
-              "last_accessed": 1754057848.669046
+              "last_accessed": 1754068425.7511659
             }
           }
         },
@@ -2430,23 +2423,20 @@
       }
     },
     "step_factory": {
-      "step_factory_available": false,
+      "step_factory_available": true,
       "step_factory_version": "unknown",
       "central_hub_integration": false,
       "step_creation_working": false,
       "dependency_injection_working": false,
-      "caching_available": false,
-      "circular_reference_protection": false,
-      "github_compatibility": false,
-      "detailed_data_spec_integration": false,
-      "integration_score": 0.0,
+      "caching_available": true,
+      "circular_reference_protection": true,
+      "github_compatibility": true,
+      "detailed_data_spec_integration": true,
+      "integration_score": 62.5,
       "supported_step_types": [],
       "creation_stats": {},
-      "issues": [
-        "StepFactory 로딩 실패: No module named 'app.ai_pipeline.utils.step_factory'"
-      ],
+      "issues": [],
       "recommendations": [
-        "StepFactory v11.2 설치 필요",
         "Step 생성 기능 확인 및 수정 필요",
         "Central Hub 통합 설정 확인"
       ]

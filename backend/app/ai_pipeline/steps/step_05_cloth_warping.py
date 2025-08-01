@@ -25,11 +25,16 @@ import time
 import logging
 import asyncio
 import threading
+import warnings
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union, Tuple
 from dataclasses import dataclass, field
 import cv2
+
+# 경고 무시 설정
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
 
 # PyTorch 필수
 try:

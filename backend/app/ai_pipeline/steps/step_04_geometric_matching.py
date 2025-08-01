@@ -37,6 +37,7 @@ import json
 import base64
 import weakref
 import math
+import warnings
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
@@ -45,6 +46,10 @@ from enum import Enum, IntEnum
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache, wraps
+
+# 경고 무시 설정
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
 
 # 최상단에 추가
 import logging

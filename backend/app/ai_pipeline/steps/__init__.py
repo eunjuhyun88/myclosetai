@@ -93,12 +93,12 @@ def safe_copy(obj: Any) -> Any:
 globals()['safe_copy'] = safe_copy
 
 # ==============================================
+# ==============================================
 # 🔥 3. TYPE_CHECKING 순환참조 방지
 # ==============================================
 
 if TYPE_CHECKING:
     from .base_step_mixin import BaseStepMixin
-    from ..utils.model_loader import ModelLoader
     from ..utils.memory_manager import MemoryManager
     from ..utils.data_converter import DataConverter
     from ..factories.step_factory import StepFactory

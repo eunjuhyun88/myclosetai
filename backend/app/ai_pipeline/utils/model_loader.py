@@ -591,34 +591,62 @@ class RealAIModel:
             return False
 
     def _load_pytorch_checkpoint(self) -> Optional[Any]:
-        """🔥 개선된 PyTorch 체크포인트 로딩"""
+        """PyTorch 체크포인트 로딩 (SafeTensors 우선 처리)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 사용 불가능")
             return None
         
-        loading_methods = [
-            ('safe_mode', {'weights_only': True}),
-            ('compat_mode', {'weights_only': False}),
-            ('legacy_mode', {})
-        ]
-        
-        for method_name, kwargs in loading_methods:
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    checkpoint = torch.load(
-                        self.model_path, 
-                        map_location='cpu',
-                        **kwargs
-                    )
-                self.logger.debug(f"✅ {method_name} 로딩 성공: {self.model_name}")
-                return checkpoint
-            except Exception as e:
-                self.logger.debug(f"{method_name} 실패: {e}")
-                continue
-        
-        self.logger.error(f"❌ 모든 PyTorch 로딩 방법 실패: {self.model_name}")
-        return None
+        try:
+            # 🔥 SafeTensors 파일 우선 처리
+            if self.model_path.suffix.lower() == '.safetensors':
+                self.logger.debug(f"🔍 SafeTensors 파일 감지: {self.model_name}")
+                return self._load_safetensors()
+            
+            filename = self.model_path.name.lower()
+            
+            # 🔥 YOLO 파일은 weights_only=False 우선
+            if 'yolo' in filename:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        checkpoint = torch.load(
+                            self.model_path, 
+                            map_location='cpu',
+                            weights_only=False
+                        )
+                    self.logger.debug(f"✅ {self.model_name} YOLO 호환 모드 로딩 성공")
+                    return checkpoint
+                except Exception as e:
+                    self.logger.debug(f"YOLO 호환 모드 실패: {e}")
+            
+            # 일반 PyTorch 파일 3단계 로딩
+            loading_methods = [
+                ('안전 모드', {'weights_only': True}),
+                ('호환 모드', {'weights_only': False}),
+                ('레거시 모드', {})
+            ]
+            
+            for method_name, kwargs in loading_methods:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        checkpoint = torch.load(
+                            self.model_path, 
+                            map_location='cpu',
+                            **kwargs
+                        )
+                    self.logger.debug(f"✅ {self.model_name} {method_name} 로딩 성공")
+                    return checkpoint
+                except Exception as e:
+                    self.logger.debug(f"{method_name} 실패: {e}")
+                    continue
+            
+            self.logger.error(f"❌ 모든 PyTorch 로딩 방법 실패: {self.model_name}")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
+            return None
 
     def _load_yolo_optimized(self) -> bool:
         """YOLO 모델 최적화 로딩 (Ultralytics 의존성 해결)"""
@@ -863,10 +891,10 @@ class RealAIModel:
             
         except ImportError:
             self.logger.error("❌ Safetensors 라이브러리 필수 설치 필요")
-            return None
+            return None  # 🔥 PyTorch 폴백 제거 (중요!)
         except Exception as e:
             self.logger.error(f"❌ Safetensors 로딩 실패: {e}")
-            return None
+            return None  # 🔥 PyTorch 폴백 제거 (중요!)
 
 
     def _load_graphonomy_ultra_safe(self) -> bool:
@@ -1419,20 +1447,23 @@ class ModelLoader:
     ✅ M3 Max 128GB 메모리 최적화 - Central Hub MemoryManager 연동
     ✅ 기존 API 100% 호환성 보장
     """
-    
     def __init__(self, 
-                 device: str = "auto",
-                 model_cache_dir: Optional[str] = None,
-                 max_cached_models: int = 10,
-                 enable_optimization: bool = True,
-                 **kwargs):
-        """ModelLoader 초기화 (Central Hub DI Container v7.0 완전 연동)"""
+             device: str = "auto",
+             model_cache_dir: Optional[str] = None,
+             max_cached_models: int = 10,
+             enable_optimization: bool = True,
+             _skip_central_hub_init: bool = False,  # 🔥 새로 추가
+             **kwargs):
+        """ModelLoader 초기화 (순환참조 방지 개선)"""
         
         # 기본 설정
         self.device = device if device != "auto" else DEFAULT_DEVICE
         self.max_cached_models = max_cached_models
         self.enable_optimization = enable_optimization
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
+        
+        # 🔥 수정: 순환참조 방지 플래그
+        self._skip_central_hub_init = _skip_central_hub_init
         
         # 🔥 Central Hub DI Container 지연 초기화 (순환참조 방지)
         self._central_hub_container = None
@@ -1442,23 +1473,22 @@ class ModelLoader:
         self.memory_manager = None
         self.data_converter = None
         
-        # 모델 캐시 디렉토리 설정 (Central Hub AI_MODELS_ROOT 호환)
+        # 모델 캐시 디렉토리 설정
         if model_cache_dir:
             self.model_cache_dir = Path(model_cache_dir)
         else:
-            # Central Hub AI_MODELS_ROOT 경로 매핑
             current_file = Path(__file__)
             backend_root = current_file.parents[3]  # backend/
             self.model_cache_dir = backend_root / "ai_models"
             
         self.model_cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # 실제 AI 모델 관리 (Central Hub 호환)
+        # 실제 AI 모델 관리
         self.loaded_models: Dict[str, RealAIModel] = {}
         self.model_info: Dict[str, RealStepModelInfo] = {}
         self.model_status: Dict[str, RealModelStatus] = {}
         
-        # Step 요구사항 (Central Hub 호환)
+        # Step 요구사항
         self.step_requirements: Dict[str, RealStepModelRequirement] = {}
         self.step_interfaces: Dict[str, RealStepModelInterface] = {}
         
@@ -1468,7 +1498,7 @@ class ModelLoader:
         self._integration_successful = False
         self._initialize_auto_detector()
         
-        # 성능 메트릭 (Central Hub 호환)
+        # 성능 메트릭
         self.performance_metrics = {
             'models_loaded': 0,
             'cache_hits': 0,
@@ -1487,14 +1517,38 @@ class ModelLoader:
         # Central Hub Step 매핑 로딩
         self._load_central_hub_step_mappings()
         
-        # 🔥 Central Hub DI Container 연동 초기화
-        self._initialize_central_hub_integration()
+        # 🔥 수정: 순환참조 방지 - skip 플래그 확인
+        if not self._skip_central_hub_init:
+            self._initialize_central_hub_integration()
+        else:
+            self.logger.debug("⚠️ Central Hub 초기화 건너뜀 (순환참조 방지)")
         
-        self.logger.info(f"🚀 ModelLoader v5.1 Central Hub DI Container v7.0 완전 연동 초기화 완료")
-        self.logger.info(f"📱 Device: {self.device} (M3 Max: {IS_M3_MAX}, MPS: {MPS_AVAILABLE})")
+        self.logger.info(f"🚀 ModelLoader v5.1 초기화 완료")
+        self.logger.info(f"📱 Device: {self.device}")
         self.logger.info(f"📁 모델 캐시: {self.model_cache_dir}")
-        self.logger.info(f"🎯 Central Hub AI Step 호환 모드")
-    
+
+    def _resolve_basic_dependencies(self):
+        """🔥 새로 추가: 기본 의존성만 해결 (순환참조 방지)"""
+        try:
+            self.logger.debug("🔄 기본 의존성 해결 중...")
+            
+            # MemoryManager만 자체 생성 (순환참조 없음)
+            if not self.memory_manager:
+                try:
+                    from ..interface.step_interface import MemoryManager
+                    self.memory_manager = MemoryManager()
+                    self.logger.debug("✅ MemoryManager 자체 생성 완료")
+                except Exception as e:
+                    self.logger.debug(f"⚠️ MemoryManager 생성 실패: {e}")
+            
+            # DataConverter는 나중에 주입받도록 함
+            self.logger.debug("✅ 기본 의존성 해결 완료")
+            
+        except Exception as e:
+            self.logger.debug(f"⚠️ 기본 의존성 해결 실패: {e}")
+
+
+
     def _initialize_central_hub_integration(self):
         """🔥 Central Hub DI Container 연동 초기화 (순환참조 방지)"""
         try:

@@ -359,32 +359,47 @@ class CentralHubDIContainer:
     # ==============================================
     
     def inject_to_step(self, step_instance) -> int:
-        """Step에 의존성 주입 - 중앙 허브의 핵심 기능 (TestStep 방지 포함)"""
+        """🔥 Central Hub DI Container v7.0 - 완전한 의존성 주입 시스템"""
         with self._lock:
             injections_made = 0
             
             try:
-                # 🔥 TestStep 체크 - 실제 Step이어야 함
+                # 🔥 1단계: Step 유효성 검증
                 step_name = step_instance.__class__.__name__
                 if step_name == 'TestStep':
                     self.logger.warning(f"⚠️ TestStep 감지 - 실제 Step 클래스가 로딩되지 않았습니다")
                     return 0
                 
-                # DI Container 자체 주입
+                # 🔥 2단계: Central Hub Container 자체 주입 (핵심)
+                if hasattr(step_instance, 'central_hub_container'):
+                    step_instance.central_hub_container = self
+                    injections_made += 1
+                    self.logger.debug(f"✅ Central Hub Container 주입 완료")
+                
+                # 🔥 3단계: DI Container 자체 주입 (기존 호환성)
                 if hasattr(step_instance, 'di_container'):
                     step_instance.di_container = self
                     injections_made += 1
+                    self.logger.debug(f"✅ DI Container 주입 완료")
                 
-                # PropertyInjectionMixin 지원
+                # 🔥 4단계: PropertyInjectionMixin 지원
                 if hasattr(step_instance, 'set_di_container'):
                     step_instance.set_di_container(self)
                     injections_made += 1
+                    self.logger.debug(f"✅ PropertyInjectionMixin 설정 완료")
                 
-                # 표준 의존성들 주입
+                # 🔥 5단계: 표준 의존성들 주입 (Central Hub v7.0 확장)
                 injection_map = {
                     'model_loader': 'model_loader',
-                    'memory_manager': 'memory_manager',
-                    'data_converter': 'data_converter'
+                    'memory_manager': 'memory_manager', 
+                    'data_converter': 'data_converter',
+                    'step_factory': 'step_factory',
+                    'data_transformer': 'data_transformer',
+                    'model_registry': 'model_registry',
+                    'performance_monitor': 'performance_monitor',
+                    'error_handler': 'error_handler',
+                    'cache_manager': 'cache_manager',
+                    'config_manager': 'config_manager'
                 }
                 
                 for attr_name, service_key in injection_map.items():
@@ -397,71 +412,263 @@ class CentralHubDIContainer:
                                 injections_made += 1
                                 self.logger.debug(f"✅ {attr_name} 주입 완료")
                 
-                # 🔥 통합 상태 업데이트
+                # 🔥 6단계: Central Hub 통합 상태 표시 (핵심)
                 if hasattr(step_instance, 'central_hub_integrated'):
                     step_instance.central_hub_integrated = True
                     injections_made += 1
+                    self.logger.debug(f"✅ Central Hub 통합 상태 설정 완료")
                 
-                # 초기화 메서드 호출
+                # 🔥 7단계: Step 메타데이터 설정
+                if hasattr(step_instance, 'step_metadata'):
+                    step_instance.step_metadata = {
+                        'container_id': self.container_id,
+                        'injection_time': time.time(),
+                        'injection_count': self._injection_count,
+                        'central_hub_version': '7.0',
+                        'step_name': step_name,
+                        'services_injected': injections_made
+                    }
+                    injections_made += 1
+                    self.logger.debug(f"✅ Step 메타데이터 설정 완료")
+                
+                # 🔥 8단계: 자동 초기화 메서드 호출
                 if hasattr(step_instance, 'initialize') and not getattr(step_instance, 'is_initialized', False):
                     try:
                         step_instance.initialize()
-                        self.logger.debug("✅ Step 초기화 완료")
+                        step_instance.is_initialized = True
+                        self.logger.debug("✅ Step 자동 초기화 완료")
                     except Exception as e:
-                        self.logger.debug(f"⚠️ Step 초기화 실패: {e}")
+                        self.logger.debug(f"⚠️ Step 자동 초기화 실패: {e}")
                 
+                # 🔥 9단계: Central Hub 이벤트 시스템 연동
+                if hasattr(step_instance, 'on_central_hub_integration'):
+                    try:
+                        step_instance.on_central_hub_integration(self)
+                        self.logger.debug("✅ Central Hub 이벤트 시스템 연동 완료")
+                    except Exception as e:
+                        self.logger.debug(f"⚠️ Central Hub 이벤트 시스템 연동 실패: {e}")
+                
+                # 🔥 10단계: 성능 모니터링 설정
+                if hasattr(step_instance, 'performance_monitor'):
+                    try:
+                        step_instance.performance_monitor.start_monitoring(step_name)
+                        self.logger.debug("✅ 성능 모니터링 시작")
+                    except Exception as e:
+                        self.logger.debug(f"⚠️ 성능 모니터링 설정 실패: {e}")
+                
+                # 🔥 11단계: 통계 업데이트
                 self._injection_count += 1
+                self._update_injection_stats(step_name, injections_made)
                 
-                self.logger.info(f"✅ {step_name} Central Hub 의존성 주입 완료: {injections_made}개")
+                # 🔥 12단계: 완료 로깅
+                self.logger.info(f"🔥 {step_name} Central Hub v7.0 의존성 주입 완료: {injections_made}개 서비스")
+                self.logger.debug(f"📊 주입된 서비스들: {self._get_injected_services(step_instance)}")
                 
             except Exception as e:
-                self.logger.error(f"❌ Step 의존성 주입 실패: {e}")
+                self.logger.error(f"❌ Central Hub v7.0 의존성 주입 실패: {e}")
+                self.logger.debug(f"🔍 실패 상세: {traceback.format_exc()}")
             
             return injections_made
+    
+    def _update_injection_stats(self, step_name: str, injections_made: int):
+        """주입 통계 업데이트"""
+        if not hasattr(self, '_injection_stats'):
+            self._injection_stats = {}
+        
+        if step_name not in self._injection_stats:
+            self._injection_stats[step_name] = {
+                'total_injections': 0,
+                'last_injection_time': 0,
+                'average_injections': 0
+            }
+        
+        stats = self._injection_stats[step_name]
+        stats['total_injections'] += injections_made
+        stats['last_injection_time'] = time.time()
+        stats['average_injections'] = stats['total_injections'] / self._injection_count
+    
+    def _get_injected_services(self, step_instance) -> List[str]:
+        """주입된 서비스 목록 조회"""
+        injected_services = []
+        service_attributes = [
+            'central_hub_container', 'di_container', 'model_loader', 
+            'memory_manager', 'data_converter', 'step_factory',
+            'data_transformer', 'model_registry', 'performance_monitor',
+            'error_handler', 'cache_manager', 'config_manager'
+        ]
+        
+        for attr in service_attributes:
+            if hasattr(step_instance, attr):
+                value = getattr(step_instance, attr)
+                if value is not None:
+                    injected_services.append(attr)
+        
+        return injected_services
 
 
     # ==============================================
     # 🔥 안전한 서비스 생성 팩토리들
     # ==============================================
     
-    def _create_model_loader(self):
-        """ModelLoader 안전 생성"""
-        import_paths = [
-            'app.ai_pipeline.utils.model_loader',
-            'ai_pipeline.utils.model_loader',
-            'utils.model_loader'
-        ]
-        
-        for path in import_paths:
+    def _create_model_loader(self) -> Any:
+        """🔥 수정: ModelLoader 생성 (순환참조 완전 방지)"""
+        try:
+            self.logger.debug("🔄 ModelLoader 생성 시작...")
+            
+            # 🔥 핵심 수정: 순환참조 방지를 위해 Central Hub 없이 생성
+            from ..ai_pipeline.utils.model_loader import ModelLoader
+            
+            # 🔥 수정 1: 기본 설정으로만 생성 (Central Hub 연동 없이)
+            model_loader = ModelLoader(
+                device=DEVICE,
+                enable_optimization=True,
+                # 🔥 중요: _initialize_central_hub_integration을 비활성화
+                _skip_central_hub_init=True  # 새로운 플래그
+            )
+            
+            # 🔥 수정 2: 생성 후에 Container 연결 (순환참조 방지)
             try:
-                module = importlib.import_module(path)
+                model_loader._central_hub_container = self
+                model_loader._container_initialized = True
                 
-                # 전역 함수 우선
-                if hasattr(module, 'get_global_model_loader'):
-                    try:
-                        loader = module.get_global_model_loader()
-                        if loader:
-                            self.logger.info(f"✅ ModelLoader 생성: {path}")
-                            return loader
-                    except Exception as e:
-                        self.logger.debug(f"get_global_model_loader 실패: {e}")
-                
-                # 클래스 직접 생성
-                if hasattr(module, 'ModelLoader'):
-                    try:
-                        ModelLoaderClass = module.ModelLoader
-                        loader = ModelLoaderClass(device="auto")
-                        self.logger.info(f"✅ ModelLoader 클래스 생성: {path}")
-                        return loader
-                    except Exception as e:
-                        self.logger.debug(f"ModelLoader 클래스 생성 실패: {e}")
-                        
+                # 필요한 의존성만 수동 주입
+                if hasattr(model_loader, '_resolve_basic_dependencies'):
+                    model_loader._resolve_basic_dependencies()
+                    
+            except Exception as connection_error:
+                self.logger.debug(f"⚠️ ModelLoader Central Hub 연결 실패: {connection_error}")
+                # 연결 실패해도 ModelLoader 자체는 동작
+            
+            self.logger.debug("✅ ModelLoader 생성 완료 (순환참조 방지)")
+            return model_loader
+            
+        except Exception as e:
+            self.logger.error(f"❌ ModelLoader 생성 실패: {e}")
+            
+            # 🔥 폴백: 최소 기능 ModelLoader
+            return self._create_minimal_model_loader()
+
+
+    def _create_memory_manager(self) -> Any:
+        """🔥 수정: MemoryManager 생성 (순환참조 방지)"""
+        try:
+            self.logger.debug("🔄 MemoryManager 생성 시작...")
+            
+            # 🔥 MemoryManager는 ModelLoader에 의존하지 않으므로 안전
+            from ..ai_pipeline.interface.step_interface import MemoryManager
+            
+            # M3 Max 메모리 최적화
+            if IS_M3_MAX and MEMORY_GB >= 128:
+                memory_manager = MemoryManager(115.0)
+            elif IS_M3_MAX and MEMORY_GB >= 64:
+                memory_manager = MemoryManager(MEMORY_GB * 0.85)
+            else:
+                memory_manager = MemoryManager()
+            
+            self.logger.debug("✅ MemoryManager 생성 완료")
+            return memory_manager
+            
+        except Exception as e:
+            self.logger.error(f"❌ MemoryManager 생성 실패: {e}")
+            
+            # 폴백: Mock MemoryManager
+            class MockMemoryManager:
+                def __init__(self):
+                    self.is_mock = True
+                    
+                def allocate_memory(self, size_mb: float, owner: str):
+                    return True
+                    
+                def deallocate_memory(self, owner: str):
+                    return 0.0
+                    
+                def get_memory_stats(self):
+                    return {"mock": True, "available_gb": 100.0}
+            
+            return MockMemoryManager()
+
+    def _create_data_converter(self) -> Any:
+        """🔥 수정: DataConverter 생성 (순환참조 방지)"""
+        try:
+            self.logger.debug("🔄 DataConverter 생성 시작...")
+            
+            # 🔥 DataConverter도 ModelLoader에 직접 의존하지 않도록 수정
+            try:
+                from ..ai_pipeline.utils.data_converter import DataConverter
+                data_converter = DataConverter()
+                self.logger.debug("✅ DataConverter 생성 완료")
+                return data_converter
             except ImportError:
-                continue
-        
-        # Mock 생성
-        return self._create_mock_model_loader()
+                # 폴백: Mock DataConverter
+                class MockDataConverter:
+                    def __init__(self):
+                        self.is_mock = True
+                        
+                    def convert_api_to_step(self, api_data, step_name: str):
+                        return api_data
+                    
+                    def convert_step_to_api(self, step_data, step_name: str):
+                        return step_data
+                
+                self.logger.debug("✅ Mock DataConverter 생성 완료")
+                return MockDataConverter()
+            
+        except Exception as e:
+            self.logger.error(f"❌ DataConverter 생성 실패: {e}")
+            
+            # 최종 폴백
+            class FallbackDataConverter:
+                def __init__(self):
+                    self.is_fallback = True
+            
+            return FallbackDataConverter()
     
+    def _create_mock_model_loader(self):
+        """폴백 ModelLoader"""
+        class MockModelLoader:
+            def __init__(self):
+                self.is_mock = True
+                self.device = DEVICE
+                
+            def load_model(self, model_name: str, **kwargs):
+                return {"mock": True, "model_name": model_name}
+            
+            def create_step_interface(self, step_name: str):
+                return {"mock": True, "step_name": step_name}
+            
+            def validate_di_container_integration(self):
+                return {"di_container_available": True, "mock": True}
+        
+        return MockModelLoader()
+    
+
+
+    def _create_minimal_model_loader(self):
+        """🔥 새로 추가: 최소 기능 ModelLoader (폴백)"""
+        class MinimalModelLoader:
+            def __init__(self):
+                self.is_minimal = True
+                self.device = DEVICE
+                self.loaded_models = {}
+                
+            def load_model(self, model_name: str, **kwargs):
+                self.logger.debug(f"⚠️ Minimal ModelLoader.load_model: {model_name}")
+                return {"minimal": True, "model_name": model_name}
+            
+            def create_step_interface(self, step_name: str):
+                self.logger.debug(f"⚠️ Minimal ModelLoader.create_step_interface: {step_name}")
+                return {"minimal": True, "step_name": step_name}
+            
+            def validate_di_container_integration(self):
+                return {"di_container_available": True, "minimal": True}
+            
+            def register_step_requirements(self, step_name: str, requirements):
+                self.logger.debug(f"⚠️ Minimal ModelLoader.register_step_requirements: {step_name}")
+                return True
+        
+        return MinimalModelLoader()
+
+
     def _create_memory_manager(self):
         """MemoryManager 안전 생성"""
         import_paths = [
@@ -837,9 +1044,17 @@ def register_factory(service_key: str, factory: Callable[[], Any], singleton: bo
     container.register_factory(service_key, factory, singleton)
 
 def inject_dependencies_to_step(step_instance, container_id: Optional[str] = None) -> int:
-    """Step 의존성 주입 편의 함수"""
-    container = get_global_container(container_id)
-    return container.inject_to_step(step_instance)
+    """🔥 Central Hub v7.0 - Step 의존성 주입 편의 함수"""
+    try:
+        container = get_global_container(container_id)
+        if container:
+            return container.inject_to_step(step_instance)
+        else:
+            logger.warning("⚠️ Central Hub Container를 찾을 수 없습니다")
+            return 0
+    except Exception as e:
+        logger.error(f"❌ inject_dependencies_to_step 실패: {e}")
+        return 0
 
 # ==============================================
 # 🔥 지연 서비스 관련 함수들 (완전 구현)
@@ -950,54 +1165,91 @@ def unregister_service(service_key: str, container_id: Optional[str] = None) -> 
 # ==============================================
 
 def inject_all_dependencies(step_instance, container_id: Optional[str] = None) -> int:
-    """모든 의존성 주입"""
-    return inject_dependencies_safe(step_instance, container_id)
+    """🔥 Central Hub v7.0 - 모든 의존성 주입 (완전한 서비스 세트)"""
+    try:
+        container = get_global_container(container_id)
+        if container:
+            # Central Hub v7.0의 완전한 inject_to_step 사용
+            return container.inject_to_step(step_instance)
+        else:
+            logger.warning("⚠️ Central Hub Container를 찾을 수 없습니다")
+            return 0
+    except Exception as e:
+        logger.error(f"❌ 모든 의존성 주입 실패: {e}")
+        return 0
 
 def auto_wire_dependencies(step_instance, container_id: Optional[str] = None) -> bool:
-    """자동 의존성 연결"""
+    """🔥 Central Hub v7.0 - 자동 의존성 연결 (완전한 자동화)"""
     try:
-        count = inject_dependencies_safe(step_instance, container_id)
+        # Central Hub v7.0의 완전한 inject_to_step 사용
+        count = inject_all_dependencies(step_instance, container_id)
         return count > 0
-    except Exception:
+    except Exception as e:
+        logger.error(f"❌ 자동 의존성 연결 실패: {e}")
         return False
 
 def validate_dependencies(step_instance, required_services: List[str] = None) -> bool:
-    """의존성 유효성 검사"""
+    """🔥 Central Hub v7.0 - 의존성 유효성 검사 (확장된 서비스 세트)"""
     try:
         if not required_services:
-            required_services = ['model_loader', 'memory_manager', 'data_converter']
+            # Central Hub v7.0의 확장된 서비스 세트
+            required_services = [
+                'model_loader', 'memory_manager', 'data_converter',
+                'step_factory', 'data_transformer', 'model_registry',
+                'performance_monitor', 'error_handler', 'cache_manager',
+                'config_manager', 'central_hub_container'
+            ]
         
         for service_name in required_services:
             if not hasattr(step_instance, service_name) or getattr(step_instance, service_name) is None:
+                logger.debug(f"⚠️ 필수 서비스 누락: {service_name}")
                 return False
         
+        logger.debug(f"✅ 모든 필수 서비스 검증 완료: {len(required_services)}개")
         return True
-    except Exception:
+    except Exception as e:
+        logger.error(f"❌ 의존성 유효성 검사 실패: {e}")
         return False
 
 def get_dependency_status(step_instance) -> Dict[str, Any]:
-    """의존성 상태 정보"""
+    """🔥 Central Hub v7.0 - 의존성 상태 정보 (완전한 서비스 모니터링)"""
     try:
-        dependencies = ['model_loader', 'memory_manager', 'data_converter', 'di_container']
+        # Central Hub v7.0의 확장된 서비스 세트
+        dependencies = [
+            'model_loader', 'memory_manager', 'data_converter', 
+            'step_factory', 'data_transformer', 'model_registry',
+            'performance_monitor', 'error_handler', 'cache_manager',
+            'config_manager', 'central_hub_container', 'di_container'
+        ]
         
         status = {}
         for dep_name in dependencies:
             dep_value = getattr(step_instance, dep_name, None)
             status[dep_name] = {
                 'available': dep_value is not None,
-                'type': type(dep_value).__name__ if dep_value else None
+                'type': type(dep_value).__name__ if dep_value else None,
+                'central_hub_integrated': hasattr(step_instance, 'central_hub_integrated') and getattr(step_instance, 'central_hub_integrated', False)
             }
+        
+        # Central Hub v7.0 메타데이터 추가
+        metadata = {}
+        if hasattr(step_instance, 'step_metadata'):
+            metadata = getattr(step_instance, 'step_metadata', {})
         
         return {
             'step_class': step_instance.__class__.__name__,
             'dependencies': status,
             'all_resolved': all(status[dep]['available'] for dep in dependencies),
-            'resolution_count': sum(1 for dep in status.values() if dep['available'])
+            'resolution_count': sum(1 for dep in status.values() if dep['available']),
+            'central_hub_version': '7.0',
+            'metadata': metadata,
+            'total_services': len(dependencies)
         }
     except Exception as e:
         return {
             'error': str(e),
-            'step_class': getattr(step_instance, '__class__', {}).get('__name__', 'Unknown')
+            'step_class': getattr(step_instance, '__class__', {}).get('__name__', 'Unknown'),
+            'central_hub_version': '7.0'
         }
 
 # ==============================================
@@ -1196,11 +1448,26 @@ def register_factory_safe(service_key: str, factory: Callable[[], Any], singleto
         return False
 
 def inject_dependencies_to_step_safe(step_instance, container_id: Optional[str] = None) -> int:
-    """안전한 의존성 주입"""
+    """🔥 Central Hub v7.0 - 안전한 의존성 주입 (완전한 에러 처리)"""
     try:
-        return inject_dependencies_to_step(step_instance, container_id)
+        # Step 인스턴스 유효성 검증
+        if step_instance is None:
+            logger.warning("⚠️ Step 인스턴스가 None입니다")
+            return 0
+        
+        # Container 조회 및 주입
+        container = get_global_container(container_id)
+        if container:
+            injections_made = container.inject_to_step(step_instance)
+            logger.debug(f"✅ Central Hub v7.0 의존성 주입 완료: {injections_made}개")
+            return injections_made
+        else:
+            logger.warning("⚠️ Central Hub Container를 찾을 수 없습니다")
+            return 0
+            
     except Exception as e:
-        logger.debug(f"⚠️ inject_dependencies_to_step_safe 실패: {e}")
+        logger.error(f"❌ Central Hub v7.0 의존성 주입 실패: {e}")
+        logger.debug(f"🔍 실패 상세: {traceback.format_exc()}")
         return 0
 
 def get_model_loader_safe(container_id: Optional[str] = None):
@@ -1224,7 +1491,7 @@ def get_container_safe(container_id: Optional[str] = None):
         return None
 
 def inject_dependencies_safe(step_instance, container_id: Optional[str] = None) -> int:
-    """안전한 의존성 주입 (별칭)"""
+    """🔥 Central Hub v7.0 - 안전한 의존성 주입 (별칭)"""
     return inject_dependencies_to_step_safe(step_instance, container_id)
 
 def ensure_model_loader_registration(container_id: Optional[str] = None) -> bool:
@@ -1278,6 +1545,14 @@ def _get_global_di_container():
 def _get_service_from_container_safe(service_key: str):
     """BaseStepMixin 호환 함수"""
     return get_service(service_key)
+
+def _get_central_hub_container():
+    """🔥 Central Hub v7.0 - 안전한 Central Hub Container 조회"""
+    try:
+        return get_global_container()
+    except Exception as e:
+        logger.debug(f"⚠️ _get_central_hub_container 실패: {e}")
+        return None
 
 def get_global_container_legacy():
     """구버전 호환 함수"""
@@ -1909,6 +2184,7 @@ __all__ = [
     'DynamicImportResolver',  # 호환성
     '_get_global_di_container',  # BaseStepMixin 호환
     '_get_service_from_container_safe',  # BaseStepMixin 호환
+    '_get_central_hub_container',  # Central Hub v7.0 호환
     'get_global_container_legacy',  # 구 버전 호환
     'reset_global_container_legacy',  # 구 버전 호환
     

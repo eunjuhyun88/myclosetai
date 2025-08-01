@@ -578,7 +578,7 @@ class GitHubCheckpointAnalyzer:
             return ""
     
     def _test_github_pytorch_loading(self, analysis: CheckpointAnalysisResult):
-        """GitHub PyTorch 체크포인트 로딩 테스트 (3단계 안전 로딩)"""
+        """GitHub PyTorch 체크포인트 로딩 테스트 (3단계 안전 로딩 + MPS float64 문제 해결)"""
         if not self.torch_available:
             analysis.loading_errors.append("PyTorch 없음")
             return
@@ -587,10 +587,18 @@ class GitHubCheckpointAnalyzer:
         start_time = time.time()
         start_memory = psutil.Process().memory_info().rss / (1024**2)
         
+        # 🔥 MPS float64 문제 해결을 위한 CPU 우선 로딩
+        safe_device = 'cpu' if self.device == 'mps' else self.device
+        
         # 1단계: weights_only=True 시도 (GitHub 권장)
         try:
             with github_safety.safe_execution(f"PyTorch weights_only 로딩 {file_path.name}", timeout=120):
-                checkpoint = self.torch.load(file_path, map_location=self.device, weights_only=True)
+                checkpoint = self.torch.load(file_path, map_location=safe_device, weights_only=True)
+                
+                # 🔥 MPS 디바이스에서 float64 → float32 변환
+                if self.device == 'mps':
+                    checkpoint = self._convert_mps_float64_to_float32(checkpoint)
+                
                 analysis.pytorch_weights_only_success = True
                 self._analyze_github_checkpoint_content(analysis, checkpoint)
                 print(f"         ✅ weights_only 로딩 성공")
@@ -603,7 +611,12 @@ class GitHubCheckpointAnalyzer:
         # 2단계: weights_only=False 시도 (GitHub 호환성)
         try:
             with github_safety.safe_execution(f"PyTorch 일반 로딩 {file_path.name}", timeout=120):
-                checkpoint = self.torch.load(file_path, map_location=self.device, weights_only=False)
+                checkpoint = self.torch.load(file_path, map_location=safe_device, weights_only=False)
+                
+                # 🔥 MPS 디바이스에서 float64 → float32 변환
+                if self.device == 'mps':
+                    checkpoint = self._convert_mps_float64_to_float32(checkpoint)
+                
                 analysis.pytorch_regular_success = True
                 self._analyze_github_checkpoint_content(analysis, checkpoint)
                 print(f"         ✅ 일반 로딩 성공")
@@ -616,7 +629,12 @@ class GitHubCheckpointAnalyzer:
         # 3단계: 레거시 로딩 시도 (GitHub 레거시 지원)
         try:
             with github_safety.safe_execution(f"PyTorch 레거시 로딩 {file_path.name}", timeout=120):
-                checkpoint = self.torch.load(file_path, map_location=self.device)
+                checkpoint = self.torch.load(file_path, map_location=safe_device)
+                
+                # 🔥 MPS 디바이스에서 float64 → float32 변환
+                if self.device == 'mps':
+                    checkpoint = self._convert_mps_float64_to_float32(checkpoint)
+                
                 analysis.legacy_load_success = True
                 analysis.pytorch_regular_success = True
                 self._analyze_github_checkpoint_content(analysis, checkpoint)
@@ -630,6 +648,34 @@ class GitHubCheckpointAnalyzer:
         analysis.load_time_seconds = time.time() - start_time
         end_memory = psutil.Process().memory_info().rss / (1024**2)
         analysis.memory_usage_mb = end_memory - start_memory
+    
+    def _convert_mps_float64_to_float32(self, checkpoint: Any) -> Any:
+        """MPS용 체크포인트 float64 → float32 변환 (재귀적 처리)"""
+        if not self.torch_available:
+            return checkpoint
+        
+        def convert_tensor(tensor):
+            if hasattr(tensor, 'dtype') and tensor.dtype == self.torch.float64:
+                return tensor.to(self.torch.float32)
+            return tensor
+        
+        def recursive_convert(obj):
+            if self.torch.is_tensor(obj):
+                return convert_tensor(obj)
+            elif isinstance(obj, dict):
+                return {key: recursive_convert(value) for key, value in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return type(obj)(recursive_convert(item) for item in obj)
+            else:
+                return obj
+        
+        try:
+            converted_checkpoint = recursive_convert(checkpoint)
+            print("         ✅ MPS float64 → float32 변환 완료")
+            return converted_checkpoint
+        except Exception as e:
+            print(f"         ⚠️ MPS float64 변환 실패, 원본 반환: {e}")
+            return checkpoint
     
     def _test_github_safetensors_loading(self, analysis: CheckpointAnalysisResult):
         """GitHub SafeTensors 로딩 테스트"""
@@ -1505,21 +1551,34 @@ class GitHubDetailedDataSpecAnalyzer:
             
             # Emergency Fallback 확인
             try:
-                # BaseStepMixin의 emergency 생성 기능 확인
-                from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+                # StepFactory를 사용해서 실제 Step 인스턴스 생성
+                from app.ai_pipeline.factories.step_factory import StepFactory
                 
-                # Mock 인스턴스로 emergency fallback 테스트
-                class TestStep(BaseStepMixin):
-                    def __init__(self):
-                        self.step_name = step_name
-                        super().__init__()
-                    
-                    def _run_ai_inference(self, input_data):
-                        return {}
+                factory = StepFactory()
+                registered_steps = factory.get_registered_steps()
                 
-                test_instance = TestStep()
-                if hasattr(test_instance, '_create_emergency_detailed_data_spec'):
-                    analysis_result['emergency_fallback_available'] = True
+                if step_name in registered_steps:
+                    # 실제 Step 클래스 사용
+                    step_class = factory.get_registered_step_class(step_name)
+                    if step_class:
+                        test_instance = step_class()
+                        if hasattr(test_instance, '_create_emergency_detailed_data_spec'):
+                            analysis_result['emergency_fallback_available'] = True
+                else:
+                    # StepFactory를 사용해서 실제 Step 인스턴스 생성
+                    try:
+                        from app.ai_pipeline.factories.step_factory import StepFactory
+                        factory = StepFactory()
+                        registered_steps = factory.get_registered_steps()
+                        
+                        if step_name in registered_steps:
+                            step_class = factory.get_registered_step_class(step_name)
+                            if step_class:
+                                test_instance = step_class()
+                                if hasattr(test_instance, '_create_emergency_detailed_data_spec'):
+                                    analysis_result['emergency_fallback_available'] = True
+                    except Exception as e:
+                        analysis_result['issues'].append(f"StepFactory 사용 실패: {e}")
                 
             except Exception as e:
                 analysis_result['issues'].append(f"Emergency fallback 확인 실패: {e}")
@@ -1707,7 +1766,7 @@ class GitHubStepFactoryAnalyzer:
         try:
             # StepFactory 가용성 확인
             try:
-                from app.ai_pipeline.utils.step_factory import StepFactory
+                from app.ai_pipeline.factories.step_factory import StepFactory
                 factory = StepFactory()
                 
                 analysis_result['step_factory_available'] = True
@@ -2074,11 +2133,48 @@ class UltimateGitHubAIDebuggerV6:
             
             # Central Hub 준비도 테스트
             try:
-                from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
-                # BaseStepMixin에 Central Hub 관련 속성이 있는지 확인
-                dummy_class = type('DummyStep', (BaseStepMixin,), {'step_name': 'test'})
-                dummy_instance = dummy_class()
-                integrations['central_hub_readiness'] = hasattr(dummy_instance, 'central_hub_container')
+                # StepFactory를 사용해서 실제 Step 인스턴스 생성
+                from app.ai_pipeline.factories.step_factory import StepFactory
+                factory = StepFactory()
+                registered_steps = factory.get_registered_steps()
+                
+                if registered_steps:
+                    # 첫 번째 등록된 Step 사용
+                    first_step_id = list(registered_steps.keys())[0]
+                    step_class = factory.get_registered_step_class(first_step_id)
+                    if step_class:
+                        step_instance = step_class()
+                        integrations['central_hub_readiness'] = hasattr(step_instance, 'central_hub_container')
+                    else:
+                        # StepFactory를 사용해서 실제 Step 인스턴스 생성
+                        try:
+                            from app.ai_pipeline.factories.step_factory import StepFactory
+                            factory = StepFactory()
+                            registered_steps = factory.get_registered_steps()
+                            
+                            if registered_steps:
+                                first_step_id = list(registered_steps.keys())[0]
+                                step_class = factory.get_registered_step_class(first_step_id)
+                                if step_class:
+                                    step_instance = step_class()
+                                    integrations['central_hub_readiness'] = hasattr(step_instance, 'central_hub_container')
+                        except Exception:
+                            pass
+                else:
+                    # StepFactory를 사용해서 실제 Step 인스턴스 생성
+                    try:
+                        from app.ai_pipeline.factories.step_factory import StepFactory
+                        factory = StepFactory()
+                        registered_steps = factory.get_registered_steps()
+                        
+                        if registered_steps:
+                            first_step_id = list(registered_steps.keys())[0]
+                            step_class = factory.get_registered_step_class(first_step_id)
+                            if step_class:
+                                step_instance = step_class()
+                                integrations['central_hub_readiness'] = hasattr(step_instance, 'central_hub_container')
+                    except Exception:
+                        pass
             except Exception:
                 pass
             

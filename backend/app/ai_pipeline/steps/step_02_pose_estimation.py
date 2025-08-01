@@ -37,6 +37,7 @@ import hashlib
 import json
 import base64
 import math
+import warnings
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
@@ -46,6 +47,10 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache, wraps
 from contextlib import asynccontextmanager
+
+# 경고 무시 설정
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
 
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:

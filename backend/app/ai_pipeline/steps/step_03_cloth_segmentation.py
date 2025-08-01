@@ -31,6 +31,7 @@ import hashlib
 import json
 import base64
 import weakref
+import warnings
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple, TYPE_CHECKING
@@ -39,6 +40,10 @@ from enum import Enum
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
+
+# 경고 무시 설정
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
 
 # 최상단에 추가
 import logging

@@ -38,6 +38,7 @@ import subprocess
 import platform
 import inspect
 import base64
+import warnings
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List, Union, Callable, Type, TYPE_CHECKING, Awaitable
@@ -47,11 +48,64 @@ from functools import wraps
 from contextlib import asynccontextmanager
 from enum import Enum
 
+# 🔥 수정: 추가 필수 import들
+from concurrent.futures import ThreadPoolExecutor
+
+# 경고 무시 설정
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
+
+# 🔥 수정: 안전한 Logger 초기화
+_LOGGER_INITIALIZED = False
+_MODULE_LOGGER = None
+
+def get_safe_logger():
+    """Thread-safe Logger 초기화 (threading 사용)"""
+    global _LOGGER_INITIALIZED, _MODULE_LOGGER
+    
+    # 🔥 수정: threading.Lock 사용
+    if not hasattr(get_safe_logger, '_lock'):
+        get_safe_logger._lock = threading.Lock()
+    
+    with get_safe_logger._lock:
+        if _LOGGER_INITIALIZED and _MODULE_LOGGER is not None:
+            return _MODULE_LOGGER
+        
+        try:
+            logger_name = __name__
+            _MODULE_LOGGER = logging.getLogger(logger_name)
+            
+            if not _MODULE_LOGGER.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter(
+                    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                )
+                handler.setFormatter(formatter)
+                _MODULE_LOGGER.addHandler(handler)
+                _MODULE_LOGGER.setLevel(logging.INFO)
+            
+            _LOGGER_INITIALIZED = True
+            return _MODULE_LOGGER
+            
+        except Exception as e:
+            print(f"⚠️ Logger 초기화 실패, fallback 사용: {e}")
+            
+            class FallbackLogger:
+                def info(self, msg): print(f"INFO: {msg}")
+                def error(self, msg): print(f"ERROR: {msg}")
+                def warning(self, msg): print(f"WARNING: {msg}")
+                def debug(self, msg): print(f"DEBUG: {msg}")
+            
+            return FallbackLogger()
+
+logger = get_safe_logger()
+
 # ==============================================
 # 🔥 Central Hub DI Container 안전 import (순환참조 방지)
 # ==============================================
 
 def _get_central_hub_container():
+
     """Central Hub DI Container 안전한 동적 해결"""
     try:
         import importlib
@@ -66,13 +120,19 @@ def _get_central_hub_container():
         return None
 
 def _inject_dependencies_safe(step_instance):
-    """Central Hub DI Container를 통한 안전한 의존성 주입"""
+    """🔥 Central Hub v7.0 - 안전한 의존성 주입 (완전한 서비스 세트)"""
     try:
         container = _get_central_hub_container()
         if container and hasattr(container, 'inject_to_step'):
-            return container.inject_to_step(step_instance)
-        return 0
-    except Exception:
+            # Central Hub v7.0의 완전한 inject_to_step 사용
+            injections_made = container.inject_to_step(step_instance)
+            logger.debug(f"✅ Central Hub v7.0 의존성 주입 완료: {injections_made}개")
+            return injections_made
+        else:
+            logger.warning("⚠️ Central Hub Container를 찾을 수 없습니다")
+            return 0
+    except Exception as e:
+        logger.error(f"❌ Central Hub v7.0 의존성 주입 실패: {e}")
         return 0
 
 def _get_service_from_central_hub(service_key: str):
@@ -299,6 +359,8 @@ class CentralHubDependencyStatus:
     central_hub_connected: bool = False
     single_source_of_truth: bool = False
     dependency_inversion_applied: bool = False
+    base_initialized: bool = False
+    detailed_data_spec_loaded: bool = False
     
     # 환경 상태
     conda_optimized: bool = False
@@ -349,6 +411,83 @@ class CentralHubPerformanceMetrics:
     step_data_transfers: int = 0
     validation_failures: int = 0
 
+
+ # 🔥 수정: threading.Lock 추가
+def __post_init__(self):
+    self._lock = threading.RLock()
+
+def update_status(self, **kwargs):
+    """🔥 수정: thread-safe 상태 업데이트"""
+    with self._lock:
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+def get_completion_percentage(self) -> float:
+    """🔥 수정: thread-safe 완료율 계산"""
+    with self._lock:
+        total_fields = 10  # 총 필드 수
+        completed_fields = sum([
+            self.model_loader,
+            self.memory_manager, 
+            self.data_converter,
+            self.step_interface,
+            self.central_hub_container,
+            self.central_hub_connected,
+            self.single_source_of_truth,
+            self.dependency_inversion_applied,
+            self.base_initialized,
+            self.detailed_data_spec_loaded
+        ])
+        return (completed_fields / total_fields) * 100
+
+# 🔥 수정: Central Hub DI Container 지연 import (순환참조 방지 + threading 안전)
+def _get_central_hub_container():
+    """🔥 수정: Central Hub DI Container 안전한 동적 해결 (threading 안전)"""
+    if not hasattr(_get_central_hub_container, '_container_cache'):
+        _get_central_hub_container._container_cache = None
+        _get_central_hub_container._lock = threading.Lock()
+    
+    with _get_central_hub_container._lock:
+        if _get_central_hub_container._container_cache is not None:
+            return _get_central_hub_container._container_cache
+        
+        try:
+            import importlib
+            module = importlib.import_module('app.core.di_container')
+            get_global_fn = getattr(module, 'get_global_container', None)
+            if get_global_fn:
+                container = get_global_fn()
+                _get_central_hub_container._container_cache = container
+                return container
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        
+        # Mock 생성
+        _get_central_hub_container._container_cache = _create_mock_container()
+        return _get_central_hub_container._container_cache
+
+
+def _get_service_from_central_hub(service_key: str):
+    """🔥 수정: Central Hub를 통한 안전한 서비스 조회 (threading 안전)"""
+    try:
+        container = _get_central_hub_container()
+        if container:
+            return container.get(service_key)
+        return None
+    except Exception:
+        return None
+
+def _inject_dependencies_safe(step_instance):
+    """🔥 수정: Central Hub DI Container를 통한 안전한 의존성 주입 (threading 안전)"""
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'inject_to_step'):
+            return container.inject_to_step(step_instance)
+        return 0
+    except Exception:
+        return 0
 # ==============================================
 # 🔥 Central Hub 기반 의존성 관리자 (v20.0)
 # ==============================================
