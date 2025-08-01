@@ -1180,7 +1180,6 @@ if BaseStepMixin:
                 # 🔥 BaseStepMixin v20.0 완전 상속 - super().__init__() 호출
                 super().__init__(
                     step_name="HumanParsingStep",
-                    step_id=1,
                     **kwargs
                 )
                 

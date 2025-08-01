@@ -1420,7 +1420,7 @@ class CentralHubDependencyResolver:
             
             # 1. BaseStepMixin 표준 설정들
             dependencies.update({
-                'step_name': config.step_name,
+                # 🔥 수정: step_name 제거 (BaseStepMixin에서 자동 설정)
                 'step_id': config.step_id,
                 'device': self._resolve_device(config.device),
                 'use_fp16': config.use_fp16,
@@ -1862,7 +1862,7 @@ class CentralHubDependencyResolver:
         """응급 모드 최소 의존성"""
         self.logger.warning(f"⚠️ {config.step_name} 응급 모드로 최소 의존성 반환")
         return {
-            'step_name': config.step_name,
+            # 🔥 수정: step_name 제거 (BaseStepMixin에서 자동 설정)
             'step_id': config.step_id,
             'device': 'cpu',
             'conda_env': config.conda_env or CONDA_INFO['conda_env'],
@@ -1981,7 +1981,7 @@ class CentralHubStepMapping:
         if overrides:
             # 딕셔너리로 변환하여 오버라이드 적용
             config_dict = {
-                'step_name': base_config.step_name,
+                # 🔥 수정: step_name 제거 (BaseStepMixin에서 자동 설정)
                 'step_id': base_config.step_id,
                 'class_name': base_config.class_name,
                 'module_path': base_config.module_path,
@@ -2540,6 +2540,8 @@ class StepFactory:
                 
                 # 4. 🔥 수정: Central Hub 의존성 해결 개선
                 constructor_dependencies = self.dependency_resolver.resolve_dependencies_for_constructor(config)
+                # 🔥 step_name 중복 전달 방지
+                constructor_dependencies.pop('step_name', None)
                 
                 # 5. 🔥 수정: Step 인스턴스 생성 및 Central Hub 주입
                 self.logger.info(f"🔄 {config.class_name} 인스턴스 생성 중...")

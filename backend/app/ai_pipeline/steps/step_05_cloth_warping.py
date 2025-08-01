@@ -1718,7 +1718,6 @@ class ClothWarpingStep(BaseStepMixin):
             # 2. BaseStepMixin 초기화 (Central Hub DI Container 연동)
             super().__init__(
                 step_name="ClothWarpingStep",
-                step_id=5,
                 **kwargs
             )
             

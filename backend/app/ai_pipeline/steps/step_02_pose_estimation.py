@@ -1196,8 +1196,8 @@ class PoseEstimationStep(BaseStepMixin):
         # 🔥 1. 필수 속성들 초기화 (에러 방지)
         self._initialize_step_attributes()
         
-        # 🔥 2. BaseStepMixin 초기화 (Central Hub 자동 연동)
-        super().__init__(step_name="PoseEstimationStep", step_id=2, **kwargs)
+                # 🔥 2. BaseStepMixin 초기화 (Central Hub 자동 연동)
+        super().__init__(step_name="PoseEstimationStep", **kwargs)
         
         # 🔥 3. Pose Estimation 특화 초기화
         self._initialize_pose_estimation_specifics()

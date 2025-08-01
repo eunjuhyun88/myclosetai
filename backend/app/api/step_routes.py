@@ -268,11 +268,22 @@ async def _process_step_common(
         if session_manager:
             session_data = await session_manager.get_session(session_id) or {}
         
+        # 🔥 WebSocket 진행률 콜백 생성
+        websocket_manager = _get_websocket_manager()
+        progress_callback = None
+        if websocket_manager:
+            try:
+                from app.api.websocket_routes import create_progress_callback
+                progress_callback = create_progress_callback(session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ 진행률 콜백 생성 실패: {e}")
+        
         # API 입력 데이터 보강
         enhanced_input = {
             **api_input,
             'session_id': session_id,
             'step_name': step_name,
+            'progress_callback': progress_callback,  # 🔥 진행률 콜백 추가
             'step_id': step_id,
             'session_data': session_data,
             'central_hub_based': True
@@ -531,6 +542,8 @@ def format_step_api_response(
     fitted_image: Optional[str] = None,
     fit_score: Optional[float] = None,
     recommendations: Optional[list] = None,
+    progress_percentage: Optional[float] = None,  # 🔥 진행률 추가
+    next_step: Optional[int] = None,  # 🔥 다음 단계 추가
     **kwargs
 ) -> Dict[str, Any]:
     """API 응답 형식화 (프론트엔드 호환) - Central Hub 기반"""
@@ -538,6 +551,14 @@ def format_step_api_response(
     # session_id 필수 검증
     if not session_id:
         raise ValueError("session_id는 필수입니다!")
+    
+    # 🔥 진행률 계산
+    if progress_percentage is None:
+        progress_percentage = (step_id / 8) * 100  # 8단계 기준
+    
+    # 🔥 다음 단계 계산
+    if next_step is None:
+        next_step = step_id + 1 if step_id < 8 else None
     
     response = {
         "success": success,
@@ -551,6 +572,13 @@ def format_step_api_response(
         "timestamp": datetime.now().isoformat(),
         "details": details or {},
         "error": error,
+        
+        # 🔥 프론트엔드 호환성 강화
+        "progress_percentage": round(progress_percentage, 1),
+        "next_step": next_step,
+        "total_steps": 8,
+        "current_step": step_id,
+        "remaining_steps": max(0, 8 - step_id),
         
         # Central Hub DI Container v7.0 정보
         "central_hub_di_container_v70": True,
@@ -675,6 +703,18 @@ async def step_1_upload_validation(
             try:
                 websocket_manager = _get_websocket_manager()
                 if websocket_manager:
+                    # 🔥 실시간 진행률 업데이트
+                    await websocket_manager.broadcast({
+                        'type': 'step_progress',
+                        'step': 'step_01',
+                        'session_id': new_session_id,
+                        'progress': 12.5,  # 1/8 = 12.5%
+                        'status': 'completed',
+                        'message': '이미지 업로드 및 검증 완료',
+                        'central_hub_used': True
+                    })
+                    
+                    # 🔥 완료 알림
                     await websocket_manager.broadcast({
                         'type': 'step_completed',
                         'step': 'step_01',

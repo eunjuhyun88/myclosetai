@@ -248,6 +248,9 @@ class CentralHubDIContainer:
         # DataConverter 팩토리
         self.registry.register_factory('data_converter', self._create_data_converter)
         
+        # 🔥 StepFactory 팩토리 추가
+        self.registry.register_factory('step_factory', self._create_step_factory)
+        
         # 기본 값들 등록
         self.registry.register_instance('device', DEVICE)
         self.registry.register_instance('memory_gb', MEMORY_GB)
@@ -622,6 +625,45 @@ class CentralHubDIContainer:
                     self.is_fallback = True
             
             return FallbackDataConverter()
+    
+    def _create_step_factory(self) -> Any:
+        """StepFactory 생성"""
+        try:
+            self.logger.debug("🔄 StepFactory 생성 시작...")
+            
+            from app.ai_pipeline.factories.step_factory import StepFactory
+            step_factory = StepFactory()
+            self.logger.debug("✅ StepFactory 생성 완료")
+            return step_factory
+            
+        except ImportError as e:
+            self.logger.warning(f"⚠️ StepFactory import 실패: {e} - Mock 사용")
+            class MockStepFactory:
+                def __init__(self):
+                    self.logger = logging.getLogger("MockStepFactory")
+                    self.is_mock = True
+                
+                def create_step(self, step_type):
+                    self.logger.warning(f"⚠️ Mock StepFactory: {step_type} 생성 시도")
+                    return None
+                
+                def get_registered_step_class(self, step_name):
+                    self.logger.warning(f"⚠️ Mock StepFactory: {step_name} 조회 시도")
+                    return None
+            return MockStepFactory()
+            
+        except Exception as e:
+            self.logger.error(f"❌ StepFactory 생성 실패: {e}")
+            class FallbackStepFactory:
+                def __init__(self):
+                    self.is_fallback = True
+                
+                def create_step(self, step_type):
+                    return None
+                
+                def get_registered_step_class(self, step_name):
+                    return None
+            return FallbackStepFactory()
     
     def _create_mock_model_loader(self):
         """폴백 ModelLoader"""

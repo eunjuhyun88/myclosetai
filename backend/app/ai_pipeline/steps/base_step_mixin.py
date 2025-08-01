@@ -1324,7 +1324,11 @@ class BaseStepMixin:
             
             # 🔥 3. 기존 BaseStepMixin 초기화 코드는 그대로 유지
             self.config = self._create_central_hub_config(**kwargs)
-            self.step_name = kwargs.get('step_name', self.__class__.__name__)
+            # 🔥 수정: step_name 중복 전달 방지 - kwargs에서 제거
+            if 'step_name' in kwargs:
+                self.step_name = kwargs.pop('step_name')
+            else:
+                self.step_name = self.__class__.__name__
             self.step_id = kwargs.get('step_id', getattr(self, 'STEP_ID', 0))
             
             # Logger 설정 (제일 먼저)

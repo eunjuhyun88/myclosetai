@@ -1065,7 +1065,6 @@ class QualityAssessmentStep(BaseStepMixin):
             # 2. BaseStepMixin v20.0 초기화 (Central Hub DI Container 연동)
             super().__init__(
                 step_name="QualityAssessmentStep",
-                step_id=8,
                 **kwargs
             )
             

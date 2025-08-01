@@ -1500,7 +1500,7 @@ class ClothSegmentationStep(BaseStepMixin):
             
             # 🔥 2. BaseStepMixin 초기화 (안전한 호출)
             try:
-                super().__init__(step_name="ClothSegmentationStep", step_id=3, **kwargs)
+                super().__init__(step_name="ClothSegmentationStep", **kwargs)
             except Exception as e:
                 self.logger.warning(f"⚠️ BaseStepMixin 초기화 실패, 폴백 모드: {e}")
                 self._fallback_initialization(**kwargs)
