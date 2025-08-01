@@ -19,21 +19,31 @@ logger = logging.getLogger(__name__)
 # 조용한 호환성 경고 (개발 환경에서만)
 warnings.filterwarnings('ignore', category=DeprecationWarning, module='app.ai_pipeline.interfaces')
 
-# 올바른 경로에서 모든 클래스와 함수를 import
+# 올바른 경로에서 필요한 클래스와 함수만 명시적으로 import
 try:
-    from ..interface.step_interface import *
+    from ..interface.step_interface import (
+        DetailedDataSpec,
+        StepModelInterface,
+        StepConfig,
+        StepType,
+        StepPriority,
+        create_step_interface,
+        create_optimized_interface,
+        get_environment_info,
+        optimize_environment
+    )
     # 성공 로그는 DEBUG 레벨로 변경 (과다 출력 방지)
     logger.debug("StepInterface 호환성 패치 적용 성공")
 except ImportError as e:
     logger.error(f"❌ StepInterface 호환성 패치 실패: {e}")
     
     # 폴백 구현
-    class StepInterface:
-        """폴백 StepInterface"""
+    class StepModelInterface:
+        """폴백 StepModelInterface"""
         def __init__(self, step_name: str, **kwargs):
             self.step_name = step_name
-            self.logger = logging.getLogger(f"FallbackStepInterface.{step_name}")
-            self.logger.warning("⚠️ 폴백 StepInterface 사용 중")
+            self.logger = logging.getLogger(f"FallbackStepModelInterface.{step_name}")
+            self.logger.warning("⚠️ 폴백 StepModelInterface 사용 중")
         
         def register_model_requirement(self, *args, **kwargs):
             self.logger.debug("폴백 모드 - register_model_requirement 무시됨")
@@ -54,15 +64,18 @@ except ImportError as e:
 # backward compatibility를 위한 alias 설정
 try:
     from ..interface.step_interface import (
-        GitHubStepModelInterface as StepModelInterface,
-        GitHubStepConfig as StepConfig,
-        GitHubStepType as StepType,
-        GitHubStepPriority as StepPriority,
-        create_github_step_interface_with_diagnostics as create_step_interface,
-        create_optimized_github_interface as create_optimized_interface,
-        get_github_environment_info as get_environment_info,
-        optimize_github_environment as optimize_environment
+        StepModelInterface,
+        StepConfig,
+        StepType,
+        StepPriority,
+        create_step_interface,
+        create_optimized_interface,
+        get_environment_info,
+        optimize_environment
     )
+    
+    # get_github_environment_info alias 추가
+    get_github_environment_info = get_environment_info
     
     # DEBUG 레벨로 변경 (과다 로그 방지)
     logger.debug("StepInterface 별칭 설정 완료")
@@ -71,7 +84,6 @@ except ImportError:
     logger.error("❌ StepInterface 별칭 설정 실패 - 폴백 모드")
 
 __all__ = [
-    'StepInterface',
     'StepModelInterface', 
     'StepConfig',
     'StepType',

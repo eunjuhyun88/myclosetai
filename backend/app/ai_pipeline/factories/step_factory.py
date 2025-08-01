@@ -867,15 +867,16 @@ class CentralHubStepCreationResult:
 # ==============================================
 
 class StepType(Enum):
-    """GitHub 프로젝트 표준 Step 타입"""
-    HUMAN_PARSING = "human_parsing"
-    POSE_ESTIMATION = "pose_estimation"
-    CLOTH_SEGMENTATION = "cloth_segmentation"
-    GEOMETRIC_MATCHING = "geometric_matching"
-    CLOTH_WARPING = "cloth_warping"
-    VIRTUAL_FITTING = "virtual_fitting"
-    POST_PROCESSING = "post_processing"
-    QUALITY_ASSESSMENT = "quality_assessment"
+    """GitHub 프로젝트 표준 Step 타입 (올바른 정의)"""
+    HUMAN_PARSING = "human_parsing"           # ✅ 소문자 + 언더스코어
+    POSE_ESTIMATION = "pose_estimation"       # ✅ 소문자 + 언더스코어
+    CLOTH_SEGMENTATION = "cloth_segmentation" # ✅ 소문자 + 언더스코어
+    GEOMETRIC_MATCHING = "geometric_matching" # ✅ 소문자 + 언더스코어
+    CLOTH_WARPING = "cloth_warping"          # ✅ 소문자 + 언더스코어
+    VIRTUAL_FITTING = "virtual_fitting"       # ✅ 소문자 + 언더스코어
+    POST_PROCESSING = "post_processing"       # ✅ 소문자 + 언더스코어
+    QUALITY_ASSESSMENT = "quality_assessment" # ✅ 소문자 + 언더스코어
+
 
 class StepPriority(Enum):
     """Step 우선순위"""
@@ -2427,206 +2428,226 @@ class StepFactory:
 
     # 🔥 핵심 문제 2: StepFactory create_step 메서드 완전 수정
 
-def create_step(
-    self,
-    step_type: Union[StepType, str],
-    use_cache: bool = True,
-    **kwargs
-) -> CentralHubStepCreationResult:
-    """🔥 수정된 Central Hub 기반 Step 생성 메인 메서드"""
-    start_time = time.time()
-    
-    try:
-        # StepType 정규화
+    def create_step(self, step_type: Union[StepType, str], use_cache: bool = True, **kwargs):
+        """올바른 StepType 변환 로직"""
+        start_time = time.time()
+        
+        # StepType 정규화 (올바른 방식)
         if isinstance(step_type, str):
             try:
-                step_type = StepType(step_type.lower())
-            except ValueError:
-                self.logger.error(f"❌ 잘못된 StepType: {step_type}")
+                # 클래스 이름을 StepType으로 변환하는 매핑
+                class_name_to_step_type = {
+                    'HumanParsingStep': StepType.HUMAN_PARSING,
+                    'PoseEstimationStep': StepType.POSE_ESTIMATION,
+                    'ClothSegmentationStep': StepType.CLOTH_SEGMENTATION,
+                    'GeometricMatchingStep': StepType.GEOMETRIC_MATCHING,
+                    'ClothWarpingStep': StepType.CLOTH_WARPING,
+                    'VirtualFittingStep': StepType.VIRTUAL_FITTING,
+                    'PostProcessingStep': StepType.POST_PROCESSING,
+                    'QualityAssessmentStep': StepType.QUALITY_ASSESSMENT
+                }
+                
+                # 1. 클래스 이름으로 전달된 경우 변환
+                if step_type in class_name_to_step_type:
+                    step_type = class_name_to_step_type[step_type]
+                    self.logger.info(f"🔄 클래스 이름을 StepType으로 변환: {step_type}")
+                
+                # 2. 문자열로 전달된 경우 StepType으로 변환
+                elif isinstance(step_type, str):
+                    try:
+                        step_type = StepType(step_type.lower())
+                    except ValueError:
+                        # 최후의 수단: 문자열을 소문자+언더스코어로 변환 시도
+                        normalized = step_type.lower().replace(' ', '_')
+                        try:
+                            step_type = StepType(normalized)
+                        except ValueError:
+                            self.logger.error(f"❌ 알 수 없는 StepType: {step_type}")
+                            return CentralHubStepCreationResult(
+                                success=False,
+                                error_message=f"잘못된 StepType: {step_type}",
+                                creation_time=0.0
+                            )
+            except Exception as e:
+                self.logger.error(f"❌ StepType 변환 실패: {e}")
                 return CentralHubStepCreationResult(
                     success=False,
-                    error_message=f"잘못된 StepType: {step_type}",
-                    creation_time=time.time() - start_time
+                    error_message=f"StepType 변환 실패: {e}",
+                    creation_time=0.0
                 )
         
-        self.logger.info(f"🔄 {step_type.value} Central Hub 기반 Step 생성 시작...")
-        
-        # 🔥 수정: 순환참조 감지 개선
-        step_key = str(step_type)
-        if step_key in self._resolving_stack:
-            circular_path = ' -> '.join(self._resolving_stack + [step_key])
-            self._stats['circular_references_prevented'] += 1
-            self.logger.error(f"❌ 순환참조 감지: {circular_path}")
-            return CentralHubStepCreationResult(
-                success=False,
-                error_message=f"순환참조 감지: {circular_path}",
-                creation_time=time.time() - start_time
-            )
-        
-        self._resolving_stack.append(step_key)
+            # 이제 step_type는 StepType enum이어야 함
+            if not isinstance(step_type, StepType):
+                self.logger.error(f"❌ 잘못된 StepType 타입: {type(step_type)}")
+                return CentralHubStepCreationResult(
+                    success=False,
+                    error_message=f"잘못된 StepType 타입: {type(step_type)}",
+                    creation_time=0.0
+                )
+            
+            self.logger.info(f"🔄 {step_type.value} Central Hub 기반 Step 생성 시작...")
+                
+            # 🔥 수정: 순환참조 감지 개선
+            step_key = str(step_type)
+            if step_key in self._resolving_stack:
+                circular_path = ' -> '.join(self._resolving_stack + [step_key])
+                self._stats['circular_references_prevented'] += 1
+                self.logger.error(f"❌ 순환참조 감지: {circular_path}")
+                return CentralHubStepCreationResult(
+                    success=False,
+                    error_message=f"순환참조 감지: {circular_path}",
+                    creation_time=time.time() - start_time
+                )
+            
+            self._resolving_stack.append(step_key)
+            
+            try:
+                # 🔥 수정: Central Hub 기반 Step 생성 로직 개선
+                with self._lock:
+                    self._stats['total_created'] += 1
+                
+                # 1. 캐시 확인 (개선됨)
+                if use_cache:
+                    cached_step = self._get_cached_step(step_key)
+                    if cached_step:
+                        with self._lock:
+                            self._stats['cache_hits'] += 1
+                        self.logger.info(f"♻️ {step_type.value} 캐시에서 반환")
+                        return CentralHubStepCreationResult(
+                            success=True,
+                            step_instance=cached_step,
+                            step_name=step_type.value,
+                            step_type=step_type,
+                            creation_time=time.time() - start_time,
+                            central_hub_connected=True,
+                            dependency_injection_success=True
+                        )
+                
+                # 2. Central Hub 설정 생성
+                config = CentralHubStepMapping.get_config(step_type, **kwargs)
+                
+                # 3. 🔥 수정: Step 클래스 동적 로딩 개선
+                step_class = self.class_loader.load_step_class(config.class_name)
+                if not step_class:
+                    self.logger.error(f"❌ {config.class_name} 클래스 로딩 실패")
+                    return CentralHubStepCreationResult(
+                        success=False,
+                        step_name=config.step_name,
+                        class_name=config.class_name,
+                        error_message=f"{config.class_name} 클래스 로딩 실패",
+                        creation_time=time.time() - start_time
+                    )
+                
+                # 4. 🔥 수정: Central Hub 의존성 해결 개선
+                constructor_dependencies = self.dependency_resolver.resolve_dependencies_for_constructor(config)
+                
+                # 5. 🔥 수정: Step 인스턴스 생성 및 Central Hub 주입
+                self.logger.info(f"🔄 {config.class_name} 인스턴스 생성 중...")
+                step_instance = step_class(**constructor_dependencies)
+                
+                # 6. 🔥 핵심 수정: Central Hub DI Container inject_to_step 호출
+                central_hub_injections = 0
+                try:
+                    central_hub_container = _get_central_hub_container()
+                    if central_hub_container and hasattr(central_hub_container, 'inject_to_step'):
+                        central_hub_injections = central_hub_container.inject_to_step(step_instance)
+                        self.logger.info(f"✅ {config.step_name} Central Hub inject_to_step 완료: {central_hub_injections}개")
+                    else:
+                        # 수동 의존성 주입 폴백
+                        central_hub_injections = self._manual_dependency_injection(step_instance, config)
+                        self.logger.info(f"✅ {config.step_name} 수동 의존성 주입 완료: {central_hub_injections}개")
+                        
+                except Exception as injection_error:
+                    self.logger.error(f"❌ {config.step_name} Central Hub 의존성 주입 실패: {injection_error}")
+                    central_hub_injections = 0
+                
+                # 7. Step 초기화
+                initialization_success = self._initialize_step(step_instance, config)
+                
+                # 8. 캐시에 저장
+                if use_cache and step_instance:
+                    self._cache_step(step_key, step_instance)
+                
+                # 9. 통계 업데이트
+                with self._lock:
+                    self._stats['successful_creations'] += 1
+                    self._stats['github_compatible_creations'] += 1
+                    self._stats['dependency_injection_successes'] += 1
+                    self._stats['central_hub_injections'] += central_hub_injections
+                    self._stats['dependency_inversion_applied'] += 1
+                    
+                    if hasattr(step_instance, 'detailed_data_spec_loaded') and step_instance.detailed_data_spec_loaded:
+                        self._stats['detailed_data_spec_successes'] += 1
+                        self._stats['api_mapping_successes'] += 1
+                        self._stats['data_flow_successes'] += 1
+                
+                self.logger.info(f"✅ {config.step_name} Central Hub 기반 생성 완료!")
+                
+                return CentralHubStepCreationResult(
+                    success=True,
+                    step_instance=step_instance,
+                    step_name=config.step_name,
+                    step_type=step_type,
+                    class_name=config.class_name,
+                    module_path=config.module_path,
+                    creation_time=time.time() - start_time,
+                    dependencies_injected={'central_hub_injection': True},
+                    initialization_success=initialization_success,
+                    central_hub_injections=central_hub_injections,
+                    github_compatible=True,
+                    basestepmixin_compatible=True,
+                    dependency_injection_success=central_hub_injections > 0,
+                    detailed_data_spec_loaded=True,
+                    central_hub_connected=True,
+                    dependency_inversion_applied=True
+                )
+                
+            finally:
+                # 순환참조 스택에서 제거
+                if step_key in self._resolving_stack:
+                    self._resolving_stack.remove(step_key)
+
+    def _manual_dependency_injection(self, step_instance, config) -> int:
+        """🔥 수정: 수동 의존성 주입 폴백 (Central Hub 패턴)"""
+        injections_made = 0
         
         try:
-            # 🔥 수정: Central Hub 기반 Step 생성 로직 개선
-            with self._lock:
-                self._stats['total_created'] += 1
+            # ModelLoader 주입
+            if not hasattr(step_instance, 'model_loader') or step_instance.model_loader is None:
+                model_loader = _get_service_from_central_hub('model_loader')
+                if model_loader:
+                    step_instance.model_loader = model_loader
+                    injections_made += 1
+                    self.logger.debug(f"✅ {config.step_name} ModelLoader 수동 주입 완료")
             
-            # 1. 캐시 확인 (개선됨)
-            if use_cache:
-                cached_step = self._get_cached_step(step_key)
-                if cached_step:
-                    with self._lock:
-                        self._stats['cache_hits'] += 1
-                    self.logger.info(f"♻️ {step_type.value} 캐시에서 반환")
-                    return CentralHubStepCreationResult(
-                        success=True,
-                        step_instance=cached_step,
-                        step_name=step_type.value,
-                        step_type=step_type,
-                        creation_time=time.time() - start_time,
-                        central_hub_connected=True,
-                        dependency_injection_success=True
-                    )
+            # MemoryManager 주입
+            if not hasattr(step_instance, 'memory_manager') or step_instance.memory_manager is None:
+                memory_manager = _get_service_from_central_hub('memory_manager')
+                if memory_manager:
+                    step_instance.memory_manager = memory_manager
+                    injections_made += 1
+                    self.logger.debug(f"✅ {config.step_name} MemoryManager 수동 주입 완료")
             
-            # 2. Central Hub 설정 생성
-            config = CentralHubStepMapping.get_config(step_type, **kwargs)
+            # DataConverter 주입
+            if not hasattr(step_instance, 'data_converter') or step_instance.data_converter is None:
+                data_converter = _get_service_from_central_hub('data_converter')
+                if data_converter:
+                    step_instance.data_converter = data_converter
+                    injections_made += 1
+                    self.logger.debug(f"✅ {config.step_name} DataConverter 수동 주입 완료")
             
-            # 3. 🔥 수정: Step 클래스 동적 로딩 개선
-            step_class = self.class_loader.load_step_class(config.class_name)
-            if not step_class:
-                self.logger.error(f"❌ {config.class_name} 클래스 로딩 실패")
-                return CentralHubStepCreationResult(
-                    success=False,
-                    step_name=config.step_name,
-                    class_name=config.class_name,
-                    error_message=f"{config.class_name} 클래스 로딩 실패",
-                    creation_time=time.time() - start_time
-                )
-            
-            # 4. 🔥 수정: Central Hub 의존성 해결 개선
-            constructor_dependencies = self.dependency_resolver.resolve_dependencies_for_constructor(config)
-            
-            # 5. 🔥 수정: Step 인스턴스 생성 및 Central Hub 주입
-            self.logger.info(f"🔄 {config.class_name} 인스턴스 생성 중...")
-            step_instance = step_class(**constructor_dependencies)
-            
-            # 6. 🔥 핵심 수정: Central Hub DI Container inject_to_step 호출
-            central_hub_injections = 0
-            try:
-                central_hub_container = _get_central_hub_container()
-                if central_hub_container and hasattr(central_hub_container, 'inject_to_step'):
-                    central_hub_injections = central_hub_container.inject_to_step(step_instance)
-                    self.logger.info(f"✅ {config.step_name} Central Hub inject_to_step 완료: {central_hub_injections}개")
-                else:
-                    # 수동 의존성 주입 폴백
-                    central_hub_injections = self._manual_dependency_injection(step_instance, config)
-                    self.logger.info(f"✅ {config.step_name} 수동 의존성 주입 완료: {central_hub_injections}개")
-                    
-            except Exception as injection_error:
-                self.logger.error(f"❌ {config.step_name} Central Hub 의존성 주입 실패: {injection_error}")
-                central_hub_injections = 0
-            
-            # 7. Step 초기화
-            initialization_success = self._initialize_step(step_instance, config)
-            
-            # 8. 캐시에 저장
-            if use_cache and step_instance:
-                self._cache_step(step_key, step_instance)
-            
-            # 9. 통계 업데이트
-            with self._lock:
-                self._stats['successful_creations'] += 1
-                self._stats['github_compatible_creations'] += 1
-                self._stats['dependency_injection_successes'] += 1
-                self._stats['central_hub_injections'] += central_hub_injections
-                self._stats['dependency_inversion_applied'] += 1
-                
-                if hasattr(step_instance, 'detailed_data_spec_loaded') and step_instance.detailed_data_spec_loaded:
-                    self._stats['detailed_data_spec_successes'] += 1
-                    self._stats['api_mapping_successes'] += 1
-                    self._stats['data_flow_successes'] += 1
-            
-            self.logger.info(f"✅ {config.step_name} Central Hub 기반 생성 완료!")
-            
-            return CentralHubStepCreationResult(
-                success=True,
-                step_instance=step_instance,
-                step_name=config.step_name,
-                step_type=step_type,
-                class_name=config.class_name,
-                module_path=config.module_path,
-                creation_time=time.time() - start_time,
-                dependencies_injected={'central_hub_injection': True},
-                initialization_success=initialization_success,
-                central_hub_injections=central_hub_injections,
-                github_compatible=True,
-                basestepmixin_compatible=True,
-                dependency_injection_success=central_hub_injections > 0,
-                detailed_data_spec_loaded=True,
-                central_hub_connected=True,
-                dependency_inversion_applied=True
-            )
-            
-        finally:
-            # 순환참조 스택에서 제거
-            if step_key in self._resolving_stack:
-                self._resolving_stack.remove(step_key)
-                
-    except Exception as e:
-        with self._lock:
-            self._stats['failed_creations'] += 1
-        
-        self.logger.error(f"❌ {step_type} Central Hub Step 생성 실패: {e}")
-        self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
-        
-        return CentralHubStepCreationResult(
-            success=False,
-            step_name=str(step_type),
-            error_message=f"Central Hub Step 생성 실패: {str(e)}",
-            creation_time=time.time() - start_time,
-            central_hub_connected=True
-        )
-
-def _manual_dependency_injection(self, step_instance, config) -> int:
-    """🔥 수정: 수동 의존성 주입 폴백 (Central Hub 패턴)"""
-    injections_made = 0
-    
-    try:
-        # ModelLoader 주입
-        if not hasattr(step_instance, 'model_loader') or step_instance.model_loader is None:
-            model_loader = _get_service_from_central_hub('model_loader')
-            if model_loader:
-                step_instance.model_loader = model_loader
+            # Central Hub Container 자체 주입
+            central_hub_container = _get_central_hub_container()
+            if central_hub_container:
+                step_instance.central_hub_container = central_hub_container
+                step_instance.di_container = central_hub_container  # 기존 호환성
                 injections_made += 1
-                self.logger.debug(f"✅ {config.step_name} ModelLoader 수동 주입 완료")
+                self.logger.debug(f"✅ {config.step_name} Central Hub Container 수동 주입 완료")
+            
+        except Exception as e:
+            self.logger.error(f"❌ {config.step_name} 수동 의존성 주입 실패: {e}")
         
-        # MemoryManager 주입
-        if not hasattr(step_instance, 'memory_manager') or step_instance.memory_manager is None:
-            memory_manager = _get_service_from_central_hub('memory_manager')
-            if memory_manager:
-                step_instance.memory_manager = memory_manager
-                injections_made += 1
-                self.logger.debug(f"✅ {config.step_name} MemoryManager 수동 주입 완료")
-        
-        # DataConverter 주입
-        if not hasattr(step_instance, 'data_converter') or step_instance.data_converter is None:
-            data_converter = _get_service_from_central_hub('data_converter')
-            if data_converter:
-                step_instance.data_converter = data_converter
-                injections_made += 1
-                self.logger.debug(f"✅ {config.step_name} DataConverter 수동 주입 완료")
-        
-        # Central Hub Container 자체 주입
-        central_hub_container = _get_central_hub_container()
-        if central_hub_container:
-            step_instance.central_hub_container = central_hub_container
-            step_instance.di_container = central_hub_container  # 기존 호환성
-            injections_made += 1
-            self.logger.debug(f"✅ {config.step_name} Central Hub Container 수동 주입 완료")
-        
-    except Exception as e:
-        self.logger.error(f"❌ {config.step_name} 수동 의존성 주입 실패: {e}")
-    
-    return injections_made
+        return injections_made
 
 
     def _create_step_internal(
