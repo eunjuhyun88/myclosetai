@@ -1182,7 +1182,7 @@ class PipelineManager:
                 'use_circular_reference_free_di': True,
                 'enable_lazy_dependency_resolution': True
             })
-            
+            config_dict.pop("device", None)
             self.config = PipelineConfig(device=self.device, **config_dict)
         
         # 로깅 설정
@@ -2622,9 +2622,15 @@ class DIBasedPipelineManager(PipelineManager):
         else:
             kwargs.update(di_config)
         
+            # ✅ 중복 키 제거
+        if "device" in kwargs and device is not None:
+            kwargs.pop("device")
+        if "config" in kwargs and config is not None:
+            kwargs.pop("config")
+
         # 부모 클래스 초기화
         super().__init__(config_path=config_path, device=device, config=config, **kwargs)
-        
+
         self.logger.info("🔥 DIBasedPipelineManager v12.0 초기화 완료 (DI Container v4.0 강제 활성화)")
     
     def get_di_status(self) -> Dict[str, Any]:

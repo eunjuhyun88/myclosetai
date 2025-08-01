@@ -2577,7 +2577,7 @@ class BaseStepMixin:
         return result
     
     def _convert_to_tensor(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """PyTorch 텐서 변환"""
+        """PyTorch 텐서 변환 + MPS float64 문제 해결"""
         if not TORCH_AVAILABLE:
             return data
         
@@ -2588,17 +2588,33 @@ class BaseStepMixin:
                 if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
                     if len(value.shape) == 3 and value.shape[2] in [1, 3, 4]:
                         value = np.transpose(value, (2, 0, 1))
-                    result[key] = torch.from_numpy(value).float()
+                    tensor = torch.from_numpy(value).float()
+                    
+                    # 🔥 MPS 디바이스에서 float64 → float32 변환
+                    if self.device == 'mps' and tensor.dtype == torch.float64:
+                        tensor = tensor.to(torch.float32)
+                    
+                    result[key] = tensor
+                    
                 elif PIL_AVAILABLE and isinstance(value, Image.Image):
-                    array = np.array(value)
-                    if len(array.shape) == 3:
+                    array = np.array(value).astype(np.float32)
+                    if len(array.shape) == 3 and array.shape[2] in [1, 3, 4]:
                         array = np.transpose(array, (2, 0, 1))
-                    result[key] = torch.from_numpy(array).float()
+                    tensor = torch.from_numpy(array)
+                    
+                    # 🔥 MPS 디바이스에서 float64 → float32 변환
+                    if self.device == 'mps' and tensor.dtype == torch.float64:
+                        tensor = tensor.to(torch.float32)
+                    
+                    result[key] = tensor
+                    
             except Exception as e:
                 self.logger.debug(f"텐서 변환 실패 ({key}): {e}")
         
         return result
-    
+
+
+
     def _prepare_sam_prompts(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """SAM 프롬프트 준비"""
         result = data.copy()

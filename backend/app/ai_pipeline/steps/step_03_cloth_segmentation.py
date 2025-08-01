@@ -1521,6 +1521,11 @@ class ClothSegmentationStep(BaseStepMixin):
         self.is_initialized = False
         self.is_ready = False
         
+        # 🔥 누락되었던 속성들 추가 (오류 해결)
+        self.segmentation_models = {}
+        self.segmentation_ready = False
+        self.cloth_cache = {}
+        
         # 핵심 컨테이너들
         self.ai_models = {}
         self.model_paths = {}
@@ -1534,10 +1539,29 @@ class ClothSegmentationStep(BaseStepMixin):
             'loading_errors': []
         }
         
+        # 의류 카테고리 정의 (추가)
+        self.cloth_categories = {
+            0: 'background',
+            1: 'shirt', 2: 't_shirt', 3: 'sweater', 4: 'hoodie',
+            5: 'jacket', 6: 'coat', 7: 'dress', 8: 'skirt',
+            9: 'pants', 10: 'jeans', 11: 'shorts',
+            12: 'shoes', 13: 'boots', 14: 'sneakers',
+            15: 'bag', 16: 'hat', 17: 'glasses', 18: 'scarf', 19: 'belt'
+        }
+        
+        # 통계 (추가)
+        self.ai_stats = {
+            'total_processed': 0,
+            'deeplabv3_calls': 0,
+            'sam_calls': 0,
+            'u2net_calls': 0,
+            'average_confidence': 0.0
+        }
+        
         # 의존성 주입 관련
         self.model_loader = None
         self.model_interface = None
-
+        
     def _fallback_initialization(self, **kwargs):
         """BaseStepMixin 초기화 실패시 폴백"""
         self.logger.warning("⚠️ 폴백 초기화 모드")

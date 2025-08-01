@@ -1002,7 +1002,32 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ AI 모델 로딩 실패: {e}")
             await self._create_default_models()
-    
+   
+    def _load_single_model(self, model_path: str, model_type: str = "post_processing") -> bool:
+        """단일 모델 로딩"""
+        try:
+            if not self.model_loader:
+                self.logger.warning("⚠️ ModelLoader 없음")
+                return False
+                
+            model = self.model_loader.load_model(
+                model_name=model_path,
+                step_name="PostProcessingStep",
+                model_type=model_type
+            )
+            
+            if model:
+                self.ai_models[model_type] = model
+                self.logger.info(f"✅ {model_path} 로딩 성공")
+                return True
+            else:
+                self.logger.warning(f"⚠️ {model_path} 로딩 실패")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ {model_path} 로딩 오류: {e}")
+            return False
+        
     async def _create_default_models(self):
         """기본 AI 모델 생성 (폴백)"""
         try:

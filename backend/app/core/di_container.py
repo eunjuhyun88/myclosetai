@@ -1538,7 +1538,7 @@ def initialize_di_system(container_id: Optional[str] = None) -> bool:
         return False
 
 def _optimize_for_conda():
-    """conda 환경 최적화"""
+    """conda 환경 최적화 + MPS float64 문제 해결"""
     try:
         os.environ['OMP_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
         os.environ['MKL_NUM_THREADS'] = str(max(1, os.cpu_count() // 2))
@@ -1549,13 +1549,29 @@ def _optimize_for_conda():
             torch.set_num_threads(max(1, os.cpu_count() // 2))
             
             if IS_M3_MAX and MPS_AVAILABLE:
+                # 🔥 MPS float64 문제 해결
+                try:
+                    # MPS용 기본 dtype 설정
+                    if hasattr(torch, 'set_default_dtype'):
+                        if torch.get_default_dtype() == torch.float64:
+                            torch.set_default_dtype(torch.float32)
+                            logger.debug("✅ conda 환경에서 MPS 기본 dtype을 float32로 설정")
+                    
+                    # MPS 최적화 환경 변수
+                    os.environ.update({
+                        'PYTORCH_MPS_PREFER_FLOAT32': '1',
+                        'PYTORCH_MPS_FORCE_FLOAT32': '1'
+                    })
+                except Exception as e:
+                    logger.debug(f"MPS dtype 설정 실패 (무시): {e}")
+                
+                # 기존 MPS 캐시 정리
                 if hasattr(torch.backends.mps, 'empty_cache'):
                     torch.backends.mps.empty_cache()
         
-        logger.info(f"🐍 conda 환경 '{CONDA_ENV}' 최적화 완료")
+        logger.info(f"🐍 conda 환경 '{CONDA_ENV}' 최적화 완료 (MPS float64 문제 해결 포함)")
     except Exception as e:
         logger.warning(f"⚠️ conda 최적화 실패: {e}")
-
 
 
 # ==============================================

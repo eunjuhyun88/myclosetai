@@ -215,17 +215,23 @@ try:
                             ])
                     except Exception:
                         pass
-                    
-                    return original_torch_load(f, map_location=map_location, 
-                                             pickle_module=pickle_module, 
-                                             weights_only=True, **kwargs)
+                                
+                    checkpoint = original_torch_load(f, map_location=map_location, 
+                                                pickle_module=pickle_module, 
+                                                weights_only=True, **kwargs)
+                else:
+                    # 2단계: weights_only=False 시도 (호환성)
+                    checkpoint = original_torch_load(f, map_location=map_location, 
+                                                pickle_module=pickle_module, 
+                                                weights_only=False, **kwargs)            
+                        # 🔥 MPS 디바이스에서 float64 → float32 변환
+                if map_location == 'mps' or (isinstance(map_location, torch.device) and map_location.type == 'mps'):
+                    checkpoint = _convert_checkpoint_mps_float64_to_float32(checkpoint)
                 
-                # 2단계: weights_only=False 시도 (호환성)
-                return original_torch_load(f, map_location=map_location, 
-                                         pickle_module=pickle_module, 
-                                         weights_only=False, **kwargs)
-                                         
+                return checkpoint
+                    
             except RuntimeError as e:
+
                 error_msg = str(e).lower()
                 
                 # Legacy .tar 포맷 에러 감지
@@ -285,7 +291,35 @@ try:
         
 except ImportError:
     torch = None
-
+    
+def _convert_checkpoint_mps_float64_to_float32(checkpoint: Any) -> Any:
+    """MPS용 체크포인트 float64 → float32 변환 (model_loader 전용)"""
+    if not TORCH_AVAILABLE:
+        return checkpoint
+    
+    def convert_tensor(tensor):
+        if hasattr(tensor, 'dtype') and tensor.dtype == torch.float64:
+            return tensor.to(torch.float32)
+        return tensor
+    
+    def recursive_convert(obj):
+        if torch.is_tensor(obj):
+            return convert_tensor(obj)
+        elif isinstance(obj, dict):
+            return {key: recursive_convert(value) for key, value in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return type(obj)(recursive_convert(item) for item in obj)
+        else:
+            return obj
+    
+    try:
+        converted_checkpoint = recursive_convert(checkpoint)
+        logger.debug("✅ ModelLoader MPS float64 → float32 변환 완료")
+        return converted_checkpoint
+    except Exception as e:
+        logger.warning(f"⚠️ ModelLoader MPS float64 변환 실패, 원본 반환: {e}")
+        return checkpoint
+    
 # 디바이스 및 시스템 정보
 DEFAULT_DEVICE = "cpu"
 if IS_M3_MAX and MPS_AVAILABLE:

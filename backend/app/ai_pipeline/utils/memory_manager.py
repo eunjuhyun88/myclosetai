@@ -315,7 +315,10 @@ class DeviceManager:
                 'METAL_DEVICE_WRAPPER_TYPE': '1',
                 'METAL_PERFORMANCE_SHADERS_ENABLED': '1',
                 'PYTORCH_MPS_PREFER_METAL': '1',
-                'PYTORCH_ENABLE_MPS_FALLBACK': '1'
+                'PYTORCH_ENABLE_MPS_FALLBACK': '1',
+                # 🔥 float64 문제 해결 추가
+                'PYTORCH_MPS_PREFER_FLOAT32': '1',
+                'PYTORCH_MPS_FORCE_FLOAT32': '1'
             })
             
             # 스레드 최적화
@@ -329,7 +332,7 @@ class DeviceManager:
     
     def setup_mps_compatibility(self):
         """
-        🔥 MPS 호환성 설정 (main.py에서 요구하는 핵심 메서드)
+        🔥 MPS 호환성 설정 (main.py에서 요구하는 핵심 메서드) + float64 문제 해결
         ✅ import 오류 완전 해결
         """
         try:
@@ -351,7 +354,26 @@ class DeviceManager:
             # 2. MPS 환경 변수 재설정
             self._setup_mps_optimization()
             
-            # 3. MPS 동기화
+            # 🔥 3. MPS float64 문제 해결을 위한 추가 설정
+            try:
+                # MPS에서 기본 dtype을 float32로 설정
+                if hasattr(torch, 'set_default_dtype'):
+                    original_dtype = torch.get_default_dtype()
+                    if original_dtype == torch.float64:
+                        torch.set_default_dtype(torch.float32)
+                        self.logger.debug("✅ MPS용 기본 dtype을 float32로 설정")
+                
+                # MPS 최적화 환경 변수 추가
+                os.environ.update({
+                    'PYTORCH_MPS_PREFER_FLOAT32': '1',  # float32 우선 사용
+                    'PYTORCH_MPS_FORCE_FLOAT32': '1',   # float64 사용 방지
+                })
+                self.logger.debug("✅ MPS float64 방지 환경 변수 설정")
+                
+            except Exception as e:
+                self.logger.debug(f"MPS dtype 설정 실패 (무시): {e}")
+            
+            # 4. MPS 동기화
             if hasattr(torch.mps, 'synchronize'):
                 try:
                     torch.mps.synchronize()
@@ -359,23 +381,30 @@ class DeviceManager:
                 except Exception as e:
                     self.logger.warning(f"⚠️ MPS 동기화 실패: {e}")
             
-            # 4. 테스트 텐서 생성 (MPS 작동 확인)
+            # 5. 테스트 텐서 생성 (MPS 작동 확인 + float32 확인)
             try:
                 test_tensor = torch.tensor([1.0], device='mps')
                 test_result = test_tensor + 1
-                self.logger.debug("✅ MPS 작동 확인 완료")
+                
+                # float32 확인
+                if test_tensor.dtype == torch.float32:
+                    self.logger.debug("✅ MPS 작동 확인 완료 (float32)")
+                else:
+                    self.logger.warning(f"⚠️ MPS 텐서 dtype 확인: {test_tensor.dtype}")
+                
                 del test_tensor, test_result
             except Exception as e:
                 self.logger.warning(f"⚠️ MPS 작동 확인 실패: {e}")
                 return False
             
-            self.logger.info("✅ MPS 호환성 설정 완료")
+            self.logger.info("✅ MPS 호환성 설정 완료 (float64 문제 해결 포함)")
             return True
             
         except Exception as e:
             self.logger.error(f"❌ MPS 호환성 설정 실패: {e}")
             return False
-    
+
+
     def get_device(self) -> str:
         """현재 디바이스 반환"""
         return self.device
