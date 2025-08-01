@@ -58,6 +58,15 @@ import logging    # 추가
 # 🔥 Central Hub DI Container 안전 import (순환참조 방지) - VirtualFitting 특화
 # ==============================================
 
+def ensure_quality_assessment_logger(quality_assessment_obj):
+    """AIQualityAssessment 객체의 logger 속성 보장"""
+    if not hasattr(quality_assessment_obj, 'logger') or quality_assessment_obj.logger is None:
+        quality_assessment_obj.logger = logging.getLogger(
+            f"{quality_assessment_obj.__class__.__module__}.{quality_assessment_obj.__class__.__name__}"
+        )
+        return True
+    return False
+
 def _get_central_hub_container():
     """Central Hub DI Container 안전한 동적 해결 - VirtualFitting용"""
     try:
@@ -1737,9 +1746,25 @@ class AdvancedClothAnalyzer:
 class AIQualityAssessment:
     """AI 품질 평가 시스템"""
     
-    def __init__(self):
-        self.logger = logging.getLogger(f"{__name__}.QualityAssessment")
+    def __init__(self, **kwargs):
+        # 🔥 가장 중요: logger 속성 초기화
+        self.logger = self._setup_logger()
         
+        # 기타 속성들 초기화
+        self.quality_models = {}
+        self.assessment_ready = False
+        self.quality_thresholds = {
+            'excellent': 0.9,
+            'good': 0.7,
+            'fair': 0.5,
+            'poor': 0.3
+        }
+        
+        # kwargs로 전달된 설정 적용
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
     def evaluate_fitting_quality(self, fitted_image: np.ndarray, 
                                person_image: np.ndarray,
                                clothing_image: np.ndarray) -> Dict[str, float]:
@@ -2285,10 +2310,14 @@ class VirtualFittingStep(BaseStepMixin):
             )
             
             # 3. Virtual Fitting 특화 초기화
-            self._initialize_virtual_fitting_specifics(**kwargs)
+            if hasattr(self, 'quality_assessment') and self.quality_assessment:
+                patched = ensure_quality_assessment_logger(self.quality_assessment)
+                if patched:
+                    self.logger.info("✅ AIQualityAssessment logger 속성 패치 완료")
             
             self.logger.info("✅ VirtualFittingStep v8.0 Central Hub DI Container 초기화 완료")
-            
+
+
         except Exception as e:
             self.logger.error(f"❌ VirtualFittingStep 초기화 실패: {e}")
             self._emergency_setup(**kwargs)

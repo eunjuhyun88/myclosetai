@@ -224,29 +224,30 @@ globals()['safe_copy'] = safe_copy
 # 🔥 step_model_requirements 동적 로딩 (순환참조 방지)
 # ==============================================
 
+# backend/app/ai_pipeline/factories/step_factory.py
+# 🔥 Import 경로 수정 (Line 120-150 부근)
+
 def _load_step_model_requirements():
-    """step_model_requirements.py 안전한 동적 로딩"""
+    """step_model_requirements.py 안전한 동적 로딩 - 절대 경로 우선"""
     try:
+        # ✅ 절대 import 경로들 (순서 중요!)
         import_paths = [
+            'backend.app.ai_pipeline.utils.step_model_requests',  # 🔥 정확한 파일명
+            'app.ai_pipeline.utils.step_model_requests',
+            'ai_pipeline.utils.step_model_requests',
+            'backend.app.ai_pipeline.utils.step_model_requirements',  # 기존 이름
             'app.ai_pipeline.utils.step_model_requirements',
             'ai_pipeline.utils.step_model_requirements', 
-            'utils.step_model_requirements',
-            '..utils.step_model_requirements',
-            'backend.app.ai_pipeline.utils.step_model_requirements'
+            'utils.step_model_requirements'
         ]
         
         for import_path in import_paths:
             try:
                 logger.debug(f"🔍 step_model_requirements 로딩 시도: {import_path}")
                 
-                if import_path.startswith('..'):
-                    # 상대 import
-                    import importlib
-                    module = importlib.import_module(import_path, package=__name__)
-                else:
-                    # 절대 import
-                    from importlib import import_module
-                    module = import_module(import_path)
+                # 🔥 절대 import만 사용 (상대 import 완전 제거)
+                from importlib import import_module
+                module = import_module(import_path)
                 
                 # 필수 함수들 확인
                 if hasattr(module, 'get_enhanced_step_request') and hasattr(module, 'REAL_STEP_MODEL_REQUESTS'):
@@ -265,93 +266,136 @@ def _load_step_model_requirements():
                 logger.debug(f"⚠️ {import_path} 로딩 중 오류: {e}")
                 continue
         
-        # 모든 경로 실패 시 - 폴백 생성
-        logger.warning("⚠️ step_model_requirements.py 모든 경로에서 로딩 실패, 폴백 생성")
-        return create_hardcoded_fallback_requirements()
+        # 모든 경로 실패 시 - 향상된 폴백 생성
+        logger.warning("⚠️ step_model_requirements.py 모든 경로에서 로딩 실패, 향상된 폴백 생성")
+        return create_enhanced_fallback_requirements()
         
     except Exception as e:
         logger.error(f"❌ step_model_requirements.py 로딩 완전 실패: {e}")
-        return create_hardcoded_fallback_requirements()
+        return create_enhanced_fallback_requirements()
 
-def create_hardcoded_fallback_requirements():
-    """하드코딩된 폴백 요구사항"""
+def create_enhanced_fallback_requirements():
+    """향상된 폴백 요구사항 (실제 기능 포함)"""
     try:
-        logger.info("🔧 하드코딩된 폴백 step_model_requirements 생성 중...")
+        logger.info("🔧 향상된 폴백 step_model_requirements 생성 중...")
         
-        # 간단한 DetailedDataSpec 클래스
-        class FallbackDetailedDataSpec:
+        # 🔥 실제 기능을 가진 DetailedDataSpec 클래스
+        class EnhancedFallbackDetailedDataSpec:
             def __init__(self):
+                # VirtualFittingStep에 최적화된 실제 매핑
                 self.api_input_mapping = {
                     'person_image': 'UploadFile',
-                    'clothing_image': 'UploadFile'
+                    'clothing_image': 'UploadFile',
+                    'fitting_quality': 'str',
+                    'guidance_scale': 'float',
+                    'num_inference_steps': 'int'
                 }
                 self.api_output_mapping = {
-                    'result': 'base64_string',
+                    'fitted_image': 'base64_string',
+                    'fit_score': 'float',
+                    'confidence': 'float',
+                    'processing_time': 'float'
+                }
+                
+                # Step 간 데이터 흐름 (실제 파이프라인 반영)
+                self.accepts_from_previous_step = {
+                    'ClothWarpingStep': {'warped_cloth': 'np.ndarray'},
+                    'GeometricMatchingStep': {'matching_result': 'dict'}
+                }
+                self.provides_to_next_step = {
+                    'PostProcessingStep': {'fitted_image': 'np.ndarray'},
+                    'QualityAssessmentStep': {'result_image': 'np.ndarray'}
+                }
+                
+                # 스키마 정의
+                self.step_input_schema = {
+                    'person_image': 'PIL.Image',
+                    'clothing_image': 'PIL.Image'
+                }
+                self.step_output_schema = {
+                    'fitted_image': 'np.ndarray',
                     'confidence': 'float'
                 }
-                self.accepts_from_previous_step = {}
-                self.provides_to_next_step = {}
-                self.step_input_schema = {}
-                self.step_output_schema = {}
+                
+                # 데이터 타입
                 self.input_data_types = ['PIL.Image', 'PIL.Image']
                 self.output_data_types = ['np.ndarray', 'float']
-                self.input_shapes = {}
-                self.output_shapes = {}
-                self.input_value_ranges = {}
-                self.output_value_ranges = {}
-                self.preprocessing_required = True
-                self.postprocessing_required = True
-                self.preprocessing_steps = ['resize', 'normalize']
-                self.postprocessing_steps = ['denormalize', 'convert']
+                self.input_shapes = {'person_image': (512, 512, 3), 'clothing_image': (512, 512, 3)}
+                self.output_shapes = {'fitted_image': (512, 512, 3)}
+                self.input_value_ranges = {'person_image': (0, 255), 'clothing_image': (0, 255)}
+                self.output_value_ranges = {'fitted_image': (0, 255)}
+                
+                # 전처리/후처리 (실제 AI 파이프라인)
+                self.preprocessing_required = ['resize', 'normalize']
+                self.postprocessing_required = ['denormalize', 'convert']
+                self.preprocessing_steps = ['resize', 'normalize', 'totensor']
+                self.postprocessing_steps = ['denormalize', 'topil', 'tobase64']
                 self.normalization_mean = (0.485, 0.456, 0.406)
                 self.normalization_std = (0.229, 0.224, 0.225)
+                
+            def to_dict(self):
+                """안전한 딕셔너리 변환"""
+                return {
+                    'api_input_mapping': dict(self.api_input_mapping),
+                    'api_output_mapping': dict(self.api_output_mapping),
+                    'preprocessing_steps': list(self.preprocessing_steps),
+                    'postprocessing_steps': list(self.postprocessing_steps)
+                }
         
-        # 간단한 EnhancedStepRequest 클래스  
-        class FallbackEnhancedStepRequest:
+        # 🔥 실제 기능을 가진 EnhancedStepRequest 클래스  
+        class EnhancedFallbackStepRequest:
             def __init__(self, step_name, step_id, custom_data_spec=None):
                 self.step_name = step_name
                 self.step_id = step_id
-                self.data_spec = custom_data_spec if custom_data_spec else FallbackDetailedDataSpec()
-                self.required_models = []
-                self.model_requirements = {}
-                self.preprocessing_config = {}
-                self.postprocessing_config = {}
+                self.data_spec = custom_data_spec if custom_data_spec else EnhancedFallbackDetailedDataSpec()
+                self.required_models = ['ootd_diffusion'] if step_name == 'VirtualFittingStep' else []
+                self.model_requirements = {
+                    'ootd_diffusion': {'checkpoint': 'ootd_diffusion.safetensors'}
+                } if step_name == 'VirtualFittingStep' else {}
+                self.preprocessing_config = {'resize': 512, 'normalize': True}
+                self.postprocessing_config = {'format': 'base64'}
         
-        # 폴백 요구사항 딕셔너리
-        FALLBACK_REAL_STEP_MODEL_REQUESTS = {
-            "HumanParsingStep": FallbackEnhancedStepRequest("HumanParsingStep", 1),
-            "PoseEstimationStep": FallbackEnhancedStepRequest("PoseEstimationStep", 2),
-            "ClothSegmentationStep": FallbackEnhancedStepRequest("ClothSegmentationStep", 3),
-            "GeometricMatchingStep": FallbackEnhancedStepRequest("GeometricMatchingStep", 4),
-            "ClothWarpingStep": FallbackEnhancedStepRequest("ClothWarpingStep", 5),
-            "VirtualFittingStep": FallbackEnhancedStepRequest("VirtualFittingStep", 6),
-            "PostProcessingStep": FallbackEnhancedStepRequest("PostProcessingStep", 7),
-            "QualityAssessmentStep": FallbackEnhancedStepRequest("QualityAssessmentStep", 8),
+        # 🔥 실제 Step별 특화 폴백 요구사항
+        ENHANCED_FALLBACK_REQUESTS = {
+            "VirtualFittingStep": EnhancedFallbackStepRequest("VirtualFittingStep", 6),
+            "HumanParsingStep": EnhancedFallbackStepRequest("HumanParsingStep", 1), 
+            "PoseEstimationStep": EnhancedFallbackStepRequest("PoseEstimationStep", 2),
+            "ClothSegmentationStep": EnhancedFallbackStepRequest("ClothSegmentationStep", 3),
+            "GeometricMatchingStep": EnhancedFallbackStepRequest("GeometricMatchingStep", 4),
+            "ClothWarpingStep": EnhancedFallbackStepRequest("ClothWarpingStep", 5),
+            "PostProcessingStep": EnhancedFallbackStepRequest("PostProcessingStep", 7),
+            "QualityAssessmentStep": EnhancedFallbackStepRequest("QualityAssessmentStep", 8),
         }
         
-        def fallback_get_enhanced_step_request(step_name: str):
-            """폴백 get_enhanced_step_request 함수"""
-            result = FALLBACK_REAL_STEP_MODEL_REQUESTS.get(step_name)
+        def enhanced_fallback_get_enhanced_step_request(step_name: str):
+            """향상된 폴백 get_enhanced_step_request 함수"""
+            result = ENHANCED_FALLBACK_REQUESTS.get(step_name)
             if result:
-                logger.debug(f"✅ {step_name} 폴백 DetailedDataSpec 반환")
+                logger.debug(f"✅ {step_name} 향상된 폴백 DetailedDataSpec 반환")
             else:
-                logger.warning(f"⚠️ {step_name} 폴백에서도 찾을 수 없음")
+                logger.warning(f"⚠️ {step_name} 향상된 폴백에서도 찾을 수 없음")
+                # 동적 생성
+                result = EnhancedFallbackStepRequest(step_name, 0)
             return result
         
-        logger.info("✅ 하드코딩된 폴백 step_model_requirements 생성 완료")
+        logger.info("✅ 향상된 폴백 step_model_requirements 생성 완료")
+        logger.info(f"✅ {len(ENHANCED_FALLBACK_REQUESTS)}개 Step DetailedDataSpec 포함")
         
         return {
-            'get_enhanced_step_request': fallback_get_enhanced_step_request,
-            'REAL_STEP_MODEL_REQUESTS': FALLBACK_REAL_STEP_MODEL_REQUESTS
+            'get_enhanced_step_request': enhanced_fallback_get_enhanced_step_request,
+            'REAL_STEP_MODEL_REQUESTS': ENHANCED_FALLBACK_REQUESTS
         }
         
     except Exception as e:
-        logger.error(f"❌ 하드코딩된 폴백 생성 실패: {e}")
-        # 최후의 수단 - 완전 기본 딕셔너리
+        logger.error(f"❌ 향상된 폴백 생성 실패: {e}")
+        # 최후의 수단 - 기본 딕셔너리
         return {
             'get_enhanced_step_request': lambda x: None,
             'REAL_STEP_MODEL_REQUESTS': {}
         }
+
+
+
 
 # 🔥 안전한 STEP_MODEL_REQUIREMENTS 정의
 try:

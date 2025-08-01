@@ -1401,6 +1401,7 @@ def ensure_step_di_integration(step_instance) -> bool:
         logger.error(f"❌ Step DI 통합 실패: {e}")
         return False
 
+
 def validate_step_di_requirements(step_instance) -> Dict[str, Any]:
     """Step DI 요구사항 검증"""
     try:
@@ -1555,6 +1556,250 @@ def _optimize_for_conda():
     except Exception as e:
         logger.warning(f"⚠️ conda 최적화 실패: {e}")
 
+
+
+# ==============================================
+# 📁 backend/app/core/di_container.py 파일에 추가
+# 위치: 기존 함수들 뒤, __all__ 리스트 전에 배치
+# ==============================================
+
+import logging
+from typing import Dict, Any, Optional, Callable
+
+logger = logging.getLogger(__name__)
+
+# ==============================================
+# 🔥 Central Hub 연결 보장 및 초기화 (개선된 버전)
+# ==============================================
+
+def create_default_service(service_name: str) -> Any:
+    """기본 서비스 팩토리"""
+    try:
+        if service_name == 'model_loader':
+            # ModelLoader 동적 생성
+            try:
+                from ..ai_pipeline.utils.model_loader import ModelLoader
+                return ModelLoader()
+            except ImportError:
+                logger.warning("⚠️ ModelLoader import 실패, Mock 생성")
+                return create_mock_model_loader()
+                
+        elif service_name == 'memory_manager':
+            # MemoryManager 동적 생성
+            try:
+                from ..ai_pipeline.utils.memory_manager import MemoryManager
+                return MemoryManager()
+            except ImportError:
+                logger.warning("⚠️ MemoryManager import 실패, Mock 생성")
+                return create_mock_memory_manager()
+                
+        elif service_name == 'data_converter':
+            # DataConverter 동적 생성
+            try:
+                from ..ai_pipeline.utils.data_converter import DataConverter
+                return DataConverter()
+            except ImportError:
+                logger.warning("⚠️ DataConverter import 실패, Mock 생성")
+                return create_mock_data_converter()
+                
+        else:
+            logger.warning(f"⚠️ 알 수 없는 서비스: {service_name}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ {service_name} 기본 서비스 생성 실패: {e}")
+        return None
+
+def create_mock_model_loader():
+    """Mock ModelLoader 생성"""
+    class MockModelLoader:
+        def load_model(self, model_name: str, **kwargs):
+            logger.debug(f"Mock ModelLoader: {model_name}")
+            return None
+        def create_step_interface(self, step_name: str):
+            return None
+    return MockModelLoader()
+
+def create_mock_memory_manager():
+    """Mock MemoryManager 생성"""
+    class MockMemoryManager:
+        def allocate_memory(self, key: str, size_mb: float):
+            logger.debug(f"Mock MemoryManager allocate: {key} ({size_mb}MB)")
+        def deallocate_memory(self, key: str):
+            logger.debug(f"Mock MemoryManager deallocate: {key}")
+        def optimize_memory(self):
+            return {"optimized": True}
+    return MockMemoryManager()
+
+def create_mock_data_converter():
+    """Mock DataConverter 생성"""
+    class MockDataConverter:
+        def convert_api_to_step(self, data: Any, step_name: str):
+            return data
+        def convert_step_to_api(self, data: Any, step_name: str):
+            return data
+    return MockDataConverter()
+
+def ensure_central_hub_connection() -> bool:
+    """Central Hub 연결 보장 (개선된 버전)"""
+    try:
+        container = get_global_container()
+        if not container:
+            logger.error("❌ Central Hub Container를 가져올 수 없음")
+            return False
+        
+        # 필수 서비스들 정의
+        essential_services = {
+            'model_loader': 'ModelLoader - AI 모델 로딩 및 관리',
+            'memory_manager': 'MemoryManager - 메모리 최적화 및 관리', 
+            'data_converter': 'DataConverter - API ↔ Step 데이터 변환'
+        }
+        
+        services_registered = 0
+        services_failed = 0
+        
+        for service_name, description in essential_services.items():
+            try:
+                # 서비스 존재 확인
+                existing_service = container.get(service_name)
+                
+                if existing_service is None:
+                    # 서비스가 없으면 팩토리로 등록
+                    factory = lambda sname=service_name: create_default_service(sname)
+                    container.register_factory(service_name, factory, singleton=True)
+                    
+                    # 등록 확인
+                    registered_service = container.get(service_name)
+                    if registered_service:
+                        logger.info(f"✅ {service_name} 서비스 등록 완료: {description}")
+                        services_registered += 1
+                    else:
+                        logger.error(f"❌ {service_name} 서비스 등록 실패")
+                        services_failed += 1
+                else:
+                    logger.debug(f"✅ {service_name} 서비스 이미 등록됨: {description}")
+                    services_registered += 1
+                    
+            except Exception as e:
+                logger.error(f"❌ {service_name} 서비스 처리 실패: {e}")
+                services_failed += 1
+        
+        # 결과 보고
+        total_services = len(essential_services)
+        success_rate = (services_registered / total_services) * 100
+        
+        logger.info(f"🔧 Central Hub 연결 결과: {services_registered}/{total_services} 성공 ({success_rate:.1f}%)")
+        
+        if services_failed > 0:
+            logger.warning(f"⚠️ {services_failed}개 서비스 등록 실패")
+        
+        # 80% 이상 성공하면 연결 성공으로 간주
+        return success_rate >= 80.0
+        
+    except Exception as e:
+        logger.error(f"❌ Central Hub 연결 실패: {e}")
+        return False
+
+def validate_central_hub_services() -> Dict[str, Any]:
+    """Central Hub 서비스 검증"""
+    try:
+        container = get_global_container()
+        if not container:
+            return {
+                'connected': False,
+                'error': 'Container not available',
+                'services': {}
+            }
+        
+        # 서비스 상태 검사
+        services_status = {}
+        essential_services = ['model_loader', 'memory_manager', 'data_converter']
+        
+        for service_name in essential_services:
+            try:
+                service = container.get(service_name)
+                services_status[service_name] = {
+                    'available': service is not None,
+                    'type': type(service).__name__ if service else None,
+                    'is_mock': 'Mock' in type(service).__name__ if service else None
+                }
+            except Exception as e:
+                services_status[service_name] = {
+                    'available': False,
+                    'error': str(e)
+                }
+        
+        # 전체 통계
+        available_count = sum(1 for status in services_status.values() if status.get('available', False))
+        total_count = len(essential_services)
+        
+        return {
+            'connected': True,
+            'container_available': True,
+            'services': services_status,
+            'statistics': {
+                'available_services': available_count,
+                'total_services': total_count,
+                'availability_rate': (available_count / total_count) * 100,
+                'all_services_available': available_count == total_count
+            }
+        }
+        
+    except Exception as e:
+        return {
+            'connected': False,
+            'error': str(e),
+            'services': {}
+        }
+
+def initialize_central_hub_with_validation() -> bool:
+    """검증과 함께 Central Hub 초기화"""
+    try:
+        logger.info("🔧 Central Hub 초기화 시작...")
+        
+        # 1. 연결 보장
+        connection_success = ensure_central_hub_connection()
+        if not connection_success:
+            logger.error("❌ Central Hub 연결 실패")
+            return False
+        
+        # 2. 서비스 검증
+        validation_result = validate_central_hub_services()
+        if not validation_result.get('connected', False):
+            logger.error("❌ Central Hub 서비스 검증 실패")
+            return False
+        
+        # 3. 결과 보고
+        stats = validation_result.get('statistics', {})
+        availability_rate = stats.get('availability_rate', 0)
+        
+        logger.info(f"✅ Central Hub 초기화 완료")
+        logger.info(f"📊 서비스 가용성: {availability_rate:.1f}% ({stats.get('available_services', 0)}/{stats.get('total_services', 0)})")
+        
+        return availability_rate >= 80.0
+        
+    except Exception as e:
+        logger.error(f"❌ Central Hub 초기화 실패: {e}")
+        return False
+
+# ==============================================
+# 🔥 자동 초기화 훅 (파일 로드 시 실행)
+# ==============================================
+
+def _auto_initialize_central_hub():
+    """파일 로드 시 자동 초기화"""
+    try:
+        # 개발/테스트 환경에서는 자동 초기화
+        if os.getenv('AUTO_INIT_CENTRAL_HUB', 'true').lower() == 'true':
+            success = initialize_central_hub_with_validation()
+            if success:
+                logger.debug("🔧 Central Hub 자동 초기화 완료")
+            else:
+                logger.debug("⚠️ Central Hub 자동 초기화 부분 실패 (정상 동작 가능)")
+    except Exception as e:
+        logger.debug(f"⚠️ Central Hub 자동 초기화 실패: {e}")
+
+# 파일 맨 끝에 추가
 # ==============================================
 # 🔥 Export (완전한 호환성)
 # ==============================================
@@ -1570,7 +1815,10 @@ __all__ = [
     'get_global_container',
     'get_global_manager',
     'reset_global_container',
-    
+    'ensure_central_hub_connection',
+    'validate_central_hub_services', 
+    'initialize_central_hub_with_validation',
+    'create_default_service'
     # 기본 편의 함수들
     'get_service',
     'register_service',
@@ -1686,3 +1934,4 @@ logger.info("🎉 모든 것의 중심 - DIContainer!")
 logger.info("🎉 순환참조 문제 완전 해결!")
 logger.info("🎉 MyCloset AI 프로젝트 완벽 연동!")
 logger.info("=" * 80)
+_auto_initialize_central_hub()

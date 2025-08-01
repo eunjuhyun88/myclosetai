@@ -1,0 +1,508 @@
+{
+  "timestamp": 1753987471.8390641,
+  "debug_version": "4.0",
+  "system_analysis": {
+    "cpu_info": {
+      "physical_cores": 16,
+      "logical_cores": 16,
+      "usage_percent": 5.2,
+      "architecture": "arm64",
+      "processor": "arm",
+      "is_apple_silicon": true
+    },
+    "memory_info": {
+      "total_gb": 128.0,
+      "available_gb": 79.94688415527344,
+      "used_gb": 40.741943359375,
+      "usage_percent": 37.5,
+      "sufficient_for_ai": true
+    },
+    "pytorch_info": {
+      "available": true,
+      "version": "2.7.1",
+      "cuda_available": false,
+      "cuda_version": null,
+      "mps_available": true,
+      "device_count": 0
+    },
+    "project_structure": {
+      "project_root": "/Users/gimdudeul/MVP/mycloset-ai",
+      "backend_exists": true,
+      "frontend_exists": true,
+      "ai_models_dir": "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models",
+      "ai_models_size_gb": 174.39973560441285,
+      "step_modules": [
+        "step_06_virtual_fitting",
+        "step_05_cloth_warping",
+        "step_04_geometric_matching",
+        "step_03_cloth_segmentation",
+        "step_02_pose_estimation",
+        "step_08_quality_assessment",
+        "step_01_human_parsing",
+        "step_07_post_processing"
+      ]
+    },
+    "dependencies_status": {
+      "torch": true,
+      "torchvision": true,
+      "numpy": true,
+      "PIL": true,
+      "cv2": true,
+      "transformers": true,
+      "safetensors": true
+    },
+    "recommendations": {
+      "is_m3_max": true,
+      "memory_sufficient": true,
+      "recommended_device": "mps"
+    }
+  },
+  "step_analyses": {
+    "HumanParsingStep": {
+      "basic_info": {
+        "step_name": "HumanParsingStep",
+        "step_id": 1,
+        "module_path": "app.ai_pipeline.steps.step_01_human_parsing",
+        "class_name": "HumanParsingStep"
+      },
+      "import_analysis": {
+        "success": true,
+        "time": 3.26674485206604,
+        "errors": []
+      },
+      "class_analysis": {
+        "found": true,
+        "is_base_step_mixin": true,
+        "has_process_method": true,
+        "has_initialize_method": true
+      },
+      "instance_analysis": {
+        "created": true,
+        "dependencies": {
+          "device": "mps",
+          "strict_mode": false
+        },
+        "errors": []
+      },
+      "initialization": {
+        "success": true,
+        "time": 1.3828277587890625e-05,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "graphonomy_fixed.pth",
+          "graphonomy_new.pth",
+          "deeplab_resnet101.pth",
+          "fcn_resnet101_ultra.pth",
+          "pytorch_model.bin",
+          "pytorch_model.bin"
+        ],
+        "total_size_gb": 0.9860186707228422,
+        "checkpoint_count": 6,
+        "successful_checkpoints": 0
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 90.0
+      },
+      "status": "success"
+    },
+    "PoseEstimationStep": {
+      "basic_info": {
+        "step_name": "PoseEstimationStep",
+        "step_id": 2,
+        "module_path": "app.ai_pipeline.steps.step_02_pose_estimation",
+        "class_name": "PoseEstimationStep"
+      },
+      "import_analysis": {
+        "success": true,
+        "time": 4.291534423828125e-06,
+        "errors": []
+      },
+      "class_analysis": {
+        "found": true,
+        "is_base_step_mixin": true,
+        "has_process_method": true,
+        "has_initialize_method": true
+      },
+      "instance_analysis": {
+        "created": true,
+        "dependencies": {
+          "device": "mps",
+          "strict_mode": false
+        },
+        "errors": []
+      },
+      "initialization": {
+        "success": true,
+        "time": 0.08824491500854492,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "hrnet_w48_coco_384x288.pth",
+          "hrnet_w32_coco_256x192.pth",
+          "hrnet_w48_coco_256x192.pth",
+          "yolov8m-pose.pt",
+          "yolov8s-pose.pt",
+          "diffusion_pytorch_model.fp16.safetensors",
+          "diffusion_pytorch_model.safetensors",
+          "diffusion_pytorch_model.fp16.bin",
+          "diffusion_pytorch_model.bin"
+        ],
+        "total_size_gb": 4.691240718588233,
+        "checkpoint_count": 9,
+        "successful_checkpoints": 4
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 100.0
+      },
+      "status": "success"
+    },
+    "ClothSegmentationStep": {
+      "basic_info": {
+        "step_name": "ClothSegmentationStep",
+        "step_id": 3,
+        "module_path": "app.ai_pipeline.steps.step_03_cloth_segmentation",
+        "class_name": "ClothSegmentationStep"
+      },
+      "import_analysis": {
+        "success": true,
+        "time": 4.76837158203125e-06,
+        "errors": []
+      },
+      "class_analysis": {
+        "found": true,
+        "is_base_step_mixin": true,
+        "has_process_method": true,
+        "has_initialize_method": true
+      },
+      "instance_analysis": {
+        "created": true,
+        "dependencies": {
+          "device": "mps",
+          "strict_mode": false
+        },
+        "errors": []
+      },
+      "initialization": {
+        "success": true,
+        "time": 0.2875382900238037,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "u2net.pth",
+          "sam_vit_h_4b8939.pth",
+          "deeplabv3_resnet101_ultra.pth",
+          "mobile_sam.pt",
+          "mobile_sam.pt",
+          "pytorch_model.bin",
+          "pytorch_model.bin"
+        ],
+        "total_size_gb": 5.282956561073661,
+        "checkpoint_count": 7,
+        "successful_checkpoints": 0
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 90.0
+      },
+      "status": "success"
+    },
+    "GeometricMatchingStep": {
+      "basic_info": {
+        "step_name": "GeometricMatchingStep",
+        "step_id": 4,
+        "module_path": "app.ai_pipeline.steps.step_04_geometric_matching",
+        "class_name": "GeometricMatchingStep"
+      },
+      "import_analysis": {
+        "success": false,
+        "time": 0.0,
+        "errors": [
+          "invalid syntax (step_04_geometric_matching.py, line 3219)"
+        ]
+      },
+      "class_analysis": {
+        "found": false,
+        "is_base_step_mixin": false,
+        "has_process_method": false,
+        "has_initialize_method": false
+      },
+      "instance_analysis": {
+        "created": false,
+        "dependencies": {},
+        "errors": []
+      },
+      "initialization": {
+        "success": false,
+        "time": 0.0,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "sam_vit_h_4b8939.pth",
+          "raft-things.pth",
+          "sam_vit_h_4b8939.pth",
+          "resnet101_geometric.pth",
+          "resnet50_geometric_ultra.pth",
+          "efficientnet_b0_ultra.pth",
+          "RealESRGAN_x4plus.pth",
+          "raft-things.pth"
+        ],
+        "total_size_gb": 3.121487588621676,
+        "checkpoint_count": 8,
+        "successful_checkpoints": 0
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 10.0
+      },
+      "status": "import_failed"
+    },
+    "ClothWarpingStep": {
+      "basic_info": {
+        "step_name": "ClothWarpingStep",
+        "step_id": 5,
+        "module_path": "app.ai_pipeline.steps.step_05_cloth_warping",
+        "class_name": "ClothWarpingStep"
+      },
+      "import_analysis": {
+        "success": true,
+        "time": 2.86102294921875e-06,
+        "errors": []
+      },
+      "class_analysis": {
+        "found": true,
+        "is_base_step_mixin": true,
+        "has_process_method": true,
+        "has_initialize_method": true
+      },
+      "instance_analysis": {
+        "created": true,
+        "dependencies": {
+          "device": "mps",
+          "strict_mode": false
+        },
+        "errors": []
+      },
+      "initialization": {
+        "success": true,
+        "time": 1.0013580322265625e-05,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "RealESRGAN_x4plus.pth",
+          "vgg19_warping.pth",
+          "vgg16_warping_ultra.pth",
+          "densenet121_ultra.pth",
+          "model.fp16.safetensors",
+          "diffusion_pytorch_model.bin"
+        ],
+        "total_size_gb": 4.91190049238503,
+        "checkpoint_count": 6,
+        "successful_checkpoints": 1
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 100.0
+      },
+      "status": "success"
+    },
+    "VirtualFittingStep": {
+      "basic_info": {
+        "step_name": "VirtualFittingStep",
+        "step_id": 6,
+        "module_path": "app.ai_pipeline.steps.step_06_virtual_fitting",
+        "class_name": "VirtualFittingStep"
+      },
+      "import_analysis": {
+        "success": false,
+        "time": 0.0,
+        "errors": [
+          "invalid syntax (step_06_virtual_fitting.py, line 2374)"
+        ]
+      },
+      "class_analysis": {
+        "found": false,
+        "is_base_step_mixin": false,
+        "has_process_method": false,
+        "has_initialize_method": false
+      },
+      "instance_analysis": {
+        "created": false,
+        "dependencies": {},
+        "errors": []
+      },
+      "initialization": {
+        "success": false,
+        "time": 0.0,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "body_pose_model.pth",
+          "exp-schp-201908301523-atr.pth",
+          "diffusion_pytorch_model.safetensors",
+          "diffusion_pytorch_model.safetensors",
+          "diffusion_pytorch_model.safetensors",
+          "diffusion_pytorch_model.safetensors",
+          "diffusion_pytorch_model.safetensors",
+          "diffusion_pytorch_model.safetensors",
+          "pytorch_model.bin"
+        ],
+        "total_size_gb": 22.906142168678343,
+        "checkpoint_count": 9,
+        "successful_checkpoints": 6
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 20.0
+      },
+      "status": "import_failed"
+    },
+    "PostProcessingStep": {
+      "basic_info": {
+        "step_name": "PostProcessingStep",
+        "step_id": 7,
+        "module_path": "app.ai_pipeline.steps.step_07_post_processing",
+        "class_name": "PostProcessingStep"
+      },
+      "import_analysis": {
+        "success": false,
+        "time": 0.0,
+        "errors": [
+          "invalid syntax (step_07_post_processing.py, line 2813)"
+        ]
+      },
+      "class_analysis": {
+        "found": false,
+        "is_base_step_mixin": false,
+        "has_process_method": false,
+        "has_initialize_method": false
+      },
+      "instance_analysis": {
+        "created": false,
+        "dependencies": {},
+        "errors": []
+      },
+      "initialization": {
+        "success": false,
+        "time": 0.0,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "ESRGAN_x8.pth",
+          "densenet161_enhance.pth",
+          "mobilenet_v3_ultra.pth",
+          "resnet101_enhance_ultra.pth",
+          "RealESRGAN_x2plus.pth",
+          "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+          "RealESRGAN_x4plus.pth",
+          "pytorch_model.bin",
+          "pytorch_model.bin"
+        ],
+        "total_size_gb": 2.215636385604739,
+        "checkpoint_count": 9,
+        "successful_checkpoints": 0
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 10.0
+      },
+      "status": "import_failed"
+    },
+    "QualityAssessmentStep": {
+      "basic_info": {
+        "step_name": "QualityAssessmentStep",
+        "step_id": 8,
+        "module_path": "app.ai_pipeline.steps.step_08_quality_assessment",
+        "class_name": "QualityAssessmentStep"
+      },
+      "import_analysis": {
+        "success": false,
+        "time": 0.0,
+        "errors": [
+          "invalid syntax (step_08_quality_assessment.py, line 2215)"
+        ]
+      },
+      "class_analysis": {
+        "found": false,
+        "is_base_step_mixin": false,
+        "has_process_method": false,
+        "has_initialize_method": false
+      },
+      "instance_analysis": {
+        "created": false,
+        "dependencies": {},
+        "errors": []
+      },
+      "initialization": {
+        "success": false,
+        "time": 0.0,
+        "errors": []
+      },
+      "ai_models": {
+        "detected": [
+          "clip_vit_b32.pth",
+          "ViT-B-32.pt",
+          "ViT-L-14.pt",
+          "pytorch_model.bin",
+          "open_clip_pytorch_model.bin",
+          "open_clip_pytorch_model.bin",
+          "pytorch_model.bin"
+        ],
+        "total_size_gb": 14.10200430918485,
+        "checkpoint_count": 7,
+        "successful_checkpoints": 0
+      },
+      "performance": {
+        "memory_footprint_mb": 0.0,
+        "health_score": 10.0
+      },
+      "status": "import_failed"
+    }
+  },
+  "overall_summary": {
+    "steps": {
+      "total": 8,
+      "successful": 4,
+      "success_rate": 50.0
+    },
+    "models": {
+      "total_detected": 61,
+      "total_size_gb": 58.217386894859374,
+      "successful_checkpoints": 11,
+      "total_checkpoints": 61,
+      "checkpoint_success_rate": 18.0327868852459
+    },
+    "health": {
+      "average_score": 53.75,
+      "system_ready": true,
+      "ai_ready": false
+    }
+  },
+  "critical_issues": [
+    "❌ Import 실패: GeometricMatchingStep, VirtualFittingStep, PostProcessingStep, QualityAssessmentStep",
+    "❌ 초기화 실패: GeometricMatchingStep, VirtualFittingStep, PostProcessingStep, QualityAssessmentStep"
+  ],
+  "recommendations": [
+    "🔧 GeometricMatchingStep 의존성 확인: 모듈 경로 및 import 오류 해결 필요",
+    "🔧 VirtualFittingStep 의존성 확인: 모듈 경로 및 import 오류 해결 필요",
+    "🔧 PostProcessingStep 의존성 확인: 모듈 경로 및 import 오류 해결 필요",
+    "🔧 QualityAssessmentStep 의존성 확인: 모듈 경로 및 import 오류 해결 필요",
+    "💾 메모리 최적화: 58.2GB 모델 - 배치 크기 조정 및 캐싱 전략 필요",
+    "🔧 PyTorch 호환성: 2개 체크포인트에서 weights_only 문제 - PyTorch 업데이트 필요"
+  ],
+  "performance_metrics": {
+    "total_analysis_time_seconds": 26.784231185913086,
+    "average_step_analysis_time": 0.45532047748565674,
+    "system_analysis_efficiency": "efficient",
+    "memory_usage_peak_gb": 1.02142333984375
+  }
+}

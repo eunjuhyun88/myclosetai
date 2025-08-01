@@ -1438,6 +1438,8 @@ class BaseStepMixin:
                 'data_converter': False,
                 'central_hub_container': False
             }
+            
+            self._inject_detailed_data_spec_attributes(kwargs)
 
             # 기본 속성들 초기화
             self.device = device if device != "auto" else ("mps" if TORCH_AVAILABLE and MPS_AVAILABLE else "cpu")
@@ -1492,6 +1494,117 @@ class BaseStepMixin:
             
         except Exception as e:
             self._central_hub_emergency_setup(e)
+
+    def _inject_detailed_data_spec_attributes(self, kwargs: Dict[str, Any]):
+        """DetailedDataSpec 속성 자동 주입"""
+        try:
+            # ✅ API 매핑 속성 주입
+            self.api_input_mapping = kwargs.get('api_input_mapping', {})
+            self.api_output_mapping = kwargs.get('api_output_mapping', {})
+            
+            # ✅ Step 간 데이터 흐름 속성 주입  
+            self.accepts_from_previous_step = kwargs.get('accepts_from_previous_step', {})
+            self.provides_to_next_step = kwargs.get('provides_to_next_step', {})
+            
+            # ✅ 전처리/후처리 속성 주입
+            self.preprocessing_steps = kwargs.get('preprocessing_steps', [])
+            self.postprocessing_steps = kwargs.get('postprocessing_steps', [])
+            self.preprocessing_required = kwargs.get('preprocessing_required', [])
+            self.postprocessing_required = kwargs.get('postprocessing_required', [])
+            
+            # ✅ 데이터 타입 및 스키마 속성 주입
+            self.input_data_types = kwargs.get('input_data_types', [])
+            self.output_data_types = kwargs.get('output_data_types', [])
+            self.step_input_schema = kwargs.get('step_input_schema', {})
+            self.step_output_schema = kwargs.get('step_output_schema', {})
+            
+            # ✅ 정규화 파라미터 주입
+            self.normalization_mean = kwargs.get('normalization_mean', (0.485, 0.456, 0.406))
+            self.normalization_std = kwargs.get('normalization_std', (0.229, 0.224, 0.225))
+            
+            # ✅ 메타정보 주입
+            self.detailed_data_spec_loaded = kwargs.get('detailed_data_spec_loaded', True)
+            self.detailed_data_spec_version = kwargs.get('detailed_data_spec_version', 'v11.2')
+            self.step_model_requirements_integrated = kwargs.get('step_model_requirements_integrated', True)
+            self.central_hub_integrated = kwargs.get('central_hub_integrated', True)
+            
+            # ✅ FastAPI 호환성 플래그
+            self.fastapi_compatible = len(self.api_input_mapping) > 0
+            
+            self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 속성 주입 완료")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ {self.step_name} DetailedDataSpec 속성 주입 실패: {e}")
+            # 실패 시 기본값 설정
+            self.api_input_mapping = {}
+            self.api_output_mapping = {}
+            self.accepts_from_previous_step = {}
+            self.provides_to_next_step = {}
+            self.detailed_data_spec_loaded = False
+
+    # 🔥 API 변환 메서드 활성화 (기존 코드 수정)
+    async def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+        """API 입력을 Step 입력으로 변환 - 활성화"""
+        try:
+            if not self.api_input_mapping:
+                # 매핑이 없으면 그대로 반환
+                self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
+                return api_input
+            
+            converted = {}
+            
+            # ✅ API 매핑 기반 변환
+            for api_param, api_type in self.api_input_mapping.items():
+                if api_param in api_input:
+                    converted_value = await self._convert_api_input_type(
+                        api_input[api_param], api_type, api_param
+                    )
+                    converted[api_param] = converted_value
+            
+            # ✅ 누락된 필수 입력 데이터 확인
+            for param_name in self.api_input_mapping.keys():
+                if param_name not in converted and param_name in api_input:
+                    converted[param_name] = api_input[param_name]
+            
+            self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료")
+            return converted
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} API → Step 변환 실패: {e}")
+            return api_input  # 실패 시 원본 반환
+
+    async def convert_step_output_to_api_response(self, step_output: Dict[str, Any]) -> Dict[str, Any]:
+        """Step 출력을 API 응답으로 변환 - 활성화"""
+        try:
+            if not self.api_output_mapping:
+                # 매핑이 없으면 그대로 반환
+                return step_output
+            
+            api_response = {}
+            
+            # ✅ API 출력 매핑 기반 변환
+            for step_key, api_type in self.api_output_mapping.items():
+                if step_key in step_output:
+                    converted_value = await self._convert_step_output_type(
+                        step_output[step_key], api_type, step_key
+                    )
+                    api_response[step_key] = converted_value
+            
+            # ✅ 메타데이터 추가
+            api_response.update({
+                'step_name': self.step_name,
+                'processing_time': step_output.get('processing_time', 0),
+                'confidence': step_output.get('confidence', 0.95),
+                'success': step_output.get('success', True)
+            })
+            
+            self.logger.debug(f"✅ {self.step_name} Step → API 변환 완료")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} Step → API 변환 실패: {e}")
+            return step_output  # 실패 시 원본 반환
+
 
     def _setup_central_hub_integration(self):
         """🔥 Central Hub DI Container 자동 연동"""
@@ -2104,7 +2217,10 @@ class BaseStepMixin:
                         self.postprocessing_steps = ['format_output']
                         self.accepts_from_previous_step = {}
                         self.provides_to_next_step = {}
-                
+                        self.segmentation_models = {}  # ClothSegmentationStep용
+                        self.logger = self._setup_logger()  # 모든 Step용
+                        self._load_single_model = self._default_load_single_model  # PostProcessingStep용
+
                 self.detailed_data_spec = EmergencyDataSpec()
                 
         except Exception as e:

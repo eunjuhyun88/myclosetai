@@ -51,23 +51,55 @@ from io import BytesIO
 # ==============================================
 # 🔥 Central Hub DI Container 안전 import (순환참조 방지)
 # ==============================================
+# 🔥 개선된 순환참조 방지 패턴
+
+_central_hub_cache = None
+_dependencies_cache = {}
 
 def _get_central_hub_container():
-    """Central Hub DI Container 안전한 동적 해결"""
+    """개선된 Central Hub DI Container 안전한 동적 해결"""
+    global _central_hub_cache
+    
+    if _central_hub_cache is not None:
+        return _central_hub_cache
+    
     try:
-        import importlib
-        module = importlib.import_module('app.core.di_container')
+        # 🔥 개선: 캐시된 모듈 우선 확인
+        if 'app.core.di_container' in sys.modules:
+            module = sys.modules['app.core.di_container']
+        else:
+            import importlib
+            module = importlib.import_module('app.core.di_container')
+        
         get_global_fn = getattr(module, 'get_global_container', None)
-        if get_global_fn:
-            return get_global_fn()
+        if get_global_fn and callable(get_global_fn):
+            _central_hub_cache = get_global_fn()
+            return _central_hub_cache
+        
         return None
-    except ImportError:
+    except (ImportError, AttributeError, RuntimeError):
+        return None
+    except Exception:
+        return None
+
+def _get_service_from_central_hub(service_key: str):
+    """개선된 Central Hub를 통한 안전한 서비스 조회"""
+    if service_key in _dependencies_cache:
+        return _dependencies_cache[service_key]
+    
+    try:
+        container = _get_central_hub_container()
+        if container and hasattr(container, 'get'):
+            service = container.get(service_key)
+            if service:
+                _dependencies_cache[service_key] = service
+            return service
         return None
     except Exception:
         return None
 
 def _inject_dependencies_safe(step_instance):
-    """Central Hub DI Container를 통한 안전한 의존성 주입"""
+    """개선된 Central Hub DI Container를 통한 안전한 의존성 주입"""
     try:
         container = _get_central_hub_container()
         if container and hasattr(container, 'inject_to_step'):
@@ -76,15 +108,15 @@ def _inject_dependencies_safe(step_instance):
     except Exception:
         return 0
 
-def _get_service_from_central_hub(service_key: str):
-    """Central Hub를 통한 안전한 서비스 조회"""
-    try:
-        container = _get_central_hub_container()
-        if container:
-            return container.get(service_key)
-        return None
-    except Exception:
-        return None
+# 🔥 개선: 캐시 정리 함수
+def _clear_dependency_cache():
+    """의존성 캐시 정리"""
+    global _central_hub_cache, _dependencies_cache
+    _central_hub_cache = None
+    _dependencies_cache.clear()
+
+
+
 
 # TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
@@ -454,69 +486,81 @@ class RealAIModel:
             return False
 
     def _smart_load_with_strategy(self) -> bool:
-        """🔥 스마트 로딩 전략 (기존 Step별 로더 활용)"""
+        """🔥 개선된 스마트 로딩 전략"""
         try:
             file_extension = self.model_path.suffix.lower()
             filename = self.model_path.name.lower()
             
-            # 🔥 1. Safetensors 파일: 바로 Safetensors 로딩
-            if file_extension == '.safetensors':
-                self.logger.debug(f"Safetensors 파일 감지: {self.model_name}")
-                self.checkpoint_data = self._load_safetensors()
-                return self.checkpoint_data is not None
+            # 🔥 개선: 단순화된 로딩 전략
+            loading_strategies = [
+                ('safetensors', file_extension == '.safetensors', self._load_safetensors),
+                ('yolo', 'yolo' in filename, self._load_yolo_optimized),
+                ('step_specific', self.step_type in self.step_loaders, lambda: self.step_loaders[self.step_type]()),
+                ('generic', True, self._load_generic_model)
+            ]
             
-            # 🔥 2. YOLO 모델: YOLO 최적화 로딩
-            elif 'yolo' in filename:
-                self.logger.debug(f"YOLO 모델 감지: {self.model_name}")
-                return self._load_yolo_optimized()
+            for strategy_name, condition, loader_func in loading_strategies:
+                if condition:
+                    self.logger.debug(f"시도 중: {strategy_name} 로딩")
+                    if loader_func():
+                        self.logger.debug(f"✅ {strategy_name} 로딩 성공")
+                        return True
+                    else:
+                        self.logger.debug(f"❌ {strategy_name} 로딩 실패")
             
-            # 🔥 3. 기존 Step별 특화 로딩 (유지)
-            elif self.step_type in self.step_loaders:
-                self.logger.debug(f"Step별 특화 로딩: {self.step_type.value}")
-                return self.step_loaders[self.step_type]()
+            return False
             
-            # 🔥 4. 일반 모델 (기존 로직)
-            else:
-                return self._load_generic_model()
-                
         except Exception as e:
             self.logger.error(f"❌ 스마트 로딩 전략 실패: {e}")
-            # 폴백: 기존 로직
-            if self.step_type in self.step_loaders:
-                return self.step_loaders[self.step_type]()
-            else:
-                return self._load_generic_model()
+            return False
+
+    def _load_pytorch_checkpoint(self) -> Optional[Any]:
+        """🔥 개선된 PyTorch 체크포인트 로딩"""
+        if not TORCH_AVAILABLE:
+            self.logger.error("❌ PyTorch가 사용 불가능")
+            return None
+        
+        loading_methods = [
+            ('safe_mode', {'weights_only': True}),
+            ('compat_mode', {'weights_only': False}),
+            ('legacy_mode', {})
+        ]
+        
+        for method_name, kwargs in loading_methods:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    checkpoint = torch.load(
+                        self.model_path, 
+                        map_location='cpu',
+                        **kwargs
+                    )
+                self.logger.debug(f"✅ {method_name} 로딩 성공: {self.model_name}")
+                return checkpoint
+            except Exception as e:
+                self.logger.debug(f"{method_name} 실패: {e}")
+                continue
+        
+        self.logger.error(f"❌ 모든 PyTorch 로딩 방법 실패: {self.model_name}")
+        return None
 
     def _load_yolo_optimized(self) -> bool:
-        """YOLO 모델 최적화 로딩 (새로 추가)"""
+        """🔥 개선된 YOLO 모델 최적화 로딩"""
         try:
-            # 1. Ultralytics 직접 로딩 시도
+            # 1. Ultralytics 직접 로딩
             try:
                 from ultralytics import YOLO
                 model = YOLO(str(self.model_path))
                 self.model_instance = model
                 self.checkpoint_data = {"ultralytics_model": model}
-                self.logger.debug(f"✅ {self.model_name} Ultralytics 직접 로딩 성공")
+                self.logger.debug(f"✅ Ultralytics 직접 로딩 성공: {self.model_name}")
                 return True
             except ImportError:
-                self.logger.debug("Ultralytics 라이브러리 없음")
+                pass
             except Exception as e:
                 self.logger.debug(f"Ultralytics 직접 로딩 실패: {e}")
             
-            # 2. PyTorch weights_only=False 우선
-            try:
-                checkpoint = torch.load(
-                    self.model_path, 
-                    map_location='cpu',
-                    weights_only=False
-                )
-                self.checkpoint_data = checkpoint
-                self.logger.debug(f"✅ {self.model_name} YOLO PyTorch 로딩 성공")
-                return True
-            except Exception as e:
-                self.logger.debug(f"YOLO PyTorch 로딩 실패: {e}")
-            
-            # 3. 폴백: 기존 _load_pytorch_checkpoint() 사용
+            # 2. PyTorch 호환 모드
             self.checkpoint_data = self._load_pytorch_checkpoint()
             return self.checkpoint_data is not None
             
@@ -1233,6 +1277,48 @@ StepModelInterface = RealStepModelInterface
 # 🔥 ModelLoader v5.1 - Central Hub DI Container v7.0 완전 연동
 # ==============================================
 
+from functools import wraps
+from typing import Callable, Any, Optional
+
+def safe_execution(fallback_value: Any = None, log_error: bool = True):
+    """안전한 실행을 위한 데코레이터"""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except Exception as e:
+                if log_error and hasattr(self, 'logger'):
+                    self.logger.error(f"❌ {func.__name__} 실행 실패: {e}")
+                
+                # 성능 메트릭 업데이트
+                if hasattr(self, 'performance_metrics'):
+                    self.performance_metrics['error_count'] += 1
+                
+                return fallback_value
+        return wrapper
+    return decorator
+
+def safe_async_execution(fallback_value: Any = None, log_error: bool = True):
+    """비동기 안전한 실행을 위한 데코레이터"""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            try:
+                return await func(self, *args, **kwargs)
+            except Exception as e:
+                if log_error and hasattr(self, 'logger'):
+                    self.logger.error(f"❌ {func.__name__} 비동기 실행 실패: {e}")
+                
+                # 성능 메트릭 업데이트
+                if hasattr(self, 'performance_metrics'):
+                    self.performance_metrics['error_count'] += 1
+                
+                return fallback_value
+        return wrapper
+    return decorator
+
+
 class ModelLoader:
     """
     ModelLoader v5.1 - Central Hub DI Container v7.0 완전 연동
@@ -1551,7 +1637,7 @@ class ModelLoader:
             return False
     
     def optimize_memory_via_central_hub(self) -> Dict[str, Any]:
-        """🔥 Central Hub 메모리 최적화"""
+        """🔥 개선된 Central Hub 메모리 최적화"""
         try:
             optimization_result = {
                 'models_unloaded': 0,
@@ -1562,53 +1648,100 @@ class ModelLoader:
                 'gc_collected': 0
             }
             
-            # 🔥 Central Hub MemoryManager를 통한 최적화
-            if self.memory_manager and hasattr(self.memory_manager, 'optimize_memory'):
+            # 🔥 개선: 체계적인 최적화 순서
+            optimization_steps = [
+                ('central_hub_memory_manager', self._optimize_via_central_hub),
+                ('unused_models_cleanup', self._cleanup_unused_models),
+                ('cache_cleanup', self._cleanup_caches),
+                ('system_memory_cleanup', self._cleanup_system_memory)
+            ]
+            
+            for step_name, step_func in optimization_steps:
                 try:
-                    memory_stats = self.memory_manager.optimize_memory(aggressive=True)
-                    optimization_result['central_hub_optimization'] = True
-                    optimization_result.update(memory_stats)
+                    step_result = step_func()
+                    if isinstance(step_result, dict):
+                        for key, value in step_result.items():
+                            if key in optimization_result:
+                                if isinstance(value, (int, float)):
+                                    optimization_result[key] += value
+                                else:
+                                    optimization_result[key] = value
+                    self.logger.debug(f"✅ {step_name} 완료")
                 except Exception as e:
-                    self.logger.debug(f"Central Hub MemoryManager 최적화 실패: {e}")
+                    self.logger.debug(f"⚠️ {step_name} 실패: {e}")
             
-            # 로드된 모델들 메모리 해제
-            models_to_unload = []
-            current_time = time.time()
-            
-            for model_name, model in self.loaded_models.items():
-                # 1시간 이상 사용하지 않은 모델 언로드
-                if current_time - getattr(model, 'last_access', 0) > 3600:
-                    models_to_unload.append(model_name)
-            
-            for model_name in models_to_unload:
-                if self.unload_model(model_name):
-                    optimization_result['models_unloaded'] += 1
-                    optimization_result['memory_freed_mb'] += self.model_info.get(model_name, {}).get('memory_mb', 0)
-            
-            # 캐시 정리
-            self._available_models_cache.clear()
-            optimization_result['cache_cleared'] = True
-            
-            # 가비지 컬렉션
+            # 🔥 개선: 최종 가비지 컬렉션
             collected = gc.collect()
             optimization_result['gc_collected'] = collected
             
-            # MPS 메모리 정리
-            if MPS_AVAILABLE and TORCH_AVAILABLE:
-                try:
-                    if hasattr(torch.backends.mps, 'empty_cache'):
-                        torch.backends.mps.empty_cache()
-                        optimization_result['mps_cache_cleared'] = True
-                except:
-                    pass
-            
-            self.logger.info(f"✅ Central Hub 메모리 최적화 완료: {optimization_result}")
+            self.logger.info(f"✅ 체계적 메모리 최적화 완료: {optimization_result}")
             return optimization_result
             
         except Exception as e:
-            self.logger.error(f"❌ Central Hub 메모리 최적화 실패: {e}")
+            self.logger.error(f"❌ 메모리 최적화 실패: {e}")
             return {'error': str(e)}
-    
+
+    def _optimize_via_central_hub(self) -> Dict[str, Any]:
+        """Central Hub MemoryManager를 통한 최적화"""
+        result = {'central_hub_optimization': False}
+        
+        if self.memory_manager and hasattr(self.memory_manager, 'optimize_memory'):
+            try:
+                memory_stats = self.memory_manager.optimize_memory(aggressive=True)
+                result.update(memory_stats)
+                result['central_hub_optimization'] = True
+            except Exception as e:
+                self.logger.debug(f"Central Hub MemoryManager 최적화 실패: {e}")
+        
+        return result
+
+    def _cleanup_unused_models(self) -> Dict[str, Any]:
+        """사용하지 않는 모델들 정리"""
+        result = {'models_unloaded': 0, 'memory_freed_mb': 0.0}
+        
+        current_time = time.time()
+        unused_threshold = 3600  # 1시간
+        
+        models_to_unload = []
+        for model_name, model in self.loaded_models.items():
+            if current_time - getattr(model, 'last_access', 0) > unused_threshold:
+                models_to_unload.append(model_name)
+        
+        for model_name in models_to_unload:
+            if self.unload_model(model_name):
+                result['models_unloaded'] += 1
+                result['memory_freed_mb'] += self.model_info.get(model_name, {}).get('memory_mb', 0)
+        
+        return result
+
+    def _cleanup_caches(self) -> Dict[str, Any]:
+        """캐시 정리"""
+        result = {'cache_cleared': False}
+        
+        # 모델 캐시 정리
+        self._available_models_cache.clear()
+        
+        # 의존성 캐시 정리
+        _clear_dependency_cache()
+        
+        result['cache_cleared'] = True
+        return result
+
+    def _cleanup_system_memory(self) -> Dict[str, Any]:
+        """시스템 메모리 정리"""
+        result = {'mps_cache_cleared': False}
+        
+        # MPS 메모리 정리 (M3 Max)
+        if MPS_AVAILABLE and TORCH_AVAILABLE:
+            try:
+                if hasattr(torch.backends.mps, 'empty_cache'):
+                    torch.backends.mps.empty_cache()
+                    result['mps_cache_cleared'] = True
+            except Exception as e:
+                self.logger.debug(f"MPS 캐시 정리 실패: {e}")
+        
+        return result
+
     def get_central_hub_stats(self) -> Dict[str, Any]:
         """🔥 Central Hub 통계 연동"""
         try:
@@ -2020,29 +2153,103 @@ class ModelLoader:
             return None
     
     def _manage_cache(self):
-        """실제 AI 모델 캐시 관리 (Central Hub 호환)"""
+        """🔥 개선된 실제 AI 모델 캐시 관리"""
         try:
             if len(self.loaded_models) <= self.max_cached_models:
                 return
             
-            # 우선순위와 마지막 접근 시간 기반 정렬
-            models_by_priority = sorted(
-                self.model_info.items(),
-                key=lambda x: (x[1].priority.value, x[1].last_access)
-            )
+            # 🔥 개선: 보호할 모델들 식별
+            protected_models = set()
             
-            models_to_remove = models_by_priority[:len(self.loaded_models) - self.max_cached_models]
+            # Primary 모델들 보호
+            for mapping in self.central_hub_step_mappings.values():
+                primary_model = mapping.get('primary_model')
+                if primary_model:
+                    protected_models.add(primary_model)
             
-            for model_name, _ in models_to_remove:
-                # Primary 모델은 보호 (Central Hub 매핑 기반)
-                if any(mapping.get('primary_model') == model_name for mapping in self.central_hub_step_mappings.values()):
+            # 최근 사용된 모델들 보호 (1시간 이내)
+            current_time = time.time()
+            recent_threshold = 3600  # 1시간
+            
+            for model_name, model_info in self.model_info.items():
+                if current_time - model_info.last_access < recent_threshold:
+                    protected_models.add(model_name)
+            
+            # 🔥 개선: 스마트 제거 전략
+            models_by_score = []
+            for model_name, model_info in self.model_info.items():
+                if model_name in protected_models:
                     continue
-                
-                self.unload_model(model_name)
-                
+                    
+                # 점수 계산 (낮을수록 제거 우선순위 높음)
+                score = self._calculate_model_retention_score(model_info)
+                models_by_score.append((model_name, score, model_info))
+            
+            # 점수 순으로 정렬 (낮은 점수부터)
+            models_by_score.sort(key=lambda x: x[1])
+            
+            # 제거할 모델 수 계산
+            models_to_remove_count = len(self.loaded_models) - self.max_cached_models
+            models_to_remove = models_by_score[:models_to_remove_count]
+            
+            # 모델 제거 실행
+            removed_count = 0
+            for model_name, score, model_info in models_to_remove:
+                if self.unload_model(model_name):
+                    removed_count += 1
+                    self.logger.debug(f"💽 캐시에서 제거: {model_name} (점수: {score:.2f})")
+            
+            self.logger.info(f"💽 캐시 관리 완료: {removed_count}개 모델 제거")
+            
         except Exception as e:
             self.logger.error(f"❌ 캐시 관리 실패: {e}")
-    
+
+    def _calculate_model_retention_score(self, model_info: RealStepModelInfo) -> float:
+        """🔥 모델 보존 점수 계산 (높을수록 보존 우선순위 높음)"""
+        try:
+            current_time = time.time()
+            
+            # 기본 점수 (우선순위 기반)
+            priority_scores = {
+                RealModelPriority.PRIMARY: 100.0,
+                RealModelPriority.SECONDARY: 50.0,
+                RealModelPriority.FALLBACK: 25.0,
+                RealModelPriority.OPTIONAL: 10.0
+            }
+            score = priority_scores.get(model_info.priority, 10.0)
+            
+            # 최근 접근 시간 보너스 (24시간 이내)
+            time_since_access = current_time - model_info.last_access
+            if time_since_access < 86400:  # 24시간
+                time_bonus = max(0, 50 * (1 - time_since_access / 86400))
+                score += time_bonus
+            
+            # 사용 빈도 보너스
+            if model_info.access_count > 0:
+                frequency_bonus = min(30, model_info.access_count * 2)
+                score += frequency_bonus
+            
+            # 추론 성능 보너스
+            if model_info.inference_count > 0 and model_info.avg_inference_time > 0:
+                # 빠른 추론일수록 높은 점수
+                performance_bonus = min(20, 100 / max(1, model_info.avg_inference_time))
+                score += performance_bonus
+            
+            # 검증 통과 보너스
+            if model_info.validation_passed:
+                score += 15
+            
+            # 메모리 효율성 페널티 (큰 모델일수록 점수 감소)
+            memory_penalty = min(20, model_info.memory_mb / 1000)  # GB당 점수 감소
+            score -= memory_penalty
+            
+            return max(0, score)
+            
+        except Exception as e:
+            self.logger.debug(f"점수 계산 실패: {e}")
+            return 10.0  # 기본 점수
+
+
     def unload_model(self, model_name: str) -> bool:
         """실제 AI 모델 언로드 (Central Hub 호환)"""
         try:
@@ -2555,75 +2762,40 @@ _global_model_loader: Optional[ModelLoader] = None
 _loader_lock = threading.Lock()
 
 def get_global_model_loader(config: Optional[Dict[str, Any]] = None) -> ModelLoader:
-    """전역 ModelLoader 인스턴스 반환 (Central Hub 호환, TypeError 해결)"""
+    """전역 ModelLoader 인스턴스 반환 (개선된 TypeError 방지)"""
     global _global_model_loader
     
     with _loader_lock:
         if _global_model_loader is None:
             try:
-                # 설정 적용 (안전한 복사)
-                loader_config = config.copy() if config else {}
+                # 🔥 개선: 안전한 config 처리
+                safe_config = {}
+                if config:
+                    # di_container 키만 제외하고 복사
+                    safe_config = {k: v for k, v in config.items() if k != 'di_container'}
                 
-                # 🔥 Central Hub Container 조회 시도 (config에 없는 경우)
-                if 'di_container' not in loader_config:
-                    try:
-                        central_hub_container = _get_central_hub_container()
-                        if central_hub_container:
-                            loader_config['di_container'] = central_hub_container
-                            logger.debug("✅ Central Hub Container 조회 성공")
-                    except Exception as e:
-                        logger.debug(f"⚠️ Central Hub Container 조회 실패: {e}")
+                # 🔥 개선: 단순한 생성 로직
+                _global_model_loader = ModelLoader(**safe_config)
                 
-                # 🔥 ModelLoader 생성 (TypeError 방지)
-                _global_model_loader = ModelLoader(**loader_config)
-                
-                logger.info("✅ 전역 Central Hub 호환 ModelLoader v5.1 생성 성공")
-                
-            except TypeError as type_error:
-                # 🔥 TypeError 발생 시 안전한 폴백 처리
-                if "multiple values" in str(type_error) or "di_container" in str(type_error):
-                    logger.warning(f"ModelLoader 생성 TypeError 감지: {type_error}")
-                    logger.info("🔄 기본 설정으로 ModelLoader 재생성 시도...")
-                    
-                    try:
-                        # 최소 파라미터로 생성
-                        _global_model_loader = ModelLoader(device="cpu")
-                        
-                        # 생성 후 설정 적용
-                        if config and hasattr(_global_model_loader, 'device') and config.get('device'):
-                            _global_model_loader.device = config['device']
-                        
-                        # Central Hub Container 설정
-                        central_hub_container = _get_central_hub_container()
-                        if central_hub_container and hasattr(_global_model_loader, '_central_hub_container'):
-                            _global_model_loader._central_hub_container = central_hub_container
-                            _global_model_loader._resolve_dependencies_from_central_hub()
-                            logger.info("✅ ModelLoader 기본 생성 후 Central Hub 설정 완료")
-                        
-                        logger.info("✅ ModelLoader TypeError 폴백 생성 성공")
-                        
-                    except Exception as fallback_error:
-                        logger.error(f"❌ ModelLoader 폴백 생성도 실패: {fallback_error}")
-                        # 최후 수단: 완전 기본 설정
-                        _global_model_loader = ModelLoader(device="cpu")
-                        logger.warning("⚠️ ModelLoader 최소 기본 설정으로 생성됨")
-                        
-                else:
-                    # 다른 TypeError는 그대로 전파
-                    raise type_error
-                    
-            except Exception as e:
-                logger.error(f"❌ 전역 ModelLoader 생성 실패: {e}")
-                # 완전 폴백: 기본 설정으로 생성
+                # 🔥 개선: 생성 후 Central Hub 연결
                 try:
-                    _global_model_loader = ModelLoader(device="cpu")
-                    logger.warning("⚠️ ModelLoader 완전 폴백 생성")
-                except Exception as final_error:
-                    logger.error(f"❌ ModelLoader 완전 폴백도 실패: {final_error}")
-                    raise RuntimeError("ModelLoader 생성 완전 실패")
+                    central_hub_container = _get_central_hub_container()
+                    if central_hub_container:
+                        _global_model_loader._central_hub_container = central_hub_container
+                        _global_model_loader._resolve_dependencies_from_central_hub()
+                        logger.debug("✅ Central Hub Container 연결 성공")
+                except Exception as hub_error:
+                    logger.debug(f"⚠️ Central Hub 연결 실패: {hub_error}")
+                
+                logger.info("✅ 전역 ModelLoader v5.1 생성 성공")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ ModelLoader 생성 실패, 기본 설정 사용: {e}")
+                # 🔥 개선: 단순한 폴백
+                _global_model_loader = ModelLoader(device="cpu")
                 
         return _global_model_loader
-
+    
 def initialize_global_model_loader(**kwargs) -> bool:
     """전역 ModelLoader 초기화 (Central Hub 호환)"""
     try:

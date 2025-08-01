@@ -1,8 +1,8 @@
-# backend/app/ai_pipeline/utils/import_resolver.py (새 파일)
+# backend/app/ai_pipeline/utils/import_resolver.py (새 파일 생성)
 """
 🔥 Import 경로 문제 해결을 위한 동적 Import Resolver
 ================================================================
-✅ relative import beyond top-level package 오류 해결
+✅ attempted relative import beyond top-level package 오류 해결
 ✅ 동적 경로 탐지 및 절대 경로 변환
 ✅ 프로젝트 구조 변화에 유연하게 대응
 ✅ 폴백 메커니즘 포함
@@ -24,6 +24,7 @@ class ImportResolver:
         self.project_root = self._find_project_root()
         self.backend_root = self._find_backend_root()
         self._add_paths_to_sys()
+        self._setup_module_aliases()
     
     def _find_project_root(self) -> Path:
         """프로젝트 루트 디렉토리 찾기"""
@@ -55,12 +56,37 @@ class ImportResolver:
             str(self.project_root),
             str(self.backend_root),
             str(self.backend_root / "app"),
+            str(self.backend_root / "app" / "ai_pipeline"),
+            str(self.backend_root / "app" / "ai_pipeline" / "utils"),
+            str(self.backend_root / "app" / "ai_pipeline" / "factories"),
+            str(self.backend_root / "app" / "ai_pipeline" / "interface"),
+            str(self.backend_root / "app" / "ai_pipeline" / "steps"),
+            str(self.backend_root / "app" / "services"),
         ]
         
         for path in paths_to_add:
-            if path not in sys.path:
+            if os.path.exists(path) and path not in sys.path:
                 sys.path.insert(0, path)
                 logger.debug(f"✅ sys.path에 추가: {path}")
+    
+    def _setup_module_aliases(self):
+        """모듈 별칭 설정으로 import 호환성 향상"""
+        try:
+            # step_model_requests.py 별칭 설정
+            aliases = [
+                ('step_model_requests', 'step_model_requirements'),
+                ('step_model_requirements', 'step_model_requests'),
+            ]
+            
+            for alias_from, alias_to in aliases:
+                try:
+                    if alias_to in sys.modules and alias_from not in sys.modules:
+                        sys.modules[alias_from] = sys.modules[alias_to]
+                        logger.debug(f"✅ 모듈 별칭 생성: {alias_from} -> {alias_to}")
+                except Exception as e:
+                    logger.debug(f"⚠️ 모듈 별칭 생성 실패: {e}")
+        except Exception as e:
+            logger.debug(f"⚠️ 모듈 별칭 설정 실패: {e}")
     
     def safe_import(self, module_path: str, fallback_paths: Optional[List[str]] = None) -> Optional[Any]:
         """안전한 모듈 import (폴백 경로 포함)"""
@@ -176,6 +202,35 @@ def import_function(module_path: str, function_name: str, fallback_paths: Option
     """편의 함수: 함수 안전 import"""
     resolver = get_import_resolver()
     return resolver.import_function_safe(module_path, function_name, fallback_paths)
+
+# 🔥 step_model_requirements 전용 import 함수
+def import_step_model_requirements():
+    """step_model_requirements 전용 import 함수"""
+    resolver = get_import_resolver()
+    
+    # 다양한 경로로 시도
+    paths = [
+        'backend.app.ai_pipeline.utils.step_model_requests',
+        'app.ai_pipeline.utils.step_model_requests', 
+        'ai_pipeline.utils.step_model_requests',
+        'backend.app.ai_pipeline.utils.step_model_requirements',
+        'app.ai_pipeline.utils.step_model_requirements',
+        'ai_pipeline.utils.step_model_requirements',
+        'step_model_requests',
+        'step_model_requirements'
+    ]
+    
+    for path in paths:
+        module = resolver.safe_import(path)
+        if module and hasattr(module, 'get_enhanced_step_request'):
+            logger.info(f"✅ step_model_requirements import 성공: {path}")
+            return {
+                'get_enhanced_step_request': module.get_enhanced_step_request,
+                'REAL_STEP_MODEL_REQUESTS': getattr(module, 'REAL_STEP_MODEL_REQUESTS', {})
+            }
+    
+    logger.warning("❌ step_model_requirements import 모든 경로 실패")
+    return None
 
 # 모듈 로드 시 자동으로 경로 설정
 resolver = get_import_resolver()

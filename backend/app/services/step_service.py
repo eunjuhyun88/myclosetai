@@ -186,27 +186,33 @@ logger.info(f"🔧 StepServiceManager v16.0 환경: conda={CONDA_INFO['conda_env
 # ==============================================
 # 🔥 StepFactory 동적 Import (순환참조 방지)
 # ==============================================
-
 def get_step_factory() -> Optional[Any]:
-    """StepFactory 동적 import (Central Hub 기반)"""
+    """StepFactory 동적 import - 디렉토리 구조 통일"""
     try:
-        # Central Hub를 통한 StepFactory 조회 시도
-        step_factory = _get_service_from_central_hub('step_factory')
-        if step_factory:
-            logger.info("✅ StepFactory Central Hub에서 조회 성공")
-            return step_factory
-        
-        # 폴백: 직접 import
+        # ✅ 실제 존재하는 디렉토리 경로들 우선 (factories vs factory)
         import_paths = [
-            "app.ai_pipeline.factories.step_factory",
-            "ai_pipeline.factories.step_factory",
+            # factories 디렉토리 (현재 실제 위치)
             "backend.app.ai_pipeline.factories.step_factory",
-            ".ai_pipeline.factories.step_factory",
+            "app.ai_pipeline.factories.step_factory", 
+            "ai_pipeline.factories.step_factory",
+            
+            # factory 디렉토리 (레거시)
+            "backend.app.ai_pipeline.factory.step_factory",
+            "app.ai_pipeline.factory.step_factory",
+            "ai_pipeline.factory.step_factory",
+            
+            # 서비스 경로
+            "backend.app.services.unified_step_mapping",
+            "app.services.unified_step_mapping",
+            "services.unified_step_mapping",
+            
+            # 직접 경로
             "step_factory"
         ]
         
         for import_path in import_paths:
             try:
+                import importlib
                 module = importlib.import_module(import_path)
                 
                 if hasattr(module, 'StepFactory'):
@@ -214,26 +220,147 @@ def get_step_factory() -> Optional[Any]:
                     
                     # 전역 팩토리 함수 활용
                     if hasattr(module, 'get_global_step_factory'):
-                        factory_instance = module.get_global_step_factory()
-                        logger.info(f"✅ StepFactory 전역 인스턴스 로드: {import_path}")
-                        return factory_instance
+                        try:
+                            factory_instance = module.get_global_step_factory()
+                            if factory_instance:
+                                logger.info(f"✅ StepFactory 전역 인스턴스 로드: {import_path}")
+                                return factory_instance
+                        except Exception as e:
+                            logger.debug(f"전역 팩토리 생성 실패: {e}")
                     
                     # 직접 인스턴스 생성
-                    factory_instance = StepFactory()
-                    logger.info(f"✅ StepFactory 인스턴스 생성: {import_path}")
-                    return factory_instance
-                    
+                    try:
+                        factory_instance = StepFactory()
+                        logger.info(f"✅ StepFactory 인스턴스 생성: {import_path}")
+                        return factory_instance
+                    except Exception as e:
+                        logger.debug(f"직접 인스턴스 생성 실패: {e}")
+                        
             except ImportError as e:
                 logger.debug(f"Import 실패 {import_path}: {e}")
                 continue
+            except Exception as e:
+                logger.debug(f"Import 오류 {import_path}: {e}")
+                continue
         
-        logger.error("❌ StepFactory import 완전 실패")
+        logger.error("❌ StepFactory import 완전 실패 - 모든 경로 시도")
         return None
         
     except Exception as e:
         logger.error(f"❌ StepFactory import 오류: {e}")
         return None
 
+# 🔥 AutoModelDetector import 오류 해결
+def get_auto_model_detector():
+    """AutoModelDetector 안전한 import"""
+    try:
+        # AutoModelDetector import 시도
+        detector_paths = [
+            "backend.app.ai_pipeline.utils.auto_model_detector",
+            "app.ai_pipeline.utils.auto_model_detector",
+            "ai_pipeline.utils.auto_model_detector",
+            "backend.app.ai_pipeline.auto_detector", 
+            "app.ai_pipeline.auto_detector",
+            "ai_pipeline.auto_detector"
+        ]
+        
+        for path in detector_paths:
+            try:
+                import importlib
+                module = importlib.import_module(path)
+                
+                if hasattr(module, 'AutoModelDetector'):
+                    AutoModelDetector = getattr(module, 'AutoModelDetector')
+                    detector_instance = AutoModelDetector()
+                    logger.info(f"✅ AutoModelDetector 로딩 성공: {path}")
+                    return detector_instance
+                    
+            except ImportError:
+                continue
+            except Exception as e:
+                logger.debug(f"AutoModelDetector 로딩 실패: {e}")
+                continue
+        
+        logger.warning("⚠️ AutoModelDetector import 실패, Mock 사용")
+        
+        # Mock AutoModelDetector
+        class MockAutoModelDetector:
+            def __init__(self):
+                self.is_mock = True
+                
+            def detect_models(self):
+                return []
+                
+            def get_model_info(self, model_name):
+                return {}
+        
+        return MockAutoModelDetector()
+        
+    except Exception as e:
+        logger.error(f"❌ AutoModelDetector 로딩 오류: {e}")
+        return None
+
+# 🔥 개선된 StepFactory 컴포넌트 로딩
+def _get_step_factory_components():
+    """StepFactory 컴포넌트들 안전 로딩 - 디렉토리 구조 통일"""
+    components = {
+        'StepFactory': None,
+        'create_step': None,
+        'StepType': None,
+        'available': False,
+        'version': 'unknown',
+        'import_path': None
+    }
+    
+    try:
+        step_factory = get_step_factory()
+        if step_factory:
+            # StepFactory 모듈에서 컴포넌트들 추출
+            factory_module = sys.modules.get(step_factory.__class__.__module__)
+            if factory_module:
+                components.update({
+                    'StepFactory': getattr(factory_module, 'StepFactory', None),
+                    'create_step': getattr(factory_module, 'create_step', None),
+                    'StepType': getattr(factory_module, 'StepType', None),
+                    'create_virtual_fitting_step': getattr(factory_module, 'create_virtual_fitting_step', None),
+                    'get_global_step_factory': getattr(factory_module, 'get_global_step_factory', None),
+                    'available': True,
+                    'factory_instance': step_factory,
+                    'import_path': factory_module.__name__,
+                    'version': getattr(factory_module, '__version__', 'v11.2')
+                })
+                logger.info(f"✅ StepFactory 컴포넌트 로딩 성공: {factory_module.__name__}")
+                
+                # StepFactory 통계 정보 추가
+                if hasattr(step_factory, 'get_statistics'):
+                    try:
+                        stats = step_factory.get_statistics()
+                        components['statistics'] = stats
+                        components['github_compatibility'] = stats.get('github_compatibility', {})
+                    except Exception as e:
+                        logger.debug(f"StepFactory 통계 조회 실패: {e}")
+            else:
+                logger.warning("⚠️ StepFactory 모듈을 찾을 수 없음")
+    
+    except Exception as e:
+        logger.warning(f"⚠️ StepFactory 컴포넌트 로딩 실패: {e}")
+    
+    return components
+
+# 전역 StepFactory 컴포넌트 로딩 (개선됨)
+STEP_FACTORY_COMPONENTS = _get_step_factory_components()
+STEP_FACTORY_AVAILABLE = STEP_FACTORY_COMPONENTS.get('available', False)
+
+# AutoModelDetector 로딩
+AUTO_MODEL_DETECTOR = get_auto_model_detector()
+AUTO_MODEL_DETECTOR_AVAILABLE = AUTO_MODEL_DETECTOR is not None and not getattr(AUTO_MODEL_DETECTOR, 'is_mock', False)
+
+logger.info(f"🔧 StepFactory 상태: {'✅' if STEP_FACTORY_AVAILABLE else '❌'}")
+logger.info(f"🔧 AutoModelDetector 상태: {'✅' if AUTO_MODEL_DETECTOR_AVAILABLE else '⚠️ Mock'}")
+
+if STEP_FACTORY_AVAILABLE:
+    logger.info(f"   - Import 경로: {STEP_FACTORY_COMPONENTS.get('import_path', 'unknown')}")
+    logger.info(f"   - 버전: {STEP_FACTORY_COMPONENTS.get('version', 'unknown')}")
 # ==============================================
 # 🔥 프로젝트 표준 데이터 구조 (호환성 유지)
 # ==============================================
