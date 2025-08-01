@@ -1,0 +1,7 @@
+{
+  "model": {
+    "provider": "openai",
+    "apiKey": "your-api-key-here",
+    "model": "gpt-4"
+  }
+}

@@ -881,68 +881,107 @@ class CentralHubStepClassLoader:
         self._import_attempts: Dict[str, int] = {}
         self._lock = threading.RLock()
         self._max_attempts = 5
-    
-    def load_step_class(self, config: CentralHubStepConfig) -> Optional[Type]:
-        """Central Hub 기반 Step 클래스 로딩"""
+   
+    def load_step_class(self, class_name: str) -> Optional[Type['BaseStepMixin']]:
+        """실제 Step 클래스 로딩 (TestStep 폴백 제거)"""
         try:
             with self._lock:
-                cache_key = config.class_name
-                if cache_key in self._loaded_classes:
-                    return self._loaded_classes[cache_key]
+                if class_name in self._loaded_classes:
+                    return self._loaded_classes[class_name]
                 
-                attempts = self._import_attempts.get(cache_key, 0)
+                attempts = self._import_attempts.get(class_name, 0)
                 if attempts >= self._max_attempts:
-                    self.logger.error(f"❌ {config.class_name} import 재시도 한계 초과")
+                    self.logger.error(f"❌ {class_name} import 재시도 한계 초과")
                     return None
                 
-                self._import_attempts[cache_key] = attempts + 1
+                self._import_attempts[class_name] = attempts + 1
                 
-                self.logger.info(f"🔄 {config.class_name} 동적 로딩 시작 (시도 {attempts + 1}/{self._max_attempts})...")
+                self.logger.info(f"🔄 {class_name} 동적 로딩 시작 (시도 {attempts + 1}/{self._max_attempts})...")
                 
-                step_class = self._dynamic_import_step_class(config)
+                # 🔥 수정: config 대신 class_name 전달
+                step_class = self._dynamic_import_step_class(class_name)
                 
                 if step_class:
-                    if self._validate_step_compatibility(step_class, config):
-                        self._loaded_classes[cache_key] = step_class
-                        self.logger.info(f"✅ {config.class_name} 동적 로딩 성공")
+                    if self._validate_step_compatibility(step_class, class_name):
+                        self._loaded_classes[class_name] = step_class
+                        self.logger.info(f"✅ {class_name} 동적 로딩 성공")
                         return step_class
                     else:
-                        self.logger.error(f"❌ {config.class_name} 호환성 검증 실패")
+                        self.logger.error(f"❌ {class_name} 호환성 검증 실패")
                         return None
                 else:
-                    self.logger.error(f"❌ {config.class_name} 동적 import 실패")
+                    self.logger.error(f"❌ {class_name} 동적 import 실패")
                     return None
                     
         except Exception as e:
-            self.logger.error(f"❌ {config.class_name} 동적 로딩 예외: {e}")
+            self.logger.error(f"❌ {class_name} 동적 로딩 예외: {e}")
             return None
-    
-    def _dynamic_import_step_class(self, config: CentralHubStepConfig) -> Optional[Type]:
-        """동적 import 실행"""
+
+    def _dynamic_import_step_class(self, class_name: str) -> Optional[Type]:
+        """🔥 수정: 실제 GitHub 파일 구조 기반 동적 import"""
         import importlib
         
-        # Step별 import 경로들
-        import_paths = [
-            f"app.ai_pipeline.steps.{config.module_path}",
-            f"ai_pipeline.steps.{config.module_path}",
-            f"backend.app.ai_pipeline.steps.{config.module_path}",
-            f"..steps.{config.module_path}",
-            f"steps.{config.class_name.lower()}"
-        ]
+        # 🔥 정확한 Step별 import 경로 매핑
+        step_import_paths = {
+            'HumanParsingStep': [
+                'app.ai_pipeline.steps.step_01_human_parsing',
+                'ai_pipeline.steps.step_01_human_parsing',
+                'backend.app.ai_pipeline.steps.step_01_human_parsing'
+            ],
+            'PoseEstimationStep': [
+                'app.ai_pipeline.steps.step_02_pose_estimation',
+                'ai_pipeline.steps.step_02_pose_estimation',
+                'backend.app.ai_pipeline.steps.step_02_pose_estimation'
+            ],
+            'ClothSegmentationStep': [
+                'app.ai_pipeline.steps.step_03_cloth_segmentation',
+                'ai_pipeline.steps.step_03_cloth_segmentation',
+                'backend.app.ai_pipeline.steps.step_03_cloth_segmentation'
+            ],
+            'GeometricMatchingStep': [
+                'app.ai_pipeline.steps.step_04_geometric_matching',
+                'ai_pipeline.steps.step_04_geometric_matching',
+                'backend.app.ai_pipeline.steps.step_04_geometric_matching'
+            ],
+            'ClothWarpingStep': [
+                'app.ai_pipeline.steps.step_05_cloth_warping',
+                'ai_pipeline.steps.step_05_cloth_warping',
+                'backend.app.ai_pipeline.steps.step_05_cloth_warping'
+            ],
+            'VirtualFittingStep': [
+                'app.ai_pipeline.steps.step_06_virtual_fitting',
+                'ai_pipeline.steps.step_06_virtual_fitting',
+                'backend.app.ai_pipeline.steps.step_06_virtual_fitting'
+            ],
+            'PostProcessingStep': [
+                'app.ai_pipeline.steps.step_07_post_processing',
+                'ai_pipeline.steps.step_07_post_processing',
+                'backend.app.ai_pipeline.steps.step_07_post_processing'
+            ],
+            'QualityAssessmentStep': [
+                'app.ai_pipeline.steps.step_08_quality_assessment',
+                'ai_pipeline.steps.step_08_quality_assessment',
+                'backend.app.ai_pipeline.steps.step_08_quality_assessment'
+            ]
+        }
+        
+        import_paths = step_import_paths.get(class_name, [])
+        if not import_paths:
+            self.logger.error(f"❌ {class_name}에 대한 import 경로를 찾을 수 없음")
+            return None
         
         for import_path in import_paths:
             try:
-                self.logger.debug(f"🔍 {config.class_name} import 시도: {import_path}")
+                self.logger.debug(f"🔍 {class_name} import 시도: {import_path}")
                 
-                # 지연 import로 순환참조 방지
                 module = importlib.import_module(import_path)
                 
-                if hasattr(module, config.class_name):
-                    step_class = getattr(module, config.class_name)
-                    self.logger.info(f"✅ {config.class_name} 동적 import 성공: {import_path}")
+                if hasattr(module, class_name):
+                    step_class = getattr(module, class_name)
+                    self.logger.info(f"✅ {class_name} 동적 import 성공: {import_path}")
                     return step_class
                 else:
-                    self.logger.debug(f"⚠️ {import_path}에 {config.class_name} 클래스 없음")
+                    self.logger.debug(f"⚠️ {import_path}에 {class_name} 클래스 없음")
                     continue
                     
             except ImportError as e:
@@ -952,13 +991,13 @@ class CentralHubStepClassLoader:
                 self.logger.warning(f"⚠️ {import_path} import 예외: {e}")
                 continue
         
-        self.logger.error(f"❌ {config.class_name} 모든 경로에서 import 실패")
+        self.logger.error(f"❌ {class_name} 모든 경로에서 import 실패")
         return None
-    
-    def _validate_step_compatibility(self, step_class: Type, config: CentralHubStepConfig) -> bool:
-        """Step 호환성 검증"""
+
+    def _validate_step_compatibility(self, step_class: Type, class_name: str) -> bool:
+        """🔥 수정: 호환성 검증 개선"""
         try:
-            if not step_class or step_class.__name__ != config.class_name:
+            if not step_class or step_class.__name__ != class_name:
                 return False
             
             # 필수 메서드들
@@ -969,36 +1008,14 @@ class CentralHubStepClassLoader:
                     missing_methods.append(method)
             
             if missing_methods:
-                self.logger.error(f"❌ {config.class_name}에 필수 메서드 없음: {missing_methods}")
+                self.logger.error(f"❌ {class_name}에 필수 메서드 없음: {missing_methods}")
                 return False
             
-            # 생성자 호출 테스트
-            try:
-                test_kwargs = {
-                    'step_name': 'test',
-                    'step_id': config.step_id,
-                    'device': 'cpu',
-                    'github_compatibility_mode': True,
-                    'central_hub_integration': True
-                }
-                test_instance = step_class(**test_kwargs)
-                if test_instance:
-                    self.logger.debug(f"✅ {config.class_name} 생성자 테스트 성공")
-                    if hasattr(test_instance, 'cleanup'):
-                        try:
-                            test_instance.cleanup()
-                        except:
-                            pass
-                    del test_instance
-                    return True
-            except Exception as e:
-                self.logger.warning(f"⚠️ {config.class_name} 생성자 테스트 실패: {e}")
-                return True  # 생성자 테스트 실패해도 로딩은 허용
-            
+            self.logger.debug(f"✅ {class_name} 호환성 검증 성공")
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ {config.class_name} 호환성 검증 실패: {e}")
+            self.logger.error(f"❌ {class_name} 호환성 검증 실패: {e}")
             return False
 
 # ==============================================
@@ -1968,8 +1985,8 @@ class StepFactory:
         try:
             self.logger.info(f"🔄 {config.step_name} Central Hub 기반 인스턴스 생성 중...")
             
-            # 1. Step 클래스 로딩 (순환참조 해결)
-            StepClass = self.class_loader.load_step_class(config)
+            # 🔥 수정: class_name을 전달
+            StepClass = self.class_loader.load_step_class(config.class_name)
             if not StepClass:
                 return CentralHubStepCreationResult(
                     success=False,
@@ -1980,7 +1997,7 @@ class StepFactory:
                 )
             
             self.logger.info(f"✅ {config.class_name} 클래스 로딩 완료")
-            
+
             # 2. Central Hub 기반 생성자용 의존성 해결 (순환참조 해결)
             constructor_dependencies = self.dependency_resolver.resolve_dependencies_for_constructor(config)
             
@@ -2677,6 +2694,49 @@ def get_central_hub_step_info(step_instance: 'BaseStepMixin') -> Dict[str, Any]:
         
     except Exception as e:
         return {'error': str(e)}
+
+
+def calculate_integration_percentage(self, step_instance) -> float:
+    """통합 퍼센트 정확한 계산"""
+    
+    if not step_instance:
+        return 0.0
+    
+    step_name = step_instance.__class__.__name__
+    
+    # 🔥 TestStep인 경우 12.5% 고정 (문제 상황)
+    if step_name == 'TestStep':
+        self.logger.warning(f"⚠️ {step_name} TestStep 감지 - 실제 Step 클래스 로딩 필요")
+        return 12.5
+    
+    # 실제 Step 클래스인 경우 정상 계산
+    total_criteria = 8
+    passed_criteria = 0
+    
+    # 각종 통합 기준 체크
+    if hasattr(step_instance, 'model_loader') and step_instance.model_loader:
+        passed_criteria += 1
+    
+    if hasattr(step_instance, 'central_hub_integrated') and step_instance.central_hub_integrated:
+        passed_criteria += 2  # 더 높은 가중치
+    
+    if hasattr(step_instance, 'is_initialized') and step_instance.is_initialized:
+        passed_criteria += 1
+    
+    if hasattr(step_instance, 'detailed_data_spec_loaded') and step_instance.detailed_data_spec_loaded:
+        passed_criteria += 1
+    
+    if hasattr(step_instance, 'api_input_mapping') and step_instance.api_input_mapping:
+        passed_criteria += 1
+    
+    if hasattr(step_instance, 'github_compatible') and step_instance.github_compatible:
+        passed_criteria += 1
+    
+    if hasattr(step_instance, 'process') and callable(step_instance.process):
+        passed_criteria += 1
+    
+    percentage = (passed_criteria / total_criteria) * 100
+    return min(percentage, 100.0)
 
 # ==============================================
 # 🔥 기존 함수명 호환성 유지

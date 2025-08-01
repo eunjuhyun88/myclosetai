@@ -1137,6 +1137,12 @@ def get_model_detection_summary() -> Dict[str, Any]:
 # ==============================================
 
 __all__ = [
+    'find_model_by_name',
+    'get_largest_models',
+    'get_models_by_ai_class',
+    'check_model_compatibility',
+    'export_model_info_json',
+    'benchmark_detection_performance'
     # 핵심 클래스들
     'OptimizedFileMapper',
     'OptimizedDetectedModel', 
@@ -1405,15 +1411,6 @@ def benchmark_detection_performance() -> Dict[str, Any]:
         logger.error(f"❌ 성능 벤치마킹 실패: {e}")
         return {"error": str(e)}
 
-# 추가 함수들을 __all__에 추가
-__all__.extend([
-    'find_model_by_name',
-    'get_largest_models',
-    'get_models_by_ai_class',
-    'check_model_compatibility',
-    'export_model_info_json',
-    'benchmark_detection_performance'
-])
 
 logger.info("✅ 추가 유틸리티 함수들 로드 완료!")
 logger.info(f"📦 총 {len(__all__)}개 함수/클래스 제공")

@@ -1962,7 +1962,7 @@ __all__ = [
     
     # Logger
     'logger'
-]
+
     'get_github_environment_info',
     'get_real_environment_info',
     'optimize_github_environment',

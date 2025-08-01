@@ -359,11 +359,17 @@ class CentralHubDIContainer:
     # ==============================================
     
     def inject_to_step(self, step_instance) -> int:
-        """Step에 의존성 주입 - 중앙 허브의 핵심 기능"""
+        """Step에 의존성 주입 - 중앙 허브의 핵심 기능 (TestStep 방지 포함)"""
         with self._lock:
             injections_made = 0
             
             try:
+                # 🔥 TestStep 체크 - 실제 Step이어야 함
+                step_name = step_instance.__class__.__name__
+                if step_name == 'TestStep':
+                    self.logger.warning(f"⚠️ TestStep 감지 - 실제 Step 클래스가 로딩되지 않았습니다")
+                    return 0
+                
                 # DI Container 자체 주입
                 if hasattr(step_instance, 'di_container'):
                     step_instance.di_container = self
@@ -391,6 +397,11 @@ class CentralHubDIContainer:
                                 injections_made += 1
                                 self.logger.debug(f"✅ {attr_name} 주입 완료")
                 
+                # 🔥 통합 상태 업데이트
+                if hasattr(step_instance, 'central_hub_integrated'):
+                    step_instance.central_hub_integrated = True
+                    injections_made += 1
+                
                 # 초기화 메서드 호출
                 if hasattr(step_instance, 'initialize') and not getattr(step_instance, 'is_initialized', False):
                     try:
@@ -401,13 +412,14 @@ class CentralHubDIContainer:
                 
                 self._injection_count += 1
                 
-                self.logger.info(f"✅ Step 의존성 주입 완료: {injections_made}개")
+                self.logger.info(f"✅ {step_name} Central Hub 의존성 주입 완료: {injections_made}개")
                 
             except Exception as e:
                 self.logger.error(f"❌ Step 의존성 주입 실패: {e}")
             
             return injections_made
-    
+
+
     # ==============================================
     # 🔥 안전한 서비스 생성 팩토리들
     # ==============================================

@@ -519,30 +519,72 @@ class RealAIModel:
             self.logger.error(f"❌ 모델 로딩 중 오류: {e}")
             return False
 
-    def _smart_load_with_strategy(self) -> bool:
-        """🔥 개선된 스마트 로딩 전략"""
+    def _detect_file_format(self) -> str:
+        """파일 형식 사전 감지로 올바른 로더 선택"""
         try:
-            file_extension = self.model_path.suffix.lower()
+            file_ext = self.model_path.suffix.lower()
             filename = self.model_path.name.lower()
             
-            # 🔥 개선: 단순화된 로딩 전략
-            loading_strategies = [
-                ('safetensors', file_extension == '.safetensors', self._load_safetensors),
-                ('yolo', 'yolo' in filename, self._load_yolo_optimized),
-                ('step_specific', self.step_type in self.step_loaders, lambda: self.step_loaders[self.step_type]()),
-                ('generic', True, self._load_generic_model)
-            ]
+            # Safetensors 파일 확실히 구분
+            if file_ext == '.safetensors':
+                return 'safetensors'
             
-            for strategy_name, condition, loader_func in loading_strategies:
-                if condition:
-                    self.logger.debug(f"시도 중: {strategy_name} 로딩")
-                    if loader_func():
-                        self.logger.debug(f"✅ {strategy_name} 로딩 성공")
-                        return True
-                    else:
-                        self.logger.debug(f"❌ {strategy_name} 로딩 실패")
+            # YOLO 파일 구분
+            if 'yolo' in filename or filename.endswith('-pose.pt'):
+                return 'yolo'
             
-            return False
+            # CLIP/ViT 파일 구분
+            if 'clip' in filename or 'vit' in filename:
+                return 'clip'
+            
+            # Diffusion 모델 구분
+            if 'diffusion' in filename:
+                return 'diffusion'
+            
+            # 기본 PyTorch 파일
+            if file_ext in ['.pth', '.pt', '.bin']:
+                return 'pytorch'
+            
+            return 'unknown'
+            
+        except Exception:
+            return 'unknown'
+
+
+    def _smart_load_with_strategy(self) -> bool:
+        """개선된 스마트 로딩 전략 (파일 형식 기반)"""
+        try:
+            # 파일 형식 사전 감지
+            file_format = self._detect_file_format()
+            
+            # 형식별 최적화된 로더 매핑
+            format_loaders = {
+                'safetensors': self._load_safetensors,
+                'yolo': self._load_yolo_optimized,
+                'clip': self._load_clip_model,
+                'diffusion': self._load_diffusion_checkpoint,
+                'pytorch': self._load_pytorch_checkpoint
+            }
+            
+            # 1차: 형식별 최적화 로더 시도
+            if file_format in format_loaders:
+                self.logger.debug(f"파일 형식 감지: {file_format}")
+                loader_func = format_loaders[file_format]
+                
+                if file_format == 'safetensors':
+                    self.checkpoint_data = loader_func()
+                    return self.checkpoint_data is not None
+                else:
+                    return loader_func()
+            
+            # 2차: Step별 특화 로더 시도
+            if self.step_type in self.step_loaders:
+                self.logger.debug(f"Step별 특화 로더 시도: {self.step_type}")
+                return self.step_loaders[self.step_type]()
+            
+            # 3차: 일반 로더
+            self.logger.debug("일반 PyTorch 로더 시도")
+            return self._load_generic_model()
             
         except Exception as e:
             self.logger.error(f"❌ 스마트 로딩 전략 실패: {e}")
@@ -579,32 +621,39 @@ class RealAIModel:
         return None
 
     def _load_yolo_optimized(self) -> bool:
-        """🔥 개선된 YOLO 모델 최적화 로딩"""
+        """YOLO 모델 최적화 로딩 (Ultralytics 의존성 해결)"""
         try:
-            # 1. Ultralytics 직접 로딩
+            # 1. Ultralytics 설치 확인 및 설치
             try:
                 from ultralytics import YOLO
+            except ImportError:
+                self.logger.warning("⚠️ Ultralytics 미설치, 자동 설치 시도")
+                try:
+                    import subprocess
+                    subprocess.check_call(['pip', 'install', 'ultralytics'])
+                    from ultralytics import YOLO
+                    self.logger.info("✅ Ultralytics 자동 설치 완료")
+                except Exception as install_error:
+                    self.logger.error(f"❌ Ultralytics 설치 실패: {install_error}")
+                    return False
+            
+            # 2. YOLO 모델 로딩
+            try:
                 model = YOLO(str(self.model_path))
                 self.model_instance = model
                 self.checkpoint_data = {"ultralytics_model": model}
-                self.logger.debug(f"✅ Ultralytics 직접 로딩 성공: {self.model_name}")
+                self.logger.debug(f"✅ YOLO Ultralytics 로딩 성공: {self.model_name}")
                 return True
-            except ImportError:
-                pass
-            except Exception as e:
-                self.logger.debug(f"Ultralytics 직접 로딩 실패: {e}")
-            
-            # 2. PyTorch 호환 모드
-            self.checkpoint_data = self._load_pytorch_checkpoint()
-            return self.checkpoint_data is not None
-            
+            except Exception as yolo_error:
+                self.logger.error(f"❌ YOLO 로딩 실패: {yolo_error}")
+                return False
+                
         except Exception as e:
             self.logger.error(f"❌ YOLO 최적화 로딩 실패: {e}")
             return False
 
-    # 🔥 기존 _load_pytorch_checkpoint 메서드 개선
     def _load_pytorch_checkpoint(self) -> Optional[Any]:
-        """PyTorch 체크포인트 로딩 (순서 개선)"""
+        """PyTorch 체크포인트 로딩 (MPS float64 문제 해결)"""
         if not TORCH_AVAILABLE:
             self.logger.error("❌ PyTorch가 사용 불가능")
             return None
@@ -612,71 +661,46 @@ class RealAIModel:
         try:
             filename = self.model_path.name.lower()
             
-            # 🔥 개선: YOLO 파일은 weights_only=False부터 시도
-            if 'yolo' in filename:
-                # YOLO: weights_only=False 우선
+            # MPS float64 문제 해결을 위한 CPU 우선 로딩
+            loading_methods = [
+                ('safe_mode', {'weights_only': True, 'map_location': 'cpu'}),
+                ('compat_mode', {'weights_only': False, 'map_location': 'cpu'}),
+                ('legacy_mode', {'map_location': 'cpu'})
+            ]
+            
+            for method_name, kwargs in loading_methods:
                 try:
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
-                        checkpoint = torch.load(
-                            self.model_path, 
-                            map_location='cpu',
-                            weights_only=False
-                        )
-                    self.logger.debug(f"✅ {self.model_name} YOLO 호환 모드 로딩 성공")
+                        checkpoint = torch.load(self.model_path, **kwargs)
+                    
+                    # MPS 디바이스에서 float64 → float32 변환
+                    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        checkpoint = self._convert_float64_to_float32(checkpoint)
+                    
+                    self.logger.debug(f"✅ {method_name} 로딩 성공: {self.model_name}")
                     return checkpoint
+                    
                 except Exception as e:
-                    self.logger.debug(f"YOLO 호환 모드 실패: {e}")
+                    self.logger.debug(f"{method_name} 실패: {e}")
+                    continue
             
-            # 🔥 기존 3단계 로딩 (일반 모델용)
-            # 1단계: 안전 모드 (weights_only=True)
-            try:
-                checkpoint = torch.load(
-                    self.model_path, 
-                    map_location='cpu',
-                    weights_only=True
-                )
-                self.logger.debug(f"✅ {self.model_name} 안전 모드 로딩 성공")
-                return checkpoint
-            except RuntimeError as safe_error:
-                error_msg = str(safe_error).lower()
-                if "legacy .tar format" in error_msg or "torchscript" in error_msg:
-                    self.logger.debug(f"Legacy/TorchScript 파일 감지: {self.model_name}")
-                else:
-                    self.logger.debug(f"안전 모드 실패: {safe_error}")
-            except Exception as e:
-                self.logger.debug(f"안전 모드 예외: {e}")
-            
-            # 2단계: 호환 모드 (weights_only=False)
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    checkpoint = torch.load(
-                        self.model_path, 
-                        map_location='cpu',
-                        weights_only=False
-                    )
-                self.logger.debug(f"✅ {self.model_name} 호환 모드 로딩 성공")
-                return checkpoint
-            except Exception as compat_error:
-                self.logger.debug(f"호환 모드 실패: {compat_error}")
-            
-            # 3단계: Legacy 모드
-            try:
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore")
-                    checkpoint = torch.load(self.model_path, map_location='cpu')
-                self.logger.debug(f"✅ {self.model_name} Legacy 모드 로딩 성공")
-                return checkpoint
-            except Exception as legacy_error:
-                self.logger.error(f"❌ 모든 로딩 방법 실패: {legacy_error}")
-            
+            self.logger.error(f"❌ 모든 PyTorch 로딩 방법 실패: {self.model_name}")
             return None
             
         except Exception as e:
             self.logger.error(f"❌ PyTorch 체크포인트 로딩 실패: {e}")
             return None
 
+    def _convert_float64_to_float32(self, checkpoint: Any) -> Any:
+        """MPS용 float64 → float32 변환"""
+        if isinstance(checkpoint, dict):
+            return {k: self._convert_float64_to_float32(v) for k, v in checkpoint.items()}
+        elif isinstance(checkpoint, torch.Tensor) and checkpoint.dtype == torch.float64:
+            return checkpoint.float()
+        else:
+            return checkpoint
+        
     # 🔥 기존 Step별 로더들도 약간 개선
     def _load_warping_model(self) -> bool:
         """Cloth Warping 모델 로딩 (순서 개선)"""
@@ -820,28 +844,31 @@ class RealAIModel:
     # ==============================================
     # 🔥 특화 로더들 (fix_checkpoints.py 검증 결과 기반)
     # ==============================================
-   
+    
     def _load_safetensors(self) -> Optional[Any]:
-        """Safetensors 파일 로딩 (fix_checkpoints.py 검증된 방법)"""
+        """Safetensors 파일 로딩 (PyTorch 시도 방지)"""
         try:
             import safetensors.torch
             
-            # 🔥 Safetensors 로딩 (fix_checkpoints.py에서 성공 확인됨)
+            # Safetensors 전용 로딩 (PyTorch 시도 안함)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                checkpoint = safetensors.torch.load_file(str(self.model_path))
+                checkpoint = safetensors.torch.load_file(
+                    str(self.model_path),
+                    device='cpu'  # CPU에서 안전하게 로딩
+                )
             
-            self.logger.debug(f"✅ {self.model_name} Safetensors 로딩 성공")
+            self.logger.debug(f"✅ Safetensors 전용 로딩 성공: {self.model_name}")
             return checkpoint
+            
         except ImportError:
-            self.logger.warning("⚠️ Safetensors 라이브러리 없음, PyTorch 로딩 시도")
-            return self._load_pytorch_checkpoint()
+            self.logger.error("❌ Safetensors 라이브러리 필수 설치 필요")
+            return None
         except Exception as e:
             self.logger.error(f"❌ Safetensors 로딩 실패: {e}")
-            # 🔥 Safetensors 실패 시 PyTorch 로딩 폴백
-            self.logger.info("🔄 PyTorch 로딩으로 폴백 시도")
-            return self._load_pytorch_checkpoint()
-    
+            return None
+
+
     def _load_graphonomy_ultra_safe(self) -> bool:
         """Graphonomy 170.5MB 모델 초안전 로딩 (Central Hub 기반)"""
         try:
@@ -977,20 +1004,47 @@ class RealAIModel:
             return None
     
     def _load_clip_model(self) -> Optional[Any]:
-        """CLIP 모델 로딩 (5213.7MB - fix_checkpoints.py 검증됨)"""
+        """CLIP 모델 로딩 (MPS float64 오류 해결)"""
         try:
-            # .bin 파일인 경우
-            if self.model_path.suffix.lower() == '.bin':
-                checkpoint = torch.load(self.model_path, map_location='cpu')
-            else:
-                checkpoint = self._load_pytorch_checkpoint()
+            # MPS float64 문제 해결: CPU로 먼저 로딩 후 변환
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                
+                # CPU에서 로딩
+                checkpoint = torch.load(
+                    self.model_path, 
+                    map_location='cpu',  # 강제로 CPU 사용
+                    weights_only=False   # CLIP 모델은 복잡한 구조이므로 False
+                )
+                
+                # MPS 디바이스라면 float32로 변환
+                if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                    checkpoint = self._convert_float64_to_float32(checkpoint)
             
+            self.logger.debug(f"✅ CLIP 모델 MPS 호환 로딩 성공: {self.model_name}")
             return checkpoint
             
         except Exception as e:
             self.logger.error(f"❌ CLIP 모델 로딩 실패: {e}")
             return None
-    
+
+    def _convert_float64_to_float32(self, checkpoint: Any) -> Any:
+        """MPS용 float64 → float32 변환 (재귀적 처리)"""
+        if isinstance(checkpoint, dict):
+            converted = {}
+            for key, value in checkpoint.items():
+                converted[key] = self._convert_float64_to_float32(value)
+            return converted
+        elif isinstance(checkpoint, torch.Tensor) and checkpoint.dtype == torch.float64:
+            return checkpoint.float()  # float64 → float32
+        elif isinstance(checkpoint, list):
+            return [self._convert_float64_to_float32(item) for item in checkpoint]
+        elif isinstance(checkpoint, tuple):
+            return tuple(self._convert_float64_to_float32(item) for item in checkpoint)
+        else:
+            return checkpoint
+
+
     def _validate_model(self) -> bool:
         """모델 검증"""
         try:
