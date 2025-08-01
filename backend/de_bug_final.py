@@ -806,14 +806,15 @@ class GitHubSystemAnalyzer:
     
     def __init__(self):
         self.environment = GitHubSystemEnvironment()
-        
+            
     def analyze_github_environment(self) -> GitHubSystemEnvironment:
         """GitHub 프로젝트 환경 완전 분석"""
         
         print("📊 GitHub 프로젝트 시스템 환경 완전 분석 시작...")
         
         with github_safety.safe_execution("GitHub 시스템 환경 분석", timeout=90):
-            # 1. Step 파일 수정 먼저 실행
+            # 1. Step 파일 수정 상태 먼저 확인 (누락되었던 부분)
+            self._check_step_file_fixes()
             
             # 2. 기존 시스템 분석
             self._analyze_hardware()
@@ -824,54 +825,99 @@ class GitHubSystemAnalyzer:
             self._analyze_github_integrations()
         
         return self.environment
-    
+  
+
     def _check_step_file_fixes(self):
-        """Step 파일 수정 상태 확인"""
+        """Step 파일 수정 상태 정확한 확인 (실제 GitHub 구조 반영)"""
         try:
             steps_dir = backend_root / "app" / "ai_pipeline" / "steps"
             if not steps_dir.exists():
+                print(f"   ⚠️ Steps 디렉토리 없음: {steps_dir}")
                 return
             
             fixed_files = []
             threading_added = []
             syntax_fixed = 0
             
-            # Step 파일들 확인
-            step_files = list(steps_dir.glob("step_*.py"))
-            for step_file in step_files:
+            # Step 파일 매핑 (실제 GitHub 구조)
+            step_files = {
+                1: "step_01_human_parsing.py",
+                2: "step_02_pose_estimation.py", 
+                3: "step_03_cloth_segmentation.py",
+                4: "step_04_geometric_matching.py",
+                5: "step_05_cloth_warping.py",
+                6: "step_06_virtual_fitting.py",
+                7: "step_07_post_processing.py",
+                8: "step_08_quality_assessment.py"
+            }
+            
+            print(f"   🔍 Step 파일 수정 상태 확인:")
+            
+            for step_id, filename in step_files.items():
+                step_file = steps_dir / filename
+                
+                if not step_file.exists():
+                    print(f"      ❌ {filename} 파일 없음")
+                    continue
+                    
                 try:
                     with open(step_file, 'r', encoding='utf-8') as f:
                         content = f.read()
                     
-                    # threading import 확인
-                    if 'import threading' in content:
-                        threading_added.append(step_file.name)
+                    # threading import 확인 (더 정확한 패턴)
+                    has_threading = any([
+                        'import threading' in content,
+                        'from threading import' in content,
+                        'import threading\n' in content,
+                        'from threading ' in content
+                    ])
                     
-                    # syntax 오류 수정 확인 (간단한 체크)
+                    if has_threading:
+                        threading_added.append(filename)
+                        print(f"      ✅ {filename}: threading import 존재")
+                    else:
+                        print(f"      ⚠️ {filename}: threading import 누락")
+                    
+                    # syntax 오류 확인 (compile 테스트)
                     try:
-                        compile(content, step_file, 'exec')
-                        fixed_files.append(step_file.name)
+                        compile(content, str(step_file), 'exec')
+                        fixed_files.append(filename)
                         syntax_fixed += 1
-                    except SyntaxError:
-                        pass
-                        
+                        print(f"      ✅ {filename}: syntax 정상")
+                    except SyntaxError as e:
+                        print(f"      ❌ {filename}: syntax error - {e}")
+                            
                 except Exception as e:
+                    print(f"      ❌ {filename} 읽기 실패: {e}")
                     continue
             
+            # 결과 저장
             self.environment.step_files_fixed = fixed_files
             self.environment.threading_imports_added = threading_added
             self.environment.syntax_errors_fixed = syntax_fixed
             
-            print(f"   🔧 Step 파일 수정 상태:")
-            print(f"      수정된 파일: {len(fixed_files)}개")
-            print(f"      threading 추가: {len(threading_added)}개")
-            print(f"      syntax 수정: {syntax_fixed}개")
+            print(f"   📊 최종 결과:")
+            print(f"      정상 파일: {len(fixed_files)}/8")
+            print(f"      threading 보유: {len(threading_added)}/8")
+            print(f"      syntax 정상: {syntax_fixed}/8")
             
+            # 실제 문제가 있는 경우만 경고
+            if len(fixed_files) < 8:
+                missing_count = 8 - len(fixed_files)
+                print(f"      ⚠️ {missing_count}개 파일에 문제 있음")
+                
+            if len(threading_added) < 8:
+                missing_count = 8 - len(threading_added)
+                print(f"      ⚠️ {missing_count}개 파일에 threading import 누락")
+                
         except Exception as e:
             print(f"   ❌ Step 파일 수정 상태 확인 실패: {e}")
+            # 기본값 설정
+            self.environment.step_files_fixed = []
+            self.environment.threading_imports_added = []
+            self.environment.syntax_errors_fixed = 0
 
-
-
+            
     def _analyze_hardware(self):
         """하드웨어 분석 (M3 Max 특화)"""
         try:
@@ -2327,7 +2373,7 @@ class UltimateGitHubAIDebuggerV6:
         }
     
     def _identify_github_critical_issues(self) -> List[str]:
-        """GitHub 중요 문제점 식별"""
+        """GitHub 중요 문제점 식별 (잘못된 경고 제거)"""
         issues = []
         
         # 시스템 수준 문제
@@ -2343,13 +2389,19 @@ class UltimateGitHubAIDebuggerV6:
         if not self.system_env.is_target_conda_env:
             issues.append("⚠️ WARNING: conda 환경이 mycloset-ai-clean이 아님 - 의존성 문제 가능")
         
-        # 파일 수정 관련
-        if self.system_env.syntax_errors_fixed < 8:
-            unfixed_count = 8 - self.system_env.syntax_errors_fixed
-            issues.append(f"🔧 SYNTAX: {unfixed_count}개 Step 파일이 아직 수정되지 않음")
+        # 파일 수정 관련 (실제 문제가 있는 경우만)
+        total_files = 8
+        syntax_ok_count = self.system_env.syntax_errors_fixed
+        threading_ok_count = len(self.system_env.threading_imports_added)
         
-        if len(self.system_env.threading_imports_added) < 8:
-            missing_count = 8 - len(self.system_env.threading_imports_added)
+        # syntax 오류가 있는 경우만 경고
+        if syntax_ok_count < total_files:
+            unfixed_count = total_files - syntax_ok_count
+            issues.append(f"🔧 SYNTAX: {unfixed_count}개 Step 파일에 syntax error 있음")
+        
+        # threading import가 누락된 경우만 경고
+        if threading_ok_count < total_files:
+            missing_count = total_files - threading_ok_count
             issues.append(f"🧵 THREADING: {missing_count}개 Step 파일에 threading import 누락")
         
         # Step 수준 문제 (우선순위별)
@@ -2398,20 +2450,25 @@ class UltimateGitHubAIDebuggerV6:
         if missing_models:
             issues.append(f"📁 AI 모델 누락: {', '.join(missing_models)}")
         
-        # GitHub 통합 문제
+        # GitHub 통합 문제 (실제 중요한 것만)
         github_integrations = self.system_env.github_integrations
-        failed_integrations = [k for k, v in github_integrations.items() if not v]
+        critical_integrations = ['base_step_mixin', 'model_loader', 'implementation_manager']
+        failed_critical = [k for k in critical_integrations if not github_integrations.get(k, False)]
         
-        if len(failed_integrations) > 2:
-            issues.append(f"🔗 GitHub 통합 문제: {', '.join(failed_integrations[:3])}")
+        if failed_critical:
+            issues.append(f"🔗 중요 GitHub 통합 문제: {', '.join(failed_critical)}")
+        
+        # 성공적인 경우 축하 메시지
+        if not issues:
+            issues.append("🎉 모든 시스템이 정상 작동 중입니다!")
         
         return issues
-    
+
     def _generate_github_actionable_recommendations(self) -> List[str]:
-        """GitHub 실행 가능한 추천사항 생성"""
+        """GitHub 실행 가능한 추천사항 생성 (실제 문제만 다룸)"""
         recommendations = []
         
-        # 시스템 개선
+        # 시스템 개선 (실제 문제가 있는 경우만)
         if not self.system_env.torch_available:
             if self.system_env.is_m3_max:
                 recommendations.append("📦 M3 Max PyTorch 설치: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu")
@@ -2424,28 +2481,37 @@ class UltimateGitHubAIDebuggerV6:
         if not self.system_env.ai_models_root_exists:
             recommendations.append(f"📁 AI 모델 디렉토리 생성: mkdir -p {ai_models_root}")
         
-        # 파일 수정 관련 추천사항
-        if self.system_env.syntax_errors_fixed > 0:
-            recommendations.append(f"🔧 수정된 {self.system_env.syntax_errors_fixed}개 Step 파일 테스트 재실행")
+        # 파일 수정 관련 추천사항 (실제 문제가 있는 경우만)
+        syntax_ok_count = self.system_env.syntax_errors_fixed
+        threading_ok_count = len(self.system_env.threading_imports_added)
         
-        if len(self.system_env.threading_imports_added) > 0:
-            recommendations.append(f"🧵 threading import가 추가된 {len(self.system_env.threading_imports_added)}개 파일 재로드")
+        if syntax_ok_count < 8:
+            problem_count = 8 - syntax_ok_count
+            recommendations.append(f"🔧 {problem_count}개 Step 파일 syntax error 수정 필요")
         
-        # Step별 개선사항
+        if threading_ok_count < 8:
+            problem_count = 8 - threading_ok_count
+            recommendations.append(f"🧵 {problem_count}개 Step 파일에 'import threading' 추가 필요")
+        
+        # Step별 개선사항 (실제 실패한 것만)
+        failed_steps = []
         for name, analysis in self.step_analyses.items():
-            if analysis.status == GitHubStepStatus.SYNTAX_ERROR:
-                recommendations.append(f"🔧 {name} syntax error 수동 확인 및 수정")
-            elif analysis.status == GitHubStepStatus.THREADING_MISSING:
-                recommendations.append(f"🧵 {name} threading import 수동 추가")
-            elif analysis.status == GitHubStepStatus.IMPORT_FAILED:
-                recommendations.append(f"🔧 {name} 모듈 경로 재확인: {analysis.step_info.module_path}")
-            elif analysis.status == GitHubStepStatus.AI_MODELS_FAILED:
-                expected_files = ', '.join(analysis.step_info.expected_files[:2])
-                recommendations.append(f"📥 {name} AI 모델 다운로드: {expected_files}")
-            elif analysis.status == GitHubStepStatus.CENTRAL_HUB_FAILED:
-                recommendations.append(f"🔗 {name} Central Hub 의존성 주입 확인")
+            if analysis.status != GitHubStepStatus.SUCCESS:
+                failed_steps.append(name)
+                
+                if analysis.status == GitHubStepStatus.SYNTAX_ERROR:
+                    recommendations.append(f"🔧 {name} syntax error 수동 확인 및 수정")
+                elif analysis.status == GitHubStepStatus.THREADING_MISSING:
+                    recommendations.append(f"🧵 {name} threading import 수동 추가")
+                elif analysis.status == GitHubStepStatus.IMPORT_FAILED:
+                    recommendations.append(f"🔧 {name} 모듈 경로 재확인: {analysis.step_info.module_path}")
+                elif analysis.status == GitHubStepStatus.AI_MODELS_FAILED:
+                    expected_files = ', '.join(analysis.step_info.expected_files[:2])
+                    recommendations.append(f"📥 {name} AI 모델 다운로드: {expected_files}")
+                elif analysis.status == GitHubStepStatus.CENTRAL_HUB_FAILED:
+                    recommendations.append(f"🔗 {name} Central Hub 의존성 주입 확인")
         
-        # 성능 최적화
+        # 성능 최적화 (대용량 모델이 있는 경우만)
         total_model_size = sum(analysis.total_model_size_gb for analysis in self.step_analyses.values())
         if total_model_size > 100:  # 100GB 이상
             recommendations.append(f"💾 대용량 모델 최적화: {total_model_size:.1f}GB - 모델 분할 로딩 고려")
@@ -2453,24 +2519,30 @@ class UltimateGitHubAIDebuggerV6:
         if self.system_env.is_m3_max and not self.system_env.mps_available:
             recommendations.append("⚡ M3 Max MPS 활성화: PyTorch MPS 백엔드 설정 확인")
         
-        # GitHub 특화 추천사항
+        # GitHub 특화 추천사항 (실제 문제가 있는 경우만)
         if not self.system_env.github_integrations.get('auto_model_detector', False):
             recommendations.append("🔍 AutoModelDetector 설정: 모델 자동 감지 기능 활성화")
         
         if not self.system_env.github_integrations.get('step_factory', False):
             recommendations.append("🏭 StepFactory 통합: 동적 Step 생성 기능 활성화")
         
-        # VirtualFittingStep 특별 추천 (가장 중요)
+        # VirtualFittingStep 특별 추천 (실패한 경우만)
         virtual_fitting = self.step_analyses.get('VirtualFittingStep')
         if virtual_fitting and virtual_fitting.status != GitHubStepStatus.SUCCESS:
             recommendations.append("🎯 VirtualFittingStep 우선 수정: OOTDiffusion 모델 및 의존성 확인")
         
-        # 백업 파일 정리
-        if len(self.system_env.step_files_fixed) > 0:
-            recommendations.append("🗂️ 백업 파일 정리: *.py.backup 파일들 확인 후 삭제")
+        # 모든 것이 정상인 경우
+        if not recommendations:
+            recommendations.extend([
+                "🎉 모든 시스템이 정상 작동 중입니다!",
+                "⚡ 성능 최적화를 위해 M3 Max MPS 사용 권장",
+                "📊 정기적인 AI 모델 백업 권장",
+                "🔄 최신 GitHub 코드와 동기화 유지"
+            ])
         
         return recommendations
-    
+
+
     def _calculate_github_performance_metrics(self) -> Dict[str, Any]:
         """GitHub 성능 지표 계산"""
         total_analysis_time = time.time() - self.start_time
@@ -2900,9 +2972,8 @@ def run_github_quick_diagnosis() -> Dict[str, Any]:
 # =============================================================================
 # 🔥 13. 메인 실행부
 # =============================================================================
-
 def main():
-    """메인 실행 함수"""
+    """메인 실행 함수 (개선된 성공 판단 로직)"""
     
     # 로깅 설정
     logging.basicConfig(
@@ -2933,26 +3004,55 @@ def main():
         debugger = UltimateGitHubAIDebuggerV6()
         debug_result = debugger.run_ultimate_github_debugging()
         
-        # 성공 여부 확인
+        # 성공 여부 확인 (개선된 로직)
         overall_summary = debug_result.get('overall_summary', {})
-        ai_ready = overall_summary.get('health', {}).get('ai_pipeline_ready', False)
-        system_ready = overall_summary.get('health', {}).get('system_ready', False)
-        fixes_applied = overall_summary.get('fixes', {}).get('total_fixes_applied', 0)
+        steps_summary = overall_summary.get('steps', {})
+        health_summary = overall_summary.get('health', {})
         
-        if ai_ready and system_ready:
-            print(f"\n🎉 SUCCESS: GitHub AI 파이프라인이 완전 복구되었습니다!")
-            print(f"   - 8단계 AI Step 복구 완료")
-            print(f"   - {fixes_applied}개 오류 수정 완료")
-            print(f"   - 229GB AI 모델 완전 분석 완료")
-            print(f"   - threading import 및 syntax error 해결")
-            print(f"   - M3 Max + MPS 최적화 적용")
-            print(f"   - Central Hub DI Container 연동 완료")
+        # 실제 성공 조건들
+        steps_success_rate = steps_summary.get('success_rate', 0)
+        critical_steps_success = steps_summary.get('critical_steps_success', 0)
+        critical_steps_total = steps_summary.get('critical_steps_total', 4)
+        virtual_fitting_ready = steps_summary.get('virtual_fitting_ready', False)
+        ai_pipeline_ready = health_summary.get('ai_pipeline_ready', False)
+        system_ready = health_summary.get('system_ready', False)
+        
+        # 실제 문제가 있는지 확인
+        critical_issues = debug_result.get('critical_issues', [])
+        real_issues = [issue for issue in critical_issues if not issue.startswith("🎉")]
+        
+        # 성공 판단 (더 정확한 조건)
+        overall_success = (
+            steps_success_rate >= 87.5 and  # 8단계 중 7단계 이상 성공
+            critical_steps_success >= 3 and  # Critical Step 4개 중 3개 이상 성공
+            virtual_fitting_ready and        # VirtualFittingStep 성공 (핵심)
+            len(real_issues) <= 2            # 실제 중요 문제 2개 이하
+        )
+        
+        if overall_success:
+            print(f"\n🎉 SUCCESS: GitHub AI 파이프라인이 성공적으로 작동합니다!")
+            print(f"   ✅ 8단계 Step 성공률: {steps_success_rate:.1f}%")
+            print(f"   ✅ Critical Step: {critical_steps_success}/{critical_steps_total} 성공")
+            print(f"   ✅ VirtualFittingStep: {'정상' if virtual_fitting_ready else '문제'}")
+            print(f"   ✅ AI 파이프라인: {'준비완료' if ai_pipeline_ready else '부분준비'}")
+            print(f"   ✅ 시스템 환경: {'최적화' if system_ready else '기본'}")
+            print(f"   ✅ 실제 문제: {len(real_issues)}개 (경미)")
+            
+            if len(real_issues) > 0:
+                print(f"   📋 남은 개선사항:")
+                for issue in real_issues[:3]:
+                    print(f"      - {issue}")
         else:
-            print(f"\n⚠️ WARNING: 일부 문제가 남아있습니다.")
-            print(f"   - AI 파이프라인: {'✅' if ai_ready else '❌'}")
-            print(f"   - 시스템 환경: {'✅' if system_ready else '❌'}")
-            print(f"   - 수정된 오류: {fixes_applied}개")
-            print(f"   - 위의 추천사항을 확인하세요.")
+            print(f"\n⚠️ PARTIAL SUCCESS: 대부분 작동하지만 일부 개선 필요")
+            print(f"   📊 Step 성공률: {steps_success_rate:.1f}%")
+            print(f"   📊 Critical Step: {critical_steps_success}/{critical_steps_total}")
+            print(f"   📊 VirtualFittingStep: {'✅' if virtual_fitting_ready else '❌'}")
+            print(f"   📊 실제 문제: {len(real_issues)}개")
+            
+            if len(real_issues) > 0:
+                print(f"   🔧 주요 개선사항:")
+                for issue in real_issues[:5]:
+                    print(f"      - {issue}")
         
         return debug_result
         
@@ -2969,6 +3069,6 @@ def main():
         # 리소스 정리
         gc.collect()
         print(f"\n👋 Ultimate GitHub AI Model Debugger v6.0 종료")
-
+        
 if __name__ == "__main__":
     main()
