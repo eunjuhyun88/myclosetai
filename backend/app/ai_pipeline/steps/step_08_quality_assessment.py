@@ -204,8 +204,6 @@ if BaseStepMixin is None:
         
         async def process(
             self, 
-            processed_input: Dict[str, Any],
-            quality_options: Optional[Dict[str, Any]] = None,
             **kwargs
         ) -> Dict[str, Any]:
             """기본 process 메서드 - _run_ai_inference 호출"""
@@ -213,9 +211,9 @@ if BaseStepMixin is None:
                 start_time = time.time()
                 
                 # 입력 데이터 처리
-                processed_data = self._process_input_data(processed_input) if hasattr(self, '_process_input_data') else {
-                    'main_image': processed_input.get('enhanced_image') or processed_input.get('fitted_image'),
-                    'quality_options': quality_options
+                processed_data = self._process_input_data(kwargs) if hasattr(self, '_process_input_data') else {
+                    'main_image': kwargs.get('enhanced_image') or kwargs.get('fitted_image'),
+                    'quality_options': kwargs.get('quality_options')
                 }
                 
                 # _run_ai_inference 메서드가 있으면 호출

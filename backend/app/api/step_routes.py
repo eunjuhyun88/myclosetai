@@ -1025,7 +1025,6 @@ async def step_3_human_parsing(
             
             # 4. 🔥 Central Hub 기반 Step 처리 (Step 1 결과 포함)
             api_input = {
-                'session_id': session_id,
                 'confidence_threshold': confidence_threshold,
                 'enhance_quality': enhance_quality,
                 'force_ai_processing': force_ai_processing
@@ -1295,7 +1294,6 @@ async def step_5_clothing_analysis(
         
         # Central Hub 기반 Step 처리 (SAM 2.4GB)
         api_input = {
-            'session_id': session_id,
             'analysis_detail': analysis_detail,
             'clothing_type': clothing_type,
             **images  # 로드된 이미지들을 api_input에 추가
@@ -1382,7 +1380,6 @@ async def step_6_geometric_matching(
         
         # Central Hub 기반 Step 처리
         api_input = {
-            'session_id': session_id,
             'matching_precision': matching_precision,
             **images  # 로드된 이미지들을 api_input에 추가
         }
@@ -1623,7 +1620,6 @@ async def step_8_result_analysis(
             
             # Central Hub 기반 Step 처리 (CLIP 5.2GB)
             api_input = {
-                'session_id': session_id,
                 'analysis_depth': analysis_depth,
                 **images  # 로드된 이미지들을 api_input에 추가
             }

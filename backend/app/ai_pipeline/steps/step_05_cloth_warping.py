@@ -206,14 +206,14 @@ if BaseStepMixin is None:
             
             self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
         
-        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        def process(self, **kwargs) -> Dict[str, Any]:
             """기본 process 메서드 - _run_ai_inference 호출"""
             try:
                 start_time = time.time()
                 
                 # _run_ai_inference 메서드가 있으면 호출
                 if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(data)
+                    result = self._run_ai_inference(kwargs)
                     
                     # 처리 시간 추가
                     if isinstance(result, dict):
@@ -2131,7 +2131,7 @@ class ClothWarpingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Mock Warping 모델 생성 실패: {e}")
 
-    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Cloth Warping AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -2140,38 +2140,38 @@ class ClothWarpingStep(BaseStepMixin):
             person_image = None
             clothing_image = None
             transformation_matrix = None
-            if 'session_id' in processed_input:
+            if 'session_id' in kwargs:
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
                         # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        person_image, clothing_image = await session_manager.get_session_images(kwargs['session_id'])
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
                 except Exception as e:
                     self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
             
             # 🔥 입력 데이터 검증
-            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            self.logger.info(f"🔍 입력 데이터 키들: {list(kwargs.keys())}")
             
             # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
             if person_image is None:
                 for key in ['person_image', 'image', 'input_image', 'original_image']:
-                    if key in processed_input:
-                        person_image = processed_input[key]
+                    if key in kwargs:
+                        person_image = kwargs[key]
                         self.logger.info(f"✅ 사람 이미지 데이터 발견: {key}")
                         break
             
             if clothing_image is None:
                 for key in ['clothing_image', 'cloth_image', 'target_image']:
-                    if key in processed_input:
-                        clothing_image = processed_input[key]
+                    if key in kwargs:
+                        clothing_image = kwargs[key]
                         self.logger.info(f"✅ 의류 이미지 데이터 발견: {key}")
                         break
             
             # 변환 매트릭스 추출
             for key in ['transformation_matrix', 'transform_matrix', 'warp_matrix']:
-                if key in processed_input:
-                    transformation_matrix = processed_input[key]
+                if key in kwargs:
+                    transformation_matrix = kwargs[key]
                     self.logger.info(f"✅ 변환 매트릭스 발견: {key}")
                     break
             
@@ -3404,7 +3404,7 @@ class ClothWarpingStep(BaseStepMixin):
    # 파일: backend/app/ai_pipeline/steps/step_05_cloth_warping.py
 # line 3276 근처
 
-    def process(self, **kwargs) -> Dict[str, Any]:  # async 제거
+    def process(self, **kwargs) -> Dict[str, Any]:
         """
         BaseStepMixin v20.0 호환 process() 메서드 (동기 버전)
         """

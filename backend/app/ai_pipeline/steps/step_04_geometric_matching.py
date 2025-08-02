@@ -163,14 +163,14 @@ if BaseStepMixin is None:
             
             self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
         
-        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        def process(self, **kwargs) -> Dict[str, Any]:
             """기본 process 메서드 - _run_ai_inference 호출"""
             try:
                 start_time = time.time()
                 
                 # _run_ai_inference 메서드가 있으면 호출
                 if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(data)
+                    result = self._run_ai_inference(kwargs)
                     
                     # 처리 시간 추가
                     if isinstance(result, dict):
@@ -1953,7 +1953,7 @@ class GeometricMatchingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Mock GeometricMatching 모델 생성 실패: {e}")
 
-    def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def process(self, **kwargs) -> Dict[str, Any]:
         """간소화된 GeometricMatching 처리 (핵심 로직만)"""
         try:
             start_time = time.time()
@@ -2027,7 +2027,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 'central_hub_di_container': True
             }
 
-    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -2035,31 +2035,31 @@ class GeometricMatchingStep(BaseStepMixin):
             # 🔥 Session에서 이미지 데이터를 먼저 가져오기
             person_image = None
             clothing_image = None
-            if 'session_id' in processed_input:
+            if 'session_id' in kwargs:
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
                         # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        person_image, clothing_image = await session_manager.get_session_images(kwargs['session_id'])
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
                 except Exception as e:
                     self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
             
             # 🔥 입력 데이터 검증
-            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            self.logger.info(f"🔍 입력 데이터 키들: {list(kwargs.keys())}")
             
             # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
             if person_image is None:
                 for key in ['person_image', 'image', 'input_image', 'original_image']:
-                    if key in processed_input:
-                        person_image = processed_input[key]
+                    if key in kwargs:
+                        person_image = kwargs[key]
                         self.logger.info(f"✅ 사람 이미지 데이터 발견: {key}")
                         break
             
             if clothing_image is None:
                 for key in ['clothing_image', 'cloth_image', 'target_image']:
-                    if key in processed_input:
-                        clothing_image = processed_input[key]
+                    if key in kwargs:
+                        clothing_image = kwargs[key]
                         self.logger.info(f"✅ 의류 이미지 데이터 발견: {key}")
                         break
             
@@ -2080,7 +2080,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 return cached_result
             
             # 4. AI 모델들 실행
-            results = self._execute_ai_models(person_tensor, clothing_tensor, processed_input.get('pose_keypoints', []))
+            results = self._execute_ai_models(person_tensor, clothing_tensor, kwargs.get('pose_keypoints', []))
             
             # 5. 고급 결과 융합
             final_result = self._fuse_matching_results_advanced(results, person_tensor, clothing_tensor)
@@ -2102,7 +2102,7 @@ class GeometricMatchingStep(BaseStepMixin):
             self.statistics['error_count'] += 1
             
             # 폴백: 기본 변형 결과
-            return self._create_fallback_result(processed_input, str(e))
+            return self._create_fallback_result(kwargs, str(e))
 
     def _validate_and_preprocess_input(self, processed_input: Dict[str, Any]) -> Tuple[Any, Any, Dict, List, Dict]:
         """입력 데이터 검증 및 전처리 (Step 1과 동일한 패턴)"""
