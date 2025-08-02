@@ -164,21 +164,41 @@ if BaseStepMixin is None:
             self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
         
         def process(self, **kwargs) -> Dict[str, Any]:
-            """기본 process 메서드 - _run_ai_inference 호출"""
+            """기본 process 메서드 - API 입력 변환 후 _run_ai_inference 호출"""
             try:
                 start_time = time.time()
                 
-                # _run_ai_inference 메서드가 있으면 호출
+                # 1. API 입력을 Step 입력으로 변환
+                if hasattr(self, 'convert_api_input_to_step_input'):
+                    try:
+                        processed_input = self.convert_api_input_to_step_input(kwargs)
+                    except Exception as convert_error:
+                        self.logger.error(f"❌ API 입력 변환 실패: {convert_error}")
+                        processed_input = kwargs
+                else:
+                    processed_input = kwargs
+                
+                # 2. _run_ai_inference 메서드가 있으면 호출
                 if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(kwargs)
-                    
-                    # 처리 시간 추가
-                    if isinstance(result, dict):
-                        result['processing_time'] = time.time() - start_time
-                        result['step_name'] = self.step_name
-                        result['step_id'] = self.step_id
-                    
-                    return result
+                    try:
+                        result = self._run_ai_inference(processed_input)
+                        
+                        # 처리 시간 추가
+                        if isinstance(result, dict):
+                            result['processing_time'] = time.time() - start_time
+                            result['step_name'] = self.step_name
+                            result['step_id'] = self.step_id
+                        
+                        return result
+                    except Exception as inference_error:
+                        self.logger.error(f"❌ AI 추론 실패: {inference_error}")
+                        return {
+                            'success': False,
+                            'error': f'AI 추론 실패: {str(inference_error)}',
+                            'processing_time': time.time() - start_time,
+                            'step_name': self.step_name,
+                            'step_id': self.step_id
+                        }
                 else:
                     # 기본 응답
                     return {
@@ -278,10 +298,11 @@ if BaseStepMixin is None:
             }
 
         def _get_service_from_central_hub(self, service_key: str):
-            """Central Hub에서 서비스 가져오기 (동기/비동기 호환)"""
+            """Central Hub에서 서비스 가져오기 (완전 동기 버전)"""
             try:
                 if hasattr(self, 'di_container') and self.di_container:
                     service = self.di_container.get_service(service_key)
+                    
                     # 서비스가 coroutine인지 확인하고 처리
                     if hasattr(service, '__await__'):
                         # 비동기 서비스인 경우 동기적으로 실행
@@ -289,11 +310,19 @@ if BaseStepMixin is None:
                         import concurrent.futures
                         
                         def run_async_service():
-                            return asyncio.run(service)
+                            try:
+                                return asyncio.run(service)
+                            except Exception as async_error:
+                                self.logger.warning(f"⚠️ 비동기 서비스 실행 실패: {async_error}")
+                                return None
                         
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(run_async_service)
-                            return future.result()
+                        try:
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                future = executor.submit(run_async_service)
+                                return future.result(timeout=10)  # 10초 타임아웃
+                        except Exception as executor_error:
+                            self.logger.warning(f"⚠️ ThreadPoolExecutor 실패: {executor_error}")
+                            return None
                     else:
                         return service
                 return None
@@ -339,11 +368,19 @@ if BaseStepMixin is None:
                                     import concurrent.futures
                                     
                                     def run_async_session_load():
-                                        return asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                        try:
+                                            return asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                        except Exception as async_error:
+                                            self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                            return None, None
                                     
-                                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                                        future = executor.submit(run_async_session_load)
-                                        session_person, session_clothing = future.result()
+                                    try:
+                                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                                            future = executor.submit(run_async_session_load)
+                                            session_person, session_clothing = future.result(timeout=10)
+                                    except Exception as executor_error:
+                                        self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                        session_person, session_clothing = None, None
                                 else:
                                     self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
                             except Exception as e:
@@ -2049,28 +2086,38 @@ class GeometricMatchingStep(BaseStepMixin):
             self.logger.error(f"❌ Mock GeometricMatching 모델 생성 실패: {e}")
 
     def process(self, **kwargs) -> Dict[str, Any]:
-        """GeometricMatching 처리 - BaseStepMixin 호환 (동기 버전)"""
+        """GeometricMatching 처리 - 완전 동기 버전 (BaseStepMixin 오버라이드)"""
         try:
             start_time = time.time()
             
-            # 입력 데이터 변환 (동기적으로 처리)
-            if hasattr(self, 'convert_api_input_to_step_input'):
-                # convert_api_input_to_step_input이 동기 함수이므로 직접 호출
-                processed_input = self.convert_api_input_to_step_input(kwargs)
-            else:
+            # 1. API 입력을 Step 입력으로 변환 (강화된 에러 핸들링)
+            try:
+                if hasattr(self, 'convert_api_input_to_step_input'):
+                    processed_input = self.convert_api_input_to_step_input(kwargs)
+                    self.logger.info(f"✅ API 입력 변환 완료: {len(processed_input)}개 키")
+                else:
+                    self.logger.warning("⚠️ convert_api_input_to_step_input 메서드 없음, 원본 입력 사용")
+                    processed_input = kwargs
+            except Exception as convert_error:
+                self.logger.error(f"❌ API 입력 변환 실패: {convert_error}")
                 processed_input = kwargs
             
-            # _run_ai_inference 메서드가 있으면 호출 (동기적으로)
+            # 2. _run_ai_inference 메서드가 있으면 호출 (강화된 에러 핸들링)
             if hasattr(self, '_run_ai_inference'):
-                result = self._run_ai_inference(processed_input)
-                
-                # 처리 시간 추가
-                if isinstance(result, dict):
-                    result['processing_time'] = time.time() - start_time
-                    result['step_name'] = self.step_name
-                    result['step_id'] = self.step_id
-                
-                return result
+                try:
+                    result = self._run_ai_inference(processed_input)
+                    
+                    # 처리 시간 추가
+                    if isinstance(result, dict):
+                        result['processing_time'] = time.time() - start_time
+                        result['step_name'] = self.step_name
+                        result['step_id'] = self.step_id
+                    
+                    return result
+                except Exception as inference_error:
+                    self.logger.error(f"❌ AI 추론 실패: {inference_error}")
+                    # 폴백 결과 반환
+                    return self._create_fallback_result(processed_input, str(inference_error))
             else:
                 # 기본 응답
                 return {
@@ -2113,11 +2160,19 @@ class GeometricMatchingStep(BaseStepMixin):
                                 import concurrent.futures
                                 
                                 def run_async_session_load():
-                                    return asyncio.run(session_manager.get_session_images(kwargs['session_id']))
+                                    try:
+                                        return asyncio.run(session_manager.get_session_images(kwargs['session_id']))
+                                    except Exception as async_error:
+                                        self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                        return None, None
                                 
-                                with concurrent.futures.ThreadPoolExecutor() as executor:
-                                    future = executor.submit(run_async_session_load)
-                                    person_image, clothing_image = future.result()
+                                try:
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(run_async_session_load)
+                                        person_image, clothing_image = future.result(timeout=10)
+                                except Exception as executor_error:
+                                    self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                    person_image, clothing_image = None, None
                             else:
                                 self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
                         except Exception as e:
@@ -2275,11 +2330,19 @@ class GeometricMatchingStep(BaseStepMixin):
                     import concurrent.futures
                     
                     def run_async_loaded_models():
-                        return asyncio.run(loaded_models)
+                        try:
+                            return asyncio.run(loaded_models)
+                        except Exception as async_error:
+                            self.logger.warning(f"⚠️ 비동기 loaded_models 실행 실패: {async_error}")
+                            return []
                     
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(run_async_loaded_models)
-                        loaded_models = future.result()
+                    try:
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(run_async_loaded_models)
+                            loaded_models = future.result(timeout=10)
+                    except Exception as executor_error:
+                        self.logger.warning(f"⚠️ loaded_models ThreadPoolExecutor 실패: {executor_error}")
+                        loaded_models = []
                 
                 if isinstance(loaded_models, (list, dict)) and 'advanced_ai' in loaded_models:
                     results.update(self._execute_advanced_ai(person_tensor, clothing_tensor))
