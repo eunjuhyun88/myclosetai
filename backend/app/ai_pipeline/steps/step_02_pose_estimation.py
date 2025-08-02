@@ -52,6 +52,25 @@ from contextlib import asynccontextmanager
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
 
+# 추가 라이브러리 import
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
+
+try:
+    import scipy
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:
     from app.ai_pipeline.utils.model_loader import ModelLoader
@@ -1642,33 +1661,467 @@ class HRNetModel:
             return False
     
     def _create_hrnet_model(self) -> nn.Module:
-        """HRNet 모델 생성"""
-        class HRNetSimple(nn.Module):
-            def __init__(self):
+        """완전한 HRNet 모델 생성 (Multi-Resolution Parallel Networks)"""
+        
+        class BasicBlock(nn.Module):
+            """HRNet Basic Block"""
+            expansion = 1
+            
+            def __init__(self, inplanes, planes, stride=1, downsample=None):
                 super().__init__()
-                # 간소화된 HRNet 구조
-                self.stem = nn.Sequential(
-                    nn.Conv2d(3, 64, 3, 2, 1), nn.BatchNorm2d(64), nn.ReLU(),
-                    nn.Conv2d(64, 64, 3, 2, 1), nn.BatchNorm2d(64), nn.ReLU()
-                )
-                
-                self.stage1 = nn.Sequential(
-                    nn.Conv2d(64, 128, 3, 1, 1), nn.BatchNorm2d(128), nn.ReLU(),
-                    nn.Conv2d(128, 256, 3, 1, 1), nn.BatchNorm2d(256), nn.ReLU()
-                )
-                
-                self.final_layer = nn.Conv2d(256, 17, 1)  # COCO 17 keypoints
+                self.conv1 = nn.Conv2d(inplanes, planes, 3, stride, 1, bias=False)
+                self.bn1 = nn.BatchNorm2d(planes)
+                self.relu = nn.ReLU(inplace=True)
+                self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
+                self.bn2 = nn.BatchNorm2d(planes)
+                self.downsample = downsample
+                self.stride = stride
             
             def forward(self, x):
-                x = self.stem(x)
-                x = self.stage1(x)
-                x = self.final_layer(x)
+                residual = x
+                
+                out = self.conv1(x)
+                out = self.bn1(out)
+                out = self.relu(out)
+                
+                out = self.conv2(x)
+                out = self.bn2(out)
+                
+                if self.downsample is not None:
+                    residual = self.downsample(x)
+                
+                out += residual
+                out = self.relu(out)
+                
+                return out
+        
+        class Bottleneck(nn.Module):
+            """HRNet Bottleneck Block"""
+            expansion = 4
+            
+            def __init__(self, inplanes, planes, stride=1, downsample=None):
+                super().__init__()
+                self.conv1 = nn.Conv2d(inplanes, planes, 1, bias=False)
+                self.bn1 = nn.BatchNorm2d(planes)
+                self.conv2 = nn.Conv2d(planes, planes, 3, stride, 1, bias=False)
+                self.bn2 = nn.BatchNorm2d(planes)
+                self.conv3 = nn.Conv2d(planes, planes * self.expansion, 1, bias=False)
+                self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+                self.relu = nn.ReLU(inplace=True)
+                self.downsample = downsample
+                self.stride = stride
+            
+            def forward(self, x):
+                residual = x
+                
+                out = self.conv1(x)
+                out = self.bn1(out)
+                out = self.relu(out)
+                
+                out = self.conv2(x)
+                out = self.bn2(out)
+                out = self.relu(out)
+                
+                out = self.conv3(x)
+                out = self.bn3(out)
+                
+                if self.downsample is not None:
+                    residual = self.downsample(x)
+                
+                out += residual
+                out = self.relu(out)
+                
+                return out
+        
+        class HighResolutionModule(nn.Module):
+            """HRNet의 핵심 Multi-Resolution Module"""
+            
+            def __init__(self, num_branches, blocks, num_blocks, num_inchannels,
+                         num_channels, fuse_method, multi_scale_output=True):
+                super().__init__()
+                self._check_branches(num_branches, blocks, num_blocks, num_inchannels, num_channels)
+                
+                self.num_inchannels = num_inchannels
+                self.fuse_method = fuse_method
+                self.num_branches = num_branches
+                self.multi_scale_output = multi_scale_output
+                
+                self.branches = self._make_branches(
+                    num_branches, blocks, num_blocks, num_channels)
+                self.fuse_layers = self._make_fuse_layers()
+                self.relu = nn.ReLU(inplace=True)
+            
+            def _check_branches(self, num_branches, blocks, num_blocks, 
+                              num_inchannels, num_channels):
+                if num_branches != len(num_blocks):
+                    error_msg = 'NUM_BRANCHES({}) <> NUM_BLOCKS({})'.format(
+                        num_branches, len(num_blocks))
+                    raise ValueError(error_msg)
+                
+                if num_branches != len(num_channels):
+                    error_msg = 'NUM_BRANCHES({}) <> NUM_CHANNELS({})'.format(
+                        num_branches, len(num_channels))
+                    raise ValueError(error_msg)
+                
+                if num_branches != len(num_inchannels):
+                    error_msg = 'NUM_BRANCHES({}) <> NUM_INCHANNELS({})'.format(
+                        num_branches, len(num_inchannels))
+                    raise ValueError(error_msg)
+            
+            def _make_one_branch(self, branch_index, block, num_blocks, num_channels,
+                               stride=1):
+                downsample = None
+                if stride != 1 or \
+                   self.num_inchannels[branch_index] != num_channels[branch_index] * block.expansion:
+                    downsample = nn.Sequential(
+                        nn.Conv2d(
+                            self.num_inchannels[branch_index],
+                            num_channels[branch_index] * block.expansion,
+                            kernel_size=1, stride=stride, bias=False
+                        ),
+                        nn.BatchNorm2d(num_channels[branch_index] * block.expansion),
+                    )
+                
+                layers = []
+                layers.append(
+                    block(
+                        self.num_inchannels[branch_index],
+                        num_channels[branch_index],
+                        stride,
+                        downsample
+                    )
+                )
+                self.num_inchannels[branch_index] = \
+                    num_channels[branch_index] * block.expansion
+                for i in range(1, num_blocks[branch_index]):
+                    layers.append(
+                        block(
+                            self.num_inchannels[branch_index],
+                            num_channels[branch_index]
+                        )
+                    )
+                
+                return nn.Sequential(*layers)
+            
+            def _make_branches(self, num_branches, block, num_blocks, num_channels):
+                branches = []
+                
+                for i in range(num_branches):
+                    branches.append(
+                        self._make_one_branch(i, block, num_blocks, num_channels)
+                    )
+                
+                return nn.ModuleList(branches)
+            
+            def _make_fuse_layers(self):
+                if self.num_branches == 1:
+                    return None
+                
+                num_branches = self.num_branches
+                num_inchannels = self.num_inchannels
+                fuse_layers = []
+                for i in range(num_branches if self.multi_scale_output else 1):
+                    fuse_layer = []
+                    for j in range(num_branches):
+                        if j > i:
+                            fuse_layer.append(
+                                nn.Sequential(
+                                    nn.Conv2d(
+                                        num_inchannels[j],
+                                        num_inchannels[i],
+                                        1, 1, 0, bias=False
+                                    ),
+                                    nn.BatchNorm2d(num_inchannels[i]),
+                                    nn.Upsample(scale_factor=2**(j-i), mode='nearest')
+                                )
+                            )
+                        elif j == i:
+                            fuse_layer.append(None)
+                        else:
+                            conv3x3s = []
+                            for k in range(i-j):
+                                if k == i - j - 1:
+                                    num_outchannels_conv3x3 = num_inchannels[i]
+                                    conv3x3s.append(
+                                        nn.Sequential(
+                                            nn.Conv2d(
+                                                num_inchannels[j],
+                                                num_outchannels_conv3x3,
+                                                3, 2, 1, bias=False
+                                            ),
+                                            nn.BatchNorm2d(num_outchannels_conv3x3)
+                                        )
+                                    )
+                                else:
+                                    num_outchannels_conv3x3 = num_inchannels[j]
+                                    conv3x3s.append(
+                                        nn.Sequential(
+                                            nn.Conv2d(
+                                                num_inchannels[j],
+                                                num_outchannels_conv3x3,
+                                                3, 2, 1, bias=False
+                                            ),
+                                            nn.BatchNorm2d(num_outchannels_conv3x3),
+                                            nn.ReLU(inplace=True)
+                                        )
+                                    )
+                            fuse_layer.append(nn.Sequential(*conv3x3s))
+                    fuse_layers.append(nn.ModuleList(fuse_layer))
+                
+                return nn.ModuleList(fuse_layers)
+            
+            def get_num_inchannels(self):
+                return self.num_inchannels
+            
+            def forward(self, x):
+                if self.num_branches == 1:
+                    return [self.branches[0](x[0])]
+                
+                for i in range(self.num_branches):
+                    x[i] = self.branches[i](x[i])
+                
+                x_fuse = []
+                
+                for i in range(len(self.fuse_layers)):
+                    y = x[0] if i == 0 else self.fuse_layers[i][0](x[0])
+                    for j in range(1, self.num_branches):
+                        if i == j:
+                            y = y + x[j]
+                        else:
+                            y = y + self.fuse_layers[i][j](x[j])
+                    x_fuse.append(self.relu(y))
+                
+                return x_fuse
+        
+        class PoseHighResolutionNet(nn.Module):
+            """완전한 HRNet 포즈 추정 네트워크"""
+            
+            def __init__(self, cfg=None, **kwargs):
+                super().__init__()
+                
+                # HRNet-W48 설정 (기본값)
+                if cfg is None:
+                    cfg = {
+                        'STAGE2': {
+                            'NUM_MODULES': 1,
+                            'NUM_BRANCHES': 2,
+                            'BLOCK': 'BASIC',
+                            'NUM_BLOCKS': [4, 4],
+                            'NUM_CHANNELS': [48, 96],
+                            'FUSE_METHOD': 'SUM'
+                        },
+                        'STAGE3': {
+                            'NUM_MODULES': 4,
+                            'NUM_BRANCHES': 3,
+                            'BLOCK': 'BASIC',
+                            'NUM_BLOCKS': [4, 4, 4],
+                            'NUM_CHANNELS': [48, 96, 192],
+                            'FUSE_METHOD': 'SUM'
+                        },
+                        'STAGE4': {
+                            'NUM_MODULES': 3,
+                            'NUM_BRANCHES': 4,
+                            'BLOCK': 'BASIC',
+                            'NUM_BLOCKS': [4, 4, 4, 4],
+                            'NUM_CHANNELS': [48, 96, 192, 384],
+                            'FUSE_METHOD': 'SUM'
+                        }
+                    }
+                
+                self.inplanes = 64
+                
+                # Stem 네트워크
+                self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1, bias=False)
+                self.bn1 = nn.BatchNorm2d(64)
+                self.conv2 = nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1, bias=False)
+                self.bn2 = nn.BatchNorm2d(64)
+                self.relu = nn.ReLU(inplace=True)
+                
+                # Stage 1 (ResNet-like)
+                self.layer1 = self._make_layer(Bottleneck, 64, 4)
+                
+                # Stage 2
+                stage2_cfg = cfg['STAGE2']
+                num_channels = stage2_cfg['NUM_CHANNELS']
+                block = BasicBlock
+                num_channels = [
+                    num_channels[i] * block.expansion for i in range(len(num_channels))
+                ]
+                self.transition1 = self._make_transition_layer([256], num_channels)
+                self.stage2, pre_stage_channels = self._make_stage(
+                    stage2_cfg, num_channels)
+                
+                # Stage 3
+                stage3_cfg = cfg['STAGE3']
+                num_channels = stage3_cfg['NUM_CHANNELS']
+                block = BasicBlock
+                num_channels = [
+                    num_channels[i] * block.expansion for i in range(len(num_channels))
+                ]
+                self.transition2 = self._make_transition_layer(
+                    pre_stage_channels, num_channels)
+                self.stage3, pre_stage_channels = self._make_stage(
+                    stage3_cfg, num_channels)
+                
+                # Stage 4
+                stage4_cfg = cfg['STAGE4']
+                num_channels = stage4_cfg['NUM_CHANNELS']
+                block = BasicBlock
+                num_channels = [
+                    num_channels[i] * block.expansion for i in range(len(num_channels))
+                ]
+                self.transition3 = self._make_transition_layer(
+                    pre_stage_channels, num_channels)
+                self.stage4, pre_stage_channels = self._make_stage(
+                    stage4_cfg, num_channels, multi_scale_output=True)
+                
+                # Final layer (키포인트 예측)
+                self.final_layer = nn.Conv2d(
+                    in_channels=pre_stage_channels[0],
+                    out_channels=17,  # COCO 17 keypoints
+                    kernel_size=1,
+                    stride=1,
+                    padding=0
+                )
+                
+                self.pretrained_layers = ['conv1', 'bn1', 'conv2', 'bn2', 'layer1', 'transition1', 'stage2', 'transition2', 'stage3', 'transition3', 'stage4']
+            
+            def _make_transition_layer(self, num_channels_pre_layer, num_channels_cur_layer):
+                num_branches_cur = len(num_channels_cur_layer)
+                num_branches_pre = len(num_channels_pre_layer)
+                
+                transition_layers = []
+                for i in range(num_branches_cur):
+                    if i < num_branches_pre:
+                        if num_channels_cur_layer[i] != num_channels_pre_layer[i]:
+                            transition_layers.append(
+                                nn.Sequential(
+                                    nn.Conv2d(
+                                        num_channels_pre_layer[i],
+                                        num_channels_cur_layer[i],
+                                        3, 1, 1, bias=False
+                                    ),
+                                    nn.BatchNorm2d(num_channels_cur_layer[i]),
+                                    nn.ReLU(inplace=True)
+                                )
+                            )
+                        else:
+                            transition_layers.append(None)
+                    else:
+                        conv3x3s = []
+                        for j in range(i+1-num_branches_pre):
+                            inchannels = num_channels_pre_layer[-1]
+                            outchannels = num_channels_cur_layer[i] \
+                                if j == i-num_branches_pre else inchannels
+                            conv3x3s.append(
+                                nn.Sequential(
+                                    nn.Conv2d(inchannels, outchannels, 3, 2, 1, bias=False),
+                                    nn.BatchNorm2d(outchannels),
+                                    nn.ReLU(inplace=True)
+                                )
+                            )
+                        transition_layers.append(nn.Sequential(*conv3x3s))
+                
+                return nn.ModuleList(transition_layers)
+            
+            def _make_layer(self, block, planes, blocks, stride=1):
+                downsample = None
+                if stride != 1 or self.inplanes != planes * block.expansion:
+                    downsample = nn.Sequential(
+                        nn.Conv2d(
+                            self.inplanes, planes * block.expansion,
+                            kernel_size=1, stride=stride, bias=False
+                        ),
+                        nn.BatchNorm2d(planes * block.expansion),
+                    )
+                
+                layers = []
+                layers.append(block(self.inplanes, planes, stride, downsample))
+                self.inplanes = planes * block.expansion
+                for i in range(1, blocks):
+                    layers.append(block(self.inplanes, planes))
+                
+                return nn.Sequential(*layers)
+            
+            def _make_stage(self, layer_config, num_inchannels, multi_scale_output=True):
+                num_modules = layer_config['NUM_MODULES']
+                num_branches = layer_config['NUM_BRANCHES']
+                num_blocks = layer_config['NUM_BLOCKS']
+                num_channels = layer_config['NUM_CHANNELS']
+                block = BasicBlock
+                fuse_method = layer_config['FUSE_METHOD']
+                
+                modules = []
+                for i in range(num_modules):
+                    # multi_scale_output은 마지막 모듈에서만 고려
+                    if not multi_scale_output and i == num_modules - 1:
+                        reset_multi_scale_output = False
+                    else:
+                        reset_multi_scale_output = True
+                    
+                    modules.append(
+                        HighResolutionModule(
+                            num_branches,
+                            block,
+                            num_blocks,
+                            num_inchannels,
+                            num_channels,
+                            fuse_method,
+                            reset_multi_scale_output
+                        )
+                    )
+                    num_inchannels = modules[-1].get_num_inchannels()
+                
+                return nn.Sequential(*modules), num_inchannels
+            
+            def forward(self, x):
+                # Stem
+                x = self.conv1(x)
+                x = self.bn1(x)
+                x = self.relu(x)
+                x = self.conv2(x)
+                x = self.bn2(x)
+                x = self.relu(x)
+                
+                # Stage 1
+                x = self.layer1(x)
+                
+                # Stage 2
+                x_list = []
+                for i in range(2):  # stage2 branches
+                    if self.transition1[i] is not None:
+                        x_list.append(self.transition1[i](x))
+                    else:
+                        x_list.append(x)
+                y_list = self.stage2(x_list)
+                
+                # Stage 3
+                x_list = []
+                for i in range(3):  # stage3 branches
+                    if self.transition2[i] is not None:
+                        x_list.append(self.transition2[i](y_list[-1]))
+                    else:
+                        x_list.append(y_list[i])
+                y_list = self.stage3(x_list)
+                
+                # Stage 4
+                x_list = []
+                for i in range(4):  # stage4 branches
+                    if self.transition3[i] is not None:
+                        x_list.append(self.transition3[i](y_list[-1]))
+                    else:
+                        x_list.append(y_list[i])
+                y_list = self.stage4(x_list)
+                
+                # Final prediction
+                x = self.final_layer(y_list[0])
+                
                 return x
         
-        return HRNetSimple()
+        return PoseHighResolutionNet()
     
     def detect_poses(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Dict[str, Any]:
-        """HRNet 고정밀 포즈 검출"""
+        """HRNet 고정밀 포즈 검출 (서브픽셀 정확도)"""
         if not self.loaded:
             raise RuntimeError("HRNet 모델이 로딩되지 않음")
         
@@ -1676,64 +2129,32 @@ class HRNetModel:
         
         try:
             # 이미지 전처리
-            if isinstance(image, Image.Image):
-                image_tensor = transforms.ToTensor()(image).unsqueeze(0)
-            elif isinstance(image, np.ndarray):
-                image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-            else:
-                image_tensor = image
+            input_tensor, scale_factor = self._preprocess_image_with_scale(image)
             
-            # 입력 크기 정규화 (256x192)
-            image_tensor = F.interpolate(image_tensor, size=(256, 192), mode='bilinear', align_corners=False)
+            # 실제 HRNet AI 추론 실행
+            with torch.no_grad():
+                if DEVICE == "cuda" and torch.cuda.is_available():
+                    with autocast():
+                        heatmaps = self.model(input_tensor)
+                else:
+                    heatmaps = self.model(input_tensor)
             
-            # MPS 디바이스에서 문제 해결을 위해 CPU로 전송
-            if DEVICE == "mps":
-                # CPU에서 추론 실행
-                image_tensor = image_tensor.cpu()
-                self.model = self.model.cpu()
-                
-                with torch.no_grad():
-                    heatmaps = self.model(image_tensor)  # [1, 17, 64, 48]
-                
-                # 다시 MPS로 모델 복원
-                self.model = self.model.to(DEVICE)
-            else:
-                # 다른 디바이스에서는 정상적으로 실행
-                image_tensor = image_tensor.to(DEVICE)
-                with torch.no_grad():
-                    heatmaps = self.model(image_tensor)  # [1, 17, 64, 48]
-            
-            # 히트맵에서 키포인트 추출
-            keypoints = self._extract_keypoints_from_heatmaps(heatmaps[0])
-            
-            # 원본 이미지 크기로 스케일링
-            if isinstance(image, Image.Image):
-                orig_w, orig_h = image.size
-            elif isinstance(image, np.ndarray):
-                orig_h, orig_w = image.shape[:2]
-            else:
-                orig_h, orig_w = 256, 192
-            
-            # 좌표 스케일링
-            scale_x = orig_w / 192
-            scale_y = orig_h / 256
-            
-            scaled_keypoints = []
-            for kp in keypoints:
-                scaled_keypoints.append([
-                    kp[0] * scale_x,
-                    kp[1] * scale_y,
-                    kp[2]
-                ])
+            # 히트맵에서 키포인트 추출 (고정밀 서브픽셀)
+            keypoints = self._extract_keypoints_with_subpixel_accuracy(
+                heatmaps[0], scale_factor
+            )
             
             processing_time = time.time() - start_time
             
             return {
                 "success": True,
-                "keypoints": scaled_keypoints,
+                "keypoints": keypoints,
                 "processing_time": processing_time,
                 "model_type": "hrnet",
-                "confidence": np.mean([kp[2] for kp in scaled_keypoints]) if scaled_keypoints else 0.0
+                "confidence": np.mean([kp[2] for kp in keypoints]) if keypoints else 0.0,
+                "subpixel_accuracy": True,
+                "heatmap_shape": heatmaps.shape,
+                "scale_factor": scale_factor
             }
             
         except Exception as e:
@@ -1745,6 +2166,161 @@ class HRNetModel:
                 "processing_time": time.time() - start_time,
                 "model_type": "hrnet"
             }
+    
+    def _preprocess_image_with_scale(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Tuple[torch.Tensor, float]:
+        """이미지 전처리 및 스케일 팩터 반환"""
+        if isinstance(image, Image.Image):
+            image_np = np.array(image)
+            orig_h, orig_w = image_np.shape[:2]
+        elif isinstance(image, torch.Tensor):
+            image_np = image.cpu().numpy()
+            if image_np.ndim == 4:
+                image_np = image_np[0]
+            if image_np.shape[0] == 3:
+                image_np = np.transpose(image_np, (1, 2, 0))
+            orig_h, orig_w = image_np.shape[:2]
+            image_np = (image_np * 255).astype(np.uint8)
+        else:
+            image_np = image
+            orig_h, orig_w = image_np.shape[:2]
+        
+        # HRNet 표준 입력 크기로 조정
+        target_h, target_w = self.input_size
+        scale_factor = min(target_w / orig_w, target_h / orig_h)
+        
+        # 비율 유지하며 리사이즈
+        new_w = int(orig_w * scale_factor)
+        new_h = int(orig_h * scale_factor)
+        
+        if OPENCV_AVAILABLE:
+            import cv2
+            resized = cv2.resize(image_np, (new_w, new_h))
+        else:
+            pil_img = Image.fromarray(image_np)
+            resized = np.array(pil_img.resize((new_w, new_h)))
+        
+        # 중앙 패딩
+        padded = np.zeros((target_h, target_w, 3), dtype=np.uint8)
+        start_y = (target_h - new_h) // 2
+        start_x = (target_w - new_w) // 2
+        padded[start_y:start_y+new_h, start_x:start_x+new_w] = resized
+        
+        # 정규화 및 텐서 변환
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        tensor = transform(Image.fromarray(padded)).unsqueeze(0)
+        
+        return tensor.to(self.device), scale_factor
+    
+    def _extract_keypoints_with_subpixel_accuracy(self, heatmaps: torch.Tensor, scale_factor: float) -> List[List[float]]:
+        """히트맵에서 키포인트 추출 (고정밀 서브픽셀 정확도)"""
+        keypoints = []
+        h, w = heatmaps.shape[-2:]
+        
+        for i in range(17):  # COCO 17 keypoints
+            if i < heatmaps.shape[0]:
+                heatmap = heatmaps[i].cpu().numpy()
+                
+                # Gaussian 블러 적용 (노이즈 제거)
+                if OPENCV_AVAILABLE:
+                    import cv2
+                    heatmap_blurred = cv2.GaussianBlur(heatmap, (3, 3), 0)
+                else:
+                    heatmap_blurred = heatmap
+                
+                # 최대값 위치 찾기
+                y_idx, x_idx = np.unravel_index(np.argmax(heatmap_blurred), heatmap_blurred.shape)
+                max_val = heatmap_blurred[y_idx, x_idx]
+                
+                # 서브픽셀 정확도를 위한 고급 가우시안 피팅
+                if (2 <= x_idx < w-2) and (2 <= y_idx < h-2):
+                    # 5x5 윈도우에서 가우시안 피팅
+                    window = heatmap_blurred[y_idx-2:y_idx+3, x_idx-2:x_idx+3]
+                    
+                    # 2차원 가우시안 피팅으로 서브픽셀 위치 계산
+                    try:
+                        if SCIPY_AVAILABLE:
+                            from scipy.optimize import curve_fit
+                            
+                            def gaussian_2d(xy, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
+                                x, y = xy
+                                xo, yo = float(xo), float(yo)
+                                a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
+                                b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
+                                c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
+                                g = offset + amplitude*np.exp(- (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) + c*((y-yo)**2)))
+                                return g.ravel()
+                            
+                            # 피팅을 위한 좌표 그리드
+                            y_grid, x_grid = np.mgrid[0:5, 0:5]
+                            
+                            # 초기 추정값
+                            initial_guess = (max_val, 2, 2, 1, 1, 0, 0)
+                            
+                            try:
+                                popt, _ = curve_fit(gaussian_2d, (x_grid, y_grid), window.ravel(), 
+                                                  p0=initial_guess, maxfev=1000)
+                                
+                                # 서브픽셀 오프셋 계산
+                                subpixel_x = x_idx - 2 + popt[1]
+                                subpixel_y = y_idx - 2 + popt[2]
+                                confidence = popt[0]  # amplitude
+                                
+                            except:
+                                # 피팅 실패 시 간단한 중심값 계산
+                                subpixel_x = float(x_idx)
+                                subpixel_y = float(y_idx)
+                                confidence = float(max_val)
+                        else:
+                            # Scipy 없이 간단한 중심값 계산
+                            # 주변 픽셀들의 가중평균으로 서브픽셀 위치 계산
+                            total_weight = 0
+                            weighted_x = 0
+                            weighted_y = 0
+                            
+                            for dy in range(-1, 2):
+                                for dx in range(-1, 2):
+                                    if 0 <= y_idx+dy < h and 0 <= x_idx+dx < w:
+                                        weight = heatmap_blurred[y_idx+dy, x_idx+dx]
+                                        weighted_x += (x_idx + dx) * weight
+                                        weighted_y += (y_idx + dy) * weight
+                                        total_weight += weight
+                            
+                            if total_weight > 0:
+                                subpixel_x = weighted_x / total_weight
+                                subpixel_y = weighted_y / total_weight
+                            else:
+                                subpixel_x = float(x_idx)
+                                subpixel_y = float(y_idx)
+                            
+                            confidence = float(max_val)
+                    
+                    except Exception:
+                        # 폴백: 기본 픽셀 위치
+                        subpixel_x = float(x_idx)
+                        subpixel_y = float(y_idx)
+                        confidence = float(max_val)
+                else:
+                    # 경계 근처: 기본 픽셀 위치
+                    subpixel_x = float(x_idx)
+                    subpixel_y = float(y_idx)
+                    confidence = float(max_val)
+                
+                # 좌표를 원본 이미지 크기로 변환
+                x_coord = (subpixel_x / w) * self.input_size[1] / scale_factor
+                y_coord = (subpixel_y / h) * self.input_size[0] / scale_factor
+                
+                # 신뢰도 정규화
+                confidence = min(1.0, max(0.0, confidence))
+                
+                keypoints.append([float(x_coord), float(y_coord), float(confidence)])
+            else:
+                keypoints.append([0.0, 0.0, 0.0])
+        
+        return keypoints
     
     def _extract_keypoints_from_heatmaps(self, heatmaps: torch.Tensor) -> List[List[float]]:
         """히트맵에서 키포인트 추출 (고정밀 서브픽셀 정확도)"""
@@ -1796,126 +2372,769 @@ class HRNetModel:
 # ==============================================
 
 class PoseAnalyzer:
-    """포즈 분석 알고리즘"""
+    """고급 포즈 분석 알고리즘 - 생체역학적 분석 포함"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(f"{__name__}.PoseAnalyzer")
+        
+        # 생체역학적 상수들
+        self.joint_angle_ranges = {
+            'left_elbow': (0, 180),
+            'right_elbow': (0, 180),
+            'left_knee': (0, 180),
+            'right_knee': (0, 180),
+            'left_shoulder': (-45, 180),
+            'right_shoulder': (-45, 180),
+            'left_hip': (-45, 135),
+            'right_hip': (-45, 135)
+        }
+        
+        # 신체 비율 표준값 (성인 기준)
+        self.standard_proportions = {
+            'head_to_total': 0.125,      # 머리:전체 = 1:8
+            'torso_to_total': 0.375,     # 상체:전체 = 3:8
+            'arm_to_total': 0.375,       # 팔:전체 = 3:8
+            'leg_to_total': 0.5,         # 다리:전체 = 4:8
+            'shoulder_to_hip': 1.1       # 어깨너비:엉덩이너비 = 1.1:1
+        }
     
     @staticmethod
     def calculate_joint_angles(keypoints: List[List[float]]) -> Dict[str, float]:
-        """관절 각도 계산"""
+        """관절 각도 계산 (생체역학적 정확도)"""
         angles = {}
         
-        def angle_between_vectors(p1, p2, p3):
-            """세 점 사이의 각도 계산"""
+        def calculate_angle_3points(p1, p2, p3):
+            """세 점으로 이루어진 각도 계산 (벡터 내적 사용)"""
             try:
+                # 벡터 계산
                 v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
                 v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
                 
-                cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
-                cos_angle = np.clip(cos_angle, -1.0, 1.0)
-                angle = np.arccos(cos_angle)
+                # 벡터 크기 계산
+                mag_v1 = np.linalg.norm(v1)
+                mag_v2 = np.linalg.norm(v2)
                 
-                return np.degrees(angle)
-            except:
+                if mag_v1 == 0 or mag_v2 == 0:
+                    return 0.0
+                
+                # 내적으로 코사인 계산
+                cos_angle = np.dot(v1, v2) / (mag_v1 * mag_v2)
+                cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                
+                # 라디안을 도로 변환
+                angle_rad = np.arccos(cos_angle)
+                angle_deg = np.degrees(angle_rad)
+                
+                return float(angle_deg)
+            except Exception:
+                return 0.0
+        
+        def calculate_directional_angle(p1, p2, p3):
+            """방향성을 고려한 각도 계산"""
+            try:
+                # 외적으로 방향 계산
+                v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
+                v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
+                
+                cross_product = np.cross(v1, v2)
+                angle = calculate_angle_3points(p1, p2, p3)
+                
+                # 외적의 부호로 방향 결정
+                if cross_product < 0:
+                    angle = 360 - angle
+                
+                return float(angle)
+            except Exception:
                 return 0.0
         
         if len(keypoints) >= 17:
-            # COCO 17 키포인트 기준
+            confidence_threshold = 0.3
+            
             # 왼쪽 팔꿈치 각도 (어깨-팔꿈치-손목)
-            if all(kp[2] > 0.3 for kp in [keypoints[5], keypoints[7], keypoints[9]]):
-                angles['left_elbow'] = angle_between_vectors(keypoints[5], keypoints[7], keypoints[9])
+            if all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[7], keypoints[9]]):
+                angles['left_elbow'] = calculate_angle_3points(
+                    keypoints[5], keypoints[7], keypoints[9]
+                )
             
             # 오른쪽 팔꿈치 각도
-            if all(kp[2] > 0.3 for kp in [keypoints[6], keypoints[8], keypoints[10]]):
-                angles['right_elbow'] = angle_between_vectors(keypoints[6], keypoints[8], keypoints[10])
+            if all(kp[2] > confidence_threshold for kp in [keypoints[6], keypoints[8], keypoints[10]]):
+                angles['right_elbow'] = calculate_angle_3points(
+                    keypoints[6], keypoints[8], keypoints[10]
+                )
             
-            # 왼쪽 무릎 각도
-            if all(kp[2] > 0.3 for kp in [keypoints[11], keypoints[13], keypoints[15]]):
-                angles['left_knee'] = angle_between_vectors(keypoints[11], keypoints[13], keypoints[15])
+            # 왼쪽 무릎 각도 (엉덩이-무릎-발목)
+            if all(kp[2] > confidence_threshold for kp in [keypoints[11], keypoints[13], keypoints[15]]):
+                angles['left_knee'] = calculate_angle_3points(
+                    keypoints[11], keypoints[13], keypoints[15]
+                )
             
             # 오른쪽 무릎 각도
-            if all(kp[2] > 0.3 for kp in [keypoints[12], keypoints[14], keypoints[16]]):
-                angles['right_knee'] = angle_between_vectors(keypoints[12], keypoints[14], keypoints[16])
+            if all(kp[2] > confidence_threshold for kp in [keypoints[12], keypoints[14], keypoints[16]]):
+                angles['right_knee'] = calculate_angle_3points(
+                    keypoints[12], keypoints[14], keypoints[16]
+                )
+            
+            # 왼쪽 어깨 각도 (목-어깨-팔꿈치)
+            # 목 위치를 어깨 중점으로 추정
+            if (all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[6], keypoints[7]]) and
+                keypoints[5][2] > confidence_threshold and keypoints[6][2] > confidence_threshold):
+                
+                neck_x = (keypoints[5][0] + keypoints[6][0]) / 2
+                neck_y = (keypoints[5][1] + keypoints[6][1]) / 2
+                neck_point = [neck_x, neck_y, 1.0]
+                
+                angles['left_shoulder'] = calculate_directional_angle(
+                    neck_point, keypoints[5], keypoints[7]
+                )
+            
+            # 오른쪽 어깨 각도
+            if (all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[6], keypoints[8]]) and
+                keypoints[5][2] > confidence_threshold and keypoints[6][2] > confidence_threshold):
+                
+                neck_x = (keypoints[5][0] + keypoints[6][0]) / 2
+                neck_y = (keypoints[5][1] + keypoints[6][1]) / 2
+                neck_point = [neck_x, neck_y, 1.0]
+                
+                angles['right_shoulder'] = calculate_directional_angle(
+                    neck_point, keypoints[6], keypoints[8]
+                )
+            
+            # 왼쪽 고관절 각도 (상체-고관절-무릎)
+            if all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[11], keypoints[13]]):
+                angles['left_hip'] = calculate_directional_angle(
+                    keypoints[5], keypoints[11], keypoints[13]
+                )
+            
+            # 오른쪽 고관절 각도
+            if all(kp[2] > confidence_threshold for kp in [keypoints[6], keypoints[12], keypoints[14]]):
+                angles['right_hip'] = calculate_directional_angle(
+                    keypoints[6], keypoints[12], keypoints[14]
+                )
+            
+            # 목 각도 (좌우 어깨-코)
+            if (keypoints[0][2] > confidence_threshold and 
+                all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[6]])):
+                
+                # 어깨 중점
+                shoulder_center = [
+                    (keypoints[5][0] + keypoints[6][0]) / 2,
+                    (keypoints[5][1] + keypoints[6][1]) / 2
+                ]
+                
+                # 수직선과 목의 각도
+                neck_vector = [keypoints[0][0] - shoulder_center[0], 
+                              keypoints[0][1] - shoulder_center[1]]
+                vertical_vector = [0, -1]  # 위쪽 방향
+                
+                dot_product = np.dot(neck_vector, vertical_vector)
+                neck_magnitude = np.linalg.norm(neck_vector)
+                
+                if neck_magnitude > 0:
+                    cos_angle = dot_product / neck_magnitude
+                    cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                    neck_angle = np.degrees(np.arccos(cos_angle))
+                    angles['neck_tilt'] = float(neck_angle)
+            
+            # 척추 곡률 계산
+            if (all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[6]]) and
+                all(kp[2] > confidence_threshold for kp in [keypoints[11], keypoints[12]])):
+                
+                # 어깨와 엉덩이 중점
+                shoulder_center = [(keypoints[5][0] + keypoints[6][0]) / 2,
+                                 (keypoints[5][1] + keypoints[6][1]) / 2]
+                hip_center = [(keypoints[11][0] + keypoints[12][0]) / 2,
+                             (keypoints[11][1] + keypoints[12][1]) / 2]
+                
+                # 척추 벡터와 수직선의 각도
+                spine_vector = [shoulder_center[0] - hip_center[0],
+                               shoulder_center[1] - hip_center[1]]
+                vertical_vector = [0, -1]
+                
+                spine_magnitude = np.linalg.norm(spine_vector)
+                if spine_magnitude > 0:
+                    dot_product = np.dot(spine_vector, vertical_vector)
+                    cos_angle = dot_product / spine_magnitude
+                    cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                    spine_angle = np.degrees(np.arccos(cos_angle))
+                    angles['spine_curvature'] = float(spine_angle)
         
         return angles
     
     @staticmethod
     def calculate_body_proportions(keypoints: List[List[float]]) -> Dict[str, float]:
-        """신체 비율 계산"""
+        """신체 비율 계산 (정밀한 해부학적 측정)"""
         proportions = {}
         
+        def calculate_distance(p1, p2):
+            """두 점 사이의 유클리드 거리"""
+            if len(p1) >= 2 and len(p2) >= 2:
+                return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+            return 0.0
+        
+        def calculate_body_part_length(keypoint_indices):
+            """신체 부위의 길이 계산"""
+            total_length = 0.0
+            for i in range(len(keypoint_indices) - 1):
+                idx1, idx2 = keypoint_indices[i], keypoint_indices[i + 1]
+                if (idx1 < len(keypoints) and idx2 < len(keypoints) and
+                    keypoints[idx1][2] > 0.3 and keypoints[idx2][2] > 0.3):
+                    total_length += calculate_distance(keypoints[idx1], keypoints[idx2])
+            return total_length
+        
         if len(keypoints) >= 17:
+            confidence_threshold = 0.3
+            
+            # 기본 거리 측정들
+            measurements = {}
+            
             # 어깨 너비
-            if all(kp[2] > 0.3 for kp in [keypoints[5], keypoints[6]]):
-                shoulder_width = np.linalg.norm(
-                    np.array(keypoints[5][:2]) - np.array(keypoints[6][:2])
-                )
-                proportions['shoulder_width'] = shoulder_width
+            if all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[6]]):
+                measurements['shoulder_width'] = calculate_distance(keypoints[5], keypoints[6])
+                proportions['shoulder_width'] = measurements['shoulder_width']
             
             # 엉덩이 너비
-            if all(kp[2] > 0.3 for kp in [keypoints[11], keypoints[12]]):
-                hip_width = np.linalg.norm(
-                    np.array(keypoints[11][:2]) - np.array(keypoints[12][:2])
-                )
-                proportions['hip_width'] = hip_width
+            if all(kp[2] > confidence_threshold for kp in [keypoints[11], keypoints[12]]):
+                measurements['hip_width'] = calculate_distance(keypoints[11], keypoints[12])
+                proportions['hip_width'] = measurements['hip_width']
             
-            # 전체 키 (코-발목)
-            if (keypoints[0][2] > 0.3 and 
-                (keypoints[15][2] > 0.3 or keypoints[16][2] > 0.3)):
-                if keypoints[15][2] > keypoints[16][2]:
-                    height = np.linalg.norm(
-                        np.array(keypoints[0][:2]) - np.array(keypoints[15][:2])
-                    )
-                else:
-                    height = np.linalg.norm(
-                        np.array(keypoints[0][:2]) - np.array(keypoints[16][:2])
-                    )
-                proportions['total_height'] = height
+            # 전체 신장 (머리-발목)
+            height_candidates = []
+            if keypoints[0][2] > confidence_threshold:  # 코
+                if keypoints[15][2] > confidence_threshold:  # 왼발목
+                    height_candidates.append(calculate_distance(keypoints[0], keypoints[15]))
+                if keypoints[16][2] > confidence_threshold:  # 오른발목
+                    height_candidates.append(calculate_distance(keypoints[0], keypoints[16]))
+            
+            if height_candidates:
+                measurements['total_height'] = max(height_candidates)
+                proportions['total_height'] = measurements['total_height']
+            
+            # 상체 길이 (어깨 중점 - 엉덩이 중점)
+            if ('shoulder_width' in measurements and 'hip_width' in measurements and
+                all(kp[2] > confidence_threshold for kp in [keypoints[5], keypoints[6], keypoints[11], keypoints[12]])):
+                
+                shoulder_center = [(keypoints[5][0] + keypoints[6][0]) / 2,
+                                 (keypoints[5][1] + keypoints[6][1]) / 2]
+                hip_center = [(keypoints[11][0] + keypoints[12][0]) / 2,
+                             (keypoints[11][1] + keypoints[12][1]) / 2]
+                
+                measurements['torso_length'] = calculate_distance(shoulder_center, hip_center)
+                proportions['torso_length'] = measurements['torso_length']
+            
+            # 팔 길이 (어깨-팔꿈치-손목)
+            left_arm_length = calculate_body_part_length([5, 7, 9])  # 왼팔
+            right_arm_length = calculate_body_part_length([6, 8, 10])  # 오른팔
+            
+            if left_arm_length > 0:
+                proportions['left_arm_length'] = left_arm_length
+            if right_arm_length > 0:
+                proportions['right_arm_length'] = right_arm_length
+            if left_arm_length > 0 and right_arm_length > 0:
+                proportions['avg_arm_length'] = (left_arm_length + right_arm_length) / 2
+            
+            # 다리 길이 (엉덩이-무릎-발목)
+            left_leg_length = calculate_body_part_length([11, 13, 15])  # 왼다리
+            right_leg_length = calculate_body_part_length([12, 14, 16])  # 오른다리
+            
+            if left_leg_length > 0:
+                proportions['left_leg_length'] = left_leg_length
+            if right_leg_length > 0:
+                proportions['right_leg_length'] = right_leg_length
+            if left_leg_length > 0 and right_leg_length > 0:
+                proportions['avg_leg_length'] = (left_leg_length + right_leg_length) / 2
+            
+            # 비율 계산
+            if 'total_height' in measurements and measurements['total_height'] > 0:
+                height = measurements['total_height']
+                
+                # 머리 크기 (코-목 거리 추정)
+                if keypoints[0][2] > confidence_threshold and 'torso_length' in measurements:
+                    estimated_head_length = measurements['torso_length'] * 0.25  # 추정값
+                    proportions['head_to_height_ratio'] = estimated_head_length / height
+                
+                # 상체 대 전체 비율
+                if 'torso_length' in measurements:
+                    proportions['torso_to_height_ratio'] = measurements['torso_length'] / height
+                
+                # 다리 대 전체 비율
+                if 'avg_leg_length' in proportions:
+                    proportions['leg_to_height_ratio'] = proportions['avg_leg_length'] / height
+                
+                # 팔 대 전체 비율
+                if 'avg_arm_length' in proportions:
+                    proportions['arm_to_height_ratio'] = proportions['avg_arm_length'] / height
+            
+            # 좌우 대칭성 검사
+            if 'left_arm_length' in proportions and 'right_arm_length' in proportions:
+                arm_asymmetry = abs(proportions['left_arm_length'] - proportions['right_arm_length'])
+                avg_arm = (proportions['left_arm_length'] + proportions['right_arm_length']) / 2
+                if avg_arm > 0:
+                    proportions['arm_asymmetry_ratio'] = arm_asymmetry / avg_arm
+            
+            if 'left_leg_length' in proportions and 'right_leg_length' in proportions:
+                leg_asymmetry = abs(proportions['left_leg_length'] - proportions['right_leg_length'])
+                avg_leg = (proportions['left_leg_length'] + proportions['right_leg_length']) / 2
+                if avg_leg > 0:
+                    proportions['leg_asymmetry_ratio'] = leg_asymmetry / avg_leg
+            
+            # 어깨-엉덩이 비율
+            if 'shoulder_width' in measurements and 'hip_width' in measurements and measurements['hip_width'] > 0:
+                proportions['shoulder_to_hip_ratio'] = measurements['shoulder_width'] / measurements['hip_width']
+            
+            # BMI 추정 (매우 대략적)
+            if 'total_height' in measurements and 'shoulder_width' in measurements:
+                # 어깨 너비를 기반으로 한 체격 추정 (매우 대략적)
+                estimated_body_mass_index = (measurements['shoulder_width'] / measurements['total_height']) * 100
+                proportions['estimated_bmi_indicator'] = estimated_body_mass_index
         
         return proportions
     
-    @staticmethod
-    def assess_pose_quality(keypoints: List[List[float]], 
+    def assess_pose_quality(self, 
+                          keypoints: List[List[float]], 
                           joint_angles: Dict[str, float], 
                           body_proportions: Dict[str, float]) -> Dict[str, Any]:
-        """포즈 품질 평가"""
+        """포즈 품질 평가 (다차원 분석)"""
         assessment = {
             'overall_score': 0.0,
             'quality_grade': PoseQuality.POOR,
             'detailed_scores': {},
             'issues': [],
-            'recommendations': []
+            'recommendations': [],
+            'confidence_analysis': {},
+            'anatomical_plausibility': {},
+            'symmetry_analysis': {}
         }
         
-        # 키포인트 가시성 점수
-        visible_keypoints = sum(1 for kp in keypoints if kp[2] > 0.5)
-        visibility_score = visible_keypoints / len(keypoints)
-        
-        # 신뢰도 점수
-        confidence_scores = [kp[2] for kp in keypoints if kp[2] > 0.1]
-        avg_confidence = np.mean(confidence_scores) if confidence_scores else 0.0
-        
-        # 전체 점수 계산
-        overall_score = (visibility_score * 0.5 + avg_confidence * 0.5)
-        
-        # 품질 등급 결정
-        if overall_score >= 0.9:
-            quality_grade = PoseQuality.EXCELLENT
-        elif overall_score >= 0.75:
-            quality_grade = PoseQuality.GOOD
-        elif overall_score >= 0.6:
-            quality_grade = PoseQuality.ACCEPTABLE
-        else:
-            quality_grade = PoseQuality.POOR
-        
-        assessment.update({
-            'overall_score': overall_score,
-            'quality_grade': quality_grade,
-            'detailed_scores': {
-                'visibility': visibility_score,
-                'confidence': avg_confidence
+        try:
+            # 1. 키포인트 가시성 분석
+            visible_keypoints = [kp for kp in keypoints if len(kp) >= 3 and kp[2] > 0.1]
+            high_conf_keypoints = [kp for kp in keypoints if len(kp) >= 3 and kp[2] > 0.7]
+            
+            visibility_score = len(visible_keypoints) / len(keypoints)
+            high_confidence_score = len(high_conf_keypoints) / len(keypoints)
+            
+            # 2. 신뢰도 분석
+            confidence_scores = [kp[2] for kp in keypoints if len(kp) >= 3 and kp[2] > 0.1]
+            if confidence_scores:
+                avg_confidence = np.mean(confidence_scores)
+                confidence_std = np.std(confidence_scores)
+                min_confidence = np.min(confidence_scores)
+                max_confidence = np.max(confidence_scores)
+            else:
+                avg_confidence = confidence_std = min_confidence = max_confidence = 0.0
+            
+            assessment['confidence_analysis'] = {
+                'average': avg_confidence,
+                'std_deviation': confidence_std,
+                'min_confidence': min_confidence,
+                'max_confidence': max_confidence,
+                'confidence_consistency': 1.0 - (confidence_std / (avg_confidence + 1e-8))
             }
-        })
+            
+            # 3. 해부학적 타당성 검사
+            anatomical_score = self._assess_anatomical_plausibility(keypoints, joint_angles)
+            
+            # 4. 대칭성 분석
+            symmetry_score = self._assess_body_symmetry(keypoints, body_proportions)
+            
+            # 5. 포즈 완성도
+            critical_keypoints = [0, 5, 6, 11, 12]  # 코, 어깨들, 엉덩이들
+            critical_visible = sum(1 for i in critical_keypoints 
+                                 if i < len(keypoints) and len(keypoints[i]) >= 3 and keypoints[i][2] > 0.5)
+            completeness_score = critical_visible / len(critical_keypoints)
+            
+            # 6. 전체 점수 계산 (가중평균)
+            weights = {
+                'visibility': 0.25,
+                'confidence': 0.25,
+                'anatomical': 0.20,
+                'symmetry': 0.15,
+                'completeness': 0.15
+            }
+            
+            overall_score = (
+                visibility_score * weights['visibility'] +
+                avg_confidence * weights['confidence'] +
+                anatomical_score * weights['anatomical'] +
+                symmetry_score * weights['symmetry'] +
+                completeness_score * weights['completeness']
+            )
+            
+            # 7. 품질 등급 결정
+            if overall_score >= 0.9:
+                quality_grade = PoseQuality.EXCELLENT
+            elif overall_score >= 0.75:
+                quality_grade = PoseQuality.GOOD
+            elif overall_score >= 0.6:
+                quality_grade = PoseQuality.ACCEPTABLE
+            elif overall_score >= 0.4:
+                quality_grade = PoseQuality.POOR
+            else:
+                quality_grade = PoseQuality.VERY_POOR
+            
+            # 8. 세부 점수
+            assessment['detailed_scores'] = {
+                'visibility': visibility_score,
+                'high_confidence_ratio': high_confidence_score,
+                'average_confidence': avg_confidence,
+                'anatomical_plausibility': anatomical_score,
+                'symmetry': symmetry_score,
+                'completeness': completeness_score
+            }
+            
+            # 9. 이슈 및 권장사항 생성
+            assessment['issues'] = self._identify_pose_issues(
+                keypoints, joint_angles, body_proportions, assessment['detailed_scores']
+            )
+            assessment['recommendations'] = self._generate_pose_recommendations(
+                assessment['issues'], assessment['detailed_scores']
+            )
+            
+            # 10. 최종 결과 업데이트
+            assessment.update({
+                'overall_score': overall_score,
+                'quality_grade': quality_grade,
+                'anatomical_plausibility': {
+                    'score': anatomical_score,
+                    'joint_angle_validity': self._validate_joint_angles(joint_angles),
+                    'proportion_validity': self._validate_body_proportions(body_proportions)
+                },
+                'symmetry_analysis': {
+                    'score': symmetry_score,
+                    'left_right_balance': self._analyze_left_right_balance(keypoints),
+                    'posture_alignment': self._analyze_posture_alignment(keypoints)
+                }
+            })
+            
+        except Exception as e:
+            self.logger.error(f"❌ 포즈 품질 평가 실패: {e}")
+            assessment['error'] = str(e)
         
         return assessment
+    
+    def _assess_anatomical_plausibility(self, keypoints: List[List[float]], joint_angles: Dict[str, float]) -> float:
+        """해부학적 타당성 평가"""
+        plausibility_score = 1.0
+        penalty = 0.0
+        
+        # 관절 각도 범위 검사
+        for joint, angle in joint_angles.items():
+            if joint in self.joint_angle_ranges:
+                min_angle, max_angle = self.joint_angle_ranges[joint]
+                if not (min_angle <= angle <= max_angle):
+                    penalty += 0.1  # 범위 벗어날 때마다 10% 감점
+        
+        # 키포인트 위치 상식성 검사
+        if len(keypoints) >= 17:
+            # 어깨가 엉덩이보다 위에 있는지
+            if (keypoints[5][2] > 0.3 and keypoints[6][2] > 0.3 and
+                keypoints[11][2] > 0.3 and keypoints[12][2] > 0.3):
+                
+                avg_shoulder_y = (keypoints[5][1] + keypoints[6][1]) / 2
+                avg_hip_y = (keypoints[11][1] + keypoints[12][1]) / 2
+                
+                if avg_shoulder_y >= avg_hip_y:  # 어깨가 엉덩이보다 아래에 있음 (비정상)
+                    penalty += 0.2
+            
+            # 팔꿈치가 어깨와 손목 사이에 있는지
+            for side in ['left', 'right']:
+                if side == 'left':
+                    shoulder_idx, elbow_idx, wrist_idx = 5, 7, 9
+                else:
+                    shoulder_idx, elbow_idx, wrist_idx = 6, 8, 10
+                
+                if all(keypoints[i][2] > 0.3 for i in [shoulder_idx, elbow_idx, wrist_idx]):
+                    # 팔꿈치가 어깨-손목 선분에서 너무 멀리 떨어져 있는지 검사
+                    arm_length = np.linalg.norm(np.array(keypoints[shoulder_idx][:2]) - 
+                                              np.array(keypoints[wrist_idx][:2]))
+                    elbow_distance = self._point_to_line_distance(
+                        keypoints[elbow_idx][:2], 
+                        keypoints[shoulder_idx][:2], 
+                        keypoints[wrist_idx][:2]
+                    )
+                    
+                    if arm_length > 0 and elbow_distance / arm_length > 0.3:  # 팔 길이의 30% 이상 벗어남
+                        penalty += 0.1
+        
+        plausibility_score = max(0.0, plausibility_score - penalty)
+        return plausibility_score
+    
+    def _assess_body_symmetry(self, keypoints: List[List[float]], body_proportions: Dict[str, float]) -> float:
+        """신체 대칭성 평가"""
+        symmetry_score = 1.0
+        penalty = 0.0
+        
+        if len(keypoints) >= 17:
+            # 좌우 어깨 높이 비교
+            if keypoints[5][2] > 0.3 and keypoints[6][2] > 0.3:
+                shoulder_height_diff = abs(keypoints[5][1] - keypoints[6][1])
+                shoulder_width = abs(keypoints[5][0] - keypoints[6][0])
+                if shoulder_width > 0:
+                    shoulder_asymmetry = shoulder_height_diff / shoulder_width
+                    if shoulder_asymmetry > 0.2:  # 20% 이상 비대칭
+                        penalty += 0.1
+            
+            # 좌우 엉덩이 높이 비교
+            if keypoints[11][2] > 0.3 and keypoints[12][2] > 0.3:
+                hip_height_diff = abs(keypoints[11][1] - keypoints[12][1])
+                hip_width = abs(keypoints[11][0] - keypoints[12][0])
+                if hip_width > 0:
+                    hip_asymmetry = hip_height_diff / hip_width
+                    if hip_asymmetry > 0.2:
+                        penalty += 0.1
+            
+            # 팔 길이 대칭성
+            if 'arm_asymmetry_ratio' in body_proportions:
+                if body_proportions['arm_asymmetry_ratio'] > 0.15:  # 15% 이상 차이
+                    penalty += 0.1
+            
+            # 다리 길이 대칭성
+            if 'leg_asymmetry_ratio' in body_proportions:
+                if body_proportions['leg_asymmetry_ratio'] > 0.15:
+                    penalty += 0.1
+        
+        symmetry_score = max(0.0, symmetry_score - penalty)
+        return symmetry_score
+    
+    def _point_to_line_distance(self, point, line_start, line_end):
+        """점에서 직선까지의 거리 계산"""
+        try:
+            line_vec = np.array(line_end) - np.array(line_start)
+            point_vec = np.array(point) - np.array(line_start)
+            
+            line_len = np.linalg.norm(line_vec)
+            if line_len == 0:
+                return np.linalg.norm(point_vec)
+            
+            line_unitvec = line_vec / line_len
+            proj_length = np.dot(point_vec, line_unitvec)
+            proj = proj_length * line_unitvec
+            
+            distance = np.linalg.norm(point_vec - proj)
+            return distance
+        except:
+            return 0.0
+    
+    def _validate_joint_angles(self, joint_angles: Dict[str, float]) -> Dict[str, bool]:
+        """관절 각도 유효성 검증"""
+        validity = {}
+        for joint, angle in joint_angles.items():
+            if joint in self.joint_angle_ranges:
+                min_angle, max_angle = self.joint_angle_ranges[joint]
+                validity[joint] = min_angle <= angle <= max_angle
+            else:
+                validity[joint] = True  # 범위가 정의되지 않은 경우 유효로 간주
+        return validity
+    
+    def _validate_body_proportions(self, body_proportions: Dict[str, float]) -> Dict[str, Any]:
+        """신체 비율 유효성 검증"""
+        validation = {
+            'proportions_within_normal_range': True,
+            'unusual_proportions': [],
+            'proportion_score': 1.0
+        }
+        
+        # 표준 비율과 비교
+        for prop_name, standard_value in self.standard_proportions.items():
+            if prop_name in body_proportions:
+                measured_value = body_proportions[prop_name]
+                # 표준값의 ±50% 범위 내에서 정상으로 간주
+                tolerance = standard_value * 0.5
+                
+                if not (standard_value - tolerance <= measured_value <= standard_value + tolerance):
+                    validation['proportions_within_normal_range'] = False
+                    validation['unusual_proportions'].append({
+                        'proportion': prop_name,
+                        'measured': measured_value,
+                        'standard': standard_value,
+                        'deviation_percent': abs(measured_value - standard_value) / standard_value * 100
+                    })
+        
+        # 비율 점수 계산
+        if validation['unusual_proportions']:
+            penalty = min(0.5, len(validation['unusual_proportions']) * 0.1)
+            validation['proportion_score'] = max(0.0, 1.0 - penalty)
+        
+        return validation
+    
+    def _analyze_left_right_balance(self, keypoints: List[List[float]]) -> Dict[str, Any]:
+        """좌우 균형 분석"""
+        balance_analysis = {
+            'overall_balance_score': 1.0,
+            'shoulder_balance': 1.0,
+            'hip_balance': 1.0,
+            'limb_position_balance': 1.0
+        }
+        
+        if len(keypoints) >= 17:
+            # 어깨 균형
+            if keypoints[5][2] > 0.3 and keypoints[6][2] > 0.3:
+                shoulder_height_diff = abs(keypoints[5][1] - keypoints[6][1])
+                shoulder_center = (keypoints[5][1] + keypoints[6][1]) / 2
+                if shoulder_center > 0:
+                    balance_analysis['shoulder_balance'] = max(0.0, 1.0 - (shoulder_height_diff / shoulder_center))
+            
+            # 엉덩이 균형
+            if keypoints[11][2] > 0.3 and keypoints[12][2] > 0.3:
+                hip_height_diff = abs(keypoints[11][1] - keypoints[12][1])
+                hip_center = (keypoints[11][1] + keypoints[12][1]) / 2
+                if hip_center > 0:
+                    balance_analysis['hip_balance'] = max(0.0, 1.0 - (hip_height_diff / hip_center))
+            
+            # 전체 균형 점수
+            balance_analysis['overall_balance_score'] = (
+                balance_analysis['shoulder_balance'] * 0.4 +
+                balance_analysis['hip_balance'] * 0.4 +
+                balance_analysis['limb_position_balance'] * 0.2
+            )
+        
+        return balance_analysis
+    
+    def _analyze_posture_alignment(self, keypoints: List[List[float]]) -> Dict[str, Any]:
+        """자세 정렬 분석"""
+        alignment_analysis = {
+            'spine_alignment_score': 1.0,
+            'head_neck_alignment': 1.0,
+            'overall_posture_score': 1.0
+        }
+        
+        if len(keypoints) >= 17:
+            # 척추 정렬 (어깨 중점과 엉덩이 중점의 수직 정렬)
+            if (all(keypoints[i][2] > 0.3 for i in [5, 6, 11, 12])):
+                shoulder_center_x = (keypoints[5][0] + keypoints[6][0]) / 2
+                hip_center_x = (keypoints[11][0] + keypoints[12][0]) / 2
+                
+                horizontal_offset = abs(shoulder_center_x - hip_center_x)
+                body_width = abs(keypoints[5][0] - keypoints[6][0])
+                
+                if body_width > 0:
+                    alignment_ratio = horizontal_offset / body_width
+                    alignment_analysis['spine_alignment_score'] = max(0.0, 1.0 - alignment_ratio)
+            
+            # 머리-목 정렬
+            if (keypoints[0][2] > 0.3 and 
+                all(keypoints[i][2] > 0.3 for i in [5, 6])):
+                
+                neck_center_x = (keypoints[5][0] + keypoints[6][0]) / 2
+                head_offset = abs(keypoints[0][0] - neck_center_x)
+                neck_width = abs(keypoints[5][0] - keypoints[6][0])
+                
+                if neck_width > 0:
+                    head_alignment_ratio = head_offset / neck_width
+                    alignment_analysis['head_neck_alignment'] = max(0.0, 1.0 - head_alignment_ratio)
+            
+            # 전체 자세 점수
+            alignment_analysis['overall_posture_score'] = (
+                alignment_analysis['spine_alignment_score'] * 0.6 +
+                alignment_analysis['head_neck_alignment'] * 0.4
+            )
+        
+        return alignment_analysis
+    
+    def _identify_pose_issues(self, 
+                            keypoints: List[List[float]], 
+                            joint_angles: Dict[str, float], 
+                            body_proportions: Dict[str, float],
+                            scores: Dict[str, float]) -> List[str]:
+        """포즈 문제점 식별"""
+        issues = []
+        
+        # 가시성 문제
+        if scores.get('visibility', 0) < 0.6:
+            issues.append("키포인트 가시성이 낮습니다")
+        
+        # 신뢰도 문제
+        if scores.get('average_confidence', 0) < 0.5:
+            issues.append("키포인트 검출 신뢰도가 낮습니다")
+        
+        # 해부학적 문제
+        if scores.get('anatomical_plausibility', 0) < 0.7:
+            issues.append("해부학적으로 부자연스러운 포즈입니다")
+        
+        # 대칭성 문제
+        if scores.get('symmetry', 0) < 0.7:
+            issues.append("신체 좌우 대칭성이 부족합니다")
+        
+        # 완성도 문제
+        if scores.get('completeness', 0) < 0.8:
+            issues.append("핵심 신체 부위가 검출되지 않았습니다")
+        
+        # 관절 각도 문제
+        invalid_joints = [joint for joint, angle in joint_angles.items() 
+                         if joint in self.joint_angle_ranges and 
+                         not (self.joint_angle_ranges[joint][0] <= angle <= self.joint_angle_ranges[joint][1])]
+        
+        if invalid_joints:
+            issues.append(f"비정상적인 관절 각도: {', '.join(invalid_joints)}")
+        
+        # 비율 문제
+        unusual_proportions = []
+        for prop_name, standard_value in self.standard_proportions.items():
+            if prop_name in body_proportions:
+                measured_value = body_proportions[prop_name]
+                tolerance = standard_value * 0.5
+                if not (standard_value - tolerance <= measured_value <= standard_value + tolerance):
+                    deviation = abs(measured_value - standard_value) / standard_value * 100
+                    unusual_proportions.append(f"{prop_name} ({deviation:.1f}% 편차)")
+        
+        if unusual_proportions:
+            issues.append(f"비정상적인 신체 비율: {', '.join(unusual_proportions)}")
+        
+        return issues
+    
+    def _generate_pose_recommendations(self, issues: List[str], scores: Dict[str, float]) -> List[str]:
+        """포즈 개선 권장사항 생성"""
+        recommendations = []
+        
+        # 가시성 개선
+        if scores.get('visibility', 0) < 0.6:
+            recommendations.extend([
+                "전신이 프레임 안에 들어오도록 촬영해 주세요",
+                "가려진 신체 부위가 보이도록 자세를 조정해 주세요",
+                "더 밝은 조명에서 촬영해 주세요"
+            ])
+        
+        # 신뢰도 개선
+        if scores.get('average_confidence', 0) < 0.5:
+            recommendations.extend([
+                "더 선명하고 고해상도로 촬영해 주세요",
+                "배경과 대비되는 의상을 착용해 주세요",
+                "카메라 흔들림 없이 촬영해 주세요"
+            ])
+        
+        # 해부학적 개선
+        if scores.get('anatomical_plausibility', 0) < 0.7:
+            recommendations.extend([
+                "자연스러운 자세를 취해 주세요",
+                "과도하게 구부러진 관절을 펴주세요",
+                "정면 또는 측면을 향한 자세로 촬영해 주세요"
+            ])
+        
+        # 대칭성 개선
+        if scores.get('symmetry', 0) < 0.7:
+            recommendations.extend([
+                "어깨와 엉덩이가 수평이 되도록 자세를 조정해 주세요",
+                "좌우 팔다리가 균형을 이루도록 해주세요",
+                "몸의 중심선이 똑바로 서도록 해주세요"
+            ])
+        
+        # 완성도 개선
+        if scores.get('completeness', 0) < 0.8:
+            recommendations.extend([
+                "머리부터 발끝까지 전신이 보이도록 촬영해 주세요",
+                "팔과 다리가 몸통에 가려지지 않도록 해주세요",
+                "카메라와의 거리를 조정해 주세요"
+            ])
+        
+        # 일반적인 권장사항
+        if not recommendations:
+            recommendations.extend([
+                "현재 포즈가 양호합니다",
+                "더 나은 결과를 위해 조명을 개선해 보세요",
+                "다양한 각도에서 촬영해 보세요"
+            ])
+        
+        return recommendations[:5]  # 최대 5개 권장사항만 반환
 
 # ==============================================
 # 🔥 5. 메인 PoseEstimationStep 클래스
@@ -2667,12 +3886,345 @@ def draw_pose_on_image(
         logger.error(f"포즈 그리기 실패: {e}")
         return image if isinstance(image, Image.Image) else Image.fromarray(image)
 
+def analyze_pose_for_clothing_advanced(
+    keypoints: List[List[float]],
+    clothing_type: str = "default",
+    confidence_threshold: float = 0.5,
+    detailed_analysis: bool = True
+) -> Dict[str, Any]:
+    """고급 의류별 포즈 적합성 분석"""
+    try:
+        if not keypoints:
+            return {
+                'suitable_for_fitting': False,
+                'issues': ["포즈를 검출할 수 없습니다"],
+                'recommendations': ["더 선명한 이미지를 사용해 주세요"],
+                'pose_score': 0.0,
+                'detailed_analysis': {}
+            }
+        
+        # 의류별 세부 가중치
+        clothing_detailed_weights = {
+            'shirt': {
+                'critical_keypoints': [5, 6, 7, 8, 9, 10],  # 어깨, 팔꿈치, 손목
+                'weights': {'arms': 0.4, 'torso': 0.4, 'posture': 0.2},
+                'min_visibility': 0.7,
+                'required_angles': ['left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow']
+            },
+            'dress': {
+                'critical_keypoints': [5, 6, 11, 12, 13, 14],  # 어깨, 엉덩이, 무릎
+                'weights': {'torso': 0.5, 'arms': 0.2, 'legs': 0.2, 'posture': 0.1},
+                'min_visibility': 0.8,
+                'required_angles': ['spine_curvature']
+            },
+            'pants': {
+                'critical_keypoints': [11, 12, 13, 14, 15, 16],  # 엉덩이, 무릎, 발목
+                'weights': {'legs': 0.6, 'torso': 0.3, 'posture': 0.1},
+                'min_visibility': 0.8,
+                'required_angles': ['left_hip', 'right_hip', 'left_knee', 'right_knee']
+            },
+            'jacket': {
+                'critical_keypoints': [5, 6, 7, 8, 9, 10, 11, 12],  # 상체 전체
+                'weights': {'arms': 0.4, 'torso': 0.4, 'shoulders': 0.2},
+                'min_visibility': 0.75,
+                'required_angles': ['left_shoulder', 'right_shoulder', 'spine_curvature']
+            },
+            'suit': {
+                'critical_keypoints': [5, 6, 7, 8, 9, 10, 11, 12, 13, 14],  # 거의 전신
+                'weights': {'torso': 0.3, 'arms': 0.3, 'legs': 0.2, 'posture': 0.2},
+                'min_visibility': 0.85,
+                'required_angles': ['spine_curvature', 'left_shoulder', 'right_shoulder']
+            },
+            'default': {
+                'critical_keypoints': [0, 5, 6, 11, 12],  # 기본 핵심 부위
+                'weights': {'torso': 0.4, 'arms': 0.3, 'legs': 0.2, 'visibility': 0.1},
+                'min_visibility': 0.6,
+                'required_angles': []
+            }
+        }
+        
+        config = clothing_detailed_weights.get(clothing_type, clothing_detailed_weights['default'])
+        
+        # 1. 핵심 키포인트 가시성 검사
+        critical_keypoints = config['critical_keypoints']
+        visible_critical = sum(1 for idx in critical_keypoints 
+                             if idx < len(keypoints) and len(keypoints[idx]) >= 3 
+                             and keypoints[idx][2] > confidence_threshold)
+        
+        critical_visibility = visible_critical / len(critical_keypoints)
+        
+        # 2. 신체 부위별 점수 계산
+        def calculate_body_part_score_advanced(part_indices: List[int]) -> Dict[str, float]:
+            visible_count = 0
+            total_confidence = 0.0
+            position_quality = 0.0
+            
+            for idx in part_indices:
+                if idx < len(keypoints) and len(keypoints[idx]) >= 3:
+                    if keypoints[idx][2] > confidence_threshold:
+                        visible_count += 1
+                        total_confidence += keypoints[idx][2]
+                        
+                        # 위치 품질 평가 (화면 경계에서의 거리)
+                        x, y = keypoints[idx][0], keypoints[idx][1]
+                        # 이미지 크기를 모르므로 상대적 평가
+                        if 0.1 <= x <= 0.9 and 0.1 <= y <= 0.9:  # 중앙 80% 영역
+                            position_quality += 1.0
+                        else:
+                            position_quality += 0.5
+            
+            if visible_count == 0:
+                return {'visibility': 0.0, 'confidence': 0.0, 'position': 0.0, 'combined': 0.0}
+            
+            visibility_ratio = visible_count / len(part_indices)
+            avg_confidence = total_confidence / visible_count
+            avg_position = position_quality / visible_count
+            combined_score = (visibility_ratio * 0.4 + avg_confidence * 0.4 + avg_position * 0.2)
+            
+            return {
+                'visibility': visibility_ratio,
+                'confidence': avg_confidence,
+                'position': avg_position,
+                'combined': combined_score
+            }
+        
+        # COCO 17 부위별 인덱스 (고급)
+        body_parts = {
+            'head': [0, 1, 2, 3, 4],  # 코, 눈들, 귀들
+            'torso': [5, 6, 11, 12],  # 어깨들, 엉덩이들
+            'arms': [5, 6, 7, 8, 9, 10],  # 어깨, 팔꿈치, 손목
+            'legs': [11, 12, 13, 14, 15, 16],  # 엉덩이, 무릎, 발목
+            'left_arm': [5, 7, 9],
+            'right_arm': [6, 8, 10],
+            'left_leg': [11, 13, 15],
+            'right_leg': [12, 14, 16]
+        }
+        
+        part_scores = {}
+        for part_name, indices in body_parts.items():
+            part_scores[part_name] = calculate_body_part_score_advanced(indices)
+        
+        # 3. 관절 각도 분석
+        analyzer = PoseAnalyzer()
+        joint_angles = analyzer.calculate_joint_angles(keypoints)
+        
+        angle_score = 1.0
+        missing_angles = []
+        for required_angle in config.get('required_angles', []):
+            if required_angle not in joint_angles:
+                missing_angles.append(required_angle)
+                angle_score *= 0.8  # 필수 각도 없을 때마다 20% 감점
+        
+        # 4. 자세 안정성 평가
+        posture_stability = analyze_posture_stability(keypoints)
+        
+        # 5. 의류별 특화 분석
+        clothing_specific_score = analyze_clothing_specific_requirements(
+            keypoints, clothing_type, joint_angles
+        )
+        
+        # 6. 종합 점수 계산
+        weights = config['weights']
+        
+        # 기본 점수들
+        torso_score = part_scores.get('torso', {}).get('combined', 0.0)
+        arms_score = part_scores.get('arms', {}).get('combined', 0.0)
+        legs_score = part_scores.get('legs', {}).get('combined', 0.0)
+        
+        # 가중평균
+        pose_score = (
+            torso_score * weights.get('torso', 0.4) +
+            arms_score * weights.get('arms', 0.3) +
+            legs_score * weights.get('legs', 0.2) +
+            posture_stability * weights.get('posture', 0.1) +
+            clothing_specific_score * 0.1
+        )
+        
+        # 7. 적합성 판단
+        min_visibility = config.get('min_visibility', 0.7)
+        suitable_for_fitting = (
+            pose_score >= 0.7 and 
+            critical_visibility >= min_visibility and
+            angle_score >= 0.6
+        )
+        
+        # 8. 이슈 및 권장사항 생성
+        issues = []
+        recommendations = []
+        
+        if not suitable_for_fitting:
+            if critical_visibility < min_visibility:
+                issues.append(f'{clothing_type} 피팅에 필요한 신체 부위가 충분히 보이지 않습니다')
+                recommendations.append('핵심 신체 부위가 모두 보이도록 자세를 조정해 주세요')
+            
+            if pose_score < 0.7:
+                issues.append(f'{clothing_type} 착용 시뮬레이션에 적합하지 않은 포즈입니다')
+                recommendations.append('더 자연스럽고 정면을 향한 자세로 촬영해 주세요')
+            
+            if missing_angles:
+                issues.append(f'필요한 관절 각도 정보가 부족합니다: {", ".join(missing_angles)}')
+                recommendations.append('관절 부위가 명확히 보이도록 자세를 조정해 주세요')
+        
+        # 9. 세부 분석 결과
+        detailed_analysis_result = {
+            'critical_visibility': critical_visibility,
+            'part_scores': part_scores,
+            'joint_angles': joint_angles,
+            'angle_score': angle_score,
+            'missing_angles': missing_angles,
+            'posture_stability': posture_stability,
+            'clothing_specific_score': clothing_specific_score,
+            'min_visibility_threshold': min_visibility,
+            'clothing_requirements': config
+        } if detailed_analysis else {}
+        
+        return {
+            'suitable_for_fitting': suitable_for_fitting,
+            'issues': issues,
+            'recommendations': recommendations,
+            'pose_score': pose_score,
+            'clothing_type': clothing_type,
+            'detailed_analysis': detailed_analysis_result,
+            'quality_metrics': {
+                'overall_score': pose_score,
+                'critical_visibility': critical_visibility,
+                'angle_completeness': angle_score,
+                'posture_stability': posture_stability,
+                'clothing_compatibility': clothing_specific_score
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"고급 의류별 포즈 분석 실패: {e}")
+        return {
+            'suitable_for_fitting': False,
+            'issues': ["분석 중 오류가 발생했습니다"],
+            'recommendations': ["다시 시도해 주세요"],
+            'pose_score': 0.0,
+            'error': str(e)
+        }
+
+def analyze_posture_stability(keypoints: List[List[float]]) -> float:
+    """자세 안정성 분석"""
+    try:
+        if len(keypoints) < 17:
+            return 0.0
+        
+        stability_score = 1.0
+        
+        # 1. 중심 안정성 (어깨와 엉덩이 중점의 수직 정렬)
+        if all(keypoints[i][2] > 0.3 for i in [5, 6, 11, 12]):
+            shoulder_center_x = (keypoints[5][0] + keypoints[6][0]) / 2
+            hip_center_x = (keypoints[11][0] + keypoints[12][0]) / 2
+            
+            lateral_offset = abs(shoulder_center_x - hip_center_x)
+            body_width = abs(keypoints[5][0] - keypoints[6][0])
+            
+            if body_width > 0:
+                offset_ratio = lateral_offset / body_width
+                center_stability = max(0.0, 1.0 - offset_ratio)
+                stability_score *= center_stability
+        
+        # 2. 발 지지 안정성
+        foot_support = 0.0
+        if keypoints[15][2] > 0.3:  # 왼발목
+            foot_support += 0.5
+        if keypoints[16][2] > 0.3:  # 오른발목
+            foot_support += 0.5
+        
+        stability_score *= foot_support
+        
+        # 3. 균형 안정성 (좌우 대칭)
+        balance_score = 1.0
+        
+        # 어깨 균형
+        if keypoints[5][2] > 0.3 and keypoints[6][2] > 0.3:
+            shoulder_tilt = abs(keypoints[5][1] - keypoints[6][1])
+            shoulder_width = abs(keypoints[5][0] - keypoints[6][0])
+            if shoulder_width > 0:
+                shoulder_balance = max(0.0, 1.0 - (shoulder_tilt / shoulder_width))
+                balance_score *= shoulder_balance
+        
+        stability_score *= balance_score
+        
+        return min(1.0, max(0.0, stability_score))
+        
+    except Exception:
+        return 0.0
+
+def analyze_clothing_specific_requirements(
+    keypoints: List[List[float]], 
+    clothing_type: str, 
+    joint_angles: Dict[str, float]
+) -> float:
+    """의류별 특화 요구사항 분석"""
+    try:
+        specific_score = 1.0
+        
+        if clothing_type == 'shirt':
+            # 셔츠: 팔 자세가 중요
+            if 'left_elbow' in joint_angles and 'right_elbow' in joint_angles:
+                # 팔꿈치가 너무 굽혀져 있으면 감점
+                avg_elbow_angle = (joint_angles['left_elbow'] + joint_angles['right_elbow']) / 2
+                if avg_elbow_angle < 120:  # 너무 많이 굽혀짐
+                    specific_score *= 0.8
+            
+            # 어깨선이 수평인지 확인
+            if keypoints[5][2] > 0.3 and keypoints[6][2] > 0.3:
+                shoulder_tilt = abs(keypoints[5][1] - keypoints[6][1])
+                shoulder_width = abs(keypoints[5][0] - keypoints[6][0])
+                if shoulder_width > 0 and (shoulder_tilt / shoulder_width) > 0.1:
+                    specific_score *= 0.9
+        
+        elif clothing_type == 'dress':
+            # 드레스: 전체적인 자세와 실루엣이 중요
+            if 'spine_curvature' in joint_angles:
+                # 척추가 너무 굽어있으면 감점
+                if joint_angles['spine_curvature'] > 20:
+                    specific_score *= 0.8
+            
+            # 다리가 너무 벌어져 있으면 감점
+            if all(keypoints[i][2] > 0.3 for i in [15, 16]):
+                foot_distance = abs(keypoints[15][0] - keypoints[16][0])
+                hip_width = abs(keypoints[11][0] - keypoints[12][0]) if keypoints[11][2] > 0.3 and keypoints[12][2] > 0.3 else 100
+                if hip_width > 0 and (foot_distance / hip_width) > 1.5:
+                    specific_score *= 0.9
+        
+        elif clothing_type == 'pants':
+            # 바지: 다리 자세와 힙 라인이 중요
+            if 'left_knee' in joint_angles and 'right_knee' in joint_angles:
+                # 무릎이 너무 굽혀져 있으면 감점
+                avg_knee_angle = (joint_angles['left_knee'] + joint_angles['right_knee']) / 2
+                if avg_knee_angle < 150:  # 너무 많이 굽혀짐
+                    specific_score *= 0.8
+            
+            # 엉덩이 라인이 수평인지 확인
+            if keypoints[11][2] > 0.3 and keypoints[12][2] > 0.3:
+                hip_tilt = abs(keypoints[11][1] - keypoints[12][1])
+                hip_width = abs(keypoints[11][0] - keypoints[12][0])
+                if hip_width > 0 and (hip_tilt / hip_width) > 0.1:
+                    specific_score *= 0.9
+        
+        elif clothing_type == 'jacket':
+            # 재킷: 어깨와 팔의 자세가 매우 중요
+            if 'left_shoulder' in joint_angles and 'right_shoulder' in joint_angles:
+                # 어깨 각도가 너무 극단적이면 감점
+                for shoulder_angle in [joint_angles['left_shoulder'], joint_angles['right_shoulder']]:
+                    if shoulder_angle < 30 or shoulder_angle > 150:
+                        specific_score *= 0.8
+                        break
+        
+        return min(1.0, max(0.0, specific_score))
+        
+    except Exception:
+        return 0.5  # 분석 실패 시 중간 점수
+
 def analyze_pose_for_clothing(
     keypoints: List[List[float]],
     clothing_type: str = "default",
     confidence_threshold: float = 0.5
 ) -> Dict[str, Any]:
-    """의류별 포즈 적합성 분석"""
+    """의류별 포즈 적합성 분석 (기본 버전)"""
     try:
         if not keypoints:
             return {
@@ -2684,10 +4236,11 @@ def analyze_pose_for_clothing(
         
         # 의류별 가중치
         clothing_weights = {
-            'shirt': {'arms': 0.4, 'torso': 0.4, 'visibility': 0.2},
-            'dress': {'torso': 0.5, 'arms': 0.3, 'legs': 0.2},
-            'pants': {'legs': 0.6, 'torso': 0.3, 'visibility': 0.1},
-            'jacket': {'arms': 0.5, 'torso': 0.4, 'visibility': 0.1},
+            'shirt': {'arms': 0.4, 'torso': 0.4, 'posture': 0.2},
+            'dress': {'torso': 0.5, 'arms': 0.2, 'legs': 0.2, 'posture': 0.1},
+            'pants': {'legs': 0.6, 'torso': 0.3, 'posture': 0.1},
+            'jacket': {'arms': 0.4, 'torso': 0.4, 'shoulders': 0.2},
+            'suit': {'torso': 0.3, 'arms': 0.3, 'legs': 0.2, 'posture': 0.2},
             'default': {'torso': 0.4, 'arms': 0.3, 'legs': 0.2, 'visibility': 0.1}
         }
         
@@ -2710,23 +4263,26 @@ def analyze_pose_for_clothing(
             visibility_ratio = visible_count / len(part_indices)
             avg_confidence = total_confidence / visible_count
             
-            return visibility_ratio * avg_confidence
+            return (visibility_ratio * 0.6 + avg_confidence * 0.4)
         
         # COCO 17 부위별 인덱스
-        torso_indices = [5, 6, 11, 12]  # 어깨, 엉덩이
-        arm_indices = [5, 6, 7, 8, 9, 10]  # 어깨, 팔꿈치, 손목
-        leg_indices = [11, 12, 13, 14, 15, 16]  # 엉덩이, 무릎, 발목
+        body_parts = {
+            'torso': [5, 6, 11, 12],  # 어깨들, 엉덩이들
+            'arms': [5, 6, 7, 8, 9, 10],  # 어깨, 팔꿈치, 손목
+            'legs': [11, 12, 13, 14, 15, 16],  # 엉덩이, 무릎, 발목
+            'shoulders': [5, 6],  # 어깨
+            'visibility': list(range(17))  # 전체 키포인트
+        }
         
-        torso_score = calculate_body_part_score(torso_indices)
-        arms_score = calculate_body_part_score(arm_indices)
-        legs_score = calculate_body_part_score(leg_indices)
+        # 각 부위 점수 계산
+        part_scores = {}
+        for part_name, indices in body_parts.items():
+            part_scores[part_name] = calculate_body_part_score(indices)
         
-        # 포즈 점수
-        pose_score = (
-            torso_score * weights.get('torso', 0.4) +
-            arms_score * weights.get('arms', 0.3) +
-            legs_score * weights.get('legs', 0.2) +
-            weights.get('visibility', 0.1) * min(1.0, (torso_score + arms_score + legs_score) / 3)
+        # 종합 점수 계산
+        pose_score = sum(
+            part_scores.get(part, 0.0) * weight 
+            for part, weight in weights.items()
         )
         
         # 적합성 판단
@@ -2736,34 +4292,39 @@ def analyze_pose_for_clothing(
         issues = []
         recommendations = []
         
-        if pose_score < 0.7:
-            issues.append(f'{clothing_type} 착용에 적합하지 않은 포즈')
-            recommendations.append('더 명확한 포즈로 다시 촬영해 주세요')
-        
-        if torso_score < 0.5:
-            issues.append('상체가 불분명합니다')
-            recommendations.append('상체 전체가 보이도록 촬영해 주세요')
+        if not suitable_for_fitting:
+            issues.append(f'{clothing_type} 착용 시뮬레이션에 적합하지 않은 포즈입니다')
+            recommendations.append('더 자연스럽고 정면을 향한 자세로 촬영해 주세요')
+            
+            if part_scores.get('torso', 0.0) < 0.6:
+                issues.append('상체가 충분히 보이지 않습니다')
+                recommendations.append('상체가 명확히 보이도록 자세를 조정해 주세요')
+            
+            if part_scores.get('arms', 0.0) < 0.6 and clothing_type in ['shirt', 'jacket']:
+                issues.append('팔 부위가 충분히 보이지 않습니다')
+                recommendations.append('팔이 명확히 보이도록 자세를 조정해 주세요')
+            
+            if part_scores.get('legs', 0.0) < 0.6 and clothing_type in ['pants', 'dress']:
+                issues.append('다리 부위가 충분히 보이지 않습니다')
+                recommendations.append('다리가 명확히 보이도록 자세를 조정해 주세요')
         
         return {
             'suitable_for_fitting': suitable_for_fitting,
             'issues': issues,
             'recommendations': recommendations,
             'pose_score': pose_score,
-            'detailed_scores': {
-                'torso': torso_score,
-                'arms': arms_score,
-                'legs': legs_score
-            },
-            'clothing_type': clothing_type
+            'clothing_type': clothing_type,
+            'part_scores': part_scores
         }
         
     except Exception as e:
         logger.error(f"의류별 포즈 분석 실패: {e}")
         return {
             'suitable_for_fitting': False,
-            'issues': ["분석 실패"],
+            'issues': ["분석 중 오류가 발생했습니다"],
             'recommendations': ["다시 시도해 주세요"],
-            'pose_score': 0.0
+            'pose_score': 0.0,
+            'error': str(e)
         }
 
 def convert_coco17_to_openpose18(coco_keypoints: List[List[float]]) -> List[List[float]]:

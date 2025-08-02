@@ -645,7 +645,6 @@ class SelfCorrectionModule(nn.Module):
             'edge_map': edge_map,
             'correction_magnitude': torch.abs(weighted_correction).mean()
         }
-
 class ProgressiveParsingModule(nn.Module):
     """Progressive Parsing - 단계별 정제 완전 구현"""
     
@@ -1287,7 +1286,6 @@ class ResNetBottleneck(nn.Module):
         out = self.relu(out)
         
         return out
-
 class ResNet101Backbone(nn.Module):
     """ResNet-101 백본 완전 구현"""
     
@@ -1741,7 +1739,6 @@ class U2NetForParsing(nn.Module):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return {'parsing': decoded}
-
 # ==============================================
 # 🔥 고급 후처리 알고리즘들 (완전 구현)
 # ==============================================
@@ -2288,7 +2285,6 @@ if BaseStepMixin:
             model.to(self.device)
             model.eval()
             return model
-        
         # ==============================================
         # 🔥 핵심: _run_ai_inference() 메서드 (BaseStepMixin 요구사항)
         # ==============================================
@@ -2906,7 +2902,6 @@ if BaseStepMixin:
             except Exception as e:
                 self.logger.warning(f"⚠️ 컨텍스트 인식 파싱 실패: {e}")
                 return parsing_pred
-        
         def _apply_multi_modal_fusion(self, boundary_refined, context_enhanced, progressive_results):
             """🔥 멀티모달 융합 (복잡한 AI 알고리즘)"""
             try:
@@ -3455,7 +3450,6 @@ if BaseStepMixin:
                 
             except Exception as e:
                 return torch.tensor(0.5)
-
         def _create_model_from_checkpoint(self, checkpoint_data, device):
             """🔥 실제 Graphonomy 체크포인트에서 모델 생성 (논문 기반)"""
             try:
@@ -3886,7 +3880,6 @@ if BaseStepMixin:
                 self.logger.error(f"❌ 고급 Graphonomy 추론 실패: {e}")
                 raise
 
-
         def _create_dynamic_model_from_checkpoint(self, checkpoint: Dict[str, Any], checkpoint_path: str) -> nn.Module:
             """체크포인트 구조에 맞춰 동적으로 모델 생성"""
             try:
@@ -3895,7 +3888,40 @@ if BaseStepMixin:
                 # 체크포인트 키 분석
                 checkpoint_keys = list(checkpoint.keys())
                 self.logger.debug(f"📊 체크포인트 키 개수: {len(checkpoint_keys)}")
-                self.logger.debug(f"🔍 체크포인트 키 샘플 (처음 20개): {checkpoint_keys[:20]}")
+                self.logger.debug(f"�� 체크포인트 키 샘플 (처음 20개): {checkpoint_keys[:20]}")
+                
+                # �� 체크포인트 구조 분석 및 키 변환 (시작 부분에서 처리)
+                if len(checkpoint_keys) == 1:
+                    self.logger.debug("🔍 단일 키 체크포인트 구조 분석:")
+                    single_key = checkpoint_keys[0]
+                    single_value = checkpoint[single_key]
+                    self.logger.debug(f"  키: {single_key}")
+                    self.logger.debug(f"  값 타입: {type(single_value)}")
+                    if hasattr(single_value, 'shape'):
+                        self.logger.debug(f"  값 형태: {single_value.shape}")
+                    if hasattr(single_value, 'keys'):
+                        self.logger.debug(f"  내부 키들: {list(single_value.keys())[:10]}")
+                        
+                        # �� module. 접두사 제거를 위한 키 변환
+                        if single_key == 'state_dict':
+                            self.logger.debug("�� module. 접두사 제거를 위한 키 변환 시작")
+                            # 원본 체크포인트를 복사
+                            original_checkpoint = single_value
+                            # module. 접두사 제거
+                            cleaned_checkpoint = {}
+                            for key, value in original_checkpoint.items():
+                                if key.startswith('module.'):
+                                    cleaned_key = key[7:]  # 'module.' 제거
+                                    cleaned_checkpoint[cleaned_key] = value
+                                    self.logger.debug(f"  변환: {key} -> {cleaned_key}")
+                                else:
+                                    cleaned_checkpoint[key] = value
+                            
+                            # 체크포인트 교체 및 키 재설정
+                            checkpoint = cleaned_checkpoint
+                            checkpoint_keys = list(checkpoint.keys())  # 🔥 키 재설정
+                            self.logger.debug(f"✅ 키 변환 완료: {len(cleaned_checkpoint)}개 키")
+                            self.logger.debug(f"🔍 변환된 키 샘플: {list(cleaned_checkpoint.keys())[:5]}")
                 
                 # 입력 채널 수 추정
                 input_channels = 3  # 기본값
@@ -3904,7 +3930,7 @@ if BaseStepMixin:
                         weight_shape = checkpoint[key].shape
                         if len(weight_shape) == 4:
                             input_channels = weight_shape[1]
-                            self.logger.debug(f"🔍 입력 채널 수 감지: {input_channels}")
+                            self.logger.debug(f"�� 입력 채널 수 감지: {input_channels}")
                             break
                 
                 # 출력 클래스 수 추정 (체크포인트 기반)
@@ -3914,13 +3940,13 @@ if BaseStepMixin:
                         weight_shape = checkpoint[key].shape
                         if len(weight_shape) == 4:
                             num_classes = weight_shape[0]
-                            self.logger.debug(f"🔍 출력 클래스 수 감지 (classifier.weight): {num_classes}")
+                            self.logger.debug(f"�� 출력 클래스 수 감지 (classifier.weight): {num_classes}")
                             break
                     elif 'classifier' in key and 'bias' in key:
                         bias_shape = checkpoint[key].shape
                         if len(bias_shape) == 1:
                             num_classes = bias_shape[0]
-                            self.logger.debug(f"🔍 출력 클래스 수 감지 (classifier.bias): {num_classes}")
+                            self.logger.debug(f"�� 출력 클래스 수 감지 (classifier.bias): {num_classes}")
                             break
                     elif 'fushion.3.weight' in key:  # SCHP 모델의 fusion 레이어
                         weight_shape = checkpoint[key].shape
@@ -3950,7 +3976,7 @@ if BaseStepMixin:
                 
                 # 🔥 체크포인트 가중치 크기 분석
                 self.logger.debug("🔍 체크포인트 가중치 크기 분석:")
-                for key in checkpoint_keys:  # 모든 키 분석 (1개뿐이므로)
+                for key in checkpoint_keys:
                     if 'weight' in key:
                         weight_shape = checkpoint[key].shape
                         self.logger.debug(f"  {key}: {weight_shape}")
@@ -3958,38 +3984,6 @@ if BaseStepMixin:
                         # weight가 아닌 키도 분석
                         value_shape = checkpoint[key].shape if hasattr(checkpoint[key], 'shape') else type(checkpoint[key])
                         self.logger.debug(f"  {key}: {value_shape}")
-                
-                # 🔥 체크포인트 구조 분석
-                if len(checkpoint_keys) == 1:
-                    self.logger.debug("🔍 단일 키 체크포인트 구조 분석:")
-                    single_key = checkpoint_keys[0]
-                    single_value = checkpoint[single_key]
-                    self.logger.debug(f"  키: {single_key}")
-                    self.logger.debug(f"  값 타입: {type(single_value)}")
-                    if hasattr(single_value, 'shape'):
-                        self.logger.debug(f"  값 형태: {single_value.shape}")
-                    if hasattr(single_value, 'keys'):
-                        self.logger.debug(f"  내부 키들: {list(single_value.keys())[:10]}")
-                        
-                        # 🔥 module. 접두사 제거를 위한 키 변환
-                        if single_key == 'state_dict':
-                            self.logger.debug("🔧 module. 접두사 제거를 위한 키 변환 시작")
-                            # 원본 체크포인트를 복사
-                            original_checkpoint = single_value
-                            # module. 접두사 제거
-                            cleaned_checkpoint = {}
-                            for key, value in original_checkpoint.items():
-                                if key.startswith('module.'):
-                                    cleaned_key = key[7:]  # 'module.' 제거
-                                    cleaned_checkpoint[cleaned_key] = value
-                                    self.logger.debug(f"  변환: {key} -> {cleaned_key}")
-                                else:
-                                    cleaned_checkpoint[key] = value
-                            
-                            # 체크포인트 교체
-                            checkpoint = cleaned_checkpoint
-                            self.logger.debug(f"✅ 키 변환 완료: {len(cleaned_checkpoint)}개 키")
-                            self.logger.debug(f"🔍 변환된 키 샘플: {list(cleaned_checkpoint.keys())[:5]}")
                 
                 # 체크포인트 타입별 모델 생성
                 def create_model_for_checkpoint(checkpoint, checkpoint_path):
@@ -4063,17 +4057,17 @@ if BaseStepMixin:
                                     nn.BatchNorm2d(2048)
                                 )
                                 
-                                # Context Encoding Module (체크포인트와 일치)
+                                # Context Encoding Module (체크포인트와 정확히 일치)
                                 self.context_encoding = nn.ModuleDict({
-                                    'stages': nn.ModuleList([
+                                    "stages": nn.ModuleList([
                                         nn.Sequential(
                                             nn.Conv2d(2048, 512, kernel_size=1, stride=1, padding=0),  # 체크포인트: [512, 2048, 1, 1]
-                                            nn.BatchNorm2d(512)
+                                            nn.BatchNorm2d(512, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)  # 체크포인트: [512]
                                         ) for _ in range(4)
                                     ]),
-                                    'bottleneck': nn.Sequential(
-                                        nn.Conv2d(2048, 512, kernel_size=3, stride=1, padding=1),  # 체크포인트: [512, 4096, 3, 3]
-                                        nn.BatchNorm2d(512)
+                                    "bottleneck": nn.Sequential(
+                                        nn.Conv2d(4096, 512, kernel_size=3, stride=1, padding=1),  # 체크포인트: [512, 4096, 3, 3]
+                                        nn.BatchNorm2d(512, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
                                     )
                                 })
                                 
@@ -4114,14 +4108,11 @@ if BaseStepMixin:
                                 
                                 # Fusion Module (체크포인트와 일치)
                                 self.fushion = nn.Sequential(
-                                    nn.Conv2d(num_classes + 1, 256, kernel_size=3, padding=1),  # 체크포인트: [256, 19, 3, 3]
+                                    nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 1024, 1, 1]
                                     nn.BatchNorm2d(256),
                                     nn.ReLU(inplace=True),
                                     nn.Conv2d(256, num_classes, kernel_size=1)  # 체크포인트: [18, 256, 1, 1]
                                 )
-                                
-                                # Classifier (최종 출력)
-                                self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
                             
                             def forward(self, x):
                                 try:
@@ -4188,7 +4179,7 @@ if BaseStepMixin:
                                     x = self.layer4(x)
                                     
                                     context_feat = self.context_encoding['bottleneck'](x)
-                                    output = self.classifier(context_feat)
+                                    output = self.fushion(context_feat)
                                     
                                     return {
                                         'parsing': output,
@@ -4208,378 +4199,163 @@ if BaseStepMixin:
                                     
                                     # 체크포인트 로딩
                                     checkpoint = torch.load(checkpoint_path, map_location=map_location)
-                                    self.logger.info(f"✅ 체크포인트 로딩 완료")
                                     
                                     # 체크포인트 구조 분석
-                                    if 'state_dict' in checkpoint:
-                                        state_dict = checkpoint['state_dict']
-                                        self.logger.info(f"📊 state_dict 키 개수: {len(state_dict.keys())}")
-                                    else:
-                                        state_dict = checkpoint
-                                        self.logger.info(f"📊 직접 state_dict 키 개수: {len(state_dict.keys())}")
+                                    checkpoint_keys = list(checkpoint.keys())
+                                    self.logger.debug(f"📊 체크포인트 키 개수: {len(checkpoint_keys)}")
                                     
-                                    # 체크포인트 키 분석
-                                    checkpoint_keys = list(state_dict.keys())
-                                    self.logger.info(f"🔍 체크포인트 키 샘플: {checkpoint_keys[:10]}")
+                                    # 단일 키 체크포인트 처리
+                                    if len(checkpoint_keys) == 1:
+                                        single_key = checkpoint_keys[0]
+                                        if single_key == 'state_dict':
+                                            checkpoint = checkpoint[single_key]
+                                            self.logger.debug("✅ state_dict 키에서 체크포인트 추출")
                                     
-                                    # 모델 state_dict 가져오기
-                                    model_state_dict = self.state_dict()
-                                    model_keys = list(model_state_dict.keys())
-                                    self.logger.info(f"🔍 모델 키 샘플: {model_keys[:10]}")
-                                    
-                                    # 키 매핑 생성
-                                    key_mapping = self._create_key_mapping(checkpoint_keys, model_keys)
-                                    
-                                    # 매핑된 state_dict 생성
-                                    mapped_state_dict = {}
-                                    mapped_count = 0
-                                    
-                                    for checkpoint_key, model_key in key_mapping.items():
-                                        if checkpoint_key in state_dict and model_key in model_state_dict:
-                                            # 텐서 크기 확인
-                                            checkpoint_tensor = state_dict[checkpoint_key]
-                                            model_tensor = model_state_dict[model_key]
-                                            
-                                            if checkpoint_tensor.shape == model_tensor.shape:
-                                                mapped_state_dict[model_key] = checkpoint_tensor
-                                                mapped_count += 1
-                                                self.logger.debug(f"✅ 매핑 성공: {checkpoint_key} -> {model_key}")
-                                            else:
-                                                self.logger.warning(f"⚠️ 크기 불일치: {checkpoint_key} ({checkpoint_tensor.shape}) != {model_key} ({model_tensor.shape})")
+                                    # module. 접두사 제거
+                                    cleaned_checkpoint = {}
+                                    for key, value in checkpoint.items():
+                                        if key.startswith('module.'):
+                                            cleaned_key = key[7:]
+                                            cleaned_checkpoint[cleaned_key] = value
                                         else:
-                                            self.logger.debug(f"⚠️ 키 누락: {checkpoint_key} 또는 {model_key}")
+                                            cleaned_checkpoint[key] = value
                                     
-                                    # 매핑된 가중치 로딩
-                                    if mapped_state_dict:
-                                        self.load_state_dict(mapped_state_dict, strict=False)
-                                        self.logger.info(f"✅ 체크포인트 매핑 완료: {mapped_count}/{len(model_keys)} 레이어")
-                                        
-                                        self.checkpoint_loaded = True
-                                        self.checkpoint_path = checkpoint_path
-                                        return True
-                                    else:
-                                        self.logger.error(f"❌ 매핑된 가중치가 없음")
-                                        return False
-                                        
+                                    # 모델에 체크포인트 로드
+                                    missing_keys, unexpected_keys = self.load_state_dict(cleaned_checkpoint, strict=False)
+                                    
+                                    if missing_keys:
+                                        self.logger.warning(f"⚠️ 누락된 키: {missing_keys[:5]}...")
+                                    if unexpected_keys:
+                                        self.logger.warning(f"⚠️ 예상치 못한 키: {unexpected_keys[:5]}...")
+                                    
+                                    self.checkpoint_loaded = True
+                                    self.checkpoint_path = checkpoint_path
+                                    self.logger.info(f"✅ 체크포인트 로딩 완료: {checkpoint_path}")
+                                    return True
+                                    
                                 except Exception as e:
                                     self.logger.error(f"❌ 체크포인트 로딩 실패: {e}")
                                     return False
-                            
-                            def _create_key_mapping(self, checkpoint_keys: list, model_keys: list) -> Dict[str, str]:
-                                """체크포인트 키와 모델 키 간의 매핑 생성"""
-                                mapping = {}
-                                
-                                # 직접 매핑 규칙들
-                                direct_mappings = {
-                                    # 초기 레이어들 (module. 접두사 제거)
-                                    'module.conv1.weight': 'conv1.weight',
-                                    'module.conv1.bias': 'conv1.bias',
-                                    'module.bn1.weight': 'bn1.weight',
-                                    'module.bn1.bias': 'bn1.bias',
-                                    'module.bn1.running_mean': 'bn1.running_mean',
-                                    'module.bn1.running_var': 'bn1.running_var',
-                                    
-                                    # Layer 1 (ResNet bottleneck) - module. 접두사 제거
-                                    'module.layer1.0.conv1.weight': 'layer1.0.conv1.weight',
-                                    'module.layer1.0.conv1.bias': 'layer1.0.conv1.bias',
-                                    'module.layer1.0.bn1.weight': 'layer1.0.bn1.weight',
-                                    'module.layer1.0.bn1.bias': 'layer1.0.bn1.bias',
-                                    'module.layer1.0.bn1.running_mean': 'layer1.0.bn1.running_mean',
-                                    'module.layer1.0.bn1.running_var': 'layer1.0.bn1.running_var',
-                                    
-                                    'layer1.0.conv2.weight': 'layer1.0.conv2.weight',
-                                    'layer1.0.conv2.bias': 'layer1.0.conv2.bias',
-                                    'layer1.0.bn2.weight': 'layer1.0.bn2.weight',
-                                    'layer1.0.bn2.bias': 'layer1.0.bn2.bias',
-                                    'layer1.0.bn2.running_mean': 'layer1.0.bn2.running_mean',
-                                    'layer1.0.bn2.running_var': 'layer1.0.bn2.running_var',
-                                    
-                                    'layer1.0.conv3.weight': 'layer1.0.conv3.weight',
-                                    'layer1.0.conv3.bias': 'layer1.0.conv3.bias',
-                                    'layer1.0.bn3.weight': 'layer1.0.bn3.weight',
-                                    'layer1.0.bn3.bias': 'layer1.0.bn3.bias',
-                                    'layer1.0.bn3.running_mean': 'layer1.0.bn3.running_mean',
-                                    'layer1.0.bn3.running_var': 'layer1.0.bn3.running_var',
-                                    
-                                    # Context Encoding
-                                    'context_encoding.bottleneck.0.weight': 'context_encoding.bottleneck.0.weight',
-                                    'context_encoding.bottleneck.0.bias': 'context_encoding.bottleneck.0.bias',
-                                    'context_encoding.bottleneck.1.weight': 'context_encoding.bottleneck.1.weight',
-                                    'context_encoding.bottleneck.1.bias': 'context_encoding.bottleneck.1.bias',
-                                    'context_encoding.bottleneck.1.running_mean': 'context_encoding.bottleneck.1.running_mean',
-                                    'context_encoding.bottleneck.1.running_var': 'context_encoding.bottleneck.1.running_var',
-                                    
-                                    # Edge Detection
-                                    'edge.conv1.0.weight': 'edge.0.weight',
-                                    'edge.conv1.0.bias': 'edge.0.bias',
-                                    'edge.conv1.1.weight': 'edge.1.weight',
-                                    'edge.conv1.1.bias': 'edge.1.bias',
-                                    'edge.conv1.1.running_mean': 'edge.1.running_mean',
-                                    'edge.conv1.1.running_var': 'edge.1.running_var',
-                                    
-                                    # Decoder
-                                    'decoder.conv1.0.weight': 'decoder.0.weight',
-                                    'decoder.conv1.0.bias': 'decoder.0.bias',
-                                    'decoder.conv1.1.weight': 'decoder.1.weight',
-                                    'decoder.conv1.1.bias': 'decoder.1.bias',
-                                    'decoder.conv1.1.running_mean': 'decoder.1.running_mean',
-                                    'decoder.conv1.1.running_var': 'decoder.1.running_var',
-                                    
-                                    # Fusion
-                                    'fushion.0.weight': 'fushion.0.weight',
-                                    'fushion.0.bias': 'fushion.0.bias',
-                                    'fushion.1.weight': 'fushion.1.weight',
-                                    'fushion.1.bias': 'fushion.1.bias',
-                                    'fushion.1.running_mean': 'fushion.1.running_mean',
-                                    'fushion.1.running_var': 'fushion.1.running_var',
-                                }
-                                
-                                # module. 접두사 자동 제거 매핑
-                                self.logger.info(f"🔍 매핑 시작: 체크포인트 키 {len(checkpoint_keys)}개, 모델 키 {len(model_keys)}개")
-                                
-                                # 디버깅을 위해 몇 개 샘플 출력
-                                self.logger.info(f"🔍 체크포인트 키 샘플 (처음 5개): {checkpoint_keys[:5]}")
-                                self.logger.info(f"🔍 모델 키 샘플 (처음 5개): {model_keys[:5]}")
-                                
-                                mapped_count = 0
-                                for checkpoint_key in checkpoint_keys:
-                                    # module. 접두사 제거
-                                    if checkpoint_key.startswith('module.'):
-                                        model_key = checkpoint_key[7:]  # 'module.' 제거
-                                        if model_key in model_keys:
-                                            mapping[checkpoint_key] = model_key
-                                            mapped_count += 1
-                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
-                                                self.logger.info(f"✅ module. 제거 매핑: {checkpoint_key} -> {model_key}")
-                                            continue
-                                        else:
-                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
-                                                self.logger.debug(f"⚠️ module. 제거 후 모델 키 없음: {checkpoint_key} -> {model_key}")
-                                    
-                                    # 직접 매핑 적용
-                                    if checkpoint_key in direct_mappings:
-                                        model_key = direct_mappings[checkpoint_key]
-                                        if model_key in model_keys:
-                                            mapping[checkpoint_key] = model_key
-                                            mapped_count += 1
-                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
-                                                self.logger.info(f"✅ 직접 매핑: {checkpoint_key} -> {model_key}")
-                                            continue
-                                        else:
-                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
-                                                self.logger.debug(f"⚠️ 직접 매핑 후 모델 키 없음: {checkpoint_key} -> {model_key}")
-                                
-                                self.logger.info(f"📊 매핑 결과: {len(mapping)}개 키 매핑됨")
-                                if mapping:
-                                    self.logger.info(f"🔍 매핑된 키 샘플: {list(mapping.items())[:5]}")
-                                else:
-                                    self.logger.warning("⚠️ 매핑된 키가 없습니다!")
-                                
-                                # 패턴 매핑 (더 유연한 매핑)
-                                for checkpoint_key in checkpoint_keys:
-                                    if checkpoint_key in mapping:
-                                        continue
-                                        
-                                    # 패턴 기반 매핑
-                                    for model_key in model_keys:
-                                        if self._keys_match_pattern(checkpoint_key, model_key):
-                                            mapping[checkpoint_key] = model_key
-                                            break
-                                
-                                return mapping
-                            
-                            def _keys_match_pattern(self, checkpoint_key: str, model_key: str) -> bool:
-                                """키 패턴 매칭"""
-                                # 간단한 패턴 매칭 규칙들
-                                patterns = [
-                                    # conv -> conv
-                                    (r'conv(\d+)\.weight', r'conv\1\.weight'),
-                                    (r'conv(\d+)\.bias', r'conv\1\.bias'),
-                                    
-                                    # bn -> bn
-                                    (r'bn(\d+)\.weight', r'bn\1\.weight'),
-                                    (r'bn(\d+)\.bias', r'bn\1\.bias'),
-                                    (r'bn(\d+)\.running_mean', r'bn\1\.running_mean'),
-                                    (r'bn(\d+)\.running_var', r'bn\1\.running_var'),
-                                    
-                                    # layer -> layer
-                                    (r'layer(\d+)\.(\d+)\.conv(\d+)\.weight', r'layer\1\.\2\.conv\3\.weight'),
-                                    (r'layer(\d+)\.(\d+)\.conv(\d+)\.bias', r'layer\1\.\2\.conv\3\.bias'),
-                                    (r'layer(\d+)\.(\d+)\.bn(\d+)\.weight', r'layer\1\.\2\.bn\3\.weight'),
-                                    (r'layer(\d+)\.(\d+)\.bn(\d+)\.bias', r'layer\1\.\2\.bn\3\.bias'),
-                                ]
-                                
-                                import re
-                                for pattern, replacement in patterns:
-                                    if re.match(pattern, checkpoint_key) and re.match(replacement, model_key):
-                                        return True
-                                
-                                return False
-                            
-                            def get_checkpoint_status(self) -> Dict[str, Any]:
-                                """체크포인트 로딩 상태 반환"""
-                                return {
-                                    'checkpoint_loaded': self.checkpoint_loaded,
-                                    'checkpoint_path': self.checkpoint_path,
-                                    'model_parameters': sum(p.numel() for p in self.parameters()),
-                                    'trainable_parameters': sum(p.numel() for p in self.parameters() if p.requires_grad)
-                                }
-                        return SCHPModel(num_classes)
+                        
+                        # SCHP 모델 인스턴스 생성
+                        model = SCHPModel(num_classes=num_classes)
+                        
+                        # 체크포인트 로드
+                        if model.load_checkpoint(checkpoint_path):
+                            self.logger.info(f"✅ SCHP 모델 생성 및 체크포인트 로딩 완료")
+                            return model
+                        else:
+                            self.logger.warning(f"⚠️ 체크포인트 로딩 실패, 기본 모델 반환")
+                            return model
                     
-                    # SegFormer 모델
-                    elif 'segformer' in checkpoint_path.lower():
-                        class SegFormerModel(nn.Module):
-                            def __init__(self, num_classes=20):
+                    # Graphonomy 모델
+                    elif 'graphonomy' in checkpoint_path.lower():
+                        # Graphonomy 모델 생성 로직
+                        class GraphonomyModel(nn.Module):
+                            def __init__(self, num_classes=num_classes):
                                 super().__init__()
-                                # SegFormer 아키텍처
-                                self.encoder = nn.Sequential(
-                                    nn.Conv2d(3, 64, kernel_size=3, padding=1),
+                                # Graphonomy 모델 구조
+                                self.backbone = nn.Sequential(
+                                    nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
                                     nn.BatchNorm2d(64),
                                     nn.ReLU(inplace=True),
-                                    nn.Conv2d(64, 128, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(128, 256, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(256),
-                                    nn.ReLU(inplace=True),
+                                    nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
                                 )
-                                self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
-                                self.decoder = nn.Sequential(
-                                    nn.ConvTranspose2d(num_classes, 128, kernel_size=4, stride=2, padding=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.ConvTranspose2d(128, num_classes, kernel_size=4, stride=2, padding=1),
-                                )
+                                self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
                             
                             def forward(self, x):
-                                features = self.encoder(x)
-                                parsing = self.classifier(features)
-                                output = self.decoder(parsing)
+                                x = self.backbone(x)
+                                x = self.classifier(x)
                                 return {
-                                    'parsing': output,
-                                    'parsing_pred': output,
-                                    'confidence_map': torch.sigmoid(output),
-                                    'final_confidence': torch.sigmoid(output)
+                                    'parsing': x,
+                                    'parsing_pred': x,
+                                    'confidence_map': torch.sigmoid(x),
+                                    'final_confidence': torch.sigmoid(x)
                                 }
-                        return SegFormerModel(num_classes)
+                        
+                        return GraphonomyModel(num_classes=num_classes)
                     
-                    # U2Net 모델
-                    elif 'u2net' in checkpoint_path.lower():
-                        class U2NetModel(nn.Module):
-                            def __init__(self, num_classes=20):
-                                super().__init__()
-                                # U2Net 아키텍처
-                                self.encoder = nn.Sequential(
-                                    nn.Conv2d(3, 64, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(64),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(64, 128, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(128, 256, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(256),
-                                    nn.ReLU(inplace=True),
-                                )
-                                self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
-                                self.decoder = nn.Sequential(
-                                    nn.ConvTranspose2d(num_classes, 128, kernel_size=4, stride=2, padding=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.ConvTranspose2d(128, num_classes, kernel_size=4, stride=2, padding=1),
-                                )
-                            
-                            def forward(self, x):
-                                features = self.encoder(x)
-                                parsing = self.classifier(features)
-                                output = self.decoder(parsing)
-                                return {
-                                    'parsing': output,
-                                    'parsing_pred': output,
-                                    'confidence_map': torch.sigmoid(output),
-                                    'final_confidence': torch.sigmoid(output)
-                                }
-                        return U2NetModel(num_classes)
-                    
-                    # 기본 모델 (폴백)
+                    # 기본 모델 (알 수 없는 체크포인트 타입)
                     else:
                         class DefaultModel(nn.Module):
-                            def __init__(self, num_classes=20):
+                            def __init__(self, num_classes=num_classes):
                                 super().__init__()
-                                self.encoder = nn.Sequential(
-                                    nn.Conv2d(3, 256, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(256),
+                                self.backbone = nn.Sequential(
+                                    nn.Conv2d(3, 64, kernel_size=3, padding=1),
+                                    nn.BatchNorm2d(64),
                                     nn.ReLU(inplace=True),
-                                    nn.Conv2d(256, 256, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(256),
-                                    nn.ReLU(inplace=True),
+                                    nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                                    nn.BatchNorm2d(64),
+                                    nn.ReLU(inplace=True)
                                 )
-                                self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
-                                self.decoder = nn.Sequential(
-                                    nn.ConvTranspose2d(num_classes, 128, kernel_size=4, stride=2, padding=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.ConvTranspose2d(128, num_classes, kernel_size=4, stride=2, padding=1),
-                                )
+                                self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
                             
                             def forward(self, x):
-                                features = self.encoder(x)
-                                parsing = self.classifier(features)
-                                output = self.decoder(parsing)
+                                x = self.backbone(x)
+                                x = self.classifier(x)
                                 return {
-                                    'parsing': output,
-                                    'parsing_pred': output,
-                                    'confidence_map': torch.sigmoid(output),
-                                    'final_confidence': torch.sigmoid(output)
+                                    'parsing': x,
+                                    'parsing_pred': x,
+                                    'confidence_map': torch.sigmoid(x),
+                                    'final_confidence': torch.sigmoid(x)
                                 }
-                        return DefaultModel(num_classes)
+                        
+                        return DefaultModel(num_classes=num_classes)
                 
-                # 체크포인트 타입에 맞는 모델 생성 (감지된 클래스 수 전달)
+                # 모델 생성 및 반환
                 model = create_model_for_checkpoint(checkpoint, checkpoint_path)
-                self.logger.debug(f"🎯 생성된 모델 클래스 수: {num_classes}")
+                self.logger.info(f"✅ 동적 모델 생성 완료: {type(model).__name__}")
+                return model
                 
-                # 체크포인트 로드 (strict=False로 부분 로딩)
-                try:
-                    # 🔥 체크포인트 키 분석 및 로깅
-                    self.logger.debug(f"🔍 체크포인트 키 샘플: {list(checkpoint.keys())[:10]}")
+            except Exception as e:
+                self.logger.error(f"❌ 동적 모델 생성 실패: {e}")
+                # 기본 모델 반환
+                class FallbackModel(nn.Module):
+                    def __init__(self, num_classes=18):
+                        super().__init__()
+                        self.backbone = nn.Sequential(
+                            nn.Conv2d(3, 64, kernel_size=3, padding=1),
+                            nn.BatchNorm2d(64),
+                            nn.ReLU(inplace=True)
+                        )
+                        self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
                     
-                    # 모델 상태 딕셔너리와 체크포인트 키 매칭
-                    model_state_dict = model.state_dict()
-                    self.logger.debug(f"🔍 모델 키 샘플: {list(model_state_dict.keys())[:10]}")
-                    
-                    # 🔥 module. 접두사 제거를 위한 키 매핑
-                    mapped_checkpoint = {}
-                    for key, value in checkpoint.items():
-                        if key.startswith('module.'):
-                            mapped_key = key[7:]  # 'module.' 제거
-                            mapped_checkpoint[mapped_key] = value
-                        else:
-                            mapped_checkpoint[key] = value
-                    
-                    self.logger.debug(f"🔧 키 매핑 완료: {len(mapped_checkpoint)}개 키")
-                    self.logger.debug(f"🔍 매핑된 키 샘플: {list(mapped_checkpoint.keys())[:5]}")
-                    
-                    # 매칭되는 키만 로드
-                    matched_keys = []
-                    for key in mapped_checkpoint.keys():
-                        if key in model_state_dict:
-                            matched_keys.append(key)
-                    
-                    self.logger.debug(f"✅ 매칭되는 키: {len(matched_keys)}개")
-                    self.logger.debug(f"🔍 매칭 키 샘플: {matched_keys[:5]}")
-                    
-                    # 매칭되는 키만 로드
-                    filtered_checkpoint = {k: v for k, v in mapped_checkpoint.items() if k in model_state_dict}
-                    model.load_state_dict(filtered_checkpoint, strict=False)
-                    self.logger.debug("✅ 체크포인트 로딩 성공 (매핑 및 필터링된 키만)")
-                    
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 체크포인트 로딩 실패: {e}")
-                    import traceback
-                    self.logger.warning(f"⚠️ 체크포인트 로딩 실패 상세: {traceback.format_exc()}")
-                    # 키 매핑 시도
-                    mapped_checkpoint = self._map_checkpoint_keys(checkpoint)
-                    model.load_state_dict(mapped_checkpoint, strict=False)
-                    self.logger.debug("✅ 매핑된 체크포인트 로딩 성공")
+                    def forward(self, x):
+                        x = self.backbone(x)
+                        x = self.classifier(x)
+                        return {
+                            'parsing': x,
+                            'parsing_pred': x,
+                            'confidence_map': torch.sigmoid(x),
+                            'final_confidence': torch.sigmoid(x)
+                        }
+                
+                return FallbackModel()
+
+
+        def _map_checkpoint_keys(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
+            """체크포인트 키 매핑"""
+            try:
+                if 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                else:
+                    state_dict = checkpoint
+                
+                mapped_state_dict = {}
+                
+                for key, value in state_dict.items():
+                    # module. 접두사 제거
+                    if key.startswith('module.'):
+                        new_key = key[7:]  # 'module.' 제거
+                        mapped_state_dict[new_key] = value
+                    else:
+                        mapped_state_dict[key] = value
+                
+                return mapped_state_dict
+                
+            except Exception as e:
+                self.logger.error(f"❌ 체크포인트 키 매핑 실패: {e}")
+                return checkpoint
                 
                 return model
                 
@@ -4587,601 +4363,6 @@ if BaseStepMixin:
                 self.logger.error(f"❌ 동적 모델 생성 실패: {e}")
                 # 폴백 제거 - 실제 파일만 사용
                 raise ValueError(f"동적 모델 생성 실패: {e}")
-        
-        def _map_checkpoint_keys(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
-            """체크포인트 키 매핑 (실제 체크포인트 → 기본 모델)"""
-            mapped_checkpoint = {}
-            
-            # 실제 Graphonomy 체크포인트 키 매핑
-            key_mappings = {
-                # ResNet 백본
-                'backbone.conv1.weight': 'conv1.weight',
-                'backbone.bn1.weight': 'bn1.weight',
-                'backbone.bn1.bias': 'bn1.bias',
-                'backbone.bn1.running_mean': 'bn1.running_mean',
-                'backbone.bn1.running_var': 'bn1.running_var',
-                'backbone.bn1.num_batches_tracked': 'bn1.num_batches_tracked',
-                
-                # 레이어 1
-                'backbone.layer1.0.conv1.weight': 'conv2.weight',
-                'backbone.layer1.0.bn1.weight': 'bn2.weight',
-                'backbone.layer1.0.bn1.bias': 'bn2.bias',
-                'backbone.layer1.0.bn1.running_mean': 'bn2.running_mean',
-                'backbone.layer1.0.bn1.running_var': 'bn2.running_var',
-                
-                # 레이어 2
-                'backbone.layer2.0.conv1.weight': 'conv3.weight',
-                'backbone.layer2.0.bn1.weight': 'bn3.weight',
-                'backbone.layer2.0.bn1.bias': 'bn3.bias',
-                'backbone.layer2.0.bn1.running_mean': 'bn3.running_mean',
-                'backbone.layer2.0.bn1.running_var': 'bn3.running_var',
-                
-                # ASPP
-                'aspp.convs.0.weight': 'aspp.weight',
-                'aspp.convs.0.bias': 'aspp.bias',
-                'aspp.bn.weight': 'aspp_bn.weight',
-                'aspp.bn.bias': 'aspp_bn.bias',
-                'aspp.bn.running_mean': 'aspp_bn.running_mean',
-                'aspp.bn.running_var': 'aspp_bn.running_var',
-                
-                # Attention
-                'attention.weight': 'attention.weight',
-                'attention.bias': 'attention.bias',
-                'attention_bn.weight': 'attention_bn.weight',
-                'attention_bn.bias': 'attention_bn.bias',
-                
-                # Correction
-                'correction.weight': 'correction.weight',
-                'correction.bias': 'correction.bias',
-                'correction_bn.weight': 'correction_bn.weight',
-                'correction_bn.bias': 'correction_bn.bias',
-                
-                # Classifier
-                'classifier.weight': 'classifier.weight',
-                'classifier.bias': 'classifier.bias'
-            }
-            
-            for old_key, new_key in key_mappings.items():
-                if old_key in checkpoint:
-                    mapped_checkpoint[new_key] = checkpoint[old_key]
-                    self.logger.debug(f"🔗 키 매핑: {old_key} → {new_key}")
-            
-            # 매핑되지 않은 키들도 포함 (strict=False이므로)
-            for key, value in checkpoint.items():
-                if key not in key_mappings:
-                    mapped_checkpoint[key] = value
-            
-            return mapped_checkpoint
-        
-        def _convert_checkpoint_key(self, key: str) -> str:
-            """체크포인트 키 변환 (호환성)"""
-            # 일반적인 키 변환 규칙
-            key_mappings = {
-                'module.': '',
-                'backbone.': 'backbone.',
-                'classifier.': 'classifier.',
-                'aspp.': 'aspp.',
-                'decoder.': 'decoder.'
-            }
-            
-            converted_key = key
-            for old_prefix, new_prefix in key_mappings.items():
-                if converted_key.startswith(old_prefix):
-                    converted_key = new_prefix + converted_key[len(old_prefix):]
-                    break
-            
-            return converted_key
-        
-        def _create_simple_graphonomy_model(self):
-            """실제 Graphonomy 모델 생성 (비활성화 - 실제 파일만 사용)"""
-            self.logger.error("❌ _create_simple_graphonomy_model 호출 금지 - 실제 파일만 사용")
-            raise ValueError("생성된 체크포인트 사용 금지 - 실제 파일만 허용")
-        
-        def _create_real_checkpoint_data(self):
-            """실제 체크포인트 데이터 생성 (비활성화 - 실제 파일만 사용)"""
-            self.logger.error("❌ _create_real_checkpoint_data 호출 금지 - 실제 파일만 사용")
-            raise ValueError("생성된 체크포인트 데이터 사용 금지 - 실제 파일만 허용")
-        
-        def _create_basic_graphonomy_model(self):
-            """기본 Human Parsing 모델 (실제 체크포인트 호환)"""
-            class BasicGraphonomy(nn.Module):
-                def __init__(self, num_classes=20):
-                    super().__init__()
-                    
-                    # 🔥 실제 Graphonomy 체크포인트와 호환되는 아키텍처
-                    # 입력: 3채널 → 64채널
-                    self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
-                    self.bn1 = nn.BatchNorm2d(64)
-                    self.relu = nn.ReLU(inplace=True)
-                    self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-                    
-                    # 64채널 → 128채널
-                    self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
-                    self.bn2 = nn.BatchNorm2d(128)
-                    
-                    # 128채널 → 256채널
-                    self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
-                    self.bn3 = nn.BatchNorm2d(256)
-                    
-                    # 256채널 → 256채널 (ASPP 유사)
-                    self.aspp = nn.Conv2d(256, 256, kernel_size=1)
-                    self.aspp_bn = nn.BatchNorm2d(256)
-                    
-                    # 256채널 → 256채널 (attention 유사)
-                    self.attention = nn.Conv2d(256, 256, kernel_size=1)
-                    self.attention_bn = nn.BatchNorm2d(256)
-                    
-                    # 256채널 → 256채널 (correction 유사)
-                    self.correction = nn.Conv2d(256, 256, kernel_size=3, padding=1)
-                    self.correction_bn = nn.BatchNorm2d(256)
-                    
-                    # 256채널 → num_classes
-                    self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
-                    
-                    # 디코더 (업샘플링)
-                    self.decoder = nn.Sequential(
-                        nn.ConvTranspose2d(num_classes, 128, kernel_size=4, stride=2, padding=1),
-                        nn.BatchNorm2d(128),
-                        nn.ReLU(inplace=True),
-                        nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-                        nn.BatchNorm2d(64),
-                        nn.ReLU(inplace=True),
-                        nn.ConvTranspose2d(64, num_classes, kernel_size=4, stride=2, padding=1),
-                    )
-                
-                def forward(self, x):
-                    # 인코더
-                    x = self.conv1(x)
-                    x = self.bn1(x)
-                    x = self.relu(x)
-                    x = self.maxpool(x)
-                    
-                    x = self.conv2(x)
-                    x = self.bn2(x)
-                    x = self.relu(x)
-                    
-                    x = self.conv3(x)
-                    x = self.bn3(x)
-                    x = self.relu(x)
-                    
-                    # ASPP
-                    x = self.aspp(x)
-                    x = self.aspp_bn(x)
-                    x = self.relu(x)
-                    
-                    # Attention
-                    x = self.attention(x)
-                    x = self.attention_bn(x)
-                    x = self.relu(x)
-                    
-                    # Correction
-                    x = self.correction(x)
-                    x = self.correction_bn(x)
-                    x = self.relu(x)
-                    
-                    # 분류
-                    parsing = self.classifier(x)
-                    
-                    # 디코더 (업샘플링)
-                    output = self.decoder(parsing)
-                    
-                    return {
-                        'parsing': output,
-                        'parsing_pred': output,
-                        'confidence_map': torch.sigmoid(output),
-                        'final_confidence': torch.sigmoid(output)
-                    }
-            
-            return BasicGraphonomy(num_classes=20)
-        
-        def _postprocess_graphonomy_output(self, parsing_output: Dict[str, Any], original_size: Tuple[int, int]) -> Dict[str, Any]:
-            """Graphonomy 출력 후처리 (고급 알고리즘 완전 적용)"""
-            try:
-                parsing_pred = parsing_output['parsing_pred']
-                confidence_map = parsing_output['confidence_map']
-                
-                # 안전한 크기로 제한 (메모리 오버플로우 방지)
-                max_size = 1024
-                
-                # original_size가 튜플인지 확인하고 안전하게 처리
-                if isinstance(original_size, (tuple, list)) and len(original_size) >= 2:
-                    safe_height = min(original_size[0], max_size)
-                    safe_width = min(original_size[1], max_size)
-                else:
-                    # original_size가 정수인 경우 기본값 사용
-                    self.logger.warning(f"⚠️ original_size가 튜플이 아님: {type(original_size)} = {original_size}")
-                    safe_height = min(512, max_size)
-                    safe_width = min(512, max_size)
-                
-                safe_size = (safe_height, safe_width)
-                
-                self.logger.debug(f"🔄 후처리 크기: 원본 {original_size} → 안전 {safe_size}")
-                
-                # 원본 크기로 리사이즈 (안전한 크기 사용)
-                parsing_pred_resized = F.interpolate(
-                    parsing_pred.float().unsqueeze(1), 
-                    size=safe_size, 
-                    mode='nearest'
-                ).squeeze().long()
-                
-                confidence_resized = F.interpolate(
-                    confidence_map.unsqueeze(1), 
-                    size=safe_size, 
-                    mode='bilinear'
-                ).squeeze()
-                
-                # numpy 변환
-                parsing_result = parsing_pred_resized.cpu().numpy().astype(np.uint8)
-                confidence_result = confidence_resized.cpu().numpy()
-                
-                # ==============================================
-                # 🔥 Phase 1: 고급 후처리 알고리즘 적용
-                # ==============================================
-                
-                postprocessing_start = time.time()
-                
-                # 1. CRF 후처리 (경계선 개선)
-                if self.config.enable_crf_postprocessing and DENSECRF_AVAILABLE:
-                    try:
-                        # 원본 이미지 필요 (RGB) - 안전한 크기 사용
-                        if hasattr(self, '_last_processed_image'):
-                            original_image = self._last_processed_image
-                            # 안전한 크기로 리사이즈
-                            if original_image.shape[:2] != safe_size:
-                                from PIL import Image
-                                pil_image = Image.fromarray(original_image)
-                                pil_image = pil_image.resize((safe_width, safe_height))
-                                original_image = np.array(pil_image)
-                        else:
-                            original_image = np.random.randint(0, 255, (safe_height, safe_width, 3), dtype=np.uint8)
-                        
-                        parsing_result = self.postprocessor.apply_crf_postprocessing(
-                            parsing_result, original_image, num_iterations=10
-                        )
-                        self.ai_stats['crf_postprocessing_calls'] += 1
-                        self.logger.debug("✅ CRF 후처리 적용")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ CRF 후처리 실패: {e}")
-                
-                # 2. 멀티스케일 처리
-                if self.config.enable_multiscale_processing:
-                    try:
-                        if hasattr(self, '_last_processed_image'):
-                            original_image = self._last_processed_image
-                            # 안전한 크기로 리사이즈
-                            if original_image.shape[:2] != safe_size:
-                                from PIL import Image
-                                pil_image = Image.fromarray(original_image)
-                                pil_image = pil_image.resize((safe_width, safe_height))
-                                original_image = np.array(pil_image)
-                        else:
-                            original_image = np.random.randint(0, 255, (safe_height, safe_width, 3), dtype=np.uint8)
-                        
-                        parsing_result = self.postprocessor.apply_multiscale_processing(
-                            original_image, parsing_result
-                        )
-                        self.ai_stats['multiscale_processing_calls'] += 1
-                        self.logger.debug("✅ 멀티스케일 처리 적용")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 멀티스케일 처리 실패: {e}")
-                
-                # 3. 엣지 기반 경계선 정제
-                if self.config.enable_edge_refinement:
-                    try:
-                        if hasattr(self, '_last_processed_image'):
-                            original_image = self._last_processed_image
-                            # 안전한 크기로 리사이즈
-                            if original_image.shape[:2] != safe_size:
-                                from PIL import Image
-                                pil_image = Image.fromarray(original_image)
-                                pil_image = pil_image.resize((safe_width, safe_height))
-                                original_image = np.array(pil_image)
-                            parsing_result = self.postprocessor.apply_edge_refinement(
-                                parsing_result, original_image
-                            )
-                            self.ai_stats['edge_refinement_calls'] += 1
-                            self.logger.debug("✅ 엣지 정제 적용")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 엣지 정제 실패: {e}")
-                
-                # 4. 홀 채우기 및 노이즈 제거
-                if self.config.enable_hole_filling:
-                    try:
-                        parsing_result = self.postprocessor.apply_hole_filling_and_noise_removal(parsing_result)
-                        self.logger.debug("✅ 홀 채우기 및 노이즈 제거 적용")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 홀 채우기 실패: {e}")
-                
-                # 5. 품질 향상
-                if self.config.enable_quality_validation:
-                    try:
-                        if hasattr(self, '_last_processed_image'):
-                            original_image = self._last_processed_image
-                            # 안전한 크기로 리사이즈
-                            if original_image.shape[:2] != safe_size:
-                                from PIL import Image
-                                pil_image = Image.fromarray(original_image)
-                                pil_image = pil_image.resize((safe_width, safe_height))
-                                original_image = np.array(pil_image)
-                            parsing_result = self.postprocessor.apply_quality_enhancement(
-                                parsing_result, original_image, confidence_result
-                            )
-                            self.ai_stats['quality_enhancement_calls'] += 1
-                            self.logger.debug("✅ 품질 향상 적용")
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 품질 향상 실패: {e}")
-                
-                postprocessing_time = time.time() - postprocessing_start
-                self.ai_stats['postprocessing_time'] += postprocessing_time
-                
-                # ==============================================
-                # 🔥 Phase 2: 결과 구조 생성
-                # ==============================================
-                
-                # Human parsing 클래스별 마스크 생성 (20개 클래스)
-                parsing_masks = {}
-                class_names = list(BODY_PARTS.values())
-                
-                for i, class_name in enumerate(class_names):
-                    if i < len(class_names):
-                        parsing_masks[class_name] = (parsing_result == i).astype(np.uint8) * 255
-                
-                # 의류 분석 (옷 갈아입히기 특화)
-                clothing_analysis = self._analyze_clothing_for_change(parsing_result)
-                
-                return {
-                    'parsing_map': parsing_result,
-                    'confidence_map': confidence_result,
-                    'parsing_masks': parsing_masks,
-                    'class_names': class_names,
-                    'clothing_analysis': clothing_analysis,
-                    'postprocessing_time': postprocessing_time,
-                    'algorithms_applied': self._get_applied_algorithms(),
-                    'quality_metrics': self._calculate_quality_metrics(parsing_result, confidence_result)
-                }
-                
-            except Exception as e:
-                self.logger.error(f"❌ Graphonomy 후처리 실패: {e}")
-                raise
-
-
-        def _calculate_parsing_confidence(self, parsing_output):
-            """Human Parsing 신뢰도 계산 (고급 메트릭 포함)"""
-            try:
-                confidence_map = parsing_output.get('confidence_map')
-                parsing_logits = parsing_output.get('parsing_logits')
-                
-                if confidence_map is not None:
-                    # 1. 기본 평균 신뢰도
-                    avg_confidence = float(confidence_map.mean().item())
-                    
-                    # 2. 엔트로피 기반 신뢰도 (불확실성 측정)
-                    if parsing_logits is not None:
-                        try:
-                            # 소프트맥스 확률
-                            probs = F.softmax(parsing_logits, dim=1)
-                            # 엔트로피 계산 (-sum(p * log(p)))
-                            entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1)
-                            # 정규화된 엔트로피 (0-1 범위)
-                            max_entropy = torch.log(torch.tensor(20.0))  # 20개 클래스
-                            normalized_entropy = entropy / max_entropy
-                            # 신뢰도 = 1 - 정규화된 엔트로피
-                            entropy_confidence = 1.0 - float(normalized_entropy.mean().item())
-                            
-                            # 가중 평균 (기본 신뢰도 70%, 엔트로피 신뢰도 30%)
-                            final_confidence = avg_confidence * 0.7 + entropy_confidence * 0.3
-                        except:
-                            final_confidence = avg_confidence
-                    else:
-                        final_confidence = avg_confidence
-                    
-                    # 3. 클래스별 신뢰도 분석
-                    try:
-                        if parsing_logits is not None:
-                            parsing_pred = torch.argmax(parsing_logits, dim=1)
-                            class_confidences = {}
-                            
-                            for class_id in range(20):
-                                class_mask = (parsing_pred == class_id)
-                                if torch.sum(class_mask) > 0:
-                                    class_conf = confidence_map[class_mask].mean()
-                                    class_confidences[BODY_PARTS.get(class_id, f'class_{class_id}')] = float(class_conf.item())
-                            
-                            # 주요 클래스들의 신뢰도가 낮으면 전체 신뢰도 페널티
-                            important_classes = ['face', 'upper_clothes', 'lower_clothes', 'torso_skin']
-                            important_conf = [class_confidences.get(cls, 0.5) for cls in important_classes]
-                            if important_conf and min(important_conf) < 0.4:
-                                final_confidence *= 0.8  # 20% 페널티
-                    except:
-                        pass
-                    
-                    return min(max(final_confidence, 0.0), 1.0)
-                
-                return 0.8  # 기본값
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ 신뢰도 계산 실패: {e}")
-                return 0.7
-        
-        # ==============================================
-        # 🔥 고급 전처리 헬퍼 메서드들
-        # ==============================================
-        
-        def _assess_image_quality(self, image: np.ndarray) -> Dict[str, float]:
-            """이미지 품질 평가 (고급 메트릭)"""
-            try:
-                quality_scores = {}
-                
-                # 블러 정도 측정 (라플라시안 분산)
-                if len(image.shape) == 3:
-                    if CV2_AVAILABLE:
-                        try:
-                            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-                        except Exception:
-                            gray = np.mean(image, axis=2)
-                    else:
-                        gray = np.mean(image, axis=2)
-                else:
-                    gray = image
-                
-                # 선명도 (라플라시안 분산)
-                if CV2_AVAILABLE:
-                    laplacian_var = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_64F).var()
-                    quality_scores['sharpness'] = min(laplacian_var / 1000.0, 1.0)
-                else:
-                    # 그래디언트 기반 선명도
-                    grad_x = np.abs(np.diff(gray, axis=1))
-                    grad_y = np.abs(np.diff(gray, axis=0))
-                    sharpness = np.mean(grad_x) + np.mean(grad_y)
-                    quality_scores['sharpness'] = min(sharpness / 50.0, 1.0)
-                
-                # 대비 측정
-                contrast = np.std(gray)
-                quality_scores['contrast'] = min(contrast / 64.0, 1.0)
-                
-                # 해상도 품질
-                height, width = image.shape[:2]
-                resolution_score = min((height * width) / (512 * 512), 1.0)
-                quality_scores['resolution'] = resolution_score
-                
-                # 조명 균일성
-                if len(image.shape) == 3:
-                    # 각 채널별 평균과 표준편차
-                    channel_means = np.mean(image, axis=(0, 1))
-                    channel_stds = np.std(image, axis=(0, 1))
-                    lighting_uniformity = 1.0 - (np.std(channel_means) / 255.0)
-                    quality_scores['lighting'] = max(lighting_uniformity, 0.0)
-                else:
-                    quality_scores['lighting'] = 0.7
-                
-                # 전체 품질 점수
-                quality_scores['overall'] = np.mean(list(quality_scores.values()))
-                
-                return quality_scores
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ 이미지 품질 평가 실패: {e}")
-                return {'overall': 0.5, 'sharpness': 0.5, 'contrast': 0.5, 'resolution': 0.5, 'lighting': 0.5}
-        
-        def _normalize_lighting(self, image: np.ndarray) -> np.ndarray:
-            """조명 정규화 (CLAHE 포함)"""
-            try:
-                if not self.config.enable_lighting_normalization:
-                    return image
-                
-                if CV2_AVAILABLE and len(image.shape) == 3:
-                    try:
-                        # CLAHE (Contrast Limited Adaptive Histogram Equalization)
-                        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                        
-                        # Lab 색공간으로 변환
-                        lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-                        lab[:, :, 0] = clahe.apply(lab[:, :, 0])  # L 채널에만 적용
-                        
-                        # RGB로 변환
-                        normalized = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-                        return normalized
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ CLAHE 처리 실패: {e}")
-                        # 폴백으로 간단한 히스토그램 평활화 사용
-                else:
-                    # 간단한 히스토그램 평활화
-                    if len(image.shape) == 3:
-                        normalized = np.zeros_like(image)
-                        for i in range(3):
-                            channel = image[:, :, i]
-                            channel_min, channel_max = channel.min(), channel.max()
-                            if channel_max > channel_min:
-                                normalized[:, :, i] = ((channel - channel_min) / (channel_max - channel_min) * 255).astype(np.uint8)
-                            else:
-                                normalized[:, :, i] = channel
-                        return normalized
-                    else:
-                        img_min, img_max = image.min(), image.max()
-                        if img_max > img_min:
-                            return ((image - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-                        else:
-                            return image
-                    
-            except Exception as e:
-                self.logger.warning(f"⚠️ 조명 정규화 실패: {e}")
-                return image
-        
-        def _correct_colors(self, image: Image.Image) -> Image.Image:
-            """색상 보정 (화이트 밸런스 포함)"""
-            try:
-                if not PIL_AVAILABLE:
-                    return image
-                
-                # 자동 대비 조정
-                from PIL import ImageEnhance
-                enhancer = ImageEnhance.Contrast(image)
-                enhanced = enhancer.enhance(1.1)
-                
-                # 색상 채도 조정
-                enhancer = ImageEnhance.Color(enhanced)
-                enhanced = enhancer.enhance(1.05)
-                
-                # 밝기 조정 (자동)
-                enhancer = ImageEnhance.Brightness(enhanced)
-                enhanced = enhancer.enhance(1.02)
-                
-                return enhanced
-                    
-            except Exception as e:
-                self.logger.warning(f"⚠️ 색상 보정 실패: {e}")
-                return image
-        
-        def _detect_roi(self, image: np.ndarray) -> Tuple[int, int, int, int]:
-            """ROI (관심 영역) 검출 (인체 중심)"""
-            try:
-                h, w = image.shape[:2]
-                
-                # 인체 탐지 기반 ROI (간단한 휴리스틱)
-                if CV2_AVAILABLE:
-                    try:
-                        # 에지 기반 ROI 추정
-                        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-                        edges = cv2.Canny(gray, 50, 150)
-                        
-                        # 윤곽선 찾기
-                        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                        
-                        if contours is not None and len(contours) > 0:
-                            # 가장 큰 윤곽선의 바운딩 박스
-                            largest_contour = max(contours, key=cv2.contourArea)
-                            x, y, w_roi, h_roi = cv2.boundingRect(largest_contour)
-                            
-                            # 여백 추가 (10%)
-                            margin_w = int(w_roi * 0.1)
-                            margin_h = int(h_roi * 0.1)
-                            
-                            x1 = max(0, x - margin_w)
-                            y1 = max(0, y - margin_h)
-                            x2 = min(w, x + w_roi + margin_w)
-                            y2 = min(h, y + h_roi + margin_h)
-                            
-                            return (x1, y1, x2, y2)
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ OpenCV ROI 검출 실패: {e}")
-                        pass
-                
-                # 폴백: 중앙 80% 영역
-                margin_h = int(h * 0.1)
-                margin_w = int(w * 0.1)
-                
-                x1 = margin_w
-                y1 = margin_h
-                x2 = w - margin_w
-                y2 = h - margin_h
-                
-                return (x1, y1, x2, y2)
-                    
-            except Exception as e:
-                self.logger.warning(f"⚠️ ROI 검출 실패: {e}")
-                h, w = image.shape[:2]
-                return (w//4, h//4, 3*w//4, 3*h//4)
-        
         # ==============================================
         # 🔥 의류 분석 및 품질 메트릭
         # ==============================================
@@ -5816,7 +4997,6 @@ else:
 def create_human_parsing_step(**kwargs) -> HumanParsingStep:
     """HumanParsingStep 인스턴스 생성"""
     return HumanParsingStep(**kwargs)
-
 def create_optimized_human_parsing_step(**kwargs) -> HumanParsingStep:
     """최적화된 HumanParsingStep 생성 (M3 Max 특화)"""
     optimized_config = {
@@ -5834,474 +5014,13 @@ def create_optimized_human_parsing_step(**kwargs) -> HumanParsingStep:
     
     return HumanParsingStep(**kwargs)
 
-# ==============================================
-# 🔥 메모리 최적화 함수
-# ==============================================
-
-def optimize_memory():
-    """🔥 128GB M3 Max 메모리 최적화"""
-    try:
-        # 강제 가비지 컬렉션
-        for _ in range(3):
-            gc.collect()
-        if TORCH_AVAILABLE and MPS_AVAILABLE:
-            try:
-                torch.mps.empty_cache()
-                if hasattr(torch.mps, 'synchronize'):
-                    torch.mps.synchronize()
-            except Exception as e:
-                logger.warning(f"⚠️ MPS 메모리 정리 실패: {e}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ 메모리 최적화 실패: {e}")
-        return False
 
 # ==============================================
-# 🔥 체크포인트 테스트 함수
-# ==============================================
-
-def test_schp_checkpoint_loading():
-    """SCHP 모델의 체크포인트 로딩 테스트"""
-    try:
-        print("🧪 SCHP 체크포인트 로딩 테스트 시작...")
-        
-        # SCHP 모델 생성
-        schp_model = None
-        
-        # create_model_for_checkpoint 함수에서 SCHP 모델 생성
-        def create_test_schp_model():
-            class SCHPModel(nn.Module):
-                def __init__(self, num_classes=20):
-                    super().__init__()
-                    # 체크포인트 로딩 상태
-                    self.checkpoint_loaded = False
-                    self.checkpoint_path = None
-                    self.logger = logging.getLogger(__name__)
-                    
-                    # 간단한 테스트용 모델 구조
-                    self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1)
-                    self.bn1 = nn.BatchNorm2d(64)
-                    self.relu = nn.ReLU(inplace=True)
-                    self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-                    
-                    # 간단한 레이어들
-                    self.layer1 = nn.Sequential(
-                        nn.Conv2d(64, 64, kernel_size=1),
-                        nn.BatchNorm2d(64),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                        nn.BatchNorm2d(64),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(64, 256, kernel_size=1),
-                        nn.BatchNorm2d(256)
-                    )
-                    
-                    # Context Encoding
-                    self.context_encoding = nn.ModuleDict({
-                        'bottleneck': nn.Sequential(
-                            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
-                            nn.BatchNorm2d(512)
-                        )
-                    })
-                    
-                    # Edge Detection
-                    self.edge = nn.Sequential(
-                        nn.Conv2d(512, 256, kernel_size=3, padding=1),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(256, 1, kernel_size=1)
-                    )
-                    
-                    # Decoder
-                    self.decoder = nn.Sequential(
-                        nn.Conv2d(512, 128, kernel_size=3, padding=1),
-                        nn.BatchNorm2d(128),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(128, num_classes, kernel_size=1)
-                    )
-                    
-                    # Fusion
-                    self.fushion = nn.Sequential(
-                        nn.Conv2d(num_classes + 1, 256, kernel_size=3, padding=1),
-                        nn.BatchNorm2d(256),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(256, num_classes, kernel_size=1)
-                    )
-                    
-                    # Classifier
-                    self.classifier = nn.Conv2d(512, num_classes, kernel_size=1)
-                
-                def forward(self, x):
-                    x = self.conv1(x)
-                    x = self.bn1(x)
-                    x = self.relu(x)
-                    x = self.maxpool(x)
-                    x = self.layer1(x)
-                    
-                    context_feat = self.context_encoding['bottleneck'](x)
-                    edge_map = self.edge(context_feat)
-                    parsing = self.decoder(context_feat)
-                    
-                    fusion_input = torch.cat([parsing, edge_map], dim=1)
-                    output = self.fushion(fusion_input)
-                    
-                    return {
-                        'parsing': output,
-                        'parsing_pred': output,
-                        'confidence_map': torch.sigmoid(output),
-                        'final_confidence': torch.sigmoid(output)
-                    }
-                
-                def load_checkpoint(self, checkpoint_path: str, map_location: str = 'cpu') -> bool:
-                    """실제 체크포인트 로딩 및 매핑"""
-                    try:
-                        self.logger.info(f"🔍 체크포인트 로딩 시작: {checkpoint_path}")
-                        
-                        if not os.path.exists(checkpoint_path):
-                            self.logger.error(f"❌ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
-                            return False
-                        
-                        # 체크포인트 로딩
-                        checkpoint = torch.load(checkpoint_path, map_location=map_location)
-                        self.logger.info(f"✅ 체크포인트 로딩 완료")
-                        
-                        # 체크포인트 구조 분석
-                        if 'state_dict' in checkpoint:
-                            state_dict = checkpoint['state_dict']
-                            self.logger.info(f"📊 state_dict 키 개수: {len(state_dict.keys())}")
-                        else:
-                            state_dict = checkpoint
-                            self.logger.info(f"📊 직접 state_dict 키 개수: {len(state_dict.keys())}")
-                        
-                        # 체크포인트 키 분석
-                        checkpoint_keys = list(state_dict.keys())
-                        self.logger.info(f"🔍 체크포인트 키 샘플: {checkpoint_keys[:10]}")
-                        
-                        # 모델 state_dict 가져오기
-                        model_state_dict = self.state_dict()
-                        model_keys = list(model_state_dict.keys())
-                        self.logger.info(f"🔍 모델 키 샘플: {model_keys[:10]}")
-                        
-                        # 키 매핑 생성
-                        key_mapping = self._create_key_mapping(checkpoint_keys, model_keys)
-                        
-                        # 매핑된 state_dict 생성
-                        mapped_state_dict = {}
-                        mapped_count = 0
-                        
-                        for checkpoint_key, model_key in key_mapping.items():
-                            if checkpoint_key in state_dict and model_key in model_state_dict:
-                                # 텐서 크기 확인
-                                checkpoint_tensor = state_dict[checkpoint_key]
-                                model_tensor = model_state_dict[model_key]
-                                
-                                if checkpoint_tensor.shape == model_tensor.shape:
-                                    mapped_state_dict[model_key] = checkpoint_tensor
-                                    mapped_count += 1
-                                    self.logger.debug(f"✅ 매핑 성공: {checkpoint_key} -> {model_key}")
-                                else:
-                                    self.logger.warning(f"⚠️ 크기 불일치: {checkpoint_key} ({checkpoint_tensor.shape}) != {model_key} ({model_tensor.shape})")
-                            else:
-                                self.logger.debug(f"⚠️ 키 누락: {checkpoint_key} 또는 {model_key}")
-                        
-                        # 매핑된 가중치 로딩
-                        if mapped_state_dict:
-                            self.load_state_dict(mapped_state_dict, strict=False)
-                            self.logger.info(f"✅ 체크포인트 매핑 완료: {mapped_count}/{len(model_keys)} 레이어")
-                            
-                            self.checkpoint_loaded = True
-                            self.checkpoint_path = checkpoint_path
-                            return True
-                        else:
-                            self.logger.error(f"❌ 매핑된 가중치가 없음")
-                            return False
-                            
-                    except Exception as e:
-                        self.logger.error(f"❌ 체크포인트 로딩 실패: {e}")
-                        return False
-                
-                def _create_key_mapping(self, checkpoint_keys: list, model_keys: list) -> Dict[str, str]:
-                    """체크포인트 키와 모델 키 간의 매핑 생성"""
-                    mapping = {}
-                    
-                    # 직접 매핑 규칙들
-                    direct_mappings = {
-                        # 초기 레이어들
-                        'conv1.weight': 'conv1.weight',
-                        'conv1.bias': 'conv1.bias',
-                        'bn1.weight': 'bn1.weight',
-                        'bn1.bias': 'bn1.bias',
-                        'bn1.running_mean': 'bn1.running_mean',
-                        'bn1.running_var': 'bn1.running_var',
-                        
-                        # Layer 1 (ResNet bottleneck)
-                        'layer1.0.conv1.weight': 'layer1.0.conv1.weight',
-                        'layer1.0.conv1.bias': 'layer1.0.conv1.bias',
-                        'layer1.0.bn1.weight': 'layer1.0.bn1.weight',
-                        'layer1.0.bn1.bias': 'layer1.0.bn1.bias',
-                        'layer1.0.bn1.running_mean': 'layer1.0.bn1.running_mean',
-                        'layer1.0.bn1.running_var': 'layer1.0.bn1.running_var',
-                        
-                        'layer1.0.conv2.weight': 'layer1.0.conv2.weight',
-                        'layer1.0.conv2.bias': 'layer1.0.conv2.bias',
-                        'layer1.0.bn2.weight': 'layer1.0.bn2.weight',
-                        'layer1.0.bn2.bias': 'layer1.0.bn2.bias',
-                        'layer1.0.bn2.running_mean': 'layer1.0.bn2.running_mean',
-                        'layer1.0.bn2.running_var': 'layer1.0.bn2.running_var',
-                        
-                        'layer1.0.conv3.weight': 'layer1.0.conv3.weight',
-                        'layer1.0.conv3.bias': 'layer1.0.conv3.bias',
-                        'layer1.0.bn3.weight': 'layer1.0.bn3.weight',
-                        'layer1.0.bn3.bias': 'layer1.0.bn3.bias',
-                        'layer1.0.bn3.running_mean': 'layer1.0.bn3.running_mean',
-                        'layer1.0.bn3.running_var': 'layer1.0.bn3.running_var',
-                        
-                        # Context Encoding
-                        'context_encoding.bottleneck.0.weight': 'context_encoding.bottleneck.0.weight',
-                        'context_encoding.bottleneck.0.bias': 'context_encoding.bottleneck.0.bias',
-                        'context_encoding.bottleneck.1.weight': 'context_encoding.bottleneck.1.weight',
-                        'context_encoding.bottleneck.1.bias': 'context_encoding.bottleneck.1.bias',
-                        'context_encoding.bottleneck.1.running_mean': 'context_encoding.bottleneck.1.running_mean',
-                        'context_encoding.bottleneck.1.running_var': 'context_encoding.bottleneck.1.running_var',
-                        
-                        # Edge Detection
-                        'edge.conv1.0.weight': 'edge.0.weight',
-                        'edge.conv1.0.bias': 'edge.0.bias',
-                        'edge.conv1.1.weight': 'edge.1.weight',
-                        'edge.conv1.1.bias': 'edge.1.bias',
-                        'edge.conv1.1.running_mean': 'edge.1.running_mean',
-                        'edge.conv1.1.running_var': 'edge.1.running_var',
-                        
-                        # Decoder
-                        'decoder.conv1.0.weight': 'decoder.0.weight',
-                        'decoder.conv1.0.bias': 'decoder.0.bias',
-                        'decoder.conv1.1.weight': 'decoder.1.weight',
-                        'decoder.conv1.1.bias': 'decoder.1.bias',
-                        'decoder.conv1.1.running_mean': 'decoder.1.running_mean',
-                        'decoder.conv1.1.running_var': 'decoder.1.running_var',
-                        
-                        # Fusion
-                        'fushion.0.weight': 'fushion.0.weight',
-                        'fushion.0.bias': 'fushion.0.bias',
-                        'fushion.1.weight': 'fushion.1.weight',
-                        'fushion.1.bias': 'fushion.1.bias',
-                        'fushion.1.running_mean': 'fushion.1.running_mean',
-                        'fushion.1.running_var': 'fushion.1.running_var',
-                    }
-                    
-                    # 직접 매핑 적용
-                    for checkpoint_key, model_key in direct_mappings.items():
-                        if checkpoint_key in checkpoint_keys and model_key in model_keys:
-                            mapping[checkpoint_key] = model_key
-                    
-                    # 패턴 매핑 (더 유연한 매핑)
-                    for checkpoint_key in checkpoint_keys:
-                        if checkpoint_key in mapping:
-                            continue
-                            
-                        # 패턴 기반 매핑
-                        for model_key in model_keys:
-                            if self._keys_match_pattern(checkpoint_key, model_key):
-                                mapping[checkpoint_key] = model_key
-                                break
-                    
-                    return mapping
-                
-                def _keys_match_pattern(self, checkpoint_key: str, model_key: str) -> bool:
-                    """키 패턴 매칭"""
-                    # 간단한 패턴 매칭 규칙들
-                    patterns = [
-                        # conv -> conv
-                        (r'conv(\d+)\.weight', r'conv\1\.weight'),
-                        (r'conv(\d+)\.bias', r'conv\1\.bias'),
-                        
-                        # bn -> bn
-                        (r'bn(\d+)\.weight', r'bn\1\.weight'),
-                        (r'bn(\d+)\.bias', r'bn\1\.bias'),
-                        (r'bn(\d+)\.running_mean', r'bn\1\.running_mean'),
-                        (r'bn(\d+)\.running_var', r'bn\1\.running_var'),
-                        
-                        # layer -> layer
-                        (r'layer(\d+)\.(\d+)\.conv(\d+)\.weight', r'layer\1\.\2\.conv\3\.weight'),
-                        (r'layer(\d+)\.(\d+)\.conv(\d+)\.bias', r'layer\1\.\2\.conv\3\.bias'),
-                        (r'layer(\d+)\.(\d+)\.bn(\d+)\.weight', r'layer\1\.\2\.bn\3\.weight'),
-                        (r'layer(\d+)\.(\d+)\.bn(\d+)\.bias', r'layer\1\.\2\.bn\3\.bias'),
-                    ]
-                    
-                    import re
-                    for pattern, replacement in patterns:
-                        if re.match(pattern, checkpoint_key) and re.match(replacement, model_key):
-                            return True
-                    
-                    return False
-                
-                def get_checkpoint_status(self) -> Dict[str, Any]:
-                    """체크포인트 로딩 상태 반환"""
-                    return {
-                        'checkpoint_loaded': self.checkpoint_loaded,
-                        'checkpoint_path': self.checkpoint_path,
-                        'model_parameters': sum(p.numel() for p in self.parameters()),
-                        'trainable_parameters': sum(p.numel() for p in self.parameters() if p.requires_grad)
-                    }
-            
-            return SCHPModel()
-        
-        # 테스트 모델 생성
-        schp_model = create_test_schp_model()
-        print(f"✅ SCHP 모델 생성 완료")
-        
-        # 체크포인트 로딩 테스트
-        checkpoint_path = "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth"
-        
-        if os.path.exists(checkpoint_path):
-            print(f"🔍 체크포인트 파일 발견: {checkpoint_path}")
-            
-            # 체크포인트 로딩 시도
-            success = schp_model.load_checkpoint(checkpoint_path)
-            
-            if success:
-                print("✅ 체크포인트 로딩 성공!")
-                
-                # 상태 확인
-                status = schp_model.get_checkpoint_status()
-                print(f"📊 모델 상태:")
-                print(f"  - 체크포인트 로딩됨: {status['checkpoint_loaded']}")
-                print(f"  - 체크포인트 경로: {status['checkpoint_path']}")
-                print(f"  - 모델 파라미터 수: {status['model_parameters']:,}")
-                print(f"  - 학습 가능 파라미터 수: {status['trainable_parameters']:,}")
-                
-                # 간단한 추론 테스트
-                test_input = torch.randn(1, 3, 512, 512)
-                with torch.no_grad():
-                    output = schp_model(test_input)
-                
-                print(f"✅ 추론 테스트 성공!")
-                print(f"  - 입력 shape: {test_input.shape}")
-                print(f"  - 출력 parsing shape: {output['parsing'].shape}")
-                print(f"  - 출력 confidence shape: {output['confidence_map'].shape}")
-                
-            else:
-                print("❌ 체크포인트 로딩 실패")
-        else:
-            print(f"⚠️ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
-            print("💡 체크포인트 파일을 다운로드하거나 경로를 확인하세요.")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ 테스트 실패: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-# ==============================================
-# 🔥 모듈 익스포트
+# 모듈 내보내기
 # ==============================================
 
 __all__ = [
     # 메인 Step 클래스 (핵심)
-    'HumanParsingStep',
+    "HumanParsingStep",
     
-    # 체크포인트 테스트 함수
-    'test_schp_checkpoint_loading',
-    
-    # 설정 클래스들
-    'EnhancedHumanParsingConfig',
-    'HumanParsingModel',
-    'QualityLevel',
-    
-    # 모델 클래스들
-    'AdvancedGraphonomyResNetASPP',
-    'U2NetForParsing', 
-    'MockHumanParsingModel',
-    
-    # 팩토리 함수들
-    'create_human_parsing_step',
-    'create_optimized_human_parsing_step',
-    
-    # 유틸리티 함수들
-    'optimize_memory',
-    '_get_central_hub_container',
-    
-    # 상수들
-    'BODY_PARTS',
-    'VISUALIZATION_COLORS'
 ]
-
-# ==============================================
-# 🔥 모듈 초기화 로깅
-# ==============================================
-
-logger = logging.getLogger(__name__)
-logger.info("🔥 HumanParsingStep v8.0 - Central Hub DI Container v7.0 완전 연동")
-logger.info("=" * 80)
-logger.info("✅ Central Hub DI Container v7.0 완전 연동 - 중앙 허브 패턴 적용")
-logger.info("✅ BaseStepMixin v20.0 완전 상속 - super().__init__() 호출")
-logger.info("✅ 필수 속성 초기화 - ai_models, models_loading_status, model_interface, loaded_models")
-logger.info("✅ _load_ai_models_via_central_hub() 구현 - ModelLoader를 통한 실제 AI 모델 로딩")
-logger.info("✅ 간소화된 process() 메서드 - 핵심 Human Parsing 로직만")
-logger.info("✅ 에러 방지용 폴백 로직 - Mock 모델 생성")
-logger.info("✅ GitHubDependencyManager 완전 삭제 - 복잡한 의존성 관리 코드 제거")
-logger.info("✅ 순환참조 완전 해결 - TYPE_CHECKING + 지연 import")
-
-logger.info("🧠 구현된 고급 AI 알고리즘들 (완전 구현):")
-logger.info("   🔥 Advanced Graphonomy ResNet-101 + ASPP (1.2GB 실제 체크포인트)")
-logger.info("   🌊 Atrous Spatial Pyramid Pooling (Multi-scale context)")
-logger.info("   🧠 Self-Attention Mechanism (Spatial attention)")
-logger.info("   📈 Progressive Parsing (3-stage refinement)")
-logger.info("   🔄 Self-Correction Learning (SCHP algorithm)")
-logger.info("   🔁 Iterative Refinement (Convergence-based)")
-logger.info("   🎯 Hybrid Ensemble Module (Multi-model voting)")
-logger.info("   ⚡ DenseCRF Postprocessing (20-class specialized)")
-logger.info("   🔍 Multiscale Processing (0.5x, 1.0x, 1.5x)")
-logger.info("   📐 Edge-based Refinement (Canny + Morphology)")
-logger.info("   🔧 Morphological Operations (Hole-filling + Noise removal)")
-logger.info("   💎 Quality Enhancement (Confidence-based)")
-logger.info("   🎯 CLAHE Lighting Normalization (Adaptive histogram)")
-logger.info("   🌈 Advanced Color Correction (White balance + Saturation)")
-logger.info("   📊 Entropy-based Uncertainty Estimation")
-logger.info("   🎲 Multi-scale Feature Fusion")
-logger.info("   🔮 Advanced Quality Metrics (Shannon entropy + Connectivity)")
-logger.info("   👔 Clothing Change Analysis (Specialized for virtual fitting)")
-
-logger.info("🎯 핵심 기능:")
-logger.info("   - 20개 인체 부위 정확 분류 (Graphonomy 표준)")
-logger.info("   - 512x512 입력 크기 표준화")
-logger.info("   - MPS/CUDA 디바이스 최적화")
-logger.info("   - 실시간 시각화 생성")
-logger.info("   - Central Hub 기반 모델 로딩")
-logger.info("   - 옷 갈아입히기 특화 분석")
-logger.info("   - 18개 고급 후처리 알고리즘 완전 적용")
-logger.info("   - Progressive + Self-Correction + Iterative 3단계 정제")
-logger.info("   - Hybrid Ensemble 다중 모델 결합")
-logger.info("   - FP16 메모리 최적화")
-
-logger.info(f"🔧 고급 라이브러리 지원:")
-logger.info(f"   - DenseCRF: {DENSECRF_AVAILABLE}")
-logger.info(f"   - Scikit-image: {SKIMAGE_AVAILABLE}")
-logger.info(f"   - SciPy: {SCIPY_AVAILABLE}")
-logger.info(f"   - OpenCV: {CV2_AVAILABLE}")
-logger.info(f"   - M3 Max 감지: {IS_M3_MAX}")
-logger.info(f"   - PyTorch 사용 가능: {TORCH_AVAILABLE}")
-logger.info(f"   - MPS 사용 가능: {MPS_AVAILABLE}")
-logger.info(f"   - BaseStepMixin 사용 가능: {BaseStepMixin is not None}")
-
-logger.info("=" * 80)
-logger.info("🎉 HumanParsingStep v8.0 Central Hub DI Container v7.0 완전 연동 완료!")
-logger.info("💡 이제 _run_ai_inference() 메서드만 구현하면 모든 기능이 자동으로 처리됩니다!")
-logger.info("💡 Central Hub DI Container를 통해 실제 AI 모델이 자동으로 로딩됩니다!")
-logger.info("💡 복잡한 의존성 관리 코드가 모두 제거되고 단순해졌습니다!")
-logger.info("=" * 80)
-
-if __name__ == "__main__":
-    # 간단한 테스트
-    try:
-        step = HumanParsingStep()
-        logger.info(f"✅ 테스트 인스턴스 생성 성공: {step.step_name}")
-        logger.info(f"✅ 필수 속성 확인: ai_models={bool(hasattr(step, 'ai_models'))}")
-        logger.info(f"✅ 필수 속성 확인: models_loading_status={bool(hasattr(step, 'models_loading_status'))}")
-        logger.info(f"✅ 필수 속성 확인: model_interface={bool(hasattr(step, 'model_interface'))}")
-        logger.info(f"✅ 필수 속성 확인: loaded_models={bool(hasattr(step, 'loaded_models'))}")
-        logger.info("🎉 HumanParsingStep v8.0 Central Hub DI Container v7.0 연동 테스트 성공!")
-    except Exception as e:
-        logger.error(f"❌ 테스트 실패: {e}")
