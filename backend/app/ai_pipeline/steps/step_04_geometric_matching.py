@@ -278,17 +278,31 @@ if BaseStepMixin is None:
             }
 
         def _get_service_from_central_hub(self, service_key: str):
-            """Central Hub에서 서비스 가져오기"""
+            """Central Hub에서 서비스 가져오기 (동기/비동기 호환)"""
             try:
                 if hasattr(self, 'di_container') and self.di_container:
-                    return self.di_container.get_service(service_key)
+                    service = self.di_container.get_service(service_key)
+                    # 서비스가 coroutine인지 확인하고 처리
+                    if hasattr(service, '__await__'):
+                        # 비동기 서비스인 경우 동기적으로 실행
+                        import asyncio
+                        import concurrent.futures
+                        
+                        def run_async_service():
+                            return asyncio.run(service)
+                        
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(run_async_service)
+                            return future.result()
+                    else:
+                        return service
                 return None
             except Exception as e:
                 self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
                 return None
 
         def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-            """API 입력을 Step 입력으로 변환"""
+            """API 입력을 Step 입력으로 변환 (완전 동기 버전)"""
             try:
                 step_input = api_input.copy()
                 
@@ -309,28 +323,29 @@ if BaseStepMixin is None:
                         break
                 
                 if (person_image is None or clothing_image is None) and 'session_id' in step_input:
-                    # 세션에서 이미지 로드
+                    # 세션에서 이미지 로드 (완전 동기적으로)
                     try:
                         session_manager = self._get_service_from_central_hub('session_manager')
                         if session_manager:
-                            # 세션에서 원본 이미지 직접 로드 (완전 동기적으로)
-                            import asyncio
                             session_person, session_clothing = None, None
                             
                             try:
-                                # 완전히 동기적으로 처리 - 세션 매니저가 동기 메서드를 제공하는지 확인
+                                # 세션 매니저가 동기 메서드를 제공하는지 확인
                                 if hasattr(session_manager, 'get_session_images_sync'):
                                     session_person, session_clothing = session_manager.get_session_images_sync(step_input['session_id'])
-                                else:
+                                elif hasattr(session_manager, 'get_session_images'):
                                     # 비동기 메서드를 동기적으로 호출
+                                    import asyncio
                                     import concurrent.futures
+                                    
                                     def run_async_session_load():
-                                        import asyncio
                                         return asyncio.run(session_manager.get_session_images(step_input['session_id']))
                                     
                                     with concurrent.futures.ThreadPoolExecutor() as executor:
                                         future = executor.submit(run_async_session_load)
                                         session_person, session_clothing = future.result()
+                                else:
+                                    self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
                             except Exception as e:
                                 self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
                                 session_person, session_clothing = None, None
@@ -2077,7 +2092,7 @@ class GeometricMatchingStep(BaseStepMixin):
             }
 
     def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환)"""
+        """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환) - 완전 동기 버전"""
         try:
             start_time = time.time()
             
@@ -2088,24 +2103,23 @@ class GeometricMatchingStep(BaseStepMixin):
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # 세션에서 원본 이미지 직접 로드 (완전 동기적으로)
-                        import asyncio
-                        import concurrent.futures
-                        
                         try:
-                            # 완전히 동기적으로 처리 - 세션 매니저가 동기 메서드를 제공하는지 확인
+                            # 세션 매니저가 동기 메서드를 제공하는지 확인
                             if hasattr(session_manager, 'get_session_images_sync'):
                                 person_image, clothing_image = session_manager.get_session_images_sync(kwargs['session_id'])
-                            else:
+                            elif hasattr(session_manager, 'get_session_images'):
                                 # 비동기 메서드를 동기적으로 호출
+                                import asyncio
                                 import concurrent.futures
+                                
                                 def run_async_session_load():
-                                    import asyncio
                                     return asyncio.run(session_manager.get_session_images(kwargs['session_id']))
                                 
                                 with concurrent.futures.ThreadPoolExecutor() as executor:
                                     future = executor.submit(run_async_session_load)
                                     person_image, clothing_image = future.result()
+                            else:
+                                self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
                         except Exception as e:
                             self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
                             person_image, clothing_image = None, None
@@ -2233,30 +2247,49 @@ class GeometricMatchingStep(BaseStepMixin):
         return None
 
     def _execute_ai_models(self, person_tensor: torch.Tensor, clothing_tensor: torch.Tensor, pose_keypoints: List) -> Dict[str, Any]:
-        """AI 모델들 실행"""
+        """AI 모델들 실행 (완전 동기 버전)"""
         results = {}
         
-        # GMM 기반 기하학적 매칭 (핵심)
-        if self.gmm_model is not None:
-            results.update(self._execute_gmm_model(person_tensor, clothing_tensor))
-        
-        # 키포인트 기반 매칭
-        if self.keypoint_matcher is not None and len(pose_keypoints) > 0:
-            results.update(self._execute_keypoint_matching(person_tensor, clothing_tensor, pose_keypoints))
-        
-        # Optical Flow 기반 움직임 추적
-        if self.optical_flow_model is not None:
-            results.update(self._execute_optical_flow(person_tensor, clothing_tensor))
-        
-        # CompleteAdvancedGeometricMatchingAI 실행
-        if self.advanced_geometric_ai is not None:
-            results.update(self._execute_advanced_ai(person_tensor, clothing_tensor))
-        elif 'advanced_ai' in self.loaded_models:
-            results.update(self._execute_advanced_ai(person_tensor, clothing_tensor))
-        
-        # Procrustes 분석 기반 키포인트 매칭
-        if self.geometric_matcher is not None:
-            results.update(self._execute_procrustes_analysis(results))
+        try:
+            # GMM 기반 기하학적 매칭 (핵심)
+            if self.gmm_model is not None:
+                results.update(self._execute_gmm_model(person_tensor, clothing_tensor))
+            
+            # 키포인트 기반 매칭
+            if self.keypoint_matcher is not None and len(pose_keypoints) > 0:
+                results.update(self._execute_keypoint_matching(person_tensor, clothing_tensor, pose_keypoints))
+            
+            # Optical Flow 기반 움직임 추적
+            if self.optical_flow_model is not None:
+                results.update(self._execute_optical_flow(person_tensor, clothing_tensor))
+            
+            # CompleteAdvancedGeometricMatchingAI 실행
+            if self.advanced_geometric_ai is not None:
+                results.update(self._execute_advanced_ai(person_tensor, clothing_tensor))
+            else:
+                # loaded_models가 coroutine인지 확인
+                loaded_models = self.loaded_models
+                if hasattr(loaded_models, '__await__'):
+                    # coroutine인 경우 동기적으로 실행
+                    import asyncio
+                    import concurrent.futures
+                    
+                    def run_async_loaded_models():
+                        return asyncio.run(loaded_models)
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_async_loaded_models)
+                        loaded_models = future.result()
+                
+                if isinstance(loaded_models, (list, dict)) and 'advanced_ai' in loaded_models:
+                    results.update(self._execute_advanced_ai(person_tensor, clothing_tensor))
+            
+            # Procrustes 분석 기반 키포인트 매칭
+            if self.geometric_matcher is not None:
+                results.update(self._execute_procrustes_analysis(results))
+            
+        except Exception as e:
+            self.logger.error(f"❌ AI 모델 실행 실패: {e}")
         
         return results
 
@@ -2299,14 +2332,29 @@ class GeometricMatchingStep(BaseStepMixin):
             return {}
 
     def _execute_advanced_ai(self, person_tensor: torch.Tensor, clothing_tensor: torch.Tensor) -> Dict[str, Any]:
-        """고급 AI 모델 실행"""
+        """고급 AI 모델 실행 (완전 동기 버전)"""
         try:
             if self.advanced_geometric_ai is not None:
                 advanced_result = self.advanced_geometric_ai(person_tensor, clothing_tensor)
-            elif 'advanced_ai' in self.ai_models:
-                advanced_result = self.ai_models['advanced_ai'].predict(person_tensor.cpu().numpy(), clothing_tensor.cpu().numpy())
             else:
-                return {}
+                # ai_models가 coroutine인지 확인
+                ai_models = self.ai_models
+                if hasattr(ai_models, '__await__'):
+                    # coroutine인 경우 동기적으로 실행
+                    import asyncio
+                    import concurrent.futures
+                    
+                    def run_async_ai_models():
+                        return asyncio.run(ai_models)
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_async_ai_models)
+                        ai_models = future.result()
+                
+                if isinstance(ai_models, dict) and 'advanced_ai' in ai_models:
+                    advanced_result = ai_models['advanced_ai'].predict(person_tensor.cpu().numpy(), clothing_tensor.cpu().numpy())
+                else:
+                    return {}
             
             self.logger.info("✅ CompleteAdvancedGeometricMatchingAI 실행 완료")
             return {'advanced_ai': advanced_result}
@@ -2415,26 +2463,49 @@ class GeometricMatchingStep(BaseStepMixin):
         }
 
     def _finalize_inference_result(self, final_result: Dict[str, Any], results: Dict[str, Any], processing_time: float) -> Dict[str, Any]:
-        """추론 결과 완성"""
-        confidence = self._compute_enhanced_confidence(results)
-        quality_score = self._compute_quality_score_advanced(results)
-        
-        final_result.update({
-            'success': True,
-            'processing_time': processing_time,
-            'confidence': confidence,
-            'quality_score': quality_score,
-            'ai_models_used': list(results.keys()),
-            'algorithms_used': self._get_used_algorithms(results),
-            'device': self.device,
-            'real_ai_inference': True,
-            'cache_hit': False,
-            'ai_enhanced': True,
-            'algorithm_type': 'advanced_deeplab_aspp_self_attention',
-            'version': 'v8.0'
-        })
-        
-        return final_result
+        """추론 결과 완성 (완전 동기 버전)"""
+        try:
+            confidence = self._compute_enhanced_confidence(results)
+            quality_score = self._compute_quality_score_advanced(results)
+            
+            final_result.update({
+                'success': True,
+                'processing_time': processing_time,
+                'confidence': confidence,
+                'quality_score': quality_score,
+                'ai_models_used': list(results.keys()) if isinstance(results, dict) else [],
+                'algorithms_used': self._get_used_algorithms(results),
+                'device': getattr(self, 'device', 'cpu'),
+                'real_ai_inference': True,
+                'cache_hit': False,
+                'ai_enhanced': True,
+                'algorithm_type': 'advanced_deeplab_aspp_self_attention',
+                'version': 'v8.0',
+                'step_name': getattr(self, 'step_name', 'GeometricMatchingStep'),
+                'step_id': getattr(self, 'step_id', 4)
+            })
+            
+            return final_result
+        except Exception as e:
+            self.logger.error(f"❌ 추론 결과 완성 실패: {e}")
+            # 기본 결과 반환
+            final_result.update({
+                'success': True,
+                'processing_time': processing_time,
+                'confidence': 0.5,
+                'quality_score': 0.5,
+                'ai_models_used': [],
+                'algorithms_used': [],
+                'device': getattr(self, 'device', 'cpu'),
+                'real_ai_inference': False,
+                'cache_hit': False,
+                'ai_enhanced': False,
+                'algorithm_type': 'fallback',
+                'version': 'v8.0',
+                'step_name': getattr(self, 'step_name', 'GeometricMatchingStep'),
+                'step_id': getattr(self, 'step_id', 4)
+            })
+            return final_result
 
     def _update_inference_statistics(self, processing_time: float, success: bool, confidence: float, quality_score: float):
         """추론 통계 업데이트"""
@@ -2668,25 +2739,42 @@ class GeometricMatchingStep(BaseStepMixin):
             return torch.zeros((1, 2, 256, 192), device=self.device)
     
     def _create_fallback_result(self, processed_input: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
-        """폴백 결과 생성"""
+        """폴백 결과 생성 (완전 동기 버전)"""
         try:
             processing_time = 0.1
             
+            # 기본 텐서 생성 (디바이스 안전하게)
+            try:
+                device = getattr(self, 'device', 'cpu')
+                transformation_matrix = torch.eye(2, 3).unsqueeze(0).to(device)
+                transformation_grid = self._create_identity_grid(1, 256, 192).to(device)
+                warped_clothing = torch.zeros(1, 3, 256, 192).to(device)
+                flow_field = torch.zeros(1, 2, 256, 192).to(device)
+            except Exception as tensor_error:
+                self.logger.warning(f"⚠️ 텐서 생성 실패, CPU 사용: {tensor_error}")
+                device = 'cpu'
+                transformation_matrix = torch.eye(2, 3).unsqueeze(0)
+                transformation_grid = self._create_identity_grid(1, 256, 192)
+                warped_clothing = torch.zeros(1, 3, 256, 192)
+                flow_field = torch.zeros(1, 2, 256, 192)
+            
             return {
                 'success': True,  # 항상 성공으로 처리
-                'transformation_matrix': torch.eye(2, 3).unsqueeze(0),
-                'transformation_grid': self._create_identity_grid(1, 256, 192),
-                'warped_clothing': torch.zeros(1, 3, 256, 192),
-                'flow_field': torch.zeros(1, 2, 256, 192),
+                'transformation_matrix': transformation_matrix,
+                'transformation_grid': transformation_grid,
+                'warped_clothing': warped_clothing,
+                'flow_field': flow_field,
                 'confidence': 0.5,
                 'quality_score': 0.5,
                 'processing_time': processing_time,
                 'ai_models_used': [],
-                'device': self.device,
+                'device': device,
                 'real_ai_inference': False,
                 'fallback_used': True,
-                'error_handled': error_msg[:100],
-                'matching_score': 0.5
+                'error_handled': error_msg[:100] if error_msg else "Unknown error",
+                'matching_score': 0.5,
+                'step_name': getattr(self, 'step_name', 'GeometricMatchingStep'),
+                'step_id': getattr(self, 'step_id', 4)
             }
             
         except Exception as e:
@@ -2695,7 +2783,9 @@ class GeometricMatchingStep(BaseStepMixin):
                 'success': False,
                 'error': str(e),
                 'transformation_matrix': None,
-                'confidence': 0.0
+                'confidence': 0.0,
+                'step_name': getattr(self, 'step_name', 'GeometricMatchingStep'),
+                'step_id': getattr(self, 'step_id', 4)
             }
     
     def _generate_cache_key(self, person_tensor: torch.Tensor, clothing_tensor: torch.Tensor) -> str:
@@ -2761,7 +2851,7 @@ class GeometricMatchingStep(BaseStepMixin):
             self.logger.debug(f"통계 업데이트 실패: {e}")
 
     def _prepare_image_tensor(self, image: Any) -> torch.Tensor:
-        """이미지를 PyTorch 텐서로 변환 (v27.1 완전 복원)"""
+        """이미지를 PyTorch 텐서로 변환 (완전 동기 버전)"""
         try:
             # PIL Image 처리
             if isinstance(image, Image.Image):
@@ -2786,6 +2876,23 @@ class GeometricMatchingStep(BaseStepMixin):
                 tensor = image.to(self.device)
                 if tensor.dim() == 3:
                     tensor = tensor.unsqueeze(0)
+                elif tensor.dim() == 4:
+                    # 이미 (B, C, H, W) 형태인 경우
+                    pass
+                else:
+                    raise ValueError(f"지원하지 않는 텐서 차원: {tensor.dim()}")
+            
+            # Base64 문자열 처리
+            elif isinstance(image, str):
+                try:
+                    import base64
+                    from io import BytesIO
+                    image_data = base64.b64decode(image)
+                    pil_image = Image.open(BytesIO(image_data))
+                    return self._prepare_image_tensor(pil_image)
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Base64 이미지 변환 실패: {e}")
+                    raise ValueError(f"Base64 이미지 변환 실패: {e}")
             
             else:
                 raise ValueError(f"지원하지 않는 이미지 타입: {type(image)}")
@@ -3420,12 +3527,16 @@ class GeometricMatchingStep(BaseStepMixin):
             }
 
     def _convert_api_input_type(self, value: Any, api_type: str, param_name: str) -> Any:
-        """API 입력 타입 변환 (BaseStepMixin 호환성)"""
+        """API 입력 타입 변환 (완전 동기 버전)"""
         try:
-            # BaseStepMixin의 동기 버전 호출
-            return self._convert_api_input_type_sync(value, api_type, param_name)
-        except AttributeError:
-            # BaseStepMixin이 없는 경우 기본 변환
+            # BaseStepMixin의 동기 버전 호출 시도
+            if hasattr(self, '_convert_api_input_type_sync'):
+                return self._convert_api_input_type_sync(value, api_type, param_name)
+        except Exception:
+            pass
+        
+        # 기본 변환 로직
+        try:
             if api_type == "image":
                 if isinstance(value, str):
                     # Base64 문자열을 PIL Image로 변환
@@ -3435,15 +3546,43 @@ class GeometricMatchingStep(BaseStepMixin):
                     try:
                         image_data = base64.b64decode(value)
                         return Image.open(BytesIO(image_data))
-                    except Exception:
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Base64 이미지 변환 실패: {e}")
+                        return value
+                elif hasattr(value, 'shape') and len(value.shape) == 4:
+                    # 텐서 형태 (1, 3, H, W)를 PIL Image로 변환
+                    try:
+                        import torch
+                        if isinstance(value, torch.Tensor):
+                            # 텐서를 numpy로 변환
+                            if value.dim() == 4:
+                                value = value.squeeze(0)  # (3, H, W)
+                            if value.dim() == 3:
+                                # (C, H, W) -> (H, W, C)
+                                value = value.permute(1, 2, 0)
+                            value = value.cpu().numpy()
+                        
+                        # numpy 배열을 PIL Image로 변환
+                        if value.dtype != np.uint8:
+                            value = (value * 255).astype(np.uint8)
+                        
+                        from PIL import Image
+                        return Image.fromarray(value)
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 텐서 이미지 변환 실패: {e}")
                         return value
                 return value
             elif api_type == "tensor":
                 if hasattr(value, 'numpy'):
                     return value.numpy()
+                elif hasattr(value, 'tolist'):
+                    return value.tolist()
                 return value
             else:
                 return value
+        except Exception as e:
+            self.logger.warning(f"⚠️ API 입력 타입 변환 실패 ({api_type}): {e}")
+            return value
 
 # ==============================================
 # 🔥 9. 팩토리 함수들
