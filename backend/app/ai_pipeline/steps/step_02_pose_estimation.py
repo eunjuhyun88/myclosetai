@@ -1442,7 +1442,7 @@ class OpenPoseModel:
         for joint_idx in range(18):  # OpenPose 18 joints
             if joint_idx < heatmaps.shape[1] - 1:  # 배경 제외
                 heatmap = heatmaps[0, joint_idx]
-                peaks = find_peaks(heatmap, threshold=0.1)
+                peaks = find_peaks_advanced(heatmap)
                 
                 if isinstance(peaks, list) and peaks:
                     # 가장 높은 신뢰도 선택
@@ -1636,6 +1636,7 @@ class HRNetModel:
         self.model_path = model_path
         self.model = None
         self.loaded = False
+        self.input_size = (256, 192)  # HRNet 기본 입력 크기
         self.logger = logging.getLogger(f"{__name__}.HRNetModel")
     
     def load_model(self) -> bool:
