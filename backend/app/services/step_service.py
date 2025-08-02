@@ -866,12 +866,35 @@ class StepServiceManager:
             'cloth_warping': 'cloth_warping',
             'post_processing': 'post_processing',
             'quality_assessment': 'quality_assessment',
-            'result_analysis': 'quality_assessment'
+            'result_analysis': 'quality_assessment',
+            'measurementsvalidation': 'measurements_validation',  # Step 2 추가
+            'measurements_validation': 'measurements_validation'  # Step 2 추가
         }
         
         for key, value in step_mapping.items():
             if key in step_name.lower():
                 return value
+        
+        # 더 정확한 매핑을 위해 step_name을 직접 확인
+        step_name_lower = step_name.lower()
+        if 'measurements' in step_name_lower or 'validation' in step_name_lower:
+            return 'measurements_validation'
+        elif 'human' in step_name_lower or 'parsing' in step_name_lower:
+            return 'human_parsing'
+        elif 'pose' in step_name_lower:
+            return 'pose_estimation'
+        elif 'clothing' in step_name_lower or 'segmentation' in step_name_lower:
+            return 'cloth_segmentation'
+        elif 'geometric' in step_name_lower or 'matching' in step_name_lower:
+            return 'geometric_matching'
+        elif 'warping' in step_name_lower:
+            return 'cloth_warping'
+        elif 'virtual' in step_name_lower or 'fitting' in step_name_lower:
+            return 'virtual_fitting'
+        elif 'post' in step_name_lower:
+            return 'post_processing'
+        elif 'quality' in step_name_lower or 'assessment' in step_name_lower:
+            return 'quality_assessment'
         
         return 'human_parsing'  # 기본값
     
