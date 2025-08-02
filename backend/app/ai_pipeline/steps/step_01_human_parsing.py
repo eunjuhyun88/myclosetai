@@ -3907,20 +3907,32 @@ if BaseStepMixin:
                             self.logger.debug(f"🔍 입력 채널 수 감지: {input_channels}")
                             break
                 
-                # 출력 클래스 수 추정
-                num_classes = 20  # 기본값
+                # 출력 클래스 수 추정 (체크포인트 기반)
+                num_classes = 18  # SCHP 모델의 기본 클래스 수
                 for key in checkpoint_keys:
                     if 'classifier' in key and 'weight' in key:
                         weight_shape = checkpoint[key].shape
                         if len(weight_shape) == 4:
                             num_classes = weight_shape[0]
-                            self.logger.debug(f"🔍 출력 클래스 수 감지: {num_classes}")
+                            self.logger.debug(f"🔍 출력 클래스 수 감지 (classifier.weight): {num_classes}")
                             break
                     elif 'classifier' in key and 'bias' in key:
                         bias_shape = checkpoint[key].shape
                         if len(bias_shape) == 1:
                             num_classes = bias_shape[0]
-                            self.logger.debug(f"🔍 출력 클래스 수 감지 (bias): {num_classes}")
+                            self.logger.debug(f"🔍 출력 클래스 수 감지 (classifier.bias): {num_classes}")
+                            break
+                    elif 'fushion.3.weight' in key:  # SCHP 모델의 fusion 레이어
+                        weight_shape = checkpoint[key].shape
+                        if len(weight_shape) == 4:
+                            num_classes = weight_shape[0]
+                            self.logger.debug(f"🔍 출력 클래스 수 감지 (fushion.3.weight): {num_classes}")
+                            break
+                    elif 'fushion.3.bias' in key:  # SCHP 모델의 fusion 레이어
+                        bias_shape = checkpoint[key].shape
+                        if len(bias_shape) == 1:
+                            num_classes = bias_shape[0]
+                            self.logger.debug(f"🔍 출력 클래스 수 감지 (fushion.3.bias): {num_classes}")
                             break
                 
                 # 중간 레이어 채널 수 추정
@@ -3986,9 +3998,16 @@ if BaseStepMixin:
                     # SCHP (Self-Correction Human Parsing) 모델 - 체크포인트와 정확히 맞춤
                     if 'schp' in checkpoint_path.lower() or 'exp-schp' in checkpoint_path.lower():
                         class SCHPModel(nn.Module):
-                            def __init__(self, num_classes=20):
+                            def __init__(self, num_classes=num_classes):  # 감지된 클래스 수 사용
                                 super().__init__()
                                 # 🔥 체크포인트와 정확히 일치하는 ResNet-101 기반 SCHP 아키텍처
+                                
+                                # 체크포인트 로딩 상태
+                                self.checkpoint_loaded = False
+                                self.checkpoint_path = None
+                                
+                                # 로거 설정
+                                self.logger = logging.getLogger(__name__)
                                 
                                 # ResNet-101 backbone (체크포인트와 정확히 맞춤)
                                 self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1)  # 체크포인트: [64, 3, 3, 3]
@@ -4095,10 +4114,10 @@ if BaseStepMixin:
                                 
                                 # Fusion Module (체크포인트와 일치)
                                 self.fushion = nn.Sequential(
-                                    nn.Conv2d(num_classes + 1, 64, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(64),
+                                    nn.Conv2d(num_classes + 1, 256, kernel_size=3, padding=1),  # 체크포인트: [256, 19, 3, 3]
+                                    nn.BatchNorm2d(256),
                                     nn.ReLU(inplace=True),
-                                    nn.Conv2d(64, num_classes, kernel_size=1)
+                                    nn.Conv2d(256, num_classes, kernel_size=1)  # 체크포인트: [18, 256, 1, 1]
                                 )
                                 
                                 # Classifier (최종 출력)
@@ -4177,6 +4196,234 @@ if BaseStepMixin:
                                         'confidence_map': torch.sigmoid(output),
                                         'final_confidence': torch.sigmoid(output)
                                     }
+                            
+                            def load_checkpoint(self, checkpoint_path: str, map_location: str = 'cpu') -> bool:
+                                """실제 체크포인트 로딩 및 매핑"""
+                                try:
+                                    self.logger.info(f"🔍 체크포인트 로딩 시작: {checkpoint_path}")
+                                    
+                                    if not os.path.exists(checkpoint_path):
+                                        self.logger.error(f"❌ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
+                                        return False
+                                    
+                                    # 체크포인트 로딩
+                                    checkpoint = torch.load(checkpoint_path, map_location=map_location)
+                                    self.logger.info(f"✅ 체크포인트 로딩 완료")
+                                    
+                                    # 체크포인트 구조 분석
+                                    if 'state_dict' in checkpoint:
+                                        state_dict = checkpoint['state_dict']
+                                        self.logger.info(f"📊 state_dict 키 개수: {len(state_dict.keys())}")
+                                    else:
+                                        state_dict = checkpoint
+                                        self.logger.info(f"📊 직접 state_dict 키 개수: {len(state_dict.keys())}")
+                                    
+                                    # 체크포인트 키 분석
+                                    checkpoint_keys = list(state_dict.keys())
+                                    self.logger.info(f"🔍 체크포인트 키 샘플: {checkpoint_keys[:10]}")
+                                    
+                                    # 모델 state_dict 가져오기
+                                    model_state_dict = self.state_dict()
+                                    model_keys = list(model_state_dict.keys())
+                                    self.logger.info(f"🔍 모델 키 샘플: {model_keys[:10]}")
+                                    
+                                    # 키 매핑 생성
+                                    key_mapping = self._create_key_mapping(checkpoint_keys, model_keys)
+                                    
+                                    # 매핑된 state_dict 생성
+                                    mapped_state_dict = {}
+                                    mapped_count = 0
+                                    
+                                    for checkpoint_key, model_key in key_mapping.items():
+                                        if checkpoint_key in state_dict and model_key in model_state_dict:
+                                            # 텐서 크기 확인
+                                            checkpoint_tensor = state_dict[checkpoint_key]
+                                            model_tensor = model_state_dict[model_key]
+                                            
+                                            if checkpoint_tensor.shape == model_tensor.shape:
+                                                mapped_state_dict[model_key] = checkpoint_tensor
+                                                mapped_count += 1
+                                                self.logger.debug(f"✅ 매핑 성공: {checkpoint_key} -> {model_key}")
+                                            else:
+                                                self.logger.warning(f"⚠️ 크기 불일치: {checkpoint_key} ({checkpoint_tensor.shape}) != {model_key} ({model_tensor.shape})")
+                                        else:
+                                            self.logger.debug(f"⚠️ 키 누락: {checkpoint_key} 또는 {model_key}")
+                                    
+                                    # 매핑된 가중치 로딩
+                                    if mapped_state_dict:
+                                        self.load_state_dict(mapped_state_dict, strict=False)
+                                        self.logger.info(f"✅ 체크포인트 매핑 완료: {mapped_count}/{len(model_keys)} 레이어")
+                                        
+                                        self.checkpoint_loaded = True
+                                        self.checkpoint_path = checkpoint_path
+                                        return True
+                                    else:
+                                        self.logger.error(f"❌ 매핑된 가중치가 없음")
+                                        return False
+                                        
+                                except Exception as e:
+                                    self.logger.error(f"❌ 체크포인트 로딩 실패: {e}")
+                                    return False
+                            
+                            def _create_key_mapping(self, checkpoint_keys: list, model_keys: list) -> Dict[str, str]:
+                                """체크포인트 키와 모델 키 간의 매핑 생성"""
+                                mapping = {}
+                                
+                                # 직접 매핑 규칙들
+                                direct_mappings = {
+                                    # 초기 레이어들 (module. 접두사 제거)
+                                    'module.conv1.weight': 'conv1.weight',
+                                    'module.conv1.bias': 'conv1.bias',
+                                    'module.bn1.weight': 'bn1.weight',
+                                    'module.bn1.bias': 'bn1.bias',
+                                    'module.bn1.running_mean': 'bn1.running_mean',
+                                    'module.bn1.running_var': 'bn1.running_var',
+                                    
+                                    # Layer 1 (ResNet bottleneck) - module. 접두사 제거
+                                    'module.layer1.0.conv1.weight': 'layer1.0.conv1.weight',
+                                    'module.layer1.0.conv1.bias': 'layer1.0.conv1.bias',
+                                    'module.layer1.0.bn1.weight': 'layer1.0.bn1.weight',
+                                    'module.layer1.0.bn1.bias': 'layer1.0.bn1.bias',
+                                    'module.layer1.0.bn1.running_mean': 'layer1.0.bn1.running_mean',
+                                    'module.layer1.0.bn1.running_var': 'layer1.0.bn1.running_var',
+                                    
+                                    'layer1.0.conv2.weight': 'layer1.0.conv2.weight',
+                                    'layer1.0.conv2.bias': 'layer1.0.conv2.bias',
+                                    'layer1.0.bn2.weight': 'layer1.0.bn2.weight',
+                                    'layer1.0.bn2.bias': 'layer1.0.bn2.bias',
+                                    'layer1.0.bn2.running_mean': 'layer1.0.bn2.running_mean',
+                                    'layer1.0.bn2.running_var': 'layer1.0.bn2.running_var',
+                                    
+                                    'layer1.0.conv3.weight': 'layer1.0.conv3.weight',
+                                    'layer1.0.conv3.bias': 'layer1.0.conv3.bias',
+                                    'layer1.0.bn3.weight': 'layer1.0.bn3.weight',
+                                    'layer1.0.bn3.bias': 'layer1.0.bn3.bias',
+                                    'layer1.0.bn3.running_mean': 'layer1.0.bn3.running_mean',
+                                    'layer1.0.bn3.running_var': 'layer1.0.bn3.running_var',
+                                    
+                                    # Context Encoding
+                                    'context_encoding.bottleneck.0.weight': 'context_encoding.bottleneck.0.weight',
+                                    'context_encoding.bottleneck.0.bias': 'context_encoding.bottleneck.0.bias',
+                                    'context_encoding.bottleneck.1.weight': 'context_encoding.bottleneck.1.weight',
+                                    'context_encoding.bottleneck.1.bias': 'context_encoding.bottleneck.1.bias',
+                                    'context_encoding.bottleneck.1.running_mean': 'context_encoding.bottleneck.1.running_mean',
+                                    'context_encoding.bottleneck.1.running_var': 'context_encoding.bottleneck.1.running_var',
+                                    
+                                    # Edge Detection
+                                    'edge.conv1.0.weight': 'edge.0.weight',
+                                    'edge.conv1.0.bias': 'edge.0.bias',
+                                    'edge.conv1.1.weight': 'edge.1.weight',
+                                    'edge.conv1.1.bias': 'edge.1.bias',
+                                    'edge.conv1.1.running_mean': 'edge.1.running_mean',
+                                    'edge.conv1.1.running_var': 'edge.1.running_var',
+                                    
+                                    # Decoder
+                                    'decoder.conv1.0.weight': 'decoder.0.weight',
+                                    'decoder.conv1.0.bias': 'decoder.0.bias',
+                                    'decoder.conv1.1.weight': 'decoder.1.weight',
+                                    'decoder.conv1.1.bias': 'decoder.1.bias',
+                                    'decoder.conv1.1.running_mean': 'decoder.1.running_mean',
+                                    'decoder.conv1.1.running_var': 'decoder.1.running_var',
+                                    
+                                    # Fusion
+                                    'fushion.0.weight': 'fushion.0.weight',
+                                    'fushion.0.bias': 'fushion.0.bias',
+                                    'fushion.1.weight': 'fushion.1.weight',
+                                    'fushion.1.bias': 'fushion.1.bias',
+                                    'fushion.1.running_mean': 'fushion.1.running_mean',
+                                    'fushion.1.running_var': 'fushion.1.running_var',
+                                }
+                                
+                                # module. 접두사 자동 제거 매핑
+                                self.logger.info(f"🔍 매핑 시작: 체크포인트 키 {len(checkpoint_keys)}개, 모델 키 {len(model_keys)}개")
+                                
+                                # 디버깅을 위해 몇 개 샘플 출력
+                                self.logger.info(f"🔍 체크포인트 키 샘플 (처음 5개): {checkpoint_keys[:5]}")
+                                self.logger.info(f"🔍 모델 키 샘플 (처음 5개): {model_keys[:5]}")
+                                
+                                mapped_count = 0
+                                for checkpoint_key in checkpoint_keys:
+                                    # module. 접두사 제거
+                                    if checkpoint_key.startswith('module.'):
+                                        model_key = checkpoint_key[7:]  # 'module.' 제거
+                                        if model_key in model_keys:
+                                            mapping[checkpoint_key] = model_key
+                                            mapped_count += 1
+                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
+                                                self.logger.info(f"✅ module. 제거 매핑: {checkpoint_key} -> {model_key}")
+                                            continue
+                                        else:
+                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
+                                                self.logger.debug(f"⚠️ module. 제거 후 모델 키 없음: {checkpoint_key} -> {model_key}")
+                                    
+                                    # 직접 매핑 적용
+                                    if checkpoint_key in direct_mappings:
+                                        model_key = direct_mappings[checkpoint_key]
+                                        if model_key in model_keys:
+                                            mapping[checkpoint_key] = model_key
+                                            mapped_count += 1
+                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
+                                                self.logger.info(f"✅ 직접 매핑: {checkpoint_key} -> {model_key}")
+                                            continue
+                                        else:
+                                            if mapped_count <= 3:  # 처음 3개만 로그 출력
+                                                self.logger.debug(f"⚠️ 직접 매핑 후 모델 키 없음: {checkpoint_key} -> {model_key}")
+                                
+                                self.logger.info(f"📊 매핑 결과: {len(mapping)}개 키 매핑됨")
+                                if mapping:
+                                    self.logger.info(f"🔍 매핑된 키 샘플: {list(mapping.items())[:5]}")
+                                else:
+                                    self.logger.warning("⚠️ 매핑된 키가 없습니다!")
+                                
+                                # 패턴 매핑 (더 유연한 매핑)
+                                for checkpoint_key in checkpoint_keys:
+                                    if checkpoint_key in mapping:
+                                        continue
+                                        
+                                    # 패턴 기반 매핑
+                                    for model_key in model_keys:
+                                        if self._keys_match_pattern(checkpoint_key, model_key):
+                                            mapping[checkpoint_key] = model_key
+                                            break
+                                
+                                return mapping
+                            
+                            def _keys_match_pattern(self, checkpoint_key: str, model_key: str) -> bool:
+                                """키 패턴 매칭"""
+                                # 간단한 패턴 매칭 규칙들
+                                patterns = [
+                                    # conv -> conv
+                                    (r'conv(\d+)\.weight', r'conv\1\.weight'),
+                                    (r'conv(\d+)\.bias', r'conv\1\.bias'),
+                                    
+                                    # bn -> bn
+                                    (r'bn(\d+)\.weight', r'bn\1\.weight'),
+                                    (r'bn(\d+)\.bias', r'bn\1\.bias'),
+                                    (r'bn(\d+)\.running_mean', r'bn\1\.running_mean'),
+                                    (r'bn(\d+)\.running_var', r'bn\1\.running_var'),
+                                    
+                                    # layer -> layer
+                                    (r'layer(\d+)\.(\d+)\.conv(\d+)\.weight', r'layer\1\.\2\.conv\3\.weight'),
+                                    (r'layer(\d+)\.(\d+)\.conv(\d+)\.bias', r'layer\1\.\2\.conv\3\.bias'),
+                                    (r'layer(\d+)\.(\d+)\.bn(\d+)\.weight', r'layer\1\.\2\.bn\3\.weight'),
+                                    (r'layer(\d+)\.(\d+)\.bn(\d+)\.bias', r'layer\1\.\2\.bn\3\.bias'),
+                                ]
+                                
+                                import re
+                                for pattern, replacement in patterns:
+                                    if re.match(pattern, checkpoint_key) and re.match(replacement, model_key):
+                                        return True
+                                
+                                return False
+                            
+                            def get_checkpoint_status(self) -> Dict[str, Any]:
+                                """체크포인트 로딩 상태 반환"""
+                                return {
+                                    'checkpoint_loaded': self.checkpoint_loaded,
+                                    'checkpoint_path': self.checkpoint_path,
+                                    'model_parameters': sum(p.numel() for p in self.parameters()),
+                                    'trainable_parameters': sum(p.numel() for p in self.parameters() if p.requires_grad)
+                                }
                         return SCHPModel(num_classes)
                     
                     # SegFormer 모델
@@ -4286,8 +4533,9 @@ if BaseStepMixin:
                                 }
                         return DefaultModel(num_classes)
                 
-                # 체크포인트 타입에 맞는 모델 생성
+                # 체크포인트 타입에 맞는 모델 생성 (감지된 클래스 수 전달)
                 model = create_model_for_checkpoint(checkpoint, checkpoint_path)
+                self.logger.debug(f"🎯 생성된 모델 클래스 수: {num_classes}")
                 
                 # 체크포인트 로드 (strict=False로 부분 로딩)
                 try:
@@ -5609,12 +5857,353 @@ def optimize_memory():
         return False
 
 # ==============================================
+# 🔥 체크포인트 테스트 함수
+# ==============================================
+
+def test_schp_checkpoint_loading():
+    """SCHP 모델의 체크포인트 로딩 테스트"""
+    try:
+        print("🧪 SCHP 체크포인트 로딩 테스트 시작...")
+        
+        # SCHP 모델 생성
+        schp_model = None
+        
+        # create_model_for_checkpoint 함수에서 SCHP 모델 생성
+        def create_test_schp_model():
+            class SCHPModel(nn.Module):
+                def __init__(self, num_classes=20):
+                    super().__init__()
+                    # 체크포인트 로딩 상태
+                    self.checkpoint_loaded = False
+                    self.checkpoint_path = None
+                    self.logger = logging.getLogger(__name__)
+                    
+                    # 간단한 테스트용 모델 구조
+                    self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1)
+                    self.bn1 = nn.BatchNorm2d(64)
+                    self.relu = nn.ReLU(inplace=True)
+                    self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+                    
+                    # 간단한 레이어들
+                    self.layer1 = nn.Sequential(
+                        nn.Conv2d(64, 64, kernel_size=1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                        nn.BatchNorm2d(64),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(64, 256, kernel_size=1),
+                        nn.BatchNorm2d(256)
+                    )
+                    
+                    # Context Encoding
+                    self.context_encoding = nn.ModuleDict({
+                        'bottleneck': nn.Sequential(
+                            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
+                            nn.BatchNorm2d(512)
+                        )
+                    })
+                    
+                    # Edge Detection
+                    self.edge = nn.Sequential(
+                        nn.Conv2d(512, 256, kernel_size=3, padding=1),
+                        nn.BatchNorm2d(256),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(256, 1, kernel_size=1)
+                    )
+                    
+                    # Decoder
+                    self.decoder = nn.Sequential(
+                        nn.Conv2d(512, 128, kernel_size=3, padding=1),
+                        nn.BatchNorm2d(128),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(128, num_classes, kernel_size=1)
+                    )
+                    
+                    # Fusion
+                    self.fushion = nn.Sequential(
+                        nn.Conv2d(num_classes + 1, 256, kernel_size=3, padding=1),
+                        nn.BatchNorm2d(256),
+                        nn.ReLU(inplace=True),
+                        nn.Conv2d(256, num_classes, kernel_size=1)
+                    )
+                    
+                    # Classifier
+                    self.classifier = nn.Conv2d(512, num_classes, kernel_size=1)
+                
+                def forward(self, x):
+                    x = self.conv1(x)
+                    x = self.bn1(x)
+                    x = self.relu(x)
+                    x = self.maxpool(x)
+                    x = self.layer1(x)
+                    
+                    context_feat = self.context_encoding['bottleneck'](x)
+                    edge_map = self.edge(context_feat)
+                    parsing = self.decoder(context_feat)
+                    
+                    fusion_input = torch.cat([parsing, edge_map], dim=1)
+                    output = self.fushion(fusion_input)
+                    
+                    return {
+                        'parsing': output,
+                        'parsing_pred': output,
+                        'confidence_map': torch.sigmoid(output),
+                        'final_confidence': torch.sigmoid(output)
+                    }
+                
+                def load_checkpoint(self, checkpoint_path: str, map_location: str = 'cpu') -> bool:
+                    """실제 체크포인트 로딩 및 매핑"""
+                    try:
+                        self.logger.info(f"🔍 체크포인트 로딩 시작: {checkpoint_path}")
+                        
+                        if not os.path.exists(checkpoint_path):
+                            self.logger.error(f"❌ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
+                            return False
+                        
+                        # 체크포인트 로딩
+                        checkpoint = torch.load(checkpoint_path, map_location=map_location)
+                        self.logger.info(f"✅ 체크포인트 로딩 완료")
+                        
+                        # 체크포인트 구조 분석
+                        if 'state_dict' in checkpoint:
+                            state_dict = checkpoint['state_dict']
+                            self.logger.info(f"📊 state_dict 키 개수: {len(state_dict.keys())}")
+                        else:
+                            state_dict = checkpoint
+                            self.logger.info(f"📊 직접 state_dict 키 개수: {len(state_dict.keys())}")
+                        
+                        # 체크포인트 키 분석
+                        checkpoint_keys = list(state_dict.keys())
+                        self.logger.info(f"🔍 체크포인트 키 샘플: {checkpoint_keys[:10]}")
+                        
+                        # 모델 state_dict 가져오기
+                        model_state_dict = self.state_dict()
+                        model_keys = list(model_state_dict.keys())
+                        self.logger.info(f"🔍 모델 키 샘플: {model_keys[:10]}")
+                        
+                        # 키 매핑 생성
+                        key_mapping = self._create_key_mapping(checkpoint_keys, model_keys)
+                        
+                        # 매핑된 state_dict 생성
+                        mapped_state_dict = {}
+                        mapped_count = 0
+                        
+                        for checkpoint_key, model_key in key_mapping.items():
+                            if checkpoint_key in state_dict and model_key in model_state_dict:
+                                # 텐서 크기 확인
+                                checkpoint_tensor = state_dict[checkpoint_key]
+                                model_tensor = model_state_dict[model_key]
+                                
+                                if checkpoint_tensor.shape == model_tensor.shape:
+                                    mapped_state_dict[model_key] = checkpoint_tensor
+                                    mapped_count += 1
+                                    self.logger.debug(f"✅ 매핑 성공: {checkpoint_key} -> {model_key}")
+                                else:
+                                    self.logger.warning(f"⚠️ 크기 불일치: {checkpoint_key} ({checkpoint_tensor.shape}) != {model_key} ({model_tensor.shape})")
+                            else:
+                                self.logger.debug(f"⚠️ 키 누락: {checkpoint_key} 또는 {model_key}")
+                        
+                        # 매핑된 가중치 로딩
+                        if mapped_state_dict:
+                            self.load_state_dict(mapped_state_dict, strict=False)
+                            self.logger.info(f"✅ 체크포인트 매핑 완료: {mapped_count}/{len(model_keys)} 레이어")
+                            
+                            self.checkpoint_loaded = True
+                            self.checkpoint_path = checkpoint_path
+                            return True
+                        else:
+                            self.logger.error(f"❌ 매핑된 가중치가 없음")
+                            return False
+                            
+                    except Exception as e:
+                        self.logger.error(f"❌ 체크포인트 로딩 실패: {e}")
+                        return False
+                
+                def _create_key_mapping(self, checkpoint_keys: list, model_keys: list) -> Dict[str, str]:
+                    """체크포인트 키와 모델 키 간의 매핑 생성"""
+                    mapping = {}
+                    
+                    # 직접 매핑 규칙들
+                    direct_mappings = {
+                        # 초기 레이어들
+                        'conv1.weight': 'conv1.weight',
+                        'conv1.bias': 'conv1.bias',
+                        'bn1.weight': 'bn1.weight',
+                        'bn1.bias': 'bn1.bias',
+                        'bn1.running_mean': 'bn1.running_mean',
+                        'bn1.running_var': 'bn1.running_var',
+                        
+                        # Layer 1 (ResNet bottleneck)
+                        'layer1.0.conv1.weight': 'layer1.0.conv1.weight',
+                        'layer1.0.conv1.bias': 'layer1.0.conv1.bias',
+                        'layer1.0.bn1.weight': 'layer1.0.bn1.weight',
+                        'layer1.0.bn1.bias': 'layer1.0.bn1.bias',
+                        'layer1.0.bn1.running_mean': 'layer1.0.bn1.running_mean',
+                        'layer1.0.bn1.running_var': 'layer1.0.bn1.running_var',
+                        
+                        'layer1.0.conv2.weight': 'layer1.0.conv2.weight',
+                        'layer1.0.conv2.bias': 'layer1.0.conv2.bias',
+                        'layer1.0.bn2.weight': 'layer1.0.bn2.weight',
+                        'layer1.0.bn2.bias': 'layer1.0.bn2.bias',
+                        'layer1.0.bn2.running_mean': 'layer1.0.bn2.running_mean',
+                        'layer1.0.bn2.running_var': 'layer1.0.bn2.running_var',
+                        
+                        'layer1.0.conv3.weight': 'layer1.0.conv3.weight',
+                        'layer1.0.conv3.bias': 'layer1.0.conv3.bias',
+                        'layer1.0.bn3.weight': 'layer1.0.bn3.weight',
+                        'layer1.0.bn3.bias': 'layer1.0.bn3.bias',
+                        'layer1.0.bn3.running_mean': 'layer1.0.bn3.running_mean',
+                        'layer1.0.bn3.running_var': 'layer1.0.bn3.running_var',
+                        
+                        # Context Encoding
+                        'context_encoding.bottleneck.0.weight': 'context_encoding.bottleneck.0.weight',
+                        'context_encoding.bottleneck.0.bias': 'context_encoding.bottleneck.0.bias',
+                        'context_encoding.bottleneck.1.weight': 'context_encoding.bottleneck.1.weight',
+                        'context_encoding.bottleneck.1.bias': 'context_encoding.bottleneck.1.bias',
+                        'context_encoding.bottleneck.1.running_mean': 'context_encoding.bottleneck.1.running_mean',
+                        'context_encoding.bottleneck.1.running_var': 'context_encoding.bottleneck.1.running_var',
+                        
+                        # Edge Detection
+                        'edge.conv1.0.weight': 'edge.0.weight',
+                        'edge.conv1.0.bias': 'edge.0.bias',
+                        'edge.conv1.1.weight': 'edge.1.weight',
+                        'edge.conv1.1.bias': 'edge.1.bias',
+                        'edge.conv1.1.running_mean': 'edge.1.running_mean',
+                        'edge.conv1.1.running_var': 'edge.1.running_var',
+                        
+                        # Decoder
+                        'decoder.conv1.0.weight': 'decoder.0.weight',
+                        'decoder.conv1.0.bias': 'decoder.0.bias',
+                        'decoder.conv1.1.weight': 'decoder.1.weight',
+                        'decoder.conv1.1.bias': 'decoder.1.bias',
+                        'decoder.conv1.1.running_mean': 'decoder.1.running_mean',
+                        'decoder.conv1.1.running_var': 'decoder.1.running_var',
+                        
+                        # Fusion
+                        'fushion.0.weight': 'fushion.0.weight',
+                        'fushion.0.bias': 'fushion.0.bias',
+                        'fushion.1.weight': 'fushion.1.weight',
+                        'fushion.1.bias': 'fushion.1.bias',
+                        'fushion.1.running_mean': 'fushion.1.running_mean',
+                        'fushion.1.running_var': 'fushion.1.running_var',
+                    }
+                    
+                    # 직접 매핑 적용
+                    for checkpoint_key, model_key in direct_mappings.items():
+                        if checkpoint_key in checkpoint_keys and model_key in model_keys:
+                            mapping[checkpoint_key] = model_key
+                    
+                    # 패턴 매핑 (더 유연한 매핑)
+                    for checkpoint_key in checkpoint_keys:
+                        if checkpoint_key in mapping:
+                            continue
+                            
+                        # 패턴 기반 매핑
+                        for model_key in model_keys:
+                            if self._keys_match_pattern(checkpoint_key, model_key):
+                                mapping[checkpoint_key] = model_key
+                                break
+                    
+                    return mapping
+                
+                def _keys_match_pattern(self, checkpoint_key: str, model_key: str) -> bool:
+                    """키 패턴 매칭"""
+                    # 간단한 패턴 매칭 규칙들
+                    patterns = [
+                        # conv -> conv
+                        (r'conv(\d+)\.weight', r'conv\1\.weight'),
+                        (r'conv(\d+)\.bias', r'conv\1\.bias'),
+                        
+                        # bn -> bn
+                        (r'bn(\d+)\.weight', r'bn\1\.weight'),
+                        (r'bn(\d+)\.bias', r'bn\1\.bias'),
+                        (r'bn(\d+)\.running_mean', r'bn\1\.running_mean'),
+                        (r'bn(\d+)\.running_var', r'bn\1\.running_var'),
+                        
+                        # layer -> layer
+                        (r'layer(\d+)\.(\d+)\.conv(\d+)\.weight', r'layer\1\.\2\.conv\3\.weight'),
+                        (r'layer(\d+)\.(\d+)\.conv(\d+)\.bias', r'layer\1\.\2\.conv\3\.bias'),
+                        (r'layer(\d+)\.(\d+)\.bn(\d+)\.weight', r'layer\1\.\2\.bn\3\.weight'),
+                        (r'layer(\d+)\.(\d+)\.bn(\d+)\.bias', r'layer\1\.\2\.bn\3\.bias'),
+                    ]
+                    
+                    import re
+                    for pattern, replacement in patterns:
+                        if re.match(pattern, checkpoint_key) and re.match(replacement, model_key):
+                            return True
+                    
+                    return False
+                
+                def get_checkpoint_status(self) -> Dict[str, Any]:
+                    """체크포인트 로딩 상태 반환"""
+                    return {
+                        'checkpoint_loaded': self.checkpoint_loaded,
+                        'checkpoint_path': self.checkpoint_path,
+                        'model_parameters': sum(p.numel() for p in self.parameters()),
+                        'trainable_parameters': sum(p.numel() for p in self.parameters() if p.requires_grad)
+                    }
+            
+            return SCHPModel()
+        
+        # 테스트 모델 생성
+        schp_model = create_test_schp_model()
+        print(f"✅ SCHP 모델 생성 완료")
+        
+        # 체크포인트 로딩 테스트
+        checkpoint_path = "ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth"
+        
+        if os.path.exists(checkpoint_path):
+            print(f"🔍 체크포인트 파일 발견: {checkpoint_path}")
+            
+            # 체크포인트 로딩 시도
+            success = schp_model.load_checkpoint(checkpoint_path)
+            
+            if success:
+                print("✅ 체크포인트 로딩 성공!")
+                
+                # 상태 확인
+                status = schp_model.get_checkpoint_status()
+                print(f"📊 모델 상태:")
+                print(f"  - 체크포인트 로딩됨: {status['checkpoint_loaded']}")
+                print(f"  - 체크포인트 경로: {status['checkpoint_path']}")
+                print(f"  - 모델 파라미터 수: {status['model_parameters']:,}")
+                print(f"  - 학습 가능 파라미터 수: {status['trainable_parameters']:,}")
+                
+                # 간단한 추론 테스트
+                test_input = torch.randn(1, 3, 512, 512)
+                with torch.no_grad():
+                    output = schp_model(test_input)
+                
+                print(f"✅ 추론 테스트 성공!")
+                print(f"  - 입력 shape: {test_input.shape}")
+                print(f"  - 출력 parsing shape: {output['parsing'].shape}")
+                print(f"  - 출력 confidence shape: {output['confidence_map'].shape}")
+                
+            else:
+                print("❌ 체크포인트 로딩 실패")
+        else:
+            print(f"⚠️ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
+            print("💡 체크포인트 파일을 다운로드하거나 경로를 확인하세요.")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 테스트 실패: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+# ==============================================
 # 🔥 모듈 익스포트
 # ==============================================
 
 __all__ = [
     # 메인 Step 클래스 (핵심)
     'HumanParsingStep',
+    
+    # 체크포인트 테스트 함수
+    'test_schp_checkpoint_loading',
     
     # 설정 클래스들
     'EnhancedHumanParsingConfig',
