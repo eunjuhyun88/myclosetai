@@ -245,13 +245,16 @@ def optimize_central_hub_memory():
 # 🔥 공통 처리 함수 (Central Hub 기반)
 # =============================================================================
 
-async def _process_step_common(
+import concurrent.futures
+import threading
+
+def _process_step_sync(
     step_name: str,
     step_id: int,
     api_input: Dict[str, Any],
     session_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    """공통 Step 처리 로직 (Central Hub 기반)"""
+    """동기 Step 처리 로직 (별도 스레드에서 실행)"""
     try:
         # Central Hub 서비스 조회
         step_service_manager = _get_step_service_manager()
@@ -268,59 +271,57 @@ async def _process_step_common(
         session_data = {}
         if session_manager:
             try:
-                session_status = await session_manager.get_session_status(session_id)
+                # 동기적으로 세션 상태 조회
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        session_status = asyncio.run(session_manager.get_session_status(session_id))
+                    else:
+                        session_status = loop.run_until_complete(session_manager.get_session_status(session_id))
+                except RuntimeError:
+                    session_status = asyncio.run(session_manager.get_session_status(session_id))
+                
                 if session_status and session_status.get('status') != 'not_found':
                     session_data = session_status.get('data', {})
             except Exception as e:
                 logger.warning(f"⚠️ 세션 데이터 조회 실패: {e}")
                 session_data = {}
         
-        # 🔥 WebSocket 진행률 콜백 생성
-        websocket_manager = _get_websocket_manager()
-        progress_callback = None
-        if websocket_manager:
-            try:
-                from app.api.websocket_routes import create_progress_callback
-                progress_callback = create_progress_callback(session_id)
-            except Exception as e:
-                logger.warning(f"⚠️ 진행률 콜백 생성 실패: {e}")
-        
         # API 입력 데이터 보강
         enhanced_input = {
             **api_input,
             'session_id': session_id,
             'step_name': step_name,
-            'progress_callback': progress_callback,  # 🔥 진행률 콜백 추가
             'step_id': step_id,
             'session_data': session_data,
             'central_hub_based': True
         }
         
-        # Central Hub 기반 Step 처리
-        result = await step_service_manager.process_step_by_name(
+        # Central Hub 기반 Step 처리 (동기적으로)
+        result = step_service_manager.process_step_by_name_sync(
             step_name=step_name,
             api_input=enhanced_input
         )
         
         # 결과 후처리
         if result.get('success', False):
-            # 세션 업데이트
+            # 세션 업데이트 (동기적으로)
             if session_manager:
                 session_key = f"step_{step_id:02d}_result"
                 session_data[session_key] = result['result']
-                await session_manager.update_session(session_id, session_data)
-            
-            # WebSocket 알림
-            if container:
-                websocket_manager = container.get('websocket_manager')
-                if websocket_manager:
-                    await websocket_manager.broadcast({
-                        'type': 'step_completed',
-                        'step': f'step_{step_id:02d}',
-                        'session_id': session_id,
-                        'status': 'success',
-                        'central_hub_used': True
-                    })
+                try:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.run(session_manager.update_session(session_id, session_data))
+                        else:
+                            loop.run_until_complete(session_manager.update_session(session_id, session_data))
+                    except RuntimeError:
+                        asyncio.run(session_manager.update_session(session_id, session_data))
+                except Exception as e:
+                    logger.warning(f"⚠️ 세션 업데이트 실패: {e}")
             
             return {
                 'success': True,
@@ -342,6 +343,34 @@ async def _process_step_common(
             }
             
     except Exception as e:
+        logger.error(f"❌ Step {step_name} 동기 처리 실패: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'session_id': session_id,
+            'step_name': step_name
+        }
+
+import asyncio
+
+def _process_step_common(
+    step_name: str,
+    step_id: int,
+    api_input: Dict[str, Any],
+    session_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """공통 Step 처리 로직 (동기 버전)"""
+    try:
+        # 동기적으로 직접 실행
+        result = _process_step_sync(
+            step_name,
+            step_id,
+            api_input,
+            session_id
+        )
+        return result
+            
+    except Exception as e:
         logger.error(f"❌ Step {step_name} 공통 처리 실패: {e}")
         return {
             'success': False,
@@ -349,6 +378,39 @@ async def _process_step_common(
             'session_id': session_id,
             'step_name': step_name
         }
+
+async def _process_step_async(
+    step_name: str,
+    step_id: int,
+    api_input: Dict[str, Any],
+    session_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """공통 Step 처리 로직 (비동기 버전 - ThreadPoolExecutor 사용)"""
+    try:
+        # ThreadPoolExecutor를 사용하여 별도 스레드에서 실행
+        import concurrent.futures
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor,
+                _process_step_common,
+                step_name,
+                step_id,
+                api_input,
+                session_id
+            )
+        return result
+            
+    except Exception as e:
+        logger.error(f"❌ Step {step_name} 비동기 처리 실패: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'session_id': session_id,
+            'step_name': step_name
+        }
+
+
 
 # =============================================================================
 # 🔥 유틸리티 함수들 (Central Hub 기반)
@@ -709,7 +771,8 @@ async def step_1_upload_validation(
                 'clothing_image': clothing_img,
                 'session_id': new_session_id
             }
-            result = await _process_step_common(
+            # 비동기 Step 처리 (ThreadPoolExecutor 내장)
+            result = await _process_step_async(
                 step_name='HumanParsing',
                 step_id=1,
                 api_input=api_input,
@@ -1046,7 +1109,7 @@ async def step_3_human_parsing(
             api_input.update(images)  # 로드된 이미지들을 api_input에 추가
             logger.info(f"🔍 Step 3 api_input 최종 키들: {list(api_input.keys())}")
             
-            result = await _process_step_common(
+            result = await _process_step_async(
                 step_name='HumanParsing',
                 step_id=3,
                 api_input=api_input,
@@ -1214,7 +1277,7 @@ async def step_4_pose_estimation(
             **images  # 로드된 이미지들을 api_input에 추가
         }
         
-        result = await _process_step_common(
+        result = await _process_step_async(
             step_name='PoseEstimation',
             step_id=4,
             api_input=api_input,
@@ -1299,7 +1362,7 @@ async def step_5_clothing_analysis(
             **images  # 로드된 이미지들을 api_input에 추가
         }
         
-        result = await _process_step_common(
+        result = await _process_step_async(
             step_name='ClothingAnalysis',
             step_id=5,
             api_input=api_input,
@@ -1384,7 +1447,7 @@ async def step_6_geometric_matching(
             **images  # 로드된 이미지들을 api_input에 추가
         }
         
-        result = await _process_step_common(
+        result = await _process_step_async(
             step_name='GeometricMatching',
             step_id=6,
             api_input=api_input,
@@ -1499,7 +1562,7 @@ async def process_step_7_virtual_fitting(
             try:
                 logger.info("🧠 Central Hub 기반 OOTDiffusion 14GB AI 모델 처리 시작...")
                 
-                result = await _process_step_common(
+                result = await _process_step_async(
                     step_name='VirtualFitting',
                     step_id=7,
                     api_input=processing_params,
@@ -1624,7 +1687,7 @@ async def step_8_result_analysis(
                 **images  # 로드된 이미지들을 api_input에 추가
             }
             
-            result = await _process_step_common(
+            result = _process_step_common(
                 step_name='ResultAnalysis',
                 step_id=8,
                 api_input=api_input,
@@ -1778,7 +1841,7 @@ async def complete_pipeline_processing(
                 'di_container_v70': True
             }
             
-            result = await _process_step_common(
+            result = _process_step_common(
                 step_name='CompletePipeline',
                 step_id=0,
                 api_input=api_input,

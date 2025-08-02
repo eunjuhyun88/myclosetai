@@ -266,7 +266,7 @@ if BaseStepMixin is None:
                 
                 # _run_ai_inference 메서드가 있으면 호출
                 if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(kwargs)
+                    result = await self._run_ai_inference(kwargs)
                     
                     # 처리 시간 추가
                     if isinstance(result, dict):
@@ -371,6 +371,56 @@ if BaseStepMixin is None:
                 'use_subpixel': getattr(self, 'use_subpixel', True),
                 'fallback_mode': True
             }
+
+        def _get_service_from_central_hub(self, service_key: str):
+            """Central Hub에서 서비스 가져오기"""
+            try:
+                if hasattr(self, 'di_container') and self.di_container:
+                    return self.di_container.get_service(service_key)
+                return None
+            except Exception as e:
+                self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
+                return None
+
+        def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+            """API 입력을 Step 입력으로 변환"""
+            try:
+                step_input = api_input.copy()
+                
+                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                image = None
+                for key in ['image', 'person_image', 'input_image', 'original_image']:
+                    if key in step_input:
+                        image = step_input[key]
+                        break
+                
+                if image is None and 'session_id' in step_input:
+                    # 세션에서 이미지 로드
+                    try:
+                        session_manager = self._get_service_from_central_hub('session_manager')
+                        if session_manager:
+                            import asyncio
+                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                            if person_image:
+                                image = person_image
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                
+                # 변환된 입력 구성
+                converted_input = {
+                    'image': image,
+                    'person_image': image,
+                    'session_id': step_input.get('session_id'),
+                    'detection_confidence': step_input.get('detection_confidence', 0.5),
+                    'clothing_type': step_input.get('clothing_type', 'shirt')
+                }
+                
+                self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                return converted_input
+                
+            except Exception as e:
+                self.logger.error(f"❌ API 입력 변환 실패: {e}")
+                return api_input
         
         def get_model_status(self) -> Dict[str, Any]:
             """모델 상태 조회 (PoseEstimationStep 호환)"""
@@ -1330,6 +1380,110 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger.debug(f"모델 경로 조회 실패 ({model_name}): {e}")
             return None
     
+    def process(self, **kwargs) -> Dict[str, Any]:
+        """🔥 PoseEstimationStep 메인 처리 메서드 (BaseStepMixin 오버라이드) - 동기 버전"""
+        try:
+            start_time = time.time()
+            
+            # 입력 데이터 변환 (동기적으로)
+            if hasattr(self, 'convert_api_input_to_step_input'):
+                processed_input = self.convert_api_input_to_step_input(kwargs)
+            else:
+                processed_input = kwargs
+            
+            # AI 추론 실행 (동기적으로)
+            result = self._run_ai_inference(processed_input)
+            
+            # 결과 타입 확인 및 로깅
+            self.logger.info(f"🔍 _run_ai_inference 반환 타입: {type(result)}")
+            if isinstance(result, list):
+                self.logger.warning(f"⚠️ _run_ai_inference가 리스트를 반환함: {len(result)}개 항목")
+                # 리스트를 딕셔너리로 변환
+                result = {
+                    'success': True,
+                    'data': result,
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 처리 시간 추가
+            if isinstance(result, dict):
+                result['processing_time'] = time.time() - start_time
+                result['step_name'] = self.step_name
+                result['step_id'] = self.step_id
+            
+            self.logger.info(f"🔍 process 최종 반환 타입: {type(result)}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} process 실패: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                'step_name': self.step_name,
+                'step_id': self.step_id
+            }
+    
+    def _get_service_from_central_hub(self, service_key: str):
+        """Central Hub에서 서비스 가져오기"""
+        try:
+            if hasattr(self, 'di_container') and self.di_container:
+                return self.di_container.get_service(service_key)
+            return None
+        except Exception as e:
+            self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
+            return None
+    
+    def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+        """API 입력을 Step 입력으로 변환 (동기 버전)"""
+        try:
+            step_input = api_input.copy()
+            
+            # 이미지 데이터 추출 (다양한 키 이름 지원)
+            image = None
+            for key in ['image', 'person_image', 'input_image', 'original_image']:
+                if key in step_input:
+                    image = step_input[key]
+                    break
+            
+            if image is None and 'session_id' in step_input:
+                # 세션에서 이미지 로드 (동기적으로)
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        # session_manager.get_session_images가 async이므로 동기적으로 실행
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                            else:
+                                person_image, clothing_image = loop.run_until_complete(session_manager.get_session_images(step_input['session_id']))
+                        except RuntimeError:
+                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                        
+                        if person_image:
+                            image = person_image
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+            
+            # 변환된 입력 구성
+            converted_input = {
+                'image': image,
+                'person_image': image,
+                'session_id': step_input.get('session_id'),
+                'detection_confidence': step_input.get('detection_confidence', 0.5),
+                'clothing_type': step_input.get('clothing_type', 'shirt')
+            }
+            
+            self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+            return converted_input
+            
+        except Exception as e:
+            self.logger.error(f"❌ API 입력 변환 실패: {e}")
+            return api_input
+    
     async def initialize(self):
         """Step 초기화 (BaseStepMixin 호환)"""
         try:
@@ -1356,7 +1510,7 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
             return False
     
-    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Pose Estimation AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -1367,8 +1521,16 @@ class PoseEstimationStep(BaseStepMixin):
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        # 세션에서 원본 이미지 직접 로드 (동기적으로)
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
+                            else:
+                                person_image, clothing_image = loop.run_until_complete(session_manager.get_session_images(processed_input['session_id']))
+                        except RuntimeError:
+                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
                         image = person_image  # 포즈 추정은 사람 이미지 사용
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: {type(image)}")
                 except Exception as e:
@@ -1434,6 +1596,13 @@ class PoseEstimationStep(BaseStepMixin):
             # 키포인트 후처리 및 분석
             keypoints = best_result['keypoints']
             
+            # keypoints가 리스트인지 확인하고 딕셔너리로 감싸기
+            if isinstance(keypoints, list):
+                self.logger.info(f"✅ keypoints가 리스트로 반환됨: {len(keypoints)}개 키포인트")
+            else:
+                self.logger.warning(f"⚠️ keypoints가 리스트가 아님: {type(keypoints)}")
+                keypoints = []
+            
             # 관절 각도 계산
             joint_angles = self.analyzer.calculate_joint_angles(keypoints)
             
@@ -1447,10 +1616,11 @@ class PoseEstimationStep(BaseStepMixin):
             
             inference_time = time.time() - start_time
             
-            return {
+            # 딕셔너리로 감싸서 반환
+            result_dict = {
                 'success': True,
                 'keypoints': keypoints,
-                'confidence_scores': [kp[2] for kp in keypoints],
+                'confidence_scores': [kp[2] for kp in keypoints] if keypoints else [],
                 'joint_angles': joint_angles,
                 'body_proportions': body_proportions,
                 'pose_quality': quality_assessment['overall_score'],
@@ -1467,6 +1637,9 @@ class PoseEstimationStep(BaseStepMixin):
                 'skeleton_structure': self._build_skeleton_structure(keypoints),
                 'landmarks': self._extract_landmarks(keypoints)
             }
+            
+            self.logger.info(f"✅ Pose Estimation 결과 딕셔너리 반환: {len(result_dict)}개 키")
+            return result_dict
             
         except Exception as e:
             self.logger.error(f"❌ Pose Estimation AI 추론 실패: {e}")
@@ -1634,6 +1807,79 @@ class PoseEstimationStep(BaseStepMixin):
             'confidence_threshold': self.confidence_threshold,
             'use_subpixel': self.use_subpixel
         }
+
+    def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        """Step 출력을 API 응답 형식으로 변환"""
+        try:
+            if not isinstance(step_output, dict):
+                self.logger.warning(f"⚠️ step_output이 dict가 아님: {type(step_output)}")
+                return {
+                    'success': False,
+                    'error': f'Invalid output type: {type(step_output)}',
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 기본 API 응답 구조
+            api_response = {
+                'success': step_output.get('success', True),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0),
+                'timestamp': time.time()
+            }
+            
+            # 오류가 있는 경우
+            if not api_response['success']:
+                api_response['error'] = step_output.get('error', 'Unknown error')
+                return api_response
+            
+            # 포즈 추정 결과 변환 (직접 키포인트 데이터 사용)
+            api_response['pose_data'] = {
+                'keypoints': step_output.get('keypoints', []),
+                'confidence_scores': step_output.get('confidence_scores', []),
+                'overall_confidence': step_output.get('pose_quality', 0.0),
+                'pose_quality': step_output.get('quality_grade', 'unknown'),
+                'model_used': step_output.get('model_used', 'unknown'),
+                'joint_angles': step_output.get('joint_angles', {}),
+                'body_proportions': step_output.get('body_proportions', {}),
+                'skeleton_structure': step_output.get('skeleton_structure', {}),
+                'landmarks': step_output.get('landmarks', {}),
+                'num_keypoints_detected': step_output.get('num_keypoints_detected', 0),
+                'detailed_scores': step_output.get('detailed_scores', {}),
+                'pose_recommendations': step_output.get('pose_recommendations', [])
+            }
+            
+            # 추가 메타데이터
+            api_response['metadata'] = {
+                'models_available': list(self.pose_models.keys()) if hasattr(self, 'pose_models') else [],
+                'device_used': getattr(self, 'device', 'unknown'),
+                'input_size': step_output.get('input_size', [0, 0]),
+                'output_size': step_output.get('output_size', [0, 0]),
+                'real_ai_inference': step_output.get('real_ai_inference', False),
+                'pose_estimation_ready': step_output.get('pose_estimation_ready', False)
+            }
+            
+            # 시각화 데이터 (있는 경우)
+            if 'visualization' in step_output:
+                api_response['visualization'] = step_output['visualization']
+            
+            # 분석 결과 (있는 경우)
+            if 'analysis' in step_output:
+                api_response['analysis'] = step_output['analysis']
+            
+            self.logger.info(f"✅ PoseEstimationStep 출력 변환 완료: {len(api_response)}개 키")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ PoseEstimationStep 출력 변환 실패: {e}")
+            return {
+                'success': False,
+                'error': f'Output conversion failed: {str(e)}',
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0) if isinstance(step_output, dict) else 0.0
+            }
 
 # ==============================================
 # 🔥 6. 유틸리티 함수들

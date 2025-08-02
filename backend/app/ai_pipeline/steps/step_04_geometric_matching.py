@@ -276,6 +276,86 @@ if BaseStepMixin is None:
                 'algorithm_type': 'advanced_deeplab_aspp_self_attention',
                 'fallback_mode': True
             }
+
+        def _get_service_from_central_hub(self, service_key: str):
+            """Central Hub에서 서비스 가져오기"""
+            try:
+                if hasattr(self, 'di_container') and self.di_container:
+                    return self.di_container.get_service(service_key)
+                return None
+            except Exception as e:
+                self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
+                return None
+
+        def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+            """API 입력을 Step 입력으로 변환"""
+            try:
+                step_input = api_input.copy()
+                
+                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                person_image = None
+                clothing_image = None
+                
+                # person_image 추출
+                for key in ['person_image', 'image', 'input_image', 'original_image']:
+                    if key in step_input:
+                        person_image = step_input[key]
+                        break
+                
+                # clothing_image 추출
+                for key in ['clothing_image', 'cloth_image', 'target_image']:
+                    if key in step_input:
+                        clothing_image = step_input[key]
+                        break
+                
+                if (person_image is None or clothing_image is None) and 'session_id' in step_input:
+                    # 세션에서 이미지 로드
+                    try:
+                        session_manager = self._get_service_from_central_hub('session_manager')
+                        if session_manager:
+                            # 세션에서 원본 이미지 직접 로드 (완전 동기적으로)
+                            import asyncio
+                            session_person, session_clothing = None, None
+                            
+                            try:
+                                # 완전히 동기적으로 처리 - 세션 매니저가 동기 메서드를 제공하는지 확인
+                                if hasattr(session_manager, 'get_session_images_sync'):
+                                    session_person, session_clothing = session_manager.get_session_images_sync(step_input['session_id'])
+                                else:
+                                    # 비동기 메서드를 동기적으로 호출
+                                    import concurrent.futures
+                                    def run_async_session_load():
+                                        import asyncio
+                                        return asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                    
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(run_async_session_load)
+                                        session_person, session_clothing = future.result()
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                                session_person, session_clothing = None, None
+                            
+                            if person_image is None and session_person:
+                                person_image = session_person
+                            if clothing_image is None and session_clothing:
+                                clothing_image = session_clothing
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                
+                # 변환된 입력 구성
+                converted_input = {
+                    'person_image': person_image,
+                    'clothing_image': clothing_image,
+                    'session_id': step_input.get('session_id'),
+                    'matching_precision': step_input.get('matching_precision', 'high')
+                }
+                
+                self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                return converted_input
+                
+            except Exception as e:
+                self.logger.error(f"❌ API 입력 변환 실패: {e}")
+                return api_input
         
         # BaseStepMixin 호환 메서드들
         def set_model_loader(self, model_loader):
@@ -1954,80 +2034,49 @@ class GeometricMatchingStep(BaseStepMixin):
             self.logger.error(f"❌ Mock GeometricMatching 모델 생성 실패: {e}")
 
     def process(self, **kwargs) -> Dict[str, Any]:
-        """간소화된 GeometricMatching 처리 (핵심 로직만)"""
+        """GeometricMatching 처리 - BaseStepMixin 호환 (동기 버전)"""
         try:
             start_time = time.time()
             
-            # 1. 입력 데이터 검증
-            if 'person_image' not in data or 'clothing_image' not in data:
-                raise ValueError("필수 입력 데이터 'person_image', 'clothing_image'가 없습니다")
-            
-            person_image = data['person_image']
-            clothing_image = data['clothing_image']
-            
-            # 2. 매칭 준비 상태 확인
-            if not self.matching_ready:
-                raise ValueError("GeometricMatching 모델이 준비되지 않음")
-            
-            # 3. 고급 AI 추론 실행 (_run_ai_inference 호환)
-            processed_input = {
-                'person_image': person_image,
-                'clothing_image': clothing_image,
-                'person_parsing': data.get('person_parsing', {}),
-                'pose_keypoints': data.get('pose_keypoints', []),
-                'clothing_segmentation': data.get('clothing_segmentation', {})
-            }
-            
-            # 4. 실제 AI 추론 실행
-            ai_result = self._run_ai_inference(processed_input)
-            
-            # 5. 처리 시간 계산
-            processing_time = time.time() - start_time
-            
-            # 6. 최종 결과 반환
-            if ai_result.get('success', False):
-                return {
-                    'success': True,
-                    'transformation_matrix': ai_result.get('transformation_matrix'),
-                    'transformation_grid': ai_result.get('transformation_grid'),
-                    'warped_clothing': ai_result.get('warped_clothing'),
-                    'flow_field': ai_result.get('flow_field'),
-                    'keypoints': ai_result.get('keypoints', []),
-                    'matching_confidence': ai_result.get('confidence', 0.7),
-                    'quality_score': ai_result.get('quality_score', 0.75),
-                    'processing_time': processing_time,
-                    'model_used': ai_result.get('model_used', 'unknown'),
-                    'algorithm_type': ai_result.get('algorithm_type', 'advanced_deeplab_aspp_self_attention'),
-                    'ai_models_used': ai_result.get('ai_models_used', []),
-                    'algorithms_used': ai_result.get('algorithms_used', []),
-                    'step_name': self.step_name,
-                    'step_id': self.step_id,
-                    'central_hub_di_container': True
-                }
+            # 입력 데이터 변환 (동기적으로 처리)
+            if hasattr(self, 'convert_api_input_to_step_input'):
+                # convert_api_input_to_step_input이 동기 함수이므로 직접 호출
+                processed_input = self.convert_api_input_to_step_input(kwargs)
             else:
+                processed_input = kwargs
+            
+            # _run_ai_inference 메서드가 있으면 호출 (동기적으로)
+            if hasattr(self, '_run_ai_inference'):
+                result = self._run_ai_inference(processed_input)
+                
+                # 처리 시간 추가
+                if isinstance(result, dict):
+                    result['processing_time'] = time.time() - start_time
+                    result['step_name'] = self.step_name
+                    result['step_id'] = self.step_id
+                
+                return result
+            else:
+                # 기본 응답
                 return {
                     'success': False,
-                    'error': ai_result.get('error', 'AI 추론 실패'),
-                    'processing_time': processing_time,
+                    'error': '_run_ai_inference 메서드가 구현되지 않음',
+                    'processing_time': time.time() - start_time,
                     'step_name': self.step_name,
-                    'step_id': self.step_id,
-                    'central_hub_di_container': True
+                    'step_id': self.step_id
                 }
-            
+                
         except Exception as e:
-            self.logger.error(f"❌ GeometricMatching 처리 실패: {e}")
-            processing_time = time.time() - start_time
-            
+            self.logger.error(f"❌ {self.step_name} process 실패: {e}")
             return {
                 'success': False,
                 'error': str(e),
-                'processing_time': processing_time,
+                'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
                 'step_name': self.step_name,
-                'step_id': self.step_id,
-                'central_hub_di_container': True
+                'step_id': self.step_id
             }
 
-    async def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -2039,8 +2088,28 @@ class GeometricMatchingStep(BaseStepMixin):
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(kwargs['session_id'])
+                        # 세션에서 원본 이미지 직접 로드 (완전 동기적으로)
+                        import asyncio
+                        import concurrent.futures
+                        
+                        try:
+                            # 완전히 동기적으로 처리 - 세션 매니저가 동기 메서드를 제공하는지 확인
+                            if hasattr(session_manager, 'get_session_images_sync'):
+                                person_image, clothing_image = session_manager.get_session_images_sync(kwargs['session_id'])
+                            else:
+                                # 비동기 메서드를 동기적으로 호출
+                                import concurrent.futures
+                                def run_async_session_load():
+                                    import asyncio
+                                    return asyncio.run(session_manager.get_session_images(kwargs['session_id']))
+                                
+                                with concurrent.futures.ThreadPoolExecutor() as executor:
+                                    future = executor.submit(run_async_session_load)
+                                    person_image, clothing_image = future.result()
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                            person_image, clothing_image = None, None
+                        
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
                 except Exception as e:
                     self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
@@ -3279,6 +3348,102 @@ class GeometricMatchingStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ 리소스 정리 실패: {e}")
+
+    def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        """Step 출력을 API 응답 형식으로 변환"""
+        try:
+            if not isinstance(step_output, dict):
+                self.logger.warning(f"⚠️ step_output이 dict가 아님: {type(step_output)}")
+                return {
+                    'success': False,
+                    'error': f'Invalid output type: {type(step_output)}',
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 기본 API 응답 구조
+            api_response = {
+                'success': step_output.get('success', True),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0),
+                'timestamp': time.time()
+            }
+            
+            # 오류가 있는 경우
+            if not api_response['success']:
+                api_response['error'] = step_output.get('error', 'Unknown error')
+                return api_response
+            
+            # 기하학적 매칭 결과 변환
+            if 'matching_result' in step_output:
+                matching_result = step_output['matching_result']
+                api_response['geometric_data'] = {
+                    'transformation_matrix': matching_result.get('transformation_matrix', []),
+                    'confidence_score': matching_result.get('confidence_score', 0.0),
+                    'quality_score': matching_result.get('quality_score', 0.0),
+                    'matching_score': matching_result.get('matching_score', 0.0),
+                    'used_algorithms': matching_result.get('used_algorithms', []),
+                    'keypoints_matched': matching_result.get('keypoints_matched', 0),
+                    'flow_field': matching_result.get('flow_field', []),
+                    'transformation_grid': matching_result.get('transformation_grid', [])
+                }
+            
+            # 추가 메타데이터
+            api_response['metadata'] = {
+                'models_available': list(self.ai_models.keys()) if hasattr(self, 'ai_models') else [],
+                'device_used': getattr(self, 'device', 'unknown'),
+                'input_size': step_output.get('input_size', [0, 0]),
+                'output_size': step_output.get('output_size', [0, 0]),
+                'matching_ready': getattr(self, 'matching_ready', False)
+            }
+            
+            # 시각화 데이터 (있는 경우)
+            if 'visualization' in step_output:
+                api_response['visualization'] = step_output['visualization']
+            
+            # 분석 결과 (있는 경우)
+            if 'analysis' in step_output:
+                api_response['analysis'] = step_output['analysis']
+            
+            self.logger.info(f"✅ GeometricMatchingStep 출력 변환 완료: {len(api_response)}개 키")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ GeometricMatchingStep 출력 변환 실패: {e}")
+            return {
+                'success': False,
+                'error': f'Output conversion failed: {str(e)}',
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0) if isinstance(step_output, dict) else 0.0
+            }
+
+    def _convert_api_input_type(self, value: Any, api_type: str, param_name: str) -> Any:
+        """API 입력 타입 변환 (BaseStepMixin 호환성)"""
+        try:
+            # BaseStepMixin의 동기 버전 호출
+            return self._convert_api_input_type_sync(value, api_type, param_name)
+        except AttributeError:
+            # BaseStepMixin이 없는 경우 기본 변환
+            if api_type == "image":
+                if isinstance(value, str):
+                    # Base64 문자열을 PIL Image로 변환
+                    import base64
+                    from PIL import Image
+                    from io import BytesIO
+                    try:
+                        image_data = base64.b64decode(value)
+                        return Image.open(BytesIO(image_data))
+                    except Exception:
+                        return value
+                return value
+            elif api_type == "tensor":
+                if hasattr(value, 'numpy'):
+                    return value.numpy()
+                return value
+            else:
+                return value
 
 # ==============================================
 # 🔥 9. 팩토리 함수들

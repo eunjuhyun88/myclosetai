@@ -321,6 +321,66 @@ if BaseStepMixin is None:
                 'algorithm_type': 'advanced_multi_network_cloth_warping',
                 'fallback_mode': True
             }
+
+        def _get_service_from_central_hub(self, service_key: str):
+            """Central Hub에서 서비스 가져오기"""
+            try:
+                if hasattr(self, 'di_container') and self.di_container:
+                    return self.di_container.get_service(service_key)
+                return None
+            except Exception as e:
+                self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
+                return None
+
+        def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+            """API 입력을 Step 입력으로 변환"""
+            try:
+                step_input = api_input.copy()
+                
+                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                person_image = None
+                clothing_image = None
+                
+                # person_image 추출
+                for key in ['person_image', 'image', 'input_image', 'original_image']:
+                    if key in step_input:
+                        person_image = step_input[key]
+                        break
+                
+                # clothing_image 추출
+                for key in ['clothing_image', 'cloth_image', 'target_image']:
+                    if key in step_input:
+                        clothing_image = step_input[key]
+                        break
+                
+                if (person_image is None or clothing_image is None) and 'session_id' in step_input:
+                    # 세션에서 이미지 로드
+                    try:
+                        session_manager = self._get_service_from_central_hub('session_manager')
+                        if session_manager:
+                            import asyncio
+                            session_person, session_clothing = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                            if person_image is None and session_person:
+                                person_image = session_person
+                            if clothing_image is None and session_clothing:
+                                clothing_image = session_clothing
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                
+                # 변환된 입력 구성
+                converted_input = {
+                    'person_image': person_image,
+                    'clothing_image': clothing_image,
+                    'session_id': step_input.get('session_id'),
+                    'warping_method': step_input.get('warping_method', 'tps')
+                }
+                
+                self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                return converted_input
+                
+            except Exception as e:
+                self.logger.error(f"❌ API 입력 변환 실패: {e}")
+                return api_input
         
         # BaseStepMixin 호환 메서드들
         def set_model_loader(self, model_loader):
@@ -2131,7 +2191,7 @@ class ClothWarpingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Mock Warping 모델 생성 실패: {e}")
 
-    async def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_ai_inference(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Cloth Warping AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -2145,7 +2205,8 @@ class ClothWarpingStep(BaseStepMixin):
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
                         # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(kwargs['session_id'])
+                        import asyncio
+                        person_image, clothing_image = asyncio.run(session_manager.get_session_images(kwargs['session_id']))
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
                 except Exception as e:
                     self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
@@ -3401,6 +3462,76 @@ class ClothWarpingStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"⚠️ 리소스 정리 실패: {e}")
 
+    def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        """Step 출력을 API 응답 형식으로 변환"""
+        try:
+            if not isinstance(step_output, dict):
+                self.logger.warning(f"⚠️ step_output이 dict가 아님: {type(step_output)}")
+                return {
+                    'success': False,
+                    'error': f'Invalid output type: {type(step_output)}',
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 기본 API 응답 구조
+            api_response = {
+                'success': step_output.get('success', True),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0),
+                'timestamp': time.time()
+            }
+            
+            # 오류가 있는 경우
+            if not api_response['success']:
+                api_response['error'] = step_output.get('error', 'Unknown error')
+                return api_response
+            
+            # 의류 워핑 결과 변환
+            if 'warping_result' in step_output:
+                warping_result = step_output['warping_result']
+                api_response['warping_data'] = {
+                    'warped_cloth': warping_result.get('warped_cloth', []),
+                    'transformation_matrix': warping_result.get('transformation_matrix', []),
+                    'confidence_score': warping_result.get('confidence_score', 0.0),
+                    'quality_score': warping_result.get('quality_score', 0.0),
+                    'warping_method': warping_result.get('warping_method', 'unknown'),
+                    'used_networks': warping_result.get('used_networks', []),
+                    'quality_metrics': warping_result.get('quality_metrics', {}),
+                    'physics_simulation': warping_result.get('physics_simulation', {})
+                }
+            
+            # 추가 메타데이터
+            api_response['metadata'] = {
+                'models_available': list(self.ai_models.keys()) if hasattr(self, 'ai_models') else [],
+                'device_used': getattr(self, 'device', 'unknown'),
+                'input_size': step_output.get('input_size', [0, 0]),
+                'output_size': step_output.get('output_size', [0, 0]),
+                'warping_ready': getattr(self, 'warping_ready', False)
+            }
+            
+            # 시각화 데이터 (있는 경우)
+            if 'visualization' in step_output:
+                api_response['visualization'] = step_output['visualization']
+            
+            # 분석 결과 (있는 경우)
+            if 'analysis' in step_output:
+                api_response['analysis'] = step_output['analysis']
+            
+            self.logger.info(f"✅ ClothWarpingStep 출력 변환 완료: {len(api_response)}개 키")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ ClothWarpingStep 출력 변환 실패: {e}")
+            return {
+                'success': False,
+                'error': f'Output conversion failed: {str(e)}',
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0) if isinstance(step_output, dict) else 0.0
+            }
+
    # 파일: backend/app/ai_pipeline/steps/step_05_cloth_warping.py
 # line 3276 근처
 
@@ -3409,12 +3540,9 @@ class ClothWarpingStep(BaseStepMixin):
         BaseStepMixin v20.0 호환 process() 메서드 (동기 버전)
         """
         try:
-            # BaseStepMixin의 process() 메서드 호출 시도
-            if hasattr(super(), 'process'):
-                return super().process(**kwargs)  # await 제거
-            
             # 독립 실행 모드 (BaseStepMixin 없는 경우)
             processed_input = kwargs
+            
             result = self._run_ai_inference(processed_input)
             return result
             

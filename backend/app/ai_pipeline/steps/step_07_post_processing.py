@@ -33,6 +33,8 @@ import sys
 import gc
 import time
 import asyncio
+import threading
+
 import logging
 import traceback
 import hashlib
@@ -240,7 +242,7 @@ if BaseStepMixin is None:
 # ==============================================
 
 class EnhancementMethod(Enum):
-    """향상 방법"""
+    """향상 방법 열거형 - 확장 버전"""
     SUPER_RESOLUTION = "super_resolution"
     FACE_ENHANCEMENT = "face_enhancement"
     NOISE_REDUCTION = "noise_reduction"
@@ -248,6 +250,7 @@ class EnhancementMethod(Enum):
     COLOR_CORRECTION = "color_correction"
     CONTRAST_ENHANCEMENT = "contrast_enhancement"
     SHARPENING = "sharpening"
+    BRIGHTNESS_ADJUSTMENT = "brightness_adjustment"  # 추가
 
 class QualityLevel(Enum):
     """품질 레벨"""
@@ -258,7 +261,7 @@ class QualityLevel(Enum):
 
 @dataclass
 class PostProcessingConfig:
-    """후처리 설정"""
+    """후처리 설정 - 확장 버전"""
     quality_level: QualityLevel = QualityLevel.HIGH
     enabled_methods: List[EnhancementMethod] = field(default_factory=lambda: [
         EnhancementMethod.SUPER_RESOLUTION,
@@ -271,6 +274,16 @@ class PostProcessingConfig:
     enhancement_strength: float = 0.8
     enable_face_detection: bool = True
     enable_visualization: bool = True
+    
+    # 🔧 추가된 성능 설정
+    processing_mode: str = "quality"  # "speed" or "quality"
+    cache_size: int = 50
+    enable_caching: bool = True
+    
+    # 🔧 추가된 시각화 설정
+    visualization_quality: str = "high"
+    show_before_after: bool = True
+    show_enhancement_details: bool = True
 
 @dataclass
 class PostProcessingResult:
@@ -308,6 +321,620 @@ class PostProcessingResult:
 # ==============================================
 # 🔥 7. 실제 AI 모델 클래스들
 # ==============================================
+
+class Upsample(nn.Sequential):
+    """Upsample 모듈"""
+    
+    def __init__(self, scale, num_feat, num_out_ch):
+        m = []
+        if (scale & (scale - 1)) == 0:  # scale = 2^n
+            for _ in range(int(math.log(scale, 2))):
+                m.append(nn.Conv2d(num_feat, 4 * num_feat, 3, 1, 1))
+                m.append(nn.PixelShuffle(2))
+        elif scale == 3:
+            m.append(nn.Conv2d(num_feat, 9 * num_feat, 3, 1, 1))
+            m.append(nn.PixelShuffle(3))
+        else:
+            raise ValueError(f'scale {scale} is not supported.')
+        super(Upsample, self).__init__(*m)
+
+class UpsampleOneStep(nn.Sequential):
+    """One-step upsampling"""
+    
+    def __init__(self, scale, num_feat, num_out_ch, input_resolution=None):
+        self.num_feat = num_feat
+        self.input_resolution = input_resolution
+        m = []
+        m.append(nn.Conv2d(num_feat, (scale ** 2) * num_out_ch, 3, 1, 1))
+        m.append(nn.PixelShuffle(scale))
+        super(UpsampleOneStep, self).__init__(*m)
+
+class SEBlock(nn.Module):
+    """Squeeze-and-Excitation Block"""
+    
+    def __init__(self, channels, reduction=16):
+        super(SEBlock, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
+
+class ResidualBlock(nn.Module):
+    """Residual Block with SE"""
+    
+    def __init__(self, channels, reduction=16):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(channels, channels, 3, 1, 1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, 3, 1, 1)
+        self.bn2 = nn.BatchNorm2d(channels)
+        self.se = SEBlock(channels, reduction)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        residual = x
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = self.se(out)
+        out += residual
+        out = self.relu(out)
+        return out
+
+class FaceAttentionModule(nn.Module):
+    """Face Attention Module"""
+    
+    def __init__(self, in_channels, out_channels):
+        super(FaceAttentionModule, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+        self.attention = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(out_channels, out_channels // 8, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels // 8, out_channels, 1),
+            nn.Sigmoid()
+        )
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        out = self.relu(self.conv1(x))
+        out = self.conv2(out)
+        att = self.attention(out)
+        out = out * att
+        return out
+
+class FaceEnhancementModel(nn.Module):
+    """Face Enhancement Model"""
+    
+    def __init__(self, in_channels=3, out_channels=3, num_features=64):
+        super(FaceEnhancementModel, self).__init__()
+        
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels, num_features, 3, 1, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(num_features, num_features * 2, 4, 2, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(num_features * 2, num_features * 4, 4, 2, 1),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+        
+        # Face Attention
+        self.face_attention = FaceAttentionModule(num_features * 4, num_features * 4)
+        
+        # Residual blocks
+        self.res_blocks = nn.Sequential(*[
+            ResidualBlock(num_features * 4) for _ in range(8)
+        ])
+        
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(num_features * 4, num_features * 2, 4, 2, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.ConvTranspose2d(num_features * 2, num_features, 4, 2, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(num_features, out_channels, 3, 1, 1),
+            nn.Tanh()
+        )
+    
+    def forward(self, x):
+        encoded = self.encoder(x)
+        attended = self.face_attention(encoded)
+        res = self.res_blocks(attended)
+        decoded = self.decoder(res)
+        return decoded
+
+class AdvancedInferenceEngine:
+    """Advanced Inference Engine for AI Models"""
+    
+    def __init__(self, device="cpu"):
+        self.device = device
+        self.logger = logging.getLogger(f"{__name__}.AdvancedInferenceEngine")
+        
+        # ImageNet normalization
+        self.mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1).to(device)
+        self.std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1).to(device)
+    
+    def preprocess_image(self, image):
+        """Preprocess image for AI models"""
+        if isinstance(image, np.ndarray):
+            if image.dtype == np.uint8:
+                image = image.astype(np.float32) / 255.0
+            image = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0)
+        elif isinstance(image, Image.Image):
+            image = transforms.ToTensor()(image).unsqueeze(0)
+        
+        # Normalize
+        image = (image - self.mean) / self.std
+        return image.to(self.device)
+    
+    def postprocess_image(self, tensor):
+        """Postprocess tensor to image"""
+        # Denormalize
+        tensor = tensor * self.std + self.mean
+        tensor = torch.clamp(tensor, 0, 1)
+        
+        if tensor.dim() == 4:
+            tensor = tensor.squeeze(0)
+        
+        return transforms.ToPILImage()(tensor)
+
+def run_esrgan_inference(model, image, device="cpu"):
+    """Run ESRGAN inference"""
+    try:
+        engine = AdvancedInferenceEngine(device)
+        input_tensor = engine.preprocess_image(image)
+        
+        with torch.no_grad():
+            output = model(input_tensor)
+            enhanced_image = engine.postprocess_image(output)
+        
+        return enhanced_image
+    except Exception as e:
+        logging.error(f"ESRGAN inference failed: {e}")
+        return image
+
+def run_swinir_inference(model, image, device="cpu"):
+    """Run SwinIR inference"""
+    try:
+        engine = AdvancedInferenceEngine(device)
+        input_tensor = engine.preprocess_image(image)
+        
+        with torch.no_grad():
+            output = model(input_tensor)
+            enhanced_image = engine.postprocess_image(output)
+        
+        return enhanced_image
+    except Exception as e:
+        logging.error(f"SwinIR inference failed: {e}")
+        return image
+
+def run_face_enhancement_inference(model, image, device="cpu"):
+    """Run Face Enhancement inference"""
+    try:
+        engine = AdvancedInferenceEngine(device)
+        input_tensor = engine.preprocess_image(image)
+        
+        with torch.no_grad():
+            output = model(input_tensor)
+            enhanced_image = engine.postprocess_image(output)
+        
+        return enhanced_image
+    except Exception as e:
+        logging.error(f"Face Enhancement inference failed: {e}")
+        return image
+
+class CompletePosterProcessingInference:
+    """Complete Poster Processing Inference System"""
+    
+    def __init__(self, device="cpu"):
+        self.device = device
+        self.logger = logging.getLogger(f"{__name__}.CompletePosterProcessingInference")
+        
+        # Initialize models
+        self.esrgan_model = None
+        self.swinir_model = None
+        self.face_enhancement_model = None
+        
+        # Load models
+        self._load_models()
+    
+    def _load_models(self):
+        """Load AI models"""
+        try:
+            # Load ESRGAN
+            self.esrgan_model = ImprovedESRGANModel(upscale=4).to(self.device)
+            self.logger.info("✅ ESRGAN model loaded")
+            
+            # Load SwinIR
+            self.swinir_model = ImprovedSwinIRModel(upscale=4).to(self.device)
+            self.logger.info("✅ SwinIR model loaded")
+            
+            # Load Face Enhancement
+            self.face_enhancement_model = FaceEnhancementModel().to(self.device)
+            self.logger.info("✅ Face Enhancement model loaded")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Model loading failed: {e}")
+    
+    def process_image(self, image):
+        """Process image with all models"""
+        try:
+            enhanced_image = image
+            
+            # ESRGAN Super Resolution
+            if self.esrgan_model:
+                enhanced_image = run_esrgan_inference(self.esrgan_model, enhanced_image, self.device)
+            
+            # SwinIR Detail Enhancement
+            if self.swinir_model:
+                enhanced_image = run_swinir_inference(self.swinir_model, enhanced_image, self.device)
+            
+            # Face Enhancement
+            if self.face_enhancement_model:
+                enhanced_image = run_face_enhancement_inference(self.face_enhancement_model, enhanced_image, self.device)
+            
+            return enhanced_image
+            
+        except Exception as e:
+            self.logger.error(f"❌ Image processing failed: {e}")
+            return image
+
+class ResidualDenseBlock_5C(nn.Module):
+    """Residual Dense Block with 5 convolutions"""
+    
+    def __init__(self, nf=64, gc=32, bias=True):
+        super(ResidualDenseBlock_5C, self).__init__()
+        
+        self.conv1 = nn.Conv2d(nf, gc, 3, 1, 1, bias=bias)
+        self.conv2 = nn.Conv2d(nf + gc, gc, 3, 1, 1, bias=bias)
+        self.conv3 = nn.Conv2d(nf + 2 * gc, gc, 3, 1, 1, bias=bias)
+        self.conv4 = nn.Conv2d(nf + 3 * gc, gc, 3, 1, 1, bias=bias)
+        self.conv5 = nn.Conv2d(nf + 4 * gc, nf, 3, 1, 1, bias=bias)
+        
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+
+    def forward(self, x):
+        x1 = self.lrelu(self.conv1(x))
+        x2 = self.lrelu(self.conv2(torch.cat((x, x1), 1)))
+        x3 = self.lrelu(self.conv3(torch.cat((x, x1, x2), 1)))
+        x4 = self.lrelu(self.conv4(torch.cat((x, x1, x2, x3), 1)))
+        x5 = self.conv5(torch.cat((x, x1, x2, x3, x4), 1))
+        return x5 * 0.2 + x
+
+class RRDB(nn.Module):
+    """Residual in Residual Dense Block"""
+    
+    def __init__(self, nf, gc=32):
+        super(RRDB, self).__init__()
+        self.RDB1 = ResidualDenseBlock_5C(nf, gc)
+        self.RDB2 = ResidualDenseBlock_5C(nf, gc)
+        self.RDB3 = ResidualDenseBlock_5C(nf, gc)
+
+    def forward(self, x):
+        out = self.RDB1(x)
+        out = self.RDB2(out)
+        out = self.RDB3(out)
+        return out * 0.2 + x
+
+class ESRGANModel(nn.Module):
+    """Complete ESRGAN Model"""
+    
+    def __init__(self, in_nc=3, out_nc=3, nf=64, nb=23, upscale=4, gc=32):
+        super(ESRGANModel, self).__init__()
+        self.upscale = upscale
+        
+        # Feature extraction
+        self.conv_first = nn.Conv2d(in_nc, nf, 3, 1, 1, bias=True)
+        
+        # RRDB trunk
+        trunk_modules = []
+        for i in range(nb):
+            trunk_modules.append(RRDB(nf, gc))
+        self.RRDB_trunk = nn.Sequential(*trunk_modules)
+        self.trunk_conv = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+        
+        # Upsampling
+        if upscale == 4:
+            self.upconv1 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+            self.upconv2 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+        elif upscale == 8:
+            self.upconv1 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+            self.upconv2 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+            self.upconv3 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+        
+        # HR conversion
+        self.HRconv = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+        self.conv_last = nn.Conv2d(nf, out_nc, 3, 1, 1, bias=True)
+        
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        
+    def forward(self, x):
+        # Initial feature extraction
+        fea = self.conv_first(x)
+        
+        # RRDB trunk
+        trunk = self.RRDB_trunk(fea)
+        trunk = self.trunk_conv(trunk)
+        fea = fea + trunk
+        
+        # Upsampling
+        if self.upscale == 4:
+            fea = self.lrelu(self.upconv1(F.interpolate(fea, scale_factor=2, mode='nearest')))
+            fea = self.lrelu(self.upconv2(F.interpolate(fea, scale_factor=2, mode='nearest')))
+        elif self.upscale == 8:
+            fea = self.lrelu(self.upconv1(F.interpolate(fea, scale_factor=2, mode='nearest')))
+            fea = self.lrelu(self.upconv2(F.interpolate(fea, scale_factor=2, mode='nearest')))
+            fea = self.lrelu(self.upconv3(F.interpolate(fea, scale_factor=2, mode='nearest')))
+        
+        # HR conversion
+        out = self.conv_last(self.lrelu(self.HRconv(fea)))
+        return out
+
+class WindowAttention(nn.Module):
+    """Window-based Multi-head Self-Attention"""
+    
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+        super().__init__()
+        self.dim = dim
+        self.window_size = window_size
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        # define a parameter table of relative position bias
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))
+
+        # get pair-wise relative position index for each token inside the window
+        coords_h = torch.arange(self.window_size[0])
+        coords_w = torch.arange(self.window_size[1])
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
+        relative_coords[:, :, 1] += self.window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
+        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        self.register_buffer("relative_position_index", relative_position_index)
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        nn.init.trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, mask=None):
+        B_, N, C = x.shape
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1))
+
+        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
+        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+        attn = attn + relative_position_bias.unsqueeze(0)
+
+        if mask is not None:
+            nW = mask.shape[0]
+            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(-1, self.num_heads, N, N)
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
+
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+class SwinTransformerBlock(nn.Module):
+    """Swin Transformer Block"""
+    
+    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.dim = dim
+        self.input_resolution = input_resolution
+        self.num_heads = num_heads
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.mlp_ratio = mlp_ratio
+        if min(self.input_resolution) <= self.window_size:
+            # if window size is larger than input resolution, we don't partition windows
+            self.shift_size = 0
+            self.window_size = min(self.input_resolution)
+        assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
+
+        self.norm1 = norm_layer(dim)
+        self.attn = WindowAttention(
+            dim, window_size=(self.window_size, self.window_size), num_heads=num_heads,
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+
+        if self.shift_size > 0:
+            # calculate attention mask for SW-MSA
+            H, W = self.input_resolution
+            img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+            h_slices = (slice(0, -self.window_size),
+                        slice(-self.window_size, -self.shift_size),
+                        slice(-self.shift_size, None))
+            w_slices = (slice(0, -self.window_size),
+                        slice(-self.window_size, -self.shift_size),
+                        slice(-self.shift_size, None))
+            cnt = 0
+            for h in h_slices:
+                for w in w_slices:
+                    img_mask[:, h, w, :] = cnt
+                    cnt += 1
+
+            mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+            mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+        else:
+            attn_mask = None
+
+        self.register_buffer("attn_mask", attn_mask)
+
+    def forward(self, x):
+        H, W = self.input_resolution
+        B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
+
+        shortcut = x
+        x = self.norm1(x)
+        x = x.view(B, H, W, C)
+
+        # cyclic shift
+        if self.shift_size > 0:
+            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+        else:
+            shifted_x = x
+
+        # partition windows
+        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
+        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+
+        # W-MSA/SW-MSA
+        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+
+        # merge windows
+        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
+        shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+
+        # reverse cyclic shift
+        if self.shift_size > 0:
+            x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+        else:
+            x = shifted_x
+        x = x.view(B, H * W, C)
+
+        # FFN
+        x = shortcut + self.drop_path(x)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+
+        return x
+
+class SwinIRModel(nn.Module):
+    """Complete SwinIR Model"""
+    
+    def __init__(self, img_size=64, patch_size=1, in_chans=3, out_chans=3, 
+                 embed_dim=96, depths=[6, 6, 6, 6], num_heads=[6, 6, 6, 6],
+                 window_size=7, mlp_ratio=4., upsampler='pixelshuffle', upscale=4):
+        super(SwinIRModel, self).__init__()
+        
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.window_size = window_size
+        self.upscale = upscale
+        self.upsampler = upsampler
+        
+        # Patch embedding
+        self.patch_embed = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
+        
+        # Swin Transformer blocks
+        self.layers = nn.ModuleList()
+        for i_layer in range(len(depths)):
+            layer = BasicLayer(
+                dim=embed_dim,
+                depth=depths[i_layer],
+                num_heads=num_heads[i_layer],
+                window_size=window_size,
+                mlp_ratio=mlp_ratio
+            )
+            self.layers.append(layer)
+        
+        self.norm = nn.LayerNorm(embed_dim)
+        
+        # Reconstruction network
+        if upsampler == 'pixelshuffle':
+            self.conv_before_upsample = nn.Sequential(
+                nn.Conv2d(embed_dim, 64, 3, 1, 1), nn.LeakyReLU(inplace=True)
+            )
+            self.upsample = Upsample(upscale, 64)
+            self.conv_last = nn.Conv2d(64, out_chans, 3, 1, 1)
+            
+    def forward(self, x):
+        H, W = x.shape[2:]
+        x = self.patch_embed(x)
+        
+        # Swin Transformer blocks
+        for layer in self.layers:
+            x = layer(x)
+            
+        x = self.norm(x)  # B L C
+        x = self.patch_unembed(x, (H, W))
+        
+        # Reconstruction
+        x = self.conv_before_upsample(x)
+        x = self.conv_last(self.upsample(x))
+        
+        return x
+    
+    def patch_unembed(self, x, x_size):
+        """Patch unembedding"""
+        B, HW, C = x.shape
+        x = x.transpose(1, 2).view(B, C, x_size[0], x_size[1])
+        return x
+
+# Helper functions for SwinIR
+def window_partition(x, window_size):
+    """Partition windows"""
+    B, H, W, C = x.shape
+    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    return windows
+
+def window_reverse(windows, window_size, H, W):
+    """Reverse window partition"""
+    B = int(windows.shape[0] / (H * W / window_size / window_size))
+    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
+    return x
+
+class DropPath(nn.Module):
+    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
+    
+    def __init__(self, drop_prob=None):
+        super(DropPath, self).__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        return drop_path(x, self.drop_prob, self.training)
+
+def drop_path(x, drop_prob: float = 0., training: bool = False):
+    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
+    if drop_prob == 0. or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+    random_tensor.floor_()  # binarize
+    output = x.div(keep_prob) * random_tensor
+    return output
 
 class SimplifiedRRDB(nn.Module):
     """간소화된 RRDB 블록"""
@@ -702,19 +1329,55 @@ class WindowAttention(nn.Module):
 class Mlp(nn.Module):
     """MLP 블록"""
     
-    def __init__(self, in_features, hidden_features=None, out_features=None):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         
         self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = nn.GELU()
+        self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
         
     def forward(self, x):
         x = self.fc1(x)
         x = self.act(x)
+        x = self.drop(x)
         x = self.fc2(x)
+        x = self.drop(x)
+        return x
+
+class BasicLayer(nn.Module):
+    """Swin Transformer Basic Layer"""
+    
+    def __init__(self, dim, depth, num_heads, window_size, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                 drop=0., attn_drop=0., drop_path=0., norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.dim = dim
+        self.depth = depth
+        self.window_size = window_size
+        self.shift_size = window_size // 2
+        
+        # build blocks
+        self.blocks = nn.ModuleList([
+            SwinTransformerBlock(
+                dim=dim,
+                input_resolution=(window_size, window_size),
+                num_heads=num_heads,
+                window_size=window_size,
+                shift_size=0 if (i % 2 == 0) else self.shift_size,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                drop=drop,
+                attn_drop=attn_drop,
+                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                norm_layer=norm_layer)
+            for i in range(depth)])
+    
+    def forward(self, x):
+        for blk in self.blocks:
+            x = blk(x)
         return x
 
 class Upsample(nn.Module):
@@ -1318,7 +1981,42 @@ class PostProcessingStep(BaseStepMixin):
             'di_container': False
         }
         
+        # 🔧 추가된 필수 속성들
+        self.esrgan_model = None
+        self.swinir_model = None
+        self.face_enhancement_model = None
+        self.face_detector = None
+        
+        # 처리 통계
+        self.processing_stats = {
+            'total_processed': 0,
+            'successful_enhancements': 0,
+            'ai_inference_count': 0,
+            'total_processing_time': 0.0,
+            'cache_hits': 0,
+            'cache_misses': 0
+        }
+        
+        # 캐시 시스템
+        self.enhancement_cache = {}
+        self.cache_max_size = 100
+        
+        # 얼굴 검출기 초기화
+        self._initialize_face_detector()
+        
         self.logger.info(f"✅ {self.step_name} 리팩토링 시스템 초기화 완료")
+    
+    def _initialize_face_detector(self):
+        """얼굴 검출기 초기화"""
+        try:
+            if OPENCV_AVAILABLE:
+                cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+                self.face_detector = cv2.CascadeClassifier(cascade_path)
+                self.logger.info("✅ 얼굴 검출기 초기화 완료")
+            else:
+                self.logger.warning("⚠️ OpenCV가 없어서 얼굴 검출기 초기화 불가")
+        except Exception as e:
+            self.logger.warning(f"⚠️ 얼굴 검출기 초기화 실패: {e}")
     
     # ==============================================
     # 🔥 BaseStepMixin 호환 의존성 주입 메서드들
@@ -1594,6 +2292,380 @@ class PostProcessingStep(BaseStepMixin):
             # 최후의 안전망
             return self._create_ultimate_safe_result(str(e))
     
+    def _run_super_resolution_inference(self, input_tensor):
+        """🔥 ESRGAN Super Resolution 실제 추론"""
+        try:
+            self.logger.debug("🔬 ESRGAN Super Resolution 추론 시작...")
+            
+            if not self.esrgan_model:
+                return None
+                
+            with torch.no_grad():
+                # ESRGAN 추론
+                if hasattr(self.esrgan_model, 'forward'):
+                    sr_output = self.esrgan_model(input_tensor)
+                elif hasattr(self.esrgan_model, 'enhance_image'):
+                    # Mock 모델인 경우
+                    image_np = input_tensor.squeeze().cpu().numpy()
+                    if image_np.ndim == 3 and image_np.shape[0] == 3:
+                        image_np = image_np.transpose(1, 2, 0)
+                    image_np = (image_np * 255).astype(np.uint8)
+                    mock_result = self.esrgan_model.enhance_image(image_np)
+                    return {
+                        'enhanced_tensor': input_tensor,
+                        'quality_score': mock_result.get('enhancement_quality', 0.75),
+                        'method': 'ESRGAN_Mock',
+                        'upscale_factor': self.config.upscale_factor
+                    }
+                else:
+                    return None
+                
+                # 결과 클램핑
+                sr_output = torch.clamp(sr_output, 0, 1)
+                
+                # 품질 평가
+                quality_score = self._calculate_enhancement_quality(input_tensor, sr_output)
+                
+                self.logger.debug(f"✅ Super Resolution 완료 - 품질: {quality_score:.3f}")
+                
+                return {
+                    'enhanced_tensor': sr_output,
+                    'quality_score': quality_score,
+                    'method': 'ESRGAN',
+                    'upscale_factor': self.config.upscale_factor
+                }
+                
+        except Exception as e:
+            self.logger.error(f"❌ Super Resolution 추론 실패: {e}")
+            return None
+    
+    def _run_face_enhancement_inference(self, input_tensor):
+        """🔥 얼굴 향상 실제 추론"""
+        try:
+            self.logger.debug("👤 얼굴 향상 추론 시작...")
+            
+            if not self.face_enhancement_model:
+                return None
+            
+            # 얼굴 검출
+            faces = self._detect_faces_in_tensor(input_tensor)
+            
+            if not faces:
+                self.logger.debug("👤 얼굴이 검출되지 않음")
+                return None
+            
+            with torch.no_grad():
+                if hasattr(self.face_enhancement_model, 'forward'):
+                    enhanced_output = self.face_enhancement_model(input_tensor)
+                    enhanced_output = torch.clamp(enhanced_output, -1, 1)
+                    enhanced_output = (enhanced_output + 1) / 2  # [-1, 1] → [0, 1]
+                elif hasattr(self.face_enhancement_model, 'enhance_image'):
+                    # Mock 모델인 경우
+                    image_np = input_tensor.squeeze().cpu().numpy()
+                    if image_np.ndim == 3 and image_np.shape[0] == 3:
+                        image_np = image_np.transpose(1, 2, 0)
+                    image_np = (image_np * 255).astype(np.uint8)
+                    mock_result = self.face_enhancement_model.enhance_image(image_np)
+                    return {
+                        'enhanced_tensor': input_tensor,
+                        'quality_score': mock_result.get('enhancement_quality', 0.8),
+                        'method': 'FaceEnhancement_Mock',
+                        'faces_detected': len(faces)
+                    }
+                else:
+                    return None
+                
+                quality_score = self._calculate_enhancement_quality(input_tensor, enhanced_output)
+                
+                return {
+                    'enhanced_tensor': enhanced_output,
+                    'quality_score': quality_score,
+                    'method': 'FaceEnhancement',
+                    'faces_detected': len(faces)
+                }
+                
+        except Exception as e:
+            self.logger.error(f"❌ 얼굴 향상 추론 실패: {e}")
+            return None
+    
+    def _run_detail_enhancement_inference(self, input_tensor):
+        """🔥 SwinIR 세부사항 향상 실제 추론"""
+        try:
+            self.logger.debug("🔍 SwinIR 세부사항 향상 추론 시작...")
+            
+            if not self.swinir_model:
+                return None
+            
+            with torch.no_grad():
+                if hasattr(self.swinir_model, 'forward'):
+                    detail_output = self.swinir_model(input_tensor)
+                    detail_output = torch.clamp(detail_output, 0, 1)
+                elif hasattr(self.swinir_model, 'enhance_image'):
+                    # Mock 모델인 경우
+                    image_np = input_tensor.squeeze().cpu().numpy()
+                    if image_np.ndim == 3 and image_np.shape[0] == 3:
+                        image_np = image_np.transpose(1, 2, 0)
+                    image_np = (image_np * 255).astype(np.uint8)
+                    mock_result = self.swinir_model.enhance_image(image_np)
+                    return {
+                        'enhanced_tensor': input_tensor,
+                        'quality_score': mock_result.get('enhancement_quality', 0.85),
+                        'method': 'SwinIR_Mock',
+                        'detail_level': 'high'
+                    }
+                else:
+                    return None
+                
+                quality_score = self._calculate_enhancement_quality(input_tensor, detail_output)
+                
+                return {
+                    'enhanced_tensor': detail_output,
+                    'quality_score': quality_score,
+                    'method': 'SwinIR',
+                    'detail_level': 'high'
+                }
+                
+        except Exception as e:
+            self.logger.error(f"❌ 세부사항 향상 추론 실패: {e}")
+            return None
+    
+    def _detect_faces_in_tensor(self, tensor):
+        """텐서에서 얼굴 검출"""
+        try:
+            if not self.face_detector or not OPENCV_AVAILABLE:
+                return []
+            
+            # Tensor → NumPy
+            image_np = tensor.squeeze().cpu().numpy()
+            if len(image_np.shape) == 3:
+                image_np = np.transpose(image_np, (1, 2, 0))
+            
+            # 0-255 범위로 변환
+            if image_np.max() <= 1.0:
+                image_np = (image_np * 255).astype(np.uint8)
+            else:
+                image_np = image_np.astype(np.uint8)
+            
+            # 그레이스케일 변환
+            gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+            
+            # 얼굴 검출
+            faces = self.face_detector.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+            )
+            
+            return [tuple(face) for face in faces]
+            
+        except Exception as e:
+            self.logger.debug(f"얼굴 검출 실패: {e}")
+            return []
+    
+    def _calculate_enhancement_quality(self, original_tensor, enhanced_tensor):
+        """향상 품질 계산"""
+        try:
+            if not TORCH_AVAILABLE:
+                return 0.5
+            
+            # PSNR 기반 품질 메트릭
+            mse = torch.mean((original_tensor - enhanced_tensor) ** 2)
+            if mse == 0:
+                return 1.0
+            
+            psnr = 20 * torch.log10(1.0 / torch.sqrt(mse))
+            quality = min(1.0, max(0.0, (psnr.item() - 20) / 20))
+            
+            return quality
+            
+        except Exception as e:
+            self.logger.debug(f"품질 계산 실패: {e}")
+            return 0.5
+    
+    def _apply_traditional_denoising(self, image: np.ndarray) -> np.ndarray:
+        """전통적 노이즈 제거"""
+        try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            if OPENCV_AVAILABLE:
+                denoised = cv2.bilateralFilter(image, 9, 75, 75)
+                return denoised
+            else:
+                # 기본적인 가우시안 블러
+                from scipy import ndimage
+                denoised = ndimage.gaussian_filter(image, sigma=1.0)
+                return denoised.astype(np.uint8)
+                
+        except Exception as e:
+            self.logger.error(f"전통적 노이즈 제거 실패: {e}")
+            return image
+    
+    def _apply_color_correction(self, image: np.ndarray) -> np.ndarray:
+        """색상 보정"""
+        try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            if not OPENCV_AVAILABLE:
+                return image
+                
+            # LAB 색공간으로 변환
+            lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # CLAHE 적용
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            
+            # LAB 채널 재결합
+            lab = cv2.merge([l, a, b])
+            corrected = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            
+            # 화이트 밸런스 조정
+            corrected = self._adjust_white_balance(corrected)
+            
+            return corrected
+            
+        except Exception as e:
+            self.logger.error(f"색상 보정 실패: {e}")
+            return image
+    
+    def _adjust_white_balance(self, image: np.ndarray) -> np.ndarray:
+        """화이트 밸런스 조정"""
+        try:
+            if not NUMPY_AVAILABLE:
+                return image
+                
+            # Gray World 알고리즘
+            r_mean = np.mean(image[:, :, 0])
+            g_mean = np.mean(image[:, :, 1])
+            b_mean = np.mean(image[:, :, 2])
+            
+            gray_mean = (r_mean + g_mean + b_mean) / 3
+            
+            r_gain = gray_mean / r_mean if r_mean > 0 else 1.0
+            g_gain = gray_mean / g_mean if g_mean > 0 else 1.0
+            b_gain = gray_mean / b_mean if b_mean > 0 else 1.0
+            
+            # 게인 제한
+            max_gain = 1.5
+            r_gain = min(r_gain, max_gain)
+            g_gain = min(g_gain, max_gain)
+            b_gain = min(b_gain, max_gain)
+            
+            # 채널별 조정
+            balanced = image.copy().astype(np.float32)
+            balanced[:, :, 0] *= r_gain
+            balanced[:, :, 1] *= g_gain
+            balanced[:, :, 2] *= b_gain
+            
+            return np.clip(balanced, 0, 255).astype(np.uint8)
+            
+        except Exception as e:
+            self.logger.error(f"화이트 밸런스 조정 실패: {e}")
+            return image
+    
+    def _apply_contrast_enhancement(self, image: np.ndarray) -> np.ndarray:
+        """대비 향상"""
+        try:
+            if not NUMPY_AVAILABLE or not isinstance(image, np.ndarray):
+                return image
+                
+            if not OPENCV_AVAILABLE:
+                return image
+                
+            # 적응형 히스토그램 평활화
+            lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # CLAHE 적용
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            l_enhanced = clahe.apply(l)
+            
+            # 채널 재결합
+            lab_enhanced = cv2.merge([l_enhanced, a, b])
+            enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+            
+            return enhanced
+            
+        except Exception as e:
+            self.logger.error(f"대비 향상 실패: {e}")
+            return image
+    
+    def _combine_enhancement_results(self, original_image, enhancement_results):
+        """여러 향상 결과 통합"""
+        try:
+            if not enhancement_results:
+                return original_image
+            
+            combined_result = original_image.copy()
+            
+            # AI 모델 결과들과 전통적 결과들 분리
+            ai_results = []
+            traditional_results = []
+            
+            for method, result in enhancement_results.items():
+                if result and result.get('enhanced_tensor') is not None:
+                    # AI 모델 결과
+                    enhanced_tensor = result['enhanced_tensor']
+                    quality = result.get('quality_score', 0.5)
+                    
+                    # Tensor → NumPy 변환
+                    enhanced_np = enhanced_tensor.squeeze().cpu().numpy()
+                    if enhanced_np.ndim == 3 and enhanced_np.shape[0] == 3:
+                        enhanced_np = enhanced_np.transpose(1, 2, 0)
+                    enhanced_np = (enhanced_np * 255).astype(np.uint8)
+                    
+                    ai_results.append({
+                        'image': enhanced_np,
+                        'quality': quality,
+                        'method': method
+                    })
+                    
+                elif result and result.get('enhanced_image') is not None:
+                    # 전통적 방법 결과
+                    enhanced_image = result['enhanced_image']
+                    quality = result.get('quality_score', 0.5)
+                    
+                    traditional_results.append({
+                        'image': enhanced_image,
+                        'quality': quality,
+                        'method': method
+                    })
+            
+            # 가중 평균으로 결과 결합
+            if ai_results or traditional_results:
+                all_results = ai_results + traditional_results
+                
+                if len(all_results) == 1:
+                    combined_result = all_results[0]['image']
+                else:
+                    # 여러 결과를 품질에 따라 가중 평균
+                    total_weight = 0.0
+                    weighted_sum = np.zeros_like(combined_result, dtype=np.float32)
+                    
+                    for result in all_results:
+                        weight = result['quality'] * self.config.enhancement_strength
+                        weighted_sum += result['image'].astype(np.float32) * weight
+                        total_weight += weight
+                    
+                    if total_weight > 0:
+                        combined_result = (weighted_sum / total_weight).astype(np.uint8)
+                    
+                    # 원본과 향상된 결과를 혼합
+                    alpha = min(1.0, self.config.enhancement_strength)
+                    if OPENCV_AVAILABLE:
+                        combined_result = cv2.addWeighted(
+                            original_image.astype(np.uint8), 1 - alpha,
+                            combined_result.astype(np.uint8), alpha,
+                            0
+                        )
+            
+            return combined_result
+            
+        except Exception as e:
+            self.logger.error(f"결과 통합 실패: {e}")
+            return original_image
+    
     def _extract_fitted_image(self, processed_input: Dict[str, Any]) -> Optional[Any]:
         """입력에서 fitted_image 추출"""
         try:
@@ -1868,6 +2940,74 @@ class PostProcessingStep(BaseStepMixin):
         except Exception as e:
             self.logger.warning(f"⚠️ PostProcessingStep 리소스 정리 실패: {e}")
 
+    def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        """Step 출력을 API 응답 형식으로 변환"""
+        try:
+            if not isinstance(step_output, dict):
+                self.logger.warning(f"⚠️ step_output이 dict가 아님: {type(step_output)}")
+                return {
+                    'success': False,
+                    'error': f'Invalid output type: {type(step_output)}',
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 기본 API 응답 구조
+            api_response = {
+                'success': step_output.get('success', True),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0),
+                'timestamp': time.time()
+            }
+            
+            # 오류가 있는 경우
+            if not api_response['success']:
+                api_response['error'] = step_output.get('error', 'Unknown error')
+                return api_response
+            
+            # 후처리 결과 변환
+            if 'enhanced_image' in step_output:
+                api_response['post_processing_data'] = {
+                    'enhanced_image': step_output.get('enhanced_image', []),
+                    'enhancement_quality': step_output.get('enhancement_quality', 0.0),
+                    'enhancement_methods_used': step_output.get('enhancement_methods_used', []),
+                    'device_used': step_output.get('device_used', 'unknown'),
+                    'sr_enhancement': step_output.get('sr_enhancement', {}),
+                    'face_enhancement': step_output.get('face_enhancement', {}),
+                    'detail_enhancement': step_output.get('detail_enhancement', {})
+                }
+            
+            # 추가 메타데이터
+            api_response['metadata'] = {
+                'models_available': list(self.ai_models.keys()) if hasattr(self, 'ai_models') else [],
+                'device_used': getattr(self, 'device', 'unknown'),
+                'input_size': step_output.get('input_size', [0, 0]),
+                'output_size': step_output.get('output_size', [0, 0]),
+                'quality_level': getattr(self.config, 'quality_level', {}).value if hasattr(self, 'config') else 'unknown'
+            }
+            
+            # 시각화 데이터 (있는 경우)
+            if 'visualization' in step_output:
+                api_response['visualization'] = step_output['visualization']
+            
+            # 분석 결과 (있는 경우)
+            if 'analysis' in step_output:
+                api_response['analysis'] = step_output['analysis']
+            
+            self.logger.info(f"✅ PostProcessingStep 출력 변환 완료: {len(api_response)}개 키")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ PostProcessingStep 출력 변환 실패: {e}")
+            return {
+                'success': False,
+                'error': f'Output conversion failed: {str(e)}',
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0) if isinstance(step_output, dict) else 0.0
+            }
+
     def get_status(self) -> Dict[str, Any]:
         """Step 상태 반환"""
         return {
@@ -1900,14 +3040,14 @@ class PostProcessingStep(BaseStepMixin):
     # 🔥 Pipeline Manager 호환 메서드
     # ==============================================
     
-    async def process(
+    def process(
         self, 
         fitting_result: Dict[str, Any],
         enhancement_options: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
-        통일된 처리 인터페이스 - Pipeline Manager 호환
+        통일된 처리 인터페이스 - Pipeline Manager 호환 (동기 버전)
         
         Args:
             fitting_result: 가상 피팅 결과 (6단계 출력)
@@ -2243,11 +3383,48 @@ __all__ = [
     'SimplifiedFaceEnhancementModel',
     'SimplifiedRRDB',
     'SimplifiedResidualBlock',
+    'Upsample',
+    'UpsampleOneStep',
+    'SEBlock',
+    'ResidualBlock',
+    'FaceAttentionModule',
+    'FaceEnhancementModel',
+    'AdvancedInferenceEngine',
+    'run_esrgan_inference',
+    'run_swinir_inference',
+    'run_face_enhancement_inference',
+    'CompletePosterProcessingInference',
+    'ResidualDenseBlock_5C',
+    'RRDB',
+    'ESRGANModel',
+    'WindowAttention',
+    'SwinTransformerBlock',
+    'SwinIRModel',
+    'window_partition',
+    'window_reverse',
+    'DropPath',
+    'drop_path',
+    'Mlp',
+    'BasicLayer',
+    'PatchEmbed',
     'create_post_processing_step',
     'create_post_processing_step_sync',
     'create_high_quality_post_processing_step',
     'create_fast_post_processing_step',
-    'create_m3_max_post_processing_step'
+    'create_m3_max_post_processing_step',
+    
+    # 🔧 새로 추가된 메서드들
+    '_run_super_resolution_inference',
+    '_run_face_enhancement_inference',
+    '_run_detail_enhancement_inference',
+    '_detect_faces_in_tensor',
+    '_calculate_enhancement_quality',
+    '_apply_traditional_denoising',
+    '_apply_color_correction',
+    '_adjust_white_balance',
+    '_apply_contrast_enhancement',
+    '_combine_enhancement_results',
+    '_initialize_face_detector'
 ]
 
 # ==============================================

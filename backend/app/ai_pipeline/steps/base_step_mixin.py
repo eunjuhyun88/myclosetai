@@ -1716,7 +1716,7 @@ class BaseStepMixin:
             self.logger.error(f"❌ {self.step_name} API → Step 변환 실패: {e}")
             return api_input  # 실패 시 원본 반환
 
-    async def convert_step_output_to_api_response(self, step_output: Dict[str, Any]) -> Dict[str, Any]:
+    def convert_step_output_to_api_response(self, step_output: Dict[str, Any]) -> Dict[str, Any]:
         """Step 출력을 API 응답으로 변환 - 활성화"""
         try:
             if not self.api_output_mapping:
@@ -1728,7 +1728,7 @@ class BaseStepMixin:
             # ✅ API 출력 매핑 기반 변환
             for step_key, api_type in self.api_output_mapping.items():
                 if step_key in step_output:
-                    converted_value = await self._convert_step_output_type(
+                    converted_value = self._convert_step_output_type_sync(
                         step_output[step_key], api_type, step_key
                     )
                     api_response[step_key] = converted_value
@@ -1747,6 +1747,30 @@ class BaseStepMixin:
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} Step → API 변환 실패: {e}")
             return step_output  # 실패 시 원본 반환
+
+    def _convert_step_output_type_sync(self, value: Any, api_type: str, param_name: str) -> Any:
+        """Step 출력 타입을 API 타입으로 변환 (동기 버전)"""
+        try:
+            if api_type == "base64_string":
+                return self._array_to_base64(value)
+            elif api_type == "List[Dict]":
+                return self._convert_to_list_dict(value)
+            elif api_type == "List[Dict[str, float]]":
+                return self._convert_keypoints_to_dict_list(value)
+            elif api_type == "float":
+                return float(value) if value is not None else 0.0
+            elif api_type == "List[float]":
+                if isinstance(value, (list, tuple)):
+                    return [float(x) for x in value]
+                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                    return value.flatten().tolist()
+                else:
+                    return [float(value)] if value is not None else []
+            else:
+                return value
+        except Exception as e:
+            self.logger.warning(f"⚠️ {self.step_name} 타입 변환 실패 ({param_name}): {e}")
+            return value
 
 
     def _setup_central_hub_integration(self):
@@ -2411,22 +2435,22 @@ class BaseStepMixin:
     # 🔥 표준화된 process 메서드 (모든 기능 유지)
     # ==============================================
     
-    async def process(self, **kwargs) -> Dict[str, Any]:
-        """완전히 재설계된 표준화 process 메서드 (Central Hub 기반)"""
+    def process(self, **kwargs) -> Dict[str, Any]:
+        """완전히 재설계된 표준화 process 메서드 (Central Hub 기반) - 동기 버전"""
         try:
             start_time = time.time()
             self.performance_metrics.github_process_calls += 1
             
             self.logger.debug(f"🔄 {self.step_name} process 시작 (Central Hub, 입력: {list(kwargs.keys())})")
             
-            # 1. 입력 데이터 변환 (API/Step 간 → AI 모델)
-            converted_input = await self._convert_input_to_model_format(kwargs)
+            # 1. 입력 데이터 변환 (API/Step 간 → AI 모델) - 동기적으로 처리
+            converted_input = self._convert_input_to_model_format_sync(kwargs)
             
             # 2. 하위 클래스의 순수 AI 로직 실행
             ai_result = self._run_ai_inference(converted_input)
             
-            # 3. 출력 데이터 변환 (AI 모델 → API + Step 간)
-            standardized_output = await self._convert_output_to_standard_format(ai_result)
+            # 3. 출력 데이터 변환 (AI 모델 → API + Step 간) - 동기적으로 호출
+            standardized_output = self._convert_output_to_standard_format(ai_result)
             
             # 4. 성능 메트릭 업데이트
             processing_time = time.time() - start_time
@@ -2451,8 +2475,8 @@ class BaseStepMixin:
     # 🔥 입력 데이터 변환 시스템 (모든 기능 유지)
     # ==============================================
     
-    async def _convert_input_to_model_format(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """API/Step 간 데이터 → AI 모델 입력 형식 변환"""
+    def _convert_input_to_model_format_sync(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """API/Step 간 데이터 → AI 모델 입력 형식 변환 (동기 버전)"""
         try:
             converted = {}
             self.performance_metrics.data_conversions += 1
@@ -2462,7 +2486,7 @@ class BaseStepMixin:
             # 1. API 입력 매핑 처리
             for model_param, api_type in self.detailed_data_spec.api_input_mapping.items():
                 if model_param in kwargs:
-                    converted[model_param] = await self._convert_api_input_type(
+                    converted[model_param] = self._convert_api_input_type_sync(
                         kwargs[model_param], api_type, model_param
                     )
                     self.performance_metrics.api_conversions += 1
@@ -2481,9 +2505,9 @@ class BaseStepMixin:
                 if param_name not in converted and param_name in kwargs:
                     converted[param_name] = kwargs[param_name]
             
-            # 4. 전처리 적용
+            # 4. 전처리 적용 (동기적으로)
             if self.config.auto_preprocessing and self.detailed_data_spec.preprocessing_steps:
-                converted = await self._apply_preprocessing(converted)
+                converted = self._apply_preprocessing_sync(converted)
                 self.performance_metrics.preprocessing_operations += 1
             
             # 5. 데이터 검증
@@ -2499,13 +2523,17 @@ class BaseStepMixin:
             self.performance_metrics.validation_failures += 1
             self.logger.error(f"❌ {self.step_name} 입력 데이터 변환 실패: {e}")
             raise
+
+    async def _convert_input_to_model_format(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """API/Step 간 데이터 → AI 모델 입력 형식 변환 (비동기 버전 - 호환성용)"""
+        return self._convert_input_to_model_format_sync(kwargs)
     
-    async def _convert_api_input_type(self, value: Any, api_type: str, param_name: str) -> Any:
-        """API 타입별 변환 처리"""
+    def _convert_api_input_type_sync(self, value: Any, api_type: str, param_name: str) -> Any:
+        """API 타입별 변환 처리 (동기 버전)"""
         try:
             if api_type == "UploadFile":
                 if hasattr(value, 'file'):
-                    content = await value.read() if hasattr(value, 'read') else value.file.read()
+                    content = value.file.read() if hasattr(value.file, 'read') else value.file.read()
                     return Image.open(BytesIO(content)) if PIL_AVAILABLE else content
                 elif hasattr(value, 'read'):
                     content = value.read()
@@ -2569,8 +2597,8 @@ class BaseStepMixin:
     # 🔥 전처리 시스템 (모든 기능 유지)
     # ==============================================
     
-    async def _apply_preprocessing(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """DetailedDataSpec 기반 전처리 자동 적용"""
+    def _apply_preprocessing_sync(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """DetailedDataSpec 기반 전처리 자동 적용 (동기 버전)"""
         try:
             processed = input_data.copy()
             
@@ -2616,6 +2644,10 @@ class BaseStepMixin:
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} 전처리 실패: {e}")
             return input_data
+
+    async def _apply_preprocessing(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """DetailedDataSpec 기반 전처리 자동 적용 (비동기 버전 - 호환성용)"""
+        return self._apply_preprocessing_sync(input_data)
     
     def _resize_images(self, data: Dict[str, Any], target_size: Tuple[int, int]) -> Dict[str, Any]:
         """이미지 리사이즈 처리"""
@@ -2811,13 +2843,13 @@ class BaseStepMixin:
     # 🔥 출력 데이터 변환 시스템 (모든 기능 유지)
     # ==============================================
     
-    async def _convert_output_to_standard_format(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_output_to_standard_format(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
         """AI 모델 출력 → 표준 형식 변환"""
         try:
             self.logger.debug(f"🔄 {self.step_name} 출력 데이터 변환 시작...")
             
-            # 1. 후처리 적용
-            processed_result = await self._apply_postprocessing(ai_result)
+            # 1. 후처리 적용 (동기적으로 호출)
+            processed_result = self._apply_postprocessing_sync(ai_result)
             
             # 2. API 응답 형식 변환
             api_response = self._convert_to_api_format(processed_result)
@@ -2869,8 +2901,8 @@ class BaseStepMixin:
         except:
             return None
     
-    async def _apply_postprocessing(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
-        """DetailedDataSpec 기반 후처리 자동 적용"""
+    def _apply_postprocessing_sync(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
+        """DetailedDataSpec 기반 후처리 자동 적용 (동기 버전)"""
         try:
             if not self.config.auto_postprocessing:
                 return ai_result
@@ -2924,6 +2956,10 @@ class BaseStepMixin:
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} 후처리 실패: {e}")
             return ai_result
+
+    async def _apply_postprocessing(self, ai_result: Dict[str, Any]) -> Dict[str, Any]:
+        """DetailedDataSpec 기반 후처리 자동 적용 (비동기 버전)"""
+        return self._apply_postprocessing_sync(ai_result)
     
     def _apply_softmax(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Softmax 적용"""

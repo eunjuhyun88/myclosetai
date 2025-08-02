@@ -177,14 +177,29 @@ if BaseStepMixin is None:
                 "fallback_mode": True
             }
         
-        def process(self, data: Dict[str, Any]) -> Dict[str, Any]:
-            """기본 process 메서드 - _run_ai_inference 호출"""
+        def process(self, **kwargs) -> Dict[str, Any]:
+            """기본 process 메서드 - _run_ai_inference 호출 (동기 버전)"""
             try:
                 start_time = time.time()
                 
-                # _run_ai_inference 메서드가 있으면 호출
+                # 입력 데이터 변환 (동기적으로 처리)
+                if hasattr(self, 'convert_api_input_to_step_input'):
+                    # convert_api_input_to_step_input이 async이므로 동기적으로 실행
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            processed_input = asyncio.run(self.convert_api_input_to_step_input(kwargs))
+                        else:
+                            processed_input = loop.run_until_complete(self.convert_api_input_to_step_input(kwargs))
+                    except RuntimeError:
+                        processed_input = asyncio.run(self.convert_api_input_to_step_input(kwargs))
+                else:
+                    processed_input = kwargs
+                
+                # _run_ai_inference 메서드가 있으면 호출 (동기적으로)
                 if hasattr(self, '_run_ai_inference'):
-                    result = self._run_ai_inference(data)
+                    result = self._run_ai_inference(processed_input)
                     
                     # 처리 시간 추가
                     if isinstance(result, dict):
@@ -202,7 +217,7 @@ if BaseStepMixin is None:
                         'step_name': self.step_name,
                         'step_id': self.step_id
                     }
-                    
+                
             except Exception as e:
                 self.logger.error(f"❌ {self.step_name} process 실패: {e}")
                 return {
@@ -596,6 +611,15 @@ class ClothSegmentationConfig:
     # 기본 설정
     confidence_threshold: float = 0.5
     enable_visualization: bool = True
+    
+    # 자동 전처리 설정
+    auto_preprocessing: bool = True
+    
+    # 자동 후처리 설정
+    auto_postprocessing: bool = True
+    
+    # 데이터 검증 설정
+    strict_data_validation: bool = True
 
 # ==============================================
 # 🔥 섹션 5: 핵심 AI 알고리즘 - DeepLabV3+ (원본 완전 보존)
@@ -1911,7 +1935,7 @@ class ClothSegmentationStep(BaseStepMixin):
     # 🔥 핵심 AI 추론 메서드 (BaseStepMixin 표준)
     # ==============================================
     
-    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Cloth Segmentation AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -1922,8 +1946,16 @@ class ClothSegmentationStep(BaseStepMixin):
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        # 세션에서 원본 이미지 직접 로드 (동기적으로)
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
+                            else:
+                                person_image, clothing_image = loop.run_until_complete(session_manager.get_session_images(processed_input['session_id']))
+                        except RuntimeError:
+                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
                         image = clothing_image  # 의류 분할은 의류 이미지 사용
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: {type(image)}")
                 except Exception as e:
@@ -2771,6 +2803,57 @@ class ClothSegmentationStep(BaseStepMixin):
     def get_available_models(self) -> List[str]:
         """사용 가능한 AI 모델 목록 반환"""
         return list(self.ai_models.keys())
+
+    def _get_service_from_central_hub(self, service_key: str):
+        """Central Hub에서 서비스 가져오기"""
+        try:
+            if hasattr(self, 'di_container') and self.di_container:
+                return self.di_container.get_service(service_key)
+            return None
+        except Exception as e:
+            self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
+            return None
+
+    def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+        """API 입력을 Step 입력으로 변환"""
+        try:
+            step_input = api_input.copy()
+            
+            # 이미지 데이터 추출 (다양한 키 이름 지원)
+            image = None
+            for key in ['image', 'clothing_image', 'cloth_image', 'input_image', 'original_image']:
+                if key in step_input:
+                    image = step_input[key]
+                    break
+            
+            if image is None and 'session_id' in step_input:
+                # 세션에서 이미지 로드
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        import asyncio
+                        person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                        if clothing_image:
+                            image = clothing_image
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+            
+            # 변환된 입력 구성
+            converted_input = {
+                'image': image,
+                'clothing_image': image,
+                'cloth_image': image,
+                'session_id': step_input.get('session_id'),
+                'analysis_detail': step_input.get('analysis_detail', 'medium'),
+                'clothing_type': step_input.get('clothing_type', 'shirt')
+            }
+            
+            self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+            return converted_input
+            
+        except Exception as e:
+            self.logger.error(f"❌ API 입력 변환 실패: {e}")
+            return api_input
     
     def get_model_info(self, model_key: str = None) -> Dict[str, Any]:
         """AI 모델 정보 반환"""
@@ -2895,6 +2978,76 @@ class ClothSegmentationStep(BaseStepMixin):
                 'errors': [f"검증 실패: {e}"],
                 'warnings': [],
                 'info': {}
+            }
+
+    def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        """Step 출력을 API 응답 형식으로 변환"""
+        try:
+            if not isinstance(step_output, dict):
+                self.logger.warning(f"⚠️ step_output이 dict가 아님: {type(step_output)}")
+                return {
+                    'success': False,
+                    'error': f'Invalid output type: {type(step_output)}',
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 기본 API 응답 구조
+            api_response = {
+                'success': step_output.get('success', True),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0),
+                'timestamp': time.time()
+            }
+            
+            # 오류가 있는 경우
+            if not api_response['success']:
+                api_response['error'] = step_output.get('error', 'Unknown error')
+                return api_response
+            
+            # 의류 세그멘테이션 결과 변환
+            if 'segmentation_result' in step_output:
+                seg_result = step_output['segmentation_result']
+                api_response['segmentation_data'] = {
+                    'masks': seg_result.get('masks', {}),
+                    'confidence_scores': seg_result.get('confidence_scores', {}),
+                    'overall_confidence': seg_result.get('overall_confidence', 0.0),
+                    'segmentation_quality': seg_result.get('segmentation_quality', 'unknown'),
+                    'model_used': seg_result.get('model_used', 'unknown'),
+                    'cloth_categories': seg_result.get('cloth_categories', []),
+                    'cloth_features': seg_result.get('cloth_features', {}),
+                    'visualization': seg_result.get('visualization', {})
+                }
+            
+            # 추가 메타데이터
+            api_response['metadata'] = {
+                'models_available': list(self.ai_models.keys()) if hasattr(self, 'ai_models') else [],
+                'device_used': getattr(self, 'device', 'unknown'),
+                'input_size': step_output.get('input_size', [0, 0]),
+                'output_size': step_output.get('output_size', [0, 0]),
+                'available_methods': [method.value for method in self.available_methods] if hasattr(self, 'available_methods') else []
+            }
+            
+            # 시각화 데이터 (있는 경우)
+            if 'visualization' in step_output:
+                api_response['visualization'] = step_output['visualization']
+            
+            # 분석 결과 (있는 경우)
+            if 'analysis' in step_output:
+                api_response['analysis'] = step_output['analysis']
+            
+            self.logger.info(f"✅ ClothSegmentationStep 출력 변환 완료: {len(api_response)}개 키")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ ClothSegmentationStep 출력 변환 실패: {e}")
+            return {
+                'success': False,
+                'error': f'Output conversion failed: {str(e)}',
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0) if isinstance(step_output, dict) else 0.0
             }
 
 # ==============================================

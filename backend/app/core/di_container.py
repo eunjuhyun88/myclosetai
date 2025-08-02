@@ -275,6 +275,10 @@ class CentralHubDIContainer:
             
             return service
     
+    def get_service(self, service_key: str) -> Optional[Any]:
+        """서비스 조회 (get 메서드와 동일)"""
+        return self.get(service_key)
+    
     def register(self, service_key: str, instance: Any, singleton: bool = True):
         """서비스 등록"""
         self.registry.register_instance(service_key, instance, singleton)

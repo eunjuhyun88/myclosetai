@@ -853,6 +853,70 @@ class StepServiceManager:
                 
         except Exception as e:
             return {'success': False, 'error': str(e), 'central_hub_used': self.central_hub_container is not None}
+
+    def process_step_by_name_sync(self, step_name: str, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Central Hub 기반 Step 이름으로 처리 (동기 버전)"""
+        try:
+            # 1. Central Hub를 통한 Step 생성 (자동 의존성 주입)
+            if self.step_factory:
+                step_type = self._get_step_type_from_name(step_name)
+                
+                # 동기적으로 Step 인스턴스 생성
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        creation_result = asyncio.run(self._create_step_instance(step_type, **kwargs))
+                    else:
+                        creation_result = loop.run_until_complete(self._create_step_instance(step_type, **kwargs))
+                except RuntimeError:
+                    creation_result = asyncio.run(self._create_step_instance(step_type, **kwargs))
+                
+                if not creation_result[0]:
+                    return {'success': False, 'error': creation_result[2]}
+                
+                step_instance = creation_result[1]
+                
+                # 2. Central Hub 추가 의존성 주입 확인
+                additional_injections = 0
+                if self.central_hub_container:
+                    additional_injections = _inject_dependencies_to_step_safe(step_instance)
+                
+                # 3. DetailedDataSpec 기반 데이터 변환 (동기적으로)
+                if hasattr(step_instance, 'convert_api_input_to_step_input'):
+                    # convert_api_input_to_step_input이 async인지 확인하고 적절히 처리
+                    import inspect
+                    if inspect.iscoroutinefunction(step_instance.convert_api_input_to_step_input):
+                        # async 함수인 경우 asyncio.run으로 래핑
+                        converted_input = asyncio.run(step_instance.convert_api_input_to_step_input(api_input))
+                    else:
+                        # 동기 함수인 경우 직접 호출
+                        converted_input = step_instance.convert_api_input_to_step_input(api_input)
+                else:
+                    converted_input = api_input
+                
+                # 4. AI 추론 실행 (동기적으로)
+                step_output = step_instance.process(**converted_input)
+                
+                # 5. API 응답 변환 (동기적으로)
+                if hasattr(step_instance, 'convert_step_output_to_api_response'):
+                    api_response = step_instance.convert_step_output_to_api_response(step_output)
+                else:
+                    api_response = step_output
+                
+                return {
+                    'success': True,
+                    'result': api_response,
+                    'step_name': step_name,
+                    'central_hub_injections': additional_injections,
+                    'processing_time': step_output.get('processing_time', 0),
+                    'central_hub_used': True
+                }
+            else:
+                return {'success': False, 'error': 'StepFactory not available'}
+                
+        except Exception as e:
+            return {'success': False, 'error': str(e), 'central_hub_used': self.central_hub_container is not None}
     
     def _get_step_type_from_name(self, step_name: str) -> str:
         """Step 이름에서 타입 추출 (StepFactory 호환)"""

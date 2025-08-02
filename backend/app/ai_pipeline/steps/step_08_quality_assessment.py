@@ -321,6 +321,59 @@ if BaseStepMixin is None:
                 'enable_ai_models': getattr(self, 'enable_ai_models', True),
                 'fallback_mode': True
             }
+
+        def _get_service_from_central_hub(self, service_key: str):
+            """Central Hub에서 서비스 가져오기"""
+            try:
+                if hasattr(self, 'di_container') and self.di_container:
+                    return self.di_container.get_service(service_key)
+                return None
+            except Exception as e:
+                self.logger.warning(f"⚠️ Central Hub 서비스 가져오기 실패: {e}")
+                return None
+
+        def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+            """API 입력을 Step 입력으로 변환"""
+            try:
+                step_input = api_input.copy()
+                
+                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                image = None
+                for key in ['image', 'fitted_image', 'enhanced_image', 'input_image', 'original_image']:
+                    if key in step_input:
+                        image = step_input[key]
+                        break
+                
+                if image is None and 'session_id' in step_input:
+                    # 세션에서 이미지 로드
+                    try:
+                        session_manager = self._get_service_from_central_hub('session_manager')
+                        if session_manager:
+                            import asyncio
+                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                            # 품질 평가는 fitted_image를 우선적으로 찾음
+                            if 'fitted_image' in step_input:
+                                image = step_input['fitted_image']
+                            elif person_image:
+                                image = person_image
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                
+                # 변환된 입력 구성
+                converted_input = {
+                    'image': image,
+                    'main_image': image,
+                    'session_id': step_input.get('session_id'),
+                    'analysis_depth': step_input.get('analysis_depth', 'comprehensive'),
+                    'quality_options': step_input.get('quality_options', {})
+                }
+                
+                self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                return converted_input
+                
+            except Exception as e:
+                self.logger.error(f"❌ API 입력 변환 실패: {e}")
+                return api_input
         
         # BaseStepMixin 호환 메서드들
         def set_model_loader(self, model_loader):
@@ -1339,7 +1392,7 @@ class QualityAssessmentStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Mock Quality Assessment 모델 생성 실패: {e}")
 
-    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Quality Assessment AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
@@ -1351,7 +1404,8 @@ class QualityAssessmentStep(BaseStepMixin):
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
                         # 세션에서 원본 이미지 직접 로드
-                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        import asyncio
+                        person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
                         # Step 7 결과에서 enhanced_image 가져오기 시도
                         session_data = session_manager.sessions.get(processed_input['session_id'])
                         if session_data and 7 in session_data.step_data_cache:
@@ -2628,6 +2682,76 @@ class QualityAssessmentStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ 리소스 정리 실패: {e}")
+
+    def _convert_step_output_type(self, step_output: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        """Step 출력을 API 응답 형식으로 변환"""
+        try:
+            if not isinstance(step_output, dict):
+                self.logger.warning(f"⚠️ step_output이 dict가 아님: {type(step_output)}")
+                return {
+                    'success': False,
+                    'error': f'Invalid output type: {type(step_output)}',
+                    'step_name': self.step_name,
+                    'step_id': self.step_id
+                }
+            
+            # 기본 API 응답 구조
+            api_response = {
+                'success': step_output.get('success', True),
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0),
+                'timestamp': time.time()
+            }
+            
+            # 오류가 있는 경우
+            if not api_response['success']:
+                api_response['error'] = step_output.get('error', 'Unknown error')
+                return api_response
+            
+            # 품질 평가 결과 변환
+            if 'quality_result' in step_output:
+                quality_result = step_output['quality_result']
+                api_response['quality_data'] = {
+                    'overall_quality': quality_result.get('overall_quality', 0.0),
+                    'confidence': quality_result.get('confidence', 0.0),
+                    'quality_breakdown': quality_result.get('quality_breakdown', {}),
+                    'recommendations': quality_result.get('recommendations', []),
+                    'quality_grade': quality_result.get('quality_grade', 'unknown'),
+                    'technical_analysis': quality_result.get('technical_analysis', {}),
+                    'perceptual_analysis': quality_result.get('perceptual_analysis', {}),
+                    'aesthetic_analysis': quality_result.get('aesthetic_analysis', {})
+                }
+            
+            # 추가 메타데이터
+            api_response['metadata'] = {
+                'models_available': list(self.ai_models.keys()) if hasattr(self, 'ai_models') else [],
+                'device_used': getattr(self, 'device', 'unknown'),
+                'input_size': step_output.get('input_size', [0, 0]),
+                'output_size': step_output.get('output_size', [0, 0]),
+                'assessment_ready': getattr(self, 'assessment_ready', False)
+            }
+            
+            # 시각화 데이터 (있는 경우)
+            if 'visualization' in step_output:
+                api_response['visualization'] = step_output['visualization']
+            
+            # 분석 결과 (있는 경우)
+            if 'analysis' in step_output:
+                api_response['analysis'] = step_output['analysis']
+            
+            self.logger.info(f"✅ QualityAssessmentStep 출력 변환 완료: {len(api_response)}개 키")
+            return api_response
+            
+        except Exception as e:
+            self.logger.error(f"❌ QualityAssessmentStep 출력 변환 실패: {e}")
+            return {
+                'success': False,
+                'error': f'Output conversion failed: {str(e)}',
+                'step_name': self.step_name,
+                'step_id': self.step_id,
+                'processing_time': step_output.get('processing_time', 0.0) if isinstance(step_output, dict) else 0.0
+            }
 
 # ==============================================
 # 🔥 팩토리 함수들 (Central Hub DI Container 방식)
