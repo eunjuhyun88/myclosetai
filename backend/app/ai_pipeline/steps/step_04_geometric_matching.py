@@ -2027,14 +2027,47 @@ class GeometricMatchingStep(BaseStepMixin):
                 'central_hub_di_container': True
             }
 
-    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-        """실제 AI 기반 기하학적 매칭 추론 (v27.1 완전 복원)"""
+    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 실제 Geometric Matching AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
-            self.logger.info(f"🧠 {self.step_name} 실제 AI 추론 시작...")
             
-            # 1. 입력 데이터 검증 및 전처리
-            person_image, clothing_image, person_parsing, pose_keypoints, clothing_segmentation = self._validate_and_preprocess_input(processed_input)
+            # 🔥 Session에서 이미지 데이터를 먼저 가져오기
+            person_image = None
+            clothing_image = None
+            if 'session_id' in processed_input:
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        # 세션에서 원본 이미지 직접 로드
+                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
+            
+            # 🔥 입력 데이터 검증
+            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            
+            # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
+            if person_image is None:
+                for key in ['person_image', 'image', 'input_image', 'original_image']:
+                    if key in processed_input:
+                        person_image = processed_input[key]
+                        self.logger.info(f"✅ 사람 이미지 데이터 발견: {key}")
+                        break
+            
+            if clothing_image is None:
+                for key in ['clothing_image', 'cloth_image', 'target_image']:
+                    if key in processed_input:
+                        clothing_image = processed_input[key]
+                        self.logger.info(f"✅ 의류 이미지 데이터 발견: {key}")
+                        break
+            
+            if person_image is None or clothing_image is None:
+                self.logger.error("❌ 입력 데이터 검증 실패: 입력 이미지 없음 (Step 4)")
+                return {'success': False, 'error': '입력 이미지 없음'}
+            
+            self.logger.info("🧠 Geometric Matching 실제 AI 추론 시작")
             
             # 2. 이미지 텐서 변환
             person_tensor = self._prepare_image_tensor(person_image)
@@ -2047,7 +2080,7 @@ class GeometricMatchingStep(BaseStepMixin):
                 return cached_result
             
             # 4. AI 모델들 실행
-            results = self._execute_ai_models(person_tensor, clothing_tensor, pose_keypoints)
+            results = self._execute_ai_models(person_tensor, clothing_tensor, processed_input.get('pose_keypoints', []))
             
             # 5. 고급 결과 융합
             final_result = self._fuse_matching_results_advanced(results, person_tensor, clothing_tensor)
@@ -2072,15 +2105,52 @@ class GeometricMatchingStep(BaseStepMixin):
             return self._create_fallback_result(processed_input, str(e))
 
     def _validate_and_preprocess_input(self, processed_input: Dict[str, Any]) -> Tuple[Any, Any, Dict, List, Dict]:
-        """입력 데이터 검증 및 전처리"""
-        person_image = processed_input.get('person_image')
-        clothing_image = processed_input.get('clothing_image')
-        person_parsing = processed_input.get('person_parsing', {})
-        pose_keypoints = processed_input.get('pose_keypoints', [])
-        clothing_segmentation = processed_input.get('clothing_segmentation', {})
+        """입력 데이터 검증 및 전처리 (Step 1과 동일한 패턴)"""
+        self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+        
+        # 이미지 데이터 추출 (다양한 키에서 시도)
+        person_image = None
+        clothing_image = None
+        
+        # person_image 추출
+        for key in ['person_image', 'image', 'input_image', 'original_image']:
+            if key in processed_input:
+                person_image = processed_input[key]
+                self.logger.info(f"✅ person_image 발견: {key}")
+                break
+        
+        # clothing_image 추출
+        for key in ['clothing_image', 'target_image', 'clothing', 'garment_image']:
+            if key in processed_input:
+                clothing_image = processed_input[key]
+                self.logger.info(f"✅ clothing_image 발견: {key}")
+                break
+        
+        # session_id에서 이미지 추출 시도
+        if (person_image is None or clothing_image is None) and 'session_id' in processed_input:
+            try:
+                session_manager = self._get_service_from_central_hub('session_manager')
+                if session_manager:
+                    session_data = session_manager.get_session_status(processed_input['session_id'])
+                    if session_data:
+                        if person_image is None and 'step_1_result' in session_data:
+                            step_1_result = session_data['step_1_result']
+                            person_image = step_1_result.get('original_image')
+                            self.logger.info("✅ Step 1 결과에서 person_image 추출")
+                        
+                        if clothing_image is None and 'step_3_result' in session_data:
+                            step_3_result = session_data['step_3_result']
+                            clothing_image = step_3_result.get('clothing_image')
+                            self.logger.info("✅ Step 3 결과에서 clothing_image 추출")
+            except Exception as e:
+                self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
         
         if person_image is None or clothing_image is None:
             raise ValueError("필수 입력 데이터 없음: person_image, clothing_image")
+        
+        person_parsing = processed_input.get('person_parsing', {})
+        pose_keypoints = processed_input.get('pose_keypoints', [])
+        clothing_segmentation = processed_input.get('clothing_segmentation', {})
         
         return person_image, clothing_image, person_parsing, pose_keypoints, clothing_segmentation
 

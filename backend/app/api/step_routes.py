@@ -48,6 +48,7 @@ import gc
 from typing import Optional, Dict, Any, List, Tuple, Union, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
+from io import BytesIO
 
 # FastAPI 필수 import
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
@@ -266,7 +267,13 @@ async def _process_step_common(
         
         session_data = {}
         if session_manager:
-            session_data = await session_manager.get_session(session_id) or {}
+            try:
+                session_status = await session_manager.get_session_status(session_id)
+                if session_status and session_status.get('status') != 'not_found':
+                    session_data = session_status.get('data', {})
+            except Exception as e:
+                logger.warning(f"⚠️ 세션 데이터 조회 실패: {e}")
+                session_data = {}
         
         # 🔥 WebSocket 진행률 콜백 생성
         websocket_manager = _get_websocket_manager()
@@ -676,15 +683,34 @@ async def step_1_upload_validation(
                 logger.error(f"❌ 세션 생성 실패: {e}")
                 raise HTTPException(status_code=500, detail=f"세션 생성 실패: {str(e)}")
             
-            # 4. 🔥 Central Hub 기반 StepServiceManager AI 처리
+            # 🔥 Session에 원본 이미지 저장 (Step 2에서 사용)
+            def pil_to_base64(img):
+                buffer = BytesIO()
+                img.save(buffer, format="PNG")
+                return base64.b64encode(buffer.getvalue()).decode()
+            try:
+                session_data = await session_manager.get_session_status(new_session_id)
+                if session_data is None:
+                    session_data = {}
+                b64_person = pil_to_base64(person_img)
+                b64_cloth = pil_to_base64(clothing_img)
+                logger.info(f"Step1: person_img base64 length: {len(b64_person)}")
+                logger.info(f"Step1: clothing_img base64 length: {len(b64_cloth)}")
+                session_data['original_person_image'] = b64_person
+                session_data['original_clothing_image'] = b64_cloth
+                await session_manager.update_session(new_session_id, session_data)
+                logger.info("✅ 원본 이미지를 Session에 base64로 저장")
+            except Exception as e:
+                logger.warning(f"⚠️ Session에 이미지 저장 실패: {e}")
+            
+            # 🔥 AI 추론용 입력 데이터 정의 및 호출
             api_input = {
                 'person_image': person_img,
                 'clothing_image': clothing_img,
                 'session_id': new_session_id
             }
-            
             result = await _process_step_common(
-                step_name='UploadValidation',
+                step_name='HumanParsing',
                 step_id=1,
                 api_input=api_input,
                 session_id=new_session_id
@@ -835,11 +861,32 @@ async def step_2_measurements_validation(
             logger.error(f"❌ 측정값 처리 실패: {e}")
             raise HTTPException(status_code=400, detail=f"측정값 처리 실패: {str(e)}")
         
-        # 3. 🔥 Central Hub 기반 Step 처리
+        # 3. 🔥 Step 1 결과에서 이미지 데이터 추출
+        step_1_result = None
+        try:
+            session_data = await session_manager.get_session_status(session_id)
+            if session_data and 'step_01_result' in session_data:
+                step_1_result = session_data['step_01_result']
+                logger.info("✅ Step 1 결과에서 이미지 데이터 추출")
+            else:
+                logger.warning("⚠️ Step 1 결과를 찾을 수 없음")
+        except Exception as e:
+            logger.warning(f"⚠️ Step 1 결과 추출 실패: {e}")
+        
+        # 4. 🔥 Central Hub 기반 Step 처리 (Step 1 결과 포함)
         api_input = {
             'measurements': measurements,
             'session_id': session_id
         }
+        
+        # Step 1 결과가 있으면 이미지 데이터 추가
+        if step_1_result:
+            if 'original_image' in step_1_result:
+                api_input['image'] = step_1_result['original_image']
+                logger.info("✅ Step 1 original_image 추가")
+            elif 'parsing_result' in step_1_result:
+                api_input['image'] = step_1_result['parsing_result']
+                logger.info("✅ Step 1 parsing_result 추가")
         
         result = await _process_step_common(
             step_name='MeasurementsValidation',
@@ -951,13 +998,47 @@ async def step_3_human_parsing(
             except Exception:
                 pass
             
-            # 3. 🔥 Central Hub 기반 Step 처리
+            # 3. 🔥 Step 1 결과에서 이미지 데이터 추출
+            step_1_result = None
+            try:
+                session_data = await session_manager.get_session_status(session_id)
+                if session_data and 'step_01_result' in session_data:
+                    step_1_result = session_data['step_01_result']
+                    logger.info("✅ Step 1 결과에서 이미지 데이터 추출")
+                else:
+                    logger.warning("⚠️ Step 1 결과를 찾을 수 없음")
+            except Exception as e:
+                logger.warning(f"⚠️ Step 1 결과 추출 실패: {e}")
+            
+            # 4. 🔥 Central Hub 기반 Step 처리 (Step 1 결과 포함)
             api_input = {
                 'session_id': session_id,
                 'confidence_threshold': confidence_threshold,
                 'enhance_quality': enhance_quality,
                 'force_ai_processing': force_ai_processing
             }
+            
+            # Step 1 결과가 있으면 이미지 데이터 추가
+            if step_1_result:
+                if 'original_image' in step_1_result:
+                    api_input['image'] = step_1_result['original_image']
+                    logger.info("✅ Step 1 original_image 추가")
+                elif 'parsing_result' in step_1_result:
+                    api_input['image'] = step_1_result['parsing_result']
+                    logger.info("✅ Step 1 parsing_result 추가")
+            
+            # 🔥 Session에서 직접 이미지 데이터 가져오기
+            try:
+                session_data = await session_manager.get_session_status(session_id)
+                if session_data:
+                    if 'original_person_image' in session_data:
+                        api_input['person_image'] = session_data['original_person_image']
+                        logger.info("✅ Session에서 person_image 추가")
+                    if 'original_clothing_image' in session_data:
+                        api_input['clothing_image'] = session_data['original_clothing_image']
+                        logger.info("✅ Session에서 clothing_image 추가")
+            except Exception as e:
+                logger.warning(f"⚠️ Session에서 이미지 가져오기 실패: {e}")
             
             result = await _process_step_common(
                 step_name='HumanParsing',
@@ -1859,37 +1940,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 # 🔍 에러 처리 미들웨어 (Central Hub 기반)
 # =============================================================================
 
-@router.middleware("http")
-async def central_hub_error_handler(request, call_next):
-    """Central Hub DI Container 기반 에러 처리"""
-    try:
-        response = await call_next(request)
-        return response
-    except Exception as e:
-        logger.error(f"❌ Central Hub Routes 에러: {e}")
-        
-        # Central Hub 상태 확인
-        container = _get_central_hub_container()
-        error_context = {
-            'central_hub_available': container is not None,
-            'request_path': str(request.url.path),
-            'request_method': request.method,
-            'di_container_v70': True
-        }
-        
-        if '/step_' in str(request.url.path):
-            # Step API 에러는 특별 처리
-            return JSONResponse(
-                content={
-                    'success': False,
-                    'error': 'Step processing failed',
-                    'details': str(e),
-                    'central_hub_context': error_context
-                },
-                status_code=500
-            )
-        else:
-            raise HTTPException(status_code=500, detail=str(e))
+# APIRouter는 middleware를 지원하지 않으므로 제거
+# 에러 처리는 각 엔드포인트에서 개별적으로 처리
 
 # =============================================================================
 # 🔍 세션 관리 API들 (Central Hub 기반)

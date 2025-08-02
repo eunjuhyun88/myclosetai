@@ -70,12 +70,12 @@ class OptimizedFileMapper:
             "human_parsing_schp": {
                 "priority_files": [
                     # ✅ checkpoints 디렉토리 - 터미널에서 확인된 실제 파일들
-                    ("checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth", 1),
-                    ("checkpoints/step_01_human_parsing/exp-schp-201908261155-lip.pth", 2),
-                    ("checkpoints/step_01_human_parsing/atr_model.pth", 3),
-                    ("checkpoints/step_01_human_parsing/graphonomy.pth", 4),
-                    ("checkpoints/step_01_human_parsing/graphonomy_alternative.pth", 5),
-                    ("checkpoints/step_01_human_parsing/lip_model.pth", 6),
+                    ("ai_models/checkpoints/step_01_human_parsing/exp-schp-201908301523-atr.pth", 1),
+                    ("ai_models/checkpoints/step_01_human_parsing/exp-schp-201908261155-lip.pth", 2),
+                    ("ai_models/checkpoints/step_01_human_parsing/atr_model.pth", 3),
+                    ("ai_models/checkpoints/step_01_human_parsing/graphonomy.pth", 4),
+                    ("ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth", 5),
+                    ("ai_models/checkpoints/step_01_human_parsing/lip_model.pth", 6),
                     # step 디렉토리 보조
                     ("step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth", 7),
                     ("step_01_human_parsing/graphonomy_fixed.pth", 8),
@@ -94,9 +94,9 @@ class OptimizedFileMapper:
             "pose_estimation_openpose": {
                 "priority_files": [
                     # ✅ checkpoints 디렉토리 - 터미널에서 확인된 실제 파일들
-                    ("checkpoints/step_02_pose_estimation/body_pose_model.pth", 1),
-                    ("checkpoints/step_02_pose_estimation/openpose.pth", 2),
-                    ("checkpoints/step_02_pose_estimation/yolov8n-pose.pt", 3),
+                    ("ai_models/checkpoints/step_02_pose_estimation/body_pose_model.pth", 1),
+                    ("ai_models/checkpoints/step_02_pose_estimation/openpose.pth", 2),
+                    ("ai_models/checkpoints/step_02_pose_estimation/yolov8n-pose.pt", 3),
                     # ✅ OOTD 체크포인트 경로 - 터미널에서 확인됨
                     ("checkpoints/ootdiffusion/checkpoints/ootd/feature_extractor/preprocessor_config.json", 4),
                     # step 디렉토리 보조

@@ -798,6 +798,38 @@ class SessionManager:
                 "fallback_mode": True
             }
     
+    async def update_session(self, session_id: str, session_data_dict: Dict[str, Any]) -> bool:
+        """세션 데이터 업데이트 (기존 호환)"""
+        try:
+            with self._lock:
+                if session_id not in self.sessions:
+                    logger.warning(f"⚠️ 세션 업데이트 실패: 세션 {session_id} 없음")
+                    return False
+                
+                session_data = self.sessions[session_id]
+                session_data.update_access_time()
+                
+                # 세션 데이터 업데이트
+                for key, value in session_data_dict.items():
+                    if key.startswith('step_') and key.endswith('_result'):
+                        # Step 결과 저장
+                        step_id = int(key.split('_')[1])
+                        session_data.save_step_data(step_id, value)
+                    else:
+                        # 기타 데이터는 메타데이터에 저장
+                        if hasattr(session_data.metadata, key):
+                            setattr(session_data.metadata, key, value)
+                
+                # 메타데이터 저장
+                await self._save_session_metadata(session_data)
+                
+                logger.debug(f"✅ 세션 {session_id} 업데이트 완료")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ 세션 업데이트 실패: {e}")
+            return False
+    
     def get_all_sessions_status(self) -> Dict[str, Any]:
         """전체 세션 상태 조회 (기존 함수명 유지 + 순환참조 방지)"""
         try:

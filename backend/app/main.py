@@ -360,8 +360,10 @@ async def _register_core_services_to_central_hub(container):
         
         # WebSocketManager 등록
         try:
-            from app.core.websocket_manager import WebSocketManager
+            from app.api.websocket_routes import WebSocketManager
             websocket_manager = WebSocketManager()
+            # 백그라운드 태스크 시작
+            await websocket_manager.start_background_tasks()
             container.register('websocket_manager', websocket_manager)
             logger.info("✅ WebSocketManager Central Hub 등록 완료")
         except Exception as e:

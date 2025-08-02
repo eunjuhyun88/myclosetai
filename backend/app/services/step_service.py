@@ -826,11 +826,17 @@ class StepServiceManager:
                     converted_input = api_input
                 
                 # 4. AI 추론 실행
-                step_output = await step_instance.process(converted_input)
+                if asyncio.iscoroutinefunction(step_instance.process):
+                    step_output = await step_instance.process(**converted_input)
+                else:
+                    step_output = step_instance.process(**converted_input)
                 
                 # 5. API 응답 변환
                 if hasattr(step_instance, 'convert_step_output_to_api_response'):
-                    api_response = await step_instance.convert_step_output_to_api_response(step_output)
+                    if asyncio.iscoroutinefunction(step_instance.convert_step_output_to_api_response):
+                        api_response = await step_instance.convert_step_output_to_api_response(step_output)
+                    else:
+                        api_response = step_instance.convert_step_output_to_api_response(step_output)
                 else:
                     api_response = step_output
                 
@@ -848,26 +854,26 @@ class StepServiceManager:
         except Exception as e:
             return {'success': False, 'error': str(e), 'central_hub_used': self.central_hub_container is not None}
     
-    def _get_step_type_from_name(self, step_name: str) -> int:
-        """Step 이름에서 타입 추출"""
+    def _get_step_type_from_name(self, step_name: str) -> str:
+        """Step 이름에서 타입 추출 (StepFactory 호환)"""
         step_mapping = {
-            'human_parsing': 1,
-            'pose_estimation': 2,
-            'clothing_analysis': 3,
-            'cloth_segmentation': 3,
-            'geometric_matching': 4,
-            'virtual_fitting': 6,
-            'cloth_warping': 5,
-            'post_processing': 7,
-            'quality_assessment': 8,
-            'result_analysis': 8
+            'human_parsing': 'human_parsing',
+            'pose_estimation': 'pose_estimation',
+            'clothing_analysis': 'cloth_segmentation',
+            'cloth_segmentation': 'cloth_segmentation',
+            'geometric_matching': 'geometric_matching',
+            'virtual_fitting': 'virtual_fitting',
+            'cloth_warping': 'cloth_warping',
+            'post_processing': 'post_processing',
+            'quality_assessment': 'quality_assessment',
+            'result_analysis': 'quality_assessment'
         }
         
         for key, value in step_mapping.items():
             if key in step_name.lower():
                 return value
         
-        return 1  # 기본값
+        return 'human_parsing'  # 기본값
     
     def validate_dependencies(self) -> Dict[str, Any]:
         """Central Hub 기반 의존성 검증"""
@@ -1127,13 +1133,33 @@ class StepServiceManager:
             with self._lock:
                 self.total_requests += 1
             
-            # 세션에서 이미지 가져오기
-            if session_id not in self.sessions:
+            # SessionManager를 통해 세션에서 이미지 가져오기
+            session_manager = _get_session_manager()
+            if not session_manager:
+                raise ValueError("SessionManager를 사용할 수 없습니다")
+            
+            session_status = await session_manager.get_session_status(session_id)
+            if session_status.get('status') != 'found':
                 raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
             
-            person_image = self.sessions[session_id].get('person_image')
-            if person_image is None:
-                raise ValueError("person_image가 없습니다")
+            # 세션에서 이미지 가져오기
+            session_data = session_status.get('data', {})
+            person_image_info = session_data.get('person_image_info', {})
+            
+            if not person_image_info:
+                raise ValueError("person_image 정보가 없습니다")
+            
+            # 이미지 파일 경로에서 이미지 로드
+            person_image_path = session_data.get('person_image', {}).get('path')
+            if not person_image_path:
+                raise ValueError("person_image 경로가 없습니다")
+            
+            # PIL Image로 로드
+            try:
+                from PIL import Image
+                person_image = Image.open(person_image_path)
+            except Exception as e:
+                raise ValueError(f"이미지 로드 실패: {e}")
             
             self.logger.info(f"🧠 Step 3 Central Hub → HumanParsingStep 처리 시작: {session_id}")
             
@@ -1158,8 +1184,11 @@ class StepServiceManager:
                 "message": "인간 파싱 완료 (Central Hub → HumanParsingStep)"
             })
             
-            # 세션에 결과 저장
-            self.sessions[session_id]['human_parsing_result'] = result
+            # SessionManager를 통해 세션에 결과 저장
+            if session_manager:
+                await session_manager.update_session(session_id, {
+                    'human_parsing_result': result
+                })
             
             if result.get('success', False):
                 with self._lock:
@@ -1202,13 +1231,33 @@ class StepServiceManager:
             with self._lock:
                 self.total_requests += 1
             
-            # 세션에서 이미지 가져오기
-            if session_id not in self.sessions:
+            # SessionManager를 통해 세션에서 이미지 가져오기
+            session_manager = _get_session_manager()
+            if not session_manager:
+                raise ValueError("SessionManager를 사용할 수 없습니다")
+            
+            session_status = await session_manager.get_session_status(session_id)
+            if session_status.get('status') != 'found':
                 raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
             
-            person_image = self.sessions[session_id].get('person_image')
-            if person_image is None:
-                raise ValueError("person_image가 없습니다")
+            # 세션에서 이미지 가져오기
+            session_data = session_status.get('data', {})
+            person_image_info = session_data.get('person_image_info', {})
+            
+            if not person_image_info:
+                raise ValueError("person_image 정보가 없습니다")
+            
+            # 이미지 파일 경로에서 이미지 로드
+            person_image_path = session_data.get('person_image', {}).get('path')
+            if not person_image_path:
+                raise ValueError("person_image 경로가 없습니다")
+            
+            # PIL Image로 로드
+            try:
+                from PIL import Image
+                person_image = Image.open(person_image_path)
+            except Exception as e:
+                raise ValueError(f"이미지 로드 실패: {e}")
             
             self.logger.info(f"🧠 Step 4 Central Hub → PoseEstimationStep 처리 시작: {session_id}")
             

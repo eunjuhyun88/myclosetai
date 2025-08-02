@@ -1341,19 +1341,48 @@ class QualityAssessmentStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Mock Quality Assessment 모델 생성 실패: {e}")
 
-    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        🔥 BaseStepMixin v20.0 호환 실제 AI 추론 메서드 (간소화된 Quality Assessment)
-        Central Hub DI Container를 통한 실제 AI 품질 평가 처리
-        """
+    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 실제 Quality Assessment AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
-            self.logger.info(f"🧠 {self.step_name} 실제 AI 추론 시작 (Central Hub 기반)")
             
-            # 🔥 1. 입력 데이터 검증
-            main_image = self._extract_main_image(processed_input)
+            # 🔥 Session에서 이미지 데이터를 먼저 가져오기
+            main_image = None
+            if 'session_id' in processed_input:
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        # 세션에서 원본 이미지 직접 로드
+                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        # Step 7 결과에서 enhanced_image 가져오기 시도
+                        session_data = session_manager.sessions.get(processed_input['session_id'])
+                        if session_data and 7 in session_data.step_data_cache:
+                            step_7_result = session_data.step_data_cache[7]
+                            main_image = step_7_result.get('enhanced_image')
+                            self.logger.info(f"✅ Step 7 결과에서 enhanced_image 로드: {type(main_image)}")
+                        else:
+                            # Step 7 결과가 없으면 원본 이미지 사용
+                            main_image = person_image
+                            self.logger.info(f"✅ Session에서 원본 이미지 로드: {type(main_image)}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
+            
+            # 🔥 입력 데이터 검증
+            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            
+            # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
             if main_image is None:
-                return self._create_error_response("평가할 메인 이미지가 없습니다")
+                for key in ['main_image', 'enhanced_image', 'fitted_image', 'image', 'input_image']:
+                    if key in processed_input:
+                        main_image = processed_input[key]
+                        self.logger.info(f"✅ main_image 데이터 발견: {key}")
+                        break
+            
+            if main_image is None:
+                self.logger.error("❌ 입력 데이터 검증 실패: 입력 이미지 없음 (Step 8)")
+                return {'success': False, 'error': '입력 이미지 없음'}
+            
+            self.logger.info("🧠 Quality Assessment 실제 AI 추론 시작")
             
             # 🔥 2. Quality Assessment 준비 상태 확인
             if not self.quality_ready:
@@ -1461,20 +1490,52 @@ class QualityAssessmentStep(BaseStepMixin):
         except Exception as e:
             processing_time = time.time() - start_time if 'start_time' in locals() else 0.0
             self.logger.error(f"❌ {self.step_name} AI 추론 실패: {e}")
-            
-            return self._create_error_response(str(e), processing_time)
+            return {'success': False, 'error': str(e)}
 
     def _extract_main_image(self, processed_input: Dict[str, Any]) -> Optional[np.ndarray]:
-        """메인 평가 대상 이미지 추출"""
-        # 우선순위: enhanced_image > final_result > fitted_image
-        for key in ['enhanced_image', 'final_result', 'fitted_image']:
+        """메인 평가 대상 이미지 추출 (Step 1과 동일한 패턴)"""
+        self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+        
+        # 이미지 데이터 추출 (다양한 키에서 시도)
+        main_image = None
+        
+        # 우선순위: enhanced_image > final_result > fitted_image > image
+        for key in ['enhanced_image', 'final_result', 'fitted_image', 'image', 'input_image', 'original_image']:
             if key in processed_input:
-                image = processed_input[key]
-                if isinstance(image, np.ndarray):
-                    return image
-                elif hasattr(image, 'numpy'):
-                    return image.numpy()
-        return None
+                main_image = processed_input[key]
+                self.logger.info(f"✅ main_image 발견: {key}")
+                if isinstance(main_image, np.ndarray):
+                    return main_image
+                elif hasattr(main_image, 'numpy'):
+                    return main_image.numpy()
+                break
+        
+        # session_id에서 이미지 추출 시도
+        if main_image is None and 'session_id' in processed_input:
+            try:
+                session_manager = self._get_service_from_central_hub('session_manager')
+                if session_manager:
+                    session_data = session_manager.get_session_status(processed_input['session_id'])
+                    if session_data:
+                        # Step 7 결과에서 enhanced_image 추출
+                        if 'step_7_result' in session_data:
+                            step_7_result = session_data['step_7_result']
+                            main_image = step_7_result.get('enhanced_image')
+                            if main_image is not None:
+                                self.logger.info("✅ Step 7 결과에서 enhanced_image 추출")
+                                return main_image
+                        
+                        # Step 6 결과에서 fitted_image 추출
+                        if 'step_6_result' in session_data:
+                            step_6_result = session_data['step_6_result']
+                            main_image = step_6_result.get('fitted_image')
+                            if main_image is not None:
+                                self.logger.info("✅ Step 6 결과에서 fitted_image 추출")
+                                return main_image
+            except Exception as e:
+                self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
+        
+        return main_image
 
     def _preprocess_image_for_quality_assessment(self, image) -> np.ndarray:
         """Quality Assessment용 이미지 전처리"""

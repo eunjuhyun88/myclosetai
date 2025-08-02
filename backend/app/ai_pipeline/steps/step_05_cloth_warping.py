@@ -376,7 +376,7 @@ if BaseStepMixin is None:
                 "required_models": [
                     "tps_transformation.pth",
                     "dpt_hybrid_midas.pth",
-                    "viton_hd_warging.pth"
+                    "viton_hd_warping.pth"
                 ],
                 "primary_model": "tps_transformation.pth",
                 "model_configs": {
@@ -2131,44 +2131,71 @@ class ClothWarpingStep(BaseStepMixin):
         except Exception as e:
             self.logger.error(f"❌ Mock Warping 모델 생성 실패: {e}")
 
-    def _run_ai_inference(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        🔥 BaseStepMixin v20.0 필수 구현 메서드 - 실제 AI 추론 실행 (동기)
-        
-        BaseStepMixin의 process() 메서드에서 자동으로 호출됨:
-        1. process() → 입력 데이터 변환
-        2. _run_ai_inference() → 실제 AI 추론 (이 메서드)
-        3. process() → 출력 데이터 변환 및 반환
-        """
+    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 실제 Cloth Warping AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
-            self.logger.info(f"🧠 {self.step_name} Enhanced Cloth Warping AI 추론 시작...")
             
-            # 1. 입력 데이터 검증
-            cloth_image = input_data.get('cloth_image')
-            person_image = input_data.get('person_image')
+            # 🔥 Session에서 이미지 데이터를 먼저 가져오기
+            person_image = None
+            clothing_image = None
+            transformation_matrix = None
+            if 'session_id' in processed_input:
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        # 세션에서 원본 이미지 직접 로드
+                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
             
-            if cloth_image is None or person_image is None:
-                raise ValueError("cloth_image와 person_image가 모두 필요합니다")
+            # 🔥 입력 데이터 검증
+            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
             
-            keypoints = input_data.get('keypoints', None)
-            quality_level = input_data.get('quality_level', 'balanced')
+            # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
+            if person_image is None:
+                for key in ['person_image', 'image', 'input_image', 'original_image']:
+                    if key in processed_input:
+                        person_image = processed_input[key]
+                        self.logger.info(f"✅ 사람 이미지 데이터 발견: {key}")
+                        break
+            
+            if clothing_image is None:
+                for key in ['clothing_image', 'cloth_image', 'target_image']:
+                    if key in processed_input:
+                        clothing_image = processed_input[key]
+                        self.logger.info(f"✅ 의류 이미지 데이터 발견: {key}")
+                        break
+            
+            # 변환 매트릭스 추출
+            for key in ['transformation_matrix', 'transform_matrix', 'warp_matrix']:
+                if key in processed_input:
+                    transformation_matrix = processed_input[key]
+                    self.logger.info(f"✅ 변환 매트릭스 발견: {key}")
+                    break
+            
+            if person_image is None or clothing_image is None or transformation_matrix is None:
+                self.logger.error("❌ 입력 데이터 검증 실패: 입력 데이터 없음 (Step 5)")
+                return {'success': False, 'error': '입력 데이터 없음'}
+            
+            self.logger.info("🧠 Cloth Warping 실제 AI 추론 시작")
             
             # 2. Warping 준비 상태 확인
             if not self.warping_ready:
                 raise ValueError("Enhanced Cloth Warping 모델이 준비되지 않음")
             
             # 3. 이미지 전처리
-            processed_cloth = self._preprocess_image(cloth_image)
+            processed_cloth = self._preprocess_image(clothing_image)
             processed_person = self._preprocess_image(person_image)
             
             # 4. AI 모델 선택 및 추론 (동기 실행)
             warping_result = self._run_enhanced_cloth_warping_inference_sync(
-                processed_cloth, processed_person, keypoints, quality_level
+                processed_cloth, processed_person, None, 'balanced'
             )
             
             # 5. 후처리
-            final_result = self._postprocess_warping_result(warping_result, cloth_image, person_image)
+            final_result = self._postprocess_warping_result(warping_result, clothing_image, person_image)
             
             # 6. 처리 시간 계산
             processing_time = time.time() - start_time

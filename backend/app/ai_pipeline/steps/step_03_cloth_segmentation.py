@@ -1911,25 +1911,40 @@ class ClothSegmentationStep(BaseStepMixin):
     # 🔥 핵심 AI 추론 메서드 (BaseStepMixin 표준)
     # ==============================================
     
-    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        🔥 동기 AI 추론 로직 - BaseStepMixin v20.0에서 호출됨
-        
-        AI 파이프라인:
-        1. 고급 전처리 (품질 평가, 조명 정규화)
-        2. 실제 AI 세그멘테이션 (DeepLabV3+/SAM/U2Net)
-        3. 카테고리별 마스크 생성
-        4. 품질 검증 및 시각화
-        """
+    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 실제 Cloth Segmentation AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
-            self.logger.info(f"🧠 {self.step_name} 실제 AI 추론 시작")
             start_time = time.time()
             
-            # 0. 입력 데이터 검증
-            if 'image' not in processed_input:
-                return self._create_emergency_result("image가 없음")
+            # 🔥 Session에서 이미지 데이터를 먼저 가져오기
+            image = None
+            if 'session_id' in processed_input:
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        # 세션에서 원본 이미지 직접 로드
+                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        image = clothing_image  # 의류 분할은 의류 이미지 사용
+                        self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: {type(image)}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
             
-            image = processed_input['image']
+            # 🔥 입력 데이터 검증
+            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            
+            # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
+            if image is None:
+                for key in ['image', 'input_image', 'original_image', 'processed_image']:
+                    if key in processed_input:
+                        image = processed_input[key]
+                        self.logger.info(f"✅ 이미지 데이터 발견: {key}")
+                        break
+            
+            if image is None:
+                self.logger.error("❌ 입력 데이터 검증 실패: 입력 이미지 없음 (Step 3)")
+                return {'success': False, 'error': '입력 이미지 없음'}
+            
+            self.logger.info("🧠 Cloth Segmentation 실제 AI 추론 시작")
             
             # PIL Image로 변환
             if isinstance(image, np.ndarray):

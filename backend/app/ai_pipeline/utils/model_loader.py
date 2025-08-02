@@ -490,9 +490,17 @@ class RealAIModel:
                 self.logger.error(f"❌ 모델 파일 없음: {self.model_path}")
                 return False
             
-            # 파일 크기 확인
-            file_size = self.model_path.stat().st_size
-            self.memory_usage_mb = file_size / (1024 * 1024)
+            # 파일 크기 확인 (안전한 검증)
+            try:
+                file_size = self.model_path.stat().st_size
+                if isinstance(file_size, (int, float)):
+                    self.memory_usage_mb = file_size / (1024 * 1024)
+                else:
+                    self.logger.warning(f"⚠️ 파일 크기가 숫자가 아님: {type(file_size)}")
+                    self.memory_usage_mb = 0.0
+            except Exception as e:
+                self.logger.warning(f"⚠️ 파일 크기 확인 실패: {e}")
+                self.memory_usage_mb = 0.0
             
             self.logger.info(f"🔄 {self.step_type.value} 모델 로딩 시작: {self.model_name} ({self.memory_usage_mb:.1f}MB)")
             
@@ -2091,6 +2099,7 @@ class ModelLoader:
     def load_model(self, model_name: str, **kwargs) -> Optional[RealAIModel]:
         """실제 AI 모델 로딩 (Central Hub 완전 호환)"""
         try:
+            self.logger.debug(f"🔄 load_model 시작: {model_name}")
             with self._lock:
                 # 캐시 확인
                 if model_name in self.loaded_models:
@@ -2106,7 +2115,9 @@ class ModelLoader:
                 self.model_status[model_name] = RealModelStatus.LOADING
                 
                 # 모델 경로 및 Step 타입 결정 (Central Hub 경로 기반)
+                self.logger.debug(f"🔄 _find_model_path 호출 중: {model_name}")
                 model_path = self._find_model_path(model_name, **kwargs)
+                self.logger.debug(f"🔄 _find_model_path 결과: {model_path}")
                 if not model_path:
                     self.logger.error(f"❌ 모델 경로를 찾을 수 없음: {model_name}")
                     self.model_status[model_name] = RealModelStatus.ERROR
@@ -2205,55 +2216,64 @@ class ModelLoader:
             # 🔥 fix_checkpoints.py에서 검증된 실제 파일 경로들
             VERIFIED_MODEL_PATHS = {
                 # Human Parsing (✅ 170.5MB 검증됨)
-                "graphonomy": "checkpoints/step_01_human_parsing/graphonomy.pth",
-                "graphonomy.pth": "checkpoints/step_01_human_parsing/graphonomy.pth",
+                "graphonomy": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
+                "graphonomy.pth": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
                 
                 # Cloth Segmentation (✅ 2445.7MB 검증됨)
-                "sam": "checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                "sam_vit_h_4b8939": "checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                "sam_vit_h_4b8939.pth": "checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "sam": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "sam_vit_h_4b8939": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "sam_vit_h_4b8939.pth": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
                 
                 # U2Net alternative (✅ 38.8MB 검증됨)
-                "u2net": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
-                "u2net_alternative": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
-                "u2net_alternative.pth": "checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                "u2net": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                "u2net_alternative": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
+                "u2net_alternative.pth": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
                 
                 # Cloth Warping (✅ 6616.6MB 검증됨)
-                "realvis": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                "realvisxl": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                "RealVisXL_V4.0": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                "RealVisXL_V4.0.safetensors": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "realvis": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "realvisxl": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "RealVisXL_V4.0": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+                "RealVisXL_V4.0.safetensors": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
                 
                 # Virtual Fitting (✅ 3278.9MB 검증됨 - 4개 파일)
-                "diffusion_unet_vton": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-                "diffusion_unet_garm": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
-                "diffusion_unet_vton_dc": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-                "diffusion_unet_garm_dc": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
-                "diffusion_main": "step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_vton": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_garm": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_vton_dc": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+                "diffusion_unet_garm_dc": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+                "diffusion_main": "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
                 
                 # Quality Assessment (✅ 5213.7MB 검증됨)
-                "clip": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                "open_clip": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                "open_clip_pytorch_model": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                "open_clip_pytorch_model.bin": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "clip": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "open_clip": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "open_clip_pytorch_model": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+                "open_clip_pytorch_model.bin": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
                 
                 # Stable Diffusion (✅ 4067.6MB 검증됨)
-                "stable_diffusion": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                "v1-5-pruned": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                "v1-5-pruned-emaonly": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                "v1-5-pruned-emaonly.safetensors": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "stable_diffusion": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "v1-5-pruned": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "v1-5-pruned-emaonly": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+                "v1-5-pruned-emaonly.safetensors": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
                 
                 # Pose Estimation (✅ 1378.2MB 검증됨)
-                "diffusion_pose": "step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors",
-                "diffusion_pytorch_model": "step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+                "diffusion_pose": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors",
+                "diffusion_pytorch_model": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
             }
             
             # 🔥 검증된 경로에서 먼저 찾기
             if model_name in VERIFIED_MODEL_PATHS:
+                self.logger.debug(f"🔄 검증된 경로 확인 중: {model_name}")
                 verified_path = self.model_cache_dir / VERIFIED_MODEL_PATHS[model_name]
-                if verified_path.exists():
-                    self.logger.info(f"✅ 검증된 경로에서 모델 발견: {model_name} → {verified_path}")
-                    return str(verified_path)
+                self.logger.debug(f"🔄 검증된 경로: {verified_path}")
+                try:
+                    exists_result = verified_path.exists()
+                    self.logger.debug(f"🔄 exists() 결과: {exists_result} (타입: {type(exists_result)})")
+                    if exists_result:
+                        self.logger.info(f"✅ 검증된 경로에서 모델 발견: {model_name} → {verified_path}")
+                        return str(verified_path)
+                except Exception as e:
+                    self.logger.error(f"❌ exists() 호출 실패: {e}")
+                    import traceback
+                    self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
             
             # 캐시된 경로가 있는 경우
             if hasattr(self, '_model_path_cache') and model_name in self._model_path_cache:
@@ -2278,10 +2298,16 @@ class ModelLoader:
             for pattern in search_patterns:
                 try:
                     for found_path in self.model_cache_dir.glob(pattern):
-                        if found_path.is_file() and found_path.stat().st_size > 1024:  # 1KB 이상
-                            self._model_path_cache[model_name] = str(found_path)
-                            self.logger.info(f"🔍 패턴 검색으로 모델 발견: {model_name} → {found_path}")
-                            return str(found_path)
+                        try:
+                            # 안전한 파일 크기 확인
+                            file_size = found_path.stat().st_size
+                            if found_path.is_file() and isinstance(file_size, (int, float)) and file_size > 1024:  # 1KB 이상
+                                self._model_path_cache[model_name] = str(found_path)
+                                self.logger.info(f"🔍 패턴 검색으로 모델 발견: {model_name} → {found_path}")
+                                return str(found_path)
+                        except Exception as size_error:
+                            self.logger.debug(f"파일 크기 확인 실패 {found_path}: {size_error}")
+                            continue
                 except Exception as e:
                     self.logger.debug(f"패턴 검색 실패 {pattern}: {e}")
                     continue

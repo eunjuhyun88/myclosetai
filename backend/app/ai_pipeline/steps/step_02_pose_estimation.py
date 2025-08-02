@@ -1356,15 +1356,38 @@ class PoseEstimationStep(BaseStepMixin):
             self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
             return False
     
-    def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Pose Estimation AI 추론 (BaseStepMixin v20.0 호환)"""
         try:
             start_time = time.time()
             
-            # 입력 데이터 검증
-            image = processed_input.get('image')
+            # 🔥 Session에서 이미지 데이터를 먼저 가져오기
+            image = None
+            if 'session_id' in processed_input:
+                try:
+                    session_manager = self._get_service_from_central_hub('session_manager')
+                    if session_manager:
+                        # 세션에서 원본 이미지 직접 로드
+                        person_image, clothing_image = await session_manager.get_session_images(processed_input['session_id'])
+                        image = person_image  # 포즈 추정은 사람 이미지 사용
+                        self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: {type(image)}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
+            
+            # 🔥 입력 데이터 검증 (Step 1과 동일한 패턴)
+            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            
+            # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
             if image is None:
-                raise ValueError("입력 이미지 없음")
+                for key in ['image', 'input_image', 'original_image', 'processed_image']:
+                    if key in processed_input:
+                        image = processed_input[key]
+                        self.logger.info(f"✅ 이미지 데이터 발견: {key}")
+                        break
+            
+            if image is None:
+                self.logger.error("❌ 입력 데이터 검증 실패: 입력 이미지 없음 (Step 2)")
+                return {'success': False, 'error': '입력 이미지 없음'}
             
             self.logger.info("🧠 Pose Estimation 실제 AI 추론 시작")
             
