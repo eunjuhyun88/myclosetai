@@ -1534,7 +1534,7 @@ class UltraSafeCheckpointLoader:
             return None
         
         file_size_mb = checkpoint_path.stat().st_size / (1024 * 1024)
-        self.logger.info(f"🔄 체크포인트 로딩 시작: {checkpoint_path.name} ({file_size_mb:.1f}MB)")
+        self.logger.debug(f"🔄 체크포인트 로딩 시작: {checkpoint_path.name} ({file_size_mb:.1f}MB)")
         
         # 메모리 정리
         gc.collect()
@@ -2168,7 +2168,7 @@ class PostProcessingStep(BaseStepMixin):
                 if checkpoint is not None:
                     try:
                         esrgan_model.load_state_dict(checkpoint, strict=False)
-                        self.logger.info(f"✅ ESRGAN 체크포인트 로딩 성공")
+                        self.logger.debug(f"✅ ESRGAN 체크포인트 로딩 성공")
                     except Exception as e:
                         self.logger.warning(f"⚠️ ESRGAN 체크포인트 로딩 실패: {e}")
                 
@@ -2185,7 +2185,7 @@ class PostProcessingStep(BaseStepMixin):
                 if checkpoint is not None:
                     try:
                         swinir_model.load_state_dict(checkpoint, strict=False)
-                        self.logger.info(f"✅ SwinIR 체크포인트 로딩 성공")
+                        self.logger.debug(f"✅ SwinIR 체크포인트 로딩 성공")
                     except Exception as e:
                         self.logger.warning(f"⚠️ SwinIR 체크포인트 로딩 실패: {e}")
                 
@@ -2202,7 +2202,7 @@ class PostProcessingStep(BaseStepMixin):
                 if checkpoint is not None:
                     try:
                         face_model.load_state_dict(checkpoint, strict=False)
-                        self.logger.info(f"✅ Face Enhancement 체크포인트 로딩 성공")
+                        self.logger.debug(f"✅ Face Enhancement 체크포인트 로딩 성공")
                     except Exception as e:
                         self.logger.warning(f"⚠️ Face Enhancement 체크포인트 로딩 실패: {e}")
                 

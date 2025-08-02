@@ -743,7 +743,7 @@ if TORCH_AVAILABLE:
                         self.load_state_dict(checkpoint, strict=False)
                     
                     self.checkpoint_loaded = True
-                    self.logger.info(f"✅ 지각적 품질 모델 체크포인트 로드 성공: {checkpoint_path}")
+                    self.logger.debug(f"✅ 지각적 품질 모델 체크포인트 로드 성공: {checkpoint_path}")
                     return True
                 else:
                     self.logger.warning(f"⚠️ 체크포인트 파일 없음: {checkpoint_path}")
@@ -843,7 +843,7 @@ if TORCH_AVAILABLE:
                     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
                     self.load_state_dict(checkpoint, strict=False)
                     self.checkpoint_loaded = True
-                    self.logger.info(f"✅ 미적 품질 모델 체크포인트 로드 성공: {checkpoint_path}")
+                    self.logger.debug(f"✅ 미적 품질 모델 체크포인트 로드 성공: {checkpoint_path}")
                     return True
                 else:
                     self.logger.warning(f"⚠️ 체크포인트 파일 없음: {checkpoint_path}")

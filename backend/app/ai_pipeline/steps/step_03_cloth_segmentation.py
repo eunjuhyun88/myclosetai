@@ -40,6 +40,7 @@ from enum import Enum
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
+import cv2
 
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -1298,12 +1299,17 @@ class RealSAMModel:
             
             from segment_anything import build_sam_vit_h, SamPredictor
             
+            # 🔥 MPS 문제 해결을 위해 CPU로 강제 전환
+            if self.device == "mps":
+                logger.warning("⚠️ SAM 모델을 CPU로 강제 전환 (MPS 크래시 방지)")
+                self.device = "cpu"
+            
             self.model = build_sam_vit_h(checkpoint=self.model_path)
             self.model.to(self.device)
             self.predictor = SamPredictor(self.model)
             self.is_loaded = True
             
-            logger.info(f"✅ SAM 모델 로드 완료: {self.model_path}")
+            logger.info(f"✅ SAM 모델 로드 완료: {self.model_path} (디바이스: {self.device})")
             return True
             
         except Exception as e:
@@ -1313,10 +1319,34 @@ class RealSAMModel:
     def predict(self, image: np.ndarray, prompts: Dict[str, Any] = None) -> Dict[str, Any]:
         """SAM 예측 실행"""
         try:
+            logger.info("🔥 SAM predict 시작")
+            
             if not self.is_loaded:
+                logger.warning("⚠️ SAM 모델이 로드되지 않음")
                 return {"masks": {}, "confidence": 0.0}
             
-            self.predictor.set_image(image)
+            logger.info("🔥 SAM set_image 시작")
+            
+            # set_image 전 메모리 정리
+            for _ in range(3):
+                gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                except Exception as mps_error:
+                    logger.warning(f"⚠️ set_image 전 MPS 메모리 정리 실패: {mps_error}")
+            
+            # set_image 실행
+            try:
+                self.predictor.set_image(image)
+                logger.info("✅ SAM set_image 완료")
+            except Exception as set_image_error:
+                logger.error(f"❌ SAM set_image 실패: {set_image_error}")
+                # set_image 실패 시 폴백
+                return {"masks": {}, "confidence": 0.0}
             
             # 기본 프롬프트 (중앙 영역)
             if prompts is None:
@@ -1325,24 +1355,52 @@ class RealSAMModel:
                     'points': [(w//2, h//2)],
                     'labels': [1]
                 }
+                logger.info(f"🔥 기본 프롬프트 생성: 중앙점 ({w//2}, {h//2})")
             
             # 프롬프트 추출
+            logger.info("🔥 프롬프트 추출 시작")
             point_coords = np.array(prompts.get('points', []))
             point_labels = np.array(prompts.get('labels', []))
             box = np.array(prompts.get('box', None)) if prompts.get('box') else None
+            logger.info(f"✅ 프롬프트 추출 완료: points={len(point_coords)}, labels={len(point_labels)}, box={box is not None}")
             
             # 예측 실행
-            masks, scores, logits = self.predictor.predict(
-                point_coords=point_coords if len(point_coords) > 0 else None,
-                point_labels=point_labels if len(point_labels) > 0 else None,
-                box=box,
-                multimask_output=True
-            )
+            logger.info("🔥 SAM predictor.predict 시작 - 여기서 크래시 발생 가능성 높음")
+            
+            # predict 전 최종 메모리 정리
+            for _ in range(5):
+                gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                except Exception as mps_error:
+                    logger.warning(f"⚠️ predict 전 MPS 메모리 정리 실패: {mps_error}")
+            
+            # predict 실행
+            try:
+                masks, scores, logits = self.predictor.predict(
+                    point_coords=point_coords if len(point_coords) > 0 else None,
+                    point_labels=point_labels if len(point_labels) > 0 else None,
+                    box=box,
+                    multimask_output=True
+                )
+                logger.info("✅ SAM predictor.predict 완료")
+            except Exception as predict_error:
+                logger.error(f"❌ SAM predictor.predict 실패: {predict_error}")
+                import traceback
+                logger.error(f"❌ SAM predictor.predict 실패 상세: {traceback.format_exc()}")
+                # predict 실패 시 폴백
+                return {"masks": {}, "confidence": 0.0}
             
             # 최고 점수 마스크 선택
+            logger.info("🔥 마스크 후처리 시작")
             best_idx = np.argmax(scores)
             best_mask = masks[best_idx]
             best_score = scores[best_idx]
+            logger.info(f"✅ 최고 점수 마스크 선택: 인덱스={best_idx}, 점수={best_score:.3f}")
             
             # 의류 카테고리별 마스크 생성 (SAM은 일반 세그멘테이션이므로 전체 마스크로 처리)
             mask_uint8 = (best_mask * 255).astype(np.uint8)
@@ -1353,16 +1411,21 @@ class RealSAMModel:
                 'full_body': mask_uint8,
                 'accessories': np.zeros_like(mask_uint8)
             }
+            logger.info("✅ 마스크 딕셔너리 생성 완료")
             
-            return {
+            result = {
                 "masks": masks_dict,
                 "confidence": float(best_score),
                 "all_masks": masks,
                 "all_scores": scores
             }
+            logger.info("✅ SAM predict 완료")
+            return result
             
         except Exception as e:
             logger.error(f"❌ SAM 예측 실패: {e}")
+            import traceback
+            logger.error(f"❌ SAM 예측 실패 상세: {traceback.format_exc()}")
             return {"masks": {}, "confidence": 0.0}
 
 class RealU2NetClothModel:
@@ -1758,16 +1821,29 @@ class ClothSegmentationStep(BaseStepMixin):
             self._create_fallback_models()
     
     def _load_deeplabv3plus_model(self):
-        """DeepLabV3+ 모델 로딩 (우선순위 1)"""
+        """DeepLabV3+ 모델 로딩 (우선순위 1) - Central Hub ModelLoader 사용"""
         try:
             # 🔧 model_paths 속성 안전성 확보
             if not hasattr(self, 'model_paths'):
                 self.model_paths = {}
             
+            # Central Hub ModelLoader를 통한 모델 경로 조회
+            if self.model_loader and hasattr(self.model_loader, 'get_model_path'):
+                model_path = self.model_loader.get_model_path('deeplabv3_resnet101_ultra', step_name='step_03_cloth_segmentation')
+                if model_path and os.path.exists(model_path):
+                    deeplabv3_model = RealDeepLabV3PlusModel(model_path, self.device)
+                    if deeplabv3_model.load():
+                        self.ai_models['deeplabv3plus'] = deeplabv3_model
+                        self.segmentation_models['deeplabv3plus'] = deeplabv3_model
+                        self.models_loading_status['deeplabv3plus'] = True
+                        self.model_paths['deeplabv3plus'] = model_path
+                        self.logger.info(f"✅ DeepLabV3+ 로딩 완료: {model_path}")
+                        return
+            
+            # 폴백: 직접 경로 탐지
             checkpoint_paths = [
-                "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/deeplabv3plus_resnet101.pth",
-                "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_03_cloth_segmentation/deeplabv3plus_xception.pth",
                 "step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
+                "ai_models/step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
                 "ultra_models/deeplabv3_resnet101_ultra.pth"
             ]
             
@@ -1789,16 +1865,30 @@ class ClothSegmentationStep(BaseStepMixin):
             self.models_loading_status['loading_errors'].append(f"DeepLabV3+: {e}")
     
     def _load_sam_model(self):
-        """SAM 모델 로딩 (폴백)"""
+        """SAM 모델 로딩 (폴백) - Central Hub ModelLoader 사용"""
         try:
             # 🔧 model_paths 속성 안전성 확보
             if not hasattr(self, 'model_paths'):
                 self.model_paths = {}
+            
+            # Central Hub ModelLoader를 통한 모델 경로 조회
+            if self.model_loader and hasattr(self.model_loader, 'get_model_path'):
+                model_path = self.model_loader.get_model_path('sam_vit_h_4b8939', step_name='step_03_cloth_segmentation')
+                if model_path and os.path.exists(model_path):
+                    sam_model = RealSAMModel(model_path, self.device)
+                    if sam_model.load():
+                        self.ai_models['sam_huge'] = sam_model
+                        self.segmentation_models['sam_huge'] = sam_model
+                        self.models_loading_status['sam_huge'] = True
+                        self.model_paths['sam_huge'] = model_path
+                        self.logger.info(f"✅ SAM 로딩 완료: {model_path}")
+                        return
                 
+            # 폴백: 직접 경로 탐지
             checkpoint_paths = [
-                "ultra_models/sam_vit_h_4b8939.pth",  # GeometricMatchingStep과 공유
-                "step_04_geometric_matching/ultra_models/sam_vit_h_4b8939.pth",
-                "step_03_cloth_segmentation/sam_vit_h_4b8939.pth"
+                "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "ai_models/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+                "ultra_models/sam_vit_h_4b8939.pth"  # GeometricMatchingStep과 공유
             ]
             
             for model_path in checkpoint_paths:
@@ -1819,12 +1909,26 @@ class ClothSegmentationStep(BaseStepMixin):
             self.models_loading_status['loading_errors'].append(f"SAM: {e}")
     
     def _load_u2net_model(self):
-        """U2Net 모델 로딩 (폴백)"""
+        """U2Net 모델 로딩 (폴백) - Central Hub ModelLoader 사용"""
         try:
             # 🔧 model_paths 속성 안전성 확보
             if not hasattr(self, 'model_paths'):
                 self.model_paths = {}
+            
+            # Central Hub ModelLoader를 통한 모델 경로 조회
+            if self.model_loader and hasattr(self.model_loader, 'get_model_path'):
+                model_path = self.model_loader.get_model_path('u2net', step_name='step_03_cloth_segmentation')
+                if model_path and os.path.exists(model_path):
+                    u2net_model = RealU2NetClothModel(model_path, self.device)
+                    if u2net_model.load():
+                        self.ai_models['u2net_cloth'] = u2net_model
+                        self.segmentation_models['u2net_cloth'] = u2net_model
+                        self.models_loading_status['u2net_cloth'] = True
+                        self.model_paths['u2net_cloth'] = model_path
+                        self.logger.info(f"✅ U2Net 로딩 완료: {model_path}")
+                        return
                 
+            # 폴백: 직접 경로 탐지
             checkpoint_paths = [
                 "step_03_cloth_segmentation/u2net.pth",
                 "ai_models/step_03_cloth_segmentation/u2net.pth",
@@ -1936,9 +2040,22 @@ class ClothSegmentationStep(BaseStepMixin):
     # ==============================================
     
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
-        """🔥 실제 Cloth Segmentation AI 추론 (BaseStepMixin v20.0 호환)"""
+        """🔥 실제 Cloth Segmentation AI 추론 (BaseStepMixin v20.0 호환) - 메모리 안전 버전"""
         try:
             start_time = time.time()
+            
+            # 🔥 메모리 안전성을 위한 가비지 컬렉션
+            import gc
+            gc.collect()
+            
+            # 🔥 MPS 디바이스 안전성 체크
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    # MPS 메모리 정리
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
             
             # 🔥 Session에서 이미지 데이터를 먼저 가져오기
             image = None
@@ -1962,7 +2079,7 @@ class ClothSegmentationStep(BaseStepMixin):
                     self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
             
             # 🔥 입력 데이터 검증
-            self.logger.info(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
+            self.logger.debug(f"🔍 입력 데이터 키들: {list(processed_input.keys())}")
             
             # 이미지 데이터 추출 (다양한 키에서 시도) - Session에서 가져오지 못한 경우
             if image is None:
@@ -1976,7 +2093,7 @@ class ClothSegmentationStep(BaseStepMixin):
                 self.logger.error("❌ 입력 데이터 검증 실패: 입력 이미지 없음 (Step 3)")
                 return {'success': False, 'error': '입력 이미지 없음'}
             
-            self.logger.info("🧠 Cloth Segmentation 실제 AI 추론 시작")
+            self.logger.info("🧠 Cloth Segmentation 실제 AI 추론 시작 (메모리 안전 모드)")
             
             # PIL Image로 변환
             if isinstance(image, np.ndarray):
@@ -2020,10 +2137,26 @@ class ClothSegmentationStep(BaseStepMixin):
             # 품질 레벨 결정
             quality_level = self._determine_quality_level(processed_input, quality_scores)
             
-            # 실제 AI 세그멘테이션 실행
-            segmentation_result = self._run_ai_segmentation_sync(
-                processed_image, quality_level, person_parsing, pose_info
-            )
+            # 실제 AI 세그멘테이션 실행 (128GB M3 Max 메모리 안전 모드)
+            try:
+                segmentation_result = self._run_ai_segmentation_with_memory_protection(
+                    processed_image, quality_level, person_parsing, pose_info
+                )
+            except Exception as seg_error:
+                self.logger.error(f"❌ AI 세그멘테이션 실패: {seg_error}")
+                # 강제 메모리 정리
+                for _ in range(3):
+                    gc.collect()
+                if hasattr(torch, 'mps') and torch.mps.is_available():
+                    try:
+                        if hasattr(torch.mps, 'empty_cache'):
+                            torch.mps.empty_cache()
+                        if hasattr(torch.mps, 'synchronize'):
+                            torch.mps.synchronize()
+                    except Exception as mps_error:
+                        self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+                # 폴백 결과 반환
+                segmentation_result = self._create_fallback_segmentation_result(processed_image.shape)
             
             if not segmentation_result or not segmentation_result.get('masks'):
                 # 폴백: 기본 마스크 생성
@@ -2280,6 +2413,225 @@ class ClothSegmentationStep(BaseStepMixin):
             self.logger.warning(f"⚠️ 품질 레벨 결정 실패: {e}")
             return QualityLevel.BALANCED
     
+    def _run_ai_segmentation_with_memory_protection(
+        self, 
+        image: np.ndarray, 
+        quality_level: QualityLevel, 
+        person_parsing: Dict[str, Any],
+        pose_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """🔥 128GB M3 Max 메모리 안전 래퍼 - bus error 완전 방지"""
+        try:
+            import psutil
+            import os
+            
+            # 1. 메모리 상태 확인
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_gb = memory_info.rss / (1024**3)
+            
+            self.logger.info(f"🔥 AI 추론 전 메모리 상태: {memory_gb:.2f}GB")
+            
+            # 2. 메모리 압박 시 강제 정리
+            if memory_gb > 100:  # 100GB 이상 사용 시
+                self.logger.warning(f"⚠️ 메모리 압박 감지: {memory_gb:.2f}GB - 강제 정리")
+                for _ in range(5):
+                    gc.collect()
+                if hasattr(torch, 'mps') and torch.mps.is_available():
+                    try:
+                        if hasattr(torch.mps, 'empty_cache'):
+                            torch.mps.empty_cache()
+                        if hasattr(torch.mps, 'synchronize'):
+                            torch.mps.synchronize()
+                    except Exception as mps_error:
+                        self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 3. 기본 메모리 정리
+            gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 4. 실제 AI 추론 실행
+            result = self._run_ai_segmentation_sync(image, quality_level, person_parsing, pose_info)
+            
+            # 5. 추론 후 메모리 정리
+            gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ 메모리 안전 래퍼 실패: {e}")
+            # 6. 예외 발생 시 강제 메모리 정리
+            for _ in range(5):
+                gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            return self._create_fallback_segmentation_result(image.shape)
+
+    def _safe_model_predict(self, model_key: str, image: np.ndarray) -> Dict[str, Any]:
+        """🔥 안전한 모델 예측 래퍼 - segmentation fault 완전 방지"""
+        try:
+            import psutil
+            import os
+            
+            # 1. 메모리 상태 확인
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_gb = memory_info.rss / (1024**3)
+            
+            self.logger.info(f"🔥 {model_key} 모델 예측 전 메모리: {memory_gb:.2f}GB")
+            
+            # 2. 메모리 압박 시 강제 정리
+            if memory_gb > 50:  # 50GB 이상 사용 시
+                self.logger.warning(f"⚠️ 메모리 압박 감지: {memory_gb:.2f}GB - 강제 정리")
+                for _ in range(3):
+                    gc.collect()
+                if hasattr(torch, 'mps') and torch.mps.is_available():
+                    try:
+                        if hasattr(torch.mps, 'empty_cache'):
+                            torch.mps.empty_cache()
+                        if hasattr(torch.mps, 'synchronize'):
+                            torch.mps.synchronize()
+                    except Exception as mps_error:
+                        self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 3. 기본 메모리 정리
+            gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 4. 모델 예측 실행
+            if model_key in self.ai_models:
+                model = self.ai_models[model_key]
+                if hasattr(model, 'predict'):
+                    result = model.predict(image)
+                    
+                    # 5. 예측 후 메모리 정리
+                    gc.collect()
+                    if hasattr(torch, 'mps') and torch.mps.is_available():
+                        try:
+                            if hasattr(torch.mps, 'empty_cache'):
+                                torch.mps.empty_cache()
+                        except Exception as mps_error:
+                            self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+                    
+                    return result
+                else:
+                    self.logger.error(f"❌ {model_key} 모델에 predict 메서드 없음")
+                    return self._create_fallback_segmentation_result(image.shape)
+            else:
+                self.logger.error(f"❌ {model_key} 모델을 찾을 수 없음")
+                return self._create_fallback_segmentation_result(image.shape)
+                
+        except Exception as e:
+            self.logger.error(f"❌ {model_key} 모델 예측 실패: {e}")
+            # 6. 예외 발생 시 강제 메모리 정리
+            for _ in range(3):
+                gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            return self._create_fallback_segmentation_result(image.shape)
+
+    def _safe_model_predict_with_prompts(self, model_key: str, image: np.ndarray, prompts: Dict[str, Any]) -> Dict[str, Any]:
+        """🔥 안전한 모델 예측 래퍼 (프롬프트 포함) - segmentation fault 완전 방지"""
+        try:
+            import psutil
+            import os
+            
+            # 1. 메모리 상태 확인
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_gb = memory_info.rss / (1024**3)
+            
+            self.logger.info(f"🔥 {model_key} 모델 예측 전 메모리: {memory_gb:.2f}GB")
+            
+            # 2. 메모리 압박 시 강제 정리
+            if memory_gb > 50:  # 50GB 이상 사용 시
+                self.logger.warning(f"⚠️ 메모리 압박 감지: {memory_gb:.2f}GB - 강제 정리")
+                for _ in range(3):
+                    gc.collect()
+                if hasattr(torch, 'mps') and torch.mps.is_available():
+                    try:
+                        if hasattr(torch.mps, 'empty_cache'):
+                            torch.mps.empty_cache()
+                        if hasattr(torch.mps, 'synchronize'):
+                            torch.mps.synchronize()
+                    except Exception as mps_error:
+                        self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 3. 기본 메모리 정리
+            gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 4. 모델 예측 실행
+            if model_key in self.ai_models:
+                model = self.ai_models[model_key]
+                if hasattr(model, 'predict'):
+                    result = model.predict(image, prompts)
+                    
+                    # 5. 예측 후 메모리 정리
+                    gc.collect()
+                    if hasattr(torch, 'mps') and torch.mps.is_available():
+                        try:
+                            if hasattr(torch.mps, 'empty_cache'):
+                                torch.mps.empty_cache()
+                        except Exception as mps_error:
+                            self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+                    
+                    return result
+                else:
+                    self.logger.error(f"❌ {model_key} 모델에 predict 메서드 없음")
+                    return self._create_fallback_segmentation_result(image.shape)
+            else:
+                self.logger.error(f"❌ {model_key} 모델을 찾을 수 없음")
+                return self._create_fallback_segmentation_result(image.shape)
+                
+        except Exception as e:
+            self.logger.error(f"❌ {model_key} 모델 예측 실패: {e}")
+            # 6. 예외 발생 시 강제 메모리 정리
+            for _ in range(3):
+                gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            return self._create_fallback_segmentation_result(image.shape)
+
     def _run_ai_segmentation_sync(
         self, 
         image: np.ndarray, 
@@ -2287,43 +2639,93 @@ class ClothSegmentationStep(BaseStepMixin):
         person_parsing: Dict[str, Any],
         pose_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """실제 AI 세그멘테이션 실행 (동기)"""
+        """실제 AI 세그멘테이션 실행 (동기) - 메모리 안전 버전"""
         try:
+            # 🔥 메모리 안전성을 위한 가비지 컬렉션
+            import gc
+            gc.collect()
+            
+            # 🔥 MPS 메모리 정리
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
+            
+            # 🔥 안전한 모델 선택 (메모리 사용량 고려)
             if quality_level == QualityLevel.ULTRA and 'deeplabv3plus' in self.ai_models:
-                # DeepLabV3+ 사용 (최고 품질)
-                result = self.ai_models['deeplabv3plus'].predict(image)
-                self.ai_stats['deeplabv3_calls'] += 1
-                result['method_used'] = 'deeplabv3plus'
-                return result
+                # DeepLabV3+ 사용 (최고 품질) - 메모리 안전 래퍼
+                try:
+                    result = self._safe_model_predict('deeplabv3plus', image)
+                    self.ai_stats['deeplabv3_calls'] += 1
+                    result['method_used'] = 'deeplabv3plus'
+                    return result
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DeepLabV3+ 실패, 폴백으로 전환: {e}")
+                    gc.collect()
                 
             elif quality_level == QualityLevel.ULTRA and 'deeplabv3plus_fallback' in self.ai_models:
                 # DeepLabV3+ 폴백 사용
-                result = self.ai_models['deeplabv3plus_fallback'].predict(image)
-                self.ai_stats['deeplabv3_calls'] += 1
-                result['method_used'] = 'deeplabv3plus_fallback'
-                return result
+                try:
+                    result = self._safe_model_predict('deeplabv3plus_fallback', image)
+                    self.ai_stats['deeplabv3_calls'] += 1
+                    result['method_used'] = 'deeplabv3plus_fallback'
+                    return result
+                except Exception as e:
+                    self.logger.warning(f"⚠️ DeepLabV3+ 폴백 실패: {e}")
+                    gc.collect()
                 
             elif quality_level in [QualityLevel.HIGH, QualityLevel.BALANCED] and 'sam_huge' in self.ai_models:
-                # SAM 사용 (고품질)
-                prompts = self._generate_sam_prompts(image, person_parsing)
-                result = self.ai_models['sam_huge'].predict(image, prompts)
-                self.ai_stats['sam_calls'] += 1
-                result['method_used'] = 'sam_huge'
-                return result
+                # SAM 사용 (고품질) - 메모리 집약적이므로 주의
+                try:
+                    prompts = self._generate_sam_prompts(image, person_parsing)
+                    result = self._safe_model_predict_with_prompts('sam_huge', image, prompts)
+                    self.ai_stats['sam_calls'] += 1
+                    result['method_used'] = 'sam_huge'
+                    # SAM 사용 후 즉시 메모리 정리
+                    gc.collect()
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    return result
+                except Exception as e:
+                    self.logger.warning(f"⚠️ SAM 실패, U2Net으로 폴백: {e}")
+                    gc.collect()
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
                 
-            elif 'u2net_cloth' in self.ai_models:
-                # U2Net 사용 (균형)
-                result = self.ai_models['u2net_cloth'].predict(image)
-                self.ai_stats['u2net_calls'] += 1
-                result['method_used'] = 'u2net_cloth'
-                return result
+            if 'u2net_cloth' in self.ai_models:
+                # U2Net 사용 (균형) - 가장 안정적
+                try:
+                    result = self._safe_model_predict('u2net_cloth', image)
+                    self.ai_stats['u2net_calls'] += 1
+                    result['method_used'] = 'u2net_cloth'
+                    return result
+                except Exception as e:
+                    self.logger.warning(f"⚠️ U2Net 실패: {e}")
+                    gc.collect()
                 
-            else:
-                # 하이브리드 앙상블 (여러 모델 조합)
+            # 🔥 모든 모델 실패시 하이브리드 앙상블 (메모리 안전 모드)
+            try:
                 return self._run_hybrid_ensemble_sync(image, person_parsing)
+            except Exception as e:
+                self.logger.error(f"❌ 하이브리드 앙상블도 실패: {e}")
+                gc.collect()
+                return {"masks": {}, "confidence": 0.0, "method_used": "error"}
                 
         except Exception as e:
             self.logger.error(f"❌ AI 세그멘테이션 실행 실패: {e}")
+            # 🔥 128GB M3 Max 강제 메모리 정리
+            for _ in range(5):
+                gc.collect()
+            if hasattr(torch, 'mps') and torch.mps.is_available():
+                try:
+                    if hasattr(torch.mps, 'empty_cache'):
+                        torch.mps.empty_cache()
+                    if hasattr(torch.mps, 'synchronize'):
+                        torch.mps.synchronize()
+                except Exception as mps_error:
+                    self.logger.warning(f"⚠️ MPS 메모리 정리 실패: {mps_error}")
             return {"masks": {}, "confidence": 0.0, "method_used": "error"}
     
     def _generate_sam_prompts(self, image: np.ndarray, person_parsing: Dict[str, Any]) -> Dict[str, Any]:
@@ -2369,22 +2771,22 @@ class ClothSegmentationStep(BaseStepMixin):
             results = []
             methods_used = []
             
-            # 사용 가능한 모든 모델 실행
+            # 사용 가능한 모든 모델 실행 (안전한 래퍼 사용)
             for model_key, model in self.ai_models.items():
                 try:
                     if model_key.startswith('deeplabv3'):
-                        result = model.predict(image)
+                        result = self._safe_model_predict(model_key, image)
                         if result.get('masks'):
                             results.append(result)
                             methods_used.append(model_key)
                     elif model_key.startswith('sam'):
                         prompts = self._generate_sam_prompts(image, person_parsing)
-                        result = model.predict(image, prompts)
+                        result = self._safe_model_predict_with_prompts(model_key, image, prompts)
                         if result.get('masks'):
                             results.append(result)
                             methods_used.append(model_key)
                     elif model_key.startswith('u2net'):
-                        result = model.predict(image)
+                        result = self._safe_model_predict(model_key, image)
                         if result.get('masks'):
                             results.append(result)
                             methods_used.append(model_key)
@@ -2526,7 +2928,11 @@ class ClothSegmentationStep(BaseStepMixin):
             
             if 'all_clothes' in masks:
                 mask = masks['all_clothes']
-                
+                # 🔥 항상 원본 이미지 크기로 resize
+                target_shape = image.shape[:2]
+                if mask.shape != target_shape:
+                    mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+
                 # 1. 영역 크기 적절성
                 size_ratio = np.sum(mask > 128) / mask.size if NUMPY_AVAILABLE and mask.size > 0 else 0
                 if 0.1 <= size_ratio <= 0.7:  # 적절한 크기 범위

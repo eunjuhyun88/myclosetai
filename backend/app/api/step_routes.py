@@ -271,16 +271,12 @@ def _process_step_sync(
         session_data = {}
         if session_manager:
             try:
-                # 동기적으로 세션 상태 조회
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        session_status = asyncio.run(session_manager.get_session_status(session_id))
-                    else:
-                        session_status = loop.run_until_complete(session_manager.get_session_status(session_id))
-                except RuntimeError:
-                    session_status = asyncio.run(session_manager.get_session_status(session_id))
+                # 완전 동기적으로 세션 상태 조회
+                if hasattr(session_manager, 'get_session_status_sync'):
+                    session_status = session_manager.get_session_status_sync(session_id)
+                else:
+                    # 동기 메서드가 없으면 기본값 사용
+                    session_status = {'status': 'not_found', 'data': {}}
                 
                 if session_status and session_status.get('status') != 'not_found':
                     session_data = session_status.get('data', {})
@@ -306,20 +302,16 @@ def _process_step_sync(
         
         # 결과 후처리
         if result.get('success', False):
-            # 세션 업데이트 (동기적으로)
+            # 세션 업데이트 (완전 동기적으로)
             if session_manager:
                 session_key = f"step_{step_id:02d}_result"
                 session_data[session_key] = result['result']
                 try:
-                    import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.run(session_manager.update_session(session_id, session_data))
-                        else:
-                            loop.run_until_complete(session_manager.update_session(session_id, session_data))
-                    except RuntimeError:
-                        asyncio.run(session_manager.update_session(session_id, session_data))
+                    if hasattr(session_manager, 'update_session_sync'):
+                        session_manager.update_session_sync(session_id, session_data)
+                    else:
+                        # 동기 메서드가 없으면 업데이트 건너뛰기
+                        logger.warning("⚠️ 세션 매니저에 update_session_sync 메서드가 없음")
                 except Exception as e:
                     logger.warning(f"⚠️ 세션 업데이트 실패: {e}")
             
@@ -1189,50 +1181,82 @@ async def load_images_from_session(session_id: str, session_manager) -> Dict[str
         if session_data:
             logger.info(f"🔍 session_data 키들: {list(session_data.keys())}")
             
-            if 'original_person_image' in session_data:
-                logger.info("✅ original_person_image 발견")
-                # Base64를 PIL Image로 변환
-                try:
-                    import base64
-                    from io import BytesIO
-                    person_b64 = session_data['original_person_image']
-                    logger.info(f"🔍 person_b64 길이: {len(person_b64)}")
-                    person_bytes = base64.b64decode(person_b64)
-                    person_img = Image.open(BytesIO(person_bytes)).convert('RGB')
-                    
-                    # 🔥 다양한 키 이름으로 이미지 추가 (Step 클래스 호환성)
-                    images['person_image'] = person_img
-                    images['image'] = person_img  # Step 클래스에서 주로 찾는 키
-                    images['input_image'] = person_img  # 대체 키
-                    images['original_image'] = person_img  # 대체 키
-                    
-                    logger.info("✅ Session에서 person_image를 PIL Image로 변환 (다양한 키로 추가)")
-                except Exception as e:
-                    logger.warning(f"⚠️ person_image Base64 변환 실패: {e}")
-            else:
-                logger.warning("⚠️ original_person_image가 session_data에 없음")
+            # 🔥 다양한 키 이름으로 사람 이미지 찾기
+            person_image_keys = ['original_person_image', 'person_image', 'image', 'input_image']
+            person_img = None
             
-            if 'original_clothing_image' in session_data:
-                logger.info("✅ original_clothing_image 발견")
-                # Base64를 PIL Image로 변환
-                try:
-                    import base64
-                    from io import BytesIO
-                    clothing_b64 = session_data['original_clothing_image']
-                    logger.info(f"🔍 clothing_b64 길이: {len(clothing_b64)}")
-                    clothing_bytes = base64.b64decode(clothing_b64)
-                    clothing_img = Image.open(BytesIO(clothing_bytes)).convert('RGB')
-                    
-                    # 🔥 다양한 키 이름으로 이미지 추가 (Step 클래스 호환성)
-                    images['clothing_image'] = clothing_img
-                    images['cloth_image'] = clothing_img  # 대체 키
-                    images['target_image'] = clothing_img  # 대체 키
-                    
-                    logger.info("✅ Session에서 clothing_image를 PIL Image로 변환 (다양한 키로 추가)")
-                except Exception as e:
-                    logger.warning(f"⚠️ clothing_image Base64 변환 실패: {e}")
-            else:
-                logger.warning("⚠️ original_clothing_image가 session_data에 없음")
+            for key in person_image_keys:
+                if key in session_data:
+                    logger.info(f"✅ {key} 발견")
+                    try:
+                        import base64
+                        from io import BytesIO
+                        
+                        if isinstance(session_data[key], str):
+                            # Base64 문자열인 경우
+                            person_b64 = session_data[key]
+                            logger.info(f"🔍 {key} Base64 길이: {len(person_b64)}")
+                            person_bytes = base64.b64decode(person_b64)
+                            person_img = Image.open(BytesIO(person_bytes)).convert('RGB')
+                        elif hasattr(session_data[key], 'read'):
+                            # 파일 객체인 경우
+                            person_img = Image.open(session_data[key]).convert('RGB')
+                        else:
+                            # 이미 PIL Image인 경우
+                            person_img = session_data[key]
+                        
+                        # 🔥 다양한 키 이름으로 이미지 추가 (Step 클래스 호환성)
+                        images['person_image'] = person_img
+                        images['image'] = person_img  # Step 클래스에서 주로 찾는 키
+                        images['input_image'] = person_img  # 대체 키
+                        images['original_image'] = person_img  # 대체 키
+                        
+                        logger.info(f"✅ Session에서 {key}를 PIL Image로 변환 (다양한 키로 추가)")
+                        break
+                    except Exception as e:
+                        logger.warning(f"⚠️ {key} 변환 실패: {e}")
+                        continue
+            
+            if person_img is None:
+                logger.warning("⚠️ 모든 person_image 키에서 이미지를 찾을 수 없음")
+            
+            # 🔥 다양한 키 이름으로 의류 이미지 찾기
+            clothing_image_keys = ['original_clothing_image', 'clothing_image', 'cloth_image', 'target_image']
+            clothing_img = None
+            
+            for key in clothing_image_keys:
+                if key in session_data:
+                    logger.info(f"✅ {key} 발견")
+                    try:
+                        import base64
+                        from io import BytesIO
+                        
+                        if isinstance(session_data[key], str):
+                            # Base64 문자열인 경우
+                            clothing_b64 = session_data[key]
+                            logger.info(f"🔍 {key} Base64 길이: {len(clothing_b64)}")
+                            clothing_bytes = base64.b64decode(clothing_b64)
+                            clothing_img = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                        elif hasattr(session_data[key], 'read'):
+                            # 파일 객체인 경우
+                            clothing_img = Image.open(session_data[key]).convert('RGB')
+                        else:
+                            # 이미 PIL Image인 경우
+                            clothing_img = session_data[key]
+                        
+                        # 🔥 다양한 키 이름으로 이미지 추가 (Step 클래스 호환성)
+                        images['clothing_image'] = clothing_img
+                        images['cloth_image'] = clothing_img  # 대체 키
+                        images['target_image'] = clothing_img  # 대체 키
+                        
+                        logger.info(f"✅ Session에서 {key}를 PIL Image로 변환 (다양한 키로 추가)")
+                        break
+                    except Exception as e:
+                        logger.warning(f"⚠️ {key} 변환 실패: {e}")
+                        continue
+            
+            if clothing_img is None:
+                logger.warning("⚠️ 모든 clothing_image 키에서 이미지를 찾을 수 없음")
         else:
             logger.warning("⚠️ session_data가 None 또는 빈 딕셔너리")
     except Exception as e:

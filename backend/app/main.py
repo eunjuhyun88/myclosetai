@@ -58,6 +58,63 @@ warnings.filterwarnings('ignore')
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+# 로그 레벨 조정 (불필요한 상세 정보 숨기기)
+import logging
+logging.basicConfig(
+    level=logging.WARNING,  # WARNING 레벨로 설정 (INFO, DEBUG 메시지 숨김)
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# 특정 모듈들의 로그 레벨 조정 (더 엄격하게)
+quiet_modules = [
+    'app.ai_pipeline.steps.step_01_human_parsing',
+    'app.ai_pipeline.steps.step_02_pose_estimation', 
+    'app.ai_pipeline.steps.step_03_cloth_segmentation',
+    'app.ai_pipeline.steps.step_04_geometric_matching',
+    'app.ai_pipeline.steps.step_05_cloth_warping',
+    'app.ai_pipeline.steps.step_06_virtual_fitting',
+    'app.ai_pipeline.steps.step_07_post_processing',
+    'app.ai_pipeline.steps.step_08_quality_assessment',
+    'app.ai_pipeline.utils.model_loader',
+    'app.core.di_container',
+    'app.services.step_service',
+    'steps.HumanParsingStep',
+    'steps.PoseEstimationStep',
+    'steps.ClothSegmentationStep',
+    'steps.GeometricMatchingStep',
+    'steps.ClothWarpingStep',
+    'steps.VirtualFittingStep',
+    'steps.PostProcessingStep',
+    'steps.QualityAssessmentStep',
+    # 추가 모듈들 (verbose 로깅 방지)
+    'transformers',
+    'torch',
+    'torchvision',
+    'PIL',
+    'cv2',
+    'numpy',
+    'segformer',
+    'segformer.encoder',
+    'segformer.encoder.block',
+    'segformer.encoder.block.3',
+    'segformer.encoder.block.3.2',
+    'segformer.encoder.block.3.2.attention',
+    'segformer.encoder.block.3.2.attention.self',
+    'segformer.encoder.block.3.2.attention.self.key',
+    'segformer.encoder.block.3.2.attention.self.key.bias'
+]
+
+for module in quiet_modules:
+    logger = logging.getLogger(module)
+    logger.setLevel(logging.WARNING)  # WARNING 레벨로 설정 (INFO, DEBUG 메시지 숨김)
+
+# 추가적으로 특정 패턴의 로그 숨기기
+logging.getLogger('PIL').setLevel(logging.WARNING)
+logging.getLogger('torch').setLevel(logging.WARNING)
+logging.getLogger('torchvision').setLevel(logging.WARNING)
+logging.getLogger('transformers').setLevel(logging.WARNING)
+
 # =============================================================================
 # 🔥 1. 실행 경로 자동 수정 및 시스템 정보
 # =============================================================================

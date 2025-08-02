@@ -1444,6 +1444,70 @@ def safe_async_execution(fallback_value: Any = None, log_error: bool = True):
 
 
 class ModelLoader:
+    # 🔥 fix_checkpoints.py에서 검증된 실제 파일 경로들
+    VERIFIED_MODEL_PATHS = {
+        # Human Parsing (✅ 170.5MB 검증됨)
+        "graphonomy": "checkpoints/step_01_human_parsing/graphonomy.pth",
+        "graphonomy.pth": "checkpoints/step_01_human_parsing/graphonomy.pth",
+        
+        # Cloth Segmentation (✅ 실제 파일 존재 확인됨)
+        "sam": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+        "sam_vit_h_4b8939": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+        "sam_vit_h_4b8939.pth": "step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
+        "deeplabv3_resnet101_ultra": "step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
+        "deeplabv3_resnet101_ultra.pth": "step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth",
+        
+        # U2Net alternative (✅ 실제 파일 존재 확인됨)
+        "u2net": "step_03_cloth_segmentation/u2net.pth",
+        "u2net.pth": "step_03_cloth_segmentation/u2net.pth",
+        
+        # Pose Estimation (✅ 실제 파일 존재 확인됨)
+        "yolov8n-pose": "step_02_pose_estimation/yolov8n-pose.pt",
+        "yolov8n-pose.pt": "step_02_pose_estimation/yolov8n-pose.pt",
+        "body_pose_model": "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+        "body_pose_model.pth": "step_06_virtual_fitting/ootdiffusion/checkpoints/openpose/ckpts/body_pose_model.pth",
+        "hrnet_w48_coco_256x192": "checkpoints/step_02_pose_estimation/hrnet_w48_coco_256x192.pth",
+        "hrnet_w48_coco_256x192.pth": "checkpoints/step_02_pose_estimation/hrnet_w48_coco_256x192.pth",
+        
+        # Geometric Matching (✅ 실제 파일 존재 확인됨)
+        "gmm_final": "step_04_geometric_matching/gmm_final.pth",
+        "gmm_final.pth": "step_04_geometric_matching/gmm_final.pth",
+        "tps_network": "checkpoints/step_04_geometric_matching/tps_network.pth",
+        "tps_network.pth": "checkpoints/step_04_geometric_matching/tps_network.pth",
+        "raft-things": "step_04_geometric_matching/raft-things.pth",
+        "raft-things.pth": "step_04_geometric_matching/raft-things.pth",
+        "sam_vit_h_4b8939": "step_04_geometric_matching/sam_vit_h_4b8939.pth",
+        "sam_vit_h_4b8939.pth": "step_04_geometric_matching/sam_vit_h_4b8939.pth",
+        
+        # Cloth Warping (✅ 6616.6MB 검증됨)
+        "realvis": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+        "realvisxl": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+        "RealVisXL_V4.0": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+        "RealVisXL_V4.0.safetensors": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
+        
+        # Virtual Fitting (✅ 3278.9MB 검증됨 - 4개 파일)
+        "diffusion_unet_vton": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+        "diffusion_unet_garm": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+        "diffusion_unet_vton_dc": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+        "diffusion_unet_garm_dc": "step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
+        "diffusion_main": "step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
+        
+        # Quality Assessment (✅ 5213.7MB 검증됨)
+        "clip": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+        "open_clip": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+        "open_clip_pytorch_model": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+        "open_clip_pytorch_model.bin": "step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
+        
+        # Stable Diffusion (✅ 4067.6MB 검증됨)
+        "stable_diffusion": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+        "v1-5-pruned": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+        "v1-5-pruned-emaonly": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+        "v1-5-pruned-emaonly.safetensors": "checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
+        
+        # Pose Estimation (✅ 1378.2MB 검증됨)
+        "diffusion_pose": "step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors",
+        "diffusion_pytorch_model": "step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
+    }
     """
     ModelLoader v5.1 - Central Hub DI Container v7.0 완전 연동
     
@@ -2001,7 +2065,7 @@ class ModelLoader:
                     ],
                     'primary_model': 'graphonomy.pth',
                     'local_paths': [
-                        'checkpoints/step_01_human_parsing/graphonomy.pth'
+                        'ai_models/checkpoints/step_01_human_parsing/graphonomy.pth'
                     ]
                 },
                 'PoseEstimationStep': {
@@ -2012,7 +2076,7 @@ class ModelLoader:
                     ],
                     'primary_model': 'diffusion_pytorch_model.safetensors',
                     'local_paths': [
-                        'step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors'
+                        'ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors'
                     ]
                 },
                 'ClothSegmentationStep': {
@@ -2024,19 +2088,25 @@ class ModelLoader:
                     ],
                     'primary_model': 'sam_vit_h_4b8939.pth',
                     'local_paths': [
-                        'checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',
-                        'checkpoints/step_03_cloth_segmentation/u2net_alternative.pth'
+                        'ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth',
+                        'ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth'
                     ]
                 },
                 'GeometricMatchingStep': {
                     'step_type': RealStepModelType.GEOMETRIC_MATCHING,
                     'step_id': 4,
                     'ai_models': [
-                        'gmm_final.pth'
+                        'gmm_final.pth',
+                        'tps_network.pth',
+                        'sam_vit_h_4b8939.pth',
+                        'raft-things.pth'
                     ],
                     'primary_model': 'gmm_final.pth',
                     'local_paths': [
-                        'step_04_geometric_matching/gmm_final.pth'
+                        'ai_models/step_04_geometric_matching/gmm_final.pth',
+                        'ai_models/step_04_geometric_matching/tps_network.pth',
+                        'ai_models/step_04_geometric_matching/sam_vit_h_4b8939.pth',
+                        'ai_models/step_04_geometric_matching/raft-things.pth'
                     ]
                 },
                 'ClothWarpingStep': {
@@ -2047,7 +2117,7 @@ class ModelLoader:
                     ],
                     'primary_model': 'RealVisXL_V4.0.safetensors',
                     'local_paths': [
-                        'checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors'
+                        'ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors'
                     ]
                 },
                 'VirtualFittingStep': {
@@ -2058,8 +2128,8 @@ class ModelLoader:
                     ],
                     'primary_model': 'diffusion_pytorch_model.safetensors',
                     'local_paths': [
-                        'step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors',
-                        'step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors'
+                        'ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors',
+                        'ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors'
                     ]
                 },
                 'PostProcessingStep': {
@@ -2070,7 +2140,7 @@ class ModelLoader:
                     ],
                     'primary_model': 'Real-ESRGAN_x4plus.pth',
                     'local_paths': [
-                        'step_07_post_processing/Real-ESRGAN_x4plus.pth'
+                        'ai_models/step_07_post_processing/Real-ESRGAN_x4plus.pth'
                     ]
                 },
                 'QualityAssessmentStep': {
@@ -2081,7 +2151,7 @@ class ModelLoader:
                     ],
                     'primary_model': 'open_clip_pytorch_model.bin',
                     'local_paths': [
-                        'step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin'
+                        'ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin'
                     ]
                 }
             }
@@ -2213,56 +2283,10 @@ class ModelLoader:
                 if path.exists():
                     return str(path)
             
-            # 🔥 fix_checkpoints.py에서 검증된 실제 파일 경로들
-            VERIFIED_MODEL_PATHS = {
-                # Human Parsing (✅ 170.5MB 검증됨)
-                "graphonomy": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
-                "graphonomy.pth": "ai_models/checkpoints/step_01_human_parsing/graphonomy.pth",
-                
-                # Cloth Segmentation (✅ 2445.7MB 검증됨)
-                "sam": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                "sam_vit_h_4b8939": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                "sam_vit_h_4b8939.pth": "ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth",
-                
-                # U2Net alternative (✅ 38.8MB 검증됨)
-                "u2net": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
-                "u2net_alternative": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
-                "u2net_alternative.pth": "ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth",
-                
-                # Cloth Warping (✅ 6616.6MB 검증됨)
-                "realvis": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                "realvisxl": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                "RealVisXL_V4.0": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                "RealVisXL_V4.0.safetensors": "ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",
-                
-                # Virtual Fitting (✅ 3278.9MB 검증됨 - 4개 파일)
-                "diffusion_unet_vton": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-                "diffusion_unet_garm": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
-                "diffusion_unet_vton_dc": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-                "diffusion_unet_garm_dc": "ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors",
-                "diffusion_main": "ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
-                
-                # Quality Assessment (✅ 5213.7MB 검증됨)
-                "clip": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                "open_clip": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                "open_clip_pytorch_model": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                "open_clip_pytorch_model.bin": "ai_models/step_08_quality_assessment/ultra_models/open_clip_pytorch_model.bin",
-                
-                # Stable Diffusion (✅ 4067.6MB 검증됨)
-                "stable_diffusion": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                "v1-5-pruned": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                "v1-5-pruned-emaonly": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                "v1-5-pruned-emaonly.safetensors": "ai_models/checkpoints/stable-diffusion-v1-5/v1-5-pruned-emaonly.safetensors",
-                
-                # Pose Estimation (✅ 1378.2MB 검증됨)
-                "diffusion_pose": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors",
-                "diffusion_pytorch_model": "ai_models/step_02_pose_estimation/ultra_models/diffusion_pytorch_model.safetensors"
-            }
-            
             # 🔥 검증된 경로에서 먼저 찾기
-            if model_name in VERIFIED_MODEL_PATHS:
+            if model_name in self.VERIFIED_MODEL_PATHS:
                 self.logger.debug(f"🔄 검증된 경로 확인 중: {model_name}")
-                verified_path = self.model_cache_dir / VERIFIED_MODEL_PATHS[model_name]
+                verified_path = self.model_cache_dir / self.VERIFIED_MODEL_PATHS[model_name]
                 self.logger.debug(f"🔄 검증된 경로: {verified_path}")
                 try:
                     exists_result = verified_path.exists()
@@ -2319,6 +2343,10 @@ class ModelLoader:
         except Exception as e:
             self.logger.error(f"❌ 모델 경로 찾기 실패 {model_name}: {e}")
             return None
+    
+    def get_model_path(self, model_name: str, **kwargs) -> Optional[str]:
+        """모델 경로 가져오기 (외부 인터페이스)"""
+        return self._find_model_path(model_name, **kwargs)
     
     def _manage_cache(self):
         """🔥 개선된 실제 AI 모델 캐시 관리"""

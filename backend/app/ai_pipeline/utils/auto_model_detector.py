@@ -77,11 +77,11 @@ class OptimizedFileMapper:
                     ("ai_models/checkpoints/step_01_human_parsing/graphonomy_alternative.pth", 5),
                     ("ai_models/checkpoints/step_01_human_parsing/lip_model.pth", 6),
                     # step 디렉토리 보조
-                    ("step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth", 7),
-                    ("step_01_human_parsing/graphonomy_fixed.pth", 8),
+                    ("ai_models/step_01_human_parsing/ultra_models/fcn_resnet101_ultra.pth", 7),
+                    ("ai_models/step_01_human_parsing/graphonomy_fixed.pth", 8),
                     # 기타 위치
-                    ("Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth", 6),
-                    ("Graphonomy/inference.pth", 7)
+                    ("ai_models/Self-Correction-Human-Parsing/exp-schp-201908261155-atr.pth", 9),
+                    ("ai_models/Graphonomy/inference.pth", 10)
                 ],
                 "search_patterns": [r".*exp-schp.*atr.*\.pth$", r".*graphonomy.*\.pth$"],
                 "size_range": (80, 1200),
@@ -98,10 +98,10 @@ class OptimizedFileMapper:
                     ("ai_models/checkpoints/step_02_pose_estimation/openpose.pth", 2),
                     ("ai_models/checkpoints/step_02_pose_estimation/yolov8n-pose.pt", 3),
                     # ✅ OOTD 체크포인트 경로 - 터미널에서 확인됨
-                    ("checkpoints/ootdiffusion/checkpoints/ootd/feature_extractor/preprocessor_config.json", 4),
+                    ("ai_models/checkpoints/ootdiffusion/checkpoints/ootd/feature_extractor/preprocessor_config.json", 4),
                     # step 디렉토리 보조
-                    ("step_02_pose_estimation/hrnet_w48_coco_384x288.pth", 5),
-                    ("step_02_pose_estimation/yolov8m-pose.pt", 6)
+                    ("ai_models/step_02_pose_estimation/hrnet_w48_coco_384x288.pth", 5),
+                    ("ai_models/step_02_pose_estimation/yolov8m-pose.pt", 6)
                 ],
                 "search_patterns": [r".*body_pose.*\.pth$", r".*openpose.*\.pth$", r".*yolov8.*pose.*\.pt$"],
                 "size_range": (6, 1400),
@@ -114,19 +114,19 @@ class OptimizedFileMapper:
             "cloth_segmentation_sam": {
                 "priority_files": [
                     # ✅ SAM 모델들 (2.4GB) - 터미널에서 확인된 실제 경로
-                    ("checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth", 1),
-                    ("checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth", 2),
-                    ("checkpoints/step_04_geometric_matching/sam_vit_h_4b8939.pth", 3),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_h_4b8939.pth", 1),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/sam_vit_l_0b3195.pth", 2),
+                    ("ai_models/checkpoints/step_04_geometric_matching/sam_vit_h_4b8939.pth", 3),
                     # ✅ U2Net 모델들 - 터미널에서 확인됨
-                    ("checkpoints/step_03_cloth_segmentation/u2net_alternative.pth", 4),
-                    ("checkpoints/step_03_cloth_segmentation/u2net_fallback.pth", 5),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/u2net_alternative.pth", 4),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/u2net_fallback.pth", 5),
                     # ✅ 기타 segmentation 모델들 - 터미널에서 확인됨
-                    ("checkpoints/step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth", 6),
-                    ("checkpoints/step_03_cloth_segmentation/mobile_sam.pt", 7),
-                    ("checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt", 8),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/deeplabv3_resnet101_ultra.pth", 6),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam.pt", 7),
+                    ("ai_models/checkpoints/step_03_cloth_segmentation/mobile_sam_alternative.pt", 8),
                     # step 디렉토리 보조
-                    ("step_03_cloth_segmentation/u2net.pth", 9),
-                    ("step_06_virtual_fitting/u2net_fixed.pth", 10)
+                    ("ai_models/step_03_cloth_segmentation/u2net.pth", 9),
+                    ("ai_models/step_06_virtual_fitting/u2net_fixed.pth", 10)
                 ],
                 "search_patterns": [r".*sam_vit.*\.pth$", r".*u2net.*\.pth$", r".*mobile_sam.*\.pt$"],
                 "size_range": (100, 2500),
@@ -139,14 +139,14 @@ class OptimizedFileMapper:
             "geometric_matching_gmm": {
                 "priority_files": [
                     # ✅ checkpoints 디렉토리 - 터미널에서 확인된 실제 파일들
-                    ("checkpoints/step_04_geometric_matching/gmm_final.pth", 1),
-                    ("checkpoints/step_04_geometric_matching/tps_network.pth", 2),
-                    ("checkpoints/step_04_geometric_matching/sam_vit_h_4b8939.pth", 3),
+                    ("ai_models/checkpoints/step_04_geometric_matching/gmm_final.pth", 1),
+                    ("ai_models/checkpoints/step_04_geometric_matching/tps_network.pth", 2),
+                    ("ai_models/checkpoints/step_04_geometric_matching/sam_vit_h_4b8939.pth", 3),
                     # step 디렉토리 보조
-                    ("step_04_geometric_matching/gmm_final.pth", 4),
-                    ("step_04_geometric_matching/tps_network.pth", 5),
-                    ("step_04_geometric_matching/ultra_models/resnet101_geometric.pth", 6),
-                    ("step_04_geometric_matching/ultra_models/raft-things.pth", 7)
+                    ("ai_models/step_04_geometric_matching/gmm_final.pth", 4),
+                    ("ai_models/step_04_geometric_matching/tps_network.pth", 5),
+                    ("ai_models/step_04_geometric_matching/ultra_models/resnet101_geometric.pth", 6),
+                    ("ai_models/step_04_geometric_matching/ultra_models/raft-things.pth", 7)
                 ],
                 "search_patterns": [r".*gmm.*\.pth$", r".*tps.*\.pth$", r".*geometric.*\.pth$"],
                 "size_range": (10, 2500),
@@ -159,16 +159,16 @@ class OptimizedFileMapper:
             "cloth_warping_realvisxl": {
                 "priority_files": [
                     # ✅ RealVisXL (6.5GB) - 터미널에서 확인된 실제 경로
-                    ("checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors", 1),
+                    ("ai_models/checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors", 1),
                     # ✅ VGG 모델들 - 터미널에서 확인됨
-                    ("checkpoints/step_05_cloth_warping/vgg19_warping.pth", 2),
-                    ("checkpoints/step_05_cloth_warping/vgg16_warping_ultra.pth", 3),
+                    ("ai_models/checkpoints/step_05_cloth_warping/vgg19_warping.pth", 2),
+                    ("ai_models/checkpoints/step_05_cloth_warping/vgg16_warping_ultra.pth", 3),
                     # ✅ 기타 warping 모델들 - 터미널에서 확인됨
-                    ("checkpoints/step_05_cloth_warping/densenet121_ultra.pth", 4),
-                    ("checkpoints/step_05_cloth_warping/tom_final.pth", 5),
+                    ("ai_models/checkpoints/step_05_cloth_warping/densenet121_ultra.pth", 4),
+                    ("ai_models/checkpoints/step_05_cloth_warping/tom_final.pth", 5),
                     # step 디렉토리 보조
-                    ("step_05_cloth_warping/RealVisXL_V4.0.safetensors", 6),
-                    ("step_05_cloth_warping/ultra_models/vgg19_warping.pth", 7)
+                    ("ai_models/step_05_cloth_warping/RealVisXL_V4.0.safetensors", 6),
+                    ("ai_models/step_05_cloth_warping/ultra_models/vgg19_warping.pth", 7)
                 ],
                 "search_patterns": [r".*RealVis.*\.safetensors$", r".*vgg.*warp.*\.pth$", r".*densenet.*\.pth$"],
                 "size_range": (30, 7000),
@@ -181,17 +181,17 @@ class OptimizedFileMapper:
             "virtual_fitting_ootd": {
                 "priority_files": [
                     # ✅ checkpoints 디렉토리 - 터미널에서 확인된 실제 파일들
-                    ("checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.safetensors", 1),
-                    ("checkpoints/step_06_virtual_fitting/hrviton_final.pth", 2),
-                    ("checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin", 3),
-                    ("checkpoints/step_06_virtual_fitting/pytorch_model.bin", 4),  # 심볼릭 링크
+                    ("ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.safetensors", 1),
+                    ("ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth", 2),
+                    ("ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.bin", 3),
+                    ("ai_models/checkpoints/step_06_virtual_fitting/pytorch_model.bin", 4),  # 심볼릭 링크
                     # ✅ OOTD Diffusion checkpoints (3.2GB×4) - 터미널에서 확인된 복잡한 경로
-                    ("checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors", 5),
-                    ("checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors", 6),
-                    ("checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors", 7),
-                    ("checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors", 8),
+                    ("ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors", 5),
+                    ("ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors", 6),
+                    ("ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors", 7),
+                    ("ai_models/checkpoints/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_garm/diffusion_pytorch_model.safetensors", 8),
                     # step 디렉토리 보조
-                    ("step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors", 9)
+                    ("ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors", 9)
                 ],
                 "search_patterns": [r".*diffusion_pytorch_model\.safetensors$", r".*hrviton.*\.pth$", r".*ootd.*\.safetensors$"],
                 "size_range": (100, 3300),

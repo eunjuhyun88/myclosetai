@@ -861,16 +861,9 @@ class StepServiceManager:
             if self.step_factory:
                 step_type = self._get_step_type_from_name(step_name)
                 
-                # 동기적으로 Step 인스턴스 생성
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        creation_result = asyncio.run(self._create_step_instance(step_type, **kwargs))
-                    else:
-                        creation_result = loop.run_until_complete(self._create_step_instance(step_type, **kwargs))
-                except RuntimeError:
-                    creation_result = asyncio.run(self._create_step_instance(step_type, **kwargs))
+                # 완전 동기적으로 Step 인스턴스 생성
+                # _create_step_instance는 async이므로 동기 래퍼 사용
+                creation_result = self._create_step_instance_sync(step_type, **kwargs)
                 
                 if not creation_result[0]:
                     return {'success': False, 'error': creation_result[2]}
@@ -882,13 +875,13 @@ class StepServiceManager:
                 if self.central_hub_container:
                     additional_injections = _inject_dependencies_to_step_safe(step_instance)
                 
-                # 3. DetailedDataSpec 기반 데이터 변환 (동기적으로)
+                # 3. DetailedDataSpec 기반 데이터 변환 (완전 동기적으로)
                 if hasattr(step_instance, 'convert_api_input_to_step_input'):
                     # convert_api_input_to_step_input이 async인지 확인하고 적절히 처리
                     import inspect
                     if inspect.iscoroutinefunction(step_instance.convert_api_input_to_step_input):
-                        # async 함수인 경우 asyncio.run으로 래핑
-                        converted_input = asyncio.run(step_instance.convert_api_input_to_step_input(api_input))
+                        # async 함수인 경우 동기 래퍼 사용
+                        converted_input = self._run_async_method_sync(step_instance.convert_api_input_to_step_input, api_input)
                     else:
                         # 동기 함수인 경우 직접 호출
                         converted_input = step_instance.convert_api_input_to_step_input(api_input)
@@ -917,6 +910,44 @@ class StepServiceManager:
                 
         except Exception as e:
             return {'success': False, 'error': str(e), 'central_hub_used': self.central_hub_container is not None}
+    
+    def _create_step_instance_sync(self, step_type: Union[str, int], **kwargs) -> Tuple[bool, Optional[Any], str]:
+        """동기적으로 Step 인스턴스 생성"""
+        try:
+            import asyncio
+            import concurrent.futures
+            
+            def run_async_creation():
+                try:
+                    return asyncio.run(self._create_step_instance(step_type, **kwargs))
+                except Exception as e:
+                    return (False, None, str(e))
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_async_creation)
+                return future.result(timeout=30)  # 30초 타임아웃
+        except Exception as e:
+            return (False, None, str(e))
+    
+    def _run_async_method_sync(self, async_method, *args, **kwargs):
+        """동기적으로 async 메서드 실행"""
+        try:
+            import asyncio
+            import concurrent.futures
+            
+            def run_async_method():
+                try:
+                    return asyncio.run(async_method(*args, **kwargs))
+                except Exception as e:
+                    self.logger.error(f"❌ Async 메서드 실행 실패: {e}")
+                    return None
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_async_method)
+                return future.result(timeout=30)  # 30초 타임아웃
+        except Exception as e:
+            self.logger.error(f"❌ Async 메서드 래핑 실패: {e}")
+            return None
     
     def _get_step_type_from_name(self, step_name: str) -> str:
         """Step 이름에서 타입 추출 (StepFactory 호환)"""

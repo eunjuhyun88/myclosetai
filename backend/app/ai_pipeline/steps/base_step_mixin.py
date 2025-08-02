@@ -1687,7 +1687,7 @@ class BaseStepMixin:
 
     # 🔥 API 변환 메서드 활성화 (기존 코드 수정)
     async def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-        """API 입력을 Step 입력으로 변환 - 활성화"""
+        """API 입력을 Step 입력으로 변환 - 비동기 버전"""
         try:
             if not self.api_input_mapping:
                 # 매핑이 없으면 그대로 반환
@@ -1710,6 +1710,36 @@ class BaseStepMixin:
                     converted[param_name] = api_input[param_name]
             
             self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료")
+            return converted
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} API → Step 변환 실패: {e}")
+            return api_input  # 실패 시 원본 반환
+
+    def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
+        """API 입력을 Step 입력으로 변환 - 동기 버전 (오버라이드)"""
+        try:
+            if not self.api_input_mapping:
+                # 매핑이 없으면 그대로 반환
+                self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
+                return api_input
+            
+            converted = {}
+            
+            # ✅ API 매핑 기반 변환 (동기 버전)
+            for api_param, api_type in self.api_input_mapping.items():
+                if api_param in api_input:
+                    converted_value = self._convert_api_input_type_sync(
+                        api_input[api_param], api_type, api_param
+                    )
+                    converted[api_param] = converted_value
+            
+            # ✅ 누락된 필수 입력 데이터 확인
+            for param_name in self.api_input_mapping.keys():
+                if param_name not in converted and param_name in api_input:
+                    converted[param_name] = api_input[param_name]
+            
+            self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료 (동기)")
             return converted
             
         except Exception as e:
@@ -2443,8 +2473,18 @@ class BaseStepMixin:
             
             self.logger.debug(f"🔄 {self.step_name} process 시작 (Central Hub, 입력: {list(kwargs.keys())})")
             
-            # 1. 입력 데이터 변환 (API/Step 간 → AI 모델) - 동기적으로 처리
-            converted_input = self._convert_input_to_model_format_sync(kwargs)
+            # 1. API 입력을 Step 입력으로 변환 (convert_api_input_to_step_input 호출)
+            if hasattr(self, 'convert_api_input_to_step_input'):
+                try:
+                    converted_input = self.convert_api_input_to_step_input(kwargs)
+                    self.logger.debug(f"✅ {self.step_name} API 입력 변환 완료 (convert_api_input_to_step_input)")
+                except Exception as convert_error:
+                    self.logger.error(f"❌ {self.step_name} API 입력 변환 실패: {convert_error}")
+                    # 폴백: DetailedDataSpec 기반 변환 사용
+                    converted_input = self._convert_input_to_model_format_sync(kwargs)
+            else:
+                # convert_api_input_to_step_input이 없는 경우 DetailedDataSpec 기반 변환 사용
+                converted_input = self._convert_input_to_model_format_sync(kwargs)
             
             # 2. 하위 클래스의 순수 AI 로직 실행
             ai_result = self._run_ai_inference(converted_input)
@@ -3434,6 +3474,11 @@ class BaseStepMixin:
             
             # PIL Image로 변환
             if PIL_AVAILABLE:
+                # 🔥 4차원 tensor 자동 처리 (batch dimension 제거)
+                if len(array.shape) == 4:
+                    # (B, C, H, W) → (C, H, W)
+                    array = array.squeeze(0)
+                
                 if len(array.shape) == 3:
                     if array.shape[0] in [1, 3, 4] and array.shape[0] < array.shape[1]:
                         array = np.transpose(array, (1, 2, 0))
