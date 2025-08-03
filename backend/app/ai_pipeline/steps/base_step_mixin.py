@@ -404,7 +404,7 @@ class CentralHubDependencyStatus:
     # 주입 시도 추적
     injection_attempts: Dict[str, int] = field(default_factory=dict)
     injection_errors: Dict[str, List[str]] = field(default_factory=dict)
-    last_injection_time: float = field(default_factory=time.time)
+    last_injection_time: float = 0.0
 
 @dataclass
 class CentralHubPerformanceMetrics:
@@ -1594,7 +1594,16 @@ class BaseStepMixin:
     
     def __init__(self, device: str = "auto", strict_mode: bool = False, **kwargs):
         """BaseStepMixin 초기화 - Central Hub DI Container 완전 연동"""
-        start_time = time.time()
+        print(f"🔍 BaseStepMixin __init__ 시작: {kwargs.get('step_name', 'Unknown')}")
+        
+        try:
+            import time
+            print(f"✅ time 모듈 import 성공")
+            start_time = time.time()
+            print(f"✅ start_time 설정 완료: {start_time}")
+        except Exception as time_error:
+            print(f"❌ time 모듈 import 실패: {time_error}")
+            start_time = 0.0
         
         try:
             # 기본 설정
@@ -1765,29 +1774,40 @@ class BaseStepMixin:
         return converted
 
     def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-        """API 입력을 Step 입력으로 변환 - 동기 버전 (오버라이드)"""
-        if not self.api_input_mapping:
-            # 매핑이 없으면 그대로 반환
-            self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
+        """API 입력을 Step 입력으로 변환 (kwargs 방식)"""
+        try:
+            step_input = api_input.copy()
+            
+            # 🔥 kwargs에서 데이터 직접 가져오기 (세션 의존성 제거)
+            if not self.api_input_mapping:
+                # 매핑이 없으면 kwargs 그대로 반환
+                self.logger.debug(f"{self.step_name} API 매핑 없음, kwargs 그대로 반환")
+                return step_input
+            
+            converted = {}
+            
+            # ✅ API 매핑 기반 변환 (kwargs 방식)
+            for api_param, api_type in self.api_input_mapping.items():
+                if api_param in step_input:
+                    converted_value = self._convert_api_input_type_sync(
+                        step_input[api_param], api_type, api_param
+                    )
+                    converted[api_param] = converted_value
+                else:
+                    # kwargs에 없으면 기본값 사용
+                    self.logger.debug(f"ℹ️ {api_param}가 kwargs에 없음 - 기본값 사용")
+            
+            # ✅ 누락된 필수 입력 데이터 확인
+            for param_name in self.api_input_mapping.keys():
+                if param_name not in converted and param_name in step_input:
+                    converted[param_name] = step_input[param_name]
+            
+            self.logger.debug(f"✅ {self.step_name} kwargs → Step 변환 완료")
+            return converted
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} API 입력 변환 실패: {e}")
             return api_input
-        
-        converted = {}
-        
-        # ✅ API 매핑 기반 변환 (동기 버전)
-        for api_param, api_type in self.api_input_mapping.items():
-            if api_param in api_input:
-                converted_value = self._convert_api_input_type_sync(
-                    api_input[api_param], api_type, api_param
-                )
-                converted[api_param] = converted_value
-        
-        # ✅ 누락된 필수 입력 데이터 확인
-        for param_name in self.api_input_mapping.keys():
-            if param_name not in converted and param_name in api_input:
-                converted[param_name] = api_input[param_name]
-        
-        self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료 (동기)")
-        return converted
 
     def convert_step_output_to_api_response(self, step_output: Dict[str, Any]) -> Dict[str, Any]:
         """Step 출력을 API 응답으로 변환 - 활성화"""
@@ -2419,44 +2439,118 @@ class BaseStepMixin:
     # ==============================================
     
     def process(self, **kwargs) -> Dict[str, Any]:
-        """완전히 재설계된 표준화 process 메서드 (Central Hub 기반) - 동기 버전"""
+        """완전히 재설계된 표준화 process 메서드 (Central Hub 기반) - 강화된 로깅 및 검증"""
+        start_time = time.time()
+        process_report = {
+            'step_name': self.step_name,
+            'step_id': getattr(self, 'step_id', 0),
+            'start_time': start_time,
+            'input_keys': list(kwargs.keys()),
+            'processing_stages': [],
+            'data_transfer_report': None,
+            'di_container_analysis': None,
+            'warnings': [],
+            'errors': []
+        }
+        
         try:
-            start_time = time.time()
             self.performance_metrics.github_process_calls += 1
             
-            self.logger.debug(f"🔄 {self.step_name} process 시작 (Central Hub, 입력: {list(kwargs.keys())})")
+            self.logger.info(f"🔄 {self.step_name} process 시작 (Central Hub)")
+            self.logger.debug(f"   - 입력 키: {process_report['input_keys']}")
             
-            # 1. API 입력을 Step 입력으로 변환 (convert_api_input_to_step_input 호출)
+            # 🔥 1단계: API 입력을 Step 입력으로 변환
+            stage_start = time.time()
             if hasattr(self, 'convert_api_input_to_step_input'):
                 try:
                     converted_input = self.convert_api_input_to_step_input(kwargs)
+                    process_report['processing_stages'].append({
+                        'stage': 'api_input_conversion',
+                        'method': 'convert_api_input_to_step_input',
+                        'duration': time.time() - stage_start,
+                        'success': True
+                    })
                     self.logger.debug(f"✅ {self.step_name} API 입력 변환 완료 (convert_api_input_to_step_input)")
                 except Exception as convert_error:
+                    process_report['processing_stages'].append({
+                        'stage': 'api_input_conversion',
+                        'method': 'convert_api_input_to_step_input',
+                        'duration': time.time() - stage_start,
+                        'success': False,
+                        'error': str(convert_error)
+                    })
                     self.logger.error(f"❌ {self.step_name} API 입력 변환 실패: {convert_error}")
                     # 폴백: DetailedDataSpec 기반 변환 사용
                     converted_input = self._convert_input_to_model_format_sync(kwargs)
             else:
                 # convert_api_input_to_step_input이 없는 경우 DetailedDataSpec 기반 변환 사용
                 converted_input = self._convert_input_to_model_format_sync(kwargs)
+                process_report['processing_stages'].append({
+                    'stage': 'api_input_conversion',
+                    'method': '_convert_input_to_model_format_sync',
+                    'duration': time.time() - stage_start,
+                    'success': True
+                })
             
-            # 2. 하위 클래스의 순수 AI 로직 실행
+            # 🔥 2단계: 하위 클래스의 순수 AI 로직 실행
+            stage_start = time.time()
             ai_result = self._run_ai_inference(converted_input)
+            process_report['processing_stages'].append({
+                'stage': 'ai_inference',
+                'method': '_run_ai_inference',
+                'duration': time.time() - stage_start,
+                'success': True,
+                'result_keys': list(ai_result.keys()) if isinstance(ai_result, dict) else ['non_dict_result']
+            })
             
-            # 3. 출력 데이터 변환 (AI 모델 → API + Step 간) - 동기적으로 호출
+            # 🔥 3단계: 출력 데이터 변환 (AI 모델 → API + Step 간)
+            stage_start = time.time()
             standardized_output = self._convert_output_to_standard_format(ai_result)
+            process_report['processing_stages'].append({
+                'stage': 'output_standardization',
+                'method': '_convert_output_to_standard_format',
+                'duration': time.time() - stage_start,
+                'success': True,
+                'output_keys': list(standardized_output.keys())
+            })
             
-            # 4. 성능 메트릭 업데이트
+            # 🔥 4단계: 데이터 전달 리포트 생성
             processing_time = time.time() - start_time
+            process_report['data_transfer_report'] = self._create_data_transfer_report(
+                getattr(self, 'step_id', 0), standardized_output, processing_time
+            )
+            
+            # 🔥 5단계: DI Container 데이터 흐름 분석
+            process_report['di_container_analysis'] = self._analyze_di_container_data_flow(
+                standardized_output, getattr(self, 'step_id', 0)
+            )
+            
+            # 🔥 6단계: 성능 메트릭 업데이트
             self._update_performance_metrics(processing_time, True)
             
-            self.logger.debug(f"✅ {self.step_name} process 완료 (Central Hub, {processing_time:.3f}초)")
+            # 🔥 7단계: 종합 리포트 로깅
+            self._log_comprehensive_process_report(process_report, processing_time)
+            
+            self.logger.info(f"✅ {self.step_name} process 완료 (Central Hub, {processing_time:.3f}초)")
             
             return standardized_output
             
         except Exception as e:
             processing_time = time.time() - start_time
             self._update_performance_metrics(processing_time, False)
+            
+            process_report['processing_stages'].append({
+                'stage': 'error_handling',
+                'method': 'exception_caught',
+                'duration': processing_time,
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            })
+            
             self.logger.error(f"❌ {self.step_name} process 실패 (Central Hub, {processing_time:.3f}초): {e}")
+            self.logger.error(f"   - 오류 위치: {traceback.format_exc()}")
+            
             return self._create_error_response(str(e))
 
     @abstractmethod
@@ -2469,52 +2563,131 @@ class BaseStepMixin:
     # ==============================================
     
     def _convert_input_to_model_format_sync(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """API/Step 간 데이터 → AI 모델 입력 형식 변환 (동기 버전)"""
+        """API/Step 간 데이터 → AI 모델 입력 형식 변환 (동기 버전) - 강화된 로깅 및 검증"""
         try:
             converted = {}
             self.performance_metrics.data_conversions += 1
             
             self.logger.debug(f"🔄 {self.step_name} 입력 데이터 변환 시작...")
             
+            # 🔥 입력 데이터 로깅
+            input_keys = list(kwargs.keys())
+            self.logger.debug(f"   - 입력 키: {input_keys}")
+            
             # 1. API 입력 매핑 처리
+            api_mapping_count = 0
             for model_param, api_type in self.detailed_data_spec.api_input_mapping.items():
                 if model_param in kwargs:
                     converted[model_param] = self._convert_api_input_type_sync(
                         kwargs[model_param], api_type, model_param
                     )
                     self.performance_metrics.api_conversions += 1
+                    api_mapping_count += 1
+                    self.logger.debug(f"   - API 매핑: {model_param} ({api_type})")
             
-            # 2. Step 간 데이터 처리
+            # 2. Step 간 데이터 처리 (강화된 로깅)
+            step_data_count = 0
             for step_name, step_data in kwargs.items():
                 if step_name.startswith('from_step_'):
                     step_id = step_name.replace('from_step_', '')
                     if step_id in self.detailed_data_spec.accepts_from_previous_step:
                         step_schema = self.detailed_data_spec.accepts_from_previous_step[step_id]
-                        converted.update(self._map_step_input_data(step_data, step_schema))
+                        
+                        # 🔥 Step 간 데이터 전달 로깅
+                        step_data_keys = list(step_data.keys()) if isinstance(step_data, dict) else ['raw_data']
+                        self._log_data_transfer_details(
+                            step_id=int(step_id), 
+                            data_keys=step_data_keys, 
+                            target_step=self.step_id,
+                            transfer_type="input"
+                        )
+                        
+                        mapped_data = self._map_step_input_data(step_data, step_schema)
+                        converted.update(mapped_data)
                         self.performance_metrics.step_data_transfers += 1
+                        step_data_count += 1
+                        
+                        self.logger.debug(f"   - Step {step_id} → {self.step_id}: {list(mapped_data.keys())}")
             
-            # 3. 누락된 필수 입력 데이터 확인
+            # 3. 누락된 필수 입력 데이터 확인 (강화된 검증)
+            missing_params = []
             for param_name in self.detailed_data_spec.api_input_mapping.keys():
                 if param_name not in converted and param_name in kwargs:
                     converted[param_name] = kwargs[param_name]
+                    missing_params.append(param_name)
             
-            # 4. 전처리 적용 (동기적으로)
+            if missing_params:
+                self.logger.warning(f"⚠️ 누락된 필수 매핑: {missing_params}")
+            
+            # 🔥 4. 이미지 경로를 실제 이미지로 로드
+            try:
+                # person_image_path와 clothing_image_path가 있는 경우 실제 이미지로 로드
+                if 'person_image_path' in converted and 'clothing_image_path' in converted:
+                    from PIL import Image
+                    import asyncio
+                    
+                    # 동기적으로 이미지 로드
+                    def load_image_sync(path):
+                        try:
+                            return Image.open(path).convert('RGB')
+                        except Exception as e:
+                            self.logger.error(f"❌ 이미지 로드 실패 {path}: {e}")
+                            return None
+                    
+                    person_image = load_image_sync(converted['person_image_path'])
+                    clothing_image = load_image_sync(converted['clothing_image_path'])
+                    
+                    if person_image and clothing_image:
+                        converted['person_image'] = person_image
+                        converted['clothing_image'] = clothing_image
+                        # 경로는 제거 (실제 이미지로 대체됨)
+                        converted.pop('person_image_path', None)
+                        converted.pop('clothing_image_path', None)
+                        self.logger.debug(f"✅ 이미지 로드 성공: person={person_image.size}, clothing={clothing_image.size}")
+                    else:
+                        self.logger.error("❌ 이미지 로드 실패 - None 반환")
+                        
+            except Exception as img_error:
+                self.logger.error(f"❌ 이미지 로드 처리 실패: {img_error}")
+                # 이미지 로드 실패 시에도 계속 진행
+            
+            # 5. 메모리 최적화 적용
+            if self.config.auto_memory_cleanup:
+                converted = self._optimize_memory_usage(converted)
+            
+            # 6. 전처리 적용 (동기적으로)
             if self.config.auto_preprocessing and self.detailed_data_spec.preprocessing_steps:
                 converted = self._apply_preprocessing_sync(converted)
                 self.performance_metrics.preprocessing_operations += 1
+                self.logger.debug(f"   - 전처리 적용: {self.detailed_data_spec.preprocessing_steps}")
             
-            # 5. 데이터 검증
+            # 7. 데이터 검증 (강화된 검증)
             if self.config.strict_data_validation:
                 validated_input = self._validate_input_data(converted)
+                
+                # 🔥 데이터 완전성 검증
+                expected_inputs = list(self.detailed_data_spec.api_input_mapping.keys())
+                completeness_result = self._validate_data_completeness(converted, expected_inputs)
+                
+                if not completeness_result['is_complete']:
+                    self.logger.warning(f"⚠️ 입력 데이터 완전성 검증 실패")
+                    self.logger.warning(f"   - 누락: {completeness_result['missing_keys']}")
             else:
                 validated_input = converted
             
-            self.logger.debug(f"✅ {self.step_name} 입력 데이터 변환 완료")
+            # 🔥 변환 결과 요약 로깅
+            self.logger.info(f"✅ {self.step_name} 입력 데이터 변환 완료")
+            self.logger.debug(f"   - API 매핑: {api_mapping_count}개")
+            self.logger.debug(f"   - Step 데이터: {step_data_count}개")
+            self.logger.debug(f"   - 최종 키: {list(validated_input.keys())}")
+            
             return validated_input
             
         except Exception as e:
             self.performance_metrics.validation_failures += 1
             self.logger.error(f"❌ {self.step_name} 입력 데이터 변환 실패: {e}")
+            self.logger.error(f"   - 입력 키: {list(kwargs.keys())}")
+            self.logger.error(f"   - 오류 위치: {traceback.format_exc()}")
             raise
 
     async def _convert_input_to_model_format(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
@@ -3324,42 +3497,136 @@ class BaseStepMixin:
         return api_response
     
     def _prepare_next_step_data(self, processed_result: Dict[str, Any]) -> Dict[str, Any]:
-        """다음 Step들을 위한 데이터 준비"""
+        """다음 Step들을 위한 데이터 준비 - 강화된 로깅 및 데이터 손실 방지"""
         next_step_data = {}
+        data_loss_prevention_stats = {
+            'total_expected': 0,
+            'successfully_transferred': 0,
+            'data_loss_detected': 0,
+            'memory_optimized': 0,
+            'warnings': []
+        }
         
         try:
+            self.logger.debug(f"🔄 {self.step_name} 다음 Step 데이터 준비 시작...")
+            
             for next_step, data_schema in self.detailed_data_spec.provides_to_next_step.items():
                 step_data = {}
+                step_data_loss_count = 0
+                
+                # 🔥 데이터 스키마 검증
+                expected_keys = list(data_schema.keys())
+                data_loss_prevention_stats['total_expected'] += len(expected_keys)
+                
+                self.logger.debug(f"   - Step {next_step} 예상 데이터: {expected_keys}")
                 
                 for data_key, data_type in data_schema.items():
                     if data_key in processed_result:
                         value = processed_result[data_key]
                         
-                        if data_type == "np.ndarray" and NUMPY_AVAILABLE:
-                            if TORCH_AVAILABLE and torch.is_tensor(value):
-                                step_data[data_key] = value.detach().cpu().numpy()
-                            elif not isinstance(value, np.ndarray):
-                                step_data[data_key] = np.array(value)
+                        # 🔥 데이터 타입 변환 및 검증
+                        try:
+                            if data_type == "np.ndarray" and NUMPY_AVAILABLE:
+                                if TORCH_AVAILABLE and torch.is_tensor(value):
+                                    step_data[data_key] = value.detach().cpu().numpy()
+                                elif not isinstance(value, np.ndarray):
+                                    step_data[data_key] = np.array(value)
+                                else:
+                                    step_data[data_key] = value
+                                    
+                            elif data_type == "torch.Tensor" and TORCH_AVAILABLE:
+                                if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                                    step_data[data_key] = torch.from_numpy(value)
+                                elif not torch.is_tensor(value):
+                                    step_data[data_key] = torch.tensor(value)
+                                else:
+                                    step_data[data_key] = value
+                                    
                             else:
                                 step_data[data_key] = value
+                            
+                            # 🔥 데이터 무결성 검증
+                            if value is not None:
+                                data_loss_prevention_stats['successfully_transferred'] += 1
                                 
-                        elif data_type == "torch.Tensor" and TORCH_AVAILABLE:
-                            if NUMPY_AVAILABLE and isinstance(value, np.ndarray):
-                                step_data[data_key] = torch.from_numpy(value)
-                            elif not torch.is_tensor(value):
-                                step_data[data_key] = torch.tensor(value)
+                                # 데이터 크기 로깅
+                                try:
+                                    if hasattr(value, 'nbytes'):
+                                        size_mb = value.nbytes / (1024 * 1024)
+                                    elif hasattr(value, 'shape'):
+                                        size_mb = np.prod(value.shape) * value.dtype.itemsize / (1024 * 1024)
+                                    else:
+                                        size_mb = len(str(value)) / (1024 * 1024)
+                                    
+                                    if size_mb > 10:  # 10MB 이상
+                                        self.logger.debug(f"     - {data_key}: {size_mb:.2f}MB")
+                                        
+                                except Exception as size_error:
+                                    pass
                             else:
-                                step_data[data_key] = value
+                                step_data_loss_count += 1
+                                data_loss_prevention_stats['data_loss_detected'] += 1
+                                data_loss_prevention_stats['warnings'].append(f"Step {next_step}: {data_key} 값이 None")
                                 
-                        else:
-                            step_data[data_key] = value
+                        except Exception as conversion_error:
+                            step_data_loss_count += 1
+                            data_loss_prevention_stats['data_loss_detected'] += 1
+                            data_loss_prevention_stats['warnings'].append(
+                                f"Step {next_step}: {data_key} 변환 실패 - {conversion_error}"
+                            )
+                            self.logger.warning(f"⚠️ {data_key} 데이터 변환 실패: {conversion_error}")
+                    else:
+                        step_data_loss_count += 1
+                        data_loss_prevention_stats['data_loss_detected'] += 1
+                        data_loss_prevention_stats['warnings'].append(
+                            f"Step {next_step}: {data_key} 키가 processed_result에 없음"
+                        )
+                        self.logger.warning(f"⚠️ {data_key} 키가 processed_result에 없음")
+                
+                # 🔥 Step별 데이터 손실 검증
+                if step_data_loss_count > 0:
+                    self.logger.warning(f"⚠️ Step {next_step} 데이터 손실 감지: {step_data_loss_count}개")
+                else:
+                    self.logger.debug(f"✅ Step {next_step} 모든 데이터 전달 성공")
+                
+                # 🔥 메모리 최적화 적용
+                if step_data and self.config.auto_memory_cleanup:
+                    step_data = self._optimize_memory_usage(step_data)
+                    data_loss_prevention_stats['memory_optimized'] += 1
                 
                 if step_data:
                     next_step_data[next_step] = step_data
                     self.performance_metrics.step_data_transfers += 1
+                    
+                    # 🔥 데이터 전달 로깅
+                    transferred_keys = list(step_data.keys())
+                    self._log_data_transfer_details(
+                        step_id=self.step_id,
+                        data_keys=transferred_keys,
+                        target_step=int(next_step),
+                        transfer_type="output"
+                    )
+            
+            # 🔥 전체 데이터 손실 방지 통계
+            success_rate = (data_loss_prevention_stats['successfully_transferred'] / 
+                          max(data_loss_prevention_stats['total_expected'], 1)) * 100
+            
+            self.logger.info(f"✅ {self.step_name} 다음 Step 데이터 준비 완료")
+            self.logger.info(f"   - 성공률: {success_rate:.1f}% ({data_loss_prevention_stats['successfully_transferred']}/{data_loss_prevention_stats['total_expected']})")
+            self.logger.info(f"   - 데이터 손실: {data_loss_prevention_stats['data_loss_detected']}개")
+            self.logger.info(f"   - 메모리 최적화: {data_loss_prevention_stats['memory_optimized']}개")
+            
+            # 경고 로깅
+            for warning in data_loss_prevention_stats['warnings']:
+                self.logger.warning(f"⚠️ {warning}")
+            
+            # 🔥 데이터 손실이 심각한 경우 경고
+            if data_loss_prevention_stats['data_loss_detected'] > 0:
+                self.logger.warning(f"⚠️ 데이터 손실 감지! 총 {data_loss_prevention_stats['data_loss_detected']}개 데이터 누락")
         
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} 다음 Step 데이터 준비 실패: {e}")
+            self.logger.error(f"   - 오류 위치: {traceback.format_exc()}")
         
         return next_step_data
     
@@ -4298,6 +4565,370 @@ class BaseStepMixin:
         """StepFactory 호환 (상세 정보) - 기존 호환성"""
         return self.validate_dependencies(DependencyValidationFormat.DETAILED_DICT)
 
+    # ==============================================
+    # 🔥 데이터 전달 로깅 및 검증 시스템 (v21.0)
+    # ==============================================
+    
+    def _log_data_transfer_details(self, step_id: int, data_keys: List[str], target_step: int, 
+                                  data_sizes: Dict[str, int] = None, transfer_type: str = "output"):
+        """데이터 전달 상세 로깅"""
+        try:
+            transfer_info = {
+                'from_step': step_id,
+                'to_step': target_step,
+                'transfer_type': transfer_type,
+                'data_keys': data_keys,
+                'data_count': len(data_keys),
+                'timestamp': time.time()
+            }
+            
+            if data_sizes:
+                transfer_info['data_sizes_mb'] = data_sizes
+                total_size_mb = sum(data_sizes.values())
+                transfer_info['total_size_mb'] = total_size_mb
+                
+                # 메모리 사용량 경고
+                if total_size_mb > 100:  # 100MB 이상
+                    self.logger.warning(f"⚠️ 대용량 데이터 전달: {total_size_mb:.2f}MB")
+            
+            self.logger.info(f"📤 {transfer_type.upper()} 전달: Step {step_id} → Step {target_step}")
+            self.logger.debug(f"   - 전달 데이터: {data_keys}")
+            
+            # 성능 메트릭 업데이트
+            self.performance_metrics.step_data_transfers += 1
+            
+        except Exception as e:
+            self.logger.error(f"❌ 데이터 전달 로깅 실패: {e}")
+    
+    def _validate_data_completeness(self, step_result: Dict[str, Any], expected_keys: List[str], 
+                                   step_name: str = None) -> Dict[str, Any]:
+        """데이터 완전성 검증"""
+        validation_result = {
+            'is_complete': True,
+            'missing_keys': [],
+            'present_keys': [],
+            'data_types': {},
+            'data_sizes': {},
+            'warnings': []
+        }
+        
+        try:
+            step_name = step_name or self.step_name
+            
+            for key in expected_keys:
+                if key in step_result:
+                    validation_result['present_keys'].append(key)
+                    value = step_result[key]
+                    
+                    # 데이터 타입 기록
+                    validation_result['data_types'][key] = type(value).__name__
+                    
+                    # 데이터 크기 계산
+                    try:
+                        if hasattr(value, 'nbytes'):
+                            size_mb = value.nbytes / (1024 * 1024)
+                        elif hasattr(value, 'shape'):
+                            size_mb = np.prod(value.shape) * value.dtype.itemsize / (1024 * 1024)
+                        elif isinstance(value, (list, dict)):
+                            size_mb = len(str(value)) / (1024 * 1024)
+                        else:
+                            size_mb = len(str(value)) / (1024 * 1024)
+                        
+                        validation_result['data_sizes'][key] = size_mb
+                        
+                        # 대용량 데이터 경고
+                        if size_mb > 50:  # 50MB 이상
+                            validation_result['warnings'].append(f"대용량 데이터: {key} ({size_mb:.2f}MB)")
+                            
+                    except Exception as size_error:
+                        validation_result['data_sizes'][key] = 0
+                        validation_result['warnings'].append(f"크기 계산 실패: {key}")
+                        
+                else:
+                    validation_result['missing_keys'].append(key)
+                    validation_result['is_complete'] = False
+            
+            # 로깅
+            if validation_result['is_complete']:
+                self.logger.info(f"✅ {step_name} 데이터 완전성 검증 통과")
+                self.logger.debug(f"   - 포함된 데이터: {validation_result['present_keys']}")
+            else:
+                self.logger.warning(f"⚠️ {step_name} 데이터 완전성 검증 실패")
+                self.logger.warning(f"   - 누락된 데이터: {validation_result['missing_keys']}")
+                self.logger.warning(f"   - 포함된 데이터: {validation_result['present_keys']}")
+            
+            # 경고 로깅
+            for warning in validation_result['warnings']:
+                self.logger.warning(f"⚠️ {step_name}: {warning}")
+            
+            return validation_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ {step_name} 데이터 완전성 검증 실패: {e}")
+            validation_result['is_complete'] = False
+            validation_result['warnings'].append(f"검증 오류: {e}")
+            return validation_result
+    
+    def _optimize_memory_usage(self, data: Dict[str, Any], target_device: str = None) -> Dict[str, Any]:
+        """메모리 사용량 최적화"""
+        optimized_data = {}
+        memory_saved_mb = 0.0
+        
+        try:
+            target_device = target_device or self.device
+            
+            for key, value in data.items():
+                try:
+                    # 텐서 최적화
+                    if TORCH_AVAILABLE and torch.is_tensor(value):
+                        original_size = value.element_size() * value.nelement() / (1024 * 1024)
+                        
+                        # 디바이스 최적화
+                        if target_device == "cpu" and value.device.type != "cpu":
+                            value = value.cpu()
+                        elif target_device == "mps" and value.device.type != "mps":
+                            value = value.to("mps")
+                        
+                        # FP16 변환 (메모리 절약)
+                        if self.config.use_fp16 and value.dtype == torch.float32:
+                            value = value.half()
+                        
+                        optimized_size = value.element_size() * value.nelement() / (1024 * 1024)
+                        memory_saved_mb += (original_size - optimized_size)
+                        
+                    # NumPy 배열 최적화
+                    elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                        original_size = value.nbytes / (1024 * 1024)
+                        
+                        # 불필요한 복사 방지
+                        if value.flags['C_CONTIGUOUS']:
+                            optimized_value = value
+                        else:
+                            optimized_value = np.ascontiguousarray(value)
+                        
+                        # 데이터 타입 최적화
+                        if value.dtype == np.float64 and self.config.use_fp16:
+                            optimized_value = optimized_value.astype(np.float16)
+                        
+                        optimized_size = optimized_value.nbytes / (1024 * 1024)
+                        memory_saved_mb += (original_size - optimized_size)
+                        value = optimized_value
+                    
+                    optimized_data[key] = value
+                    
+                except Exception as e:
+                    self.logger.warning(f"⚠️ {key} 메모리 최적화 실패: {e}")
+                    optimized_data[key] = value
+            
+            if memory_saved_mb > 0:
+                self.logger.info(f"💾 메모리 최적화 완료: {memory_saved_mb:.2f}MB 절약")
+                self.performance_metrics.memory_optimizations += 1
+            
+            return optimized_data
+            
+        except Exception as e:
+            self.logger.error(f"❌ 메모리 최적화 실패: {e}")
+            return data
+    
+    def _analyze_di_container_data_flow(self, step_result: Dict[str, Any], step_id: int) -> Dict[str, Any]:
+        """DI Container 데이터 흐름 분석"""
+        analysis_result = {
+            'di_container_used': False,
+            'services_accessed': [],
+            'data_flow_path': [],
+            'memory_optimizations': 0,
+            'data_transfers': 0,
+            'errors': []
+        }
+        
+        try:
+            # DI Container 사용 여부 확인
+            if hasattr(self, 'di_container') and self.di_container:
+                analysis_result['di_container_used'] = True
+                
+                # Central Hub 서비스 접근 확인
+                central_hub_services = ['memory_manager', 'model_loader', 'data_converter']
+                for service_name in central_hub_services:
+                    try:
+                        service = self.get_service(service_name)
+                        if service:
+                            analysis_result['services_accessed'].append(service_name)
+                    except Exception as e:
+                        analysis_result['errors'].append(f"서비스 접근 실패 ({service_name}): {e}")
+                
+                # 데이터 흐름 경로 분석
+                if hasattr(self, 'detailed_data_spec'):
+                    provides_to_next = getattr(self.detailed_data_spec, 'provides_to_next_step', {})
+                    for next_step, data_mapping in provides_to_next.items():
+                        analysis_result['data_flow_path'].append({
+                            'from_step': step_id,
+                            'to_step': next_step,
+                            'data_keys': list(data_mapping.keys())
+                        })
+                        analysis_result['data_transfers'] += 1
+                
+                # 메모리 최적화 확인
+                if hasattr(self, 'performance_metrics'):
+                    analysis_result['memory_optimizations'] = getattr(
+                        self.performance_metrics, 'memory_optimizations', 0
+                    )
+            
+            # 로깅
+            if analysis_result['di_container_used']:
+                self.logger.info(f"🔗 DI Container 데이터 흐름 분석 완료")
+                self.logger.debug(f"   - 사용된 서비스: {analysis_result['services_accessed']}")
+                self.logger.debug(f"   - 데이터 전달 경로: {len(analysis_result['data_flow_path'])}개")
+            else:
+                self.logger.warning(f"⚠️ DI Container 미사용")
+            
+            return analysis_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ DI Container 데이터 흐름 분석 실패: {e}")
+            analysis_result['errors'].append(f"분석 오류: {e}")
+            return analysis_result
+    
+    def _create_data_transfer_report(self, step_id: int, step_result: Dict[str, Any], 
+                                   processing_time: float) -> Dict[str, Any]:
+        """데이터 전달 종합 리포트 생성"""
+        report = {
+            'step_id': step_id,
+            'step_name': self.step_name,
+            'processing_time': processing_time,
+            'timestamp': time.time(),
+            'data_completeness': {},
+            'memory_usage': {},
+            'di_container_analysis': {},
+            'performance_metrics': {},
+            'warnings': [],
+            'errors': []
+        }
+        
+        try:
+            # 1. 데이터 완전성 검증
+            if hasattr(self, 'detailed_data_spec'):
+                expected_outputs = getattr(self.detailed_data_spec, 'provides_to_next_step', {})
+                all_expected_keys = []
+                for data_mapping in expected_outputs.values():
+                    all_expected_keys.extend(data_mapping.keys())
+                
+                if all_expected_keys:
+                    report['data_completeness'] = self._validate_data_completeness(
+                        step_result, all_expected_keys
+                    )
+            
+            # 2. 메모리 사용량 분석
+            if hasattr(self, 'performance_metrics'):
+                report['memory_usage'] = {
+                    'peak_memory_mb': getattr(self.performance_metrics, 'peak_memory_usage_mb', 0),
+                    'average_memory_mb': getattr(self.performance_metrics, 'average_memory_usage_mb', 0),
+                    'optimizations_count': getattr(self.performance_metrics, 'memory_optimizations', 0)
+                }
+            
+            # 3. DI Container 분석
+            report['di_container_analysis'] = self._analyze_di_container_data_flow(step_result, step_id)
+            
+            # 4. 성능 메트릭
+            if hasattr(self, 'performance_metrics'):
+                report['performance_metrics'] = {
+                    'data_conversions': getattr(self.performance_metrics, 'data_conversions', 0),
+                    'step_data_transfers': getattr(self.performance_metrics, 'step_data_transfers', 0),
+                    'validation_failures': getattr(self.performance_metrics, 'validation_failures', 0),
+                    'api_conversions': getattr(self.performance_metrics, 'api_conversions', 0)
+                }
+            
+            # 5. 경고 및 오류 수집
+            if not report['data_completeness'].get('is_complete', True):
+                report['warnings'].append("데이터 완전성 검증 실패")
+            
+            if report['di_container_analysis'].get('errors'):
+                report['errors'].extend(report['di_container_analysis']['errors'])
+            
+            # 6. 리포트 로깅
+            self.logger.info(f"📊 Step {step_id} 데이터 전달 리포트 생성 완료")
+            if report['warnings']:
+                self.logger.warning(f"⚠️ 경고: {len(report['warnings'])}개")
+            if report['errors']:
+                self.logger.error(f"❌ 오류: {len(report['errors'])}개")
+            
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"❌ 데이터 전달 리포트 생성 실패: {e}")
+            report['errors'].append(f"리포트 생성 오류: {e}")
+            return report
+    
+    def _log_comprehensive_process_report(self, process_report: Dict[str, Any], processing_time: float):
+        """종합 프로세스 리포트 로깅"""
+        try:
+            step_name = process_report['step_name']
+            step_id = process_report['step_id']
+            
+            # 🔥 단계별 성능 분석
+            total_stage_time = 0
+            stage_details = []
+            
+            for stage in process_report['processing_stages']:
+                stage_time = stage.get('duration', 0)
+                total_stage_time += stage_time
+                stage_details.append(f"{stage['stage']}: {stage_time:.3f}s")
+                
+                if not stage.get('success', True):
+                    self.logger.warning(f"⚠️ {stage['stage']} 단계 실패: {stage.get('error', 'Unknown error')}")
+            
+            # 🔥 데이터 전달 분석
+            data_report = process_report.get('data_transfer_report', {})
+            data_completeness = data_report.get('data_completeness', {})
+            memory_usage = data_report.get('memory_usage', {})
+            
+            # 🔥 DI Container 분석
+            di_analysis = process_report.get('di_container_analysis', {})
+            
+            # 🔥 종합 로깅
+            self.logger.info(f"📊 {step_name} (Step {step_id}) 종합 리포트")
+            self.logger.info(f"   - 총 처리 시간: {processing_time:.3f}초")
+            self.logger.info(f"   - 단계별 시간: {' | '.join(stage_details)}")
+            
+            # 데이터 완전성
+            if data_completeness:
+                completeness = data_completeness.get('is_complete', False)
+                missing_count = len(data_completeness.get('missing_keys', []))
+                present_count = len(data_completeness.get('present_keys', []))
+                
+                if completeness:
+                    self.logger.info(f"   - 데이터 완전성: ✅ ({present_count}개 포함)")
+                else:
+                    self.logger.warning(f"   - 데이터 완전성: ❌ ({missing_count}개 누락)")
+            
+            # 메모리 사용량
+            if memory_usage:
+                peak_memory = memory_usage.get('peak_memory_mb', 0)
+                optimizations = memory_usage.get('optimizations_count', 0)
+                self.logger.info(f"   - 메모리 사용량: {peak_memory:.2f}MB (최적화: {optimizations}회)")
+            
+            # DI Container 상태
+            if di_analysis:
+                di_used = di_analysis.get('di_container_used', False)
+                services_accessed = di_analysis.get('services_accessed', [])
+                data_transfers = di_analysis.get('data_transfers', 0)
+                
+                if di_used:
+                    self.logger.info(f"   - DI Container: ✅ ({len(services_accessed)}개 서비스, {data_transfers}개 전달)")
+                else:
+                    self.logger.warning(f"   - DI Container: ❌ 미사용")
+            
+            # 경고 및 오류 요약
+            warnings_count = len(process_report.get('warnings', []))
+            errors_count = len(process_report.get('errors', []))
+            
+            if warnings_count > 0:
+                self.logger.warning(f"   - 경고: {warnings_count}개")
+            if errors_count > 0:
+                self.logger.error(f"   - 오류: {errors_count}개")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 종합 리포트 로깅 실패: {e}")
+
 # ==============================================
 # 🔥 Export
 # ==============================================
@@ -4335,58 +4966,7 @@ __all__ = [
 ]
 
 # ==============================================
-# 🔥 모듈 로드 완료 로그
+# 🔥 모듈 로드 완료 (로그 출력 제거)
 # ==============================================
 
-logger = logging.getLogger(__name__)
-logger.info("=" * 100)
-logger.info("🔥 BaseStepMixin v20.0 - Central Hub DI Container 완전 연동 + 순환참조 완전 해결")
-logger.info("=" * 100)
-logger.info("✅ Central Hub DI Container v7.0 완전 연동 - 중앙 허브 패턴 적용")
-logger.info("✅ 순환참조 완전 해결 - TYPE_CHECKING + 지연 import 완벽 적용")
-logger.info("✅ 단방향 의존성 그래프 - DI Container만을 통한 의존성 주입")
-logger.info("✅ step_model_requirements.py DetailedDataSpec 완전 활용")
-logger.info("✅ API ↔ AI 모델 간 데이터 변환 표준화 완료")
-logger.info("✅ Step 간 데이터 흐름 자동 처리")
-logger.info("✅ 전처리/후처리 요구사항 자동 적용")
-logger.info("✅ GitHub 프로젝트 Step 클래스들과 100% 호환")
-logger.info("✅ process() 메서드 시그니처 완전 표준화")
-logger.info("✅ 실제 Step 클래스들은 _run_ai_inference() 메서드만 구현하면 됨")
-logger.info("✅ validate_dependencies() 오버로드 지원")
-logger.info("✅ 모든 기능 그대로 유지하면서 구조만 개선")
-logger.info("✅ 기존 API 100% 호환성 보장")
-
-logger.info("🔧 Central Hub DI Container v7.0 연동:")
-logger.info("   🔗 Single Source of Truth - 모든 서비스는 Central Hub를 거침")
-logger.info("   🔗 Central Hub Pattern - DI Container가 모든 컴포넌트의 중심")
-logger.info("   🔗 Dependency Inversion - 상위 모듈이 하위 모듈을 제어")
-logger.info("   🔗 Zero Circular Reference - 순환참조 원천 차단")
-
-logger.info("🔧 순환참조 해결 방법:")
-logger.info("   🔗 CentralHubDependencyManager 내장으로 외부 의존성 차단")
-logger.info("   🔗 TYPE_CHECKING + 지연 import로 순환참조 방지")
-logger.info("   🔗 Central Hub DI Container를 통한 단방향 의존성 주입")
-logger.info("   🔗 모든 기능 그대로 유지")
-
-logger.info("🎯 완전 복원된 전처리 (12개):")
-logger.info("   - 이미지 리사이즈 (512x512, 768x1024, 256x192, 224x224, 368x368, 1024x1024)")
-logger.info("   - 정규화 (ImageNet, CLIP, Diffusion)")
-logger.info("   - 텐서 변환, SAM 프롬프트, Diffusion 입력, OOTD 입력, 포즈 특징, SR 입력")
-
-logger.info("🎯 완전 복원된 후처리 (15개):")
-logger.info("   - Softmax, Argmax, 원본 크기 리사이즈, NumPy 변환, 임계값, NMS")
-logger.info("   - 역정규화 (Diffusion, ImageNet), 값 클리핑, 마스크 적용")
-logger.info("   - 형태학적 연산, 키포인트 추출, 좌표 스케일링, 신뢰도 필터링")
-logger.info("   - 세부사항 향상, 최종 합성, 품질 보고서 생성")
-
-logger.info(f"🔧 현재 conda 환경: {CONDA_INFO['conda_env']} ({'✅ 최적화됨' if CONDA_INFO['is_target_env'] else '⚠️ 권장: mycloset-ai-clean'})")
-logger.info(f"🖥️  현재 시스템: M3 Max={IS_M3_MAX}, 메모리={MEMORY_GB:.1f}GB")
-logger.info(f"🚀 Central Hub AI 파이프라인 준비: {TORCH_AVAILABLE and (MPS_AVAILABLE or (torch.cuda.is_available() if TORCH_AVAILABLE else False))}")
-logger.info("=" * 100)
-logger.info("🎉 BaseStepMixin v20.0 Central Hub DI Container 완전 연동 + 순환참조 해결 완료!")
-logger.info("💡 이제 실제 Step 클래스들은 _run_ai_inference() 메서드만 구현하면 됩니다!")
-logger.info("💡 모든 데이터 변환이 BaseStepMixin에서 자동으로 처리됩니다!")
-logger.info("💡 순환참조 문제가 완전히 해결되고 Central Hub DI Container만 사용합니다!")
-logger.info("💡 Central Hub 패턴으로 모든 의존성이 단일 지점을 통해 관리됩니다!")
-logger.info("💡 기존 API 100% 호환성을 유지하면서 구조만 개선되었습니다!")
-logger.info("=" * 100)# backend/app/ai_pipeline/steps/base_step_mixin.py
+# 모듈 레벨 로그 출력 제거 - 중복 출력 방지# backend/app/ai_pipeline/steps/base_step_mixin.py

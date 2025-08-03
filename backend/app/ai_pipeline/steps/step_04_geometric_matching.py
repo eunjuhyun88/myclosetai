@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-🔥 MyCloset AI - Step 04: 기하학적 매칭 v8.0 - Central Hub DI Container 완전 연동
-====================================================================================
+🔥 MyCloset AI - Step 04: 기하학적 매칭 v8.0 - Common Imports Integration
+=======================================================================
 
+✅ Common Imports 시스템 완전 통합 - 중복 import 블록 제거
 ✅ Central Hub DI Container v7.0 완전 연동
 ✅ BaseStepMixin 상속 및 super().__init__() 호출
 ✅ 필수 속성들 초기화: ai_models, models_loading_status, model_interface, loaded_models
@@ -17,42 +18,39 @@
 
 Author: MyCloset AI Team
 Date: 2025-07-31
-Version: 8.0 (Central Hub DI Container Integration)
+Version: 8.1 (Common Imports Integration)
 """
 
-# ==============================================
-# 🔥 1. 필수 라이브러리 Import (실행 순서 최우선)
-# ==============================================
+# 🔥 공통 imports 시스템 사용 (중복 제거)
+from app.ai_pipeline.utils.common_imports import (
+    # 표준 라이브러리
+    os, sys, gc, time, logging, asyncio, threading, traceback,
+    hashlib, json, base64, math, warnings, np,
+    Path, Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING,
+    dataclass, field, Enum, IntEnum, BytesIO, ThreadPoolExecutor,
+    lru_cache, wraps,
+    
+    # 에러 처리 시스템
+    MyClosetAIException, ModelLoadingError, ImageProcessingError, DataValidationError, ConfigurationError,
+    error_tracker, track_exception, get_error_summary, create_exception_response, convert_to_mycloset_exception,
+    ErrorCodes, EXCEPTIONS_AVAILABLE,
+    
+    # Mock Data Diagnostic
+    detect_mock_data, diagnose_step_data, MOCK_DIAGNOSTIC_AVAILABLE,
+    
+    # Central Hub DI Container
+    _get_central_hub_container, get_base_step_mixin_class
+)
 
-import os
-import sys
-import gc
-import time
-import logging
-import asyncio
-import threading
-import traceback
-import hashlib
-import json
-import base64
+# 추가 imports
 import weakref
-import math
-import warnings
-import numpy as np
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
-from dataclasses import dataclass, field
-from enum import Enum, IntEnum
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import lru_cache, wraps
+from concurrent.futures import as_completed
 
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
 
 # 최상단에 추가
-import logging
 logger = logging.getLogger(__name__)
 
 # TYPE_CHECKING으로 순환참조 방지
@@ -61,22 +59,6 @@ if TYPE_CHECKING:
     from app.ai_pipeline.utils.memory_manager import MemoryManager
     from app.ai_pipeline.utils.data_converter import DataConverter
     from app.core.di_container import CentralHubDIContainer
-
-# BaseStepMixin 동적 import (순환참조 완전 방지) - GeometricMatching용
-def get_base_step_mixin_class():
-    """BaseStepMixin 클래스를 동적으로 가져오기 (순환참조 방지) - GeometricMatching용"""
-    try:
-        import importlib
-        module = importlib.import_module('app.ai_pipeline.steps.base_step_mixin')
-        return getattr(module, 'BaseStepMixin', None)
-    except ImportError:
-        try:
-            # 폴백: 상대 경로
-            from .base_step_mixin import BaseStepMixin
-            return BaseStepMixin
-        except ImportError:
-            logging.getLogger(__name__).error("❌ BaseStepMixin 동적 import 실패")
-            return None
 
 BaseStepMixin = get_base_step_mixin_class()
 
@@ -429,68 +411,69 @@ if BaseStepMixin is None:
             return EmergencyModelLoader()
 
         def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-            """API 입력을 Step 입력으로 변환 (완전 동기 버전)"""
+            """API 입력을 Step 입력으로 변환 (kwargs 방식) - 간단한 이미지 전달"""
             try:
                 step_input = api_input.copy()
                 
-                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                # 🔥 간단한 이미지 접근 방식
                 person_image = None
                 clothing_image = None
                 
-                # person_image 추출
-                for key in ['person_image', 'image', 'input_image', 'original_image']:
-                    if key in step_input:
-                        person_image = step_input[key]
-                        break
-                
-                # clothing_image 추출
-                for key in ['clothing_image', 'cloth_image', 'target_image']:
-                    if key in step_input:
-                        clothing_image = step_input[key]
-                        break
-                
-                if (person_image is None or clothing_image is None) and 'session_id' in step_input:
-                    # 세션에서 이미지 로드 (완전 동기적으로)
-                    try:
-                        session_manager = self._get_service_from_central_hub('session_manager')
-                        if session_manager:
-                            session_person, session_clothing = None, None
+                # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+                if 'session_data' in step_input:
+                    session_data = step_input['session_data']
+                    
+                    # person_image 로드
+                    if 'original_person_image' in session_data:
+                        try:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
                             
-                            try:
-                                # 세션 매니저가 동기 메서드를 제공하는지 확인
-                                if hasattr(session_manager, 'get_session_images_sync'):
-                                    session_person, session_clothing = session_manager.get_session_images_sync(step_input['session_id'])
-                                elif hasattr(session_manager, 'get_session_images'):
-                                    # 비동기 메서드를 동기적으로 호출
-                                    import asyncio
-                                    import concurrent.futures
-                                    
-                                    def run_async_session_load():
-                                        try:
-                                            return asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                                        except Exception as async_error:
-                                            self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
-                                            return None, None
-                                    
-                                    try:
-                                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                                            future = executor.submit(run_async_session_load)
-                                            session_person, session_clothing = future.result(timeout=10)
-                                    except Exception as executor_error:
-                                        self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
-                                        session_person, session_clothing = None, None
-                                else:
-                                    self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
-                            except Exception as e:
-                                self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
-                                session_person, session_clothing = None, None
+                            person_b64 = session_data['original_person_image']
+                            person_bytes = base64.b64decode(person_b64)
+                            person_image = Image.open(BytesIO(person_bytes)).convert('RGB')
+                            self.logger.info("✅ 세션 데이터에서 original_person_image 로드")
+                        except Exception as session_error:
+                            self.logger.warning(f"⚠️ 세션 person_image 로드 실패: {session_error}")
+                    
+                    # clothing_image 로드
+                    if 'original_clothing_image' in session_data:
+                        try:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
                             
-                            if person_image is None and session_person:
-                                person_image = session_person
-                            if clothing_image is None and session_clothing:
-                                clothing_image = session_clothing
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                            clothing_b64 = session_data['original_clothing_image']
+                            clothing_bytes = base64.b64decode(clothing_b64)
+                            clothing_image = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                            self.logger.info("✅ 세션 데이터에서 original_clothing_image 로드")
+                        except Exception as session_error:
+                            self.logger.warning(f"⚠️ 세션 clothing_image 로드 실패: {session_error}")
+                
+                # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+                if person_image is None:
+                    for key in ['person_image', 'image', 'input_image', 'original_image']:
+                        if key in step_input and step_input[key] is not None:
+                            person_image = step_input[key]
+                            self.logger.info(f"✅ 직접 전달된 {key} 사용 (person)")
+                            break
+                
+                if clothing_image is None:
+                    for key in ['clothing_image', 'cloth_image', 'target_image']:
+                        if key in step_input and step_input[key] is not None:
+                            clothing_image = step_input[key]
+                            self.logger.info(f"✅ 직접 전달된 {key} 사용 (clothing)")
+                            break
+                
+                # 3순위: 기본값
+                if person_image is None:
+                    self.logger.info("ℹ️ person_image가 없음 - 기본값 사용")
+                    person_image = None
+                
+                if clothing_image is None:
+                    self.logger.info("ℹ️ clothing_image가 없음 - 기본값 사용")
+                    clothing_image = None
                 
                 # 변환된 입력 구성
                 converted_input = {
@@ -500,7 +483,14 @@ if BaseStepMixin is None:
                     'matching_precision': step_input.get('matching_precision', 'high')
                 }
                 
+                # 🔥 상세 로깅
                 self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                self.logger.info(f"✅ 이미지 상태: person_image={'있음' if person_image is not None else '없음'}, clothing_image={'있음' if clothing_image is not None else '없음'}")
+                if person_image is not None:
+                    self.logger.info(f"✅ person_image 정보: 타입={type(person_image)}, 크기={getattr(person_image, 'size', 'unknown')}")
+                if clothing_image is not None:
+                    self.logger.info(f"✅ clothing_image 정보: 타입={type(clothing_image)}, 크기={getattr(clothing_image, 'size', 'unknown')}")
+                
                 return converted_input
                 
             except Exception as e:

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-🔥 MyCloset AI - Step 06: Virtual Fitting v8.0 - Central Hub DI Container 완전 연동
-===============================================================================
+🔥 MyCloset AI - Step 06: Virtual Fitting v8.0 - Common Imports Integration
+========================================================================
 
+✅ Common Imports 시스템 완전 통합 - 중복 import 블록 제거
 ✅ Central Hub DI Container v7.0 완전 연동
 ✅ BaseStepMixin 상속 및 필수 속성들 초기화
 ✅ 간소화된 아키텍처 (복잡한 DI 로직 제거)
@@ -12,19 +13,39 @@
 ✅ 순환참조 완전 해결
 ✅ GitHubDependencyManager 완전 제거
 """
-import cv2 
-import os
-import sys
+
+# 🔥 공통 imports 시스템 사용 (중복 제거)
+from app.ai_pipeline.utils.common_imports import (
+    # 표준 라이브러리
+    os, sys, time, logging, asyncio, threading, np, warnings,
+    Path, Dict, Any, Optional, List, Union, Tuple,
+    dataclass, field,
+    
+    # 에러 처리 시스템
+    MyClosetAIException, ModelLoadingError, ImageProcessingError, DataValidationError, ConfigurationError,
+    error_tracker, track_exception, get_error_summary, create_exception_response, convert_to_mycloset_exception,
+    ErrorCodes, EXCEPTIONS_AVAILABLE,
+    
+    # Mock Data Diagnostic
+    detect_mock_data, diagnose_step_data, MOCK_DIAGNOSTIC_AVAILABLE,
+    
+    # Central Hub DI Container
+    _get_central_hub_container, get_base_step_mixin_class,
+    
+    # AI/ML 라이브러리
+    cv2, PIL_AVAILABLE, CV2_AVAILABLE
+)
+
+# 🔥 VirtualFittingStep 클래스용 time 모듈 명시적 import
 import time
-import logging
-import asyncio
-import threading
-import numpy as np
-import warnings
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Union, Tuple
-from dataclasses import dataclass, field
-import cv2
+
+# 🔥 전역 스코프에서 time 모듈 사용 가능하도록
+globals()['time'] = time
+
+# 🔥 클래스 정의 시점에 time 모듈을 로컬 스코프에도 추가
+locals()['time'] = time
+
+# 추가 imports
 import json
 
 # PyTorch 필수
@@ -51,22 +72,19 @@ try:
 except ImportError:
     DIFFUSERS_AVAILABLE = False
 
-# 🔥 MyCloset AI 커스텀 예외 처리
+# 🔥 Virtual Fitting 전용 에러 처리 헬퍼 함수들 (추가)
 try:
-    from ...core.exceptions import (
-        MyClosetAIException, ModelLoadingError, ImageProcessingError, VirtualFittingError,
-        DataValidationError, FileOperationError, MemoryError, ConfigurationError,
+    from app.core.exceptions import (
+        VirtualFittingError, FileOperationError, MemoryError,
         DependencyInjectionError, SessionError, APIResponseError, QualityAssessmentError,
-        ClothingAnalysisError, convert_to_mycloset_exception, ErrorCodes,
+        ClothingAnalysisError,
         # 🔥 Virtual Fitting 전용 에러 처리 헬퍼 함수들
         handle_virtual_fitting_model_loading_error, handle_virtual_fitting_inference_error,
         handle_session_data_error, handle_image_processing_error, create_virtual_fitting_error_response,
         validate_virtual_fitting_environment, log_virtual_fitting_performance
     )
-    CUSTOM_EXCEPTIONS_AVAILABLE = True
     VIRTUAL_FITTING_HELPERS_AVAILABLE = True
 except ImportError:
-    CUSTOM_EXCEPTIONS_AVAILABLE = False
     VIRTUAL_FITTING_HELPERS_AVAILABLE = False
 
 # ==============================================
@@ -2987,9 +3005,35 @@ class VirtualFittingStep(BaseStepMixin):
 
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Virtual Fitting AI 추론 (BaseStepMixin v20.0 호환)"""
-        start_time = time.time()
+        print(f"🔍 VirtualFittingStep _run_ai_inference 시작")
+        print(f"🔍 입력 데이터 키들: {list(processed_input.keys()) if processed_input else 'None'}")
         
         try:
+            import time
+            start_time = time.time()
+            print(f"✅ start_time 설정 완료: {start_time}")
+            
+            # 🔥 목업 데이터 감지 로그 추가
+            if MOCK_DIAGNOSTIC_AVAILABLE:
+                print(f"🔍 목업 데이터 진단 시작")
+                mock_detections = []
+                for key, value in processed_input.items():
+                    if value is not None:
+                        mock_detection = detect_mock_data(value)
+                        if mock_detection['is_mock']:
+                            mock_detections.append({
+                                'input_key': key,
+                                'detection_result': mock_detection
+                            })
+                            print(f"⚠️ 목업 데이터 감지: {key} - {mock_detection}")
+                
+                if mock_detections:
+                    print(f"⚠️ 총 {len(mock_detections)}개의 목업 데이터 감지됨")
+                else:
+                    print(f"✅ 목업 데이터 없음 - 실제 데이터 사용")
+            else:
+                print(f"ℹ️ 목업 데이터 진단 시스템 사용 불가")
+            
             # 🔥 디버깅: 입력 데이터 상세 로깅
             self.logger.info(f"🔍 [DEBUG] 입력 데이터 키들: {list(processed_input.keys())}")
             self.logger.info(f"🔍 [DEBUG] 입력 데이터 타입들: {[(k, type(v).__name__) for k, v in processed_input.items()]}")
@@ -3048,6 +3092,43 @@ class VirtualFittingStep(BaseStepMixin):
             return fitting_result
             
         except Exception as e:
+            # 🔥 상세한 에러 로깅 추가
+            self.logger.error(f"❌ Virtual Fitting AI 추론 실행 실패: {e}")
+            self.logger.error(f"🔍 [DEBUG] 에러 타입: {type(e).__name__}")
+            self.logger.error(f"🔍 [DEBUG] 에러 메시지: {str(e)}")
+            
+            # 🔥 에러 발생 위치 추적
+            import traceback
+            error_traceback = traceback.format_exc()
+            self.logger.error(f"🔍 [DEBUG] 에러 스택 트레이스:")
+            self.logger.error(error_traceback)
+            
+            # 🔥 입력 데이터 상태 확인
+            try:
+                self.logger.error(f"🔍 [DEBUG] 에러 발생 시점 입력 데이터 상태:")
+                if processed_input:
+                    for key, value in processed_input.items():
+                        try:
+                            if hasattr(value, 'shape'):
+                                self.logger.error(f"   - {key}: {type(value).__name__}, shape={value.shape}")
+                            else:
+                                self.logger.error(f"   - {key}: {type(value).__name__}, value={str(value)[:100]}...")
+                        except Exception as shape_error:
+                            self.logger.error(f"   - {key}: {type(value).__name__}, shape 접근 실패: {shape_error}")
+                else:
+                    self.logger.error("   - processed_input이 None 또는 비어있음")
+            except Exception as debug_error:
+                self.logger.error(f"   - 입력 데이터 상태 확인 실패: {debug_error}")
+            
+            # 🔥 모델 상태 확인
+            try:
+                self.logger.error(f"🔍 [DEBUG] 에러 발생 시점 모델 상태:")
+                self.logger.error(f"   - ai_models: {list(self.ai_models.keys()) if hasattr(self, 'ai_models') else 'None'}")
+                self.logger.error(f"   - loaded_models: {self.loaded_models if hasattr(self, 'loaded_models') else 'None'}")
+                self.logger.error(f"   - device: {self.device if hasattr(self, 'device') else 'None'}")
+            except Exception as model_error:
+                self.logger.error(f"   - 모델 상태 확인 실패: {model_error}")
+            
             # 에러 처리 및 로깅
             if VIRTUAL_FITTING_HELPERS_AVAILABLE:
                 error_response = create_virtual_fitting_error_response(
@@ -3344,14 +3425,124 @@ class VirtualFittingStep(BaseStepMixin):
 ) -> Dict[str, Any]:
         """Virtual Fitting AI 추론 실행"""
         try:
-            # 🔥 디버깅: 추론 입력 데이터 확인
-            self.logger.info(f"🔍 [DEBUG] Virtual Fitting 추론 입력 데이터:")
-            self.logger.info(f"   - Person Image: {type(person_image).__name__}, 크기: {person_image.shape}")
-            self.logger.info(f"   - Cloth Image: {type(cloth_image).__name__}, 크기: {cloth_image.shape}")
-            self.logger.info(f"   - Pose Keypoints: {type(pose_keypoints).__name__}, 크기: {pose_keypoints.shape if pose_keypoints is not None else 'None'}")
+            # 🔥 time 모듈 안전한 import 확인
+            try:
+                import time
+                start_time = time.time()
+                self.logger.info(f"✅ time 모듈 import 성공: {start_time}")
+            except Exception as time_error:
+                self.logger.error(f"❌ time 모듈 import 실패: {time_error}")
+                start_time = 0.0
+            
+            # 🔥 입력 데이터 타입 및 shape 상세 검증
+            self.logger.info(f"🔍 [DEBUG] Virtual Fitting 추론 입력 데이터 상세 검증:")
+            
+            # 🔥 이미지 데이터 타입 변환 확인 및 강제 변환 (가장 먼저 실행)
+            self.logger.info(f"🔍 [DEBUG] 이미지 데이터 타입 변환 확인:")
+            
+            # PIL Image를 numpy array로 강제 변환 (더 안전한 방법)
+            try:
+                if hasattr(person_image, 'convert') or hasattr(person_image, 'size'):
+                    self.logger.info(f"   🔄 Person Image를 PIL에서 numpy로 변환 중...")
+                    person_image = np.array(person_image)
+                    self.logger.info(f"   ✅ Person Image 변환 완료: {person_image.shape}")
+                elif hasattr(person_image, 'shape'):
+                    self.logger.info(f"   ✅ Person Image는 이미 numpy array: {person_image.shape}")
+                else:
+                    self.logger.warning(f"   ⚠️ Person Image 타입 확인 불가: {type(person_image)}")
+                    # 강제로 numpy로 변환 시도
+                    person_image = np.array(person_image)
+                    self.logger.info(f"   ✅ Person Image 강제 변환 완료: {person_image.shape}")
+            except Exception as e:
+                self.logger.error(f"   ❌ Person Image 변환 실패: {e}")
+                raise ValueError(f"Person Image 변환 실패: {e}")
+            
+            try:
+                if hasattr(cloth_image, 'convert') or hasattr(cloth_image, 'size'):
+                    self.logger.info(f"   🔄 Cloth Image를 PIL에서 numpy로 변환 중...")
+                    cloth_image = np.array(cloth_image)
+                    self.logger.info(f"   ✅ Cloth Image 변환 완료: {cloth_image.shape}")
+                elif hasattr(cloth_image, 'shape'):
+                    self.logger.info(f"   ✅ Cloth Image는 이미 numpy array: {cloth_image.shape}")
+                else:
+                    self.logger.warning(f"   ⚠️ Cloth Image 타입 확인 불가: {type(cloth_image)}")
+                    # 강제로 numpy로 변환 시도
+                    cloth_image = np.array(cloth_image)
+                    self.logger.info(f"   ✅ Cloth Image 강제 변환 완료: {cloth_image.shape}")
+            except Exception as e:
+                self.logger.error(f"   ❌ Cloth Image 변환 실패: {e}")
+                raise ValueError(f"Cloth Image 변환 실패: {e}")
+            
+            # Person Image 검증 (변환 후)
+            if person_image is None:
+                self.logger.error("❌ Person Image가 None입니다")
+                raise ValueError("Person Image가 None입니다")
+            
+            try:
+                person_shape = person_image.shape
+                person_type = type(person_image).__name__
+                self.logger.info(f"   ✅ Person Image: {person_type}, 크기: {person_shape}")
+            except Exception as e:
+                self.logger.error(f"❌ Person Image shape 접근 실패: {e}")
+                self.logger.error(f"   Person Image 타입: {type(person_image)}")
+                self.logger.error(f"   Person Image 내용: {str(person_image)[:200]}...")
+                raise ValueError(f"Person Image shape 접근 실패: {e}")
+            
+            # Cloth Image 검증 (변환 후)
+            if cloth_image is None:
+                self.logger.error("❌ Cloth Image가 None입니다")
+                raise ValueError("Cloth Image가 None입니다")
+            
+            try:
+                cloth_shape = cloth_image.shape
+                cloth_type = type(cloth_image).__name__
+                self.logger.info(f"   ✅ Cloth Image: {cloth_type}, 크기: {cloth_shape}")
+            except Exception as e:
+                self.logger.error(f"❌ Cloth Image shape 접근 실패: {e}")
+                self.logger.error(f"   Cloth Image 타입: {type(cloth_image)}")
+                self.logger.error(f"   Cloth Image 내용: {str(cloth_image)[:200]}...")
+                raise ValueError(f"Cloth Image shape 접근 실패: {e}")
+            
+            # Pose Keypoints 검증
+            if pose_keypoints is not None:
+                try:
+                    pose_shape = pose_keypoints.shape
+                    pose_type = type(pose_keypoints).__name__
+                    self.logger.info(f"   ✅ Pose Keypoints: {pose_type}, 크기: {pose_shape}")
+                except Exception as e:
+                    self.logger.error(f"❌ Pose Keypoints shape 접근 실패: {e}")
+                    self.logger.error(f"   Pose Keypoints 타입: {type(pose_keypoints)}")
+                    pose_shape = "Unknown"
+            else:
+                self.logger.info(f"   ℹ️ Pose Keypoints: None (선택사항)")
+                pose_shape = "None"
+            
             self.logger.info(f"   - Fitting Mode: {fitting_mode}")
             self.logger.info(f"   - Quality Level: {quality_level}")
             self.logger.info(f"   - Cloth Items Count: {len(cloth_items)}")
+            
+
+            
+            # 🔥 이미지 차원 및 채널 확인
+            self.logger.info(f"🔍 [DEBUG] 이미지 차원 및 채널 확인:")
+            self.logger.info(f"   - Person Image 차원: {len(person_image.shape)}, 채널: {person_image.shape[-1] if len(person_image.shape) >= 3 else 'N/A'}")
+            self.logger.info(f"   - Cloth Image 차원: {len(cloth_image.shape)}, 채널: {cloth_image.shape[-1] if len(cloth_image.shape) >= 3 else 'N/A'}")
+            
+            # 🔥 이미지 값 범위 확인
+            self.logger.info(f"🔍 [DEBUG] 이미지 값 범위 확인:")
+            self.logger.info(f"   - Person Image 값 범위: {person_image.min():.3f} ~ {person_image.max():.3f}")
+            self.logger.info(f"   - Cloth Image 값 범위: {cloth_image.min():.3f} ~ {cloth_image.max():.3f}")
+            
+            # 🔥 메모리 사용량 확인
+            try:
+                import sys
+                person_size = sys.getsizeof(person_image)
+                cloth_size = sys.getsizeof(cloth_image)
+                self.logger.info(f"🔍 [DEBUG] 메모리 사용량:")
+                self.logger.info(f"   - Person Image 메모리: {person_size / 1024 / 1024:.2f} MB")
+                self.logger.info(f"   - Cloth Image 메모리: {cloth_size / 1024 / 1024:.2f} MB")
+            except Exception as e:
+                self.logger.warning(f"⚠️ 메모리 사용량 확인 실패: {e}")
             
             # 🔥 1. 고급 의류 분석 실행
             cloth_analysis = self.cloth_analyzer.analyze_cloth_properties(cloth_image)
@@ -3441,8 +3632,70 @@ class VirtualFittingStep(BaseStepMixin):
             return result
             
         except Exception as e:
+            # 🔥 상세한 에러 로깅 추가
             self.logger.error(f"❌ Virtual Fitting AI 추론 실행 실패: {e}")
+            self.logger.error(f"🔍 [DEBUG] 에러 타입: {type(e).__name__}")
+            self.logger.error(f"🔍 [DEBUG] 에러 메시지: {str(e)}")
+            
+            # 🔥 에러 발생 위치 추적
+            import traceback
+            error_traceback = traceback.format_exc()
+            self.logger.error(f"🔍 [DEBUG] 에러 스택 트레이스:")
+            self.logger.error(error_traceback)
+            
+            # 🔥 입력 데이터 상태 확인
+            try:
+                self.logger.error(f"🔍 [DEBUG] 에러 발생 시점 입력 데이터 상태:")
+                self.logger.error(f"   - Person Image 타입: {type(person_image).__name__}")
+                self.logger.error(f"   - Cloth Image 타입: {type(cloth_image).__name__}")
+                self.logger.error(f"   - Pose Keypoints 타입: {type(pose_keypoints).__name__}")
+                self.logger.error(f"   - Fitting Mode: {fitting_mode}")
+                self.logger.error(f"   - Quality Level: {quality_level}")
+                
+                # 이미지 shape 확인
+                if hasattr(person_image, 'shape'):
+                    self.logger.error(f"   - Person Image shape: {person_image.shape}")
+                else:
+                    self.logger.error(f"   - Person Image shape 접근 불가")
+                
+                if hasattr(cloth_image, 'shape'):
+                    self.logger.error(f"   - Cloth Image shape: {cloth_image.shape}")
+                else:
+                    self.logger.error(f"   - Cloth Image shape 접근 불가")
+                
+                if pose_keypoints is not None and hasattr(pose_keypoints, 'shape'):
+                    self.logger.error(f"   - Pose Keypoints shape: {pose_keypoints.shape}")
+                else:
+                    self.logger.error(f"   - Pose Keypoints shape: None 또는 접근 불가")
+                    
+            except Exception as debug_error:
+                self.logger.error(f"   - 입력 데이터 상태 확인 실패: {debug_error}")
+            
+            # 🔥 모델 상태 확인
+            try:
+                self.logger.error(f"🔍 [DEBUG] 에러 발생 시점 모델 상태:")
+                self.logger.error(f"   - ai_models: {list(self.ai_models.keys()) if hasattr(self, 'ai_models') else 'None'}")
+                self.logger.error(f"   - loaded_models: {self.loaded_models if hasattr(self, 'loaded_models') else 'None'}")
+                self.logger.error(f"   - device: {self.device if hasattr(self, 'device') else 'None'}")
+                self.logger.error(f"   - cloth_analyzer: {type(self.cloth_analyzer).__name__ if hasattr(self, 'cloth_analyzer') else 'None'}")
+                self.logger.error(f"   - tps_warping: {type(self.tps_warping).__name__ if hasattr(self, 'tps_warping') else 'None'}")
+                self.logger.error(f"   - quality_assessor: {type(self.quality_assessor).__name__ if hasattr(self, 'quality_assessor') else 'None'}")
+            except Exception as model_error:
+                self.logger.error(f"   - 모델 상태 확인 실패: {model_error}")
+            
+            # 🔥 메모리 상태 확인
+            try:
+                import psutil
+                process = psutil.Process()
+                memory_info = process.memory_info()
+                self.logger.error(f"🔍 [DEBUG] 메모리 상태:")
+                self.logger.error(f"   - RSS: {memory_info.rss / 1024 / 1024:.2f} MB")
+                self.logger.error(f"   - VMS: {memory_info.vms / 1024 / 1024:.2f} MB")
+            except Exception as memory_error:
+                self.logger.error(f"   - 메모리 상태 확인 실패: {memory_error}")
+            
             # 응급 처리 - 기본 추론으로 폴백
+            self.logger.warning("⚠️ 응급 처리로 폴백 - 기본 추론 실행")
             return self._create_emergency_fitting_result(person_image, cloth_image, fitting_mode)
         
 
@@ -3665,72 +3918,102 @@ class VirtualFittingStep(BaseStepMixin):
         return EmergencyModelLoader()
 
     def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-        """API 입력을 Step 입력으로 변환"""
+        """API 입력을 Step 입력으로 변환 (kwargs 방식) - 간단한 이미지 전달"""
         try:
             step_input = api_input.copy()
             
-            # 이미지 데이터 추출 (다양한 키 이름 지원)
+            # 🔥 간단한 이미지 접근 방식
             person_image = None
             clothing_image = None
             
-            # person_image 추출
-            for key in ['person_image', 'image', 'input_image', 'original_image']:
-                if key in step_input:
-                    person_image = step_input[key]
-                    break
+            # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+            if 'session_data' in step_input:
+                session_data = step_input['session_data']
+                
+                # person_image 로드
+                if 'original_person_image' in session_data:
+                    try:
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        
+                        person_b64 = session_data['original_person_image']
+                        person_bytes = base64.b64decode(person_b64)
+                        person_image = Image.open(BytesIO(person_bytes)).convert('RGB')
+                        self.logger.info("✅ 세션 데이터에서 original_person_image 로드")
+                    except Exception as session_error:
+                        self.logger.warning(f"⚠️ 세션 person_image 로드 실패: {session_error}")
+                
+                # clothing_image 로드
+                if 'original_clothing_image' in session_data:
+                    try:
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        
+                        clothing_b64 = session_data['original_clothing_image']
+                        clothing_bytes = base64.b64decode(clothing_b64)
+                        clothing_image = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                        self.logger.info("✅ 세션 데이터에서 original_clothing_image 로드")
+                    except Exception as session_error:
+                        self.logger.warning(f"⚠️ 세션 clothing_image 로드 실패: {session_error}")
             
-            # clothing_image 추출
-            for key in ['clothing_image', 'cloth_image', 'target_image']:
-                if key in step_input:
-                    clothing_image = step_input[key]
-                    break
+            # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+            if person_image is None:
+                for key in ['person_image', 'image', 'input_image', 'original_image']:
+                    if key in step_input and step_input[key] is not None:
+                        person_image = step_input[key]
+                        self.logger.info(f"✅ 직접 전달된 {key} 사용 (person)")
+                        break
             
-            if (person_image is None or clothing_image is None) and 'session_id' in step_input:
-                # 세션에서 이미지 로드
-                try:
-                    session_manager = self._get_service_from_central_hub('session_manager')
-                    if session_manager:
-                        # 🔥 세션에서 원본 이미지 직접 로드 (동기적으로)
-                        try:
-                            # 동기 메서드가 있는지 확인
-                            if hasattr(session_manager, 'get_session_images_sync'):
-                                session_person, session_clothing = session_manager.get_session_images_sync(step_input['session_id'])
-                            else:
-                                # 비동기 메서드를 동기적으로 실행
-                                import asyncio
-                                import concurrent.futures
-                                
-                                def run_async_session_load():
-                                    try:
-                                        return asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                                    except Exception as e:
-                                        self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {e}")
-                                        return None, None
-                                
-                                with concurrent.futures.ThreadPoolExecutor() as executor:
-                                    future = executor.submit(run_async_session_load)
-                                    session_person, session_clothing = future.result(timeout=10)
-                            
-                            if person_image is None and session_person:
-                                person_image = session_person
-                            if clothing_image is None and session_clothing:
-                                clothing_image = session_clothing
-                                
-                        except Exception as session_error:
-                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {session_error}")
-                            
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+            if clothing_image is None:
+                for key in ['clothing_image', 'cloth_image', 'target_image']:
+                    if key in step_input and step_input[key] is not None:
+                        clothing_image = step_input[key]
+                        self.logger.info(f"✅ 직접 전달된 {key} 사용 (clothing)")
+                        break
+            
+            # 3순위: 기본값
+            if person_image is None:
+                self.logger.info("ℹ️ person_image가 없음 - 기본값 사용")
+                person_image = None
+            
+            if clothing_image is None:
+                self.logger.info("ℹ️ clothing_image가 없음 - 기본값 사용")
+                clothing_image = None
+            
+            # 🔥 kwargs에서 이전 단계 결과들을 직접 가져오기
+            cloth_items = step_input.get('cloth_items', [])
+            pose_keypoints = step_input.get('pose_keypoints')
+            
+            # 이전 단계 결과들이 kwargs에 없으면 기본값 사용
+            if not cloth_items:
+                self.logger.info("ℹ️ cloth_items가 없음 - 기본값 사용")
+                cloth_items = []
+            
+            if pose_keypoints is None:
+                self.logger.info("ℹ️ pose_keypoints가 없음 - 기본값 사용")
+                pose_keypoints = None
             
             # 변환된 입력 구성
             converted_input = {
                 'person_image': person_image,
                 'cloth_image': clothing_image,
                 'session_id': step_input.get('session_id'),
-                'fitting_quality': step_input.get('fitting_quality', 'high')
+                'fitting_quality': step_input.get('fitting_quality', 'high'),
+                'cloth_items': cloth_items,
+                'pose_keypoints': pose_keypoints
             }
             
+            # 🔥 상세 로깅
             self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+            self.logger.info(f"✅ 이미지 상태: person_image={'있음' if person_image is not None else '없음'}, clothing_image={'있음' if clothing_image is not None else '없음'}")
+            if person_image is not None:
+                self.logger.info(f"✅ person_image 정보: 타입={type(person_image)}, 크기={getattr(person_image, 'size', 'unknown')}")
+            if clothing_image is not None:
+                self.logger.info(f"✅ clothing_image 정보: 타입={type(clothing_image)}, 크기={getattr(clothing_image, 'size', 'unknown')}")
+            self.logger.info(f"✅ 이전 단계 데이터: cloth_items={len(cloth_items)}개, pose_keypoints={'있음' if pose_keypoints is not None else '없음'}")
+            
             return converted_input
             
         except Exception as e:
@@ -3764,39 +4047,119 @@ class VirtualFittingStep(BaseStepMixin):
 
     def _extract_cloth_mask(self, cloth_image: np.ndarray) -> np.ndarray:
         """의류 마스크 추출"""
-        if len(cloth_image.shape) == 3:
-            gray = np.mean(cloth_image, axis=2)
-        else:
-            gray = cloth_image
-        
-        # 간단한 임계값 기반 마스크 생성
-        threshold = np.mean(gray) * 0.8
-        mask = (gray > threshold).astype(np.uint8)
-        
-        # 모폴로지 연산으로 노이즈 제거
-        kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        
-        return mask
+        try:
+            # 🔥 입력 검증
+            if cloth_image is None:
+                self.logger.warning("⚠️ _extract_cloth_mask: 입력 이미지가 None")
+                return np.zeros((100, 100), dtype=np.uint8)
+            
+            # 🔥 차원 확인
+            if len(cloth_image.shape) == 3:
+                gray = np.mean(cloth_image, axis=2)
+                self.logger.debug(f"✅ _extract_cloth_mask: 3차원 이미지 처리 - 원본: {cloth_image.shape}, 그레이: {gray.shape}")
+            elif len(cloth_image.shape) == 2:
+                gray = cloth_image
+                self.logger.debug(f"✅ _extract_cloth_mask: 2차원 이미지 처리 - {gray.shape}")
+            else:
+                self.logger.warning(f"⚠️ _extract_cloth_mask: 예상치 못한 차원 - {cloth_image.shape}")
+                return np.zeros((100, 100), dtype=np.uint8)
+            
+            # 🔥 임계값 기반 마스크 생성
+            threshold = np.mean(gray) * 0.8
+            mask = (gray > threshold).astype(np.uint8)
+            self.logger.debug(f"✅ _extract_cloth_mask: 임계값 마스크 생성 - 임계값: {threshold:.2f}, 마스크 크기: {mask.shape}")
+            
+            # 🔥 모폴로지 연산으로 노이즈 제거
+            try:
+                kernel = np.ones((5, 5), np.uint8)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                self.logger.debug(f"✅ _extract_cloth_mask: 모폴로지 연산 완료 - 마스크 크기: {mask.shape}")
+            except Exception as morph_error:
+                self.logger.warning(f"⚠️ _extract_cloth_mask: 모폴로지 연산 실패 - {morph_error}")
+                # 모폴로지 연산 실패 시 원본 마스크 사용
+            
+            return mask
+            
+        except Exception as e:
+            self.logger.error(f"❌ _extract_cloth_mask: 마스크 추출 실패 - {e}")
+            # 에러 발생 시 기본 마스크 반환
+            if cloth_image is not None and hasattr(cloth_image, 'shape'):
+                return np.ones(cloth_image.shape[:2], dtype=np.uint8)
+            else:
+                return np.zeros((100, 100), dtype=np.uint8)
 
     def _create_emergency_fitting_result(self, person_image: np.ndarray, cloth_image: np.ndarray, fitting_mode: str) -> Dict[str, Any]:
         """긴급 피팅 결과 생성"""
+        # 🔥 이미지 타입 안전한 변환
+        try:
+            # PIL Image를 numpy array로 변환
+            if hasattr(person_image, 'convert') or hasattr(person_image, 'size'):
+                self.logger.info("🔄 Emergency: Person Image를 PIL에서 numpy로 변환")
+                person_image = np.array(person_image)
+            
+            if hasattr(cloth_image, 'convert') or hasattr(cloth_image, 'size'):
+                self.logger.info("🔄 Emergency: Cloth Image를 PIL에서 numpy로 변환")
+                cloth_image = np.array(cloth_image)
+            
+            self.logger.info(f"✅ Emergency: 이미지 변환 완료 - Person: {person_image.shape}, Cloth: {cloth_image.shape}")
+        except Exception as e:
+            self.logger.error(f"❌ Emergency: 이미지 변환 실패: {e}")
+            # 데모 이미지로 폴백
+            return {
+                'fitted_image': self._create_demo_fitted_image(),
+                'fit_score': 0.5,
+                'confidence': 0.5,
+                'quality_score': 0.5,
+                'processing_time': 0.1,
+                'model_used': 'emergency_demo',
+                'success': False,
+                'message': f'긴급 피팅 실패: {e}',
+                'recommendations': [
+                    "이미지 변환 오류로 인해 데모 이미지를 반환합니다",
+                    "다시 시도해주세요"
+                ]
+            }
+        
         # 간단한 블렌딩으로 Mock 결과 생성
         if len(person_image.shape) == 3 and len(cloth_image.shape) == 3:
-            # 의류 영역 추정
-            cloth_mask = self._extract_cloth_mask(cloth_image)
-            
-            # 블렌딩
-            alpha = 0.7
-            blended = person_image.copy().astype(np.float32)
-            blended[cloth_mask > 0] = (
-                alpha * cloth_image[cloth_mask > 0] + 
-                (1 - alpha) * person_image[cloth_mask > 0]
-            )
-            
-            fitted_image = np.clip(blended, 0, 255).astype(np.uint8)
+            try:
+                # 🔥 이미지 크기 맞추기
+                self.logger.info(f"🔄 Emergency: 이미지 크기 맞추기 - Person: {person_image.shape}, Cloth: {cloth_image.shape}")
+                
+                # Person Image를 기준으로 Cloth Image 리사이즈
+                person_height, person_width = person_image.shape[:2]
+                cloth_resized = cv2.resize(cloth_image, (person_width, person_height))
+                self.logger.info(f"✅ Emergency: Cloth Image 리사이즈 완료: {cloth_resized.shape}")
+                
+                # 의류 영역 추정 (리사이즈된 이미지 사용)
+                cloth_mask = self._extract_cloth_mask(cloth_resized)
+                self.logger.info(f"✅ Emergency: Cloth Mask 생성 완료: {cloth_mask.shape}")
+                
+                # 블렌딩
+                alpha = 0.7
+                blended = person_image.copy().astype(np.float32)
+                
+                # 마스크가 있는 영역만 블렌딩
+                mask_indices = cloth_mask > 0
+                if np.any(mask_indices):
+                    blended[mask_indices] = (
+                        alpha * cloth_resized[mask_indices] + 
+                        (1 - alpha) * person_image[mask_indices]
+                    )
+                    self.logger.info(f"✅ Emergency: 블렌딩 완료 - 마스크 픽셀 수: {np.sum(mask_indices)}")
+                else:
+                    self.logger.warning("⚠️ Emergency: 마스크 영역이 없음 - 원본 이미지 사용")
+                
+                fitted_image = np.clip(blended, 0, 255).astype(np.uint8)
+                self.logger.info(f"✅ Emergency: 최종 이미지 생성 완료: {fitted_image.shape}")
+                
+            except Exception as blending_error:
+                self.logger.error(f"❌ Emergency: 블렌딩 실패: {blending_error}")
+                # 블렌딩 실패 시 원본 이미지 사용
+                fitted_image = person_image.copy()
         else:
+            self.logger.warning("⚠️ Emergency: 이미지 차원 불일치 - 원본 이미지 사용")
             fitted_image = person_image.copy()
         
         return {
@@ -4634,6 +4997,73 @@ class VirtualFittingStep(BaseStepMixin):
             self.logger.warning(f"⚠️ 조명 적응 실패: {e}")
             return fitted_image
 
+    def process(self, **kwargs) -> Dict[str, Any]:
+        """🔥 VirtualFittingStep process 메서드 (time 모듈 오류 수정)"""
+        print(f"🔍 VirtualFittingStep process 시작")
+        print(f"🔍 kwargs: {list(kwargs.keys()) if kwargs else 'None'}")
+        
+        try:
+            import time
+            start_time = time.time()
+            print(f"✅ start_time 설정 완료: {start_time}")
+            
+            # 🔥 목업 데이터 감지 로그 추가
+            if MOCK_DIAGNOSTIC_AVAILABLE:
+                print(f"🔍 목업 데이터 진단 시작")
+                mock_detections = []
+                for key, value in kwargs.items():
+                    if value is not None:
+                        mock_detection = detect_mock_data(value)
+                        if mock_detection['is_mock']:
+                            mock_detections.append({
+                                'input_key': key,
+                                'detection_result': mock_detection
+                            })
+                            print(f"⚠️ 목업 데이터 감지: {key} - {mock_detection}")
+                
+                if mock_detections:
+                    print(f"⚠️ 총 {len(mock_detections)}개의 목업 데이터 감지됨")
+                else:
+                    print(f"✅ 목업 데이터 없음 - 실제 데이터 사용")
+            else:
+                print(f"ℹ️ 목업 데이터 진단 시스템 사용 불가")
+            
+            # 입력 데이터 변환
+            processed_input = self.convert_api_input_to_step_input(kwargs)
+            
+            # AI 추론 실행
+            result = self._run_ai_inference(processed_input)
+            
+            # 최종 결과 포맷팅 (간단한 방식으로 변경)
+            try:
+                import time
+                processing_time = time.time() - start_time
+            except Exception as time_error:
+                print(f"⚠️ time 모듈 접근 실패: {time_error}")
+                processing_time = 0.0
+            
+            # 결과에 처리 시간 추가
+            result['processing_time'] = processing_time
+            final_result = result
+            
+            print(f"✅ VirtualFittingStep process 완료")
+            return final_result
+            
+        except Exception as e:
+            print(f"❌ VirtualFittingStep process 실패: {e}")
+            try:
+                import time
+                processing_time = time.time() - start_time if 'start_time' in locals() else 0.0
+            except Exception as time_error:
+                print(f"⚠️ time 모듈 접근 실패: {time_error}")
+                processing_time = 0.0
+            return {
+                'success': False,
+                'error': 'VIRTUAL_FITTING_PROCESS_ERROR',
+                'message': f"Virtual Fitting 처리 실패: {str(e)}",
+                'processing_time': processing_time
+            }
+
 # 팩토리 함수들
 def create_virtual_fitting_step(**kwargs) -> VirtualFittingStep:
     """VirtualFittingStep 팩토리 함수"""
@@ -5206,6 +5636,7 @@ class StyleGANVirtualFittingNetwork(nn.Module):
             ai_result = self._ensure_fitted_image_base64(ai_result)
             
             # 2. 기존 포맷팅 로직
+            import time
             processing_time = time.time() - start_time
             
             # 기본값 설정
@@ -5259,7 +5690,7 @@ class StyleGANVirtualFittingNetwork(nn.Module):
                 'fitting_confidence': 0.3,
                 'fit_score': 0.3,
                 'quality_score': 0.3,
-                'processing_time': time.time() - start_time,
+                'processing_time': time.time() - start_time if 'time' in globals() else 0.0,
                 'success': False,
                 'message': f'포맷팅 실패: {str(e)}',
                 'confidence': 0.3,

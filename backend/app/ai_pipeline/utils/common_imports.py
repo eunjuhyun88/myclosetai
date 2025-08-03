@@ -325,7 +325,7 @@ except ImportError:
 
 # ✅ 에러 처리 시스템 가용성 변수
 EXCEPTIONS_AVAILABLE = False
-MOCK_DIAGNOSTIC_AVAILABLE = False
+MOCK_DIAGNOSTIC_AVAILABLE = True
 
 # ==============================================
 # 통합된 에러 처리 시스템
@@ -375,8 +375,12 @@ except ImportError:
     # 폴백 함수들
     def detect_mock_data(data):
         return {'is_mock': False}
-    def track_exception(error, context, step_id):
-        pass
+    def track_exception(error, context=None, step_id=None):
+        """폴백 track_exception 함수"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Track Exception (폴백): {error}")
+        return None
     def log_detailed_error(error, context, step_id):
         pass
     def create_exception_response(error, step_name, step_id, session_id):
@@ -394,7 +398,7 @@ except ImportError:
 # Mock Data Diagnostic System
 # ==============================================
 try:
-    from app.core.mock_diagnostic import (
+    from app.core.mock_data_diagnostic import (
         MockDataDiagnostic,
         diagnose_step_data,
         get_diagnostic_summary,

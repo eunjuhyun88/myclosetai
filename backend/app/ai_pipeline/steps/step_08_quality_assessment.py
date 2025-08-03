@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+"""*
 🔥 MyCloset AI - Step 08: Quality Assessment v20.0 - Central Hub DI Container 완전 연동
 ===================================================================================
 
@@ -84,7 +84,7 @@ if BaseStepMixin is None:
     class BaseStepMixin:
         """QualityAssessmentStep용 BaseStepMixin 폴백 클래스"""
         
-        def __init__(self, **kwargs):
+        def __init__(self, *kwargs):
             # 기본 속성들
             self.logger = logging.getLogger(self.__class__.__name__)
             self.step_name = kwargs.get('step_name', 'QualityAssessmentStep')
@@ -333,31 +333,45 @@ if BaseStepMixin is None:
                 return None
 
         def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-            """API 입력을 Step 입력으로 변환"""
+            """API 입력을 Step 입력으로 변환 (kwargs 방식) - 간단한 이미지 전달"""
             try:
                 step_input = api_input.copy()
                 
-                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                # 🔥 간단한 이미지 접근 방식
                 image = None
-                for key in ['image', 'fitted_image', 'enhanced_image', 'input_image', 'original_image']:
-                    if key in step_input:
-                        image = step_input[key]
-                        break
                 
-                if image is None and 'session_id' in step_input:
-                    # 세션에서 이미지 로드
-                    try:
-                        session_manager = self._get_service_from_central_hub('session_manager')
-                        if session_manager:
-                            import asyncio
-                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                            # 품질 평가는 fitted_image를 우선적으로 찾음
-                            if 'fitted_image' in step_input:
-                                image = step_input['fitted_image']
-                            elif person_image:
-                                image = person_image
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+                if 'session_data' in step_input:
+                    session_data = step_input['session_data']
+                    
+                    # fitted_image 또는 enhanced_image 로드
+                    for image_key in ['fitted_image', 'enhanced_image', 'original_person_image']:
+                        if image_key in session_data:
+                            try:
+                                import base64
+                                from io import BytesIO
+                                from PIL import Image
+                                
+                                image_b64 = session_data[image_key]
+                                image_bytes = base64.b64decode(image_b64)
+                                image = Image.open(BytesIO(image_bytes)).convert('RGB')
+                                self.logger.info(f"✅ 세션 데이터에서 {image_key} 로드")
+                                break
+                            except Exception as session_error:
+                                self.logger.warning(f"⚠️ 세션 {image_key} 로드 실패: {session_error}")
+                
+                # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+                if image is None:
+                    for key in ['image', 'fitted_image', 'enhanced_image', 'input_image', 'original_image']:
+                        if key in step_input and step_input[key] is not None:
+                            image = step_input[key]
+                            self.logger.info(f"✅ 직접 전달된 {key} 사용")
+                            break
+                
+                # 3순위: 기본값
+                if image is None:
+                    self.logger.info("ℹ️ 이미지가 없음 - 기본값 사용")
+                    image = None
                 
                 # 변환된 입력 구성
                 converted_input = {
@@ -368,7 +382,12 @@ if BaseStepMixin is None:
                     'quality_options': step_input.get('quality_options', {})
                 }
                 
+                # 🔥 상세 로깅
                 self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                self.logger.info(f"✅ 이미지 상태: {'있음' if image is not None else '없음'}")
+                if image is not None:
+                    self.logger.info(f"✅ 이미지 정보: 타입={type(image)}, 크기={getattr(image, 'size', 'unknown')}")
+                
                 return converted_input
                 
             except Exception as e:

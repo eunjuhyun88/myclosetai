@@ -998,14 +998,19 @@ class StepServiceManager:
             return {'success': False, 'error': str(e), 'central_hub_used': self.central_hub_container is not None}
 
     def process_step_by_name_sync(self, step_name: str, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Central Hub 기반 Step 이름으로 처리 (동기 버전)"""
+        """Central Hub 기반 Step 이름으로 처리 (동기 버전) - 복합 Step 지원"""
         try:
-            # 1. Central Hub를 통한 Step 생성 (자동 의존성 주입)
+            # 특별한 복합 Step 처리
+            if step_name.lower() in ['virtual_fitting', 'virtual-fitting']:
+                return self._process_virtual_fitting_composite(api_input, **kwargs)
+            elif step_name.lower() in ['result_analysis', 'result-analysis']:
+                return self._process_result_analysis_composite(api_input, **kwargs)
+            
+            # 일반적인 단일 Step 처리
             if self.step_factory:
                 step_type = self._get_step_type_from_name(step_name)
                 
                 # 완전 동기적으로 Step 인스턴스 생성
-                # _create_step_instance는 async이므로 동기 래퍼 사용
                 creation_result = self._create_step_instance_sync(step_type, **kwargs)
                 
                 if not creation_result[0]:
@@ -1013,28 +1018,25 @@ class StepServiceManager:
                 
                 step_instance = creation_result[1]
                 
-                # 2. Central Hub 추가 의존성 주입 확인
+                # Central Hub 추가 의존성 주입 확인
                 additional_injections = 0
                 if self.central_hub_container:
                     additional_injections = _inject_dependencies_to_step_safe(step_instance)
                 
-                # 3. DetailedDataSpec 기반 데이터 변환 (완전 동기적으로)
+                # DetailedDataSpec 기반 데이터 변환
                 if hasattr(step_instance, 'convert_api_input_to_step_input'):
-                    # convert_api_input_to_step_input이 async인지 확인하고 적절히 처리
                     import inspect
                     if inspect.iscoroutinefunction(step_instance.convert_api_input_to_step_input):
-                        # async 함수인 경우 동기 래퍼 사용
                         converted_input = self._run_async_method_sync(step_instance.convert_api_input_to_step_input, api_input)
                     else:
-                        # 동기 함수인 경우 직접 호출
                         converted_input = step_instance.convert_api_input_to_step_input(api_input)
                 else:
                     converted_input = api_input
                 
-                # 4. AI 추론 실행 (동기적으로)
+                # AI 추론 실행
                 step_output = step_instance.process(**converted_input)
                 
-                # 5. API 응답 변환 (동기적으로)
+                # API 응답 변환
                 if hasattr(step_instance, 'convert_step_output_to_api_response'):
                     api_response = step_instance.convert_step_output_to_api_response(step_output)
                 else:
@@ -1053,6 +1055,94 @@ class StepServiceManager:
                 
         except Exception as e:
             return {'success': False, 'error': str(e), 'central_hub_used': self.central_hub_container is not None}
+    
+    def _process_virtual_fitting_composite(self, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Step 7: Virtual Fitting 복합 처리 (step_05_cloth_warping + step_06_virtual_fitting)"""
+        try:
+            total_processing_time = 0
+            combined_result = {}
+            
+            # 1단계: Cloth Warping (step_05_cloth_warping.py)
+            self.logger.info("🔄 Step 7-1: Cloth Warping 시작")
+            warping_result = self._create_step_instance_sync('cloth_warping', **kwargs)
+            if warping_result[0]:
+                warping_instance = warping_result[1]
+                warping_output = warping_instance.process(**api_input)
+                combined_result['warping_result'] = warping_output
+                total_processing_time += warping_output.get('processing_time', 0)
+                self.logger.info("✅ Step 7-1: Cloth Warping 완료")
+            else:
+                self.logger.warning(f"⚠️ Cloth Warping 실패: {warping_result[2]}")
+            
+            # 2단계: Virtual Fitting (step_06_virtual_fitting.py)
+            self.logger.info("🔄 Step 7-2: Virtual Fitting 시작")
+            fitting_result = self._create_step_instance_sync('virtual_fitting', **kwargs)
+            if fitting_result[0]:
+                fitting_instance = fitting_result[1]
+                # warping 결과를 fitting 입력에 추가
+                fitting_input = {**api_input, 'warping_result': combined_result.get('warping_result', {})}
+                fitting_output = fitting_instance.process(**fitting_input)
+                combined_result['fitting_result'] = fitting_output
+                total_processing_time += fitting_output.get('processing_time', 0)
+                self.logger.info("✅ Step 7-2: Virtual Fitting 완료")
+            else:
+                self.logger.warning(f"⚠️ Virtual Fitting 실패: {fitting_result[2]}")
+            
+            return {
+                'success': True,
+                'result': combined_result,
+                'step_name': 'Virtual Fitting (Composite)',
+                'processing_time': total_processing_time,
+                'central_hub_used': True,
+                'composite_steps': ['cloth_warping', 'virtual_fitting']
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Virtual Fitting 복합 처리 실패: {str(e)}'}
+    
+    def _process_result_analysis_composite(self, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Step 8: Result Analysis 복합 처리 (step_07_post_processing + step_08_quality_assessment)"""
+        try:
+            total_processing_time = 0
+            combined_result = {}
+            
+            # 1단계: Post Processing (step_07_post_processing.py)
+            self.logger.info("🔄 Step 8-1: Post Processing 시작")
+            post_result = self._create_step_instance_sync('post_processing', **kwargs)
+            if post_result[0]:
+                post_instance = post_result[1]
+                post_output = post_instance.process(**api_input)
+                combined_result['post_processing_result'] = post_output
+                total_processing_time += post_output.get('processing_time', 0)
+                self.logger.info("✅ Step 8-1: Post Processing 완료")
+            else:
+                self.logger.warning(f"⚠️ Post Processing 실패: {post_result[2]}")
+            
+            # 2단계: Quality Assessment (step_08_quality_assessment.py)
+            self.logger.info("🔄 Step 8-2: Quality Assessment 시작")
+            quality_result = self._create_step_instance_sync('quality_assessment', **kwargs)
+            if quality_result[0]:
+                quality_instance = quality_result[1]
+                # post processing 결과를 quality assessment 입력에 추가
+                quality_input = {**api_input, 'post_processing_result': combined_result.get('post_processing_result', {})}
+                quality_output = quality_instance.process(**quality_input)
+                combined_result['quality_assessment_result'] = quality_output
+                total_processing_time += quality_output.get('processing_time', 0)
+                self.logger.info("✅ Step 8-2: Quality Assessment 완료")
+            else:
+                self.logger.warning(f"⚠️ Quality Assessment 실패: {quality_result[2]}")
+            
+            return {
+                'success': True,
+                'result': combined_result,
+                'step_name': 'Result Analysis (Composite)',
+                'processing_time': total_processing_time,
+                'central_hub_used': True,
+                'composite_steps': ['post_processing', 'quality_assessment']
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Result Analysis 복합 처리 실패: {str(e)}'}
     
     def _create_step_instance_sync(self, step_type: Union[str, int], **kwargs) -> Tuple[bool, Optional[Any], str]:
         """동기적으로 Step 인스턴스 생성"""
@@ -1093,28 +1183,33 @@ class StepServiceManager:
             return None
     
     def _get_step_type_from_name(self, step_name: str) -> str:
-        """Step 이름에서 타입 추출 (StepFactory 호환)"""
+        """Step 이름에서 타입 추출 (StepFactory 호환) - 올바른 매핑"""
+        # 라우터와 실제 Step 파일의 올바른 매핑
         step_mapping = {
-            'human_parsing': 'human_parsing',
-            'pose_estimation': 'pose_estimation',
-            'clothing_analysis': 'cloth_segmentation',
-            'cloth_segmentation': 'cloth_segmentation',
-            'geometric_matching': 'geometric_matching',
-            'virtual_fitting': 'virtual_fitting',
-            'cloth_warping': 'cloth_warping',
-            'post_processing': 'post_processing',
-            'quality_assessment': 'quality_assessment',
-            'result_analysis': 'quality_assessment',
-            'measurementsvalidation': 'measurements_validation',  # Step 2 추가
-            'measurements_validation': 'measurements_validation'  # Step 2 추가
+            # 라우터 Step 1, 2는 이미지 유틸리티 (세션 관리)
+            'upload_validation': 'upload_validation',
+            'measurements_validation': 'measurements_validation',
+            
+            # 라우터 Step 3-8은 실제 AI Step 파일들
+            'human_parsing': 'human_parsing',  # step_01_human_parsing.py
+            'pose_estimation': 'pose_estimation',  # step_02_pose_estimation.py
+            'clothing_analysis': 'cloth_segmentation',  # step_03_cloth_segmentation.py
+            'cloth_segmentation': 'cloth_segmentation',  # step_03_cloth_segmentation.py
+            'geometric_matching': 'geometric_matching',  # step_04_geometric_matching.py
+            'virtual_fitting': 'virtual_fitting',  # step_06_virtual_fitting.py
+            'cloth_warping': 'cloth_warping',  # step_05_cloth_warping.py
+            'post_processing': 'post_processing',  # step_07_post_processing.py
+            'quality_assessment': 'quality_assessment',  # step_08_quality_assessment.py
+            'result_analysis': 'quality_assessment',  # step_08_quality_assessment.py
         }
         
+        # 정확한 매칭 시도
+        step_name_lower = step_name.lower()
         for key, value in step_mapping.items():
-            if key in step_name.lower():
+            if key in step_name_lower:
                 return value
         
         # 더 정확한 매핑을 위해 step_name을 직접 확인
-        step_name_lower = step_name.lower()
         if 'measurements' in step_name_lower or 'validation' in step_name_lower:
             return 'measurements_validation'
         elif 'human' in step_name_lower or 'parsing' in step_name_lower:

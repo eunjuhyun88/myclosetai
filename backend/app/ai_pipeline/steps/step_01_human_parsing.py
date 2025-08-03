@@ -31,7 +31,7 @@ Version: 8.1 (Common Imports Integration)
 # 🔥 Common Imports 사용
 from app.ai_pipeline.utils.common_imports import (
     # 표준 라이브러리
-    os, sys, gc, time, logging, threading, traceback, warnings,
+    os, sys, gc, logging, threading, traceback, warnings,
     Path, Dict, Any, Optional, Tuple, List, Union, TYPE_CHECKING,
     dataclass, field, Enum, BytesIO, ThreadPoolExecutor,
     
@@ -45,8 +45,17 @@ from app.ai_pipeline.utils.common_imports import (
     
     # 상수
     DEVICE_CPU, DEVICE_CUDA, DEVICE_MPS,
-    DEFAULT_INPUT_SIZE, DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_QUALITY_THRESHOLD
+    DEFAULT_INPUT_SIZE, DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_QUALITY_THRESHOLD,
+    
+    # 에러 처리
+    EXCEPTIONS_AVAILABLE, convert_to_mycloset_exception, track_exception, create_exception_response
 )
+
+# 🔥 직접 import (common_imports에서 누락된 모듈들)
+import time
+
+# 🔥 Human Parsing Step 클래스용 time 모듈 재확인
+import time as time_module
 
 # 🔥 Human Parsing 전용 에러 처리 헬퍼 함수들 (추가)
 try:
@@ -60,6 +69,17 @@ except ImportError:
     HUMAN_PARSING_HELPERS_AVAILABLE = False
     logger = logging.getLogger(__name__)
     logger.warning("Human Parsing 전용 에러 처리 헬퍼 함수들을 import할 수 없습니다.")
+
+# 🔥 Mock 데이터 진단 시스템 (추가)
+try:
+    from app.core.mock_data_diagnostic import (
+        detect_mock_data, diagnose_step_data, get_diagnostic_summary, diagnostic_decorator
+    )
+    MOCK_DIAGNOSTIC_AVAILABLE = True
+except ImportError:
+    MOCK_DIAGNOSTIC_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Mock 데이터 진단 시스템을 import할 수 없습니다.")
 
 # BaseStepMixin은 이미 import됨
 
@@ -1539,7 +1559,7 @@ class MockHumanParsingModel(nn.Module):
         
         # 클래스별 확률을 공간적으로 확장
         parsing = features.unsqueeze(-1).unsqueeze(-1)
-        parsing = parsing.expand(batch_size, self.num_classes, height, width)
+        parsintimeg = parsing.expand(batch_size, self.num_classes, height, width)
         
         # 중앙 영역을 인체로 가정
         center_mask = torch.zeros_like(parsing[:, 0:1])
@@ -1559,6 +1579,15 @@ class MockHumanParsingModel(nn.Module):
 # ==============================================
 
 # BaseStepMixin 사용 가능
+# 🔥 HumanParsingStep 클래스용 time 모듈 명시적 import
+import time
+
+# 🔥 전역 스코프에서 time 모듈 사용 가능하도록
+globals()['time'] = time
+
+# 🔥 클래스 정의 시점에 time 모듈을 로컬 스코프에도 추가
+locals()['time'] = time
+
 class HumanParsingStep(BaseStepMixin):
         """
         🔥 Step 01: Human Parsing v8.0 - Central Hub DI Container v7.0 완전 연동
@@ -1576,39 +1605,69 @@ class HumanParsingStep(BaseStepMixin):
         
         def __init__(self, **kwargs):
             """Central Hub DI Container 기반 초기화"""
+            print(f"🔍 HumanParsingStep __init__ 시작")
             try:
+                print(f"🔍 super().__init__() 호출 전")
                 # 🔥 BaseStepMixin v20.0 완전 상속 - super().__init__() 호출
                 super().__init__(
                     step_name="HumanParsingStep",
                     **kwargs
                 )
+                print(f"✅ super().__init__() 호출 완료")
+                
+                # 🔥 time 모듈 참조 저장 (클래스 내부에서 사용하기 위해)
+                print(f"🔍 time 모듈 import 시작")
+                import time
+                print(f"✅ time 모듈 import 성공")
+                self.time = time
+                print(f"✅ time 모듈 참조 저장 완료")
                 
                 # 🔥 필수 속성들 초기화 (Central Hub DI Container 요구사항)
+                print(f"🔍 AI 모델 저장소 초기화 시작")
                 self.ai_models = {}  # AI 모델 저장소
+                print(f"✅ AI 모델 저장소 초기화 완료")
+                
+                print(f"🔍 모델 로딩 상태 초기화 시작")
                 self.models_loading_status = {  # 모델 로딩 상태
                     'graphonomy': False,
                     'u2net': False,
                     'mock': False
                 }
+                print(f"✅ 모델 로딩 상태 초기화 완료")
+                
+                print(f"🔍 모델 인터페이스 초기화 시작")
                 self.model_interface = None  # ModelLoader 인터페이스
                 self.model_loader = None  # ModelLoader 직접 참조
                 self.loaded_models = []  # 로드된 모델 목록
+                print(f"✅ 모델 인터페이스 초기화 완료")
                 
                 # Human Parsing 설정
+                print(f"🔍 Human Parsing 설정 초기화 시작")
                 self.config = EnhancedHumanParsingConfig()
+                print(f"✅ EnhancedHumanParsingConfig 생성 완료")
+                
                 if 'parsing_config' in kwargs:
+                    print(f"🔍 parsing_config 처리 시작")
                     config_dict = kwargs['parsing_config']
                     if isinstance(config_dict, dict):
+                        print(f"🔍 dict 타입 parsing_config 처리")
                         for key, value in config_dict.items():
                             if hasattr(self.config, key):
                                 setattr(self.config, key, value)
+                        print(f"✅ dict 타입 parsing_config 처리 완료")
                     elif isinstance(config_dict, EnhancedHumanParsingConfig):
+                        print(f"🔍 EnhancedHumanParsingConfig 타입 parsing_config 처리")
                         self.config = config_dict
+                        print(f"✅ EnhancedHumanParsingConfig 타입 parsing_config 처리 완료")
+                print(f"✅ Human Parsing 설정 초기화 완료")
                 
                 # 🔥 고급 후처리 프로세서 초기화
+                print(f"🔍 고급 후처리 프로세서 초기화 시작")
                 self.postprocessor = AdvancedPostProcessor()
+                print(f"✅ 고급 후처리 프로세서 초기화 완료")
                 
                 # 성능 통계 확장
+                print(f"🔍 성능 통계 초기화 시작")
                 self.ai_stats = {
                     'total_processed': 0,
                     'preprocessing_time': 0.0,
@@ -1629,35 +1688,77 @@ class HumanParsingStep(BaseStepMixin):
                     'average_confidence': 0.0,
                     'total_algorithms_applied': 0
                 }
+                print(f"✅ 성능 통계 초기화 완료")
                 
                 # 성능 최적화
+                print(f"🔍 ThreadPoolExecutor 초기화 시작")
+                from concurrent.futures import ThreadPoolExecutor
+                print(f"✅ ThreadPoolExecutor import 성공")
                 self.executor = ThreadPoolExecutor(
                     max_workers=4 if IS_M3_MAX else 2,
                     thread_name_prefix="human_parsing"
                 )
+                print(f"✅ ThreadPoolExecutor 초기화 완료")
                 
+                print(f"🔍 로거 정보 출력 시작")
                 self.logger.info(f"✅ {self.step_name} Central Hub DI Container v7.0 기반 초기화 완료")
                 self.logger.info(f"   - Device: {self.device}")
                 self.logger.info(f"   - M3 Max: {IS_M3_MAX}")
+                print(f"✅ 로거 정보 출력 완료")
+                
+                print(f"🎉 HumanParsingStep __init__ 완료!")
                 
             except Exception as e:
+                print(f"❌ HumanParsingStep 초기화 실패: {e}")
+                print(f"❌ 오류 타입: {type(e)}")
+                import traceback
+                print(f"❌ 상세 오류: {traceback.format_exc()}")
                 self.logger.error(f"❌ HumanParsingStep 초기화 실패: {e}")
                 self._emergency_setup(**kwargs)
         
         def _emergency_setup(self, **kwargs):
             """긴급 설정 (초기화 실패 시)"""
+            print(f"🔍 HumanParsingStep _emergency_setup 시작")
             try:
+                print(f"🔍 step_name 설정 시작")
                 self.step_name = "HumanParsingStep"
+                print(f"✅ step_name 설정 완료")
+                
+                print(f"🔍 step_id 설정 시작")
                 self.step_id = 1
+                print(f"✅ step_id 설정 완료")
+                
+                print(f"🔍 device 설정 시작")
                 self.device = kwargs.get('device', 'cpu')
+                print(f"✅ device 설정 완료: {self.device}")
+                
+                print(f"🔍 ai_models 설정 시작")
                 self.ai_models = {}
+                print(f"✅ ai_models 설정 완료")
+                
+                print(f"🔍 models_loading_status 설정 시작")
                 self.models_loading_status = {'mock': True}
+                print(f"✅ models_loading_status 설정 완료")
+                
+                print(f"🔍 model_interface 설정 시작")
                 self.model_interface = None
+                print(f"✅ model_interface 설정 완료")
+                
+                print(f"🔍 loaded_models 설정 시작")
                 self.loaded_models = []
+                print(f"✅ loaded_models 설정 완료")
+                
+                print(f"🔍 config 설정 시작")
                 self.config = EnhancedHumanParsingConfig()
+                print(f"✅ config 설정 완료")
+                
+                print(f"✅ 긴급 설정 완료")
                 self.logger.warning("⚠️ 긴급 설정 모드로 초기화됨")
             except Exception as e:
                 print(f"❌ 긴급 설정도 실패: {e}")
+                print(f"❌ 긴급 설정 오류 타입: {type(e)}")
+                import traceback
+                print(f"❌ 긴급 설정 상세 오류: {traceback.format_exc()}")
         
         # ==============================================
         # 🔥 Central Hub DI Container 연동 메서드들
@@ -3845,9 +3946,18 @@ class HumanParsingStep(BaseStepMixin):
         
         def process(self, **kwargs) -> Dict[str, Any]:
             """🔥 단계별 세분화된 에러 처리가 적용된 Human Parsing process 메서드"""
-            start_time = time.time()
-            errors = []
-            stage_status = {}
+            print(f"🔍 HumanParsingStep process 시작")
+            print(f"🔍 kwargs: {list(kwargs.keys()) if kwargs else 'None'}")
+            
+            try:
+                start_time = time.time()
+                print(f"✅ start_time 설정 완료: {start_time}")
+                errors = []
+                stage_status = {}
+                print(f"✅ 기본 변수 초기화 완료")
+            except Exception as e:
+                print(f"❌ process 메서드 시작 부분 오류: {e}")
+                return {'success': False, 'error': f'Process 시작 오류: {e}'}
             
             try:
                 # 🔥 1단계: 입력 데이터 검증
@@ -4157,57 +4267,50 @@ class HumanParsingStep(BaseStepMixin):
                 return None
 
         def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-            """API 입력을 Step 입력으로 변환 (동기 버전)"""
+            """API 입력을 Step 입력으로 변환 (kwargs 방식) - 강화된 이미지 전달"""
             try:
                 step_input = api_input.copy()
                 
-                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                # 🔥 강화된 이미지 접근 방식
                 image = None
-                for key in ['image', 'person_image', 'input_image', 'original_image']:
-                    if key in step_input:
-                        image = step_input[key]
-                        break
                 
-                if image is None and 'session_id' in step_input:
-                    # 세션에서 이미지 로드 (동기적으로)
-                    try:
-                        session_manager = self._get_service_from_central_hub('session_manager')
-                        if session_manager:
-                            person_image, clothing_image = None, None
+                # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+                if 'session_data' in step_input:
+                    session_data = step_input['session_data']
+                    self.logger.info(f"🔍 세션 데이터 키들: {list(session_data.keys())}")
+                    
+                    if 'original_person_image' in session_data:
+                        try:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
                             
-                            try:
-                                # 세션 매니저가 동기 메서드를 제공하는지 확인
-                                if hasattr(session_manager, 'get_session_images_sync'):
-                                    person_image, clothing_image = session_manager.get_session_images_sync(step_input['session_id'])
-                                elif hasattr(session_manager, 'get_session_images'):
-                                    # 비동기 메서드를 동기적으로 호출
-                                    import asyncio
-                                    import concurrent.futures
-                                    
-                                    def run_async_session_load():
-                                        try:
-                                            return asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                                        except Exception as async_error:
-                                            self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
-                                            return None, None
-                                    
-                                    try:
-                                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                                            future = executor.submit(run_async_session_load)
-                                            person_image, clothing_image = future.result(timeout=10)
-                                    except Exception as executor_error:
-                                        self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
-                                        person_image, clothing_image = None, None
-                                else:
-                                    self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
-                            except Exception as e:
-                                self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
-                                person_image, clothing_image = None, None
-                            
-                            if person_image:
-                                image = person_image
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                            person_b64 = session_data['original_person_image']
+                            if person_b64 and len(person_b64) > 100:  # 유효한 base64인지 확인
+                                person_bytes = base64.b64decode(person_b64)
+                                image = Image.open(BytesIO(person_bytes)).convert('RGB')
+                                self.logger.info(f"✅ 세션 데이터에서 original_person_image 로드: {image.size}")
+                            else:
+                                self.logger.warning("⚠️ original_person_image가 비어있거나 너무 짧음")
+                        except Exception as session_error:
+                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {session_error}")
+                
+                # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+                if image is None:
+                    if 'person_image' in step_input and step_input['person_image'] is not None:
+                        image = step_input['person_image']
+                        self.logger.info(f"✅ 직접 전달된 person_image 사용: {getattr(image, 'size', 'unknown')}")
+                    elif 'image' in step_input and step_input['image'] is not None:
+                        image = step_input['image']
+                        self.logger.info(f"✅ 직접 전달된 image 사용: {getattr(image, 'size', 'unknown')}")
+                    elif 'clothing_image' in step_input and step_input['clothing_image'] is not None:
+                        image = step_input['clothing_image']
+                        self.logger.info(f"✅ 직접 전달된 clothing_image 사용: {getattr(image, 'size', 'unknown')}")
+                
+                # 3순위: 기본값
+                if image is None:
+                    self.logger.warning("⚠️ 이미지가 없음 - 기본값 사용")
+                    image = None
                 
                 # 변환된 입력 구성
                 converted_input = {
@@ -4219,7 +4322,14 @@ class HumanParsingStep(BaseStepMixin):
                     'force_ai_processing': step_input.get('force_ai_processing', True)
                 }
                 
+                # 🔥 상세 로깅
                 self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                self.logger.info(f"✅ 이미지 상태: {'있음' if image is not None else '없음'}")
+                if image is not None:
+                    self.logger.info(f"✅ 이미지 정보: 타입={type(image)}, 크기={getattr(image, 'size', 'unknown')}")
+                else:
+                    self.logger.error("❌ 이미지를 찾을 수 없음 - AI 처리 불가능")
+                
                 return converted_input
                 
             except Exception as e:

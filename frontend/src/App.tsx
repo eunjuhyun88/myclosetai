@@ -1787,9 +1787,34 @@ class APIClient {
   async healthCheck(): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const response = await fetch(`${this.baseURL}/health`);
-      const data = await response.json();
-      return { success: response.ok, data };
+      
+      // 응답 상태 확인
+      if (!response.ok) {
+        return { 
+          success: false, 
+          error: `HTTP ${response.status}: ${response.statusText}` 
+        };
+      }
+      
+      // Content-Type 확인
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // JSON이 아닌 경우 텍스트로 읽기
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+      
+      return { success: true, data };
     } catch (error) {
+      console.error('Health check error:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Network error' 
@@ -1819,6 +1844,15 @@ class APIClient {
 
     try {
       console.log(`🚀 Step ${stepId} API 호출: ${step.endpoint}`);
+      console.log(`🌐 요청 URL: ${this.baseURL}${step.endpoint}`);
+      console.log(`📤 FormData 내용:`, {
+        entries: Array.from(formData.entries()).map(([key, value]) => ({
+          key,
+          valueType: value instanceof File ? 'File' : typeof value,
+          fileName: value instanceof File ? value.name : value,
+          fileSize: value instanceof File ? value.size : 'N/A'
+        }))
+      });
       
       const response = await fetch(`${this.baseURL}${step.endpoint}`, {
         method: 'POST',
@@ -2016,7 +2050,10 @@ const App: React.FC = () => {
     const checkHealth = async () => {
       setIsCheckingHealth(true);
       try {
+        console.log('🔍 서버 헬스체크 시작...');
         const result = await apiClient.healthCheck();
+        
+        console.log('📊 헬스체크 결과:', result);
         setIsServerHealthy(result.success);
         
         if (result.success && result.data) {
@@ -2857,7 +2894,15 @@ const App: React.FC = () => {
 
   // 1단계: 이미지 업로드 검증
   const processStep1 = useCallback(async () => {
+    console.log('🚀 processStep1 시작:', {
+      personImage: !!personImage,
+      clothingImage: !!clothingImage,
+      personImageName: personImage?.name,
+      clothingImageName: clothingImage?.name
+    });
+
     if (!personImage || !clothingImage) {
+      console.error('❌ 이미지 누락:', { personImage: !!personImage, clothingImage: !!clothingImage });
       setError('사용자 이미지와 의류 이미지를 모두 업로드해주세요.');
       return;
     }
@@ -2871,7 +2916,16 @@ const App: React.FC = () => {
       formData.append('person_image', personImage);
       formData.append('clothing_image', clothingImage);
       
+      console.log('📤 Step 1 API 호출 준비 완료:', {
+        formDataEntries: Array.from(formData.entries()).map(([key, value]) => ({
+          key,
+          valueType: value instanceof File ? 'File' : typeof value,
+          fileName: value instanceof File ? value.name : value
+        }))
+      });
+      
       setProgress(50);
+      console.log('🌐 Step 1 API 호출 시작...');
       const stepResult = await apiClient.callStepAPI(1, formData);
       
       if (!stepResult.success) {
@@ -2970,14 +3024,38 @@ const App: React.FC = () => {
 
   // 유효성 검사 함수들
   const canProceedToNext = useCallback(() => {
+    console.log('🔍 canProceedToNext 디버깅:', {
+      currentStep,
+      personImage: !!personImage,
+      clothingImage: !!clothingImage,
+      fileErrors,
+      measurements,
+      stepResults: Object.keys(stepResults),
+      result: !!result
+    });
+
     switch (currentStep) {
       case 1:
-        return personImage && clothingImage && 
+        const step1CanProceed = personImage && clothingImage && 
                !fileErrors.person && !fileErrors.clothing;
+        console.log('Step 1 조건 확인:', {
+          personImage: !!personImage,
+          clothingImage: !!clothingImage,
+          fileErrors_person: fileErrors.person,
+          fileErrors_clothing: fileErrors.clothing,
+          canProceed: step1CanProceed
+        });
+        return step1CanProceed;
       case 2:
-        return measurements.height > 0 && measurements.weight > 0 &&
+        const step2CanProceed = measurements.height > 0 && measurements.weight > 0 &&
                measurements.height >= 100 && measurements.height <= 250 &&
                measurements.weight >= 30 && measurements.weight <= 300;
+        console.log('Step 2 조건 확인:', {
+          height: measurements.height,
+          weight: measurements.weight,
+          canProceed: step2CanProceed
+        });
+        return step2CanProceed;
       case 3:
       case 4:
       case 5:

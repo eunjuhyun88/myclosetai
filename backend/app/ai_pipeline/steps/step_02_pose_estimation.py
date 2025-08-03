@@ -137,7 +137,6 @@ logger = logging.getLogger(__name__)
 
 from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
 
-
 class PoseModel(Enum):
     """포즈 추정 모델 타입"""
     MEDIAPIPE = "mediapipe"
@@ -3400,57 +3399,42 @@ class PoseEstimationStep(BaseStepMixin):
             return None
     
     def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-        """API 입력을 Step 입력으로 변환 (동기 버전)"""
+        """API 입력을 Step 입력으로 변환 (kwargs 방식) - 간단한 이미지 전달"""
         try:
             step_input = api_input.copy()
             
-            # 이미지 데이터 추출 (다양한 키 이름 지원)
+            # 🔥 간단한 이미지 접근 방식
             image = None
-            for key in ['image', 'person_image', 'input_image', 'original_image']:
-                if key in step_input:
-                    image = step_input[key]
-                    break
             
-            if image is None and 'session_id' in step_input:
-                # 세션에서 이미지 로드 (동기적으로)
-                try:
-                    session_manager = self._get_service_from_central_hub('session_manager')
-                    if session_manager:
-                        person_image, clothing_image = None, None
+            # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+            if 'session_data' in step_input:
+                session_data = step_input['session_data']
+                if 'original_person_image' in session_data:
+                    try:
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
                         
-                        try:
-                            # 세션 매니저가 동기 메서드를 제공하는지 확인
-                            if hasattr(session_manager, 'get_session_images_sync'):
-                                person_image, clothing_image = session_manager.get_session_images_sync(step_input['session_id'])
-                            elif hasattr(session_manager, 'get_session_images'):
-                                # 비동기 메서드를 동기적으로 호출
-                                import asyncio
-                                import concurrent.futures
-                                
-                                def run_async_session_load():
-                                    try:
-                                        return asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                                    except Exception as async_error:
-                                        self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
-                                        return None, None
-                                
-                                try:
-                                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                                        future = executor.submit(run_async_session_load)
-                                        person_image, clothing_image = future.result(timeout=10)
-                                except Exception as executor_error:
-                                    self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
-                                    person_image, clothing_image = None, None
-                            else:
-                                self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
-                        except Exception as e:
-                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
-                            person_image, clothing_image = None, None
-                        
-                        if person_image:
-                            image = person_image
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                        person_b64 = session_data['original_person_image']
+                        person_bytes = base64.b64decode(person_b64)
+                        image = Image.open(BytesIO(person_bytes)).convert('RGB')
+                        self.logger.info("✅ 세션 데이터에서 original_person_image 로드")
+                    except Exception as session_error:
+                        self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {session_error}")
+            
+            # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+            if image is None:
+                if 'person_image' in step_input and step_input['person_image'] is not None:
+                    image = step_input['person_image']
+                    self.logger.info("✅ 직접 전달된 person_image 사용")
+                elif 'image' in step_input and step_input['image'] is not None:
+                    image = step_input['image']
+                    self.logger.info("✅ 직접 전달된 image 사용")
+            
+            # 3순위: 기본값
+            if image is None:
+                self.logger.info("ℹ️ 이미지가 없음 - 기본값 사용")
+                image = None
             
             # 변환된 입력 구성
             converted_input = {
@@ -3461,7 +3445,12 @@ class PoseEstimationStep(BaseStepMixin):
                 'clothing_type': step_input.get('clothing_type', 'shirt')
             }
             
+            # 🔥 상세 로깅
             self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+            self.logger.info(f"✅ 이미지 상태: {'있음' if image is not None else '없음'}")
+            if image is not None:
+                self.logger.info(f"✅ 이미지 정보: 타입={type(image)}, 크기={getattr(image, 'size', 'unknown')}")
+            
             return converted_input
             
         except Exception as e:

@@ -162,7 +162,11 @@ def get_project_paths() -> Dict[str, str]:
 # =============================================================================
 
 def setup_logging(level: str = "INFO") -> None:
-    """로깅 설정"""
+    """로깅 설정 (중복 방지)"""
+    # 이미 설정된 경우 스킵
+    if logging.getLogger().handlers:
+        return
+    
     logging.basicConfig(
         level=getattr(logging, level.upper()),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -171,7 +175,7 @@ def setup_logging(level: str = "INFO") -> None:
         ]
     )
 
-# 기본 로깅 설정
+# 기본 로깅 설정 (중복 방지)
 setup_logging()
 logger = logging.getLogger(__name__)
 

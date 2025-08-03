@@ -58,13 +58,15 @@ warnings.filterwarnings('ignore')
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# 로그 레벨 조정 (불필요한 상세 정보 숨기기)
+# 로그 레벨 조정 (불필요한 상세 정보 숨기기) - 중복 방지
 import logging
-logging.basicConfig(
-    level=logging.WARNING,  # WARNING 레벨로 설정 (INFO, DEBUG 메시지 숨김)
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# 이미 설정된 경우 스킵
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,  # INFO 레벨로 설정 (디버깅용)
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 # 특정 모듈들의 로그 레벨 조정 (더 엄격하게)
 quiet_modules = [
@@ -393,12 +395,33 @@ async def _register_core_services_to_central_hub(container):
         
         # SessionManager 등록
         try:
+            logger.info("🔄 SessionManager 초기화 시작...")
             from app.core.session_manager import SessionManager
+            
+            logger.info("🔄 SessionManager 인스턴스 생성 중...")
             session_manager = SessionManager()
+            logger.info("✅ SessionManager 인스턴스 생성 완료")
+            
+            logger.info("🔄 SessionManager Central Hub 등록 중...")
             container.register('session_manager', session_manager)
             logger.info("✅ SessionManager Central Hub 등록 완료")
+            
         except Exception as e:
             logger.error(f"❌ SessionManager 등록 실패: {e}")
+            logger.error(f"❌ SessionManager 등록 실패 상세: {traceback.format_exc()}")
+            
+            # 대체 방법: 간단한 SessionManager 등록
+            try:
+                logger.info("🔄 대체 SessionManager 등록 시도...")
+                from app.core.session_manager import get_session_manager
+                session_manager = get_session_manager()
+                if session_manager:
+                    container.register('session_manager', session_manager)
+                    logger.info("✅ 대체 SessionManager 등록 완료")
+                else:
+                    logger.error("❌ 대체 SessionManager도 실패")
+            except Exception as e2:
+                logger.error(f"❌ 대체 SessionManager 등록 실패: {e2}")
         
         # WebSocketManager 등록
         try:
@@ -648,6 +671,9 @@ def _register_central_hub_routers(app) -> int:
         registered_count = register_routers(app)
         
         logger.info(f"✅ Central Hub 기반 라우터 등록: {registered_count}개")
+        
+        # 🔥 핫픽스 라우터 제거 (실제 라우터와 충돌 방지)
+        logger.info("ℹ️ 핫픽스 라우터 제거됨 (실제 라우터 사용)")
         
         # 🔥 시스템 정보 라우터 추가 등록
         try:
@@ -921,39 +947,8 @@ async def root():
         }
     }
 
-@app.get("/health")
-async def health_check():
-    """기본 헬스체크"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "version": "29.0.0",
-        "architecture": "Central Hub DI Container v7.0 중심 + StepServiceManager v15.0 + RealAIStepImplementationManager v14.0",
-        "uptime": time.time(),
-        "central_hub_di_container": {
-            "available": CENTRAL_HUB_CONTAINER_AVAILABLE,
-            "status": "active" if CENTRAL_HUB_CONTAINER_AVAILABLE else "inactive",
-            "version": "v7.0",
-            "services_count": len(central_hub_container.list_services()) if central_hub_container and hasattr(central_hub_container, 'list_services') else 0,
-            "single_source_of_truth": True,
-            "dependency_inversion_applied": True,
-            "zero_circular_reference": True
-        },
-        "step_service_manager": {
-            "available": STEP_SERVICE_MANAGER_AVAILABLE,
-            "status": "active" if STEP_SERVICE_MANAGER_AVAILABLE else "inactive",
-            "version": "v15.0",
-            "real_ai_implementation_version": "v14.0",
-            "integration_quality": "완벽 연동"
-        },
-        "system": {
-            "conda": IS_CONDA,
-            "conda_env": SYSTEM_INFO['conda_env'],
-            "mycloset_optimized": IS_MYCLOSET_ENV,
-            "m3_max": IS_M3_MAX,
-            "device": DEVICE
-        }
-    }
+# 🔥 Health 엔드포인트는 API 라우터에서 처리됨 (/health)
+# 중복 등록 방지를 위해 main.py에서는 제거
 
 # =============================================================================
 # 🔥 12. WebSocket 엔드포인트 (Central Hub 연동)

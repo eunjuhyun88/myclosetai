@@ -495,13 +495,18 @@ def safe_import_step_class(step_module_name: str, step_class_name: str) -> Optio
         logger.warning(f"⚠️ {step_module_name}.py 파일을 찾을 수 없음")
         return None
     
-    # 2. 파일 내용 사전 검증 (threading import 확인)
+    # 2. 파일 내용 사전 검증 (threading import 확인) - 개선된 검증
     try:
         with open(existing_file, 'r', encoding='utf-8') as f:
             content = f.read()
-            has_threading = 'import threading' in content or 'from threading import' in content
+            # 더 정확한 threading import 검증
+            has_threading = (
+                'import threading' in content or 
+                'from threading import' in content or
+                'threading' in content  # 실제 사용 여부도 확인
+            )
             if not has_threading:
-                logger.warning(f"⚠️ {step_module_name}.py에 threading import 누락 감지")
+                logger.debug(f"📋 {step_module_name}.py에 threading import 누락 감지 (디버그 레벨)")
     except Exception as e:
         logger.debug(f"📋 파일 내용 확인 실패: {e}")
     

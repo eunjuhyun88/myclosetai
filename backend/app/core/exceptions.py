@@ -1540,8 +1540,13 @@ def validate_virtual_fitting_environment() -> dict:
 
 def log_virtual_fitting_performance(step_name: str, model_name: str, operation: str, start_time: float, success: bool, error: Exception = None, inference_params: dict = None) -> dict:
     """Virtual Fitting 성능 로깅"""
-    end_time = time.time()
-    duration = end_time - start_time
+    try:
+        import time
+        end_time = time.time()
+        duration = end_time - start_time
+    except Exception as time_error:
+        logger.warning(f"⚠️ time 모듈 접근 실패: {time_error}")
+        duration = 0.0
     
     performance_data = {
         'step_name': step_name,
@@ -1791,6 +1796,7 @@ def validate_step_environment(step_name: str) -> dict:
 
 def log_step_performance(step_name: str, operation: str, start_time: float, success: bool, error: Exception = None) -> dict:
     """Step 성능 로깅"""
+    import time
     end_time = time.time()
     duration = end_time - start_time
     

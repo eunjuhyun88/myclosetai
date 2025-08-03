@@ -333,39 +333,69 @@ if BaseStepMixin is None:
                 return None
 
         def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-            """API 입력을 Step 입력으로 변환"""
+            """API 입력을 Step 입력으로 변환 (kwargs 방식) - 간단한 이미지 전달"""
             try:
                 step_input = api_input.copy()
                 
-                # 이미지 데이터 추출 (다양한 키 이름 지원)
+                # 🔥 간단한 이미지 접근 방식
                 person_image = None
                 clothing_image = None
                 
-                # person_image 추출
-                for key in ['person_image', 'image', 'input_image', 'original_image']:
-                    if key in step_input:
-                        person_image = step_input[key]
-                        break
+                # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+                if 'session_data' in step_input:
+                    session_data = step_input['session_data']
+                    
+                    # person_image 로드
+                    if 'original_person_image' in session_data:
+                        try:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
+                            
+                            person_b64 = session_data['original_person_image']
+                            person_bytes = base64.b64decode(person_b64)
+                            person_image = Image.open(BytesIO(person_bytes)).convert('RGB')
+                            self.logger.info("✅ 세션 데이터에서 original_person_image 로드")
+                        except Exception as session_error:
+                            self.logger.warning(f"⚠️ 세션 person_image 로드 실패: {session_error}")
+                    
+                    # clothing_image 로드
+                    if 'original_clothing_image' in session_data:
+                        try:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
+                            
+                            clothing_b64 = session_data['original_clothing_image']
+                            clothing_bytes = base64.b64decode(clothing_b64)
+                            clothing_image = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                            self.logger.info("✅ 세션 데이터에서 original_clothing_image 로드")
+                        except Exception as session_error:
+                            self.logger.warning(f"⚠️ 세션 clothing_image 로드 실패: {session_error}")
                 
-                # clothing_image 추출
-                for key in ['clothing_image', 'cloth_image', 'target_image']:
-                    if key in step_input:
-                        clothing_image = step_input[key]
-                        break
+                # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+                if person_image is None:
+                    for key in ['person_image', 'image', 'input_image', 'original_image']:
+                        if key in step_input and step_input[key] is not None:
+                            person_image = step_input[key]
+                            self.logger.info(f"✅ 직접 전달된 {key} 사용 (person)")
+                            break
                 
-                if (person_image is None or clothing_image is None) and 'session_id' in step_input:
-                    # 세션에서 이미지 로드
-                    try:
-                        session_manager = self._get_service_from_central_hub('session_manager')
-                        if session_manager:
-                            import asyncio
-                            session_person, session_clothing = asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                            if person_image is None and session_person:
-                                person_image = session_person
-                            if clothing_image is None and session_clothing:
-                                clothing_image = session_clothing
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+                if clothing_image is None:
+                    for key in ['clothing_image', 'cloth_image', 'target_image']:
+                        if key in step_input and step_input[key] is not None:
+                            clothing_image = step_input[key]
+                            self.logger.info(f"✅ 직접 전달된 {key} 사용 (clothing)")
+                            break
+                
+                # 3순위: 기본값
+                if person_image is None:
+                    self.logger.info("ℹ️ person_image가 없음 - 기본값 사용")
+                    person_image = None
+                
+                if clothing_image is None:
+                    self.logger.info("ℹ️ clothing_image가 없음 - 기본값 사용")
+                    clothing_image = None
                 
                 # 변환된 입력 구성
                 converted_input = {
@@ -375,7 +405,14 @@ if BaseStepMixin is None:
                     'warping_method': step_input.get('warping_method', 'tps')
                 }
                 
+                # 🔥 상세 로깅
                 self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+                self.logger.info(f"✅ 이미지 상태: person_image={'있음' if person_image is not None else '없음'}, clothing_image={'있음' if clothing_image is not None else '없음'}")
+                if person_image is not None:
+                    self.logger.info(f"✅ person_image 정보: 타입={type(person_image)}, 크기={getattr(person_image, 'size', 'unknown')}")
+                if clothing_image is not None:
+                    self.logger.info(f"✅ clothing_image 정보: 타입={type(clothing_image)}, 크기={getattr(clothing_image, 'size', 'unknown')}")
+                
                 return converted_input
                 
             except Exception as e:

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-🔥 MyCloset AI - Step 03: 의류 세그멘테이션 - Central Hub DI Container v7.0 완전 연동
-================================================================================
+🔥 MyCloset AI - Step 03: 의류 세그멘테이션 - Common Imports Integration
+=====================================================================
 
+✅ Common Imports 시스템 완전 통합 - 중복 import 블록 제거
 ✅ Central Hub DI Container v7.0 완전 연동 - 중앙 허브 패턴 적용
 ✅ BaseStepMixin v20.0 완전 호환 - 순환참조 완전 해결
 ✅ 실제 AI 모델 완전 복원 - DeepLabV3+, SAM, U2Net, Mask R-CNN 지원
@@ -14,66 +15,39 @@
 
 Author: MyCloset AI Team  
 Date: 2025-08-01
-Version: 33.0 (Central Hub DI Container Integration)
+Version: 33.1 (Common Imports Integration)
 """
 
-# ==============================================
-# 🔥 섹션 1: Import 및 Central Hub DI Container 연동
-# ==============================================
+# 🔥 공통 imports 시스템 사용 (중복 제거)
+from app.ai_pipeline.utils.common_imports import (
+    # 표준 라이브러리
+    os, gc, time, logging, threading, math, hashlib, json, base64, warnings, np,
+    Path, Dict, Any, Optional, Union, List, Tuple, TYPE_CHECKING,
+    dataclass, field, Enum, BytesIO, ThreadPoolExecutor,
+    
+    # 에러 처리 시스템
+    MyClosetAIException, ModelLoadingError, ImageProcessingError, DataValidationError, ConfigurationError,
+    error_tracker, track_exception, get_error_summary, create_exception_response, convert_to_mycloset_exception,
+    ErrorCodes, EXCEPTIONS_AVAILABLE,
+    
+    # Mock Data Diagnostic
+    detect_mock_data, diagnose_step_data, MOCK_DIAGNOSTIC_AVAILABLE,
+    
+    # AI/ML 라이브러리
+    cv2, PIL_AVAILABLE, CV2_AVAILABLE
+)
 
-import os
-import gc
-import time
-import logging
-import threading
-import math
-import hashlib
-import json
-import base64
+# 추가 imports
 import weakref
-import warnings
-import numpy as np
-from pathlib import Path
-from typing import Dict, Any, Optional, Union, List, Tuple, TYPE_CHECKING
-from dataclasses import dataclass, field
-from enum import Enum
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
-import cv2
 
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
 
-# 🔥 통합된 에러 처리 시스템 import
-try:
-    from app.core.exceptions import (
-        MyClosetAIException,
-        ModelLoadingError,
-        ImageProcessingError,
-        DataValidationError,
-        ConfigurationError,
-        error_tracker,
-        track_exception,
-        get_error_summary,
-        create_exception_response,
-        convert_to_mycloset_exception,
-        ErrorCodes
-    )
-    from app.core.mock_data_diagnostic import (
-        detect_mock_data,
-        diagnose_step_data
-    )
-    EXCEPTIONS_AVAILABLE = True
-except ImportError:
-    EXCEPTIONS_AVAILABLE = False
-    logger = logging.getLogger(__name__)
-    logger.warning("통합 에러 처리 시스템을 import할 수 없습니다. 기본 에러 처리만 사용합니다.")
-
 # 최상단에 추가
-import logging
 logger = logging.getLogger(__name__)
+
 def detect_m3_max():
     """M3 Max 감지"""
     try:
@@ -584,9 +558,9 @@ try:
     DENSECRF_AVAILABLE = True
     logger.info("🔥 DenseCRF 로드 완료")
 except ImportError:
-    logger.warning("⚠️ DenseCRF 없음 - CRF 후처리 제한")
+    logger.info("ℹ️ DenseCRF 라이브러리 없음 - CRF 후처리 기능 제한 (선택적 기능)")
 except Exception as e:
-    logger.warning(f"⚠️ DenseCRF 로드 실패: {e}")
+    logger.info(f"ℹ️ DenseCRF 로드 실패: {e} (선택적 기능)")
 
 # Scikit-image (고급 이미지 처리) - 수정
 SKIMAGE_AVAILABLE = False
@@ -1028,7 +1002,7 @@ class AdvancedPostProcessor:
         """CRF 후처리로 경계선 개선 (원본) - 수정"""
         try:
             if not DENSECRF_AVAILABLE:  # 이 변수가 정의되어야 함
-                logger.warning("⚠️ DenseCRF 라이브러리 없음 - CRF 후처리 스킵")
+                logger.debug("📋 DenseCRF 라이브러리 없음 - CRF 후처리 스킵 (선택적 기능)")
                 return mask
             
             h, w = mask.shape
@@ -3425,28 +3399,75 @@ class ClothSegmentationStep(BaseStepMixin):
             return None
 
     def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
-        """API 입력을 Step 입력으로 변환"""
+        """API 입력을 Step 입력으로 변환 (kwargs 방식) - 강화된 이미지 전달"""
         try:
             step_input = api_input.copy()
             
-            # 이미지 데이터 추출 (다양한 키 이름 지원)
+            # 🔥 강화된 이미지 접근 방식
             image = None
-            for key in ['image', 'clothing_image', 'cloth_image', 'input_image', 'original_image']:
-                if key in step_input:
-                    image = step_input[key]
-                    break
             
-            if image is None and 'session_id' in step_input:
-                # 세션에서 이미지 로드
-                try:
-                    session_manager = self._get_service_from_central_hub('session_manager')
-                    if session_manager:
-                        import asyncio
-                        person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
-                        if clothing_image:
-                            image = clothing_image
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 세션에서 이미지 로드 실패: {e}")
+            # 1순위: 세션 데이터에서 로드 (base64 → PIL 변환)
+            if 'session_data' in step_input:
+                session_data = step_input['session_data']
+                self.logger.info(f"🔍 세션 데이터 키들: {list(session_data.keys())}")
+                
+                # original_clothing_image 찾기 (우선순위 1)
+                if 'original_clothing_image' in session_data:
+                    try:
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        
+                        clothing_b64 = session_data['original_clothing_image']
+                        if clothing_b64 and len(clothing_b64) > 100:  # 유효한 base64인지 확인
+                            clothing_bytes = base64.b64decode(clothing_b64)
+                            image = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                            self.logger.info(f"✅ 세션 데이터에서 original_clothing_image 로드: {image.size}")
+                        else:
+                            self.logger.warning("⚠️ original_clothing_image가 비어있거나 너무 짧음")
+                    except Exception as session_error:
+                        self.logger.warning(f"⚠️ 세션 clothing 이미지 로드 실패: {session_error}")
+                
+                # original_person_image 찾기 (clothing_image가 없는 경우)
+                if image is None and 'original_person_image' in session_data:
+                    try:
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        
+                        person_b64 = session_data['original_person_image']
+                        if person_b64 and len(person_b64) > 100:  # 유효한 base64인지 확인
+                            person_bytes = base64.b64decode(person_b64)
+                            image = Image.open(BytesIO(person_bytes)).convert('RGB')
+                            self.logger.info(f"✅ 세션 데이터에서 original_person_image 로드: {image.size}")
+                        else:
+                            self.logger.warning("⚠️ original_person_image가 비어있거나 너무 짧음")
+                    except Exception as session_error:
+                        self.logger.warning(f"⚠️ 세션 person 이미지 로드 실패: {session_error}")
+            else:
+                self.logger.warning("⚠️ session_data가 api_input에 없음")
+            
+            # 2순위: 직접 전달된 이미지 (이미 PIL Image인 경우)
+            if image is None:
+                clothing_image_keys = ['clothing_image', 'cloth_image', 'target_image', 'garment_image']
+                for key in clothing_image_keys:
+                    if key in step_input and step_input[key] is not None:
+                        image = step_input[key]
+                        self.logger.info(f"✅ 직접 전달된 {key} 사용")
+                        break
+                
+                if image is None:
+                    general_image_keys = ['image', 'input_image', 'original_image', 'person_image']
+                    for key in general_image_keys:
+                        if key in step_input and step_input[key] is not None:
+                            image = step_input[key]
+                            self.logger.info(f"✅ 직접 전달된 {key} 사용")
+                            break
+            
+            # 3순위: 기본값
+            if image is None:
+                self.logger.warning("⚠️ 이미지가 없음 - 기본값 사용")
+                image = None
             
             # 변환된 입력 구성
             converted_input = {
@@ -3458,7 +3479,14 @@ class ClothSegmentationStep(BaseStepMixin):
                 'clothing_type': step_input.get('clothing_type', 'shirt')
             }
             
+            # 🔥 상세 로깅
             self.logger.info(f"✅ API 입력 변환 완료: {len(converted_input)}개 키")
+            self.logger.info(f"✅ 이미지 상태: {'있음' if image is not None else '없음'}")
+            if image is not None:
+                self.logger.info(f"✅ 이미지 정보: 타입={type(image)}, 크기={getattr(image, 'size', 'unknown')}")
+            else:
+                self.logger.error("❌ 이미지를 찾을 수 없음 - AI 처리 불가능")
+            
             return converted_input
             
         except Exception as e:

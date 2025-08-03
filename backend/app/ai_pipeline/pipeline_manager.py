@@ -1074,34 +1074,74 @@ class DIContainerDataFlowEngine:
     
     def process_step_output(self, step_id: int, step_result: Dict[str, Any], 
                            current_result: PipelineStepResult) -> PipelineStepResult:
-        """Step 출력 처리 및 다음 Step 데이터 준비 (DI Container 기반)"""
+        """Step 출력 처리 및 다음 Step 데이터 준비 (DI Container 기반) - 강화된 로깅 및 검증"""
+        data_flow_stats = {
+            'total_transfers': 0,
+            'successful_transfers': 0,
+            'data_loss_detected': 0,
+            'memory_optimizations': 0,
+            'di_container_services_used': [],
+            'warnings': [],
+            'errors': []
+        }
+        
         try:
+            self.logger.info(f"🔄 Step {step_id} 출력 처리 시작")
+            
             # 현재 Step 결과 저장
             current_result.ai_results[f'step_{step_id:02d}'] = step_result
             
-            # 🔥 DI Container를 통한 결과 보강
+            # 🔥 DI Container를 통한 결과 보강 및 분석
             if self.use_di_container:
                 # 메모리 최적화 서비스 호출
                 memory_manager = get_service_safe('memory_manager')
                 if memory_manager and hasattr(memory_manager, 'optimize_memory'):
                     try:
                         memory_manager.optimize_memory()
+                        data_flow_stats['memory_optimizations'] += 1
+                        data_flow_stats['di_container_services_used'].append('memory_manager')
+                        self.logger.debug(f"✅ Step {step_id} 메모리 최적화 완료")
                     except Exception as e:
-                        self.logger.debug(f"메모리 최적화 실패: {e}")
+                        self.logger.debug(f"⚠️ Step {step_id} 메모리 최적화 실패: {e}")
+                        data_flow_stats['warnings'].append(f"메모리 최적화 실패: {e}")
+                
+                # 데이터 컨버터 서비스 확인
+                data_converter = get_service_safe('data_converter')
+                if data_converter:
+                    data_flow_stats['di_container_services_used'].append('data_converter')
             
             # 데이터 흐름 규칙에 따라 다음 Step들에 데이터 전달
             flow_rules = self.data_flow_rules.get(step_id, {})
             outputs_to = flow_rules.get('outputs_to', {})
             
+            self.logger.debug(f"   - Step {step_id} 데이터 흐름 규칙: {outputs_to}")
+            
             for target_step, data_keys in outputs_to.items():
                 target_data = {}
+                step_data_loss_count = 0
                 
-                # 지정된 데이터 키들 복사
+                data_flow_stats['total_transfers'] += 1
+                
+                # 🔥 데이터 키별 상세 검증 및 복사
                 for key in data_keys:
                     if key in step_result:
                         target_data[key] = step_result[key]
+                        self.logger.debug(f"     - {key} → Step {target_step}: ✅")
                     elif 'data' in step_result and key in step_result['data']:
                         target_data[key] = step_result['data'][key]
+                        self.logger.debug(f"     - {key} → Step {target_step}: ✅ (nested)")
+                    else:
+                        step_data_loss_count += 1
+                        data_flow_stats['data_loss_detected'] += 1
+                        data_flow_stats['warnings'].append(f"Step {target_step}: {key} 키 누락")
+                        self.logger.warning(f"⚠️ Step {target_step}: {key} 키가 step_result에 없음")
+                
+                # 🔥 데이터 손실 검증
+                if step_data_loss_count > 0:
+                    self.logger.warning(f"⚠️ Step {step_id} → Step {target_step}: {step_data_loss_count}개 데이터 손실")
+                else:
+                    data_flow_stats['successful_transfers'] += 1
+                    self.logger.debug(f"✅ Step {step_id} → Step {target_step}: 모든 데이터 전달 성공")
                 
                 # 대상 Step의 for_step_XX 필드에 데이터 설정
                 target_field = f'for_step_{target_step:02d}'
@@ -1109,11 +1149,30 @@ class DIContainerDataFlowEngine:
                     existing_data = getattr(current_result, target_field)
                     existing_data.update(target_data)
                     setattr(current_result, target_field, existing_data)
+                    
+                    # 🔥 데이터 크기 로깅
+                    try:
+                        total_size_mb = 0
+                        for value in target_data.values():
+                            if hasattr(value, 'nbytes'):
+                                total_size_mb += value.nbytes / (1024 * 1024)
+                            elif hasattr(value, 'shape'):
+                                total_size_mb += np.prod(value.shape) * value.dtype.itemsize / (1024 * 1024)
+                        
+                        if total_size_mb > 50:  # 50MB 이상
+                            self.logger.info(f"📊 Step {step_id} → Step {target_step}: {total_size_mb:.2f}MB 전달")
+                            
+                    except Exception as size_error:
+                        pass
+                else:
+                    self.logger.error(f"❌ Step {step_id}: {target_field} 필드가 없음")
+                    data_flow_stats['errors'].append(f"{target_field} 필드 없음")
             
             # 파이프라인 전체 데이터 업데이트
             current_result.pipeline_data.update({
                 f'step_{step_id:02d}_output': step_result,
-                f'step_{step_id:02d}_completed': True
+                f'step_{step_id:02d}_completed': True,
+                f'step_{step_id:02d}_data_flow_stats': data_flow_stats
             })
             
             # 메타데이터 업데이트
@@ -1121,13 +1180,39 @@ class DIContainerDataFlowEngine:
                 'completed': True,
                 'processing_time': step_result.get('processing_time', 0.0),
                 'success': step_result.get('success', True),
-                'confidence': step_result.get('confidence', 0.8)
+                'confidence': step_result.get('confidence', 0.8),
+                'data_flow_stats': data_flow_stats
             }
+            
+            # 🔥 데이터 흐름 통계 로깅
+            success_rate = (data_flow_stats['successful_transfers'] / 
+                          max(data_flow_stats['total_transfers'], 1)) * 100
+            
+            self.logger.info(f"✅ Step {step_id} 출력 처리 완료")
+            self.logger.info(f"   - 데이터 전달 성공률: {success_rate:.1f}% ({data_flow_stats['successful_transfers']}/{data_flow_stats['total_transfers']})")
+            self.logger.info(f"   - 데이터 손실: {data_flow_stats['data_loss_detected']}개")
+            self.logger.info(f"   - 메모리 최적화: {data_flow_stats['memory_optimizations']}회")
+            self.logger.info(f"   - DI Container 서비스: {len(data_flow_stats['di_container_services_used'])}개")
+            
+            # 경고 및 오류 로깅
+            for warning in data_flow_stats['warnings']:
+                self.logger.warning(f"⚠️ Step {step_id}: {warning}")
+            for error in data_flow_stats['errors']:
+                self.logger.error(f"❌ Step {step_id}: {error}")
             
             return current_result
             
         except Exception as e:
             self.logger.error(f"❌ Step {step_id} 출력 처리 실패: {e}")
+            self.logger.error(f"   - 오류 위치: {traceback.format_exc()}")
+            data_flow_stats['errors'].append(f"출력 처리 실패: {e}")
+            
+            # 오류 정보를 메타데이터에 저장
+            if f'step_{step_id:02d}' not in current_result.metadata:
+                current_result.metadata[f'step_{step_id:02d}'] = {}
+            current_result.metadata[f'step_{step_id:02d}']['error'] = str(e)
+            current_result.metadata[f'step_{step_id:02d}']['data_flow_stats'] = data_flow_stats
+            
             return current_result
 
 # ==============================================
