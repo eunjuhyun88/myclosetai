@@ -224,56 +224,485 @@ class CentralHubDIContainer:
     """중앙 허브 DI Container - 모든 서비스의 단일 집중점"""
     
     def __init__(self, container_id: str = "default"):
-        self.container_id = container_id
-        self.registry = ServiceRegistry()
-        self._creation_time = time.time()
-        self._access_count = 0
-        self._injection_count = 0
-        self._lock = threading.RLock()
-        self.logger = logging.getLogger(f"{self.__class__.__name__}.{container_id}")
+        """🔥 단계별 세분화된 에러 처리가 적용된 CentralHubDIContainer 초기화"""
+        start_time = time.time()
+        errors = []
+        stage_status = {}
         
-        # 내장 서비스 팩토리 등록
-        self._register_builtin_services()
-        
-        self.logger.info(f"✅ 중앙 허브 DI Container 생성: {container_id}")
+        try:
+            # 🔥 1단계: 기본 속성 초기화
+            try:
+                self.container_id = container_id
+                self._creation_time = time.time()
+                self._access_count = 0
+                self._injection_count = 0
+                self._lock = threading.RLock()
+                self.logger = logging.getLogger(f"{self.__class__.__name__}.{container_id}")
+                stage_status['basic_initialization'] = 'success'
+                self.logger.debug("✅ 1단계: 기본 속성 초기화 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "basic_initialization",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "container_id": container_id
+                }
+                errors.append(error_info)
+                stage_status['basic_initialization'] = 'failed'
+                self.logger.error(f"❌ 1단계: 기본 속성 초기화 실패 - {e}")
+                raise
+            
+            # 🔥 2단계: ServiceRegistry 초기화
+            try:
+                self.registry = ServiceRegistry()
+                stage_status['registry_initialization'] = 'success'
+                self.logger.debug("✅ 2단계: ServiceRegistry 초기화 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "registry_initialization",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['registry_initialization'] = 'failed'
+                self.logger.error(f"❌ 2단계: ServiceRegistry 초기화 실패 - {e}")
+                raise
+            
+            # 🔥 3단계: 내장 서비스 팩토리 등록
+            try:
+                self._register_builtin_services()
+                stage_status['builtin_services_registration'] = 'success'
+                self.logger.debug("✅ 3단계: 내장 서비스 팩토리 등록 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "builtin_services_registration",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['builtin_services_registration'] = 'failed'
+                self.logger.error(f"❌ 3단계: 내장 서비스 팩토리 등록 실패 - {e}")
+                raise
+            
+            # 🔥 4단계: 초기화 완료 검증
+            try:
+                # 기본 서비스들이 등록되었는지 확인
+                essential_services = ['device', 'memory_gb', 'is_m3_max', 'torch_available', 'mps_available']
+                missing_services = []
+                
+                for service_key in essential_services:
+                    if not self.registry.has_service(service_key):
+                        missing_services.append(service_key)
+                
+                if missing_services:
+                    raise RuntimeError(f"필수 서비스 누락: {missing_services}")
+                
+                stage_status['initialization_validation'] = 'success'
+                self.logger.debug("✅ 4단계: 초기화 완료 검증 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "initialization_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "missing_services": missing_services if 'missing_services' in locals() else []
+                }
+                errors.append(error_info)
+                stage_status['initialization_validation'] = 'failed'
+                self.logger.error(f"❌ 4단계: 초기화 완료 검증 실패 - {e}")
+                raise
+            
+            # 🔥 5단계: 초기화 완료 및 로깅
+            try:
+                initialization_time = time.time() - start_time
+                
+                # 에러 정보 저장
+                if errors:
+                    self._initialization_errors = errors
+                    self._initialization_stage_status = stage_status
+                    self.logger.warning(f"⚠️ CentralHubDIContainer 초기화 완료 (일부 에러 있음): {len(errors)}개 에러")
+                else:
+                    self.logger.info(f"✅ 중앙 허브 DI Container 생성 완료: {container_id} (소요시간: {initialization_time:.3f}초)")
+                
+                # 초기화 통계 저장
+                self._initialization_stats = {
+                    'initialization_time': initialization_time,
+                    'errors_count': len(errors),
+                    'stage_status': stage_status,
+                    'container_id': container_id
+                }
+                
+            except Exception as e:
+                self.logger.error(f"❌ 초기화 완료 처리 실패: {e}")
+                # 초기화 완료 처리 실패는 치명적이지 않으므로 에러를 추가하지 않음
+                
+        except Exception as e:
+            # 최종 에러 처리
+            self.logger.error(f"❌ CentralHubDIContainer 초기화 실패: {e}")
+            
+            # 에러 정보 저장
+            self._initialization_errors = errors
+            self._initialization_stage_status = stage_status
+            self._initialization_failed = True
+            
+            # 최소한의 기본 속성은 설정
+            if not hasattr(self, 'container_id'):
+                self.container_id = container_id
+            if not hasattr(self, 'logger'):
+                self.logger = logging.getLogger(f"{self.__class__.__name__}.{container_id}")
+            
+            raise
     
     def _register_builtin_services(self):
-        """내장 서비스들 등록"""
-        # ModelLoader 팩토리
-        self.registry.register_factory('model_loader', self._create_model_loader)
+        """🔥 단계별 세분화된 에러 처리가 적용된 내장 서비스들 등록"""
+        errors = []
+        stage_status = {}
         
-        # MemoryManager 팩토리
-        self.registry.register_factory('memory_manager', self._create_memory_manager)
-        
-        # DataConverter 팩토리
-        self.registry.register_factory('data_converter', self._create_data_converter)
-        
-        # 🔥 StepFactory 팩토리 추가
-        self.registry.register_factory('step_factory', self._create_step_factory)
-        
-        # 기본 값들 등록
-        self.registry.register_instance('device', DEVICE)
-        self.registry.register_instance('memory_gb', MEMORY_GB)
-        self.registry.register_instance('is_m3_max', IS_M3_MAX)
-        self.registry.register_instance('torch_available', TORCH_AVAILABLE)
-        self.registry.register_instance('mps_available', MPS_AVAILABLE)
+        try:
+            # 🔥 1단계: ModelLoader 팩토리 등록
+            try:
+                self.registry.register_factory('model_loader', self._create_model_loader)
+                stage_status['model_loader_factory'] = 'success'
+                self.logger.debug("✅ 1단계: ModelLoader 팩토리 등록 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "model_loader_factory",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": "model_loader"
+                }
+                errors.append(error_info)
+                stage_status['model_loader_factory'] = 'failed'
+                self.logger.error(f"❌ 1단계: ModelLoader 팩토리 등록 실패 - {e}")
+            
+            # 🔥 2단계: MemoryManager 팩토리 등록
+            try:
+                self.registry.register_factory('memory_manager', self._create_memory_manager)
+                stage_status['memory_manager_factory'] = 'success'
+                self.logger.debug("✅ 2단계: MemoryManager 팩토리 등록 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "memory_manager_factory",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": "memory_manager"
+                }
+                errors.append(error_info)
+                stage_status['memory_manager_factory'] = 'failed'
+                self.logger.error(f"❌ 2단계: MemoryManager 팩토리 등록 실패 - {e}")
+            
+            # 🔥 3단계: DataConverter 팩토리 등록
+            try:
+                self.registry.register_factory('data_converter', self._create_data_converter)
+                stage_status['data_converter_factory'] = 'success'
+                self.logger.debug("✅ 3단계: DataConverter 팩토리 등록 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "data_converter_factory",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": "data_converter"
+                }
+                errors.append(error_info)
+                stage_status['data_converter_factory'] = 'failed'
+                self.logger.error(f"❌ 3단계: DataConverter 팩토리 등록 실패 - {e}")
+            
+            # 🔥 4단계: StepFactory 팩토리 등록
+            try:
+                self.registry.register_factory('step_factory', self._create_step_factory)
+                stage_status['step_factory_registration'] = 'success'
+                self.logger.debug("✅ 4단계: StepFactory 팩토리 등록 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "step_factory_registration",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": "step_factory"
+                }
+                errors.append(error_info)
+                stage_status['step_factory_registration'] = 'failed'
+                self.logger.error(f"❌ 4단계: StepFactory 팩토리 등록 실패 - {e}")
+            
+            # 🔥 5단계: 기본 환경 값들 등록
+            try:
+                basic_services = {
+                    'device': DEVICE,
+                    'memory_gb': MEMORY_GB,
+                    'is_m3_max': IS_M3_MAX,
+                    'torch_available': TORCH_AVAILABLE,
+                    'mps_available': MPS_AVAILABLE
+                }
+                
+                failed_services = []
+                for service_key, service_value in basic_services.items():
+                    try:
+                        self.registry.register_instance(service_key, service_value)
+                    except Exception as service_error:
+                        failed_services.append(f"{service_key}: {service_error}")
+                
+                if failed_services:
+                    raise RuntimeError(f"기본 서비스 등록 실패: {failed_services}")
+                
+                stage_status['basic_services_registration'] = 'success'
+                self.logger.debug("✅ 5단계: 기본 환경 값들 등록 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "basic_services_registration",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "failed_services": failed_services if 'failed_services' in locals() else []
+                }
+                errors.append(error_info)
+                stage_status['basic_services_registration'] = 'failed'
+                self.logger.error(f"❌ 5단계: 기본 환경 값들 등록 실패 - {e}")
+            
+            # 🔥 6단계: 등록 완료 검증
+            try:
+                # 핵심 서비스들이 등록되었는지 확인
+                essential_factories = ['model_loader', 'memory_manager', 'data_converter']
+                missing_factories = []
+                
+                for factory_key in essential_factories:
+                    if not self.registry.has_service(factory_key):
+                        missing_factories.append(factory_key)
+                
+                if missing_factories:
+                    self.logger.warning(f"⚠️ 일부 핵심 팩토리 누락: {missing_factories}")
+                
+                stage_status['registration_validation'] = 'success'
+                self.logger.debug("✅ 6단계: 등록 완료 검증 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "registration_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['registration_validation'] = 'failed'
+                self.logger.error(f"❌ 6단계: 등록 완료 검증 실패 - {e}")
+            
+            # 🔥 7단계: 결과 보고
+            if errors:
+                self.logger.warning(f"⚠️ 내장 서비스 등록 완료 (일부 에러 있음): {len(errors)}개 에러")
+                self.logger.debug(f"📊 등록 상태: {stage_status}")
+            else:
+                self.logger.debug("✅ 내장 서비스 등록 완료 (모든 단계 성공)")
+            
+            # 에러 정보 저장
+            self._builtin_services_errors = errors
+            self._builtin_services_stage_status = stage_status
+            
+        except Exception as e:
+            # 최종 에러 처리
+            self.logger.error(f"❌ 내장 서비스 등록 실패: {e}")
+            
+            # 에러 정보 저장
+            self._builtin_services_errors = errors
+            self._builtin_services_stage_status = stage_status
+            
+            raise
     
     # ==============================================
     # 🔥 Public API - 간단하고 직관적
     # ==============================================
     
     def get(self, service_key: str) -> Optional[Any]:
-        """서비스 조회 - 중앙 허브의 핵심 메서드"""
-        with self._lock:
-            self._access_count += 1
-            service = self.registry.get_service(service_key)
+        """🔥 단계별 세분화된 에러 처리가 적용된 서비스 조회 - 중앙 허브의 핵심 메서드"""
+        start_time = time.time()
+        errors = []
+        stage_status = {}
+        
+        try:
+            # 🔥 1단계: 입력 검증
+            try:
+                if not service_key or not isinstance(service_key, str):
+                    raise ValueError(f"잘못된 서비스 키: {service_key} (타입: {type(service_key)})")
+                
+                if not service_key.strip():
+                    raise ValueError("서비스 키가 비어있습니다")
+                
+                stage_status['input_validation'] = 'success'
+                self.logger.debug(f"✅ 1단계: 입력 검증 성공 - {service_key}")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "input_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": service_key
+                }
+                errors.append(error_info)
+                stage_status['input_validation'] = 'failed'
+                self.logger.error(f"❌ 1단계: 입력 검증 실패 - {e}")
+                return None
             
-            if service:
-                self.logger.debug(f"✅ 서비스 조회 성공: {service_key}")
+            # 🔥 2단계: 레지스트리 상태 확인
+            try:
+                if not hasattr(self, 'registry') or self.registry is None:
+                    raise RuntimeError("ServiceRegistry가 초기화되지 않았습니다")
+                
+                stage_status['registry_validation'] = 'success'
+                self.logger.debug(f"✅ 2단계: 레지스트리 상태 확인 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "registry_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['registry_validation'] = 'failed'
+                self.logger.error(f"❌ 2단계: 레지스트리 상태 확인 실패 - {e}")
+                return None
+            
+            # 🔥 3단계: 서비스 존재 여부 확인
+            try:
+                service_exists = self.registry.has_service(service_key)
+                if not service_exists:
+                    self.logger.debug(f"⚠️ 서비스가 등록되지 않음: {service_key}")
+                
+                stage_status['service_existence_check'] = 'success'
+                self.logger.debug(f"✅ 3단계: 서비스 존재 여부 확인 성공 - 존재: {service_exists}")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "service_existence_check",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": service_key
+                }
+                errors.append(error_info)
+                stage_status['service_existence_check'] = 'failed'
+                self.logger.error(f"❌ 3단계: 서비스 존재 여부 확인 실패 - {e}")
+                return None
+            
+            # 🔥 4단계: 서비스 조회 실행
+            try:
+                with self._lock:
+                    self._access_count += 1
+                    service = self.registry.get_service(service_key)
+                
+                stage_status['service_retrieval'] = 'success'
+                self.logger.debug(f"✅ 4단계: 서비스 조회 실행 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "service_retrieval",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": service_key
+                }
+                errors.append(error_info)
+                stage_status['service_retrieval'] = 'failed'
+                self.logger.error(f"❌ 4단계: 서비스 조회 실행 실패 - {e}")
+                return None
+            
+            # 🔥 5단계: 조회 결과 검증
+            try:
+                if service is None:
+                    self.logger.debug(f"⚠️ 서비스 조회 결과 없음: {service_key}")
+                else:
+                    service_type = type(service).__name__
+                    self.logger.debug(f"✅ 서비스 조회 성공: {service_key} (타입: {service_type})")
+                
+                stage_status['result_validation'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "result_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "service_key": service_key
+                }
+                errors.append(error_info)
+                stage_status['result_validation'] = 'failed'
+                self.logger.error(f"❌ 5단계: 조회 결과 검증 실패 - {e}")
+            
+            # 🔥 6단계: 성능 통계 업데이트
+            try:
+                retrieval_time = time.time() - start_time
+                
+                # 성능 통계 저장
+                if not hasattr(self, '_service_retrieval_stats'):
+                    self._service_retrieval_stats = {}
+                
+                if service_key not in self._service_retrieval_stats:
+                    self._service_retrieval_stats[service_key] = {
+                        'total_retrievals': 0,
+                        'successful_retrievals': 0,
+                        'failed_retrievals': 0,
+                        'average_retrieval_time': 0.0,
+                        'last_retrieval_time': 0.0
+                    }
+                
+                stats = self._service_retrieval_stats[service_key]
+                stats['total_retrievals'] += 1
+                stats['last_retrieval_time'] = retrieval_time
+                
+                if service is not None:
+                    stats['successful_retrievals'] += 1
+                else:
+                    stats['failed_retrievals'] += 1
+                
+                # 평균 조회 시간 업데이트
+                if stats['total_retrievals'] > 0:
+                    stats['average_retrieval_time'] = (
+                        (stats['average_retrieval_time'] * (stats['total_retrievals'] - 1) + retrieval_time) 
+                        / stats['total_retrievals']
+                    )
+                
+                stage_status['performance_tracking'] = 'success'
+                
+            except Exception as e:
+                self.logger.debug(f"⚠️ 성능 통계 업데이트 실패: {e}")
+                stage_status['performance_tracking'] = 'failed'
+            
+            # 🔥 7단계: 에러 정보 저장 및 결과 반환
+            if errors:
+                # 에러 정보 저장
+                if not hasattr(self, '_service_retrieval_errors'):
+                    self._service_retrieval_errors = {}
+                
+                if service_key not in self._service_retrieval_errors:
+                    self._service_retrieval_errors[service_key] = []
+                
+                self._service_retrieval_errors[service_key].extend(errors)
+                
+                self.logger.warning(f"⚠️ 서비스 조회 완료 (일부 에러 있음): {service_key} - {len(errors)}개 에러")
             else:
-                self.logger.debug(f"⚠️ 서비스 조회 실패: {service_key}")
+                self.logger.debug(f"✅ 서비스 조회 완료 (성공): {service_key}")
             
             return service
+            
+        except Exception as e:
+            # 최종 에러 처리
+            self.logger.error(f"❌ 서비스 조회 실패: {service_key} - {e}")
+            
+            # 에러 정보 저장
+            if not hasattr(self, '_service_retrieval_errors'):
+                self._service_retrieval_errors = {}
+            
+            if service_key not in self._service_retrieval_errors:
+                self._service_retrieval_errors[service_key] = []
+            
+            final_error = {
+                "stage": "final_error_handling",
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "service_key": service_key
+            }
+            self._service_retrieval_errors[service_key].append(final_error)
+            
+            return None
     
     def get_service(self, service_key: str) -> Optional[Any]:
         """서비스 조회 (get 메서드와 동일)"""
@@ -366,36 +795,100 @@ class CentralHubDIContainer:
     # ==============================================
     
     def inject_to_step(self, step_instance) -> int:
-        """🔥 Central Hub DI Container v7.0 - 완전한 의존성 주입 시스템"""
-        with self._lock:
-            injections_made = 0
-            
+        """🔥 단계별 세분화된 에러 처리가 적용된 Central Hub DI Container v7.0 - 완전한 의존성 주입 시스템"""
+        start_time = time.time()
+        errors = []
+        stage_status = {}
+        injections_made = 0
+        
+        try:
+            # 🔥 1단계: Step 인스턴스 유효성 검증
             try:
-                # 🔥 1단계: Step 유효성 검증
+                if step_instance is None:
+                    raise ValueError("Step 인스턴스가 None입니다")
+                
+                if not hasattr(step_instance, '__class__'):
+                    raise ValueError("Step 인스턴스에 __class__ 속성이 없습니다")
+                
                 step_name = step_instance.__class__.__name__
                 if step_name == 'TestStep':
                     self.logger.warning(f"⚠️ TestStep 감지 - 실제 Step 클래스가 로딩되지 않았습니다")
                     return 0
                 
-                # 🔥 2단계: Central Hub Container 자체 주입 (핵심)
+                stage_status['step_validation'] = 'success'
+                self.logger.debug(f"✅ 1단계: Step 인스턴스 유효성 검증 성공 - {step_name}")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "step_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "step_instance_type": type(step_instance).__name__ if step_instance else None
+                }
+                errors.append(error_info)
+                stage_status['step_validation'] = 'failed'
+                self.logger.error(f"❌ 1단계: Step 인스턴스 유효성 검증 실패 - {e}")
+                return 0
+            
+            # 🔥 2단계: Central Hub Container 자체 주입
+            try:
                 if hasattr(step_instance, 'central_hub_container'):
                     step_instance.central_hub_container = self
                     injections_made += 1
                     self.logger.debug(f"✅ Central Hub Container 주입 완료")
                 
-                # 🔥 3단계: DI Container 자체 주입 (기존 호환성)
+                stage_status['central_hub_injection'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "central_hub_injection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['central_hub_injection'] = 'failed'
+                self.logger.error(f"❌ 2단계: Central Hub Container 주입 실패 - {e}")
+            
+            # 🔥 3단계: DI Container 자체 주입 (기존 호환성)
+            try:
                 if hasattr(step_instance, 'di_container'):
                     step_instance.di_container = self
                     injections_made += 1
                     self.logger.debug(f"✅ DI Container 주입 완료")
                 
-                # 🔥 4단계: PropertyInjectionMixin 지원
+                stage_status['di_container_injection'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "di_container_injection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['di_container_injection'] = 'failed'
+                self.logger.error(f"❌ 3단계: DI Container 주입 실패 - {e}")
+            
+            # 🔥 4단계: PropertyInjectionMixin 지원
+            try:
                 if hasattr(step_instance, 'set_di_container'):
                     step_instance.set_di_container(self)
                     injections_made += 1
                     self.logger.debug(f"✅ PropertyInjectionMixin 설정 완료")
                 
-                # 🔥 5단계: 표준 의존성들 주입 (Central Hub v7.0 확장)
+                stage_status['property_injection_mixin'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "property_injection_mixin",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['property_injection_mixin'] = 'failed'
+                self.logger.error(f"❌ 4단계: PropertyInjectionMixin 설정 실패 - {e}")
+            
+            # 🔥 5단계: 표준 의존성들 주입 (Central Hub v7.0 확장)
+            try:
                 injection_map = {
                     'model_loader': 'model_loader',
                     'memory_manager': 'memory_manager', 
@@ -409,23 +902,61 @@ class CentralHubDIContainer:
                     'config_manager': 'config_manager'
                 }
                 
+                failed_injections = []
                 for attr_name, service_key in injection_map.items():
-                    if hasattr(step_instance, attr_name):
-                        current_value = getattr(step_instance, attr_name)
-                        if current_value is None:
-                            service = self.get(service_key)
-                            if service:
-                                setattr(step_instance, attr_name, service)
-                                injections_made += 1
-                                self.logger.debug(f"✅ {attr_name} 주입 완료")
+                    try:
+                        if hasattr(step_instance, attr_name):
+                            current_value = getattr(step_instance, attr_name)
+                            if current_value is None:
+                                service = self.get(service_key)
+                                if service:
+                                    setattr(step_instance, attr_name, service)
+                                    injections_made += 1
+                                    self.logger.debug(f"✅ {attr_name} 주입 완료")
+                                else:
+                                    failed_injections.append(f"{attr_name}: 서비스 없음")
+                            else:
+                                self.logger.debug(f"⚠️ {attr_name} 이미 설정됨")
+                    except Exception as injection_error:
+                        failed_injections.append(f"{attr_name}: {injection_error}")
                 
-                # 🔥 6단계: Central Hub 통합 상태 표시 (핵심)
+                if failed_injections:
+                    self.logger.warning(f"⚠️ 일부 의존성 주입 실패: {failed_injections}")
+                
+                stage_status['standard_dependencies_injection'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "standard_dependencies_injection",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "failed_injections": failed_injections if 'failed_injections' in locals() else []
+                }
+                errors.append(error_info)
+                stage_status['standard_dependencies_injection'] = 'failed'
+                self.logger.error(f"❌ 5단계: 표준 의존성 주입 실패 - {e}")
+            
+            # 🔥 6단계: Central Hub 통합 상태 표시
+            try:
                 if hasattr(step_instance, 'central_hub_integrated'):
                     step_instance.central_hub_integrated = True
                     injections_made += 1
                     self.logger.debug(f"✅ Central Hub 통합 상태 설정 완료")
                 
-                # 🔥 7단계: Step 메타데이터 설정
+                stage_status['central_hub_integration_status'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "central_hub_integration_status",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['central_hub_integration_status'] = 'failed'
+                self.logger.error(f"❌ 6단계: Central Hub 통합 상태 설정 실패 - {e}")
+            
+            # 🔥 7단계: Step 메타데이터 설정
+            try:
                 if hasattr(step_instance, 'step_metadata'):
                     step_instance.step_metadata = {
                         'container_id': self.container_id,
@@ -433,47 +964,162 @@ class CentralHubDIContainer:
                         'injection_count': self._injection_count,
                         'central_hub_version': '7.0',
                         'step_name': step_name,
-                        'services_injected': injections_made
+                        'services_injected': injections_made,
+                        'errors_count': len(errors)
                     }
                     injections_made += 1
                     self.logger.debug(f"✅ Step 메타데이터 설정 완료")
                 
-                # 🔥 8단계: 자동 초기화 메서드 호출
+                stage_status['metadata_setup'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "metadata_setup",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['metadata_setup'] = 'failed'
+                self.logger.error(f"❌ 7단계: Step 메타데이터 설정 실패 - {e}")
+            
+            # 🔥 8단계: 자동 초기화 메서드 호출
+            try:
                 if hasattr(step_instance, 'initialize') and not getattr(step_instance, 'is_initialized', False):
                     try:
                         step_instance.initialize()
                         step_instance.is_initialized = True
                         self.logger.debug("✅ Step 자동 초기화 완료")
-                    except Exception as e:
-                        self.logger.debug(f"⚠️ Step 자동 초기화 실패: {e}")
+                    except Exception as init_error:
+                        self.logger.debug(f"⚠️ Step 자동 초기화 실패: {init_error}")
+                        # 초기화 실패는 치명적이지 않으므로 에러로 처리하지 않음
                 
-                # 🔥 9단계: Central Hub 이벤트 시스템 연동
+                stage_status['auto_initialization'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "auto_initialization",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['auto_initialization'] = 'failed'
+                self.logger.error(f"❌ 8단계: 자동 초기화 메서드 호출 실패 - {e}")
+            
+            # 🔥 9단계: Central Hub 이벤트 시스템 연동
+            try:
                 if hasattr(step_instance, 'on_central_hub_integration'):
                     try:
                         step_instance.on_central_hub_integration(self)
                         self.logger.debug("✅ Central Hub 이벤트 시스템 연동 완료")
-                    except Exception as e:
-                        self.logger.debug(f"⚠️ Central Hub 이벤트 시스템 연동 실패: {e}")
+                    except Exception as event_error:
+                        self.logger.debug(f"⚠️ Central Hub 이벤트 시스템 연동 실패: {event_error}")
+                        # 이벤트 시스템 실패는 치명적이지 않으므로 에러로 처리하지 않음
                 
-                # 🔥 10단계: 성능 모니터링 설정
+                stage_status['event_system_integration'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "event_system_integration",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['event_system_integration'] = 'failed'
+                self.logger.error(f"❌ 9단계: Central Hub 이벤트 시스템 연동 실패 - {e}")
+            
+            # 🔥 10단계: 성능 모니터링 설정
+            try:
                 if hasattr(step_instance, 'performance_monitor'):
                     try:
                         step_instance.performance_monitor.start_monitoring(step_name)
                         self.logger.debug("✅ 성능 모니터링 시작")
-                    except Exception as e:
-                        self.logger.debug(f"⚠️ 성능 모니터링 설정 실패: {e}")
+                    except Exception as monitor_error:
+                        self.logger.debug(f"⚠️ 성능 모니터링 설정 실패: {monitor_error}")
+                        # 모니터링 실패는 치명적이지 않으므로 에러로 처리하지 않음
                 
-                # 🔥 11단계: 통계 업데이트
-                self._injection_count += 1
-                self._update_injection_stats(step_name, injections_made)
-                
-                # 🔥 12단계: 완료 로깅
-                self.logger.info(f"🔥 {step_name} Central Hub v7.0 의존성 주입 완료: {injections_made}개 서비스")
-                self.logger.debug(f"📊 주입된 서비스들: {self._get_injected_services(step_instance)}")
+                stage_status['performance_monitoring_setup'] = 'success'
                 
             except Exception as e:
-                self.logger.error(f"❌ Central Hub v7.0 의존성 주입 실패: {e}")
-                self.logger.debug(f"🔍 실패 상세: {traceback.format_exc()}")
+                error_info = {
+                    "stage": "performance_monitoring_setup",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['performance_monitoring_setup'] = 'failed'
+                self.logger.error(f"❌ 10단계: 성능 모니터링 설정 실패 - {e}")
+            
+            # 🔥 11단계: 통계 업데이트
+            try:
+                with self._lock:
+                    self._injection_count += 1
+                    self._update_injection_stats(step_name, injections_made)
+                
+                stage_status['statistics_update'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "statistics_update",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['statistics_update'] = 'failed'
+                self.logger.error(f"❌ 11단계: 통계 업데이트 실패 - {e}")
+            
+            # 🔥 12단계: 완료 로깅 및 결과 반환
+            try:
+                injection_time = time.time() - start_time
+                
+                if errors:
+                    self.logger.warning(f"⚠️ {step_name} Central Hub v7.0 의존성 주입 완료 (일부 에러 있음): {injections_made}개 서비스, {len(errors)}개 에러")
+                    self.logger.debug(f"📊 주입 상태: {stage_status}")
+                else:
+                    self.logger.info(f"🔥 {step_name} Central Hub v7.0 의존성 주입 완료: {injections_made}개 서비스 (소요시간: {injection_time:.3f}초)")
+                
+                # 에러 정보 저장
+                if not hasattr(self, '_injection_errors'):
+                    self._injection_errors = {}
+                
+                if step_name not in self._injection_errors:
+                    self._injection_errors[step_name] = []
+                
+                self._injection_errors[step_name].extend(errors)
+                
+                stage_status['completion_logging'] = 'success'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "completion_logging",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['completion_logging'] = 'failed'
+                self.logger.error(f"❌ 12단계: 완료 로깅 실패 - {e}")
+            
+            return injections_made
+            
+        except Exception as e:
+            # 최종 에러 처리
+            self.logger.error(f"❌ Central Hub v7.0 의존성 주입 실패: {e}")
+            self.logger.debug(f"🔍 실패 상세: {traceback.format_exc()}")
+            
+            # 에러 정보 저장
+            if not hasattr(self, '_injection_errors'):
+                self._injection_errors = {}
+            
+            step_name = getattr(step_instance, '__class__', {}).__name__ if step_instance else 'Unknown'
+            if step_name not in self._injection_errors:
+                self._injection_errors[step_name] = []
+            
+            final_error = {
+                "stage": "final_error_handling",
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "step_name": step_name
+            }
+            self._injection_errors[step_name].append(final_error)
             
             return injections_made
     
@@ -518,41 +1164,199 @@ class CentralHubDIContainer:
     # ==============================================
     
     def _create_model_loader(self) -> Any:
-        """🔥 수정: ModelLoader 생성 (순환참조 완전 방지)"""
+        """🔥 단계별 세분화된 에러 처리가 적용된 ModelLoader 생성 (순환참조 완전 방지)"""
+        start_time = time.time()
+        errors = []
+        stage_status = {}
+        
         try:
-            self.logger.debug("🔄 ModelLoader 생성 시작...")
+            # 🔥 1단계: 환경 검증
+            try:
+                if not TORCH_AVAILABLE:
+                    raise RuntimeError("PyTorch가 사용할 수 없습니다")
+                
+                if IS_M3_MAX and not MPS_AVAILABLE:
+                    self.logger.warning("⚠️ M3 Max에서 MPS를 사용할 수 없습니다 - CPU 사용")
+                
+                stage_status['environment_validation'] = 'success'
+                self.logger.debug("✅ 1단계: 환경 검증 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "environment_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "torch_available": TORCH_AVAILABLE,
+                    "mps_available": MPS_AVAILABLE,
+                    "is_m3_max": IS_M3_MAX
+                }
+                errors.append(error_info)
+                stage_status['environment_validation'] = 'failed'
+                self.logger.error(f"❌ 1단계: 환경 검증 실패 - {e}")
+                raise
             
-            # 🔥 핵심 수정: 순환참조 방지를 위해 Central Hub 없이 생성
-            from ..ai_pipeline.utils.model_loader import ModelLoader
+            # 🔥 2단계: ModelLoader 모듈 import
+            try:
+                from ..ai_pipeline.utils.model_loader import ModelLoader
+                stage_status['module_import'] = 'success'
+                self.logger.debug("✅ 2단계: ModelLoader 모듈 import 성공")
+                
+            except ImportError as e:
+                error_info = {
+                    "stage": "module_import",
+                    "error_type": "ImportError",
+                    "message": str(e),
+                    "import_path": "..ai_pipeline.utils.model_loader"
+                }
+                errors.append(error_info)
+                stage_status['module_import'] = 'failed'
+                self.logger.error(f"❌ 2단계: ModelLoader 모듈 import 실패 - {e}")
+                raise
+            except Exception as e:
+                error_info = {
+                    "stage": "module_import",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['module_import'] = 'failed'
+                self.logger.error(f"❌ 2단계: ModelLoader 모듈 import 실패 - {e}")
+                raise
             
-            # 🔥 수정 1: 기본 설정으로만 생성 (Central Hub 연동 없이)
-            model_loader = ModelLoader(
-                device=DEVICE,
-                enable_optimization=True,
-                # 🔥 중요: _initialize_central_hub_integration을 비활성화
-                _skip_central_hub_init=True  # 새로운 플래그
-            )
+            # 🔥 3단계: ModelLoader 인스턴스 생성
+            try:
+                model_loader = ModelLoader(
+                    device=DEVICE,
+                    enable_optimization=True,
+                    # 🔥 중요: _initialize_central_hub_integration을 비활성화
+                    _skip_central_hub_init=True  # 새로운 플래그
+                )
+                
+                stage_status['instance_creation'] = 'success'
+                self.logger.debug("✅ 3단계: ModelLoader 인스턴스 생성 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "instance_creation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "device": DEVICE,
+                    "enable_optimization": True
+                }
+                errors.append(error_info)
+                stage_status['instance_creation'] = 'failed'
+                self.logger.error(f"❌ 3단계: ModelLoader 인스턴스 생성 실패 - {e}")
+                raise
             
-            # 🔥 수정 2: 생성 후에 Container 연결 (순환참조 방지)
+            # 🔥 4단계: Central Hub Container 연결
             try:
                 model_loader._central_hub_container = self
                 model_loader._container_initialized = True
                 
-                # 필요한 의존성만 수동 주입
+                stage_status['central_hub_connection'] = 'success'
+                self.logger.debug("✅ 4단계: Central Hub Container 연결 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "central_hub_connection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['central_hub_connection'] = 'failed'
+                self.logger.warning(f"⚠️ 4단계: Central Hub Container 연결 실패 - {e}")
+                # 연결 실패해도 ModelLoader 자체는 동작하므로 에러로 처리하지 않음
+            
+            # 🔥 5단계: 기본 의존성 해결
+            try:
                 if hasattr(model_loader, '_resolve_basic_dependencies'):
                     model_loader._resolve_basic_dependencies()
-                    
-            except Exception as connection_error:
-                self.logger.debug(f"⚠️ ModelLoader Central Hub 연결 실패: {connection_error}")
-                # 연결 실패해도 ModelLoader 자체는 동작
+                    stage_status['basic_dependencies_resolution'] = 'success'
+                    self.logger.debug("✅ 5단계: 기본 의존성 해결 성공")
+                else:
+                    self.logger.debug("⚠️ ModelLoader에 _resolve_basic_dependencies 메서드가 없습니다")
+                    stage_status['basic_dependencies_resolution'] = 'skipped'
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "basic_dependencies_resolution",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['basic_dependencies_resolution'] = 'failed'
+                self.logger.warning(f"⚠️ 5단계: 기본 의존성 해결 실패 - {e}")
+                # 의존성 해결 실패는 치명적이지 않으므로 에러로 처리하지 않음
             
-            self.logger.debug("✅ ModelLoader 생성 완료 (순환참조 방지)")
-            return model_loader
+            # 🔥 6단계: ModelLoader 초기화 검증
+            try:
+                # ModelLoader가 제대로 초기화되었는지 확인
+                if not hasattr(model_loader, 'device'):
+                    raise RuntimeError("ModelLoader에 device 속성이 없습니다")
+                
+                if not hasattr(model_loader, 'load_model'):
+                    raise RuntimeError("ModelLoader에 load_model 메서드가 없습니다")
+                
+                stage_status['initialization_validation'] = 'success'
+                self.logger.debug("✅ 6단계: ModelLoader 초기화 검증 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "initialization_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['initialization_validation'] = 'failed'
+                self.logger.error(f"❌ 6단계: ModelLoader 초기화 검증 실패 - {e}")
+                raise
+            
+            # 🔥 7단계: 생성 완료 및 결과 반환
+            try:
+                creation_time = time.time() - start_time
+                
+                if errors:
+                    self.logger.warning(f"⚠️ ModelLoader 생성 완료 (일부 에러 있음): {len(errors)}개 에러")
+                    self.logger.debug(f"📊 생성 상태: {stage_status}")
+                else:
+                    self.logger.debug(f"✅ ModelLoader 생성 완료 (순환참조 방지) - 소요시간: {creation_time:.3f}초")
+                
+                # 에러 정보 저장
+                if not hasattr(self, '_model_loader_creation_errors'):
+                    self._model_loader_creation_errors = []
+                
+                self._model_loader_creation_errors.extend(errors)
+                
+                return model_loader
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "completion_handling",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['completion_handling'] = 'failed'
+                self.logger.error(f"❌ 7단계: 생성 완료 처리 실패 - {e}")
+                raise
             
         except Exception as e:
+            # 최종 에러 처리
             self.logger.error(f"❌ ModelLoader 생성 실패: {e}")
             
+            # 에러 정보 저장
+            if not hasattr(self, '_model_loader_creation_errors'):
+                self._model_loader_creation_errors = []
+            
+            final_error = {
+                "stage": "final_error_handling",
+                "error_type": type(e).__name__,
+                "message": str(e)
+            }
+            self._model_loader_creation_errors.append(final_error)
+            
             # 🔥 폴백: 최소 기능 ModelLoader
+            self.logger.warning("🔄 최소 기능 ModelLoader로 폴백...")
             return self._create_minimal_model_loader()
 
 
@@ -856,20 +1660,60 @@ class CentralHubDIContainer:
     # ==============================================
     
     def get_stats(self) -> Dict[str, Any]:
-        """Container 통계"""
-        with self._lock:
-            registry_stats = self.registry.get_stats()
+        """🔥 단계별 세분화된 에러 처리가 적용된 Container 통계"""
+        start_time = time.time()
+        errors = []
+        stage_status = {}
+        
+        try:
+            # 🔥 1단계: 기본 통계 수집
+            try:
+                basic_stats = {
+                    'container_id': self.container_id,
+                    'container_type': 'CentralHubDIContainer',
+                    'version': '7.0',
+                    'creation_time': self._creation_time,
+                    'lifetime_seconds': time.time() - self._creation_time,
+                    'access_count': self._access_count,
+                    'injection_count': self._injection_count
+                }
+                
+                stage_status['basic_stats_collection'] = 'success'
+                self.logger.debug("✅ 1단계: 기본 통계 수집 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "basic_stats_collection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['basic_stats_collection'] = 'failed'
+                self.logger.error(f"❌ 1단계: 기본 통계 수집 실패 - {e}")
+                raise
             
-            return {
-                'container_id': self.container_id,
-                'container_type': 'CentralHubDIContainer',
-                'version': '7.0',
-                'creation_time': self._creation_time,
-                'lifetime_seconds': time.time() - self._creation_time,
-                'access_count': self._access_count,
-                'injection_count': self._injection_count,
-                'registry_stats': registry_stats,
-                'environment': {
+            # 🔥 2단계: 레지스트리 통계 수집
+            try:
+                with self._lock:
+                    registry_stats = self.registry.get_stats()
+                
+                stage_status['registry_stats_collection'] = 'success'
+                self.logger.debug("✅ 2단계: 레지스트리 통계 수집 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "registry_stats_collection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['registry_stats_collection'] = 'failed'
+                self.logger.error(f"❌ 2단계: 레지스트리 통계 수집 실패 - {e}")
+                registry_stats = {"error": str(e)}
+            
+            # 🔥 3단계: 환경 정보 수집
+            try:
+                environment_info = {
                     'is_m3_max': IS_M3_MAX,
                     'device': DEVICE,
                     'memory_gb': MEMORY_GB,
@@ -877,6 +1721,148 @@ class CentralHubDIContainer:
                     'mps_available': MPS_AVAILABLE,
                     'conda_env': CONDA_ENV
                 }
+                
+                stage_status['environment_info_collection'] = 'success'
+                self.logger.debug("✅ 3단계: 환경 정보 수집 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "environment_info_collection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['environment_info_collection'] = 'failed'
+                self.logger.error(f"❌ 3단계: 환경 정보 수집 실패 - {e}")
+                environment_info = {"error": str(e)}
+            
+            # 🔥 4단계: 에러 통계 수집
+            try:
+                error_stats = {}
+                
+                # 초기화 에러 통계
+                if hasattr(self, '_initialization_errors'):
+                    error_stats['initialization_errors'] = len(self._initialization_errors)
+                
+                # 내장 서비스 등록 에러 통계
+                if hasattr(self, '_builtin_services_errors'):
+                    error_stats['builtin_services_errors'] = len(self._builtin_services_errors)
+                
+                # 서비스 조회 에러 통계
+                if hasattr(self, '_service_retrieval_errors'):
+                    total_retrieval_errors = sum(len(errors) for errors in self._service_retrieval_errors.values())
+                    error_stats['service_retrieval_errors'] = total_retrieval_errors
+                
+                # 의존성 주입 에러 통계
+                if hasattr(self, '_injection_errors'):
+                    total_injection_errors = sum(len(errors) for errors in self._injection_errors.values())
+                    error_stats['injection_errors'] = total_injection_errors
+                
+                # ModelLoader 생성 에러 통계
+                if hasattr(self, '_model_loader_creation_errors'):
+                    error_stats['model_loader_creation_errors'] = len(self._model_loader_creation_errors)
+                
+                stage_status['error_stats_collection'] = 'success'
+                self.logger.debug("✅ 4단계: 에러 통계 수집 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "error_stats_collection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['error_stats_collection'] = 'failed'
+                self.logger.error(f"❌ 4단계: 에러 통계 수집 실패 - {e}")
+                error_stats = {"error": str(e)}
+            
+            # 🔥 5단계: 성능 통계 수집
+            try:
+                performance_stats = {}
+                
+                # 서비스 조회 성능 통계
+                if hasattr(self, '_service_retrieval_stats'):
+                    total_retrievals = sum(stats.get('total_retrievals', 0) for stats in self._service_retrieval_stats.values())
+                    successful_retrievals = sum(stats.get('successful_retrievals', 0) for stats in self._service_retrieval_stats.values())
+                    failed_retrievals = sum(stats.get('failed_retrievals', 0) for stats in self._service_retrieval_stats.values())
+                    
+                    performance_stats['service_retrieval'] = {
+                        'total_retrievals': total_retrievals,
+                        'successful_retrievals': successful_retrievals,
+                        'failed_retrievals': failed_retrievals,
+                        'success_rate': (successful_retrievals / total_retrievals * 100) if total_retrievals > 0 else 0
+                    }
+                
+                # 의존성 주입 성능 통계
+                if hasattr(self, '_injection_stats'):
+                    total_injections = sum(stats.get('total_injections', 0) for stats in self._injection_stats.values())
+                    performance_stats['dependency_injection'] = {
+                        'total_injections': total_injections,
+                        'average_injections_per_step': total_injections / len(self._injection_stats) if self._injection_stats else 0
+                    }
+                
+                stage_status['performance_stats_collection'] = 'success'
+                self.logger.debug("✅ 5단계: 성능 통계 수집 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "performance_stats_collection",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['performance_stats_collection'] = 'failed'
+                self.logger.error(f"❌ 5단계: 성능 통계 수집 실패 - {e}")
+                performance_stats = {"error": str(e)}
+            
+            # 🔥 6단계: 통계 조합 및 결과 반환
+            try:
+                stats_collection_time = time.time() - start_time
+                
+                # 최종 통계 조합
+                final_stats = {
+                    **basic_stats,
+                    'registry_stats': registry_stats,
+                    'environment': environment_info,
+                    'error_stats': error_stats,
+                    'performance_stats': performance_stats,
+                    'stats_collection_time': stats_collection_time,
+                    'errors_count': len(errors)
+                }
+                
+                # 에러가 있으면 에러 정보도 포함
+                if errors:
+                    final_stats['collection_errors'] = errors
+                    final_stats['collection_stage_status'] = stage_status
+                    self.logger.warning(f"⚠️ 통계 수집 완료 (일부 에러 있음): {len(errors)}개 에러")
+                else:
+                    self.logger.debug(f"✅ 통계 수집 완료 (성공) - 소요시간: {stats_collection_time:.3f}초")
+                
+                return final_stats
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "stats_combination",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['stats_combination'] = 'failed'
+                self.logger.error(f"❌ 6단계: 통계 조합 실패 - {e}")
+                raise
+            
+        except Exception as e:
+            # 최종 에러 처리
+            self.logger.error(f"❌ Container 통계 수집 실패: {e}")
+            
+            # 최소한의 기본 통계라도 반환
+            return {
+                'container_id': getattr(self, 'container_id', 'unknown'),
+                'container_type': 'CentralHubDIContainer',
+                'version': '7.0',
+                'error': str(e),
+                'collection_failed': True,
+                'errors_count': len(errors)
             }
     
     def list_services(self) -> List[str]:
@@ -928,6 +1914,174 @@ class CentralHubDIContainer:
             
         except Exception as e:
             self.logger.error(f"❌ Container 정리 실패: {e}")
+    
+    # ==============================================
+    # 🔥 에러 정보 조회 메서드들 (새로 추가)
+    # ==============================================
+    
+    def get_error_summary(self) -> Dict[str, Any]:
+        """🔥 전체 에러 요약 정보 조회"""
+        try:
+            error_summary = {
+                'container_id': self.container_id,
+                'total_errors': 0,
+                'error_categories': {},
+                'recent_errors': [],
+                'error_trends': {}
+            }
+            
+            # 초기화 에러
+            if hasattr(self, '_initialization_errors'):
+                error_summary['error_categories']['initialization'] = len(self._initialization_errors)
+                error_summary['total_errors'] += len(self._initialization_errors)
+            
+            # 내장 서비스 등록 에러
+            if hasattr(self, '_builtin_services_errors'):
+                error_summary['error_categories']['builtin_services'] = len(self._builtin_services_errors)
+                error_summary['total_errors'] += len(self._builtin_services_errors)
+            
+            # 서비스 조회 에러
+            if hasattr(self, '_service_retrieval_errors'):
+                total_retrieval_errors = sum(len(errors) for errors in self._service_retrieval_errors.values())
+                error_summary['error_categories']['service_retrieval'] = total_retrieval_errors
+                error_summary['total_errors'] += total_retrieval_errors
+            
+            # 의존성 주입 에러
+            if hasattr(self, '_injection_errors'):
+                total_injection_errors = sum(len(errors) for errors in self._injection_errors.values())
+                error_summary['error_categories']['dependency_injection'] = total_injection_errors
+                error_summary['total_errors'] += total_injection_errors
+            
+            # ModelLoader 생성 에러
+            if hasattr(self, '_model_loader_creation_errors'):
+                error_summary['error_categories']['model_loader_creation'] = len(self._model_loader_creation_errors)
+                error_summary['total_errors'] += len(self._model_loader_creation_errors)
+            
+            return error_summary
+            
+        except Exception as e:
+            self.logger.error(f"❌ 에러 요약 조회 실패: {e}")
+            return {
+                'container_id': self.container_id,
+                'error': str(e),
+                'total_errors': 0
+            }
+    
+    def get_errors_by_category(self, category: str) -> List[Dict[str, Any]]:
+        """🔥 카테고리별 에러 상세 정보 조회"""
+        try:
+            if category == 'initialization' and hasattr(self, '_initialization_errors'):
+                return self._initialization_errors
+            elif category == 'builtin_services' and hasattr(self, '_builtin_services_errors'):
+                return self._builtin_services_errors
+            elif category == 'service_retrieval' and hasattr(self, '_service_retrieval_errors'):
+                all_errors = []
+                for service_key, errors in self._service_retrieval_errors.items():
+                    for error in errors:
+                        error['service_key'] = service_key
+                        all_errors.append(error)
+                return all_errors
+            elif category == 'dependency_injection' and hasattr(self, '_injection_errors'):
+                all_errors = []
+                for step_name, errors in self._injection_errors.items():
+                    for error in errors:
+                        error['step_name'] = step_name
+                        all_errors.append(error)
+                return all_errors
+            elif category == 'model_loader_creation' and hasattr(self, '_model_loader_creation_errors'):
+                return self._model_loader_creation_errors
+            else:
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"❌ 카테고리별 에러 조회 실패: {category} - {e}")
+            return []
+    
+    def get_service_errors(self, service_key: str) -> List[Dict[str, Any]]:
+        """🔥 특정 서비스의 에러 정보 조회"""
+        try:
+            if hasattr(self, '_service_retrieval_errors') and service_key in self._service_retrieval_errors:
+                return self._service_retrieval_errors[service_key]
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"❌ 서비스 에러 조회 실패: {service_key} - {e}")
+            return []
+    
+    def get_step_injection_errors(self, step_name: str) -> List[Dict[str, Any]]:
+        """🔥 특정 Step의 의존성 주입 에러 정보 조회"""
+        try:
+            if hasattr(self, '_injection_errors') and step_name in self._injection_errors:
+                return self._injection_errors[step_name]
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"❌ Step 주입 에러 조회 실패: {step_name} - {e}")
+            return []
+    
+    def clear_errors(self, category: str = None):
+        """🔥 에러 정보 정리"""
+        try:
+            if category is None:
+                # 모든 에러 정리
+                if hasattr(self, '_initialization_errors'):
+                    self._initialization_errors.clear()
+                if hasattr(self, '_builtin_services_errors'):
+                    self._builtin_services_errors.clear()
+                if hasattr(self, '_service_retrieval_errors'):
+                    self._service_retrieval_errors.clear()
+                if hasattr(self, '_injection_errors'):
+                    self._injection_errors.clear()
+                if hasattr(self, '_model_loader_creation_errors'):
+                    self._model_loader_creation_errors.clear()
+                self.logger.info("✅ 모든 에러 정보 정리 완료")
+            else:
+                # 특정 카테고리 에러만 정리
+                if category == 'initialization' and hasattr(self, '_initialization_errors'):
+                    self._initialization_errors.clear()
+                elif category == 'builtin_services' and hasattr(self, '_builtin_services_errors'):
+                    self._builtin_services_errors.clear()
+                elif category == 'service_retrieval' and hasattr(self, '_service_retrieval_errors'):
+                    self._service_retrieval_errors.clear()
+                elif category == 'dependency_injection' and hasattr(self, '_injection_errors'):
+                    self._injection_errors.clear()
+                elif category == 'model_loader_creation' and hasattr(self, '_model_loader_creation_errors'):
+                    self._model_loader_creation_errors.clear()
+                self.logger.info(f"✅ {category} 에러 정보 정리 완료")
+                
+        except Exception as e:
+            self.logger.error(f"❌ 에러 정보 정리 실패: {e}")
+    
+    def get_detailed_error_report(self) -> Dict[str, Any]:
+        """🔥 상세 에러 리포트 생성"""
+        try:
+            report = {
+                'container_id': self.container_id,
+                'timestamp': time.time(),
+                'error_summary': self.get_error_summary(),
+                'detailed_errors': {}
+            }
+            
+            # 각 카테고리별 상세 에러 정보
+            categories = ['initialization', 'builtin_services', 'service_retrieval', 'dependency_injection', 'model_loader_creation']
+            
+            for category in categories:
+                errors = self.get_errors_by_category(category)
+                if errors:
+                    report['detailed_errors'][category] = {
+                        'count': len(errors),
+                        'errors': errors[:10]  # 최대 10개만 포함
+                    }
+            
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"❌ 상세 에러 리포트 생성 실패: {e}")
+            return {
+                'container_id': self.container_id,
+                'error': str(e),
+                'timestamp': time.time()
+            }
 
 # ==============================================
 # 🔥 Container Manager - 전역 관리

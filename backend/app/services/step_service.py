@@ -590,6 +590,16 @@ class StepServiceManager:
     
     async def initialize(self) -> bool:
         """서비스 초기화 (Central Hub 기반)"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'service_version': 'v16.0',
+            'central_hub_available': self.central_hub_container is not None,
+            'step_factory_available': self.step_factory is not None,
+            'conda_env': CONDA_INFO['conda_env'],
+            'device': DEVICE,
+            'memory_gb': MEMORY_GB
+        }
+        
         try:
             self.status = ServiceStatus.INITIALIZING
             self.logger.info("🚀 StepServiceManager v16.0 초기화 시작... (Central Hub 기반)")
@@ -597,6 +607,7 @@ class StepServiceManager:
             # Central Hub 연결 확인
             if not self._ensure_central_hub_connection():
                 self.logger.warning("⚠️ Central Hub 없이 제한된 기능으로 동작")
+                error_context['central_hub_connection_failed'] = True
             
             # M3 Max 메모리 최적화
             await self._optimize_memory()
@@ -608,14 +619,17 @@ class StepServiceManager:
                     if hasattr(self.central_hub_container, 'get_stats'):
                         hub_stats = self.central_hub_container.get_stats()
                         self.logger.info(f"📊 Central Hub 상태: {hub_stats}")
+                        error_context['central_hub_stats'] = hub_stats
                     
                     # Central Hub 메모리 최적화
                     if hasattr(self.central_hub_container, 'optimize_memory'):
                         optimization_result = self.central_hub_container.optimize_memory()
                         self.logger.info(f"💾 Central Hub 메모리 최적화: {optimization_result}")
+                        error_context['central_hub_optimization'] = optimization_result
                     
                 except Exception as e:
                     self.logger.warning(f"⚠️ Central Hub 상태 확인 실패: {e}")
+                    error_context['central_hub_status_check_failed'] = str(e)
             
             # StepFactory 검증
             if self.step_factory:
@@ -624,9 +638,11 @@ class StepServiceManager:
                     if hasattr(self.step_factory, 'get_statistics'):
                         factory_stats = self.step_factory.get_statistics()
                         self.logger.info(f"📊 StepFactory 상태: {factory_stats}")
+                        error_context['step_factory_stats'] = factory_stats
                     
                 except Exception as e:
                     self.logger.warning(f"⚠️ StepFactory 상태 확인 실패: {e}")
+                    error_context['step_factory_status_check_failed'] = str(e)
             
             self.status = ServiceStatus.ACTIVE
             self.logger.info("✅ StepServiceManager v16.0 초기화 완료 (Central Hub 기반)")
@@ -636,7 +652,35 @@ class StepServiceManager:
         except Exception as e:
             self.status = ServiceStatus.ERROR
             self.last_error = str(e)
-            self.logger.error(f"❌ StepServiceManager v16.0 초기화 실패: {e}")
+            
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                ConfigurationError,
+                PipelineError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = ConfigurationError(
+                    f"서비스 초기화 중 설정 오류: {e}",
+                    "SERVICE_INITIALIZATION_CONFIG_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (ImportError, ModuleNotFoundError)):
+                custom_error = ConfigurationError(
+                    f"서비스 초기화 중 모듈 오류: {e}",
+                    "SERVICE_INITIALIZATION_MODULE_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = PipelineError(
+                    f"서비스 초기화 실패: {e}",
+                    "SERVICE_INITIALIZATION_FAILED",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ StepServiceManager v16.0 초기화 실패: {custom_error}")
             return False
     
     async def _optimize_memory(self):
@@ -673,9 +717,24 @@ class StepServiceManager:
     
     async def _create_step_instance(self, step_type: Union[str, int], **kwargs) -> Tuple[bool, Optional[Any], str]:
         """Central Hub를 통한 Step 인스턴스 생성"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_type': step_type,
+            'step_factory_available': self.step_factory is not None,
+            'central_hub_available': self.central_hub_container is not None,
+            'kwargs_keys': list(kwargs.keys()),
+            'total_step_creations': self.central_hub_metrics['total_step_creations']
+        }
+        
         try:
             if not self.step_factory:
-                return False, None, "StepFactory 사용 불가"
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import ConfigurationError
+                raise ConfigurationError(
+                    "StepFactory 사용 불가",
+                    "STEP_FACTORY_NOT_AVAILABLE",
+                    error_context
+                )
             
             # StepFactory를 통한 Step 생성
             if hasattr(self.step_factory, 'create_step'):
@@ -701,17 +760,60 @@ class StepServiceManager:
                     with self._lock:
                         self.central_hub_metrics['total_step_creations'] += 1
                         self.central_hub_metrics['failed_step_creations'] += 1
-                    return False, None, error_msg
+                    
+                    # exceptions.py의 커스텀 예외 사용
+                    from app.core.exceptions import ModelLoadingError
+                    raise ModelLoadingError(
+                        f"Step 생성 실패: {error_msg}",
+                        "STEP_CREATION_FAILED",
+                        error_context
+                    )
             
-            return False, None, "StepFactory create_step 메서드 없음"
+            # exceptions.py의 커스텀 예외 사용
+            from app.core.exceptions import ConfigurationError
+            raise ConfigurationError(
+                "StepFactory create_step 메서드 없음",
+                "STEP_FACTORY_METHOD_NOT_FOUND",
+                error_context
+            )
             
         except Exception as e:
             with self._lock:
                 self.central_hub_metrics['total_step_creations'] += 1
                 self.central_hub_metrics['failed_step_creations'] += 1
             
-            self.logger.error(f"❌ Central Hub Step 인스턴스 생성 오류: {e}")
-            return False, None, str(e)
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                ModelLoadingError,
+                ConfigurationError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ModelLoadingError, ConfigurationError)):
+                # 이미 커스텀 예외인 경우 그대로 사용
+                custom_error = e
+            elif isinstance(e, (ValueError, TypeError)):
+                custom_error = ConfigurationError(
+                    f"Step 생성 중 설정 오류: {e}",
+                    "STEP_CREATION_CONFIG_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (ImportError, ModuleNotFoundError)):
+                custom_error = ConfigurationError(
+                    f"Step 생성 중 모듈 오류: {e}",
+                    "STEP_CREATION_MODULE_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = ModelLoadingError(
+                    f"Step 인스턴스 생성 실패: {e}",
+                    "STEP_INSTANCE_CREATION_FAILED",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ Central Hub Step 인스턴스 생성 오류: {custom_error}")
+            return False, None, str(custom_error)
     
     async def _process_step_with_central_hub(
         self, 
@@ -723,19 +825,27 @@ class StepServiceManager:
         request_id = kwargs.get('request_id', f"req_{uuid.uuid4().hex[:8]}")
         start_time = time.time()
         
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_type': step_type,
+            'request_id': request_id,
+            'input_data_keys': list(input_data.keys()) if input_data else [],
+            'central_hub_available': self.central_hub_container is not None,
+            'step_factory_available': self.step_factory is not None
+        }
+        
         try:
             # Step 인스턴스 생성 (Central Hub 기반)
             success, step_instance, message = await self._create_step_instance(step_type, **kwargs)
             
             if not success or not step_instance:
-                return {
-                    "success": False,
-                    "error": f"Central Hub Step 인스턴스 생성 실패: {message}",
-                    "step_type": step_type,
-                    "request_id": request_id,
-                    "processing_time": time.time() - start_time,
-                    "timestamp": datetime.now().isoformat()
-                }
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import ModelLoadingError
+                raise ModelLoadingError(
+                    f"Central Hub Step 인스턴스 생성 실패: {message}",
+                    "STEP_INSTANCE_CREATION_FAILED",
+                    error_context
+                )
             
             # BaseStepMixin v20.0의 process 메서드 호출
             if hasattr(step_instance, 'process'):
@@ -780,26 +890,59 @@ class StepServiceManager:
                 
                 return step_result
             else:
-                return {
-                    "success": False,
-                    "error": "Step 인스턴스에 process 메서드 없음",
-                    "step_type": step_type,
-                    "request_id": request_id,
-                    "processing_time": time.time() - start_time,
-                    "timestamp": datetime.now().isoformat()
-                }
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import ConfigurationError
+                raise ConfigurationError(
+                    "Step 인스턴스에 process 메서드 없음",
+                    "STEP_PROCESS_METHOD_NOT_FOUND",
+                    error_context
+                )
                 
         except Exception as e:
-            self.logger.error(f"❌ Central Hub Step 처리 실패: {e}")
-            return {
-                "success": False,
-                "error": str(e),
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                create_exception_response,
+                PipelineError,
+                ModelInferenceError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = PipelineError(
+                    f"Central Hub Step 처리 중 데이터 오류: {e}",
+                    "STEP_PROCESSING_DATA_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (OSError, IOError)):
+                custom_error = PipelineError(
+                    f"Central Hub Step 처리 중 시스템 오류: {e}",
+                    "STEP_PROCESSING_SYSTEM_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = convert_to_mycloset_exception(e, error_context)
+            
+            self.logger.error(f"❌ Central Hub Step 처리 실패: {custom_error}")
+            
+            # 표준화된 에러 응답 생성
+            error_response = create_exception_response(
+                custom_error, 
+                f"Step_{step_type}", 
+                step_type,
+                request_id
+            )
+            
+            # 추가 정보 설정
+            error_response.update({
                 "step_type": step_type,
                 "request_id": request_id,
                 "processing_time": time.time() - start_time,
                 "central_hub_used": self.central_hub_container is not None,
                 "timestamp": datetime.now().isoformat()
-            }
+            })
+            
+            return error_response
     
     async def process_step_by_name(self, step_name: str, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Central Hub 기반 Step 처리 (기존 API 호환)"""
@@ -1594,20 +1737,44 @@ class StepServiceManager:
         """7단계: 가상 피팅 (Central Hub → StepFactory → VirtualFittingStep) ⭐ 핵심"""
         request_id = f"step7_{uuid.uuid4().hex[:8]}"
         
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_id': 7,
+            'step_name': 'Virtual Fitting',
+            'session_id': session_id,
+            'request_id': request_id,
+            'fitting_quality': fitting_quality,
+            'central_hub_available': self.central_hub_container is not None,
+            'step_factory_available': self.step_factory is not None,
+            'device': DEVICE
+        }
+        
         try:
             with self._lock:
                 self.total_requests += 1
             
             # 세션에서 데이터 가져오기
             if session_id not in self.sessions:
-                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import SessionError
+                raise SessionError(
+                    f"세션을 찾을 수 없습니다: {session_id}",
+                    "SESSION_NOT_FOUND",
+                    error_context
+                )
             
             session_data = self.sessions[session_id]
             person_image = session_data.get('person_image')
             clothing_image = session_data.get('clothing_image')
             
             if not person_image or not clothing_image:
-                raise ValueError("person_image 또는 clothing_image가 없습니다")
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import DataValidationError
+                raise DataValidationError(
+                    "person_image 또는 clothing_image가 없습니다",
+                    "MISSING_IMAGE_DATA",
+                    error_context
+                )
             
             self.logger.info(f"🧠 Step 7 Central Hub → VirtualFittingStep 처리 시작: {session_id} ⭐ 핵심!")
             
@@ -1634,6 +1801,7 @@ class StepServiceManager:
             fitted_image = result.get('fitted_image')
             if not fitted_image and result.get('success', False):
                 self.logger.warning("⚠️ VirtualFittingStep에서 fitted_image가 없음")
+                error_context['fitted_image_missing'] = True
             
             # 결과 업데이트
             result.update({
@@ -1668,17 +1836,51 @@ class StepServiceManager:
                 self.failed_requests += 1
                 self.last_error = str(e)
             
-            self.logger.error(f"❌ Step 7 (VirtualFittingStep) Central Hub 처리 실패: {e}")
-            return {
-                "success": False,
-                "error": str(e),
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                create_exception_response,
+                VirtualFittingError,
+                ModelInferenceError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = DataValidationError(
+                    f"가상 피팅 중 데이터 오류: {e}",
+                    "VIRTUAL_FITTING_DATA_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (OSError, IOError)):
+                custom_error = VirtualFittingError(
+                    f"가상 피팅 중 시스템 오류: {e}",
+                    "VIRTUAL_FITTING_SYSTEM_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = convert_to_mycloset_exception(e, error_context)
+            
+            self.logger.error(f"❌ Step 7 (VirtualFittingStep) Central Hub 처리 실패: {custom_error}")
+            
+            # 표준화된 에러 응답 생성
+            error_response = create_exception_response(
+                custom_error, 
+                "Virtual Fitting", 
+                7,
+                session_id
+            )
+            
+            # 추가 정보 설정
+            error_response.update({
                 "step_id": 7,
                 "step_name": "Virtual Fitting",
                 "session_id": session_id,
                 "request_id": request_id,
                 "central_hub_used": self.central_hub_container is not None,
                 "timestamp": datetime.now().isoformat()
-            }
+            })
+            
+            return error_response
     
     async def process_step_8_result_analysis(
         self,
@@ -2185,6 +2387,18 @@ class StepServiceManager:
         request_id = f"complete_{uuid.uuid4().hex[:8]}"
         start_time = time.time()
         
+        # 에러 컨텍스트 준비
+        error_context = {
+            'session_id': session_id,
+            'request_id': request_id,
+            'person_image_type': type(person_image).__name__,
+            'clothing_image_type': type(clothing_image).__name__,
+            'measurements_type': type(measurements).__name__,
+            'central_hub_available': self.central_hub_container is not None,
+            'step_factory_available': self.step_factory is not None,
+            'kwargs_keys': list(kwargs.keys())
+        }
+        
         try:
             with self._lock:
                 self.total_requests += 1
@@ -2231,6 +2445,7 @@ class StepServiceManager:
                         }
                 except Exception as e:
                     self.logger.warning(f"⚠️ Central Hub 전체 파이프라인 실패, 개별 Step 처리: {e}")
+                    error_context['full_pipeline_failed'] = str(e)
             
             # 폴백: 개별 Step 처리
             self.logger.info("🔄 Central Hub 개별 Step 파이프라인 처리")
@@ -2260,6 +2475,7 @@ class StepServiceManager:
             
             step_results = {}
             step_successes = 0
+            step_failures = []
             
             for step_id, step_func, step_kwargs in pipeline_steps:
                 try:
@@ -2270,9 +2486,11 @@ class StepServiceManager:
                         step_successes += 1
                         self.logger.info(f"✅ Central Hub Step {step_id} 성공")
                     else:
+                        step_failures.append(f"Step {step_id}: {step_result.get('error', 'Unknown error')}")
                         self.logger.warning(f"⚠️ Central Hub Step {step_id} 실패하지만 계속 진행")
                         
                 except Exception as e:
+                    step_failures.append(f"Step {step_id}: {str(e)}")
                     self.logger.error(f"❌ Central Hub Step {step_id} 오류: {e}")
                     step_results[f"step_{step_id}"] = {"success": False, "error": str(e)}
             
@@ -2285,7 +2503,13 @@ class StepServiceManager:
             fit_score = virtual_fitting_result.get("fit_score", 0.95)
             
             if not fitted_image:
-                raise ValueError("Central Hub 개별 Step 파이프라인에서 fitted_image 생성 실패")
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import VirtualFittingError
+                raise VirtualFittingError(
+                    "Central Hub 개별 Step 파이프라인에서 fitted_image 생성 실패",
+                    "FITTED_IMAGE_GENERATION_FAILED",
+                    error_context
+                )
             
             # 메트릭 업데이트
             with self._lock:
@@ -2304,6 +2528,7 @@ class StepServiceManager:
                 "details": {
                     "total_steps": 8,
                     "successful_steps": step_successes,
+                    "failed_steps": step_failures,
                     "central_hub_available": self.central_hub_container is not None,
                     "individual_step_processing": True,
                     "step_results": step_results
@@ -2317,16 +2542,50 @@ class StepServiceManager:
                 self.failed_requests += 1
                 self.last_error = str(e)
             
-            self.logger.error(f"❌ 완전한 Central Hub 파이프라인 실패: {e}")
-            return {
-                "success": False,
-                "error": str(e),
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                create_exception_response,
+                VirtualFittingError,
+                PipelineError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = PipelineError(
+                    f"완전한 파이프라인 처리 중 데이터 오류: {e}",
+                    "COMPLETE_PIPELINE_DATA_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (OSError, IOError)):
+                custom_error = PipelineError(
+                    f"완전한 파이프라인 처리 중 시스템 오류: {e}",
+                    "COMPLETE_PIPELINE_SYSTEM_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = convert_to_mycloset_exception(e, error_context)
+            
+            self.logger.error(f"❌ 완전한 Central Hub 파이프라인 실패: {custom_error}")
+            
+            # 표준화된 에러 응답 생성
+            error_response = create_exception_response(
+                custom_error, 
+                "Complete Virtual Fitting Pipeline", 
+                -1,  # 전체 파이프라인
+                session_id
+            )
+            
+            # 추가 정보 설정
+            error_response.update({
                 "session_id": session_id,
                 "request_id": request_id,
                 "processing_time": time.time() - start_time,
                 "central_hub_available": self.central_hub_container is not None,
                 "timestamp": datetime.now().isoformat()
-            }
+            })
+            
+            return error_response
     
     # ==============================================
     # 🔥 일괄 처리 및 배치 처리 메서드들 (Central Hub 기반)

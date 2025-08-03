@@ -218,25 +218,10 @@ print(f"  💾 메모리: {SYSTEM_INFO['memory_gb']}GB")
 # 🔥 2. 로깅 설정
 # =============================================================================
 
-def setup_logging():
-    """로깅 설정"""
-    # AI 파이프라인 등 시끄러운 로그들 완전 억제
-    for logger_name in [
-        'app.ai_pipeline', 'pipeline', 'app.core', 'app.services',
-        'app.api', 'app.models', 'torch', 'transformers', 'diffusers',
-        'urllib3', 'requests', 'PIL', 'matplotlib'
-    ]:
-        logging.getLogger(logger_name).setLevel(logging.CRITICAL)
-    
-    # 기본 로깅 설정
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(levelname)s: %(message)s',
-        force=True
-    )
-    return logging.getLogger(__name__)
+# 로깅 설정은 logging_config.py에서 자동으로 처리됨
+from app.core.logging_config import get_logger
 
-logger = setup_logging()
+logger = get_logger(__name__)
 
 # =============================================================================
 # 🔥 3. 필수 라이브러리 import
@@ -664,8 +649,50 @@ def _register_central_hub_routers(app) -> int:
         
         logger.info(f"✅ Central Hub 기반 라우터 등록: {registered_count}개")
         
+        # 🔥 시스템 정보 라우터 추가 등록
+        try:
+            from app.api.system_routes import router as system_router
+            SYSTEM_ROUTER_AVAILABLE = True
+            logger.info("✅ system_routes.py 라우터 로드 성공")
+        except ImportError as e:
+            SYSTEM_ROUTER_AVAILABLE = False
+            logger.warning(f"⚠️ system_routes.py 라우터 로드 실패: {e}")
+            system_router = None
+
+        # 시스템 정보 라우터 등록 (step_routes 등록 뒤에)
+        if SYSTEM_ROUTER_AVAILABLE and system_router:
+            try:
+                app.include_router(system_router)
+                logger.info("✅ 시스템 정보 라우터 등록 완료: /api/system/*")
+                # ROUTER_STATUS 업데이트 (app.api.__init__.py에서 관리됨)
+            except AttributeError as e:
+                logger.error(f"❌ 시스템 정보 라우터 속성 오류: {e}")
+            except TypeError as e:
+                logger.error(f"❌ 시스템 정보 라우터 타입 오류: {e}")
+            except ValueError as e:
+                logger.error(f"❌ 시스템 정보 라우터 값 오류: {e}")
+            except Exception as e:
+                logger.error(f"❌ 시스템 정보 라우터 등록 실패: {type(e).__name__}: {e}")
+        else:
+            logger.warning("⚠️ 시스템 정보 라우터 등록 생략")
+        
+    except AttributeError as e:
+        logger.error(f"❌ Central Hub 라우터 등록 속성 오류: {e}")
+        # 폴백: 기본 헬스체크만 등록
+        _register_fallback_health_router(app)
+        registered_count = 1
+    except TypeError as e:
+        logger.error(f"❌ Central Hub 라우터 등록 타입 오류: {e}")
+        # 폴백: 기본 헬스체크만 등록
+        _register_fallback_health_router(app)
+        registered_count = 1
+    except ValueError as e:
+        logger.error(f"❌ Central Hub 라우터 등록 값 오류: {e}")
+        # 폴백: 기본 헬스체크만 등록
+        _register_fallback_health_router(app)
+        registered_count = 1
     except Exception as e:
-        logger.error(f"❌ Central Hub 라우터 등록 실패: {e}")
+        logger.error(f"❌ Central Hub 라우터 등록 실패: {type(e).__name__}: {e}")
         # 폴백: 기본 헬스체크만 등록
         _register_fallback_health_router(app)
         registered_count = 1
@@ -697,8 +724,14 @@ def _setup_central_hub_error_handlers(app):
         
         logger.info("✅ Central Hub 기반 에러 핸들러 설정 완료")
         
+    except AttributeError as e:
+        logger.error(f"❌ Central Hub 에러 핸들러 설정 속성 오류: {e}")
+    except TypeError as e:
+        logger.error(f"❌ Central Hub 에러 핸들러 설정 타입 오류: {e}")
+    except ValueError as e:
+        logger.error(f"❌ Central Hub 에러 핸들러 설정 값 오류: {e}")
     except Exception as e:
-        logger.error(f"❌ Central Hub 에러 핸들러 설정 실패: {e}")
+        logger.error(f"❌ Central Hub 에러 핸들러 설정 실패: {type(e).__name__}: {e}")
 
 def _add_central_hub_endpoints(app):
     """Central Hub 전용 엔드포인트 추가"""
@@ -1011,6 +1044,7 @@ def main():
     print("  ✅ StepServiceManager v15.0 완벽 연동")
     print("  ✅ RealAIStepImplementationManager v14.0 완전 통합")
     print("  ✅ step_routes.py v5.0 완전 호환")
+    print("  ✅ system_routes.py 시스템 정보 API 완전 통합")
     print("  ✅ step_implementations.py DetailedDataSpec 완전 통합")
     print("  ✅ BaseStepMixin v20.0 의존성 주입")
     print("  ✅ SmartModelPathMapper 동적 경로 매핑")
@@ -1038,6 +1072,9 @@ def main():
     print(f"  🔌 WebSocket: ws://{settings.HOST}:{settings.PORT}/ws")
     print(f"  🔥 Central Hub 상태: http://{settings.HOST}:{settings.PORT}/central-hub/status")
     print(f"  🔥 Central Hub 서비스: http://{settings.HOST}:{settings.PORT}/central-hub/services")
+    print(f"  🔥 시스템 정보: http://{settings.HOST}:{settings.PORT}/api/system/info")
+    print(f"  🔥 시스템 헬스: http://{settings.HOST}:{settings.PORT}/api/system/health")
+    print(f"  🔥 시스템 상태: http://{settings.HOST}:{settings.PORT}/api/system/status")
     print(f"  🐍 conda: {'✅' if IS_CONDA else '❌'} ({SYSTEM_INFO['conda_env']})")
     print(f"  🎯 mycloset-ai-clean: {'✅' if IS_MYCLOSET_ENV else '⚠️'}")
     print(f"  🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")

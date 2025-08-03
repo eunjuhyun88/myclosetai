@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-🔥 MyCloset AI - Step 02: Pose Estimation - Central Hub DI Container v7.0 완전 리팩토링 
-================================================================================
+🔥 MyCloset AI - Step 02: Pose Estimation - Common Imports Integration
+====================================================================
 
+✅ Common Imports 시스템 완전 통합 - 중복 import 블록 제거
 ✅ Central Hub DI Container v7.0 완전 연동
 ✅ BaseStepMixin 상속 패턴 (Human Parsing Step과 동일)
 ✅ MediaPipe Pose 모델 지원 (우선순위 1)
@@ -18,58 +19,34 @@
 파일 위치: backend/app/ai_pipeline/steps/step_02_pose_estimation.py
 작성자: MyCloset AI Team  
 날짜: 2025-08-01
-버전: v7.0 (Central Hub DI Container 완전 리팩토링)
+버전: v7.1 (Common Imports Integration)
 """
 
-# ==============================================
-# 🔥 1. Import 섹션 (Central Hub 패턴)
-# ==============================================
-
-import os
-import sys
-import gc
-import time
-import asyncio
-import logging
-import threading
-import traceback
-import hashlib
-import json
-import base64
-import math
-import warnings
-import numpy as np
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING
-from dataclasses import dataclass, field
-from enum import Enum, IntEnum
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache, wraps
-from contextlib import asynccontextmanager
+# 🔥 공통 imports 시스템 사용 (중복 제거)
+from app.ai_pipeline.utils.common_imports import (
+    # 표준 라이브러리
+    os, sys, gc, time, asyncio, logging, threading, traceback,
+    hashlib, json, base64, math, warnings, np,
+    Path, Dict, Any, Optional, Tuple, List, Union, Callable, TYPE_CHECKING,
+    dataclass, field, Enum, IntEnum, BytesIO, ThreadPoolExecutor,
+    lru_cache, wraps, asynccontextmanager,
+    
+    # 에러 처리 시스템
+    MyClosetAIException, ModelLoadingError, ImageProcessingError, DataValidationError, ConfigurationError,
+    error_tracker, track_exception, get_error_summary, create_exception_response, convert_to_mycloset_exception,
+    ErrorCodes, EXCEPTIONS_AVAILABLE,
+    
+    # Mock Data Diagnostic
+    detect_mock_data, diagnose_step_data, MOCK_DIAGNOSTIC_AVAILABLE,
+    
+    # AI/ML 라이브러리
+    Image, cv2, scipy,
+    PIL_AVAILABLE, CV2_AVAILABLE, SCIPY_AVAILABLE
+)
 
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
-
-# 추가 라이브러리 import
-try:
-    from PIL import Image
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-
-try:
-    import cv2
-    OPENCV_AVAILABLE = True
-except ImportError:
-    OPENCV_AVAILABLE = False
-
-try:
-    import scipy
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
 
 # TYPE_CHECKING으로 순환참조 방지
 if TYPE_CHECKING:
@@ -115,13 +92,23 @@ try:
         DEVICE = "cpu"
         
 except ImportError as e:
-    raise ImportError(f"❌ PyTorch 필수: {e}")
+    if EXCEPTIONS_AVAILABLE:
+        error = ModelLoadingError(f"PyTorch 필수 라이브러리 로딩 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+        track_exception(error, {'library': 'torch'}, 2)
+        raise error
+    else:
+        raise ImportError(f"❌ PyTorch 필수: {e}")
 
 try:
     from PIL import Image, ImageDraw, ImageFont
     PIL_AVAILABLE = True
 except ImportError as e:
-    raise ImportError(f"❌ Pillow 필수: {e}")
+    if EXCEPTIONS_AVAILABLE:
+        error = ModelLoadingError(f"Pillow 필수 라이브러리 로딩 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+        track_exception(error, {'library': 'pillow'}, 2)
+        raise error
+    else:
+        raise ImportError(f"❌ Pillow 필수: {e}")
 
 # 선택적 라이브러리들
 try:
@@ -638,12 +625,20 @@ class MediaPoseModel:
             
         except Exception as e:
             self.logger.error(f"❌ MediaPipe 모델 로딩 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError(f"MediaPipe 모델 로딩 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'mediapipe', 'step': 'pose_estimation'}, 2)
             return False
     
     def detect_poses(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Dict[str, Any]:
         """MediaPipe 포즈 검출"""
         if not self.loaded:
-            raise RuntimeError("MediaPipe 모델이 로딩되지 않음")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError("MediaPipe 모델이 로딩되지 않음", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'mediapipe', 'operation': 'detect_poses'}, 2)
+                raise error
+            else:
+                raise RuntimeError("MediaPipe 모델이 로딩되지 않음")
         
         start_time = time.time()
         
@@ -693,6 +688,14 @@ class MediaPoseModel:
             
         except Exception as e:
             self.logger.error(f"❌ MediaPipe 추론 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ImageProcessingError(f"MediaPipe 추론 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {
+                    'model_type': 'mediapipe', 
+                    'operation': 'detect_poses',
+                    'processing_time': time.time() - start_time
+                }, 2)
+            
             return {
                 "success": False,
                 "keypoints": [],
@@ -764,12 +767,20 @@ class YOLOv8PoseModel:
             
         except Exception as e:
             self.logger.error(f"❌ YOLOv8 모델 로딩 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError(f"YOLOv8 모델 로딩 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'yolov8_pose', 'step': 'pose_estimation'}, 2)
             return False
     
     def detect_poses(self, image: Union[torch.Tensor, np.ndarray, Image.Image]) -> Dict[str, Any]:
         """YOLOv8 포즈 검출"""
         if not self.loaded:
-            raise RuntimeError("YOLOv8 모델이 로딩되지 않음")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError("YOLOv8 모델이 로딩되지 않음", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'yolov8_pose', 'operation': 'detect_poses'}, 2)
+                raise error
+            else:
+                raise RuntimeError("YOLOv8 모델이 로딩되지 않음")
         
         start_time = time.time()
         
@@ -807,6 +818,14 @@ class YOLOv8PoseModel:
             
         except Exception as e:
             self.logger.error(f"❌ YOLOv8 AI 추론 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ImageProcessingError(f"YOLOv8 AI 추론 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {
+                    'model_type': 'yolov8_pose', 
+                    'operation': 'detect_poses',
+                    'processing_time': time.time() - start_time
+                }, 2)
+            
             return {
                 "success": False,
                 "keypoints": [],
@@ -851,6 +870,9 @@ class OpenPoseModel:
                 
         except Exception as e:
             self.logger.error(f"❌ OpenPose 모델 로딩 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError(f"OpenPose 모델 로딩 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'openpose', 'step': 'pose_estimation'}, 2)
             return False
     
     def _map_openpose_checkpoint(self, checkpoint):
@@ -3426,49 +3448,334 @@ class PoseEstimationStep(BaseStepMixin):
             return None
     
     def process(self, **kwargs) -> Dict[str, Any]:
-        """🔥 PoseEstimationStep 메인 처리 메서드 (BaseStepMixin 오버라이드) - 동기 버전"""
+        """🔥 단계별 세분화된 에러 처리가 적용된 Pose Estimation process 메서드"""
+        start_time = time.time()
+        errors = []
+        stage_status = {}
+        
         try:
-            start_time = time.time()
-            
-            # 입력 데이터 변환 (동기적으로)
-            if hasattr(self, 'convert_api_input_to_step_input'):
-                processed_input = self.convert_api_input_to_step_input(kwargs)
-            else:
-                processed_input = kwargs
-            
-            # AI 추론 실행 (동기적으로)
-            result = self._run_ai_inference(processed_input)
-            
-            # 결과 타입 확인 및 로깅
-            self.logger.info(f"🔍 _run_ai_inference 반환 타입: {type(result)}")
-            if isinstance(result, list):
-                self.logger.warning(f"⚠️ _run_ai_inference가 리스트를 반환함: {len(result)}개 항목")
-                # 리스트를 딕셔너리로 변환
-                result = {
-                    'success': True,
-                    'data': result,
+            # 🔥 1단계: 입력 데이터 검증
+            try:
+                if not kwargs:
+                    raise ValueError("입력 데이터가 비어있습니다")
+                
+                # 필수 입력 필드 확인 (포즈 추정용)
+                required_fields = ['image', 'person_image', 'input_image', 'original_image']
+                has_required_field = any(field in kwargs for field in required_fields)
+                if not has_required_field:
+                    raise ValueError("필수 입력 필드(image, person_image, input_image, original_image 중 하나)가 없습니다")
+                
+                stage_status['input_validation'] = 'success'
+                self.logger.info("✅ 입력 데이터 검증 완료")
+                
+            except Exception as e:
+                stage_status['input_validation'] = 'failed'
+                error_info = {
+                    'stage': 'input_validation',
+                    'error_type': type(e).__name__,
+                    'message': str(e),
+                    'input_keys': list(kwargs.keys()) if kwargs else []
+                }
+                errors.append(error_info)
+                
+                # 에러 추적
+                if EXCEPTIONS_AVAILABLE:
+                    log_detailed_error(
+                        DataValidationError(f"입력 데이터 검증 실패: {str(e)}", 
+                                          ErrorCodes.DATA_VALIDATION_FAILED, 
+                                          {'input_keys': list(kwargs.keys()) if kwargs else []}),
+                        {'step_name': self.step_name, 'step_id': getattr(self, 'step_id', 2)},
+                        getattr(self, 'step_id', 2)
+                    )
+                
+                return {
+                    'success': False,
+                    'errors': errors,
+                    'stage_status': stage_status,
                     'step_name': self.step_name,
-                    'step_id': self.step_id
+                    'processing_time': time.time() - start_time
                 }
             
-            # 처리 시간 추가
-            if isinstance(result, dict):
-                result['processing_time'] = time.time() - start_time
-                result['step_name'] = self.step_name
-                result['step_id'] = self.step_id
+            # 🔥 2단계: 목업 데이터 진단
+            try:
+                if MOCK_DIAGNOSTIC_AVAILABLE:
+                    mock_detections = []
+                    for key, value in kwargs.items():
+                        if value is not None:
+                            mock_detection = detect_mock_data(value)
+                            if mock_detection['is_mock']:
+                                mock_detections.append({
+                                    'input_key': key,
+                                    'detection_result': mock_detection
+                                })
+                                self.logger.warning(f"입력 데이터 '{key}'에서 목업 데이터 감지: {mock_detection}")
+                    
+                    if mock_detections:
+                        stage_status['mock_detection'] = 'warning'
+                        errors.append({
+                            'stage': 'mock_detection',
+                            'error_type': 'MockDataDetectionError',
+                            'message': '목업 데이터가 감지되었습니다',
+                            'mock_detections': mock_detections
+                        })
+                    else:
+                        stage_status['mock_detection'] = 'success'
+                else:
+                    stage_status['mock_detection'] = 'skipped'
+                    
+            except Exception as e:
+                stage_status['mock_detection'] = 'failed'
+                self.logger.warning(f"목업 데이터 진단 중 오류: {e}")
             
-            self.logger.info(f"🔍 process 최종 반환 타입: {type(result)}")
-            return result
+            # 🔥 3단계: 입력 데이터 변환
+            try:
+                if hasattr(self, 'convert_api_input_to_step_input'):
+                    processed_input = self.convert_api_input_to_step_input(kwargs)
+                else:
+                    processed_input = kwargs
+                
+                stage_status['input_conversion'] = 'success'
+                self.logger.info("✅ 입력 데이터 변환 완료")
+                
+            except Exception as e:
+                stage_status['input_conversion'] = 'failed'
+                error_info = {
+                    'stage': 'input_conversion',
+                    'error_type': type(e).__name__,
+                    'message': str(e)
+                }
+                errors.append(error_info)
+                
+                if EXCEPTIONS_AVAILABLE:
+                    log_detailed_error(
+                        DataValidationError(f"입력 데이터 변환 실패: {str(e)}", 
+                                          ErrorCodes.DATA_VALIDATION_FAILED),
+                        {'step_name': self.step_name, 'step_id': getattr(self, 'step_id', 2)},
+                        getattr(self, 'step_id', 2)
+                    )
+                
+                return {
+                    'success': False,
+                    'errors': errors,
+                    'stage_status': stage_status,
+                    'step_name': self.step_name,
+                    'processing_time': time.time() - start_time
+                }
+            
+            # 🔥 4단계: 포즈 모델 로딩 확인
+            try:
+                if not hasattr(self, 'pose_models') or not self.pose_models:
+                    raise RuntimeError("포즈 추정 모델이 로딩되지 않았습니다")
+                
+                # 실제 모델 vs Mock 모델 확인
+                loaded_models = list(self.pose_models.keys())
+                is_mock_only = all('mock' in model_name.lower() for model_name in loaded_models)
+                
+                if is_mock_only:
+                    stage_status['model_loading'] = 'warning'
+                    errors.append({
+                        'stage': 'model_loading',
+                        'error_type': 'MockModelWarning',
+                        'message': '실제 포즈 추정 모델이 로딩되지 않아 Mock 모델을 사용합니다',
+                        'loaded_models': loaded_models
+                    })
+                else:
+                    stage_status['model_loading'] = 'success'
+                    self.logger.info(f"✅ 포즈 모델 로딩 확인 완료: {loaded_models}")
+                
+            except Exception as e:
+                stage_status['model_loading'] = 'failed'
+                error_info = {
+                    'stage': 'model_loading',
+                    'error_type': type(e).__name__,
+                    'message': str(e)
+                }
+                errors.append(error_info)
+                
+                if EXCEPTIONS_AVAILABLE:
+                    log_detailed_error(
+                        ModelLoadingError(f"포즈 모델 로딩 확인 실패: {str(e)}", 
+                                        ErrorCodes.MODEL_LOADING_FAILED),
+                        {'step_name': self.step_name, 'step_id': getattr(self, 'step_id', 2)},
+                        getattr(self, 'step_id', 2)
+                    )
+                
+                return {
+                    'success': False,
+                    'errors': errors,
+                    'stage_status': stage_status,
+                    'step_name': self.step_name,
+                    'processing_time': time.time() - start_time
+                }
+            
+            # 🔥 5단계: AI 추론 실행
+            try:
+                result = self._run_ai_inference(processed_input)
+                
+                # 추론 결과 검증
+                if not result or 'success' not in result:
+                    raise RuntimeError("포즈 추정 결과가 올바르지 않습니다")
+                
+                if not result.get('success', False):
+                    raise RuntimeError(f"포즈 추정 실패: {result.get('error', '알 수 없는 오류')}")
+                
+                # 키포인트 검증
+                if 'keypoints' in result:
+                    keypoints = result['keypoints']
+                    if not keypoints or len(keypoints) == 0:
+                        raise RuntimeError("포즈 키포인트가 감지되지 않았습니다")
+                    
+                    # COCO 17개 키포인트 형식 검증
+                    if len(keypoints) != 17:
+                        self.logger.warning(f"⚠️ 키포인트 개수가 예상과 다릅니다: {len(keypoints)}개 (예상: 17개)")
+                
+                stage_status['ai_inference'] = 'success'
+                self.logger.info("✅ 포즈 추정 완료")
+                
+            except Exception as e:
+                stage_status['ai_inference'] = 'failed'
+                error_info = {
+                    'stage': 'ai_inference',
+                    'error_type': type(e).__name__,
+                    'message': str(e)
+                }
+                errors.append(error_info)
+                
+                if EXCEPTIONS_AVAILABLE:
+                    log_detailed_error(
+                        ModelInferenceError(f"포즈 추정 실패: {str(e)}", 
+                                          ErrorCodes.AI_INFERENCE_FAILED),
+                        {'step_name': self.step_name, 'step_id': getattr(self, 'step_id', 2)},
+                        getattr(self, 'step_id', 2)
+                    )
+                
+                return {
+                    'success': False,
+                    'errors': errors,
+                    'stage_status': stage_status,
+                    'step_name': self.step_name,
+                    'processing_time': time.time() - start_time
+                }
+            
+            # 🔥 6단계: 포즈 품질 분석
+            try:
+                if 'keypoints' in result and result['keypoints']:
+                    # 포즈 품질 분석 수행
+                    pose_analyzer = PoseAnalyzer()
+                    keypoints = result['keypoints']
+                    
+                    # 관절 각도 계산
+                    joint_angles = pose_analyzer.calculate_joint_angles(keypoints)
+                    
+                    # 신체 비율 계산
+                    body_proportions = pose_analyzer.calculate_body_proportions(keypoints)
+                    
+                    # 포즈 품질 평가
+                    quality_assessment = pose_analyzer.assess_pose_quality(
+                        keypoints, joint_angles, body_proportions
+                    )
+                    
+                    # 결과에 품질 정보 추가
+                    result['joint_angles'] = joint_angles
+                    result['body_proportions'] = body_proportions
+                    result['pose_quality'] = quality_assessment
+                    
+                    stage_status['pose_analysis'] = 'success'
+                    self.logger.info("✅ 포즈 품질 분석 완료")
+                else:
+                    stage_status['pose_analysis'] = 'skipped'
+                    self.logger.warning("⚠️ 키포인트가 없어 포즈 품질 분석을 건너뜁니다")
+                
+            except Exception as e:
+                stage_status['pose_analysis'] = 'failed'
+                self.logger.warning(f"포즈 품질 분석 중 오류: {e}")
+                # 포즈 품질 분석 실패는 치명적이지 않으므로 계속 진행
+            
+            # 🔥 7단계: 출력 데이터 검증
+            try:
+                # 출력 데이터에서 목업 데이터 감지
+                if MOCK_DIAGNOSTIC_AVAILABLE:
+                    output_mock_detections = []
+                    for key, value in result.items():
+                        if value is not None:
+                            mock_detection = detect_mock_data(value)
+                            if mock_detection['is_mock']:
+                                output_mock_detections.append({
+                                    'output_key': key,
+                                    'detection_result': mock_detection
+                                })
+                    
+                    if output_mock_detections:
+                        stage_status['output_validation'] = 'warning'
+                        errors.append({
+                            'stage': 'output_validation',
+                            'error_type': 'MockOutputWarning',
+                            'message': '출력 데이터에서 목업 데이터가 감지되었습니다',
+                            'mock_detections': output_mock_detections
+                        })
+                    else:
+                        stage_status['output_validation'] = 'success'
+                else:
+                    stage_status['output_validation'] = 'skipped'
+                
+            except Exception as e:
+                stage_status['output_validation'] = 'failed'
+                self.logger.warning(f"출력 데이터 검증 중 오류: {e}")
+            
+            # 🔥 최종 응답 생성
+            processing_time = time.time() - start_time
+            
+            # 성공 여부 결정 (치명적 에러가 있으면 실패)
+            critical_errors = [e for e in errors if e['stage'] in ['input_validation', 'input_conversion', 'ai_inference']]
+            is_success = len(critical_errors) == 0
+            
+            final_result = {
+                'success': is_success,
+                'errors': errors,
+                'stage_status': stage_status,
+                'step_name': self.step_name,
+                'processing_time': processing_time,
+                'is_mock_used': any('mock' in e.get('error_type', '').lower() for e in errors),
+                'critical_error_count': len(critical_errors),
+                'warning_count': len(errors) - len(critical_errors)
+            }
+            
+            # 성공한 경우 원본 결과도 포함
+            if is_success:
+                final_result.update(result)
+            
+            return final_result
             
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} process 실패: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
-                'step_name': self.step_name,
-                'step_id': self.step_id
-            }
+            # 예상치 못한 오류
+            processing_time = time.time() - start_time
+            
+            if EXCEPTIONS_AVAILABLE:
+                error = convert_to_mycloset_exception(e, {
+                    'step_name': self.step_name,
+                    'step_id': getattr(self, 'step_id', 2),
+                    'operation': 'process'
+                })
+                track_exception(error, {
+                    'step_name': self.step_name,
+                    'step_id': getattr(self, 'step_id', 2),
+                    'operation': 'process'
+                }, getattr(self, 'step_id', 2))
+                
+                return create_exception_response(
+                    error,
+                    self.step_name,
+                    getattr(self, 'step_id', 2),
+                    kwargs.get('session_id', 'unknown')
+                )
+            else:
+                return {
+                    'success': False,
+                    'error': 'UNEXPECTED_ERROR',
+                    'message': f"예상치 못한 오류 발생: {str(e)}",
+                    'step_name': self.step_name,
+                    'processing_time': processing_time
+                }
     
     def _get_service_from_central_hub(self, service_key: str):
         """Central Hub에서 서비스 가져오기"""
@@ -3587,7 +3894,16 @@ class PoseEstimationStep(BaseStepMixin):
             # 입력 데이터 검증
             if not processed_input:
                 self.logger.error("❌ [DEBUG] Pose Estimation 입력 데이터가 비어있습니다")
-                raise ValueError("입력 데이터가 비어있습니다")
+                if EXCEPTIONS_AVAILABLE:
+                    error = DataValidationError("입력 데이터가 비어있습니다", ErrorCodes.DATA_VALIDATION_FAILED)
+                    track_exception(error, {
+                        'step_name': self.step_name,
+                        'step_id': self.step_id,
+                        'operation': '_run_ai_inference'
+                    }, self.step_id)
+                    raise error
+                else:
+                    raise ValueError("입력 데이터가 비어있습니다")
             
             self.logger.info(f"✅ [DEBUG] Pose Estimation 입력 데이터 검증 완료")
             
@@ -3739,6 +4055,18 @@ class PoseEstimationStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"❌ Pose Estimation AI 추론 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = convert_to_mycloset_exception(e, {
+                    'step_name': self.step_name,
+                    'step_id': self.step_id,
+                    'operation': '_run_ai_inference'
+                })
+                track_exception(error, {
+                    'step_name': self.step_name,
+                    'step_id': self.step_id,
+                    'operation': '_run_ai_inference'
+                }, self.step_id)
+            
             return {
                 'success': False,
                 'error': str(e),

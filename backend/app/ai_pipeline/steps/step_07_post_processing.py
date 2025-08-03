@@ -2903,6 +2903,91 @@ class PostProcessingStep(BaseStepMixin):
             'model_used': 'basic_fallback',
             'success': True
         }
+    
+    def _detect_mock_data(self, fitting_result: Dict[str, Any]) -> bool:
+        """목업 데이터 감지"""
+        try:
+            # 목업 데이터 패턴 확인
+            mock_patterns = [
+                'test_data', 'mock', 'sample', 'dummy', 'fake',
+                'test_image', 'sample_image', 'mock_image'
+            ]
+            
+            # 키워드 기반 감지
+            for key, value in fitting_result.items():
+                if isinstance(value, str):
+                    if any(pattern in key.lower() or pattern in value.lower() for pattern in mock_patterns):
+                        return True
+            
+            # 이미지 데이터가 너무 작거나 특정 패턴인 경우
+            fitted_image = fitting_result.get('fitted_image') or fitting_result.get('result_image')
+            if fitted_image is not None:
+                if hasattr(fitted_image, 'shape'):
+                    # 너무 작은 이미지 (목업 가능성)
+                    if fitted_image.shape[0] < 50 or fitted_image.shape[1] < 50:
+                        return True
+                
+                # 특정 색상 패턴 (예: 단색 이미지)
+                if hasattr(fitted_image, 'mean'):
+                    if fitted_image.mean() < 10 or fitted_image.mean() > 245:
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.warning(f"목업 데이터 감지 중 오류: {e}")
+            return False
+    
+    def _check_post_processing_models(self) -> Dict[str, Any]:
+        """후처리 모델 로딩 상태 확인"""
+        try:
+            model_status = {
+                'all_loaded': True,
+                'loaded_models': [],
+                'failed_models': [],
+                'total_models': 0
+            }
+            
+            # 후처리 모델들 확인
+            post_processing_models = [
+                'esrgan_model', 'swinir_model', 'face_enhancement_model',
+                'sr_model', 'enhancement_model', 'super_resolution_model'
+            ]
+            
+            for model_name in post_processing_models:
+                model = getattr(self, model_name, None)
+                if model is not None:
+                    model_status['loaded_models'].append(model_name)
+                    model_status['total_models'] += 1
+                else:
+                    model_status['failed_models'].append(model_name)
+                    model_status['total_models'] += 1
+                    model_status['all_loaded'] = False
+            
+            # AI 추론 엔진 확인
+            if hasattr(self, 'inference_engine') and self.inference_engine is not None:
+                model_status['loaded_models'].append('inference_engine')
+                model_status['total_models'] += 1
+            else:
+                model_status['failed_models'].append('inference_engine')
+                model_status['total_models'] += 1
+                model_status['all_loaded'] = False
+            
+            # 최소 1개 모델은 로딩되어야 함
+            if len(model_status['loaded_models']) == 0:
+                model_status['all_loaded'] = False
+            
+            return model_status
+            
+        except Exception as e:
+            self.logger.error(f"후처리 모델 상태 확인 중 오류: {e}")
+            return {
+                'all_loaded': False,
+                'loaded_models': [],
+                'failed_models': ['unknown'],
+                'total_models': 0,
+                'error': str(e)
+            }
 
     # ==============================================
     # 🔥 추가 유틸리티 메서드들
@@ -3047,48 +3132,211 @@ class PostProcessingStep(BaseStepMixin):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        통일된 처리 인터페이스 - Pipeline Manager 호환 (동기 버전)
-        
-        Args:
-            fitting_result: 가상 피팅 결과 (6단계 출력)
-            enhancement_options: 향상 옵션
-            **kwargs: 추가 매개변수
-                
-        Returns:
-            Dict[str, Any]: 후처리 결과
+        🔥 단계별 세분화된 에러 처리가 적용된 Post Processing process 메서드
         """
         start_time = time.time()
+        errors = []
+        stage_status = {}
         
         try:
-            self.logger.info("✨ Post Processing 시작...")
+            # 🔥 1단계: 입력 데이터 검증
+            try:
+                if not fitting_result:
+                    raise ValueError("피팅 결과 데이터가 비어있습니다")
+                
+                # 필수 입력 필드 확인
+                required_fields = ['fitted_image', 'result_image', 'enhanced_image']
+                has_required_field = any(field in fitting_result for field in required_fields)
+                if not has_required_field:
+                    raise ValueError("필수 입력 필드(fitted_image, result_image, enhanced_image)가 없습니다")
+                
+                stage_status['input_validation'] = 'success'
+                self.logger.info("✅ 1단계: 입력 데이터 검증 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "input_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "input_keys": list(fitting_result.keys()) if fitting_result else []
+                }
+                errors.append(error_info)
+                stage_status['input_validation'] = 'failed'
+                self.logger.error(f"❌ 1단계: 입력 데이터 검증 실패 - {e}")
+                raise
             
-            # 1. 입력 데이터 처리
-            processed_input = self._process_input_data(fitting_result)
+            # 🔥 2단계: 목업 데이터 진단
+            try:
+                # 목업 데이터 감지
+                is_mock_data = self._detect_mock_data(fitting_result)
+                if is_mock_data:
+                    self.logger.warning("⚠️ 목업 데이터가 감지되었습니다")
+                    stage_status['mock_detection'] = 'detected'
+                else:
+                    stage_status['mock_detection'] = 'not_detected'
+                
+            except Exception as e:
+                stage_status['mock_detection'] = 'error'
+                self.logger.warning(f"⚠️ 목업 데이터 진단 중 오류: {e}")
             
-            # 2. 향상 옵션 준비
-            options = self._prepare_enhancement_options(enhancement_options)
+            # 🔥 3단계: 입력 데이터 변환
+            try:
+                processed_input = self._process_input_data(fitting_result)
+                stage_status['input_conversion'] = 'success'
+                self.logger.info("✅ 3단계: 입력 데이터 변환 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "input_conversion",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "input_type": type(fitting_result).__name__
+                }
+                errors.append(error_info)
+                stage_status['input_conversion'] = 'failed'
+                self.logger.error(f"❌ 3단계: 입력 데이터 변환 실패 - {e}")
+                raise
             
-            # 3. AI 추론 실행 (동기 메서드)
-            ai_result = self._run_ai_inference(processed_input)
+            # 🔥 4단계: 후처리 모델 로딩 확인
+            try:
+                # 후처리 모델들 확인 (ESRGAN, SwinIR, Face Enhancement 등)
+                model_status = self._check_post_processing_models()
+                if not model_status['all_loaded']:
+                    raise RuntimeError(f"후처리 모델 로딩 실패: {model_status['failed_models']}")
+                
+                stage_status['model_loading'] = 'success'
+                self.logger.info("✅ 4단계: 후처리 모델 로딩 확인 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "model_loading",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "model_status": getattr(self, '_model_status', {})
+                }
+                errors.append(error_info)
+                stage_status['model_loading'] = 'failed'
+                self.logger.error(f"❌ 4단계: 후처리 모델 로딩 확인 실패 - {e}")
+                raise
             
-            # 4. 결과 포맷팅
-            formatted_result = self._format_pipeline_result(ai_result, start_time)
+            # 🔥 5단계: 향상 옵션 준비
+            try:
+                options = self._prepare_enhancement_options(enhancement_options)
+                stage_status['options_preparation'] = 'success'
+                self.logger.info("✅ 5단계: 향상 옵션 준비 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "options_preparation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "enhancement_options": enhancement_options
+                }
+                errors.append(error_info)
+                stage_status['options_preparation'] = 'failed'
+                self.logger.error(f"❌ 5단계: 향상 옵션 준비 실패 - {e}")
+                raise
             
-            self.logger.info(f"✅ Post Processing 완료 - 품질: {ai_result.get('enhancement_quality', 0):.3f}, "
-                            f"시간: {formatted_result.get('processing_time', 0):.3f}초")
+            # 🔥 6단계: AI 추론 실행
+            try:
+                ai_result = self._run_ai_inference(processed_input)
+                
+                # 추론 결과 검증
+                if not ai_result.get('success', False):
+                    raise RuntimeError("AI 추론이 실패했습니다")
+                
+                # 향상 품질 확인
+                enhancement_quality = ai_result.get('enhancement_quality', 0.0)
+                if enhancement_quality < 0.1:
+                    self.logger.warning(f"⚠️ 향상 품질이 낮습니다: {enhancement_quality:.3f}")
+                
+                stage_status['ai_inference'] = 'success'
+                self.logger.info(f"✅ 6단계: AI 추론 실행 성공 - 품질: {enhancement_quality:.3f}")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "ai_inference",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "input_shape": processed_input.get('fitted_image', {}).shape if hasattr(processed_input.get('fitted_image', {}), 'shape') else None
+                }
+                errors.append(error_info)
+                stage_status['ai_inference'] = 'failed'
+                self.logger.error(f"❌ 6단계: AI 추론 실행 실패 - {e}")
+                raise
             
-            return formatted_result
+            # 🔥 7단계: 출력 데이터 검증
+            try:
+                # 향상된 이미지 검증
+                enhanced_image = ai_result.get('enhanced_image')
+                if enhanced_image is None:
+                    raise ValueError("향상된 이미지가 없습니다")
+                
+                # 이미지 품질 검증
+                if hasattr(enhanced_image, 'shape'):
+                    if len(enhanced_image.shape) != 3 or enhanced_image.shape[2] != 3:
+                        raise ValueError(f"잘못된 향상된 이미지 형태: {enhanced_image.shape}")
+                
+                stage_status['output_validation'] = 'success'
+                self.logger.info("✅ 7단계: 출력 데이터 검증 성공")
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "output_validation",
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "output_keys": list(ai_result.keys()) if ai_result else []
+                }
+                errors.append(error_info)
+                stage_status['output_validation'] = 'failed'
+                self.logger.error(f"❌ 7단계: 출력 데이터 검증 실패 - {e}")
+                raise
             
+            # 🔥 8단계: 결과 포맷팅
+            try:
+                formatted_result = self._format_pipeline_result(ai_result, start_time)
+                
+                # 에러 정보 추가
+                if errors:
+                    formatted_result['errors'] = errors
+                    formatted_result['success'] = False
+                else:
+                    formatted_result['success'] = True
+                
+                formatted_result['stage_status'] = stage_status
+                formatted_result['step_name'] = 'PostProcessingStep'
+                formatted_result['processing_time'] = time.time() - start_time
+                
+                self.logger.info(f"✅ Post Processing 완료 - 품질: {ai_result.get('enhancement_quality', 0):.3f}, "
+                                f"시간: {formatted_result.get('processing_time', 0):.3f}초")
+                
+                return formatted_result
+                
+            except Exception as e:
+                error_info = {
+                    "stage": "result_formatting",
+                    "error_type": type(e).__name__,
+                    "message": str(e)
+                }
+                errors.append(error_info)
+                stage_status['result_formatting'] = 'failed'
+                self.logger.error(f"❌ 8단계: 결과 포맷팅 실패 - {e}")
+                raise
+                
         except Exception as e:
+            # 최종 에러 처리
             error_msg = f"Post Processing 처리 실패: {e}"
             self.logger.error(f"❌ {error_msg}")
             
             # 에러 결과 반환
-            return self._format_pipeline_result({
+            return {
                 'success': False,
-                'error': error_msg,
-                'processing_time': time.time() - start_time
-            }, start_time)
+                'errors': errors,
+                'stage_status': stage_status,
+                'step_name': 'PostProcessingStep',
+                'processing_time': time.time() - start_time,
+                'error': error_msg
+            }
     
     def _process_input_data(self, fitting_result: Dict[str, Any]) -> Dict[str, Any]:
         """입력 데이터 처리"""

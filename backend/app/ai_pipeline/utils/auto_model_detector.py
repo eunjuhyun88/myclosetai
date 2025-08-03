@@ -1436,3 +1436,16 @@ logger.info("   summary = get_model_detection_summary()")
 logger.info("   largest = get_largest_models(5)")
 logger.info("")
 logger.info("🔥 OPTIMIZED MODEL DETECTOR v4.1 FULLY LOADED! 🔥")
+
+# ==============================================
+# 🔥 9. 호환성을 위한 별칭 클래스
+# ==============================================
+
+# AutoModelDetector를 OptimizedModelDetector의 별칭으로 제공
+AutoModelDetector = OptimizedModelDetector
+
+# __all__ 리스트에 AutoModelDetector 추가
+if 'AutoModelDetector' not in __all__:
+    __all__.append('AutoModelDetector')
+
+logger.info("✅ AutoModelDetector 별칭 추가 완료 - 호환성 보장")

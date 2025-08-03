@@ -74,8 +74,14 @@ async def safe_step_1_upload_validation(
             
             logger.info(f"📊 이미지 크기 - 사용자: {person_size/1024:.1f}KB, 의류: {clothing_size/1024:.1f}KB")
             
+        except AttributeError as e:
+            logger.warning(f"⚠️ 이미지 객체 속성 오류: {e}")
+        except TypeError as e:
+            logger.warning(f"⚠️ 이미지 읽기 타입 오류: {e}")
+        except ValueError as e:
+            logger.warning(f"⚠️ 이미지 읽기 값 오류: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ 이미지 읽기 실패하지만 계속 진행: {e}")
+            logger.warning(f"⚠️ 이미지 읽기 실패하지만 계속 진행: {type(e).__name__}: {e}")
         
         # 4. 성공 응답
         processing_time = time.time() - start_time
@@ -112,12 +118,112 @@ async def safe_step_1_upload_validation(
         # FastAPI HTTPException은 그대로 전파
         raise
         
+    except AttributeError as e:
+        processing_time = time.time() - start_time
+        error_msg = f"속성 오류: {e}"
+        
+        logger.error(f"❌ Step 1 속성 오류: {error_msg}")
+        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
+        
+        error_result = {
+            "success": False,
+            "message": "업로드 검증 실패",
+            "step_id": 1,
+            "session_id": session_id or "unknown",
+            "processing_time": processing_time,
+            "confidence": 0.0,
+            "error": error_msg,
+            "details": {
+                "error_type": "AttributeError",
+                "hotfix_applied": True,
+                "async_context_safe": True
+            },
+            "real_ai_processing": False,
+            "real_step_implementation": False
+        }
+        
+        return JSONResponse(content=error_result, status_code=500)
+    except TypeError as e:
+        processing_time = time.time() - start_time
+        error_msg = f"타입 오류: {e}"
+        
+        logger.error(f"❌ Step 1 타입 오류: {error_msg}")
+        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
+        
+        error_result = {
+            "success": False,
+            "message": "업로드 검증 실패",
+            "step_id": 1,
+            "session_id": session_id or "unknown",
+            "processing_time": processing_time,
+            "confidence": 0.0,
+            "error": error_msg,
+            "details": {
+                "error_type": "TypeError",
+                "hotfix_applied": True,
+                "async_context_safe": True
+            },
+            "real_ai_processing": False,
+            "real_step_implementation": False
+        }
+        
+        return JSONResponse(content=error_result, status_code=500)
+    except ValueError as e:
+        processing_time = time.time() - start_time
+        error_msg = f"값 오류: {e}"
+        
+        logger.error(f"❌ Step 1 값 오류: {error_msg}")
+        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
+        
+        error_result = {
+            "success": False,
+            "message": "업로드 검증 실패",
+            "step_id": 1,
+            "session_id": session_id or "unknown",
+            "processing_time": processing_time,
+            "confidence": 0.0,
+            "error": error_msg,
+            "details": {
+                "error_type": "ValueError",
+                "hotfix_applied": True,
+                "async_context_safe": True
+            },
+            "real_ai_processing": False,
+            "real_step_implementation": False
+        }
+        
+        return JSONResponse(content=error_result, status_code=500)
+    except FileNotFoundError as e:
+        processing_time = time.time() - start_time
+        error_msg = f"파일 없음: {e}"
+        
+        logger.error(f"❌ Step 1 파일 없음: {error_msg}")
+        logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
+        
+        error_result = {
+            "success": False,
+            "message": "업로드 검증 실패",
+            "step_id": 1,
+            "session_id": session_id or "unknown",
+            "processing_time": processing_time,
+            "confidence": 0.0,
+            "error": error_msg,
+            "details": {
+                "error_type": "FileNotFoundError",
+                "hotfix_applied": True,
+                "async_context_safe": True
+            },
+            "real_ai_processing": False,
+            "real_step_implementation": False
+        }
+        
+        return JSONResponse(content=error_result, status_code=500)
     except Exception as e:
         # 모든 다른 예외를 안전하게 처리
         processing_time = time.time() - start_time
-        error_msg = str(e)
+        error_msg = f"예상하지 못한 오류: {str(e)}"
         
-        logger.error(f"❌ Step 1 실패: {error_msg}")
+        logger.error(f"❌ Step 1 예상하지 못한 오류: {type(e).__name__}: {error_msg}")
         logger.error(f"📋 스택 트레이스: {traceback.format_exc()}")
         
         # 안전한 오류 응답

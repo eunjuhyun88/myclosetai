@@ -46,6 +46,31 @@ import cv2
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
 
+# 🔥 통합된 에러 처리 시스템 import
+try:
+    from app.core.exceptions import (
+        MyClosetAIException,
+        ModelLoadingError,
+        ImageProcessingError,
+        DataValidationError,
+        ConfigurationError,
+        error_tracker,
+        track_exception,
+        get_error_summary,
+        create_exception_response,
+        convert_to_mycloset_exception,
+        ErrorCodes
+    )
+    from app.core.mock_data_diagnostic import (
+        detect_mock_data,
+        diagnose_step_data
+    )
+    EXCEPTIONS_AVAILABLE = True
+except ImportError:
+    EXCEPTIONS_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("통합 에러 처리 시스템을 import할 수 없습니다. 기본 에러 처리만 사용합니다.")
+
 # 최상단에 추가
 import logging
 logger = logging.getLogger(__name__)
@@ -221,13 +246,32 @@ if BaseStepMixin is None:
                 
             except Exception as e:
                 self.logger.error(f"❌ {self.step_name} process 실패: {e}")
-                return {
-                    'success': False,
-                    'error': str(e),
-                    'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
-                    'step_name': self.step_name,
-                    'step_id': self.step_id
-                }
+                if EXCEPTIONS_AVAILABLE:
+                    error = convert_to_mycloset_exception(e, {
+                        'step_name': self.step_name,
+                        'step_id': self.step_id,
+                        'operation': 'process'
+                    })
+                    track_exception(error, {
+                        'step_name': self.step_name,
+                        'step_id': self.step_id,
+                        'operation': 'process'
+                    }, self.step_id)
+                    
+                    return create_exception_response(
+                        error,
+                        self.step_name,
+                        self.step_id,
+                        "unknown"
+                    )
+                else:
+                    return {
+                        'success': False,
+                        'error': str(e),
+                        'processing_time': time.time() - start_time if 'start_time' in locals() else 0.0,
+                        'step_name': self.step_name,
+                        'step_id': self.step_id
+                    }
         
         def initialize(self) -> bool:
             """초기화 메서드"""
@@ -252,6 +296,17 @@ if BaseStepMixin is None:
                 return True
             except Exception as e:
                 self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                if EXCEPTIONS_AVAILABLE:
+                    error = convert_to_mycloset_exception(e, {
+                        'step_name': self.step_name,
+                        'step_id': self.step_id,
+                        'operation': 'initialize'
+                    })
+                    track_exception(error, {
+                        'step_name': self.step_name,
+                        'step_id': self.step_id,
+                        'operation': 'initialize'
+                    }, self.step_id)
                 return False
         
         def cleanup(self):
@@ -462,7 +517,12 @@ try:
         logger.info("🍎 MPS 사용 가능")
 except ImportError:
     logger.error("❌ PyTorch 필수 - 설치 필요")
-    raise
+    if EXCEPTIONS_AVAILABLE:
+        error = ModelLoadingError("PyTorch 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
+        track_exception(error, {'library': 'torch'}, 3)
+        raise error
+    else:
+        raise
 
 # PIL (필수)
 PIL_AVAILABLE = False
@@ -472,7 +532,12 @@ try:
     logger.info("🖼️ PIL 로드 완료")
 except ImportError:
     logger.error("❌ PIL 필수 - 설치 필요")
-    raise
+    if EXCEPTIONS_AVAILABLE:
+        error = ModelLoadingError("PIL 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
+        track_exception(error, {'library': 'pil'}, 3)
+        raise error
+    else:
+        raise
 
 # NumPy (필수)
 NUMPY_AVAILABLE = False
@@ -482,7 +547,12 @@ try:
     logger.info("📊 NumPy 로드 완료")
 except ImportError:
     logger.error("❌ NumPy 필수 - 설치 필요")
-    raise
+    if EXCEPTIONS_AVAILABLE:
+        error = ModelLoadingError("NumPy 필수 라이브러리 로딩 실패", ErrorCodes.MODEL_LOADING_FAILED)
+        track_exception(error, {'library': 'numpy'}, 3)
+        raise error
+    else:
+        raise
 
 # SAM (선택적)
 SAM_AVAILABLE = False
@@ -1190,6 +1260,9 @@ class RealDeepLabV3PlusModel:
             
         except Exception as e:
             logger.error(f"❌ DeepLabV3+ 모델 로드 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError(f"DeepLabV3+ 모델 로드 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'deeplabv3_plus', 'step': 'cloth_segmentation'}, 3)
             return False
 
     def predict(self, image: np.ndarray) -> Dict[str, Any]:
@@ -1242,6 +1315,14 @@ class RealDeepLabV3PlusModel:
             
         except Exception as e:
             logger.error(f"❌ DeepLabV3+ 예측 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ImageProcessingError(f"DeepLabV3+ 예측 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {
+                    'model_type': 'deeplabv3_plus', 
+                    'operation': 'predict',
+                    'step': 'cloth_segmentation'
+                }, 3)
+            
             return {"masks": {}, "confidence": 0.0}
     
     def _create_category_masks(self, parsing_map: np.ndarray) -> Dict[str, np.ndarray]:
@@ -1314,6 +1395,9 @@ class RealSAMModel:
             
         except Exception as e:
             logger.error(f"❌ SAM 모델 로드 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = ModelLoadingError(f"SAM 모델 로드 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
+                track_exception(error, {'model_type': 'sam', 'step': 'cloth_segmentation'}, 3)
             return False
     
     def predict(self, image: np.ndarray, prompts: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -2091,7 +2175,16 @@ class ClothSegmentationStep(BaseStepMixin):
             
             if image is None:
                 self.logger.error("❌ 입력 데이터 검증 실패: 입력 이미지 없음 (Step 3)")
-                return {'success': False, 'error': '입력 이미지 없음'}
+                if EXCEPTIONS_AVAILABLE:
+                    error = DataValidationError("입력 이미지 없음", ErrorCodes.DATA_VALIDATION_FAILED)
+                    track_exception(error, {
+                        'step_name': self.step_name,
+                        'step_id': self.step_id,
+                        'operation': '_run_ai_inference'
+                    }, self.step_id)
+                    raise error
+                else:
+                    return {'success': False, 'error': '입력 이미지 없음'}
             
             self.logger.info("🧠 Cloth Segmentation 실제 AI 추론 시작 (메모리 안전 모드)")
             
@@ -2258,6 +2351,18 @@ class ClothSegmentationStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.error(f"❌ {self.step_name} 실제 AI 추론 실패: {e}")
+            if EXCEPTIONS_AVAILABLE:
+                error = convert_to_mycloset_exception(e, {
+                    'step_name': self.step_name,
+                    'step_id': self.step_id,
+                    'operation': '_run_ai_inference'
+                })
+                track_exception(error, {
+                    'step_name': self.step_name,
+                    'step_id': self.step_id,
+                    'operation': '_run_ai_inference'
+                }, self.step_id)
+            
             return self._create_emergency_result(str(e))
     
 

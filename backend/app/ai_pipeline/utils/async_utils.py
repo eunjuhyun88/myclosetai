@@ -137,6 +137,18 @@ class AsyncTaskScheduler:
         max_retries: Optional[int] = None
     ) -> str:
         """작업 스케줄링"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'task_name': name or f"async_task_{self.task_counter + 1}",
+            'priority': priority.value,
+            'timeout': timeout or self.config.default_timeout,
+            'max_retries': max_retries or self.config.max_retries,
+            'scheduler_running': self._running,
+            'total_tasks': self.stats["total_tasks"],
+            'running_tasks': len(self.running_tasks),
+            'queue_size': len(self.task_queue)
+        }
+        
         try:
             async with self._lock:
                 self.task_counter += 1
@@ -166,8 +178,29 @@ class AsyncTaskScheduler:
                 return task_id
                 
         except Exception as e:
-            self.logger.error(f"❌ 작업 스케줄링 실패: {e}")
-            raise
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                PipelineError,
+                ConfigurationError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = ConfigurationError(
+                    f"작업 스케줄링 중 설정 오류: {e}",
+                    "TASK_SCHEDULING_CONFIG_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = PipelineError(
+                    f"작업 스케줄링 실패: {e}",
+                    "TASK_SCHEDULING_FAILED",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ 작업 스케줄링 실패: {custom_error}")
+            raise custom_error
     
     def _add_to_queue(self, task: AsyncTask):
         """우선순위 기반 큐에 작업 추가"""
@@ -228,6 +261,18 @@ class AsyncTaskScheduler:
     
     async def _execute_task(self, task: AsyncTask):
         """작업 실행"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'task_id': task.id,
+            'task_name': task.name,
+            'priority': task.priority.value,
+            'timeout': task.timeout,
+            'retry_count': task.retry_count,
+            'max_retries': task.max_retries,
+            'strategy': self.config.strategy.value,
+            'started_at': task.started_at
+        }
+        
         try:
             # 타임아웃 설정
             if task.timeout:
@@ -245,14 +290,41 @@ class AsyncTaskScheduler:
             
             self.logger.debug(f"✅ 작업 완료: {task.id}")
             
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             # 타임아웃 처리
-            task.error = asyncio.TimeoutError(f"Task {task.id} timed out")
+            from app.core.exceptions import TimeoutError as MyClosetTimeoutError
+            
+            task.error = MyClosetTimeoutError(
+                f"작업 타임아웃: {task.id}",
+                "TASK_EXECUTION_TIMEOUT",
+                error_context
+            )
             await self._handle_task_failure(task)
             
         except Exception as e:
             # 오류 처리
-            task.error = e
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                PipelineError,
+                ModelInferenceError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                task.error = PipelineError(
+                    f"작업 실행 중 데이터 오류: {e}",
+                    "TASK_EXECUTION_DATA_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (OSError, IOError)):
+                task.error = PipelineError(
+                    f"작업 실행 중 시스템 오류: {e}",
+                    "TASK_EXECUTION_SYSTEM_ERROR",
+                    error_context
+                )
+            else:
+                task.error = convert_to_mycloset_exception(e, error_context)
+            
             await self._handle_task_failure(task)
             
         finally:
@@ -262,6 +334,18 @@ class AsyncTaskScheduler:
     
     async def _handle_task_failure(self, task: AsyncTask):
         """작업 실패 처리"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'task_id': task.id,
+            'task_name': task.name,
+            'retry_count': task.retry_count,
+            'max_retries': task.max_retries,
+            'enable_retries': self.config.enable_retries,
+            'retry_delay': self.config.retry_delay,
+            'original_error': str(task.error) if task.error else None,
+            'error_type': type(task.error).__name__ if task.error else None
+        }
+        
         try:
             task.retry_count += 1
             
@@ -284,10 +368,42 @@ class AsyncTaskScheduler:
                 task.completed_at = time.time()
                 self.stats["failed_tasks"] += 1
                 
-                self.logger.error(f"❌ 작업 실패: {task.id} - {task.error}")
+                # exceptions.py의 커스텀 예외로 변환
+                from app.core.exceptions import (
+                    convert_to_mycloset_exception,
+                    PipelineError,
+                    ModelInferenceError
+                )
+                
+                # 원본 에러가 이미 커스텀 예외인 경우 그대로 사용
+                if hasattr(task.error, 'error_code'):
+                    final_error = task.error
+                else:
+                    # 일반 예외를 커스텀 예외로 변환
+                    final_error = PipelineError(
+                        f"작업 최종 실패: {task.id}",
+                        "TASK_FINAL_FAILURE",
+                        error_context
+                    )
+                
+                self.logger.error(f"❌ 작업 실패: {task.id} - {final_error}")
                 
         except Exception as e:
-            self.logger.error(f"❌ 작업 실패 처리 오류: {e}")
+            # 실패 처리 중 발생한 에러
+            from app.core.exceptions import PipelineError
+            
+            failure_error = PipelineError(
+                f"작업 실패 처리 중 오류: {e}",
+                "TASK_FAILURE_HANDLING_ERROR",
+                error_context
+            )
+            
+            self.logger.error(f"❌ 작업 실패 처리 오류: {failure_error}")
+            
+            # 원본 작업을 실패로 표시
+            task.status = TaskStatus.FAILED
+            task.completed_at = time.time()
+            self.stats["failed_tasks"] += 1
     
     async def _cleanup_completed_tasks(self):
         """완료된 작업 정리"""
@@ -317,29 +433,81 @@ class AsyncTaskScheduler:
     
     async def wait_for_task(self, task_id: str, timeout: Optional[float] = None) -> Any:
         """특정 작업 완료 대기"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'task_id': task_id,
+            'timeout': timeout,
+            'task_exists': task_id in self.tasks,
+            'total_tasks': len(self.tasks),
+            'running_tasks': len(self.running_tasks)
+        }
+        
         try:
             if task_id not in self.tasks:
-                raise ValueError(f"Task {task_id} not found")
+                from app.core.exceptions import DataValidationError
+                raise DataValidationError(
+                    f"작업을 찾을 수 없습니다: {task_id}",
+                    "TASK_NOT_FOUND",
+                    error_context
+                )
             
             task = self.tasks[task_id]
             start_time = time.time()
             
+            # 에러 컨텍스트 업데이트
+            error_context.update({
+                'task_name': task.name,
+                'task_status': task.status.value,
+                'task_priority': task.priority.value
+            })
+            
             while task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
                 if timeout and (time.time() - start_time) > timeout:
-                    raise asyncio.TimeoutError(f"Wait for task {task_id} timed out")
+                    from app.core.exceptions import TimeoutError as MyClosetTimeoutError
+                    raise MyClosetTimeoutError(
+                        f"작업 대기 타임아웃: {task_id}",
+                        "TASK_WAIT_TIMEOUT",
+                        error_context
+                    )
                 
                 await asyncio.sleep(0.1)
             
             if task.status == TaskStatus.COMPLETED:
                 return task.result
             elif task.status == TaskStatus.FAILED:
-                raise task.error
+                # 실패한 작업의 에러를 그대로 전파
+                if task.error:
+                    raise task.error
+                else:
+                    from app.core.exceptions import PipelineError
+                    raise PipelineError(
+                        f"작업이 실패했습니다: {task_id}",
+                        "TASK_FAILED",
+                        error_context
+                    )
             elif task.status == TaskStatus.CANCELLED:
-                raise asyncio.CancelledError(f"Task {task_id} was cancelled")
+                from app.core.exceptions import PipelineError
+                raise PipelineError(
+                    f"작업이 취소되었습니다: {task_id}",
+                    "TASK_CANCELLED",
+                    error_context
+                )
             
         except Exception as e:
-            self.logger.error(f"❌ 작업 대기 실패 {task_id}: {e}")
-            raise
+            # 이미 커스텀 예외인 경우 그대로 전파
+            if hasattr(e, 'error_code'):
+                self.logger.error(f"❌ 작업 대기 실패 {task_id}: {e}")
+                raise
+            
+            # 일반 예외를 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                PipelineError
+            )
+            
+            custom_error = convert_to_mycloset_exception(e, error_context)
+            self.logger.error(f"❌ 작업 대기 실패 {task_id}: {custom_error}")
+            raise custom_error
     
     async def cancel_task(self, task_id: str) -> bool:
         """작업 취소"""
@@ -493,6 +661,16 @@ class AsyncBatchProcessor:
     
     async def add_item(self, item: Any, metadata: Optional[Dict] = None) -> str:
         """아이템 추가"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'item_type': type(item).__name__,
+            'metadata': metadata or {},
+            'batch_size': self.batch_size,
+            'pending_items': len(self.pending_items),
+            'processing_batches': len(self.processing_batches),
+            'shutdown': self._shutdown
+        }
+        
         try:
             async with self._lock:
                 item_id = f"item_{len(self.pending_items)}_{int(time.time())}"
@@ -517,8 +695,29 @@ class AsyncBatchProcessor:
                 return item_id
                 
         except Exception as e:
-            self.logger.error(f"❌ 아이템 추가 실패: {e}")
-            raise
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                PipelineError,
+                DataValidationError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = DataValidationError(
+                    f"아이템 추가 중 데이터 오류: {e}",
+                    "BATCH_ITEM_DATA_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = PipelineError(
+                    f"아이템 추가 실패: {e}",
+                    "BATCH_ITEM_ADD_FAILED",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ 아이템 추가 실패: {custom_error}")
+            raise custom_error
     
     async def _flush_batch(self):
         """배치 플러시"""
@@ -545,6 +744,15 @@ class AsyncBatchProcessor:
     
     async def _process_batch(self, batch_id: str, items: List[Dict]):
         """배치 처리"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'batch_id': batch_id,
+            'item_count': len(items),
+            'batch_size': self.batch_size,
+            'max_concurrent_batches': self.max_concurrent_batches,
+            'processing_batches': len(self.processing_batches)
+        }
+        
         try:
             async with self.semaphore:
                 self.processing_batches[batch_id] = {
@@ -572,14 +780,37 @@ class AsyncBatchProcessor:
                 self.logger.debug(f"✅ 배치 처리 완료: {batch_id} (성공: {successful_count}, 실패: {failed_count})")
                 
         except Exception as e:
-            self.logger.error(f"❌ 배치 처리 실패 {batch_id}: {e}")
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                PipelineError,
+                ModelInferenceError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = PipelineError(
+                    f"배치 처리 중 데이터 오류: {e}",
+                    "BATCH_PROCESSING_DATA_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (OSError, IOError)):
+                custom_error = PipelineError(
+                    f"배치 처리 중 시스템 오류: {e}",
+                    "BATCH_PROCESSING_SYSTEM_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = convert_to_mycloset_exception(e, error_context)
+            
+            self.logger.error(f"❌ 배치 처리 실패 {batch_id}: {custom_error}")
             
             self.stats["failed_batches"] += 1
             self.stats["failed_items"] += len(items)
             
             if batch_id in self.processing_batches:
                 self.processing_batches[batch_id]["status"] = "failed"
-                self.processing_batches[batch_id]["error"] = str(e)
+                self.processing_batches[batch_id]["error"] = str(custom_error)
     
     async def _process_batch_items(self, items: List[Dict]) -> List[Dict]:
         """배치 아이템 처리 (오버라이드 필요)"""
@@ -779,22 +1010,59 @@ async def gather_with_limit(
     return_exceptions: bool = False
 ) -> List[Any]:
     """제한된 동시성으로 여러 코루틴 실행"""
-    semaphore = asyncio.Semaphore(limit)
+    # 에러 컨텍스트 준비
+    error_context = {
+        'coro_count': len(coros),
+        'limit': limit,
+        'return_exceptions': return_exceptions
+    }
     
-    async def limited_coro(coro):
-        async with semaphore:
-            return await coro
-    
-    limited_coros = [limited_coro(coro) for coro in coros]
-    return await asyncio.gather(*limited_coros, return_exceptions=return_exceptions)
+    try:
+        semaphore = asyncio.Semaphore(limit)
+        
+        async def limited_coro(coro):
+            async with semaphore:
+                return await coro
+        
+        limited_coros = [limited_coro(coro) for coro in coros]
+        return await asyncio.gather(*limited_coros, return_exceptions=return_exceptions)
+        
+    except Exception as e:
+        # exceptions.py의 커스텀 예외로 변환
+        from app.core.exceptions import (
+            convert_to_mycloset_exception,
+            PipelineError
+        )
+        
+        custom_error = convert_to_mycloset_exception(e, error_context)
+        logger.error(f"❌ gather_with_limit 실패: {custom_error}")
+        raise custom_error
 
 async def run_with_timeout(coro: Awaitable, timeout: float, default=None):
     """타임아웃과 함께 코루틴 실행"""
+    # 에러 컨텍스트 준비
+    error_context = {
+        'timeout': timeout,
+        'default_value': default,
+        'coro_type': type(coro).__name__
+    }
+    
     try:
         return await asyncio.wait_for(coro, timeout=timeout)
     except asyncio.TimeoutError:
+        # 타임아웃은 정상적인 상황이므로 경고만 로깅
         logger.warning(f"⏰ 코루틴 타임아웃: {timeout}초")
         return default
+    except Exception as e:
+        # 기타 예외는 커스텀 예외로 변환
+        from app.core.exceptions import (
+            convert_to_mycloset_exception,
+            PipelineError
+        )
+        
+        custom_error = convert_to_mycloset_exception(e, error_context)
+        logger.error(f"❌ run_with_timeout 실패: {custom_error}")
+        raise custom_error
 
 async def retry_async(
     coro_factory: Callable[[], Awaitable],
@@ -804,12 +1072,31 @@ async def retry_async(
     exceptions: Tuple = (Exception,)
 ) -> Any:
     """비동기 함수 재시도"""
+    # 에러 컨텍스트 준비
+    error_context = {
+        'max_retries': max_retries,
+        'delay': delay,
+        'backoff': backoff,
+        'exceptions': [exc.__name__ for exc in exceptions]
+    }
+    
     for attempt in range(max_retries + 1):
         try:
             return await coro_factory()
         except exceptions as e:
             if attempt == max_retries:
-                raise
+                # 최대 재시도 초과 시 커스텀 예외로 변환
+                from app.core.exceptions import (
+                    convert_to_mycloset_exception,
+                    PipelineError
+                )
+                
+                error_context['final_attempt'] = attempt
+                error_context['final_error'] = str(e)
+                
+                custom_error = convert_to_mycloset_exception(e, error_context)
+                logger.error(f"❌ retry_async 최대 재시도 초과: {custom_error}")
+                raise custom_error
             
             wait_time = delay * (backoff ** attempt)
             logger.warning(f"⚠️ 재시도 {attempt + 1}/{max_retries + 1}: {wait_time:.1f}초 후")

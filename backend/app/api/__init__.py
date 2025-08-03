@@ -191,6 +191,7 @@ ROUTER_STATUS = {
     'pipeline_routes': False,
     'step_routes': False,        # 🔥 step_routes.py 추가!
     'websocket_routes': False,
+    'system_routes': False,      # 🔥 system_routes.py 추가!
     'health_check': False
 }
 
@@ -300,6 +301,27 @@ def _safe_import_websocket_routes_central_hub():
         return None
     except Exception as e:
         logger.error(f"❌ Central Hub websocket_routes 라우터 로드 실패: {e}")
+        return None
+
+def _safe_import_system_routes_central_hub():
+    """Central Hub 기반 system_routes 라우터 안전 import"""
+    try:
+        from .system_routes import router as system_router
+        
+        # Central Hub Container 주입 시도
+        injection_count = _inject_dependencies_to_router_safe(system_router)
+        
+        globals()['system_router'] = system_router
+        
+        ROUTER_STATUS['system_routes'] = True
+        logger.info(f"✅ Central Hub 기반 system_routes 라우터 로드 성공 (의존성 주입: {injection_count}개)")
+        return system_router
+        
+    except ImportError as e:
+        logger.debug(f"📋 system_routes 라우터 없음 (정상): {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Central Hub system_routes 라우터 로드 실패: {e}")
         return None
 
 def _create_central_hub_health_router():
@@ -461,6 +483,11 @@ websocket_router = _safe_import_websocket_routes_central_hub()
 if websocket_router:
     AVAILABLE_ROUTERS['websocket'] = websocket_router
 
+# 🔥 System 라우터 (신규 추가 - Central Hub 연동!)
+system_router = _safe_import_system_routes_central_hub()
+if system_router:
+    AVAILABLE_ROUTERS['system_routes'] = system_router
+
 # Health Check 라우터 (항상 생성 - Central Hub 통합)
 health_router = _create_central_hub_health_router()
 if health_router:
@@ -531,6 +558,15 @@ def register_routers(app) -> int:
             )
             registered_count += 1
             logger.info("✅ Central Hub 기반 websocket 라우터 등록")
+        
+        # 🔥 System 라우터 - Central Hub 연동
+        if 'system_routes' in AVAILABLE_ROUTERS:
+            app.include_router(
+                AVAILABLE_ROUTERS['system_routes'],
+                tags=["system-central-hub"]
+            )
+            registered_count += 1
+            logger.info("✅ Central Hub 기반 system_routes 라우터 등록 (/api/system)")
         
         # Health Check 라우터 - Central Hub 통합
         if 'health' in AVAILABLE_ROUTERS:
@@ -712,6 +748,14 @@ def get_available_endpoints() -> List[str]:
     if ROUTER_STATUS.get('websocket_routes'):
         endpoints.extend(["/api/ws/*"])
     
+    # 🔥 system_routes 엔드포인트 추가!
+    if ROUTER_STATUS.get('system_routes'):
+        endpoints.extend([
+            "/api/system/info",
+            "/api/system/health", 
+            "/api/system/status"
+        ])
+    
     # Central Hub 전용 엔드포인트 추가
     endpoints.extend([
         "/central-hub/status",
@@ -739,6 +783,17 @@ def get_router_info() -> Dict[str, Any]:
             "frontend_compatible": True,
             "ai_pipeline_steps": 8,
             "real_ai_only": True,
+            "central_hub_version": "v7.0",
+            "dependency_injection": "완료"
+        })
+    
+    # 🔥 system_routes 특별 정보 추가! (Central Hub 기반)
+    if ROUTER_STATUS.get('system_routes'):
+        router_info['system_routes'].update({
+            "prefix": "/api/system",
+            "frontend_compatible": True,
+            "system_info_endpoints": 3,
+            "caching_enabled": True,
             "central_hub_version": "v7.0",
             "dependency_injection": "완료"
         })
@@ -788,6 +843,7 @@ logger.info(f"✅ 메모리: {MEMORY_GB}GB, 디바이스: {DEVICE}")
 logger.info(f"✅ 사용 가능한 라우터: {len([k for k, v in ROUTER_STATUS.items() if v])}/{len(ROUTER_STATUS)}")
 logger.info(f"🔥 Central Hub Container: {'✅ 연결됨' if central_hub_container else '❌ 사용 불가'}")
 logger.info(f"🔥 step_routes.py 지원: {'✅ 활성화' if ROUTER_STATUS['step_routes'] else '❌ 비활성화'}")
+logger.info(f"🔥 system_routes.py 지원: {'✅ 활성화' if ROUTER_STATUS['system_routes'] else '❌ 비활성화'}")
 
 if ROUTER_STATUS['step_routes']:
     logger.info("🎯 Central Hub 기반 step_routes.py 라우터 정보:")
@@ -795,6 +851,14 @@ if ROUTER_STATUS['step_routes']:
     logger.info("   - 프론트엔드 완전 호환")
     logger.info("   - 8단계 AI 파이프라인 지원")
     logger.info("   - 실제 AI 모델 전용")
+    logger.info("   - Central Hub DI Container v7.0 완전 연동")
+
+if ROUTER_STATUS['system_routes']:
+    logger.info("🎯 Central Hub 기반 system_routes.py 라우터 정보:")
+    logger.info("   - 경로: /api/system/*")
+    logger.info("   - 시스템 정보 API 지원")
+    logger.info("   - 헬스 체크 및 상태 모니터링")
+    logger.info("   - 30초 캐시 최적화")
     logger.info("   - Central Hub DI Container v7.0 완전 연동")
 
 if central_hub_container:

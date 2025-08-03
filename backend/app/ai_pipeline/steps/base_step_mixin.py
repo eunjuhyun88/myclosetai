@@ -1,4 +1,3 @@
-
 """
 🔥 BaseStepMixin v20.0 - Central Hub DI Container 완전 연동 + 순환참조 완전 해결
 ================================================================================
@@ -54,6 +53,42 @@ from concurrent.futures import ThreadPoolExecutor
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
+
+# 🔥 에러 처리 헬퍼 함수들 import
+try:
+    from app.core.exceptions import (
+        handle_step_initialization_error,
+        handle_dependency_injection_error,
+        handle_data_conversion_error,
+        handle_central_hub_error,
+        create_step_error_response,
+        validate_step_environment,
+        log_step_performance
+    )
+    EXCEPTION_HELPERS_AVAILABLE = True
+except ImportError:
+    EXCEPTION_HELPERS_AVAILABLE = False
+    # 폴백 함수들 정의
+    def handle_step_initialization_error(step_name, error, context=None):
+        return {'success': False, 'error': 'INIT_ERROR', 'message': str(error)}
+    
+    def handle_dependency_injection_error(step_name, service_name, error):
+        return {'success': False, 'error': 'DI_ERROR', 'message': str(error)}
+    
+    def handle_data_conversion_error(step_name, conversion_type, error, data_info=None):
+        return {'success': False, 'error': 'CONVERSION_ERROR', 'message': str(error)}
+    
+    def handle_central_hub_error(step_name, operation, error):
+        return {'success': False, 'error': 'CENTRAL_HUB_ERROR', 'message': str(error)}
+    
+    def create_step_error_response(step_name, error, operation="unknown"):
+        return {'success': False, 'error': 'STEP_ERROR', 'message': str(error)}
+    
+    def validate_step_environment(step_name):
+        return {'success': True, 'step_name': step_name, 'checks': {}}
+    
+    def log_step_performance(step_name, operation, start_time, success, error=None):
+        return {'step_name': step_name, 'operation': operation, 'success': success}
 
 # 🔥 수정: 안전한 Logger 초기화
 _LOGGER_INITIALIZED = False
@@ -1559,6 +1594,8 @@ class BaseStepMixin:
     
     def __init__(self, device: str = "auto", strict_mode: bool = False, **kwargs):
         """BaseStepMixin 초기화 - Central Hub DI Container 완전 연동"""
+        start_time = time.time()
+        
         try:
             # 기본 설정
             self.config = self._create_central_hub_config(**kwargs)
@@ -1633,318 +1670,278 @@ class BaseStepMixin:
             # 🔥 Central Hub DI Container 자동 연동
             self._setup_central_hub_integration()
             
+            # 성능 로깅
+            log_step_performance(self.step_name, "initialization", start_time, True)
             self.logger.info(f"✅ {self.step_name} 초기화 완료 (Central Hub 완전 연동)")
             
         except Exception as e:
-            self._central_hub_emergency_setup(e)
+            # 에러 처리 및 로깅
+            error_response = create_step_error_response(self.step_name, e, "initialization")
+            log_step_performance(self.step_name, "initialization", start_time, False, e)
+            
+            # 로거가 설정되지 않았을 수 있으므로 안전하게 처리
+            try:
+                self.logger.error(f"❌ {self.step_name} 초기화 실패: {e}")
+                self.logger.error(f"💡 제안: {error_response.get('suggestion', '로그를 확인하세요')}")
+            except:
+                print(f"❌ {self.step_name} 초기화 실패: {e}")
+            
+            # 기본 속성들만 설정하여 최소한의 동작 보장
+            self.step_name = kwargs.get('step_name', self.__class__.__name__)
+            self.step_id = kwargs.get('step_id', 0)
+            self.device = device if device != "auto" else "cpu"
+            self.strict_mode = strict_mode
+            self.is_initialized = False
+            self.is_ready = False
+            self.has_model = False
+            self.model_loaded = False
+            self.warmup_completed = False
+            self.dependencies_injected = {}
+            self.performance_stats = {}
+            self.github_compatible = False
+            self.real_ai_pipeline_ready = False
 
     def _inject_detailed_data_spec_attributes(self, kwargs: Dict[str, Any]):
         """DetailedDataSpec 속성 자동 주입"""
-        try:
-            # ✅ API 매핑 속성 주입
-            self.api_input_mapping = kwargs.get('api_input_mapping', {})
-            self.api_output_mapping = kwargs.get('api_output_mapping', {})
-            
-            # ✅ Step 간 데이터 흐름 속성 주입  
-            self.accepts_from_previous_step = kwargs.get('accepts_from_previous_step', {})
-            self.provides_to_next_step = kwargs.get('provides_to_next_step', {})
-            
-            # ✅ 전처리/후처리 속성 주입
-            self.preprocessing_steps = kwargs.get('preprocessing_steps', [])
-            self.postprocessing_steps = kwargs.get('postprocessing_steps', [])
-            self.preprocessing_required = kwargs.get('preprocessing_required', [])
-            self.postprocessing_required = kwargs.get('postprocessing_required', [])
-            
-            # ✅ 데이터 타입 및 스키마 속성 주입
-            self.input_data_types = kwargs.get('input_data_types', [])
-            self.output_data_types = kwargs.get('output_data_types', [])
-            self.step_input_schema = kwargs.get('step_input_schema', {})
-            self.step_output_schema = kwargs.get('step_output_schema', {})
-            
-            # ✅ 정규화 파라미터 주입
-            self.normalization_mean = kwargs.get('normalization_mean', (0.485, 0.456, 0.406))
-            self.normalization_std = kwargs.get('normalization_std', (0.229, 0.224, 0.225))
-            
-            # ✅ 메타정보 주입
-            self.detailed_data_spec_loaded = kwargs.get('detailed_data_spec_loaded', True)
-            self.detailed_data_spec_version = kwargs.get('detailed_data_spec_version', 'v11.2')
-            self.step_model_requirements_integrated = kwargs.get('step_model_requirements_integrated', True)
-            self.central_hub_integrated = kwargs.get('central_hub_integrated', True)
-            
-            # ✅ FastAPI 호환성 플래그
-            self.fastapi_compatible = len(self.api_input_mapping) > 0
-            
-            self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 속성 주입 완료")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ {self.step_name} DetailedDataSpec 속성 주입 실패: {e}")
-            # 실패 시 기본값 설정
-            self.api_input_mapping = {}
-            self.api_output_mapping = {}
-            self.accepts_from_previous_step = {}
-            self.provides_to_next_step = {}
-            self.detailed_data_spec_loaded = False
+        # ✅ API 매핑 속성 주입
+        self.api_input_mapping = kwargs.get('api_input_mapping', {})
+        self.api_output_mapping = kwargs.get('api_output_mapping', {})
+        
+        # ✅ Step 간 데이터 흐름 속성 주입  
+        self.accepts_from_previous_step = kwargs.get('accepts_from_previous_step', {})
+        self.provides_to_next_step = kwargs.get('provides_to_next_step', {})
+        
+        # ✅ 전처리/후처리 속성 주입
+        self.preprocessing_steps = kwargs.get('preprocessing_steps', [])
+        self.postprocessing_steps = kwargs.get('postprocessing_steps', [])
+        self.preprocessing_required = kwargs.get('preprocessing_required', [])
+        self.postprocessing_required = kwargs.get('postprocessing_required', [])
+        
+        # ✅ 데이터 타입 및 스키마 속성 주입
+        self.input_data_types = kwargs.get('input_data_types', [])
+        self.output_data_types = kwargs.get('output_data_types', [])
+        self.step_input_schema = kwargs.get('step_input_schema', {})
+        self.step_output_schema = kwargs.get('step_output_schema', {})
+        
+        # ✅ 정규화 파라미터 주입
+        self.normalization_mean = kwargs.get('normalization_mean', (0.485, 0.456, 0.406))
+        self.normalization_std = kwargs.get('normalization_std', (0.229, 0.224, 0.225))
+        
+        # ✅ 메타정보 주입
+        self.detailed_data_spec_loaded = kwargs.get('detailed_data_spec_loaded', True)
+        self.detailed_data_spec_version = kwargs.get('detailed_data_spec_version', 'v11.2')
+        self.step_model_requirements_integrated = kwargs.get('step_model_requirements_integrated', True)
+        self.central_hub_integrated = kwargs.get('central_hub_integrated', True)
+        
+        # ✅ FastAPI 호환성 플래그
+        self.fastapi_compatible = len(self.api_input_mapping) > 0
+        
+        self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 속성 주입 완료")
 
     # 🔥 API 변환 메서드 활성화 (기존 코드 수정)
     async def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
         """API 입력을 Step 입력으로 변환 - 비동기 버전"""
-        try:
-            if not self.api_input_mapping:
-                # 매핑이 없으면 그대로 반환
-                self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
-                return api_input
-            
-            converted = {}
-            
-            # ✅ API 매핑 기반 변환
-            for api_param, api_type in self.api_input_mapping.items():
-                if api_param in api_input:
-                    converted_value = await self._convert_api_input_type(
-                        api_input[api_param], api_type, api_param
-                    )
-                    converted[api_param] = converted_value
-            
-            # ✅ 누락된 필수 입력 데이터 확인
-            for param_name in self.api_input_mapping.keys():
-                if param_name not in converted and param_name in api_input:
-                    converted[param_name] = api_input[param_name]
-            
-            self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료")
-            return converted
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} API → Step 변환 실패: {e}")
-            return api_input  # 실패 시 원본 반환
+        if not self.api_input_mapping:
+            # 매핑이 없으면 그대로 반환
+            self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
+            return api_input
+        
+        converted = {}
+        
+        # ✅ API 매핑 기반 변환
+        for api_param, api_type in self.api_input_mapping.items():
+            if api_param in api_input:
+                converted_value = await self._convert_api_input_type(
+                    api_input[api_param], api_type, api_param
+                )
+                converted[api_param] = converted_value
+        
+        # ✅ 누락된 필수 입력 데이터 확인
+        for param_name in self.api_input_mapping.keys():
+            if param_name not in converted and param_name in api_input:
+                converted[param_name] = api_input[param_name]
+        
+        self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료")
+        return converted
 
     def convert_api_input_to_step_input(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
         """API 입력을 Step 입력으로 변환 - 동기 버전 (오버라이드)"""
-        try:
-            if not self.api_input_mapping:
-                # 매핑이 없으면 그대로 반환
-                self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
-                return api_input
-            
-            converted = {}
-            
-            # ✅ API 매핑 기반 변환 (동기 버전)
-            for api_param, api_type in self.api_input_mapping.items():
-                if api_param in api_input:
-                    converted_value = self._convert_api_input_type_sync(
-                        api_input[api_param], api_type, api_param
-                    )
-                    converted[api_param] = converted_value
-            
-            # ✅ 누락된 필수 입력 데이터 확인
-            for param_name in self.api_input_mapping.keys():
-                if param_name not in converted and param_name in api_input:
-                    converted[param_name] = api_input[param_name]
-            
-            self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료 (동기)")
-            return converted
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} API → Step 변환 실패: {e}")
-            return api_input  # 실패 시 원본 반환
+        if not self.api_input_mapping:
+            # 매핑이 없으면 그대로 반환
+            self.logger.debug(f"{self.step_name} API 매핑 없음, 원본 반환")
+            return api_input
+        
+        converted = {}
+        
+        # ✅ API 매핑 기반 변환 (동기 버전)
+        for api_param, api_type in self.api_input_mapping.items():
+            if api_param in api_input:
+                converted_value = self._convert_api_input_type_sync(
+                    api_input[api_param], api_type, api_param
+                )
+                converted[api_param] = converted_value
+        
+        # ✅ 누락된 필수 입력 데이터 확인
+        for param_name in self.api_input_mapping.keys():
+            if param_name not in converted and param_name in api_input:
+                converted[param_name] = api_input[param_name]
+        
+        self.logger.debug(f"✅ {self.step_name} API → Step 변환 완료 (동기)")
+        return converted
 
     def convert_step_output_to_api_response(self, step_output: Dict[str, Any]) -> Dict[str, Any]:
         """Step 출력을 API 응답으로 변환 - 활성화"""
-        try:
-            if not self.api_output_mapping:
-                # 매핑이 없으면 그대로 반환
-                return step_output
-            
-            api_response = {}
-            
-            # ✅ API 출력 매핑 기반 변환
-            for step_key, api_type in self.api_output_mapping.items():
-                if step_key in step_output:
-                    converted_value = self._convert_step_output_type_sync(
-                        step_output[step_key], api_type, step_key
-                    )
-                    api_response[step_key] = converted_value
-            
-            # ✅ 메타데이터 추가
-            api_response.update({
-                'step_name': self.step_name,
-                'processing_time': step_output.get('processing_time', 0),
-                'confidence': step_output.get('confidence', 0.95),
-                'success': step_output.get('success', True)
-            })
-            
-            self.logger.debug(f"✅ {self.step_name} Step → API 변환 완료")
-            return api_response
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} Step → API 변환 실패: {e}")
-            return step_output  # 실패 시 원본 반환
+        if not self.api_output_mapping:
+            # 매핑이 없으면 그대로 반환
+            return step_output
+        
+        api_response = {}
+        
+        # ✅ API 출력 매핑 기반 변환
+        for step_key, api_type in self.api_output_mapping.items():
+            if step_key in step_output:
+                converted_value = self._convert_step_output_type_sync(
+                    step_output[step_key], api_type, step_key
+                )
+                api_response[step_key] = converted_value
+        
+        # ✅ 메타데이터 추가
+        api_response.update({
+            'step_name': self.step_name,
+            'processing_time': step_output.get('processing_time', 0),
+            'confidence': step_output.get('confidence', 0.95),
+            'success': step_output.get('success', True)
+        })
+        
+        self.logger.debug(f"✅ {self.step_name} Step → API 변환 완료")
+        return api_response
 
     def _convert_step_output_type_sync(self, value: Any, api_type: str, param_name: str) -> Any:
         """Step 출력 타입을 API 타입으로 변환 (동기 버전)"""
-        try:
-            if api_type == "base64_string":
-                return self._array_to_base64(value)
-            elif api_type == "List[Dict]":
-                return self._convert_to_list_dict(value)
-            elif api_type == "List[Dict[str, float]]":
-                return self._convert_keypoints_to_dict_list(value)
-            elif api_type == "float":
-                return float(value) if value is not None else 0.0
-            elif api_type == "List[float]":
-                if isinstance(value, (list, tuple)):
-                    return [float(x) for x in value]
-                elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
-                    return value.flatten().tolist()
-                else:
-                    return [float(value)] if value is not None else []
+        if api_type == "base64_string":
+            return self._array_to_base64(value)
+        elif api_type == "List[Dict]":
+            return self._convert_to_list_dict(value)
+        elif api_type == "List[Dict[str, float]]":
+            return self._convert_keypoints_to_dict_list(value)
+        elif api_type == "float":
+            return float(value) if value is not None else 0.0
+        elif api_type == "List[float]":
+            if isinstance(value, (list, tuple)):
+                return [float(x) for x in value]
+            elif NUMPY_AVAILABLE and isinstance(value, np.ndarray):
+                return value.flatten().tolist()
             else:
-                return value
-        except Exception as e:
-            self.logger.warning(f"⚠️ {self.step_name} 타입 변환 실패 ({param_name}): {e}")
+                return [float(value)] if value is not None else []
+        else:
             return value
 
 
     def _setup_central_hub_integration(self):
         """🔥 Central Hub DI Container 자동 연동"""
-        try:
-            # Central Hub Container 자동 연동
-            injections_made = _inject_dependencies_safe(self)
-            if injections_made > 0:
-                self.logger.info(f"✅ Central Hub 자동 연동 완료: {injections_made}개 의존성 주입")
-                
-                # 주입된 의존성들 확인 및 상태 업데이트
-                if hasattr(self, 'model_loader') and self.model_loader:
-                    self.dependencies_injected['model_loader'] = True
-                if hasattr(self, 'memory_manager') and self.memory_manager:
-                    self.dependencies_injected['memory_manager'] = True
-                if hasattr(self, 'data_converter') and self.data_converter:
-                    self.dependencies_injected['data_converter'] = True
-                if hasattr(self, 'central_hub_container') and self.central_hub_container:
-                    self.dependencies_injected['central_hub_container'] = True
-                
-                # 🔥 ModelLoader에 자신을 등록 시도
-                if hasattr(self, 'model_loader') and self.model_loader:
-                    try:
-                        if hasattr(self.model_loader, 'register_step_requirements'):
-                            requirements = self._get_step_requirements()
-                            self.model_loader.register_step_requirements(self.step_name, requirements)
-                            self.logger.debug("✅ ModelLoader에 Step 요구사항 등록 완료")
-                    except Exception as e:
-                        self.logger.debug(f"⚠️ ModelLoader 등록 실패: {e}")
-            else:
-                self.logger.debug("⚠️ Central Hub 자동 연동에서 주입된 의존성이 없음")
-                
-                # 수동 연동 시도
-                self._manual_central_hub_integration()
+        # Central Hub Container 자동 연동
+        injections_made = _inject_dependencies_safe(self)
+        if injections_made > 0:
+            self.logger.info(f"✅ Central Hub 자동 연동 완료: {injections_made}개 의존성 주입")
             
-        except Exception as e:
-            self.logger.warning(f"⚠️ Central Hub 자동 연동 실패: {e}")
+            # 주입된 의존성들 확인 및 상태 업데이트
+            if hasattr(self, 'model_loader') and self.model_loader:
+                self.dependencies_injected['model_loader'] = True
+            if hasattr(self, 'memory_manager') and self.memory_manager:
+                self.dependencies_injected['memory_manager'] = True
+            if hasattr(self, 'data_converter') and self.data_converter:
+                self.dependencies_injected['data_converter'] = True
+            if hasattr(self, 'central_hub_container') and self.central_hub_container:
+                self.dependencies_injected['central_hub_container'] = True
+            
+            # 🔥 ModelLoader에 자신을 등록 시도
+            if hasattr(self, 'model_loader') and self.model_loader:
+                if hasattr(self.model_loader, 'register_step_requirements'):
+                    requirements = self._get_step_requirements()
+                    self.model_loader.register_step_requirements(self.step_name, requirements)
+                    self.logger.debug("✅ ModelLoader에 Step 요구사항 등록 완료")
+        else:
+            self.logger.debug("⚠️ Central Hub 자동 연동에서 주입된 의존성이 없음")
+            
             # 수동 연동 시도
             self._manual_central_hub_integration()
 
     def _manual_central_hub_integration(self):
         """수동 Central Hub 연동 (폴백)"""
-        try:
-            container = _get_central_hub_container()
-            if container:
-                self.central_hub_container = container
-                self.di_container = container  # 기존 호환성
-                self.dependencies_injected['central_hub_container'] = True
-                
-                # 개별 서비스 조회 및 주입
-                model_loader = _get_service_from_central_hub('model_loader')
-                if model_loader:
-                    self.set_model_loader(model_loader)
-                
-                memory_manager = _get_service_from_central_hub('memory_manager')
-                if memory_manager:
-                    self.set_memory_manager(memory_manager)
-                
-                data_converter = _get_service_from_central_hub('data_converter')
-                if data_converter:
-                    self.set_data_converter(data_converter)
-                
-                self.logger.info("✅ Central Hub 수동 연동 완료")
-            else:
-                self.logger.warning("⚠️ Central Hub Container 사용 불가")
-                
-        except Exception as e:
-            self.logger.error(f"❌ Central Hub 수동 연동 실패: {e}")
+        container = _get_central_hub_container()
+        if container:
+            self.central_hub_container = container
+            self.di_container = container  # 기존 호환성
+            self.dependencies_injected['central_hub_container'] = True
+            
+            # 개별 서비스 조회 및 주입
+            model_loader = _get_service_from_central_hub('model_loader')
+            if model_loader:
+                self.set_model_loader(model_loader)
+            
+            memory_manager = _get_service_from_central_hub('memory_manager')
+            if memory_manager:
+                self.set_memory_manager(memory_manager)
+            
+            data_converter = _get_service_from_central_hub('data_converter')
+            if data_converter:
+                self.set_data_converter(data_converter)
+            
+            self.logger.info("✅ Central Hub 수동 연동 완료")
+        else:
+            self.logger.warning("⚠️ Central Hub Container 사용 불가")
 
     def set_model_loader(self, model_loader):
         """ModelLoader 의존성 주입 (Central Hub 호환)"""
-        try:
-            self.model_loader = model_loader
-            
-            # 🔥 Step별 모델 인터페이스 생성
-            if hasattr(model_loader, 'create_step_interface'):
-                try:
-                    self.model_interface = model_loader.create_step_interface(self.step_name)
-                    self.logger.debug("✅ Step 모델 인터페이스 생성 완료")
-                except Exception as e:
-                    self.logger.debug(f"⚠️ Step 모델 인터페이스 생성 실패: {e}")
-            
-            # 🔥 체크포인트 로딩 테스트
-            if hasattr(model_loader, 'validate_di_container_integration'):
-                try:
-                    validation_result = model_loader.validate_di_container_integration()
-                    if validation_result.get('di_container_available', False):
-                        self.logger.debug("✅ ModelLoader Central Hub 연동 확인됨")
-                except Exception as e:
-                    self.logger.debug(f"⚠️ ModelLoader Central Hub 연동 검증 실패: {e}")
-            
-            # 의존성 상태 업데이트
-            self.dependencies_injected['model_loader'] = True
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                self.dependency_manager.dependency_status.model_loader = True
-                self.dependency_manager.dependency_status.base_initialized = True
-            
-            self.has_model = True
-            self.model_loaded = True
-            self.real_ai_pipeline_ready = True
-            
-            self.logger.info("✅ ModelLoader 의존성 주입 완료 (Central Hub 호환)")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ ModelLoader 의존성 주입 실패: {e}")
-            self.dependencies_injected['model_loader'] = False
-            return False
+        self.model_loader = model_loader
+        
+        # 🔥 Step별 모델 인터페이스 생성
+        if hasattr(model_loader, 'create_step_interface'):
+            self.model_interface = model_loader.create_step_interface(self.step_name)
+            self.logger.debug("✅ Step 모델 인터페이스 생성 완료")
+        
+        # 🔥 체크포인트 로딩 테스트
+        if hasattr(model_loader, 'validate_di_container_integration'):
+            validation_result = model_loader.validate_di_container_integration()
+            if validation_result.get('di_container_available', False):
+                self.logger.debug("✅ ModelLoader Central Hub 연동 확인됨")
+        
+        # 의존성 상태 업데이트
+        self.dependencies_injected['model_loader'] = True
+        if hasattr(self, 'dependency_manager') and self.dependency_manager:
+            self.dependency_manager.dependency_status.model_loader = True
+            self.dependency_manager.dependency_status.base_initialized = True
+        
+        self.has_model = True
+        self.model_loaded = True
+        self.real_ai_pipeline_ready = True
+        
+        self.logger.info("✅ ModelLoader 의존성 주입 완료 (Central Hub 호환)")
+        return True
 
     def set_memory_manager(self, memory_manager):
         """MemoryManager 의존성 주입 (Central Hub 호환)"""
-        try:
-            self.memory_manager = memory_manager
-            
-            # 의존성 상태 업데이트
-            self.dependencies_injected['memory_manager'] = True
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                self.dependency_manager.dependency_status.memory_manager = True
-            
-            self.logger.debug("✅ MemoryManager 의존성 주입 완료 (Central Hub 호환)")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ MemoryManager 의존성 주입 실패: {e}")
-            self.dependencies_injected['memory_manager'] = False
-            return False
+        self.memory_manager = memory_manager
+        
+        # 의존성 상태 업데이트
+        self.dependencies_injected['memory_manager'] = True
+        if hasattr(self, 'dependency_manager') and self.dependency_manager:
+            self.dependency_manager.dependency_status.memory_manager = True
+        
+        self.logger.debug("✅ MemoryManager 의존성 주입 완료 (Central Hub 호환)")
+        return True
 
     def set_data_converter(self, data_converter):
         """DataConverter 의존성 주입 (Central Hub 호환)"""
-        try:
-            self.data_converter = data_converter
-            
-            # 의존성 상태 업데이트
-            self.dependencies_injected['data_converter'] = True
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                self.dependency_manager.dependency_status.data_converter = True
-            
-            self.logger.debug("✅ DataConverter 의존성 주입 완료 (Central Hub 호환)")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ DataConverter 의존성 주입 실패: {e}")
-            self.dependencies_injected['data_converter'] = False
-            return False
+        self.data_converter = data_converter
+        
+        # 의존성 상태 업데이트
+        self.dependencies_injected['data_converter'] = True
+        if hasattr(self, 'dependency_manager') and self.dependency_manager:
+            self.dependency_manager.dependency_status.data_converter = True
+        
+        self.logger.debug("✅ DataConverter 의존성 주입 완료 (Central Hub 호환)")
+        return True
 
     def set_central_hub_container(self, central_hub_container):
         """Central Hub Container 설정"""
@@ -2219,59 +2216,41 @@ class BaseStepMixin:
             'model_interface': False
         }
         
-        try:
-            # ModelLoader 검증
-            if hasattr(self, 'model_loader') and self.model_loader:
-                validation_result['model_loader'] = True
-                
-                # 체크포인트 로딩 검증
-                if hasattr(self.model_loader, 'validate_di_container_integration'):
-                    try:
-                        di_validation = self.model_loader.validate_di_container_integration()
-                        validation_result['checkpoint_loading'] = di_validation.get('di_container_available', False)
-                    except Exception as e:
-                        self.logger.debug(f"체크포인트 로딩 검증 실패: {e}")
+        # ModelLoader 검증
+        if hasattr(self, 'model_loader') and self.model_loader:
+            validation_result['model_loader'] = True
             
-            # Model Interface 검증
-            if hasattr(self, 'model_interface') and self.model_interface:
-                validation_result['model_interface'] = True
-            
-            # 기타 의존성들
-            validation_result['memory_manager'] = hasattr(self, 'memory_manager') and self.memory_manager is not None
-            validation_result['data_converter'] = hasattr(self, 'data_converter') and self.data_converter is not None
-            validation_result['central_hub_container'] = hasattr(self, 'central_hub_container') and self.central_hub_container is not None
-            
-            self.logger.debug(f"✅ {self.step_name} 의존성 검증 완료 (Central Hub): {sum(validation_result.values())}/{len(validation_result)}")
-            
-            # 반환 형식 결정
-            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
-                return validation_result
-            else:
-                # 상세 정보 반환
-                return {
-                    'success': all(validation_result[key] for key in ['model_loader', 'central_hub_container']),
-                    'dependencies': validation_result,
-                    'github_compatible': True,
-                    'central_hub_integrated': True,
-                    'step_name': self.step_name,
-                    'checkpoint_loading_ready': validation_result['checkpoint_loading'],
-                    'model_interface_ready': validation_result['model_interface'],
-                    'timestamp': time.time()
-                }
-            
-        except Exception as e:
-            self.logger.error(f"❌ 의존성 검증 실패: {e}")
-            
-            if format_type == DependencyValidationFormat.BOOLEAN_DICT:
-                return validation_result
-            else:
-                return {
-                    'success': False,
-                    'error': str(e),
-                    'github_compatible': False,
-                    'central_hub_integrated': True,
-                    'step_name': self.step_name
-                }
+            # 체크포인트 로딩 검증
+            if hasattr(self.model_loader, 'validate_di_container_integration'):
+                di_validation = self.model_loader.validate_di_container_integration()
+                validation_result['checkpoint_loading'] = di_validation.get('di_container_available', False)
+        
+        # Model Interface 검증
+        if hasattr(self, 'model_interface') and self.model_interface:
+            validation_result['model_interface'] = True
+        
+        # 기타 의존성들
+        validation_result['memory_manager'] = hasattr(self, 'memory_manager') and self.memory_manager is not None
+        validation_result['data_converter'] = hasattr(self, 'data_converter') and self.data_converter is not None
+        validation_result['central_hub_container'] = hasattr(self, 'central_hub_container') and self.central_hub_container is not None
+        
+        self.logger.debug(f"✅ {self.step_name} 의존성 검증 완료 (Central Hub): {sum(validation_result.values())}/{len(validation_result)}")
+        
+        # 반환 형식 결정
+        if format_type == DependencyValidationFormat.BOOLEAN_DICT:
+            return validation_result
+        else:
+            # 상세 정보 반환
+            return {
+                'success': all(validation_result[key] for key in ['model_loader', 'central_hub_container']),
+                'dependencies': validation_result,
+                'github_compatible': True,
+                'central_hub_integrated': True,
+                'step_name': self.step_name,
+                'checkpoint_loading_ready': validation_result['checkpoint_loading'],
+                'model_interface_ready': validation_result['model_interface'],
+                'timestamp': time.time()
+            }
 
     def validate_dependencies_boolean(self) -> Dict[str, bool]:
         """GitHub Step 클래스 호환 (GeometricMatchingStep 등)"""
@@ -2317,149 +2296,123 @@ class BaseStepMixin:
 
     def _validate_data_conversion_readiness(self) -> bool:
         """데이터 변환 준비 상태 검증 (워닝 방지)"""
-        try:
-            # DetailedDataSpec 존재 확인 및 자동 생성
-            if not hasattr(self, 'detailed_data_spec') or not self.detailed_data_spec:
-                self._create_emergency_detailed_data_spec()
-                self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 기본값 자동 생성")
-            
-            # 필수 필드 존재 확인 및 자동 보완
-            missing_fields = []
-            required_fields = ['input_data_types', 'output_data_types', 'api_input_mapping', 'api_output_mapping']
-            
-            for field in required_fields:
-                if not hasattr(self.detailed_data_spec, field):
+        # DetailedDataSpec 존재 확인 및 자동 생성
+        if not hasattr(self, 'detailed_data_spec') or not self.detailed_data_spec:
+            self._create_emergency_detailed_data_spec()
+            self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 기본값 자동 생성")
+        
+        # 필수 필드 존재 확인 및 자동 보완
+        missing_fields = []
+        required_fields = ['input_data_types', 'output_data_types', 'api_input_mapping', 'api_output_mapping']
+        
+        for field in required_fields:
+            if not hasattr(self.detailed_data_spec, field):
+                missing_fields.append(field)
+            else:
+                value = getattr(self.detailed_data_spec, field)
+                if not value:
                     missing_fields.append(field)
-                else:
-                    value = getattr(self.detailed_data_spec, field)
-                    if not value:
-                        missing_fields.append(field)
-            
-            # 누락된 필드 자동 보완
-            if missing_fields:
-                self._fill_missing_fields(missing_fields)
-                self.logger.debug(f"{self.step_name} DetailedDataSpec 필드 보완: {missing_fields}")
-            
-            # dependency_manager 상태 업데이트
-            if hasattr(self, 'dependency_manager') and self.dependency_manager:
-                self.dependency_manager.dependency_status.detailed_data_spec_loaded = True
-                self.dependency_manager.dependency_status.data_conversion_ready = True
-            
-            self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 데이터 변환 준비 완료")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 데이터 변환 준비 상태 검증 실패: {e}")
-            try:
-                self._create_emergency_detailed_data_spec()
-                self.logger.debug(f"🔄 {self.step_name} DetailedDataSpec 예외 복구 완료")
-            except:
-                pass
-            return True
+        
+        # 누락된 필드 자동 보완
+        if missing_fields:
+            self._fill_missing_fields(missing_fields)
+            self.logger.debug(f"{self.step_name} DetailedDataSpec 필드 보완: {missing_fields}")
+        
+        # dependency_manager 상태 업데이트
+        if hasattr(self, 'dependency_manager') and self.dependency_manager:
+            self.dependency_manager.dependency_status.detailed_data_spec_loaded = True
+            self.dependency_manager.dependency_status.data_conversion_ready = True
+        
+        self.logger.debug(f"✅ {self.step_name} DetailedDataSpec 데이터 변환 준비 완료")
+        return True
 
     def _initialize_performance_stats(self):
         """성능 통계 초기화"""
-        try:
-            self.performance_stats = {
-                'total_processed': 0,
-                'avg_processing_time': 0.0,
-                'error_count': 0,
-                'success_rate': 1.0,
-                'memory_usage_mb': 0.0,
-                'models_loaded': 0,
-                'cache_hits': 0,
-                'ai_inference_count': 0,
-                'torch_errors': 0,
-                'central_hub_requests': 0
-            }
-            
-            self.total_processing_count = 0
-            self.error_count = 0
-            self.last_processing_time = 0.0
-            
-            self.logger.debug(f"✅ {self.step_name} 성능 통계 초기화 완료")
-            
-        except Exception as e:
-            self.logger.error(f"❌ {self.step_name} 성능 통계 초기화 실패: {e}")
-            self.performance_stats = {}
-            self.total_processing_count = 0
-            self.error_count = 0
-            self.last_processing_time = 0.0
+        self.performance_stats = {
+            'total_processed': 0,
+            'avg_processing_time': 0.0,
+            'error_count': 0,
+            'success_rate': 1.0,
+            'memory_usage_mb': 0.0,
+            'models_loaded': 0,
+            'cache_hits': 0,
+            'ai_inference_count': 0,
+            'torch_errors': 0,
+            'central_hub_requests': 0
+        }
+        
+        self.total_processing_count = 0
+        self.error_count = 0
+        self.last_processing_time = 0.0
+        
+        self.logger.debug(f"✅ {self.step_name} 성능 통계 초기화 완료")
 
     def _create_emergency_detailed_data_spec(self):
         """응급 DetailedDataSpec 생성"""
-        try:
-            if not hasattr(self, 'detailed_data_spec') or not self.detailed_data_spec:
-                class EmergencyDataSpec:
-                    def __init__(self):
-                        self.input_data_types = {
-                            'person_image': 'PIL.Image.Image',
-                            'clothing_image': 'PIL.Image.Image',
-                            'data': 'Any'
-                        }
-                        self.output_data_types = {
-                            'result': 'numpy.ndarray',
-                            'success': 'bool',
-                            'processing_time': 'float'
-                        }
-                        self.api_input_mapping = {
-                            'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
-                            'clothing_image': 'fastapi.UploadFile -> PIL.Image.Image'
-                        }
-                        self.api_output_mapping = {
-                            'result': 'numpy.ndarray -> base64_string',
-                            'success': 'bool -> bool'
-                        }
-                        self.preprocessing_steps = ['validate_input', 'resize_image']
-                        self.postprocessing_steps = ['format_output']
-                        self.accepts_from_previous_step = {}
-                        self.provides_to_next_step = {}
-                        self.segmentation_models = {}  # ClothSegmentationStep용
-                        self.logger = self._setup_logger()  # 모든 Step용
-                        self._load_single_model = self._default_load_single_model  # PostProcessingStep용
+        if not hasattr(self, 'detailed_data_spec') or not self.detailed_data_spec:
+            class EmergencyDataSpec:
+                def __init__(self):
+                    self.input_data_types = {
+                        'person_image': 'PIL.Image.Image',
+                        'clothing_image': 'PIL.Image.Image',
+                        'data': 'Any'
+                    }
+                    self.output_data_types = {
+                        'result': 'numpy.ndarray',
+                        'success': 'bool',
+                        'processing_time': 'float'
+                    }
+                    self.api_input_mapping = {
+                        'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
+                        'clothing_image': 'fastapi.UploadFile -> PIL.Image.Image'
+                    }
+                    self.api_output_mapping = {
+                        'result': 'numpy.ndarray -> base64_string',
+                        'success': 'bool -> bool'
+                    }
+                    self.preprocessing_steps = ['validate_input', 'resize_image']
+                    self.postprocessing_steps = ['format_output']
+                    self.accepts_from_previous_step = {}
+                    self.provides_to_next_step = {}
+                    self.segmentation_models = {}  # ClothSegmentationStep용
+                    self.logger = self._setup_logger()  # 모든 Step용
+                    self._load_single_model = self._default_load_single_model  # PostProcessingStep용
 
-                self.detailed_data_spec = EmergencyDataSpec()
-                
-        except Exception as e:
-            self.logger.error(f"응급 DetailedDataSpec 생성 실패: {e}")
+            self.detailed_data_spec = EmergencyDataSpec()
 
     def _fill_missing_fields(self, missing_fields):
         """누락된 DetailedDataSpec 필드 채우기"""
-        try:
-            default_values = {
-                'input_data_types': {
-                    'person_image': 'PIL.Image.Image',
-                    'clothing_image': 'PIL.Image.Image',
-                    'data': 'Any'
-                },
-                'output_data_types': {
-                    'result': 'numpy.ndarray',
-                    'success': 'bool',
-                    'processing_time': 'float'
-                },
-                'api_input_mapping': {
-                    'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
-                    'clothing_image': 'fastapi.UploadFile -> PIL.Image.Image'
-                },
-                'api_output_mapping': {
-                    'result': 'numpy.ndarray -> base64_string',
-                    'success': 'bool -> bool'
-                },
-                'preprocessing_steps': ['validate_input', 'resize_image'],
-                'postprocessing_steps': ['format_output'],
-                'accepts_from_previous_step': {},
-                'provides_to_next_step': {}
-            }
-            
-            for field in missing_fields:
-                if field in default_values:
-                    if not hasattr(self.detailed_data_spec, field):
-                        setattr(self.detailed_data_spec, field, default_values[field])
-                    elif not getattr(self.detailed_data_spec, field):
-                        setattr(self.detailed_data_spec, field, default_values[field])
-            
-        except Exception as e:
-            self.logger.error(f"DetailedDataSpec 필드 보완 실패: {e}")
+        default_values = {
+            'input_data_types': {
+                'person_image': 'PIL.Image.Image',
+                'clothing_image': 'PIL.Image.Image',
+                'data': 'Any'
+            },
+            'output_data_types': {
+                'result': 'numpy.ndarray',
+                'success': 'bool',
+                'processing_time': 'float'
+            },
+            'api_input_mapping': {
+                'person_image': 'fastapi.UploadFile -> PIL.Image.Image',
+                'clothing_image': 'fastapi.UploadFile -> PIL.Image.Image'
+            },
+            'api_output_mapping': {
+                'result': 'numpy.ndarray -> base64_string',
+                'success': 'bool -> bool'
+            },
+            'preprocessing_steps': ['validate_input', 'resize_image'],
+            'postprocessing_steps': ['format_output'],
+            'accepts_from_previous_step': {},
+            'provides_to_next_step': {}
+        }
+        
+        for field in missing_fields:
+            if field in default_values:
+                if not hasattr(self.detailed_data_spec, field):
+                    setattr(self.detailed_data_spec, field, default_values[field])
+                elif not getattr(self.detailed_data_spec, field):
+                    setattr(self.detailed_data_spec, field, default_values[field])
 
     # ==============================================
     # 🔥 표준화된 process 메서드 (모든 기능 유지)

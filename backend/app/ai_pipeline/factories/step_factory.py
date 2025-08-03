@@ -50,6 +50,41 @@ from functools import wraps
 from contextlib import asynccontextmanager
 from enum import Enum
 
+# 🔥 통합된 에러 처리 시스템 import
+try:
+    from app.core.exceptions import (
+        MyClosetAIException,
+        MockDataDetectionError, 
+        DataQualityError, 
+        ModelInferenceError,
+        ModelLoadingError,
+        ConfigurationError,
+        DataValidationError,
+        error_tracker,
+        detect_mock_data,
+        log_detailed_error,
+        create_mock_data_diagnosis_response,
+        track_exception,
+        get_error_summary,
+        create_exception_response,
+        convert_to_mycloset_exception,
+        ErrorCodes
+    )
+    from app.core.mock_data_diagnostic import (
+        MockDataDiagnostic,
+        diagnose_step_data,
+        get_diagnostic_summary,
+        diagnostic_decorator
+    )
+    MOCK_DIAGNOSTIC_AVAILABLE = True
+    EXCEPTIONS_AVAILABLE = True
+except ImportError:
+    # 에러 처리 시스템을 사용할 수 없는 경우
+    MOCK_DIAGNOSTIC_AVAILABLE = False
+    EXCEPTIONS_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("통합 에러 처리 시스템을 import할 수 없습니다. 기본 에러 처리만 사용합니다.")
+
 # ==============================================
 # 🔥 Central Hub DI Container 안전 import (순환참조 방지)
 # ==============================================
@@ -1343,6 +1378,61 @@ class CentralHubStepClassLoader:
                     spec = importlib.util.spec_from_file_location(class_name, file_path)
                     if spec and spec.loader:
                         module = importlib.util.module_from_spec(spec)
+                        
+                        # 🔥 필요한 모듈들을 globals에 명시적으로 추가 (time 오류 방지)
+                        import time
+                        import os
+                        import sys
+                        import gc
+                        import logging
+                        import threading
+                        import traceback
+                        import warnings
+                        import numpy as np
+                        import torch
+                        import torch.nn as nn
+                        from pathlib import Path
+                        from typing import Dict, Any, Optional, Tuple, List, Union, TYPE_CHECKING
+                        from dataclasses import dataclass, field
+                        from enum import Enum
+                        from io import BytesIO
+                        from concurrent.futures import ThreadPoolExecutor
+                        
+                        # 모듈의 globals에 필요한 모듈들을 추가
+                        module_globals = {
+                            'time': time,
+                            'os': os,
+                            'sys': sys,
+                            'gc': gc,
+                            'logging': logging,
+                            'threading': threading,
+                            'traceback': traceback,
+                            'warnings': warnings,
+                            'np': np,
+                            'torch': torch,
+                            'nn': nn,
+                            'Path': Path,
+                            'Dict': Dict,
+                            'Any': Any,
+                            'Optional': Optional,
+                            'Tuple': Tuple,
+                            'List': List,
+                            'Union': Union,
+                            'TYPE_CHECKING': TYPE_CHECKING,
+                            'dataclass': dataclass,
+                            'field': field,
+                            'Enum': Enum,
+                            'BytesIO': BytesIO,
+                            'ThreadPoolExecutor': ThreadPoolExecutor,
+                            '__name__': class_name,
+                            '__file__': str(file_path),
+                            **globals()  # 기존 globals도 포함
+                        }
+                        
+                        # 모듈의 __dict__에 필요한 모듈들을 추가
+                        module.__dict__.update(module_globals)
+                        
+                        # 이제 안전하게 모듈 실행
                         spec.loader.exec_module(module)
                         
                         if hasattr(module, class_name):
@@ -2895,7 +2985,7 @@ class StepFactory:
         return result
 
     def _create_step_instance(self, config: CentralHubStepConfig) -> CentralHubStepCreationResult:
-        """Central Hub 기반 Step 인스턴스 생성 (순환참조 해결)"""
+        """Central Hub 기반 Step 인스턴스 생성 (순환참조 해결 + 목업 데이터 진단)"""
         try:
             self.logger.info(f"🔄 {config.step_name} Central Hub 기반 인스턴스 생성 중...")
             
@@ -2915,13 +3005,73 @@ class StepFactory:
             # 2. Central Hub 기반 생성자용 의존성 해결 (순환참조 해결)
             constructor_dependencies = self.dependency_resolver.resolve_dependencies_for_constructor(config)
             
+            # 🔥 2.5단계: 의존성 데이터 목업 진단 (새로 추가)
+            if MOCK_DIAGNOSTIC_AVAILABLE:
+                try:
+                    for dep_name, dep_value in constructor_dependencies.items():
+                        if dep_value is not None:
+                            mock_detection = detect_mock_data(dep_value)
+                            if mock_detection['is_mock']:
+                                self.logger.warning(f"의존성 '{dep_name}'에서 목업 데이터 감지: {mock_detection}")
+                                # 에러 추적
+                                log_detailed_error(
+                                    MockDataDetectionError(
+                                        message=f"의존성 '{dep_name}'에서 목업 데이터 감지",
+                                        error_code="MOCK_DATA_DETECTED",
+                                        context={'dependency_name': dep_name, 'detection_result': mock_detection}
+                                    ),
+                                    {
+                                        'step_name': config.step_name,
+                                        'step_id': config.step_id,
+                                        'dependency_name': dep_name
+                                    },
+                                    config.step_id
+                                )
+                except Exception as e:
+                    self.logger.warning(f"의존성 목업 데이터 진단 중 오류: {e}")
+            
             # 3. Central Hub 기반 생성자 호출
             self.logger.info(f"🔄 {config.class_name} Central Hub 기반 생성자 호출 중...")
-            step_instance = StepClass(**constructor_dependencies)
-            self.logger.info(f"✅ {config.class_name} 인스턴스 생성 완료 (Central Hub)")
+            try:
+                step_instance = StepClass(**constructor_dependencies)
+                self.logger.info(f"✅ {config.class_name} 인스턴스 생성 완료 (Central Hub)")
+            except Exception as e:
+                # 통합된 에러 처리 시스템 사용
+                if EXCEPTIONS_AVAILABLE:
+                    error = convert_to_mycloset_exception(e, {
+                        'step_name': config.step_name,
+                        'step_id': config.step_id,
+                        'class_name': config.class_name,
+                        'dependencies': list(constructor_dependencies.keys())
+                    })
+                    track_exception(error, {
+                        'step_name': config.step_name,
+                        'step_id': config.step_id,
+                        'operation': 'step_creation'
+                    }, config.step_id)
+                    raise error
+                else:
+                    raise
             
             # 4. Central Hub 기반 초기화 실행
-            initialization_success = self._initialize_step(step_instance, config)
+            try:
+                initialization_success = self._initialize_step(step_instance, config)
+            except Exception as e:
+                # 통합된 에러 처리 시스템 사용
+                if EXCEPTIONS_AVAILABLE:
+                    error = convert_to_mycloset_exception(e, {
+                        'step_name': config.step_name,
+                        'step_id': config.step_id,
+                        'operation': 'initialize'
+                    })
+                    track_exception(error, {
+                        'step_name': config.step_name,
+                        'step_id': config.step_id,
+                        'operation': 'initialize'
+                    }, config.step_id)
+                    raise error
+                else:
+                    raise
             
             # 5. DetailedDataSpec 후처리 적용
             postprocessing_result = self._apply_postprocessing(step_instance, config)
@@ -2953,8 +3103,98 @@ class StepFactory:
                 dependency_inversion_applied=True
             )
             
+        except AttributeError as e:
+            self.logger.error(f"❌ {config.step_name} 속성 오류: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            
+            return CentralHubStepCreationResult(
+                success=False,
+                step_name=config.step_name,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                error_message=f"Step 인스턴스 생성 중 속성 오류: {e}",
+                github_compatible=False,
+                basestepmixin_compatible=False,
+                detailed_data_spec_loaded=False,
+                central_hub_connected=True
+            )
+        except TypeError as e:
+            self.logger.error(f"❌ {config.step_name} 타입 오류: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            
+            return CentralHubStepCreationResult(
+                success=False,
+                step_name=config.step_name,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                error_message=f"Step 인스턴스 생성 중 타입 오류: {e}",
+                github_compatible=False,
+                basestepmixin_compatible=False,
+                detailed_data_spec_loaded=False,
+                central_hub_connected=True
+            )
+        except ValueError as e:
+            self.logger.error(f"❌ {config.step_name} 값 오류: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            
+            return CentralHubStepCreationResult(
+                success=False,
+                step_name=config.step_name,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                error_message=f"Step 인스턴스 생성 중 값 오류: {e}",
+                github_compatible=False,
+                basestepmixin_compatible=False,
+                detailed_data_spec_loaded=False,
+                central_hub_connected=True
+            )
+        except FileNotFoundError as e:
+            self.logger.error(f"❌ {config.step_name} 파일 없음: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            
+            return CentralHubStepCreationResult(
+                success=False,
+                step_name=config.step_name,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                error_message=f"Step 인스턴스 생성에 필요한 파일을 찾을 수 없습니다: {e}",
+                github_compatible=False,
+                basestepmixin_compatible=False,
+                detailed_data_spec_loaded=False,
+                central_hub_connected=True
+            )
+        except ImportError as e:
+            self.logger.error(f"❌ {config.step_name} import 오류: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            
+            return CentralHubStepCreationResult(
+                success=False,
+                step_name=config.step_name,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                error_message=f"Step 인스턴스 생성에 필요한 모듈을 import할 수 없습니다: {e}",
+                github_compatible=False,
+                basestepmixin_compatible=False,
+                detailed_data_spec_loaded=False,
+                central_hub_connected=True
+            )
+        except MemoryError as e:
+            self.logger.error(f"❌ {config.step_name} 메모리 부족: {e}")
+            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            
+            return CentralHubStepCreationResult(
+                success=False,
+                step_name=config.step_name,
+                class_name=config.class_name,
+                module_path=config.module_path,
+                error_message=f"Step 인스턴스 생성 중 메모리 부족: {e}",
+                github_compatible=False,
+                basestepmixin_compatible=False,
+                detailed_data_spec_loaded=False,
+                central_hub_connected=True
+            )
         except Exception as e:
-            self.logger.error(f"❌ {config.step_name} Central Hub 기반 인스턴스 생성 실패: {e}")
+            self.logger.error(f"❌ {config.step_name} Central Hub 기반 인스턴스 생성 실패: {type(e).__name__}: {e}")
             self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
             
             return CentralHubStepCreationResult(

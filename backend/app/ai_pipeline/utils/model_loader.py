@@ -44,9 +44,48 @@ from typing import Dict, Any, Optional, Union, List, Tuple, Type, Set, Callable,
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
+from functools import lru_cache, wraps
 from abc import ABC, abstractmethod
 from io import BytesIO
+
+# 🔥 MyCloset AI 커스텀 예외 클래스들 import
+try:
+    from app.core.exceptions import (
+        MyClosetAIException, ModelLoadingError, FileOperationError, 
+        MemoryError as MyClosetMemoryError, DataValidationError, 
+        ConfigurationError, NetworkError, TimeoutError as MyClosetTimeoutError,
+        track_exception, get_error_summary, create_exception_response,
+        convert_to_mycloset_exception, ErrorCodes
+    )
+except ImportError:
+    # fallback for development
+    class MyClosetAIException(Exception):
+        def __init__(self, message: str, error_code: str = None, context: dict = None):
+            self.message = message
+            self.error_code = error_code or self.__class__.__name__
+            self.context = context or {}
+            super().__init__(self.message)
+    
+    class ModelLoadingError(MyClosetAIException): pass
+    class FileOperationError(MyClosetAIException): pass
+    class MyClosetMemoryError(MyClosetAIException): pass
+    class DataValidationError(MyClosetAIException): pass
+    class ConfigurationError(MyClosetAIException): pass
+    class NetworkError(MyClosetAIException): pass
+    class MyClosetTimeoutError(MyClosetAIException): pass
+    
+    def track_exception(error, context=None, step_id=None): pass
+    def get_error_summary(): return {}
+    def create_exception_response(error, step_name="Unknown", step_id=None, session_id="unknown"): 
+        return {'success': False, 'message': str(error)}
+    def convert_to_mycloset_exception(error, context=None): return error
+    
+    class ErrorCodes:
+        MODEL_LOADING_FAILED = "MODEL_LOADING_FAILED"
+        MODEL_FILE_NOT_FOUND = "MODEL_FILE_NOT_FOUND"
+        MODEL_CORRUPTED = "MODEL_CORRUPTED"
+        MEMORY_INSUFFICIENT = "MEMORY_INSUFFICIENT"
+        FILE_PERMISSION_DENIED = "FILE_PERMISSION_DENIED"
 
 # ==============================================
 # 🔥 Central Hub DI Container 안전 import (순환참조 방지)
@@ -79,34 +118,27 @@ def _get_central_hub_container():
         return None
     except (ImportError, AttributeError, RuntimeError):
         return None
-    except Exception:
-        return None
 
 def _get_service_from_central_hub(service_key: str):
     """개선된 Central Hub를 통한 안전한 서비스 조회"""
     if service_key in _dependencies_cache:
         return _dependencies_cache[service_key]
     
-    try:
-        container = _get_central_hub_container()
-        if container and hasattr(container, 'get'):
-            service = container.get(service_key)
-            if service:
-                _dependencies_cache[service_key] = service
-            return service
-        return None
-    except Exception:
-        return None
+    container = _get_central_hub_container()
+    if container and hasattr(container, 'get'):
+        service = container.get(service_key)
+        if service:
+            _dependencies_cache[service_key] = service
+        return service
+    return None
+
 
 def _inject_dependencies_safe(step_instance):
     """개선된 Central Hub DI Container를 통한 안전한 의존성 주입"""
-    try:
-        container = _get_central_hub_container()
-        if container and hasattr(container, 'inject_to_step'):
-            return container.inject_to_step(step_instance)
-        return 0
-    except Exception:
-        return 0
+    container = _get_central_hub_container()
+    if container and hasattr(container, 'inject_to_step'):
+        return container.inject_to_step(step_instance)
+    return 0
 
 # 🔥 개선: 캐시 정리 함수
 def _clear_dependency_cache():
@@ -120,9 +152,15 @@ def _clear_dependency_cache():
 
 # TYPE_CHECKING으로 순환참조 완전 방지
 if TYPE_CHECKING:
-    from ..steps.base_step_mixin import BaseStepMixin
-    from ..factories.step_factory import StepFactory
-    from app.core.di_container import CentralHubDIContainer
+    try:
+        from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
+        from app.ai_pipeline.factories.step_factory import StepFactory
+        from app.core.di_container import CentralHubDIContainer
+    except ImportError:
+        # 상대 import fallback (개발 환경용)
+        from ..steps.base_step_mixin import BaseStepMixin
+        from ..factories.step_factory import StepFactory
+        from app.core.di_container import CentralHubDIContainer
 
 # ==============================================
 # 🔥 환경 설정 및 시스템 정보
@@ -141,24 +179,21 @@ CONDA_INFO = {
 IS_M3_MAX = False
 MEMORY_GB = 16.0
 
-try:
-    import platform
-    if platform.system() == 'Darwin':
-        import subprocess
-        result = subprocess.run(
-            ['sysctl', '-n', 'machdep.cpu.brand_string'],
-            capture_output=True, text=True, timeout=5
-        )
-        IS_M3_MAX = 'M3' in result.stdout
-        
-        memory_result = subprocess.run(
-            ['sysctl', '-n', 'hw.memsize'],
-            capture_output=True, text=True, timeout=5
-        )
-        if memory_result.stdout.strip():
-            MEMORY_GB = int(memory_result.stdout.strip()) / 1024**3
-except:
-    pass
+import platform
+if platform.system() == 'Darwin':
+    import subprocess
+    result = subprocess.run(
+        ['sysctl', '-n', 'machdep.cpu.brand_string'],
+        capture_output=True, text=True, timeout=5
+    )
+    IS_M3_MAX = 'M3' in result.stdout
+    
+    memory_result = subprocess.run(
+        ['sysctl', '-n', 'hw.memsize'],
+        capture_output=True, text=True, timeout=5
+    )
+    if memory_result.stdout.strip():
+        MEMORY_GB = int(memory_result.stdout.strip()) / 1024**3
 
 # ==============================================
 # 🔥 라이브러리 안전 import
@@ -327,13 +362,24 @@ if IS_M3_MAX and MPS_AVAILABLE:
 elif TORCH_AVAILABLE and torch.cuda.is_available():
     DEFAULT_DEVICE = "cuda"
 
-# auto_model_detector import (안전 처리)
+# auto_model_detector import (개선된 안전 처리)
 AUTO_DETECTOR_AVAILABLE = False
+AUTO_DETECTOR_ERROR = None
 try:
-    from .auto_model_detector import get_global_detector
+    # 절대 import 시도
+    from app.ai_pipeline.utils.auto_model_detector import get_global_detector
     AUTO_DETECTOR_AVAILABLE = True
 except ImportError:
+    try:
+        # 상대 import fallback
+        from .auto_model_detector import get_global_detector
+        AUTO_DETECTOR_AVAILABLE = True
+    except ImportError as e:
+        AUTO_DETECTOR_AVAILABLE = False
+        AUTO_DETECTOR_ERROR = f"ImportError: {e}"
+except Exception as e:
     AUTO_DETECTOR_AVAILABLE = False
+    AUTO_DETECTOR_ERROR = f"Unexpected error: {e}"
 
 # ==============================================
 # 🔥 Central Hub 호환 데이터 구조
@@ -481,13 +527,26 @@ class RealAIModel:
 # (다른 메서드들은 그대로 유지)
 
     def load(self, validate: bool = True) -> bool:
-        """모델 로딩 (개선된 전략 적용, 기존 코드 유지)"""
+        """모델 로딩 (개선된 예외 처리 및 에러 추적)"""
         try:
             start_time = time.time()
             
             # 파일 존재 확인
             if not self.model_path.exists():
-                self.logger.error(f"❌ 모델 파일 없음: {self.model_path}")
+                error_msg = f"모델 파일을 찾을 수 없습니다: {self.model_path}"
+                self.logger.error(f"❌ {error_msg}")
+                self.error = error_msg
+                
+                # 에러 추적
+                track_exception(
+                    FileOperationError(error_msg, ErrorCodes.MODEL_FILE_NOT_FOUND, {
+                        'model_name': self.model_name,
+                        'model_path': str(self.model_path),
+                        'step_type': self.step_type.value
+                    }),
+                    context={'model_name': self.model_name, 'step_type': self.step_type.value},
+                    step_id=self._get_step_id_from_step_type(self.step_type)
+                )
                 return False
             
             # 파일 크기 확인 (안전한 검증)
@@ -498,11 +557,23 @@ class RealAIModel:
                 else:
                     self.logger.warning(f"⚠️ 파일 크기가 숫자가 아님: {type(file_size)}")
                     self.memory_usage_mb = 0.0
-            except Exception as e:
-                self.logger.warning(f"⚠️ 파일 크기 확인 실패: {e}")
+            except (OSError, PermissionError) as e:
+                error_msg = f"파일 크기 확인 실패: {e}"
+                self.logger.warning(f"⚠️ {error_msg}")
                 self.memory_usage_mb = 0.0
+                
+                # 권한 오류 추적
+                if isinstance(e, PermissionError):
+                    track_exception(
+                        FileOperationError(error_msg, ErrorCodes.FILE_PERMISSION_DENIED, {
+                            'model_name': self.model_name,
+                            'model_path': str(self.model_path)
+                        }),
+                        context={'model_name': self.model_name},
+                        step_id=self._get_step_id_from_step_type(self.step_type)
+                    )
             
-            self.logger.info(f"🔄 {self.step_type.value} 모델 로딩 시작: {self.model_name} ({self.memory_usage_mb:.1f}MB)")
+            # self.logger.info(f"🔄 {self.step_type.value} 모델 로딩 시작: {self.model_name} ({self.memory_usage_mb:.1f}MB)")
             
             # 🔥 개선: 스마트 로딩 전략 추가 (기존 로직 유지)
             success = self._smart_load_with_strategy()
@@ -517,50 +588,90 @@ class RealAIModel:
                 else:
                     self.validation_passed = True
                 
-                self.logger.info(f"✅ {self.step_type.value} 모델 로딩 완료: {self.model_name} ({self.load_time:.2f}초)")
+                # self.logger.info(f"✅ {self.step_type.value} 모델 로딩 완료: {self.model_name} ({self.load_time:.2f}초)")
                 return True
             else:
-                self.logger.error(f"❌ {self.step_type.value} 모델 로딩 실패: {self.model_name}")
+                error_msg = f"{self.step_type.value} 모델 로딩 실패: {self.model_name}"
+                self.logger.error(f"❌ {error_msg}")
+                self.error = error_msg
+                
+                # 모델 로딩 실패 추적
+                track_exception(
+                    ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                        'model_name': self.model_name,
+                        'step_type': self.step_type.value,
+                        'memory_usage_mb': self.memory_usage_mb
+                    }),
+                    context={'model_name': self.model_name, 'step_type': self.step_type.value},
+                    step_id=self._get_step_id_from_step_type(self.step_type)
+                )
                 return False
                 
+        except MemoryError as e:
+            error_msg = f"메모리 부족으로 모델 로딩 실패: {self.model_name}"
+            self.logger.error(f"❌ {error_msg}: {e}")
+            self.error = error_msg
+            
+            # 메모리 오류 추적
+            track_exception(
+                MyClosetMemoryError(error_msg, ErrorCodes.MEMORY_INSUFFICIENT, {
+                    'model_name': self.model_name,
+                    'step_type': self.step_type.value,
+                    'memory_usage_mb': self.memory_usage_mb
+                }),
+                context={'model_name': self.model_name, 'step_type': self.step_type.value},
+                step_id=self._get_step_id_from_step_type(self.step_type)
+            )
+            return False
+            
         except Exception as e:
-            self.logger.error(f"❌ 모델 로딩 중 오류: {e}")
+            error_msg = f"모델 로딩 중 예상치 못한 오류: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            self.error = error_msg
+            
+            # 일반 오류를 커스텀 예외로 변환하여 추적
+            custom_error = convert_to_mycloset_exception(e, {
+                'model_name': self.model_name,
+                'step_type': self.step_type.value,
+                'model_path': str(self.model_path)
+            })
+            track_exception(
+                custom_error,
+                context={'model_name': self.model_name, 'step_type': self.step_type.value},
+                step_id=self._get_step_id_from_step_type(self.step_type)
+            )
             return False
 
     def _detect_file_format(self) -> str:
         """파일 형식 사전 감지로 올바른 로더 선택"""
-        try:
-            file_ext = self.model_path.suffix.lower()
-            filename = self.model_path.name.lower()
-            
-            # Safetensors 파일 확실히 구분
-            if file_ext == '.safetensors':
-                return 'safetensors'
-            
-            # YOLO 파일 구분
-            if 'yolo' in filename or filename.endswith('-pose.pt'):
-                return 'yolo'
-            
-            # CLIP/ViT 파일 구분
-            if 'clip' in filename or 'vit' in filename:
-                return 'clip'
-            
-            # Diffusion 모델 구분
-            if 'diffusion' in filename:
-                return 'diffusion'
-            
-            # 기본 PyTorch 파일
-            if file_ext in ['.pth', '.pt', '.bin']:
-                return 'pytorch'
-            
-            return 'unknown'
-            
-        except Exception:
-            return 'unknown'
+        file_ext = self.model_path.suffix.lower()
+        filename = self.model_path.name.lower()
+        
+        # Safetensors 파일 확실히 구분
+        if file_ext == '.safetensors':
+            return 'safetensors'
+        
+        # YOLO 파일 구분
+        if 'yolo' in filename or filename.endswith('-pose.pt'):
+            return 'yolo'
+        
+        # CLIP/ViT 파일 구분
+        if 'clip' in filename or 'vit' in filename:
+            return 'clip'
+        
+        # Diffusion 모델 구분
+        if 'diffusion' in filename:
+            return 'diffusion'
+        
+        # 기본 PyTorch 파일
+        if file_ext in ['.pth', '.pt', '.bin']:
+            return 'pytorch'
+        
+        return 'unknown'
 
 
     def _smart_load_with_strategy(self) -> bool:
-        """개선된 스마트 로딩 전략 (파일 형식 기반)"""
+        """개선된 스마트 로딩 전략 (파일 형식 기반 + 에러 복구)"""
         try:
             # 파일 형식 사전 감지
             file_format = self._detect_file_format()
@@ -576,26 +687,135 @@ class RealAIModel:
             
             # 1차: 형식별 최적화 로더 시도
             if file_format in format_loaders:
-                self.logger.debug(f"파일 형식 감지: {file_format}")
-                loader_func = format_loaders[file_format]
-                
-                if file_format == 'safetensors':
-                    self.checkpoint_data = loader_func()
-                    return self.checkpoint_data is not None
-                else:
-                    return loader_func()
+                # self.logger.debug(f"파일 형식 감지: {file_format}")
+                try:
+                    result = format_loaders[file_format]()
+                    if result:
+                        return True
+                except Exception as e:
+                    error_msg = f"형식별 로더 실패 ({file_format}): {e}"
+                    self.logger.warning(f"⚠️ {error_msg}")
+                    
+                    # 에러 추적
+                    track_exception(
+                        ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                            'file_format': file_format,
+                            'model_name': self.model_name,
+                            'step_type': self.step_type.value
+                        }),
+                        context={'model_name': self.model_name, 'file_format': file_format},
+                        step_id=self._get_step_id_from_step_type(self.step_type)
+                    )
             
-            # 2차: Step별 특화 로더 시도
-            if self.step_type in self.step_loaders:
-                self.logger.debug(f"Step별 특화 로더 시도: {self.step_type}")
-                return self.step_loaders[self.step_type]()
+            # 2차: 대안 로더들 시도 (fallback strategy)
+            fallback_loaders = [
+                ('PyTorch 기본', self._load_pytorch_checkpoint),
+                ('Safetensors', self._load_safetensors),
+                ('YOLO 최적화', self._load_yolo_optimized),
+                ('CLIP 모델', self._load_clip_model),
+                ('Diffusion 체크포인트', self._load_diffusion_checkpoint)
+            ]
             
-            # 3차: 일반 로더
-            self.logger.debug("일반 PyTorch 로더 시도")
-            return self._load_generic_model()
+            for loader_name, loader_func in fallback_loaders:
+                try:
+                    # self.logger.debug(f"대안 로더 시도: {loader_name}")
+                    result = loader_func()
+                    if result:
+                        # self.logger.info(f"✅ 대안 로더 성공: {loader_name}")
+                        return True
+                except Exception as e:
+                    error_msg = f"대안 로더 실패 ({loader_name}): {e}"
+                    self.logger.debug(f"⚠️ {error_msg}")
+                    
+                    # 에러 추적 (디버그 레벨)
+                    track_exception(
+                        ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                            'loader_name': loader_name,
+                            'model_name': self.model_name,
+                            'step_type': self.step_type.value
+                        }),
+                        context={'model_name': self.model_name, 'loader_name': loader_name},
+                        step_id=self._get_step_id_from_step_type(self.step_type)
+                    )
+            
+            # 3차: Step별 특화 로더 시도
+            step_specific_loaders = {
+                RealStepModelType.HUMAN_PARSING: [
+                    self._load_graphonomy_ultra_safe,
+                    self._load_atr_model
+                ],
+                RealStepModelType.POSE_ESTIMATION: [
+                    self._load_yolo_model,
+                    self._load_openpose_model
+                ],
+                RealStepModelType.CLOTH_SEGMENTATION: [
+                    self._load_sam_model,
+                    self._load_u2net_model
+                ],
+                RealStepModelType.CLOTH_WARPING: [
+                    self._load_warping_model
+                ],
+                RealStepModelType.VIRTUAL_FITTING: [
+                    self._load_diffusion_model
+                ],
+                RealStepModelType.QUALITY_ASSESSMENT: [
+                    self._load_quality_model
+                ]
+            }
+            
+            if self.step_type in step_specific_loaders:
+                for loader_func in step_specific_loaders[self.step_type]:
+                    try:
+                        # self.logger.debug(f"Step별 특화 로더 시도: {loader_func.__name__}")
+                        result = loader_func()
+                        if result:
+                            # self.logger.info(f"✅ Step별 특화 로더 성공: {loader_func.__name__}")
+                            return True
+                    except Exception as e:
+                        error_msg = f"Step별 특화 로더 실패 ({loader_func.__name__}): {e}"
+                        self.logger.debug(f"⚠️ {error_msg}")
+                        
+                        # 에러 추적
+                        track_exception(
+                            ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                                'loader_func': loader_func.__name__,
+                                'model_name': self.model_name,
+                                'step_type': self.step_type.value
+                            }),
+                            context={'model_name': self.model_name, 'loader_func': loader_func.__name__},
+                            step_id=self._get_step_id_from_step_type(self.step_type)
+                        )
+            
+            # 모든 로더 실패
+            error_msg = f"모든 로딩 전략 실패: {self.model_name}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 최종 실패 추적
+            track_exception(
+                ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                    'model_name': self.model_name,
+                    'step_type': self.step_type.value,
+                    'file_format': file_format,
+                    'attempted_loaders': [name for name, _ in fallback_loaders]
+                }),
+                context={'model_name': self.model_name, 'step_type': self.step_type.value},
+                step_id=self._get_step_id_from_step_type(self.step_type)
+            )
+            return False
             
         except Exception as e:
-            self.logger.error(f"❌ 스마트 로딩 전략 실패: {e}")
+            error_msg = f"스마트 로딩 전략 실행 중 오류: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 전략 실행 오류 추적
+            track_exception(
+                convert_to_mycloset_exception(e, {
+                    'model_name': self.model_name,
+                    'step_type': self.step_type.value
+                }),
+                context={'model_name': self.model_name, 'step_type': self.step_type.value},
+                step_id=self._get_step_id_from_step_type(self.step_type)
+            )
             return False
 
     def _load_pytorch_checkpoint(self) -> Optional[Any]:
@@ -1404,8 +1624,8 @@ StepModelInterface = RealStepModelInterface
 from functools import wraps
 from typing import Callable, Any, Optional
 
-def safe_execution(fallback_value: Any = None, log_error: bool = True):
-    """안전한 실행을 위한 데코레이터"""
+def safe_execution(fallback_value: Any = None, log_error: bool = True, track_errors: bool = True):
+    """안전한 실행을 위한 데코레이터 (개선된 에러 추적)"""
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -1419,12 +1639,40 @@ def safe_execution(fallback_value: Any = None, log_error: bool = True):
                 if hasattr(self, 'performance_metrics'):
                     self.performance_metrics['error_count'] += 1
                 
+                # 에러 추적
+                if track_errors:
+                    try:
+                        # 컨텍스트 정보 수집
+                        context = {
+                            'function_name': func.__name__,
+                            'args_count': len(args),
+                            'kwargs_keys': list(kwargs.keys())
+                        }
+                        
+                        # 모델 관련 정보 추가
+                        if hasattr(self, 'model_name'):
+                            context['model_name'] = self.model_name
+                        if hasattr(self, 'step_type'):
+                            context['step_type'] = self.step_type.value if hasattr(self.step_type, 'value') else str(self.step_type)
+                        
+                        # 커스텀 예외로 변환하여 추적
+                        custom_error = convert_to_mycloset_exception(e, context)
+                        track_exception(
+                            custom_error,
+                            context=context,
+                            step_id=getattr(self, 'step_id', None)
+                        )
+                    except Exception as tracking_error:
+                        # 에러 추적 자체가 실패해도 원래 함수는 계속 실행
+                        if hasattr(self, 'logger'):
+                            self.logger.warning(f"⚠️ 에러 추적 실패: {tracking_error}")
+                
                 return fallback_value
         return wrapper
     return decorator
 
-def safe_async_execution(fallback_value: Any = None, log_error: bool = True):
-    """비동기 안전한 실행을 위한 데코레이터"""
+def safe_async_execution(fallback_value: Any = None, log_error: bool = True, track_errors: bool = True):
+    """비동기 안전한 실행을 위한 데코레이터 (개선된 에러 추적)"""
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
@@ -1437,6 +1685,35 @@ def safe_async_execution(fallback_value: Any = None, log_error: bool = True):
                 # 성능 메트릭 업데이트
                 if hasattr(self, 'performance_metrics'):
                     self.performance_metrics['error_count'] += 1
+                
+                # 에러 추적
+                if track_errors:
+                    try:
+                        # 컨텍스트 정보 수집
+                        context = {
+                            'function_name': func.__name__,
+                            'args_count': len(args),
+                            'kwargs_keys': list(kwargs.keys()),
+                            'is_async': True
+                        }
+                        
+                        # 모델 관련 정보 추가
+                        if hasattr(self, 'model_name'):
+                            context['model_name'] = self.model_name
+                        if hasattr(self, 'step_type'):
+                            context['step_type'] = self.step_type.value if hasattr(self.step_type, 'value') else str(self.step_type)
+                        
+                        # 커스텀 예외로 변환하여 추적
+                        custom_error = convert_to_mycloset_exception(e, context)
+                        track_exception(
+                            custom_error,
+                            context=context,
+                            step_id=getattr(self, 'step_id', None)
+                        )
+                    except Exception as tracking_error:
+                        # 에러 추적 자체가 실패해도 원래 함수는 계속 실행
+                        if hasattr(self, 'logger'):
+                            self.logger.warning(f"⚠️ 에러 추적 실패: {tracking_error}")
                 
                 return fallback_value
         return wrapper
@@ -1476,6 +1753,14 @@ class ModelLoader:
         "tps_network.pth": "checkpoints/step_04_geometric_matching/tps_network.pth",
         "raft-things": "step_04_geometric_matching/raft-things.pth",
         "raft-things.pth": "step_04_geometric_matching/raft-things.pth",
+        "raft-chairs": "step_04_geometric_matching/models/raft-chairs.pth",
+        "raft-chairs.pth": "step_04_geometric_matching/models/raft-chairs.pth",
+        "raft-kitti": "step_04_geometric_matching/models/raft-kitti.pth",
+        "raft-kitti.pth": "step_04_geometric_matching/models/raft-kitti.pth",
+        "raft-sintel": "step_04_geometric_matching/models/raft-sintel.pth",
+        "raft-sintel.pth": "step_04_geometric_matching/models/raft-sintel.pth",
+        "raft-small": "step_04_geometric_matching/models/raft-small.pth",
+        "raft-small.pth": "step_04_geometric_matching/models/raft-small.pth",
         "sam_vit_h_4b8939": "step_04_geometric_matching/sam_vit_h_4b8939.pth",
         "sam_vit_h_4b8939.pth": "step_04_geometric_matching/sam_vit_h_4b8939.pth",
         
@@ -1595,9 +1880,9 @@ class ModelLoader:
         else:
             self.logger.debug("⚠️ Central Hub 초기화 건너뜀 (순환참조 방지)")
         
-        self.logger.info(f"🚀 ModelLoader v5.1 초기화 완료")
-        self.logger.info(f"📱 Device: {self.device}")
-        self.logger.info(f"📁 모델 캐시: {self.model_cache_dir}")
+        # self.logger.info(f"🚀 ModelLoader v5.1 초기화 완료")
+        # self.logger.info(f"📱 Device: {self.device}")
+        # self.logger.info(f"📁 모델 캐시: {self.model_cache_dir}")
 
     def _resolve_basic_dependencies(self):
         """🔥 새로 추가: 기본 의존성만 해결 (순환참조 방지)"""
@@ -1607,9 +1892,18 @@ class ModelLoader:
             # MemoryManager만 자체 생성 (순환참조 없음)
             if not self.memory_manager:
                 try:
-                    from ..interface.step_interface import MemoryManager
+                    # 절대 import 시도
+                    from app.ai_pipeline.interface.step_interface import MemoryManager
                     self.memory_manager = MemoryManager()
-                    self.logger.debug("✅ MemoryManager 자체 생성 완료")
+                    self.logger.debug("✅ MemoryManager 자체 생성 완료 (절대 import)")
+                except ImportError:
+                    try:
+                        # 상대 import fallback
+                        from ..interface.step_interface import MemoryManager
+                        self.memory_manager = MemoryManager()
+                        self.logger.debug("✅ MemoryManager 자체 생성 완료 (상대 import)")
+                    except Exception as e:
+                        self.logger.debug(f"⚠️ MemoryManager 생성 실패: {e}")
                 except Exception as e:
                     self.logger.debug(f"⚠️ MemoryManager 생성 실패: {e}")
             
@@ -1629,13 +1923,13 @@ class ModelLoader:
             self._container_initialized = True
             
             if self._central_hub_container:
-                self.logger.info("✅ Central Hub DI Container 연결 성공")
+                # self.logger.info("✅ Central Hub DI Container 연결 성공")
                 
                 # 🔥 자기 자신을 Central Hub에 등록
                 try:
                     if hasattr(self._central_hub_container, 'register'):
                         self._central_hub_container.register('model_loader', self)
-                        self.logger.info("✅ ModelLoader Central Hub 등록 완료")
+                        # self.logger.info("✅ ModelLoader Central Hub 등록 완료")
                 except Exception as e:
                     self.logger.debug(f"ModelLoader Central Hub 등록 실패: {e}")
                 
@@ -1711,7 +2005,7 @@ class ModelLoader:
             if injections_made > 0:
                 self.performance_metrics['central_hub_injections'] += injections_made
             
-            self.logger.info(f"✅ Step 의존성 주입 완료: {injections_made}개")
+            # self.logger.info(f"✅ Step 의존성 주입 완료: {injections_made}개")
             return injections_made
             
         except Exception as e:
@@ -1745,7 +2039,7 @@ class ModelLoader:
             )
             
             self.performance_metrics['step_requirements_registered'] += 1
-            self.logger.info(f"✅ Central Hub Step 요구사항 등록: {step_name}")
+            # self.logger.info(f"✅ Central Hub Step 요구사항 등록: {step_name}")
             return True
             
         except Exception as e:
@@ -1816,6 +2110,8 @@ class ModelLoader:
             ]
             
             validated_count = 0
+            failed_models = []
+            
             for model_name, relative_path in test_models:
                 full_path = self.model_cache_dir / relative_path
                 if full_path.exists():
@@ -1829,7 +2125,35 @@ class ModelLoader:
                             if checkpoint is not None:
                                 validated_count += 1
                                 self.logger.debug(f"✅ 체크포인트 검증 성공: {model_name}")
-                    except:
+                            else:
+                                failed_models.append(f"{model_name} (None checkpoint)")
+                    except (OSError, PermissionError) as e:
+                        error_msg = f"체크포인트 파일 접근 실패: {model_name}"
+                        self.logger.debug(f"⚠️ {error_msg}: {e}")
+                        failed_models.append(f"{model_name} (파일 접근 오류)")
+                        
+                        # 파일 시스템 오류 추적
+                        track_exception(
+                            FileOperationError(error_msg, ErrorCodes.FILE_PERMISSION_DENIED, {
+                                'model_name': model_name,
+                                'file_path': str(full_path)
+                            }),
+                            context={'model_name': model_name, 'operation': 'checkpoint_validation'}
+                        )
+                    except MemoryError as e:
+                        error_msg = f"체크포인트 로딩 메모리 부족: {model_name}"
+                        self.logger.debug(f"⚠️ {error_msg}: {e}")
+                        failed_models.append(f"{model_name} (메모리 부족)")
+                        
+                        # 메모리 오류 추적
+                        track_exception(
+                            MyClosetMemoryError(error_msg, ErrorCodes.MEMORY_INSUFFICIENT, {
+                                'model_name': model_name,
+                                'file_path': str(full_path)
+                            }),
+                            context={'model_name': model_name, 'operation': 'checkpoint_validation'}
+                        )
+                    except Exception as e:
                         # weights_only=True 실패 시 weights_only=False로 재시도
                         try:
                             with warnings.catch_warnings():
@@ -1838,16 +2162,48 @@ class ModelLoader:
                             if checkpoint is not None:
                                 validated_count += 1
                                 self.logger.debug(f"✅ 체크포인트 검증 성공 (호환모드): {model_name}")
-                        except Exception as e:
-                            self.logger.debug(f"⚠️ 체크포인트 검증 실패: {model_name} - {e}")
+                            else:
+                                failed_models.append(f"{model_name} (None checkpoint - 호환모드)")
+                        except Exception as retry_e:
+                            error_msg = f"체크포인트 검증 실패: {model_name}"
+                            self.logger.debug(f"⚠️ {error_msg}: {retry_e}")
+                            failed_models.append(f"{model_name} (로딩 실패)")
+                            
+                            # 체크포인트 로딩 실패 추적
+                            track_exception(
+                                ModelLoadingError(error_msg, ErrorCodes.MODEL_CORRUPTED, {
+                                    'model_name': model_name,
+                                    'file_path': str(full_path),
+                                    'original_error': str(e),
+                                    'retry_error': str(retry_e)
+                                }),
+                                context={'model_name': model_name, 'operation': 'checkpoint_validation'}
+                            )
+                else:
+                    failed_models.append(f"{model_name} (파일 없음)")
             
             # 최소 1개 이상 검증되면 성공
             success = validated_count > 0
             self.logger.info(f"🔍 체크포인트 로딩 검증: {validated_count}/3개 성공, 결과: {'✅' if success else '❌'}")
+            
+            if failed_models:
+                self.logger.debug(f"⚠️ 실패한 모델들: {', '.join(failed_models)}")
+            
             return success
             
         except Exception as e:
-            self.logger.error(f"❌ 체크포인트 로딩 검증 실패: {e}")
+            error_msg = f"체크포인트 로딩 검증 실패"
+            self.logger.error(f"❌ {error_msg}: {e}")
+            
+            # 일반 오류를 커스텀 예외로 변환하여 추적
+            custom_error = convert_to_mycloset_exception(e, {
+                'operation': 'checkpoint_validation',
+                'test_models_count': len(test_models)
+            })
+            track_exception(
+                custom_error,
+                context={'operation': 'checkpoint_validation'}
+            )
             return False
     
     def optimize_memory_via_central_hub(self) -> Dict[str, Any]:
@@ -1987,68 +2343,316 @@ class ModelLoader:
     # ==============================================
     
     def _initialize_auto_detector(self):
-        """auto_model_detector 초기화 (Central Hub 호환)"""
+        """auto_model_detector 초기화 (개선된 에러 처리 및 fallback)"""
         try:
             if AUTO_DETECTOR_AVAILABLE:
                 self.auto_detector = get_global_detector()
                 if self.auto_detector is not None:
-                    self.logger.info("✅ auto_model_detector 연동 완료")
-                    self.integrate_auto_detector()
+                    # self.logger.info("✅ auto_model_detector 연동 완료")
+                    
+                    # AutoDetector 통합 시도
+                    integration_success = self.integrate_auto_detector()
+                    if integration_success:
+                        pass  # self.logger.info("✅ AutoDetector 모델 통합 성공")
+                    else:
+                        self.logger.warning("⚠️ AutoDetector 모델 통합 실패, fallback 모드 활성화")
+                        self._activate_fallback_detection()
                 else:
-                    self.logger.warning("⚠️ auto_detector 인스턴스가 None")
+                    self.logger.warning("⚠️ auto_detector 인스턴스가 None, fallback 모드 활성화")
+                    self._activate_fallback_detection()
             else:
-                self.logger.warning("⚠️ AUTO_DETECTOR_AVAILABLE = False")
-                self.auto_detector = None
+                error_msg = f"AutoModelDetector 사용 불가능: {AUTO_DETECTOR_ERROR or 'Unknown error'}"
+                self.logger.warning(f"⚠️ {error_msg}")
+                
+                # 에러 추적
+                track_exception(
+                    ConfigurationError(error_msg, ErrorCodes.CONFIGURATION_ERROR, {
+                        'auto_detector_available': AUTO_DETECTOR_AVAILABLE,
+                        'auto_detector_error': AUTO_DETECTOR_ERROR
+                    }),
+                    context={'operation': 'initialize_auto_detector'},
+                    step_id=None
+                )
+                
+                # Fallback 모드 활성화
+                self._activate_fallback_detection()
+                
         except Exception as e:
-            self.logger.error(f"❌ auto_model_detector 초기화 실패: {e}")
-            self.auto_detector = None
+            error_msg = f"auto_model_detector 초기화 실패: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 에러 추적
+            track_exception(
+                convert_to_mycloset_exception(e, {
+                    'operation': 'initialize_auto_detector',
+                    'auto_detector_available': AUTO_DETECTOR_AVAILABLE
+                }),
+                context={'operation': 'initialize_auto_detector'},
+                step_id=None
+            )
+            
+            # Fallback 모드 활성화
+            self._activate_fallback_detection()
+    
+    def _activate_fallback_detection(self):
+        """Fallback 모델 감지 시스템 활성화"""
+        try:
+            self.logger.info("🔄 Fallback 모델 감지 시스템 활성화 중...")
+            
+            # 기본 모델 경로 스캔
+            fallback_models = self._scan_fallback_models()
+            
+            if fallback_models:
+                self.logger.info(f"✅ Fallback 모델 감지 완료: {len(fallback_models)}개 모델 발견")
+                
+                # _available_models_cache에 추가
+                for model_name, model_info in fallback_models.items():
+                    self._available_models_cache[model_name] = model_info
+                
+                # 통합 성공 플래그 설정
+                self._integration_successful = True
+                self.logger.info("✅ Fallback 모델 감지 시스템 활성화 완료")
+            else:
+                self.logger.warning("⚠️ Fallback 모델 감지 실패, 기본 모델 경로만 사용")
+                
+        except Exception as e:
+            error_msg = f"Fallback 모델 감지 시스템 활성화 실패: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 에러 추적
+            track_exception(
+                convert_to_mycloset_exception(e, {
+                    'operation': 'activate_fallback_detection'
+                }),
+                context={'operation': 'activate_fallback_detection'},
+                step_id=None
+            )
+    
+    def _scan_fallback_models(self) -> Dict[str, Dict[str, Any]]:
+        """Fallback 모델 스캔 (기본 경로 기반)"""
+        fallback_models = {}
+        
+        try:
+            # 기본 모델 경로들
+            base_paths = [
+                Path("ai_models"),
+                Path("checkpoints"),
+                Path("models"),
+                Path("backend/models"),
+                Path("backend/ai_models")
+            ]
+            
+            # VERIFIED_MODEL_PATHS에서 모델 정보 추출
+            for model_name, model_path in self.VERIFIED_MODEL_PATHS.items():
+                try:
+                    full_path = Path(model_path)
+                    
+                    # 상대 경로인 경우 기본 경로들과 조합
+                    if not full_path.is_absolute():
+                        for base_path in base_paths:
+                            candidate_path = base_path / full_path
+                            if candidate_path.exists():
+                                full_path = candidate_path
+                                break
+                    
+                    if full_path.exists():
+                        # 파일 크기 확인
+                        file_size_mb = full_path.stat().st_size / (1024 * 1024)
+                        
+                        # Step 타입 추론
+                        step_type = self._infer_step_type(model_name, str(full_path))
+                        
+                        fallback_models[model_name] = {
+                            "name": model_name,
+                            "path": str(full_path),
+                            "size_mb": file_size_mb,
+                            "step_class": step_type.value if step_type else 'UnknownStep',
+                            "step_type": step_type.value if step_type else 'unknown',
+                            "model_type": self._infer_model_type(model_name),
+                            "auto_detected": False,  # Fallback 모드
+                            "priority": self._infer_model_priority(model_name),
+                            "loaded": False,
+                            "step_id": self._get_step_id_from_step_type(step_type),
+                            "device": self.device,
+                            "real_ai_model": True,
+                            "central_hub_integrated": True,
+                            "fallback_detected": True  # Fallback 모드 표시
+                        }
+                        
+                except Exception as e:
+                    self.logger.debug(f"⚠️ Fallback 모델 스캔 중 오류 ({model_name}): {e}")
+                    continue
+            
+            # 추가 모델 파일 스캔 (패턴 기반)
+            additional_models = self._scan_additional_fallback_models(base_paths)
+            fallback_models.update(additional_models)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Fallback 모델 스캔 실패: {e}")
+        
+        return fallback_models
+    
+    def _scan_additional_fallback_models(self, base_paths: List[Path]) -> Dict[str, Dict[str, Any]]:
+        """추가 Fallback 모델 스캔 (패턴 기반)"""
+        additional_models = {}
+        
+        try:
+            # 모델 파일 패턴들
+            model_patterns = [
+                "*.pth", "*.pt", "*.safetensors", "*.bin", "*.ckpt"
+            ]
+            
+            for base_path in base_paths:
+                if not base_path.exists():
+                    continue
+                
+                for pattern in model_patterns:
+                    try:
+                        for model_file in base_path.rglob(pattern):
+                            # 파일 크기 확인 (50MB 이상만)
+                            file_size_mb = model_file.stat().st_size / (1024 * 1024)
+                            if file_size_mb < 50:
+                                continue
+                            
+                            # 모델 이름 추출
+                            model_name = model_file.stem
+                            
+                            # 이미 처리된 모델은 건너뛰기
+                            if model_name in additional_models:
+                                continue
+                            
+                            # Step 타입 추론
+                            step_type = self._infer_step_type(model_name, str(model_file))
+                            
+                            additional_models[model_name] = {
+                                "name": model_name,
+                                "path": str(model_file),
+                                "size_mb": file_size_mb,
+                                "step_class": step_type.value if step_type else 'UnknownStep',
+                                "step_type": step_type.value if step_type else 'unknown',
+                                "model_type": self._infer_model_type(model_name),
+                                "auto_detected": False,
+                                "priority": self._infer_model_priority(model_name),
+                                "loaded": False,
+                                "step_id": self._get_step_id_from_step_type(step_type),
+                                "device": self.device,
+                                "real_ai_model": True,
+                                "central_hub_integrated": True,
+                                "fallback_detected": True,
+                                "pattern_detected": True  # 패턴 기반 감지
+                            }
+                            
+                    except Exception as e:
+                        self.logger.debug(f"⚠️ 패턴 스캔 중 오류 ({pattern}): {e}")
+                        continue
+                        
+        except Exception as e:
+            self.logger.error(f"❌ 추가 Fallback 모델 스캔 실패: {e}")
+        
+        return additional_models
     
     def integrate_auto_detector(self) -> bool:
-        """AutoDetector 통합 (Central Hub 호환)"""
+        """AutoDetector 통합 (개선된 에러 처리)"""
         try:
             if not AUTO_DETECTOR_AVAILABLE or not self.auto_detector:
+                self.logger.warning("⚠️ AutoDetector 사용 불가능 또는 인스턴스 없음")
                 return False
             
             if hasattr(self.auto_detector, 'detect_all_models'):
-                detected_models = self.auto_detector.detect_all_models()
-                if detected_models:
-                    integrated_count = 0
-                    for model_name, detected_model in detected_models.items():
-                        try:
-                            model_path = getattr(detected_model, 'path', '')
-                            if model_path and Path(model_path).exists():
-                                # Step 타입 추론
-                                step_type = self._infer_step_type(model_name, model_path)
+                try:
+                    detected_models = self.auto_detector.detect_all_models()
+                    if detected_models:
+                        integrated_count = 0
+                        failed_count = 0
+                        
+                        for model_name, detected_model in detected_models.items():
+                            try:
+                                # OptimizedDetectedModel 객체에서 안전하게 속성 추출
+                                model_path = str(getattr(detected_model, 'path', ''))
+                                file_size_mb = getattr(detected_model, 'file_size_mb', 0)
+                                step_name = getattr(detected_model, 'step_name', 'UnknownStep')
+                                ai_class = getattr(detected_model, 'ai_class', 'BaseRealAIModel')
                                 
-                                self._available_models_cache[model_name] = {
-                                    "name": model_name,
-                                    "path": str(model_path),
-                                    "size_mb": getattr(detected_model, 'file_size_mb', 0),
-                                    "step_class": getattr(detected_model, 'step_name', 'UnknownStep'),
-                                    "step_type": step_type.value if step_type else 'unknown',
-                                    "model_type": self._infer_model_type(model_name),
-                                    "auto_detected": True,
-                                    "priority": self._infer_model_priority(model_name),
-                                    # Central Hub 호환 필드
-                                    "loaded": False,
-                                    "step_id": self._get_step_id_from_step_type(step_type),
-                                    "device": self.device,
-                                    "real_ai_model": True,
-                                    "central_hub_integrated": True
-                                }
-                                integrated_count += 1
-                        except:
-                            continue
+                                if model_path and Path(model_path).exists():
+                                    # Step 타입 매핑 (AutoDetector → ModelLoader)
+                                    step_type = self._map_auto_detector_step_to_real_step(step_name)
+                                    
+                                    # 모델 정보 생성
+                                    model_info = {
+                                        "name": model_name,
+                                        "path": model_path,
+                                        "size_mb": file_size_mb,
+                                        "step_class": step_name,
+                                        "step_type": step_type.value if step_type else 'unknown',
+                                        "model_type": self._infer_model_type(model_name),
+                                        "auto_detected": True,
+                                        "priority": self._infer_model_priority(model_name),
+                                        # Central Hub 호환 필드
+                                        "loaded": False,
+                                        "step_id": self._get_step_id_from_step_type(step_type),
+                                        "device": self.device,
+                                        "real_ai_model": True,
+                                        "central_hub_integrated": True,
+                                        # AutoDetector 추가 정보
+                                        "ai_class": ai_class,
+                                        "confidence_score": getattr(detected_model, 'confidence_score', 0.0),
+                                        "priority_rank": getattr(detected_model, 'priority_rank', 999),
+                                        "size_category": getattr(detected_model, 'size_category', 'unknown')
+                                    }
+                                    
+                                    self._available_models_cache[model_name] = model_info
+                                    integrated_count += 1
+                                    self.logger.debug(f"✅ AutoDetector 모델 통합 성공: {model_name} ({file_size_mb:.1f}MB)")
+                                else:
+                                    failed_count += 1
+                                    self.logger.debug(f"⚠️ 모델 파일 없음: {model_name} -> {model_path}")
+                            except Exception as model_error:
+                                failed_count += 1
+                                self.logger.debug(f"⚠️ 모델 통합 실패 ({model_name}): {model_error}")
+                                continue
+                        
+                        if integrated_count > 0:
+                            self._integration_successful = True
+                            self.logger.info(f"✅ AutoDetector Central Hub 통합 완료: {integrated_count}개 모델 (실패: {failed_count}개)")
+                            return True
+                        else:
+                            self.logger.warning(f"⚠️ AutoDetector 모델 통합 실패: {failed_count}개 모델 모두 실패")
+                            return False
+                    else:
+                        self.logger.warning("⚠️ AutoDetector에서 감지된 모델이 없음")
+                        return False
+                        
+                except Exception as detection_error:
+                    error_msg = f"AutoDetector 모델 감지 실패: {detection_error}"
+                    self.logger.error(f"❌ {error_msg}")
                     
-                    if integrated_count > 0:
-                        self._integration_successful = True
-                        self.logger.info(f"✅ AutoDetector Central Hub 통합 완료: {integrated_count}개 모델")
-                        return True
-            
-            return False
+                    # 에러 추적
+                    track_exception(
+                        convert_to_mycloset_exception(detection_error, {
+                            'operation': 'auto_detector_detection',
+                            'auto_detector_available': AUTO_DETECTOR_AVAILABLE
+                        }),
+                        context={'operation': 'auto_detector_detection'},
+                        step_id=None
+                    )
+                    return False
+            else:
+                self.logger.warning("⚠️ AutoDetector에 detect_all_models 메서드가 없음")
+                return False
             
         except Exception as e:
-            self.logger.error(f"❌ AutoDetector 통합 실패: {e}")
+            error_msg = f"AutoDetector 통합 실패: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 에러 추적
+            track_exception(
+                convert_to_mycloset_exception(e, {
+                    'operation': 'integrate_auto_detector',
+                    'auto_detector_available': AUTO_DETECTOR_AVAILABLE
+                }),
+                context={'operation': 'integrate_auto_detector'},
+                step_id=None
+            )
             return False
     
     def _load_central_hub_step_mappings(self):
@@ -2156,7 +2760,7 @@ class ModelLoader:
                 }
             }
             
-            self.logger.info(f"✅ Central Hub Step 매핑 로딩 완료: {len(self.central_hub_step_mappings)}개 Step")
+            # self.logger.info(f"✅ Central Hub Step 매핑 로딩 완료: {len(self.central_hub_step_mappings)}개 Step")
             
         except Exception as e:
             self.logger.error(f"❌ Central Hub 매핑 로딩 실패: {e}")
@@ -2167,7 +2771,7 @@ class ModelLoader:
     # ==============================================
     
     def load_model(self, model_name: str, **kwargs) -> Optional[RealAIModel]:
-        """실제 AI 모델 로딩 (Central Hub 완전 호환)"""
+        """실제 AI 모델 로딩 (개선된 예외 처리 및 에러 추적)"""
         try:
             self.logger.debug(f"🔄 load_model 시작: {model_name}")
             with self._lock:
@@ -2189,8 +2793,19 @@ class ModelLoader:
                 model_path = self._find_model_path(model_name, **kwargs)
                 self.logger.debug(f"🔄 _find_model_path 결과: {model_path}")
                 if not model_path:
-                    self.logger.error(f"❌ 모델 경로를 찾을 수 없음: {model_name}")
+                    error_msg = f"모델 경로를 찾을 수 없음: {model_name}"
+                    self.logger.error(f"❌ {error_msg}")
                     self.model_status[model_name] = RealModelStatus.ERROR
+                    
+                    # 에러 추적
+                    track_exception(
+                        FileOperationError(error_msg, ErrorCodes.MODEL_FILE_NOT_FOUND, {
+                            'model_name': model_name,
+                            'kwargs': kwargs
+                        }),
+                        context={'model_name': model_name, 'operation': 'find_model_path'},
+                        step_id=kwargs.get('step_id')
+                    )
                     return None
                 
                 # Step 타입 추론 (Central Hub 호환)
@@ -2241,21 +2856,64 @@ class ModelLoader:
                     self.performance_metrics['models_loaded'] += 1
                     self.performance_metrics['total_memory_mb'] += model.memory_usage_mb
                     
-                    self.logger.info(f"✅ 실제 AI 모델 로딩 성공: {model_name} ({step_type.value}, {model.memory_usage_mb:.1f}MB)")
+                    # self.logger.info(f"✅ 실제 AI 모델 로딩 성공: {model_name} ({step_type.value}, {model.memory_usage_mb:.1f}MB)")
                     
                     # 캐시 크기 관리
                     self._manage_cache()
                     
                     return model
                 else:
+                    error_msg = f"모델 로딩 실패: {model_name}"
+                    self.logger.error(f"❌ {error_msg}")
                     self.model_status[model_name] = RealModelStatus.ERROR
                     self.performance_metrics['error_count'] += 1
+                    
+                    # 모델 로딩 실패 추적
+                    track_exception(
+                        ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                            'model_name': model_name,
+                            'model_path': model_path,
+                            'step_type': step_type.value,
+                            'error': model.error
+                        }),
+                        context={'model_name': model_name, 'step_type': step_type.value},
+                        step_id=kwargs.get('step_id')
+                    )
                     return None
                     
-        except Exception as e:
-            self.logger.error(f"❌ 실제 AI 모델 로딩 실패 {model_name}: {e}")
+        except MemoryError as e:
+            error_msg = f"메모리 부족으로 모델 로딩 실패: {model_name}"
+            self.logger.error(f"❌ {error_msg}: {e}")
             self.model_status[model_name] = RealModelStatus.ERROR
             self.performance_metrics['error_count'] += 1
+            
+            # 메모리 오류 추적
+            track_exception(
+                MyClosetMemoryError(error_msg, ErrorCodes.MEMORY_INSUFFICIENT, {
+                    'model_name': model_name,
+                    'kwargs': kwargs
+                }),
+                context={'model_name': model_name, 'operation': 'load_model'},
+                step_id=kwargs.get('step_id')
+            )
+            return None
+            
+        except Exception as e:
+            error_msg = f"실제 AI 모델 로딩 중 예상치 못한 오류: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            self.model_status[model_name] = RealModelStatus.ERROR
+            self.performance_metrics['error_count'] += 1
+            
+            # 일반 오류를 커스텀 예외로 변환하여 추적
+            custom_error = convert_to_mycloset_exception(e, {
+                'model_name': model_name,
+                'kwargs': kwargs
+            })
+            track_exception(
+                custom_error,
+                context={'model_name': model_name, 'operation': 'load_model'},
+                step_id=kwargs.get('step_id')
+            )
             return None
     
     async def load_model_async(self, model_name: str, **kwargs) -> Optional[RealAIModel]:
@@ -2294,6 +2952,19 @@ class ModelLoader:
                     if exists_result:
                         self.logger.info(f"✅ 검증된 경로에서 모델 발견: {model_name} → {verified_path}")
                         return str(verified_path)
+                except (OSError, PermissionError) as e:
+                    error_msg = f"검증된 경로 접근 실패: {model_name}"
+                    self.logger.error(f"❌ {error_msg}: {e}")
+                    
+                    # 파일 시스템 오류 추적
+                    track_exception(
+                        FileOperationError(error_msg, ErrorCodes.FILE_PERMISSION_DENIED, {
+                            'model_name': model_name,
+                            'verified_path': str(verified_path)
+                        }),
+                        context={'model_name': model_name},
+                        step_id=self._get_step_id_from_step_type(self._infer_step_type(model_name, str(verified_path)))
+                    )
                 except Exception as e:
                     self.logger.error(f"❌ exists() 호출 실패: {e}")
                     import traceback
@@ -2329,6 +3000,9 @@ class ModelLoader:
                                 self._model_path_cache[model_name] = str(found_path)
                                 self.logger.info(f"🔍 패턴 검색으로 모델 발견: {model_name} → {found_path}")
                                 return str(found_path)
+                        except (OSError, PermissionError) as e:
+                            self.logger.debug(f"파일 크기 확인 실패 {found_path}: {e}")
+                            continue
                         except Exception as size_error:
                             self.logger.debug(f"파일 크기 확인 실패 {found_path}: {size_error}")
                             continue
@@ -2337,11 +3011,35 @@ class ModelLoader:
                     continue
             
             # 못 찾은 경우
-            self.logger.warning(f"❌ 모델을 찾을 수 없음: {model_name}")
+            error_msg = f"모델을 찾을 수 없음: {model_name}"
+            self.logger.warning(f"❌ {error_msg}")
+            
+            # 모델 파일 없음 오류 추적
+            track_exception(
+                ModelLoadingError(error_msg, ErrorCodes.MODEL_FILE_NOT_FOUND, {
+                    'model_name': model_name,
+                    'search_patterns': search_patterns,
+                    'verified_paths_checked': model_name in self.VERIFIED_MODEL_PATHS
+                }),
+                context={'model_name': model_name},
+                step_id=self._get_step_id_from_step_type(self._infer_step_type(model_name, ""))
+            )
             return None
             
         except Exception as e:
-            self.logger.error(f"❌ 모델 경로 찾기 실패 {model_name}: {e}")
+            error_msg = f"모델 경로 찾기 실패: {model_name}"
+            self.logger.error(f"❌ {error_msg}: {e}")
+            
+            # 일반 오류를 커스텀 예외로 변환하여 추적
+            custom_error = convert_to_mycloset_exception(e, {
+                'model_name': model_name,
+                'kwargs': kwargs
+            })
+            track_exception(
+                custom_error,
+                context={'model_name': model_name},
+                step_id=self._get_step_id_from_step_type(self._infer_step_type(model_name, ""))
+            )
             return None
     
     def get_model_path(self, model_name: str, **kwargs) -> Optional[str]:
@@ -2617,6 +3315,96 @@ class ModelLoader:
         
         return None
     
+    def _map_auto_detector_step_to_real_step(self, auto_detector_step_name: str) -> Optional[RealStepModelType]:
+        """AutoDetector Step 이름을 ModelLoader RealStepModelType으로 매핑"""
+        try:
+            step_name_lower = auto_detector_step_name.lower()
+            
+            # AutoDetector Step 이름 → ModelLoader Step 타입 매핑
+            step_mapping = {
+                # Human Parsing
+                'human_parsing_schp': RealStepModelType.HUMAN_PARSING,
+                'human_parsing': RealStepModelType.HUMAN_PARSING,
+                'schp': RealStepModelType.HUMAN_PARSING,
+                'graphonomy': RealStepModelType.HUMAN_PARSING,
+                
+                # Pose Estimation
+                'pose_estimation_openpose': RealStepModelType.POSE_ESTIMATION,
+                'pose_estimation': RealStepModelType.POSE_ESTIMATION,
+                'openpose': RealStepModelType.POSE_ESTIMATION,
+                'body_pose': RealStepModelType.POSE_ESTIMATION,
+                
+                # Cloth Segmentation
+                'cloth_segmentation_sam': RealStepModelType.CLOTH_SEGMENTATION,
+                'cloth_segmentation': RealStepModelType.CLOTH_SEGMENTATION,
+                'sam': RealStepModelType.CLOTH_SEGMENTATION,
+                'u2net': RealStepModelType.CLOTH_SEGMENTATION,
+                
+                # Geometric Matching
+                'geometric_matching_gmm': RealStepModelType.GEOMETRIC_MATCHING,
+                'geometric_matching': RealStepModelType.GEOMETRIC_MATCHING,
+                'gmm': RealStepModelType.GEOMETRIC_MATCHING,
+                'tps': RealStepModelType.GEOMETRIC_MATCHING,
+                
+                # Cloth Warping
+                'cloth_warping_realvisxl': RealStepModelType.CLOTH_WARPING,
+                'cloth_warping': RealStepModelType.CLOTH_WARPING,
+                'realvisxl': RealStepModelType.CLOTH_WARPING,
+                'warping': RealStepModelType.CLOTH_WARPING,
+                
+                # Virtual Fitting
+                'virtual_fitting_ootd': RealStepModelType.VIRTUAL_FITTING,
+                'virtual_fitting': RealStepModelType.VIRTUAL_FITTING,
+                'ootd': RealStepModelType.VIRTUAL_FITTING,
+                'diffusion': RealStepModelType.VIRTUAL_FITTING,
+                
+                # Post Processing
+                'post_processing_gfpgan': RealStepModelType.POST_PROCESSING,
+                'post_processing': RealStepModelType.POST_PROCESSING,
+                'gfpgan': RealStepModelType.POST_PROCESSING,
+                'esrgan': RealStepModelType.POST_PROCESSING,
+                
+                # Quality Assessment
+                'quality_assessment_clip': RealStepModelType.QUALITY_ASSESSMENT,
+                'quality_assessment': RealStepModelType.QUALITY_ASSESSMENT,
+                'clip': RealStepModelType.QUALITY_ASSESSMENT,
+                'evaluation': RealStepModelType.QUALITY_ASSESSMENT
+            }
+            
+            # 정확한 매칭 시도
+            if auto_detector_step_name in step_mapping:
+                return step_mapping[auto_detector_step_name]
+            
+            # 부분 매칭 시도
+            for key, step_type in step_mapping.items():
+                if key in step_name_lower or step_name_lower in key:
+                    return step_type
+            
+            # 키워드 기반 매칭
+            if any(keyword in step_name_lower for keyword in ['human', 'parsing', 'graphonomy']):
+                return RealStepModelType.HUMAN_PARSING
+            elif any(keyword in step_name_lower for keyword in ['pose', 'openpose', 'body']):
+                return RealStepModelType.POSE_ESTIMATION
+            elif any(keyword in step_name_lower for keyword in ['segmentation', 'sam', 'u2net']):
+                return RealStepModelType.CLOTH_SEGMENTATION
+            elif any(keyword in step_name_lower for keyword in ['geometric', 'matching', 'gmm']):
+                return RealStepModelType.GEOMETRIC_MATCHING
+            elif any(keyword in step_name_lower for keyword in ['warping', 'realvisxl', 'vgg']):
+                return RealStepModelType.CLOTH_WARPING
+            elif any(keyword in step_name_lower for keyword in ['virtual', 'fitting', 'ootd']):
+                return RealStepModelType.VIRTUAL_FITTING
+            elif any(keyword in step_name_lower for keyword in ['post', 'processing', 'gfpgan']):
+                return RealStepModelType.POST_PROCESSING
+            elif any(keyword in step_name_lower for keyword in ['quality', 'assessment', 'clip']):
+                return RealStepModelType.QUALITY_ASSESSMENT
+            
+            self.logger.debug(f"⚠️ AutoDetector Step 매핑 실패: {auto_detector_step_name}")
+            return None
+            
+        except Exception as e:
+            self.logger.debug(f"⚠️ AutoDetector Step 매핑 실패 ({auto_detector_step_name}): {e}")
+            return None
+    
     def _infer_model_type(self, model_name: str) -> str:
         """모델 타입 추론 (Central Hub 호환)"""
         model_name_lower = model_name.lower()
@@ -2780,110 +3568,101 @@ class ModelLoader:
     
     def list_available_models(self, step_class: Optional[str] = None, model_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """사용 가능한 실제 AI 모델 목록 (Central Hub 완전 호환)"""
-        try:
-            models = []
+        models = []
+        
+        # available_models에서 목록 가져오기
+        for model_name, model_info in self._available_models_cache.items():
+            # 필터링
+            if step_class and model_info.get("step_class") != step_class:
+                continue
+            if model_type and model_info.get("model_type") != model_type:
+                continue
             
-            # available_models에서 목록 가져오기
-            for model_name, model_info in self._available_models_cache.items():
-                # 필터링
-                if step_class and model_info.get("step_class") != step_class:
-                    continue
-                if model_type and model_info.get("model_type") != model_type:
-                    continue
-                
-                # 로딩 상태 추가 (Central Hub 호환)
-                is_loaded = model_name in self.loaded_models
-                model_info_copy = model_info.copy()
-                model_info_copy["loaded"] = is_loaded
-                
-                # Central Hub 호환 필드 추가
-                model_info_copy.update({
-                    "real_ai_model": True,
-                    "checkpoint_loaded": is_loaded and self.loaded_models.get(model_name, {}).get('checkpoint_data') is not None if is_loaded else False,
-                    "step_loadable": True,
-                    "device_compatible": True,
-                    "requires_checkpoint": True,
-                    "central_hub_integrated": True
-                })
-                
-                models.append(model_info_copy)
+            # 로딩 상태 추가 (Central Hub 호환)
+            is_loaded = model_name in self.loaded_models
+            model_info_copy = model_info.copy()
+            model_info_copy["loaded"] = is_loaded
             
-            # Central Hub 매핑에서 추가
-            for step_name, mapping in self.central_hub_step_mappings.items():
-                if step_class and step_class != step_name:
-                    continue
-                
-                step_type = mapping.get('step_type', RealStepModelType.HUMAN_PARSING)
-                for model_name in mapping.get('ai_models', []):
-                    if model_name not in [m['name'] for m in models]:
-                        # Central Hub 호환 모델 정보
-                        models.append({
-                            'name': model_name,
-                            'path': f"ai_models/step_{mapping.get('step_id', 0):02d}_{step_name.lower()}/{model_name}",
-                            'type': self._infer_model_type(model_name),
-                            'step_type': step_type.value,
-                            'loaded': model_name in self.loaded_models,
-                            'step_class': step_name,
-                            'step_id': mapping.get('step_id', 0),
-                            'size_mb': 0.0,  # 실제 파일 크기는 로딩 시 계산
-                            'priority': self._infer_model_priority(model_name),
-                            'is_primary': model_name == mapping.get('primary_model'),
-                            'real_ai_model': True,
-                            'device_compatible': True,
-                            'requires_checkpoint': True,
-                            'step_loadable': True,
-                            'central_hub_integrated': True
-                        })
+            # Central Hub 호환 필드 추가
+            model_info_copy.update({
+                "real_ai_model": True,
+                "checkpoint_loaded": is_loaded and self.loaded_models.get(model_name, {}).get('checkpoint_data') is not None if is_loaded else False,
+                "step_loadable": True,
+                "device_compatible": True,
+                "requires_checkpoint": True,
+                "central_hub_integrated": True
+            })
             
-            return models
+            models.append(model_info_copy)
+        
+        # Central Hub 매핑에서 추가
+        for step_name, mapping in self.central_hub_step_mappings.items():
+            if step_class and step_class != step_name:
+                continue
             
-        except Exception as e:
-            self.logger.error(f"❌ 사용 가능한 모델 목록 조회 실패: {e}")
-            return []
+            step_type = mapping.get('step_type', RealStepModelType.HUMAN_PARSING)
+            for model_name in mapping.get('ai_models', []):
+                if model_name not in [m['name'] for m in models]:
+                    # Central Hub 호환 모델 정보
+                    models.append({
+                        'name': model_name,
+                        'path': f"ai_models/step_{mapping.get('step_id', 0):02d}_{step_name.lower()}/{model_name}",
+                        'type': self._infer_model_type(model_name),
+                        'step_type': step_type.value,
+                        'loaded': model_name in self.loaded_models,
+                        'step_class': step_name,
+                        'step_id': mapping.get('step_id', 0),
+                        'size_mb': 0.0,  # 실제 파일 크기는 로딩 시 계산
+                        'priority': self._infer_model_priority(model_name),
+                        'is_primary': model_name == mapping.get('primary_model'),
+                        'real_ai_model': True,
+                        'device_compatible': True,
+                        'requires_checkpoint': True,
+                        'step_loadable': True,
+                        'central_hub_integrated': True
+                    })
+        
+        return models
     
     def get_model_info(self, model_name: str) -> Dict[str, Any]:
         """실제 AI 모델 정보 조회 (Central Hub 완전 호환)"""
-        try:
-            if model_name in self.model_info:
-                info = self.model_info[model_name]
-                return {
-                    'name': info.name,
-                    'path': info.path,
-                    'step_type': info.step_type.value,
-                    'priority': info.priority.value,
-                    'device': info.device,
-                    'memory_mb': info.memory_mb,
-                    'loaded': info.loaded,
-                    'load_time': info.load_time,
-                    'access_count': info.access_count,
-                    'last_access': info.last_access,
-                    'inference_count': info.inference_count,
-                    'avg_inference_time': info.avg_inference_time,
-                    'validation_passed': info.validation_passed,
-                    'has_checkpoint_data': info.checkpoint_data is not None,
-                    'error': info.error,
-                    
-                    # Central Hub 호환 필드
-                    'model_type': info.model_type,
-                    'size_gb': info.size_gb,
-                    'requires_checkpoint': info.requires_checkpoint,
-                    'preprocessing_required': info.preprocessing_required,
-                    'postprocessing_required': info.postprocessing_required,
-                    'real_ai_model': True,
-                    'device_compatible': True,
-                    'step_loadable': True,
-                    'central_hub_integrated': True
-                }
-            else:
-                return {'name': model_name, 'exists': False}
+        if model_name in self.model_info:
+            info = self.model_info[model_name]
+            return {
+                'name': info.name,
+                'path': info.path,
+                'step_type': info.step_type.value,
+                'priority': info.priority.value,
+                'device': info.device,
+                'memory_mb': info.memory_mb,
+                'loaded': info.loaded,
+                'load_time': info.load_time,
+                'access_count': info.access_count,
+                'last_access': info.last_access,
+                'inference_count': info.inference_count,
+                'avg_inference_time': info.avg_inference_time,
+                'validation_passed': info.validation_passed,
+                'has_checkpoint_data': info.checkpoint_data is not None,
+                'error': info.error,
                 
-        except Exception as e:
-            self.logger.error(f"❌ 모델 정보 조회 실패: {e}")
-            return {'name': model_name, 'error': str(e)}
+                # Central Hub 호환 필드
+                'model_type': info.model_type,
+                'size_gb': info.size_gb,
+                'requires_checkpoint': info.requires_checkpoint,
+                'preprocessing_required': info.preprocessing_required,
+                'postprocessing_required': info.postprocessing_required,
+                'real_ai_model': True,
+                'device_compatible': True,
+                'step_loadable': True,
+                'central_hub_integrated': True
+            }
+        else:
+            return {'name': model_name, 'exists': False}
     
     def get_performance_metrics(self) -> Dict[str, Any]:
-        """실제 AI 모델 성능 메트릭 조회 (Central Hub 호환)"""
-        return {
+        """실제 AI 모델 성능 메트릭 조회 (Central Hub 호환 + 에러 통계)"""
+        # 기본 성능 메트릭
+        metrics = {
             **self.performance_metrics,
             "device": self.device,
             "is_m3_max": IS_M3_MAX,
@@ -2891,6 +3670,11 @@ class ModelLoader:
             "loaded_models_count": len(self.loaded_models),
             "cached_models": list(self.loaded_models.keys()),
             "auto_detector_integration": self._integration_successful,
+            "auto_detector_available": AUTO_DETECTOR_AVAILABLE,
+            "auto_detector_error": AUTO_DETECTOR_ERROR,
+            "fallback_detection_active": hasattr(self, '_available_models_cache') and any(
+                model.get('fallback_detected', False) for model in self._available_models_cache.values()
+            ),
             "available_models_count": len(self._available_models_cache),
             "step_interfaces_count": len(self.step_interfaces),
             "avg_inference_time": self.performance_metrics['total_inference_time'] / max(1, self.performance_metrics['inference_count']),
@@ -2907,6 +3691,29 @@ class ModelLoader:
             "mock_removed": True,
             "checkpoint_loading_optimized": True
         }
+        
+        # 에러 통계 추가
+        try:
+            error_summary = get_error_summary()
+            metrics['error_statistics'] = error_summary
+            
+            # 모델별 에러 통계
+            model_errors = {}
+            for model_name, model_info in self.model_info.items():
+                if model_info.error:
+                    model_errors[model_name] = {
+                        'error': model_info.error,
+                        'step_type': model_info.step_type.value,
+                        'validation_passed': model_info.validation_passed
+                    }
+            metrics['model_errors'] = model_errors
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ 에러 통계 조회 실패: {e}")
+            metrics['error_statistics'] = {'error': 'Failed to get error statistics'}
+            metrics['model_errors'] = {}
+        
+        return metrics
     
     def cleanup(self):
         """리소스 정리 (Central Hub 호환)"""
@@ -2948,6 +3755,183 @@ class ModelLoader:
             
         except Exception as e:
             self.logger.error(f"❌ 리소스 정리 실패: {e}")
+    
+    def get_error_summary(self) -> Dict[str, Any]:
+        """에러 통계 요약 조회"""
+        return get_error_summary()
+    
+    def get_model_errors(self, model_name: Optional[str] = None) -> Dict[str, Any]:
+        """모델별 에러 정보 조회"""
+        if model_name:
+            if model_name in self.model_info:
+                model_info = self.model_info[model_name]
+                return {
+                    'model_name': model_name,
+                    'error': model_info.error,
+                    'step_type': model_info.step_type.value,
+                    'validation_passed': model_info.validation_passed,
+                    'loaded': model_info.loaded
+                }
+            else:
+                return {'error': f'Model {model_name} not found'}
+        
+        # 모든 모델 에러 정보
+        model_errors = {}
+        for name, info in self.model_info.items():
+            if info.error:
+                model_errors[name] = {
+                    'error': info.error,
+                    'step_type': info.step_type.value,
+                    'validation_passed': info.validation_passed,
+                    'loaded': info.loaded
+                }
+        return model_errors
+    
+    def retry_model_loading(self, model_name: str, max_retries: int = 3) -> Optional[RealAIModel]:
+        """모델 로딩 재시도 (에러 복구)"""
+        try:
+            self.logger.info(f"🔄 모델 로딩 재시도 시작: {model_name} (최대 {max_retries}회)")
+            
+            for attempt in range(max_retries):
+                try:
+                    self.logger.debug(f"🔄 재시도 {attempt + 1}/{max_retries}: {model_name}")
+                    
+                    # 기존 모델 언로드 (있다면)
+                    if model_name in self.loaded_models:
+                        self.unload_model(model_name)
+                    
+                    # 새로 로딩 시도
+                    model = self.load_model(model_name)
+                    if model and model.loaded:
+                        self.logger.info(f"✅ 모델 로딩 재시도 성공: {model_name} (시도 {attempt + 1})")
+                        return model
+                    
+                except Exception as e:
+                    error_msg = f"재시도 {attempt + 1} 실패: {e}"
+                    self.logger.warning(f"⚠️ {error_msg}")
+                    
+                    # 에러 추적
+                    track_exception(
+                        ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                            'model_name': model_name,
+                            'attempt': attempt + 1,
+                            'max_retries': max_retries
+                        }),
+                        context={'model_name': model_name, 'operation': 'retry_loading'},
+                        step_id=self._get_step_id(model_name)
+                    )
+                    
+                    # 마지막 시도가 아니면 잠시 대기
+                    if attempt < max_retries - 1:
+                        time.sleep(1)  # 1초 대기
+            
+            error_msg = f"모든 재시도 실패: {model_name}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 최종 실패 추적
+            track_exception(
+                ModelLoadingError(error_msg, ErrorCodes.MODEL_LOADING_FAILED, {
+                    'model_name': model_name,
+                    'max_retries': max_retries
+                }),
+                context={'model_name': model_name, 'operation': 'retry_loading'},
+                step_id=self._get_step_id(model_name)
+            )
+            return None
+            
+        except Exception as e:
+            error_msg = f"모델 로딩 재시도 중 예상치 못한 오류: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 일반 오류를 커스텀 예외로 변환하여 추적
+            custom_error = convert_to_mycloset_exception(e, {
+                'model_name': model_name,
+                'max_retries': max_retries
+            })
+            track_exception(
+                custom_error,
+                context={'model_name': model_name, 'operation': 'retry_loading'},
+                step_id=self._get_step_id(model_name)
+            )
+            return None
+    
+    def create_exception_response(self, error: Exception, step_name: str = "ModelLoader", step_id: int = None, session_id: str = "unknown") -> dict:
+        """예외를 API 응답 형식으로 변환"""
+        try:
+            return create_exception_response(error, step_name, step_id, session_id)
+        except Exception as e:
+            self.logger.warning(f"⚠️ 예외 응답 생성 실패: {e}")
+            return {
+                'success': False,
+                'message': f"처리 중 오류가 발생했습니다: {type(error).__name__}",
+                'error': type(error).__name__,
+                'step_name': step_name,
+                'step_id': step_id,
+                'session_id': session_id,
+                'timestamp': time.time()
+            }
+    
+    def get_auto_detector_status(self) -> Dict[str, Any]:
+        """AutoDetector 상태 정보 조회"""
+        status = {
+            'auto_detector_available': AUTO_DETECTOR_AVAILABLE,
+            'auto_detector_error': AUTO_DETECTOR_ERROR,
+            'integration_successful': self._integration_successful,
+            'fallback_detection_active': False,
+            'detected_models_count': 0,
+            'auto_detected_models_count': 0,
+            'fallback_detected_models_count': 0,
+            'pattern_detected_models_count': 0
+        }
+        
+        if hasattr(self, '_available_models_cache'):
+            status['detected_models_count'] = len(self._available_models_cache)
+            
+            for model_info in self._available_models_cache.values():
+                if model_info.get('auto_detected', False):
+                    status['auto_detected_models_count'] += 1
+                if model_info.get('fallback_detected', False):
+                    status['fallback_detected_models_count'] += 1
+                    status['fallback_detection_active'] = True
+                if model_info.get('pattern_detected', False):
+                    status['pattern_detected_models_count'] += 1
+        
+        return status
+    
+    def retry_auto_detector_integration(self) -> bool:
+        """AutoDetector 통합 재시도"""
+        try:
+            self.logger.info("🔄 AutoDetector 통합 재시도 중...")
+            
+            # 기존 캐시 정리
+            if hasattr(self, '_available_models_cache'):
+                self._available_models_cache.clear()
+            
+            # AutoDetector 재초기화
+            self._initialize_auto_detector()
+            
+            # 상태 확인
+            status = self.get_auto_detector_status()
+            if status['detected_models_count'] > 0:
+                self.logger.info(f"✅ AutoDetector 통합 재시도 성공: {status['detected_models_count']}개 모델")
+                return True
+            else:
+                self.logger.warning("⚠️ AutoDetector 통합 재시도 실패")
+                return False
+                
+        except Exception as e:
+            error_msg = f"AutoDetector 통합 재시도 실패: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            
+            # 에러 추적
+            track_exception(
+                convert_to_mycloset_exception(e, {
+                    'operation': 'retry_auto_detector_integration'
+                }),
+                context={'operation': 'retry_auto_detector_integration'},
+                step_id=None
+            )
+            return False
 
 # ==============================================
 # 🔥 전역 인스턴스 및 호환성 함수들 (Central Hub 완전 호환)
@@ -3126,6 +4110,74 @@ def get_central_hub_stats() -> Dict[str, Any]:
     except Exception as e:
         return {'error': str(e)}
 
+def get_error_summary() -> Dict[str, Any]:
+    """전역 에러 통계 요약 조회"""
+    try:
+        loader = get_global_model_loader()
+        if loader:
+            return loader.get_error_summary()
+        return {"error": "Global ModelLoader not available"}
+    except Exception as e:
+        return {"error": f"Failed to get error summary: {e}"}
+
+def get_model_errors(model_name: Optional[str] = None) -> Dict[str, Any]:
+    """전역 모델 에러 정보 조회"""
+    loader = get_global_model_loader()
+    if loader:
+        return loader.get_model_errors(model_name)
+    return {"error": "Global ModelLoader not available"}
+
+def retry_model_loading(model_name: str, max_retries: int = 3) -> Optional[RealAIModel]:
+    """전역 모델 로딩 재시도"""
+    loader = get_global_model_loader()
+    if loader:
+        return loader.retry_model_loading(model_name, max_retries)
+    return None
+
+def create_exception_response(error: Exception, step_name: str = "ModelLoader", step_id: int = None, session_id: str = "unknown") -> dict:
+    """전역 예외 응답 생성"""
+    try:
+        loader = get_global_model_loader()
+        if loader:
+            return loader.create_exception_response(error, step_name, step_id, session_id)
+        return {
+            'success': False,
+            'message': f"처리 중 오류가 발생했습니다: {type(error).__name__}",
+            'error': type(error).__name__,
+            'step_name': step_name,
+            'step_id': step_id,
+            'session_id': session_id,
+            'timestamp': time.time()
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f"예외 응답 생성 실패: {e}",
+            'error': 'EXCEPTION_RESPONSE_FAILED',
+            'step_name': step_name,
+            'step_id': step_id,
+            'session_id': session_id,
+            'timestamp': time.time()
+        }
+
+def get_auto_detector_status() -> Dict[str, Any]:
+    """전역 AutoDetector 상태 조회"""
+    loader = get_global_model_loader()
+    if loader:
+        return loader.get_auto_detector_status()
+    return {
+        'error': 'Global ModelLoader not available',
+        'auto_detector_available': AUTO_DETECTOR_AVAILABLE,
+        'auto_detector_error': AUTO_DETECTOR_ERROR
+    }
+
+def retry_auto_detector_integration() -> bool:
+    """전역 AutoDetector 통합 재시도"""
+    loader = get_global_model_loader()
+    if loader:
+        return loader.retry_auto_detector_integration()
+    return False
+
 # step_interface.py 호환을 위한 별칭
 BaseModel = RealAIModel
 StepModelInterface = RealStepModelInterface
@@ -3166,6 +4218,16 @@ __all__ = [
     'optimize_memory_via_central_hub',
     'get_central_hub_stats',
     
+    # 🔥 에러 처리 및 추적 함수들 (새로 추가)
+    'get_error_summary',
+    'get_model_errors',
+    'retry_model_loading',
+    'create_exception_response',
+    
+    # 🔥 AutoDetector 개선 함수들 (새로 추가)
+    'get_auto_detector_status',
+    'retry_auto_detector_integration',
+    
     # 상수들
     'NUMPY_AVAILABLE',
     'PIL_AVAILABLE',
@@ -3194,6 +4256,12 @@ logger.info("✅ 실제 AI 모델 229GB 완전 지원 - fix_checkpoints.py 검�
 logger.info("✅ Step별 모델 요구사항 자동 등록 - register_step_requirements() 추가")
 logger.info("✅ M3 Max 128GB 메모리 최적화 - Central Hub MemoryManager 연동")
 logger.info("✅ 기존 API 100% 호환성 보장 - 모든 메서드명/클래스명 유지")
+logger.info("✅ 커스텀 예외 처리 시스템 완전 통합 - exceptions.py 연동")
+logger.info("✅ 에러 추적 및 통계 시스템 구축 - ErrorTracker 완전 활용")
+logger.info("✅ 모델 로딩 재시도 메커니즘 구현 - 자동 복구 시스템")
+logger.info("✅ 구체적인 에러 코드 및 API 응답 생성 - API 호환성 향상")
+logger.info("✅ AutoDetector 실패 시 Fallback 시스템 구축 - 모델 감지 기능 보장")
+logger.info("✅ AutoDetector 상태 모니터링 및 재시도 메커니즘 - 안정성 향상")
 
 logger.info(f"🔧 시스템 정보:")
 logger.info(f"   Device: {DEFAULT_DEVICE} (M3 Max: {IS_M3_MAX}, MPS: {MPS_AVAILABLE})")

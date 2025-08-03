@@ -40,12 +40,9 @@ import threading
 import uuid
 import gc
 import json
-import traceback
 import weakref
 import base64
 import importlib
-import importlib.util
-import hashlib
 import warnings
 import platform
 from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING, Callable, Tuple, Type
@@ -1040,6 +1037,17 @@ class CentralHubStepImplementationManager:
         """Step ID로 Central Hub 기반 실제 AI 모델 처리"""
         start_time = time.time()
         
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_id': step_id,
+            'step_name': STEP_ID_TO_NAME_MAPPING.get(step_id, 'Unknown'),
+            'session_id': kwargs.get('session_id', 'unknown'),
+            'args_count': len(args),
+            'kwargs_keys': list(kwargs.keys()),
+            'central_hub_used': True,
+            'basestepmixin_v20_used': True
+        }
+        
         try:
             with self._lock:
                 self.metrics['total_requests'] += 1
@@ -1047,12 +1055,23 @@ class CentralHubStepImplementationManager:
             
             # GitHub Step ID 검증
             if step_id not in STEP_ID_TO_NAME_MAPPING:
-                raise ValueError(f"지원하지 않는 step_id: {step_id} (지원: {list(STEP_ID_TO_NAME_MAPPING.keys())})")
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import DataValidationError
+                raise DataValidationError(
+                    f"지원하지 않는 step_id: {step_id} (지원: {list(STEP_ID_TO_NAME_MAPPING.keys())})",
+                    "INVALID_STEP_ID",
+                    error_context
+                )
             
             step_name = STEP_ID_TO_NAME_MAPPING[step_id]
             model_info = STEP_AI_MODEL_INFO.get(step_id, {})
             models = model_info.get('models', [])
             size_gb = model_info.get('size_gb', 0.0)
+            
+            # 에러 컨텍스트 업데이트
+            error_context['step_name'] = step_name
+            error_context['ai_models'] = models
+            error_context['model_size_gb'] = size_gb
             
             self.logger.info(f"🧠 Step {step_id} ({step_name}) Central Hub 기반 실제 AI 처리 시작 - 모델: {models} ({size_gb}GB)")
             
@@ -1065,8 +1084,7 @@ class CentralHubStepImplementationManager:
                 'disable_mock_mode': True,
                 'real_ai_models_only': True,
                 'production_mode': True,
-                'central_hub_mode': True,
-                'basestepmixin_v20_process_mode': True
+                'central_hub_mode': True
             })
             
             # Central Hub 기반 실제 AI Step 처리
@@ -1098,24 +1116,72 @@ class CentralHubStepImplementationManager:
                 self.metrics['failed_requests'] += 1
             
             processing_time = time.time() - start_time
-            self.logger.error(f"❌ Step {step_id} Central Hub 기반 실제 AI 처리 실패: {e}")
             
-            return {
-                'success': False,
-                'error': str(e),
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                create_exception_response,
+                DataValidationError,
+                VirtualFittingError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, DataValidationError):
+                # 이미 커스텀 예외인 경우 그대로 사용
+                custom_error = e
+            elif isinstance(e, ValueError):
+                custom_error = DataValidationError(
+                    f"Step ID 처리 중 값 오류: {e}",
+                    "STEP_ID_VALUE_ERROR",
+                    error_context
+                )
+            else:
+                # 기타 예외는 VirtualFittingError로 변환
+                custom_error = VirtualFittingError(
+                    f"Step ID 처리 중 예상하지 못한 오류: {str(e)}",
+                    "STEP_ID_UNEXPECTED_ERROR",
+                    error_context
+                )
+            
+            # 에러 로깅
+            self.logger.error(f"❌ Step {step_id} 처리 실패: {custom_error}")
+            
+            # 표준화된 에러 응답 생성
+            error_response = create_exception_response(
+                custom_error, 
+                error_context['step_name'], 
+                step_id,
+                error_context['session_id']
+            )
+            
+            # 추가 정보 설정
+            error_response.update({
                 'step_id': step_id,
-                'step_name': STEP_ID_TO_NAME_MAPPING.get(step_id, 'Unknown'),
-                'error_type': type(e).__name__,
+                'step_name': error_context['step_name'],
                 'processing_time': processing_time,
-                'timestamp': datetime.now().isoformat(),
                 'real_ai_processing_attempted': True,
                 'central_hub_used': True,
-                'basestepmixin_v20_available': True
-            }
+                'basestepmixin_v20_available': True,
+                'step_factory_v11_available': STEP_FACTORY_AVAILABLE,
+                'detailed_dataspec_available': DETAILED_DATA_SPEC_AVAILABLE
+            })
+            
+            return error_response
     
     async def process_step_by_name(self, step_name: str, api_input: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Step 이름으로 Central Hub 기반 실제 AI 모델 처리"""
         start_time = time.time()
+        
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_name': step_name,
+            'step_id': STEP_NAME_TO_ID_MAPPING.get(step_name, 0),
+            'session_id': kwargs.get('session_id', 'unknown'),
+            'input_data_keys': list(api_input.keys()) if api_input else [],
+            'central_hub_used': True,
+            'basestepmixin_v20_used': True
+        }
+        
         try:
             self.logger.info(f"🔄 {step_name} Central Hub 기반 BaseStepMixin v20.0 process() 실제 AI 처리 시작...")
             
@@ -1194,25 +1260,99 @@ class CentralHubStepImplementationManager:
             
         except Exception as e:
             processing_time = time.time() - start_time
-            self.logger.error(f"❌ {step_name} Central Hub 기반 BaseStepMixin v20.0 실제 AI 처리 실패: {e}")
-            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
             
-            return {
-                'success': False,
-                'error': str(e),
-                'step_name': step_name,
-                'error_type': type(e).__name__,
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception, 
+                create_exception_response,
+                VirtualFittingError,
+                ModelInferenceError,
+                DataValidationError,
+                FileOperationError,
+                ConfigurationError,
+                MemoryError as MyClosetMemoryError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, AttributeError):
+                custom_error = DataValidationError(
+                    f"Step 처리 중 속성 오류: {e}",
+                    "STEP_ATTRIBUTE_ERROR",
+                    error_context
+                )
+            elif isinstance(e, TypeError):
+                custom_error = DataValidationError(
+                    f"Step 처리 중 타입 오류: {e}",
+                    "STEP_TYPE_ERROR", 
+                    error_context
+                )
+            elif isinstance(e, ValueError):
+                custom_error = DataValidationError(
+                    f"Step 처리 중 값 오류: {e}",
+                    "STEP_VALUE_ERROR",
+                    error_context
+                )
+            elif isinstance(e, FileNotFoundError):
+                custom_error = FileOperationError(
+                    f"Step 처리에 필요한 파일을 찾을 수 없습니다: {e}",
+                    "STEP_FILE_NOT_FOUND",
+                    error_context
+                )
+            elif isinstance(e, ImportError):
+                custom_error = ConfigurationError(
+                    f"Step 처리에 필요한 모듈을 import할 수 없습니다: {e}",
+                    "STEP_IMPORT_ERROR",
+                    error_context
+                )
+            elif isinstance(e, MemoryError):
+                custom_error = MyClosetMemoryError(
+                    f"Step 처리 중 메모리 부족: {e}",
+                    "STEP_MEMORY_ERROR",
+                    error_context
+                )
+            else:
+                # 기타 예외는 VirtualFittingError로 변환
+                custom_error = VirtualFittingError(
+                    f"Step 처리 중 예상하지 못한 오류: {str(e)}",
+                    "STEP_UNEXPECTED_ERROR",
+                    error_context
+                )
+            
+            # 에러 로깅
+            self.logger.error(f"❌ {step_name} 처리 실패: {custom_error}")
+            
+            # 표준화된 에러 응답 생성
+            error_response = create_exception_response(
+                custom_error, 
+                step_name, 
+                error_context['step_id'],
+                error_context['session_id']
+            )
+            
+            # 추가 정보 설정
+            error_response.update({
                 'processing_time': processing_time,
-                'timestamp': datetime.now().isoformat(),
                 'real_ai_processing_attempted': True,
                 'central_hub_used': True,
                 'basestepmixin_v20_available': True,
                 'step_factory_v11_available': STEP_FACTORY_AVAILABLE,
-                'error_details': traceback.format_exc() if self.logger.isEnabledFor(logging.DEBUG) else None
-            }
+                'detailed_dataspec_available': DETAILED_DATA_SPEC_AVAILABLE
+            })
+            
+            return error_response
     
     async def _get_or_create_step_instance_via_central_hub(self, step_name: str, **kwargs):
         """Central Hub를 통한 Step 인스턴스 생성 또는 캐시에서 가져오기"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_name': step_name,
+            'step_id': STEP_NAME_TO_ID_MAPPING.get(step_name, 0),
+            'session_id': kwargs.get('session_id', 'unknown'),
+            'device': DEVICE,
+            'central_hub_available': self.central_hub_container is not None,
+            'step_factory_available': STEP_FACTORY_AVAILABLE
+        }
+        
         try:
             # 캐시 키 생성
             cache_key = f"{step_name}_{kwargs.get('session_id', 'default')}_{DEVICE}"
@@ -1290,6 +1430,8 @@ class CentralHubStepImplementationManager:
                 
                 except Exception as e:
                     self.logger.warning(f"⚠️ {step_name} Central Hub StepFactory 생성 실패: {e}")
+                    # 에러 컨텍스트에 추가 정보
+                    error_context['step_factory_error'] = str(e)
             
             # 방법 2: 직접 Step 클래스 import 및 생성
             if not step_instance:
@@ -1302,9 +1444,17 @@ class CentralHubStepImplementationManager:
                 
                 except Exception as e:
                     self.logger.warning(f"⚠️ {step_name} 직접 생성 실패: {e}")
+                    # 에러 컨텍스트에 추가 정보
+                    error_context['direct_creation_error'] = str(e)
             
             if not step_instance:
-                raise RuntimeError(f"{step_name} 인스턴스 생성 완전 실패 (Central Hub)")
+                # exceptions.py의 커스텀 예외 사용
+                from app.core.exceptions import ModelLoadingError
+                raise ModelLoadingError(
+                    f"{step_name} 인스턴스 생성 완전 실패 (Central Hub)",
+                    "STEP_INSTANCE_CREATION_FAILED",
+                    error_context
+                )
             
             # Central Hub DI Container를 통한 의존성 주입
             if self.central_hub_container:
@@ -1320,6 +1470,8 @@ class CentralHubStepImplementationManager:
                         
                 except Exception as e:
                     self.logger.warning(f"⚠️ {step_name} Central Hub 의존성 주입 중 오류: {e}")
+                    # 에러 컨텍스트에 추가 정보
+                    error_context['dependency_injection_error'] = str(e)
             
             # BaseStepMixin v20.0 초기화
             if hasattr(step_instance, 'initialize'):
@@ -1331,10 +1483,12 @@ class CentralHubStepImplementationManager:
                     
                     if not init_result:
                         self.logger.warning(f"⚠️ {step_name} 초기화 실패")
+                        error_context['initialization_failed'] = True
                     else:
                         self.logger.info(f"✅ {step_name} BaseStepMixin v20.0 초기화 성공")
                 except Exception as e:
                     self.logger.warning(f"⚠️ {step_name} 초기화 중 오류: {e}")
+                    error_context['initialization_error'] = str(e)
             
             # 캐시에 저장
             self._step_instances[cache_key] = step_instance
@@ -1343,9 +1497,40 @@ class CentralHubStepImplementationManager:
             return step_instance
             
         except Exception as e:
-            self.logger.error(f"❌ {step_name} Central Hub 기반 인스턴스 생성 실패: {e}")
-            self.logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
-            raise RuntimeError(f"{step_name} Central Hub 기반 인스턴스 생성 완전 실패: {e}")
+            # exceptions.py의 커스텀 예외로 변환
+            from app.core.exceptions import (
+                convert_to_mycloset_exception,
+                ModelLoadingError,
+                ConfigurationError,
+                DependencyInjectionError
+            )
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, ModelLoadingError):
+                # 이미 커스텀 예외인 경우 그대로 사용
+                custom_error = e
+            elif isinstance(e, ImportError):
+                custom_error = ConfigurationError(
+                    f"Step 모듈 import 실패: {e}",
+                    "STEP_IMPORT_FAILED",
+                    error_context
+                )
+            elif isinstance(e, AttributeError):
+                custom_error = ConfigurationError(
+                    f"Step 클래스 속성 오류: {e}",
+                    "STEP_ATTRIBUTE_ERROR",
+                    error_context
+                )
+            else:
+                # 기타 예외는 ModelLoadingError로 변환
+                custom_error = ModelLoadingError(
+                    f"Step 인스턴스 생성 실패: {str(e)}",
+                    "STEP_CREATION_ERROR",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ {step_name} 인스턴스 생성 실패: {custom_error}")
+            raise custom_error
     
     def _create_step_directly(self, step_name: str, **kwargs):
         """직접 Step 클래스 생성 (Central Hub 연동 포함)"""
@@ -1418,37 +1603,79 @@ class CentralHubStepImplementationManager:
     
     async def _convert_input_data(self, api_input: Dict[str, Any]) -> Dict[str, Any]:
         """입력 데이터 변환 (UploadFile → PyTorch Tensor 등) - Central Hub 기반"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'input_keys': list(api_input.keys()) if api_input else [],
+            'input_types': {k: type(v).__name__ for k, v in (api_input or {}).items()},
+            'pytorch_available': PYTORCH_AVAILABLE,
+            'central_hub_used': True
+        }
+        
         try:
             converted = {}
             
             for key, value in api_input.items():
-                # UploadFile → PyTorch Tensor 변환 (비동기)
-                if hasattr(value, 'file') or hasattr(value, 'read'):
-                    image = await self.data_converter.convert_upload_file_to_image(value)
-                    if image is not None:
-                        converted[key] = image
-                        self.logger.debug(f"✅ {key}: UploadFile → Tensor 변환 완료 (Central Hub)")
+                try:
+                    # UploadFile → PyTorch Tensor 변환 (비동기)
+                    if hasattr(value, 'file') or hasattr(value, 'read'):
+                        image = await self.data_converter.convert_upload_file_to_image(value)
+                        if image is not None:
+                            converted[key] = image
+                            self.logger.debug(f"✅ {key}: UploadFile → Tensor 변환 완료 (Central Hub)")
+                        else:
+                            converted[key] = value
+                            self.logger.warning(f"⚠️ {key}: 이미지 변환 실패, 원본 유지")
+                            error_context[f'{key}_conversion_failed'] = 'upload_file_to_image'
+                            
+                    # Base64 → PyTorch Tensor 변환
+                    elif isinstance(value, str) and value.startswith('data:image'):
+                        image = self.data_converter.convert_base64_to_image(value)
+                        if image is not None:
+                            converted[key] = image
+                            self.logger.debug(f"✅ {key}: Base64 → Tensor 변환 완료 (Central Hub)")
+                        else:
+                            converted[key] = value
+                            error_context[f'{key}_conversion_failed'] = 'base64_to_image'
+                            
                     else:
-                        converted[key] = value
-                        self.logger.warning(f"⚠️ {key}: 이미지 변환 실패, 원본 유지")
-                        
-                # Base64 → PyTorch Tensor 변환
-                elif isinstance(value, str) and value.startswith('data:image'):
-                    image = self.data_converter.convert_base64_to_image(value)
-                    if image is not None:
-                        converted[key] = image
-                        self.logger.debug(f"✅ {key}: Base64 → Tensor 변환 완료 (Central Hub)")
-                    else:
+                        # 그대로 유지
                         converted[key] = value
                         
-                else:
-                    # 그대로 유지
+                except Exception as conversion_error:
+                    # 개별 변환 실패 시 원본 값 유지
                     converted[key] = value
+                    error_context[f'{key}_conversion_error'] = str(conversion_error)
+                    self.logger.warning(f"⚠️ {key} 변환 실패: {conversion_error}")
             
             return converted
             
         except Exception as e:
-            self.logger.error(f"❌ 입력 데이터 변환 실패 (Central Hub): {e}")
+            # exceptions.py의 커스텀 예외 사용
+            from app.core.exceptions import ImageProcessingError, DataValidationError
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = DataValidationError(
+                    f"입력 데이터 변환 중 데이터 오류: {e}",
+                    "INPUT_DATA_CONVERSION_ERROR",
+                    error_context
+                )
+            elif isinstance(e, (OSError, IOError)):
+                custom_error = ImageProcessingError(
+                    f"입력 데이터 변환 중 파일 오류: {e}",
+                    "INPUT_FILE_PROCESSING_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = ImageProcessingError(
+                    f"입력 데이터 변환 실패: {e}",
+                    "INPUT_CONVERSION_FAILED",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ 입력 데이터 변환 실패: {custom_error}")
+            
+            # 변환 실패 시 원본 데이터 반환
             return api_input
     
     def _prepare_api_input_from_args(self, step_name: str, args: tuple, kwargs: Dict[str, Any]) -> Dict[str, Any]:
@@ -1503,6 +1730,16 @@ class CentralHubStepImplementationManager:
     
     def _standardize_step_output(self, ai_result: Dict[str, Any], step_name: str, processing_time: float) -> Dict[str, Any]:
         """AI 결과를 표준 형식으로 변환 (Central Hub 기반)"""
+        # 에러 컨텍스트 준비
+        error_context = {
+            'step_name': step_name,
+            'step_id': STEP_NAME_TO_ID_MAPPING.get(step_name, 0),
+            'processing_time': processing_time,
+            'ai_result_keys': list(ai_result.keys()) if ai_result else [],
+            'pytorch_available': PYTORCH_AVAILABLE,
+            'central_hub_used': True
+        }
+        
         try:
             # 표준 성공 응답 구조
             standardized = {
@@ -1525,33 +1762,46 @@ class CentralHubStepImplementationManager:
             # AI 결과 데이터 복사 (안전하게)
             for key, value in ai_result.items():
                 if key not in standardized:
-                    # PyTorch Tensor를 Base64로 변환
-                    if PYTORCH_AVAILABLE:
+                    try:
+                        # PyTorch Tensor를 Base64로 변환
+                        if PYTORCH_AVAILABLE:
+                            try:
+                                import torch
+                                if isinstance(value, torch.Tensor):
+                                    if len(value.shape) == 3 and value.shape[0] == 3:  # C, H, W RGB 이미지
+                                        standardized[key] = self.data_converter.convert_image_to_base64(value)
+                                    else:
+                                        standardized[key] = value.cpu().numpy().tolist()
+                                    continue
+                            except Exception as tensor_error:
+                                error_context[f'{key}_tensor_conversion_error'] = str(tensor_error)
+                                # 변환 실패 시 원본 값 유지
+                                standardized[key] = value
+                                continue
+                        
+                        # numpy 배열을 Base64로 변환
                         try:
-                            import torch
-                            if isinstance(value, torch.Tensor):
-                                if len(value.shape) == 3 and value.shape[0] == 3:  # C, H, W RGB 이미지
+                            import numpy as np
+                            if isinstance(value, np.ndarray):
+                                if len(value.shape) == 3 and value.shape[2] == 3:  # H, W, C RGB 이미지
                                     standardized[key] = self.data_converter.convert_image_to_base64(value)
                                 else:
-                                    standardized[key] = value.cpu().numpy().tolist()
+                                    standardized[key] = value.tolist()
                                 continue
-                        except Exception:
-                            pass
-                    
-                    # numpy 배열을 Base64로 변환
-                    try:
-                        import numpy as np
-                        if isinstance(value, np.ndarray):
-                            if len(value.shape) == 3 and value.shape[2] == 3:  # H, W, C RGB 이미지
-                                standardized[key] = self.data_converter.convert_image_to_base64(value)
-                            else:
-                                standardized[key] = value.tolist()
+                        except Exception as numpy_error:
+                            error_context[f'{key}_numpy_conversion_error'] = str(numpy_error)
+                            # 변환 실패 시 원본 값 유지
+                            standardized[key] = value
                             continue
-                    except Exception:
-                        pass
-                    
-                    # 그 외의 경우 그대로 복사
-                    standardized[key] = value
+                        
+                        # 그 외의 경우 그대로 복사
+                        standardized[key] = value
+                        
+                    except Exception as conversion_error:
+                        # 개별 변환 실패 시 원본 값 유지
+                        standardized[key] = value
+                        error_context[f'{key}_conversion_error'] = str(conversion_error)
+                        self.logger.warning(f"⚠️ {key} 변환 실패: {conversion_error}")
             
             # Step별 특화 후처리
             if step_name == "VirtualFittingStep":  # Step 6 - 핵심!
@@ -1562,6 +1812,7 @@ class CentralHubStepImplementationManager:
                 else:
                     standardized['success'] = False
                     standardized['error'] = "Central Hub 기반 실제 AI 가상 피팅 결과 생성 실패"
+                    error_context['virtual_fitting_result_missing'] = True
                     
             elif step_name == "HumanParsingStep":  # Step 1
                 if 'parsing_result' in ai_result:
@@ -1582,7 +1833,26 @@ class CentralHubStepImplementationManager:
             return standardized
             
         except Exception as e:
-            self.logger.error(f"❌ {step_name} 출력 표준화 실패: {e}")
+            # exceptions.py의 커스텀 예외 사용
+            from app.core.exceptions import APIResponseError, DataValidationError
+            
+            # 에러 타입별 커스텀 예외 변환
+            if isinstance(e, (ValueError, TypeError)):
+                custom_error = DataValidationError(
+                    f"출력 표준화 중 데이터 오류: {e}",
+                    "OUTPUT_STANDARDIZATION_ERROR",
+                    error_context
+                )
+            else:
+                custom_error = APIResponseError(
+                    f"출력 표준화 실패: {e}",
+                    "OUTPUT_STANDARDIZATION_FAILED",
+                    error_context
+                )
+            
+            self.logger.error(f"❌ {step_name} 출력 표준화 실패: {custom_error}")
+            
+            # 표준화 실패 시 기본 응답 반환
             return {
                 'success': False,
                 'error': f"출력 표준화 실패: {str(e)}",
@@ -1591,7 +1861,8 @@ class CentralHubStepImplementationManager:
                 'processing_time': processing_time,
                 'real_ai_processing': False,
                 'central_hub_used': True,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'error_context': error_context
             }
     
     def get_metrics(self) -> Dict[str, Any]:
