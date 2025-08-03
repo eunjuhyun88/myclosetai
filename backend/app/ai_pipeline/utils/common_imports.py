@@ -149,11 +149,13 @@ except ImportError:
 
 # PIL 필수
 try:
-    from PIL import Image
+    from PIL import Image, ImageFilter, ImageEnhance
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
     Image = None
+    ImageFilter = None
+    ImageEnhance = None
 
 # OpenCV 선택사항
 try:

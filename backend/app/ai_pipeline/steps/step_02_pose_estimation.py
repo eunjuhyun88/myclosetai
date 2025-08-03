@@ -40,8 +40,16 @@ from app.ai_pipeline.utils.common_imports import (
     detect_mock_data, diagnose_step_data, MOCK_DIAGNOSTIC_AVAILABLE,
     
     # AI/ML 라이브러리
+    torch, nn, F, transforms, TORCH_AVAILABLE, MPS_AVAILABLE,
     Image, cv2, scipy,
-    PIL_AVAILABLE, CV2_AVAILABLE, SCIPY_AVAILABLE
+    PIL_AVAILABLE, CV2_AVAILABLE, SCIPY_AVAILABLE,
+    
+    # 유틸리티 함수
+    detect_m3_max, get_available_libraries, log_library_status,
+    
+    # 상수
+    DEVICE_CPU, DEVICE_CUDA, DEVICE_MPS,
+    DEFAULT_INPUT_SIZE, DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_QUALITY_THRESHOLD
 )
 
 # 경고 무시 설정
@@ -55,49 +63,22 @@ if TYPE_CHECKING:
     from ..steps.base_step_mixin import BaseStepMixin
 
 logger = logging.getLogger(__name__)
-def detect_m3_max():
-    """M3 Max 감지"""
-    try:
-        import platform, subprocess
-        if platform.system() == 'Darwin':
-            result = subprocess.run(
-                ['sysctl', '-n', 'machdep.cpu.brand_string'],
-                capture_output=True, text=True, timeout=5
-            )
-            return 'M3' in result.stdout
-    except:
-        pass
-    return False
 
+# M3 Max 감지 (common_imports에서 가져옴)
 IS_M3_MAX = detect_m3_max()
 MEMORY_GB = 16.0
 
-try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    from torch.cuda.amp import autocast
-    import torchvision.transforms as transforms
-    from torchvision.transforms.functional import resize, to_pil_image, to_tensor
-    TORCH_AVAILABLE = True
-    TORCH_VERSION = torch.__version__
-    
-    # 디바이스 설정
-    if torch.backends.mps.is_available():
-        DEVICE = "mps"
-        torch.mps.set_per_process_memory_fraction(0.7)
-    elif torch.cuda.is_available():
-        DEVICE = "cuda"
-    else:
-        DEVICE = "cpu"
-        
-except ImportError as e:
-    if EXCEPTIONS_AVAILABLE:
-        error = ModelLoadingError(f"PyTorch 필수 라이브러리 로딩 실패: {e}", ErrorCodes.MODEL_LOADING_FAILED)
-        track_exception(error, {'library': 'torch'}, 2)
-        raise error
-    else:
-        raise ImportError(f"❌ PyTorch 필수: {e}")
+# PyTorch 설정 (common_imports에서 가져옴)
+TORCH_VERSION = torch.__version__ if TORCH_AVAILABLE else "N/A"
+
+# 디바이스 설정
+if TORCH_AVAILABLE and MPS_AVAILABLE:
+    DEVICE = DEVICE_MPS
+    torch.mps.set_per_process_memory_fraction(0.7)
+elif TORCH_AVAILABLE and torch.cuda.is_available():
+    DEVICE = DEVICE_CUDA
+else:
+    DEVICE = DEVICE_CPU
 
 try:
     from PIL import Image, ImageDraw, ImageFont

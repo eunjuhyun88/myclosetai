@@ -28,22 +28,25 @@ Date: 2025-07-31
 Version: 8.1 (Common Imports Integration)
 """
 
-# 🔥 직접 import (common_imports 모듈 없음)
-import os
-import sys
-import gc
-import time
-import logging
-import threading
-import traceback
-import warnings
-
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List, Union, TYPE_CHECKING
-from dataclasses import dataclass, field
-from enum import Enum
-from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor
+# 🔥 Common Imports 사용
+from app.ai_pipeline.utils.common_imports import (
+    # 표준 라이브러리
+    os, sys, gc, time, logging, threading, traceback, warnings,
+    Path, Dict, Any, Optional, Tuple, List, Union, TYPE_CHECKING,
+    dataclass, field, Enum, BytesIO, ThreadPoolExecutor,
+    
+    # AI/ML 라이브러리
+    torch, nn, F, transforms, TORCH_AVAILABLE, MPS_AVAILABLE,
+    np, cv2, NUMPY_AVAILABLE, CV2_AVAILABLE,
+    Image, ImageFilter, ImageEnhance, PIL_AVAILABLE,
+    
+    # 유틸리티 함수
+    detect_m3_max, get_available_libraries, log_library_status,
+    
+    # 상수
+    DEVICE_CPU, DEVICE_CUDA, DEVICE_MPS,
+    DEFAULT_INPUT_SIZE, DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_QUALITY_THRESHOLD
+)
 
 # 🔥 Human Parsing 전용 에러 처리 헬퍼 함수들 (추가)
 try:
@@ -69,20 +72,7 @@ from app.ai_pipeline.steps.base_step_mixin import BaseStepMixin
 # 🔥 환경 설정 및 최적화
 # ==============================================
 
-# M3 Max 감지
-def detect_m3_max() -> bool:
-    try:
-        import platform, subprocess
-        if platform.system() == 'Darwin':
-            result = subprocess.run(
-                ['sysctl', '-n', 'machdep.cpu.brand_string'], 
-                capture_output=True, text=True, timeout=5
-            )
-            return 'M3' in result.stdout
-    except:
-        pass
-    return False
-
+# M3 Max 감지 (common_imports에서 가져옴)
 IS_M3_MAX = detect_m3_max()
 
 # M3 Max 최적화 설정
@@ -1569,7 +1559,7 @@ class MockHumanParsingModel(nn.Module):
 # ==============================================
 
 # BaseStepMixin 사용 가능
-    class HumanParsingStep(BaseStepMixin):
+class HumanParsingStep(BaseStepMixin):
         """
         🔥 Step 01: Human Parsing v8.0 - Central Hub DI Container v7.0 완전 연동
         
@@ -4340,8 +4330,6 @@ class MockHumanParsingModel(nn.Module):
                 
             except Exception as e:
                 self.logger.warning(f"⚠️ 리소스 정리 실패: {e}")
-
-
 
 # ==============================================
 # 🔥 팩토리 함수들
