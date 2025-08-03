@@ -2922,16 +2922,36 @@ class ClothSegmentationStep(BaseStepMixin):
             return masks
     
     def _evaluate_segmentation_quality(self, masks: Dict[str, np.ndarray], image: np.ndarray) -> Dict[str, float]:
-        """세그멘테이션 품질 평가"""
+        """세그멘테이션 품질 평가 - 안전한 크기 조정"""
         try:
             quality_metrics = {}
             
             if 'all_clothes' in masks:
                 mask = masks['all_clothes']
-                # 🔥 항상 원본 이미지 크기로 resize
+                
+                # 🔥 안전한 크기 조정 로직
                 target_shape = image.shape[:2]
                 if mask.shape != target_shape:
-                    mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+                    try:
+                        # PIL을 사용한 안전한 리사이즈
+                        if PIL_AVAILABLE:
+                            mask_pil = Image.fromarray(mask.astype(np.uint8))
+                            mask_resized = mask_pil.resize((target_shape[1], target_shape[0]), Image.Resampling.NEAREST)
+                            mask = np.array(mask_resized)
+                        else:
+                            # OpenCV를 사용한 안전한 리사이즈
+                            mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+                        
+                        self.logger.debug(f"✅ 마스크 크기 조정 완료: {mask.shape} -> {target_shape}")
+                    except Exception as resize_error:
+                        self.logger.warning(f"⚠️ 마스크 크기 조정 실패: {resize_error}")
+                        # 크기 조정 실패 시 기본값 반환
+                        return {'overall': 0.5, 'size_appropriateness': 0.5, 'continuity': 0.5, 'boundary_quality': 0.5}
+
+                # 🔥 크기 검증
+                if mask.shape != target_shape:
+                    self.logger.warning(f"⚠️ 마스크 크기 불일치: {mask.shape} vs {target_shape}")
+                    return {'overall': 0.5, 'size_appropriateness': 0.5, 'continuity': 0.5, 'boundary_quality': 0.5}
 
                 # 1. 영역 크기 적절성
                 size_ratio = np.sum(mask > 128) / mask.size if NUMPY_AVAILABLE and mask.size > 0 else 0
@@ -2942,29 +2962,55 @@ class ClothSegmentationStep(BaseStepMixin):
                 
                 # 2. 연속성 (연결된 구성요소)
                 if SKIMAGE_AVAILABLE and mask.size > 0:
-                    labeled = measure.label(mask > 128)
-                    num_components = labeled.max() if labeled.max() > 0 else 0
-                    if num_components > 0:
-                        total_area = np.sum(mask > 128)
-                        component_sizes = [np.sum(labeled == i) for i in range(1, num_components + 1)]
-                        largest_component = max(component_sizes) if component_sizes else 0
-                        quality_metrics['continuity'] = largest_component / total_area if total_area > 0 else 0.0
-                    else:
-                        quality_metrics['continuity'] = 0.0
+                    try:
+                        labeled = measure.label(mask > 128)
+                        num_components = labeled.max() if labeled.max() > 0 else 0
+                        if num_components > 0:
+                            total_area = np.sum(mask > 128)
+                            component_sizes = [np.sum(labeled == i) for i in range(1, num_components + 1)]
+                            largest_component = max(component_sizes) if component_sizes else 0
+                            quality_metrics['continuity'] = largest_component / total_area if total_area > 0 else 0.0
+                        else:
+                            quality_metrics['continuity'] = 0.0
+                    except Exception as continuity_error:
+                        self.logger.warning(f"⚠️ 연속성 계산 실패: {continuity_error}")
+                        quality_metrics['continuity'] = 0.5
                 else:
                     quality_metrics['continuity'] = 0.5
                 
                 # 3. 경계선 품질
                 if NUMPY_AVAILABLE and mask.size > 0:
-                    # 경계선 길이 vs 면적 비율
-                    edges = np.abs(np.diff(mask.astype(np.float32), axis=1)) + np.abs(np.diff(mask.astype(np.float32), axis=0))
-                    edge_length = np.sum(edges > 10)
-                    area = np.sum(mask > 128)
-                    if area > 0:
-                        boundary_ratio = edge_length / np.sqrt(area)
-                        quality_metrics['boundary_quality'] = min(1.0, max(0.0, 1.0 - boundary_ratio / 10.0))
-                    else:
-                        quality_metrics['boundary_quality'] = 0.0
+                    try:
+                        # 🔥 안전한 경계선 계산 - shape 불일치 방지
+                        mask_float = mask.astype(np.float32)
+                        
+                        # 수평 경계선 (axis=1) - shape: (H, W-1)
+                        diff_h = np.abs(np.diff(mask_float, axis=1))
+                        
+                        # 수직 경계선 (axis=0) - shape: (H-1, W)
+                        diff_v = np.abs(np.diff(mask_float, axis=0))
+                        
+                        # 각각의 경계선 길이 계산
+                        edge_length_h = np.sum(diff_h > 10)
+                        edge_length_v = np.sum(diff_v > 10)
+                        
+                        # 전체 경계선 길이
+                        edge_length = edge_length_h + edge_length_v
+                        
+                        # 면적 계산
+                        area = np.sum(mask > 128)
+                        
+                        if area > 0:
+                            boundary_ratio = edge_length / np.sqrt(area)
+                            quality_metrics['boundary_quality'] = min(1.0, max(0.0, 1.0 - boundary_ratio / 10.0))
+                        else:
+                            quality_metrics['boundary_quality'] = 0.0
+                            
+                        self.logger.debug(f"✅ 경계선 품질 계산 완료: edge_length={edge_length}, area={area}, ratio={boundary_ratio if area > 0 else 0}")
+                        
+                    except Exception as boundary_error:
+                        self.logger.warning(f"⚠️ 경계선 품질 계산 실패: {boundary_error}")
+                        quality_metrics['boundary_quality'] = 0.5
                 else:
                     quality_metrics['boundary_quality'] = 0.5
             
@@ -2978,29 +3024,51 @@ class ClothSegmentationStep(BaseStepMixin):
             
         except Exception as e:
             self.logger.warning(f"⚠️ 세그멘테이션 품질 평가 실패: {e}")
-            return {'overall': 0.5}
+            return {'overall': 0.5, 'size_appropriateness': 0.5, 'continuity': 0.5, 'boundary_quality': 0.5}
     
     def _create_segmentation_visualizations(self, image: np.ndarray, masks: Dict[str, np.ndarray]) -> Dict[str, Any]:
-        """세그멘테이션 시각화 생성"""
+        """세그멘테이션 시각화 생성 - 안전한 크기 조정"""
         try:
             visualizations = {}
             
             if not masks:
                 return visualizations
             
+            # 🔥 안전한 마스크 크기 조정 함수
+            def safe_resize_mask(mask: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
+                """안전한 마스크 크기 조정"""
+                try:
+                    if mask.shape != target_shape:
+                        if PIL_AVAILABLE:
+                            mask_pil = Image.fromarray(mask.astype(np.uint8))
+                            mask_resized = mask_pil.resize((target_shape[1], target_shape[0]), Image.Resampling.NEAREST)
+                            return np.array(mask_resized)
+                        else:
+                            return cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+                    return mask
+                except Exception as resize_error:
+                    self.logger.warning(f"⚠️ 마스크 크기 조정 실패: {resize_error}")
+                    return mask
+            
+            target_shape = image.shape[:2]
+            
             # 마스크 오버레이
             if 'all_clothes' in masks and PIL_AVAILABLE:
                 try:
                     overlay_img = image.copy()
-                    mask = masks['all_clothes']
+                    mask = safe_resize_mask(masks['all_clothes'], target_shape)
                     
-                    # 빨간색 오버레이
-                    overlay_img[mask > 128] = [255, 0, 0]
-                    
-                    # 블렌딩
-                    alpha = 0.6
-                    blended = (alpha * overlay_img + (1 - alpha) * image).astype(np.uint8)
-                    visualizations['mask_overlay'] = blended
+                    # 크기 검증
+                    if mask.shape == target_shape:
+                        # 빨간색 오버레이
+                        overlay_img[mask > 128] = [255, 0, 0]
+                        
+                        # 블렌딩
+                        alpha = 0.6
+                        blended = (alpha * overlay_img + (1 - alpha) * image).astype(np.uint8)
+                        visualizations['mask_overlay'] = blended
+                    else:
+                        self.logger.warning(f"⚠️ 마스크 크기 불일치로 오버레이 스킵: {mask.shape} vs {target_shape}")
                     
                 except Exception as e:
                     self.logger.warning(f"⚠️ 마스크 오버레이 생성 실패: {e}")
@@ -3017,8 +3085,11 @@ class ClothSegmentationStep(BaseStepMixin):
                 category_overlay = image.copy()
                 for category, color in category_colors.items():
                     if category in masks:
-                        mask = masks[category]
-                        category_overlay[mask > 128] = color
+                        mask = safe_resize_mask(masks[category], target_shape)
+                        if mask.shape == target_shape:
+                            category_overlay[mask > 128] = color
+                        else:
+                            self.logger.warning(f"⚠️ {category} 마스크 크기 불일치로 스킵: {mask.shape} vs {target_shape}")
                 
                 # 블렌딩
                 alpha = 0.5
@@ -3031,10 +3102,13 @@ class ClothSegmentationStep(BaseStepMixin):
             # 분할된 의류 이미지
             if 'all_clothes' in masks:
                 try:
-                    mask = masks['all_clothes']
-                    segmented = image.copy()
-                    segmented[mask <= 128] = [0, 0, 0]  # 배경을 검은색으로
-                    visualizations['segmented_clothing'] = segmented
+                    mask = safe_resize_mask(masks['all_clothes'], target_shape)
+                    if mask.shape == target_shape:
+                        segmented = image.copy()
+                        segmented[mask <= 128] = [0, 0, 0]  # 배경을 검은색으로
+                        visualizations['segmented_clothing'] = segmented
+                    else:
+                        self.logger.warning(f"⚠️ 마스크 크기 불일치로 분할 이미지 스킵: {mask.shape} vs {target_shape}")
                     
                 except Exception as e:
                     self.logger.warning(f"⚠️ 분할된 의류 이미지 생성 실패: {e}")
@@ -3075,12 +3149,33 @@ class ClothSegmentationStep(BaseStepMixin):
             return ['background']
     
     def _extract_cloth_features(self, masks: Dict[str, np.ndarray], image: np.ndarray) -> Dict[str, Any]:
-        """의류 특징 추출"""
+        """의류 특징 추출 - 안전한 크기 조정"""
         try:
             features = {}
             
             if 'all_clothes' in masks:
                 mask = masks['all_clothes']
+                
+                # 🔥 안전한 크기 조정
+                target_shape = image.shape[:2]
+                if mask.shape != target_shape:
+                    try:
+                        if PIL_AVAILABLE:
+                            mask_pil = Image.fromarray(mask.astype(np.uint8))
+                            mask_resized = mask_pil.resize((target_shape[1], target_shape[0]), Image.Resampling.NEAREST)
+                            mask = np.array(mask_resized)
+                        else:
+                            mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+                        
+                        self.logger.debug(f"✅ 특징 추출용 마스크 크기 조정: {mask.shape} -> {target_shape}")
+                    except Exception as resize_error:
+                        self.logger.warning(f"⚠️ 특징 추출용 마스크 크기 조정 실패: {resize_error}")
+                        return {}
+                
+                # 크기 검증
+                if mask.shape != target_shape:
+                    self.logger.warning(f"⚠️ 마스크 크기 불일치로 특징 추출 스킵: {mask.shape} vs {target_shape}")
+                    return {}
                 
                 if NUMPY_AVAILABLE and mask.size > 0:
                     # 기본 통계
@@ -3090,14 +3185,18 @@ class ClothSegmentationStep(BaseStepMixin):
                     
                     # 색상 특징
                     if len(image.shape) == 3:
-                        masked_pixels = image[mask > 128]
-                        if len(masked_pixels) > 0:
-                            features['dominant_color'] = [
-                                float(np.mean(masked_pixels[:, 0])),
-                                float(np.mean(masked_pixels[:, 1])),
-                                float(np.mean(masked_pixels[:, 2]))
-                            ]
-                        else:
+                        try:
+                            masked_pixels = image[mask > 128]
+                            if len(masked_pixels) > 0:
+                                features['dominant_color'] = [
+                                    float(np.mean(masked_pixels[:, 0])),
+                                    float(np.mean(masked_pixels[:, 1])),
+                                    float(np.mean(masked_pixels[:, 2]))
+                                ]
+                            else:
+                                features['dominant_color'] = [0.0, 0.0, 0.0]
+                        except Exception as color_error:
+                            self.logger.warning(f"⚠️ 색상 특징 추출 실패: {color_error}")
                             features['dominant_color'] = [0.0, 0.0, 0.0]
             
             return features

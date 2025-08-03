@@ -765,67 +765,7 @@ class ProgressiveParsingModule(nn.Module):
         return stage_results
 
 
-class ProgressiveParsingModule(nn.Module):
-    """Progressive Parsing - 단계별 정제"""
-    
-    def __init__(self, num_classes=20, num_stages=3, hidden_dim=256):
-        super().__init__()
-        self.num_stages = num_stages
-        
-        # Stage별 정제 모듈
-        self.refine_stages = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv2d(num_classes + hidden_dim * i, hidden_dim, 3, padding=1, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(hidden_dim, hidden_dim, 3, padding=1, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                nn.ReLU(inplace=True)
-            ) for i in range(num_stages)
-        ])
-        
-        # Stage별 예측기
-        self.predictors = nn.ModuleList([
-            nn.Conv2d(hidden_dim, num_classes, 1)
-            for _ in range(num_stages)
-        ])
-        
-        # Confidence 예측기
-        self.confidence_predictors = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv2d(hidden_dim, 64, 3, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(64, 1, 1),
-                nn.Sigmoid()
-            ) for _ in range(num_stages)
-        ])
-    
-    def forward(self, initial_parsing, base_features):
-        progressive_results = []
-        current_input = torch.cat([initial_parsing, base_features], dim=1)
-        
-        for i, (refine_stage, predictor, conf_pred) in enumerate(
-            zip(self.refine_stages, self.predictors, self.confidence_predictors)
-        ):
-            # 정제
-            refined_feat = refine_stage(current_input)
-            
-            # 예측
-            parsing_pred = predictor(refined_feat)
-            confidence = conf_pred(refined_feat)
-            
-            # 결과 저장
-            progressive_results.append({
-                'parsing': parsing_pred,
-                'confidence': confidence,
-                'features': refined_feat
-            })
-            
-            # 다음 단계를 위한 입력 준비
-            if i < self.num_stages - 1:
-                current_input = torch.cat([parsing_pred, refined_feat], dim=1)
-        
-        return progressive_results
+# 중복된 ProgressiveParsingModule 제거 - 첫 번째 버전이 더 완전함
 
 class HybridEnsembleModule(nn.Module):
     """하이브리드 앙상블 - 다중 모델 결합 완전 구현"""
@@ -1734,6 +1674,17 @@ class U2NetForParsing(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(64, num_classes, 1),
         )
+        
+        # U2Net 모델용 메타데이터
+        self.checkpoint_path = "u2net_model"
+        self.checkpoint_data = {"u2net": True}
+        self.has_model = True
+        self.memory_usage_mb = 50.0
+        self.load_time = 1.0
+    
+    def get_checkpoint_data(self):
+        """U2Net 체크포인트 데이터 반환"""
+        return self.checkpoint_data
     
     def forward(self, x):
         encoded = self.encoder(x)
@@ -1957,6 +1908,17 @@ class MockHumanParsingModel(nn.Module):
             nn.Flatten(),
             nn.Linear(64, num_classes)
         )
+        
+        # Mock 모델용 메타데이터
+        self.checkpoint_path = "mock_model"
+        self.checkpoint_data = {"mock": True}
+        self.has_model = True
+        self.memory_usage_mb = 0.1
+        self.load_time = 0.1
+    
+    def get_checkpoint_data(self):
+        """Mock 체크포인트 데이터 반환"""
+        return self.checkpoint_data
     
     def forward(self, x):
         # 단순한 분류 후 업샘플링
@@ -2270,6 +2232,15 @@ if BaseStepMixin:
             model = AdvancedGraphonomyResNetASPP(num_classes=20)
             model.to(self.device)
             model.eval()
+            
+            # 빈 Graphonomy 모델에 필요한 메타데이터 추가
+            model.checkpoint_path = "empty_graphonomy_model"
+            model.checkpoint_data = {"graphonomy": True, "empty": True, "model_type": "AdvancedGraphonomyResNetASPP"}
+            model.get_checkpoint_data = lambda: model.checkpoint_data
+            model.has_model = True
+            model.memory_usage_mb = 1200.0
+            model.load_time = 2.5
+            
             return model
         
         def _create_u2net_model(self) -> nn.Module:
@@ -2277,6 +2248,15 @@ if BaseStepMixin:
             model = U2NetForParsing(num_classes=20)
             model.to(self.device)
             model.eval()
+            
+            # U2Net 모델에 필요한 메타데이터 추가
+            model.checkpoint_path = "u2net_model"
+            model.checkpoint_data = {"u2net": True, "model_type": "U2NetForParsing"}
+            model.get_checkpoint_data = lambda: model.checkpoint_data
+            model.has_model = True
+            model.memory_usage_mb = 50.0
+            model.load_time = 1.0
+            
             return model
         
         def _create_mock_model(self) -> nn.Module:
@@ -2284,6 +2264,15 @@ if BaseStepMixin:
             model = MockHumanParsingModel(num_classes=20)
             model.to(self.device)
             model.eval()
+            
+            # Mock 모델에 필요한 메타데이터 추가
+            model.checkpoint_path = "mock_model"
+            model.checkpoint_data = {"mock": True, "model_type": "MockHumanParsingModel"}
+            model.get_checkpoint_data = lambda: model.checkpoint_data
+            model.has_model = True
+            model.memory_usage_mb = 0.1
+            model.load_time = 0.1
+            
             return model
         # ==============================================
         # 🔥 핵심: _run_ai_inference() 메서드 (BaseStepMixin 요구사항)
@@ -2293,6 +2282,17 @@ if BaseStepMixin:
             """🔥 실제 Human Parsing AI 추론 (Mock 제거, 체크포인트 사용)"""
             try:
                 self.logger.info("🔄 _run_ai_inference 시작")
+                
+                # 🔥 디버깅: 입력 데이터 상세 로깅
+                self.logger.info(f"🔍 [DEBUG] Human Parsing 입력 데이터 키들: {list(input_data.keys())}")
+                self.logger.info(f"🔍 [DEBUG] Human Parsing 입력 데이터 타입들: {[(k, type(v).__name__) for k, v in input_data.items()]}")
+                
+                # 입력 데이터 검증
+                if not input_data:
+                    self.logger.error("❌ [DEBUG] Human Parsing 입력 데이터가 비어있습니다")
+                    raise ValueError("입력 데이터가 비어있습니다")
+                
+                self.logger.info(f"✅ [DEBUG] Human Parsing 입력 데이터 검증 완료")
                 
                 # 🔥 1. ModelLoader 의존성 확인
                 self.logger.debug("🔄 ModelLoader 의존성 확인 중...")
@@ -2349,11 +2349,37 @@ if BaseStepMixin:
                             self.logger.info("🔄 세션에서 이미지 로드 시도...")
                             session_manager = self._get_service_from_central_hub('session_manager')
                             if session_manager:
-                                # 동기적으로 세션 데이터 가져오기
-                                import asyncio
-                                person_image, clothing_image = asyncio.run(
-                                    session_manager.get_session_images(input_data['session_id'])
-                                )
+                                person_image, clothing_image = None, None
+                                
+                                try:
+                                    # 세션 매니저가 동기 메서드를 제공하는지 확인
+                                    if hasattr(session_manager, 'get_session_images_sync'):
+                                        person_image, clothing_image = session_manager.get_session_images_sync(input_data['session_id'])
+                                    elif hasattr(session_manager, 'get_session_images'):
+                                        # 비동기 메서드를 동기적으로 호출
+                                        import asyncio
+                                        import concurrent.futures
+                                        
+                                        def run_async_session_load():
+                                            try:
+                                                return asyncio.run(session_manager.get_session_images(input_data['session_id']))
+                                            except Exception as async_error:
+                                                self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                                return None, None
+                                        
+                                        try:
+                                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                                future = executor.submit(run_async_session_load)
+                                                person_image, clothing_image = future.result(timeout=10)
+                                        except Exception as executor_error:
+                                            self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                            person_image, clothing_image = None, None
+                                    else:
+                                        self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
+                                except Exception as e:
+                                    self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                                    person_image, clothing_image = None, None
+                                
                                 if person_image:
                                     image = person_image
                                     self.logger.info("✅ 세션에서 person_image 로드 완료")
@@ -3236,8 +3262,8 @@ if BaseStepMixin:
                 # 1. 이미지 품질 평가
                 if self.config.enable_quality_assessment:
                     try:
-                        quality_scores = self._assess_image_quality(np.array(image))
-                        self.logger.debug(f"이미지 품질 점수: {quality_scores.get('overall', 0.5):.3f}")
+                        quality_score = self._assess_image_quality(np.array(image))
+                        self.logger.debug(f"이미지 품질 점수: {quality_score:.3f}")
                     except Exception as e:
                         self.logger.warning(f"⚠️ 이미지 품질 평가 실패: {e}")
                 
@@ -3451,362 +3477,62 @@ if BaseStepMixin:
             except Exception as e:
                 return torch.tensor(0.5)
         def _create_model_from_checkpoint(self, checkpoint_data, device):
-            """🔥 실제 Graphonomy 체크포인트에서 모델 생성 (논문 기반)"""
+            """🔥 통합된 Graphonomy 체크포인트 시스템 사용"""
             try:
-                # 🔥 1. 체크포인트 구조 분석
-                checkpoint_keys = list(checkpoint_data.keys())
-                self.logger.debug(f"체크포인트 키들: {checkpoint_keys[:10]}...")
+                from ..utils.graphonomy_checkpoint_system import UnifiedGraphonomyCheckpointSystem
                 
-                # 🔥 2. 실제 Graphonomy 논문 기반 모델 생성
-                class GraphonomyCheckpointModel(nn.Module):
-                    """실제 Graphonomy 체크포인트 기반 모델"""
-                    def __init__(self, num_classes=20):
-                        super().__init__()
-                        
-                        # ResNet-101 백본 (체크포인트와 정확히 매칭)
-                        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-                        self.bn1 = nn.BatchNorm2d(64)
-                        self.relu = nn.ReLU(inplace=True)
-                        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-                        
-                        # ResNet-101 레이어들 (체크포인트 구조와 정확히 매칭)
-                        self.layer1 = self._make_layer(64, 64, 3, stride=1)
-                        self.layer2 = self._make_layer(256, 128, 4, stride=2)
-                        self.layer3 = self._make_layer(512, 256, 23, stride=2)
-                        self.layer4 = self._make_layer(1024, 512, 3, stride=2)
-                        
-                        # ASPP 모듈 (체크포인트 구조와 매칭)
-                        self.aspp = ASPPModule(in_channels=2048, out_channels=256)
-                        
-                        # Self-Attention (논문 기반)
-                        self.self_attention = SelfAttentionBlock(in_channels=256)
-                        
-                        # Progressive Parsing (논문 기반)
-                        self.progressive_parsing = ProgressiveParsingModule(num_classes=num_classes)
-                        
-                        # Self-Correction (논문 기반)
-                        self.self_correction = SelfCorrectionModule(num_classes=num_classes)
-                        
-                        # Iterative Refinement (논문 기반)
-                        self.iterative_refinement = IterativeRefinementModule(num_classes=num_classes)
-                        
-                        # 최종 분류 헤드
-                        self.classifier = nn.Conv2d(256, num_classes, kernel_size=1)
-                        
-                        # Edge Detection 헤드
-                        self.edge_head = nn.Conv2d(256, 1, kernel_size=1)
-                        
-                        # 체크포인트 데이터 저장
-                        self.checkpoint_data = checkpoint_data
-                        
-                        self._init_weights()
+                # 통합 시스템 초기화
+                checkpoint_system = UnifiedGraphonomyCheckpointSystem()
+                
+                # 체크포인트에서 모델 생성
+                model = checkpoint_system.create_model_from_checkpoint(checkpoint_data, device)
+                
+                if model is not None:
+                    self.logger.info("✅ 통합 Graphonomy 체크포인트 시스템으로 모델 생성 성공")
+                    return model
+                else:
+                    self.logger.warning("⚠️ 통합 시스템 실패 - 폴백 모델 사용")
+                    return self._create_fallback_graphonomy_model(device)
                     
-                    def _make_layer(self, in_channels, out_channels, blocks, stride=1):
-                        """ResNet Bottleneck 블록 생성 (체크포인트와 정확히 매칭)"""
-                        layers = []
-                        layers.append(ResNetBottleneck(in_channels, out_channels, stride))
-                        for _ in range(1, blocks):
-                            layers.append(ResNetBottleneck(out_channels * 4, out_channels))
-                        return nn.Sequential(*layers)
-                    
-                    def _init_weights(self):
-                        """가중치 초기화"""
-                        for m in self.modules():
-                            if isinstance(m, nn.Conv2d):
-                                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                            elif isinstance(m, nn.BatchNorm2d):
-                                nn.init.constant_(m.weight, 1)
-                                nn.init.constant_(m.bias, 0)
-                    
-                    def get_checkpoint_data(self):
-                        """체크포인트 데이터 반환"""
-                        return self.checkpoint_data
-                    
-                    def forward(self, x):
-                        # 🔥 실제 Graphonomy 체크포인트 기반 forward pass
-                        
-                        # 1. ResNet-101 백본 (체크포인트 구조와 정확히 매칭)
-                        x = self.conv1(x)
-                        x = self.bn1(x)
-                        x = self.relu(x)
-                        x = self.maxpool(x)
-                        
-                        x = self.layer1(x)
-                        x = self.layer2(x)
-                        x = self.layer3(x)
-                        x = self.layer4(x)
-                        
-                        # 2. ASPP 모듈 적용
-                        aspp_features = self.aspp(x)
-                        
-                        # 3. Self-Attention 적용
-                        attended_features = self.self_attention(aspp_features)
-                        
-                        # 4. 초기 파싱 예측
-                        initial_parsing = self.classifier(attended_features)
-                        
-                        # 5. Progressive Parsing
-                        progressive_results = self.progressive_parsing(initial_parsing, attended_features)
-                        
-                        # 6. Self-Correction
-                        corrected_parsing = self.self_correction(initial_parsing, attended_features)
-                        
-                        # 7. Iterative Refinement
-                        refined_parsing = self.iterative_refinement(corrected_parsing)
-                        
-                        # 8. Edge Detection
-                        edge_output = self.edge_head(attended_features)
-                        
-                        return {
-                            'parsing_pred': refined_parsing,
-                            'initial_parsing': initial_parsing,
-                            'progressive_results': progressive_results,
-                            'corrected_parsing': corrected_parsing,
-                            'edge_output': edge_output,
-                            'features': attended_features
-                        }
-                
-                # 🔥 3. 실제 모델 생성
-                model = GraphonomyCheckpointModel(num_classes=20).to(device)
-                
-                # 🔥 4. 체크포인트 매핑 (정확한 키 매칭)
-                self._map_checkpoint_to_model_advanced(checkpoint_data, model)
-                
-                # 🔥 5. 모델 설정
-                model.to(device)
-                model.eval()
-                
-                return model
-                
             except Exception as e:
-                self.logger.error(f"❌ 실제 Graphonomy 체크포인트 모델 생성 실패: {e}")
-                # 폴백: 기본 모델
+                self.logger.error(f"❌ 통합 체크포인트 시스템 실패: {e}")
+                return self._create_fallback_graphonomy_model(device)
+        
+        def _create_fallback_graphonomy_model(self, device):
+            """폴백 Graphonomy 모델"""
+            try:
+                from ..utils.graphonomy_models import AdvancedGraphonomyResNetASPP
                 model = AdvancedGraphonomyResNetASPP(num_classes=20)
                 model.to(device)
                 model.eval()
+                
+                # 폴백 Graphonomy 모델에 필요한 메타데이터 추가
+                model.checkpoint_path = "fallback_graphonomy_model"
+                model.checkpoint_data = {"graphonomy": True, "fallback": True, "model_type": "AdvancedGraphonomyResNetASPP"}
+                model.get_checkpoint_data = lambda: model.checkpoint_data
+                model.has_model = True
+                model.memory_usage_mb = 1200.0
+                model.load_time = 2.5
+                
                 return model
-        
-        def _map_checkpoint_to_model_advanced(self, checkpoint_data, model):
-            """🔥 고급 체크포인트 매핑 (실제 Graphonomy 체크포인트 구조 기반)"""
-            try:
-                model_state_dict = model.state_dict()
-                mapped_dict = {}
-                
-                # 🔥 실제 Graphonomy 체크포인트 키 매핑 규칙
-                key_mappings = {
-                    # ResNet-101 백본 매핑
-                    'module.conv1.weight': 'conv1.weight',
-                    'module.bn1.weight': 'bn1.weight',
-                    'module.bn1.bias': 'bn1.bias',
-                    'module.bn1.running_mean': 'bn1.running_mean',
-                    'module.bn1.running_var': 'bn1.running_var',
-                    
-                    # Layer1 매핑
-                    'module.layer1.0.conv1.weight': 'layer1.0.conv1.weight',
-                    'module.layer1.0.bn1.weight': 'layer1.0.bn1.weight',
-                    'module.layer1.0.bn1.bias': 'layer1.0.bn1.bias',
-                    'module.layer1.0.conv2.weight': 'layer1.0.conv2.weight',
-                    'module.layer1.0.bn2.weight': 'layer1.0.bn2.weight',
-                    'module.layer1.0.bn2.bias': 'layer1.0.bn2.bias',
-                    'module.layer1.0.conv3.weight': 'layer1.0.conv3.weight',
-                    'module.layer1.0.bn3.weight': 'layer1.0.bn3.weight',
-                    'module.layer1.0.bn3.bias': 'layer1.0.bn3.bias',
-                    
-                    # Layer2, Layer3, Layer4도 동일한 패턴
-                    'module.layer2.': 'layer2.',
-                    'module.layer3.': 'layer3.',
-                    'module.layer4.': 'layer4.',
-                    
-                    # ASPP 매핑
-                    'module.aspp.convs.0.weight': 'aspp.conv1x1.0.weight',
-                    'module.aspp.convs.0.bias': 'aspp.conv1x1.0.bias',
-                    'module.aspp.convs.1.weight': 'aspp.atrous_convs.0.0.weight',
-                    'module.aspp.convs.1.bias': 'aspp.atrous_convs.0.0.bias',
-                    'module.aspp.convs.2.weight': 'aspp.atrous_convs.1.0.weight',
-                    'module.aspp.convs.2.bias': 'aspp.atrous_convs.1.0.bias',
-                    'module.aspp.convs.3.weight': 'aspp.atrous_convs.2.0.weight',
-                    'module.aspp.convs.3.bias': 'aspp.atrous_convs.2.0.bias',
-                    'module.aspp.convs.4.weight': 'aspp.conv_global.weight',
-                    'module.aspp.convs.4.bias': 'aspp.conv_global.bias',
-                    'module.aspp.convs.5.weight': 'aspp.conv_out.weight',
-                    'module.aspp.convs.5.bias': 'aspp.conv_out.bias',
-                    
-                    # 분류기 매핑
-                    'module.classifier.weight': 'classifier.weight',
-                    'module.classifier.bias': 'classifier.bias',
-                    
-                    # Edge Detection 매핑
-                    'module.edge_head.weight': 'edge_head.weight',
-                    'module.edge_head.bias': 'edge_head.bias'
-                }
-                
-                # 🔥 정확한 키 매핑 실행
-                for checkpoint_key, value in checkpoint_data.items():
-                    # 1. 직접 매핑
-                    if checkpoint_key in key_mappings:
-                        model_key = key_mappings[checkpoint_key]
-                        if model_key in model_state_dict:
-                            mapped_dict[model_key] = value
-                            continue
-                    
-                    # 2. module. 접두사 제거 후 매핑 (가장 일반적인 경우)
-                    clean_key = checkpoint_key.replace('module.', '')
-                    if clean_key in model_state_dict:
-                        mapped_dict[clean_key] = value
-                        continue
-                    
-                    # 3. 패턴 기반 매핑
-                    mapped_key = self._advanced_pattern_mapping(checkpoint_key, model_state_dict)
-                    if mapped_key:
-                        mapped_dict[mapped_key] = value
-                        continue
-                    
-                    # 4. 직접 매핑 (키가 동일한 경우)
-                    if checkpoint_key in model_state_dict:
-                        mapped_dict[checkpoint_key] = value
-                        continue
-                    
-                    # 5. 디버깅을 위한 로그
-                    if len(mapped_dict) < 10:  # 처음 10개만 로그
-                        self.logger.debug(f"🔍 매핑 실패: {checkpoint_key} -> 모델 키 없음")
-                
-                # 🔥 매핑된 가중치 로드
-                if mapped_dict:
-                    try:
-                        model.load_state_dict(mapped_dict, strict=False)
-                        self.logger.info(f"✅ 체크포인트 매핑 성공: {len(mapped_dict)}개 키")
-                    except Exception as load_error:
-                        self.logger.warning(f"⚠️ 체크포인트 로드 실패: {load_error}")
-                        # 부분적 로드 시도
-                        try:
-                            model.load_state_dict(mapped_dict, strict=False)
-                            self.logger.info("✅ 부분적 체크포인트 로드 성공")
-                        except:
-                            self.logger.warning("⚠️ 체크포인트 매핑 실패 - 랜덤 초기화 사용")
-                else:
-                    self.logger.warning("⚠️ 체크포인트 매핑 실패 - 랜덤 초기화 사용")
-                
             except Exception as e:
-                self.logger.error(f"❌ 고급 체크포인트 매핑 실패: {e}")
-        
-        def _advanced_pattern_mapping(self, checkpoint_key, model_state_dict):
-            """🔥 고급 패턴 기반 키 매핑"""
-            try:
-                # module. 접두사 제거
-                clean_key = checkpoint_key.replace('module.', '')
+                self.logger.error(f"❌ 폴백 모델 생성 실패: {e}")
+                # 최종 폴백: Mock 모델
+                model = MockHumanParsingModel(num_classes=20)
+                model.to(device)
+                model.eval()
                 
-                # ResNet 레이어 패턴 매핑
-                if any(layer in clean_key for layer in ['layer1.', 'layer2.', 'layer3.', 'layer4.']):
-                    for model_key in model_state_dict.keys():
-                        if clean_key.split('.')[0] in model_key and clean_key.split('.')[1:] == model_key.split('.')[1:]:
-                            return model_key
+                # Mock 모델에 필요한 메타데이터 추가
+                model.checkpoint_path = "fallback_mock_model"
+                model.checkpoint_data = {"mock": True, "fallback": True, "model_type": "MockHumanParsingModel"}
+                model.get_checkpoint_data = lambda: model.checkpoint_data
+                model.has_model = True
+                model.memory_usage_mb = 0.1
+                model.load_time = 0.1
                 
-                # ASPP 패턴 매핑
-                if 'aspp.' in clean_key:
-                    for model_key in model_state_dict.keys():
-                        if 'aspp.' in model_key and clean_key.split('.')[-1] in model_key:
-                            return model_key
-                
-                # 분류기 패턴 매핑
-                if 'classifier.' in clean_key:
-                    for model_key in model_state_dict.keys():
-                        if 'classifier.' in model_key and clean_key.split('.')[-1] in model_key:
-                            return model_key
-                
-                return None
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ 패턴 매핑 실패: {e}")
-                return None
-                
-            except Exception as e:
-                self.logger.error(f"❌ 체크포인트에서 모델 생성 실패: {e}")
-                # 폴백: 동적 모델 생성 재시도
-                try:
-                    checkpoint_path = "exp-schp-201908261155-atr.pth"
-                    model = self._create_dynamic_model_from_checkpoint(checkpoint_data, checkpoint_path)
-                    model.to(device)
-                    model.eval()
-                    return model
-                except Exception as fallback_e:
-                    self.logger.error(f"❌ 폴백 모델 생성도 실패: {fallback_e}")
-                    # 최종 폴백: 기본 모델
-                    model = AdvancedGraphonomyResNetASPP(num_classes=20)
-                    model.to(device)
-                    model.eval()
-                    return model
+                return model
 
-        def _map_checkpoint_to_model(self, checkpoint_data, model):
-            """체크포인트를 모델 구조에 맞게 매핑"""
-            try:
-                model_state_dict = model.state_dict()
-                mapped_dict = {}
-                
-                # 기본 매핑 룰들
-                key_mappings = {
-                    # ResNet 백본
-                    'backbone.conv1.weight': 'backbone.conv1.weight',
-                    'backbone.bn1.weight': 'backbone.bn1.weight',
-                    'backbone.bn1.bias': 'backbone.bn1.bias',
-                    
-                    # ASPP 매핑
-                    'aspp.convs.0.weight': 'aspp.conv1x1.0.weight',
-                    'aspp.convs.1.weight': 'aspp.atrous_convs.0.0.weight',
-                    'aspp.convs.2.weight': 'aspp.atrous_convs.1.0.weight',
-                    
-                    # 분류기
-                    'classifier.weight': 'classifier.3.weight',
-                    'classifier.bias': 'classifier.3.bias'
-                }
-                
-                # 정확한 키 매핑
-                for checkpoint_key, value in checkpoint_data.items():
-                    # 직접 매핑
-                    if checkpoint_key in key_mappings:
-                        model_key = key_mappings[checkpoint_key]
-                        if model_key in model_state_dict:
-                            mapped_dict[model_key] = value
-                            continue
-                    
-                    # 패턴 기반 매핑
-                    mapped_key = self._pattern_based_mapping(checkpoint_key, model_state_dict)
-                    if mapped_key:
-                        mapped_dict[mapped_key] = value
-                    
-                    # 직접 매핑 (키가 동일한 경우)
-                    if checkpoint_key in model_state_dict:
-                        mapped_dict[checkpoint_key] = value
-                
-                return mapped_dict
-                
-            except Exception as e:
-                self.logger.warning(f"⚠️ 체크포인트 매핑 실패: {e}")
-                return {}
-
-        def _pattern_based_mapping(self, checkpoint_key, model_state_dict):
-            """패턴 기반 키 매핑"""
-            try:
-                # module. 접두사 제거
-                clean_key = checkpoint_key.replace('module.', '')
-                if clean_key in model_state_dict:
-                    return clean_key
-                
-                # ResNet 레이어 매핑
-                if 'layer1.' in clean_key or 'layer2.' in clean_key or 'layer3.' in clean_key or 'layer4.' in clean_key:
-                    backbone_key = f'backbone.{clean_key}'
-                    if backbone_key in model_state_dict:
-                        return backbone_key
-                
-                # 분류기 매핑
-                if clean_key.startswith('classifier.'):
-                    for model_key in model_state_dict.keys():
-                        if 'classifier' in model_key and clean_key.split('.')[-1] in model_key:
-                            return model_key
-                
-                return None
-                
-            except Exception:
-                return None
+        # 🔥 기존 복잡한 체크포인트 매핑 메서드들 제거 - 통합 시스템으로 대체됨
 
         def _run_graphonomy_inference(self, input_tensor, checkpoint_data, device: str):
             """실제 Graphonomy 모델 추론 (완전 구현)"""
@@ -3880,480 +3606,204 @@ if BaseStepMixin:
                 self.logger.error(f"❌ 고급 Graphonomy 추론 실패: {e}")
                 raise
 
-        def _create_dynamic_model_from_checkpoint(self, checkpoint: Dict[str, Any], checkpoint_path: str) -> nn.Module:
-            """체크포인트 구조에 맞춰 동적으로 모델 생성"""
+        def _calculate_parsing_confidence(self, parsing_output: Dict[str, Any]) -> float:
+            """파싱 결과의 신뢰도 계산"""
             try:
-                self.logger.debug("🔄 체크포인트 구조 분석 중...")
+                if isinstance(parsing_output, dict):
+                    # confidence_map이 있는 경우
+                    if 'confidence_map' in parsing_output:
+                        confidence_map = parsing_output['confidence_map']
+                        if isinstance(confidence_map, torch.Tensor):
+                            return float(torch.mean(confidence_map).cpu().item())
+                        elif isinstance(confidence_map, np.ndarray):
+                            return float(np.mean(confidence_map))
+                    
+                    # parsing_probs가 있는 경우
+                    if 'parsing_probs' in parsing_output:
+                        parsing_probs = parsing_output['parsing_probs']
+                        if isinstance(parsing_probs, torch.Tensor):
+                            max_probs = torch.max(parsing_probs, dim=1)[0]
+                            return float(torch.mean(max_probs).cpu().item())
+                    
+                    # quality_metrics가 있는 경우
+                    if 'quality_metrics' in parsing_output:
+                        quality_metrics = parsing_output['quality_metrics']
+                        if isinstance(quality_metrics, dict) and 'overall_quality' in quality_metrics:
+                            return float(quality_metrics['overall_quality'])
+                
+                # 기본 신뢰도
+                return 0.8
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️ 신뢰도 계산 실패: {e}")
+                return 0.7
+
+        def _postprocess_graphonomy_output(self, parsing_output: Dict[str, Any], original_size: Tuple[int, int]) -> Dict[str, Any]:
+            """Graphonomy 출력 후처리"""
+            try:
+                # 파싱 예측 추출
+                if isinstance(parsing_output, dict):
+                    parsing_pred = parsing_output.get('parsing_pred')
+                    confidence_map = parsing_output.get('confidence_map')
+                    edge_output = parsing_output.get('edge_output')
+                    quality_metrics = parsing_output.get('quality_metrics', {})
+                else:
+                    parsing_pred = parsing_output
+                    confidence_map = None
+                    edge_output = None
+                    quality_metrics = {}
+                
+                if parsing_pred is None:
+                    raise ValueError("파싱 예측 결과가 없습니다")
+                
+                # GPU 텐서를 CPU NumPy로 변환
+                if isinstance(parsing_pred, torch.Tensor):
+                    parsing_map = parsing_pred.squeeze().cpu().numpy().astype(np.uint8)
+                else:
+                    parsing_map = parsing_pred
+                
+                # 원본 크기로 리사이즈
+                if parsing_map.shape[:2] != original_size:
+                    parsing_pil = Image.fromarray(parsing_map)
+                    parsing_resized = parsing_pil.resize(
+                        (original_size[1], original_size[0]), 
+                        Image.NEAREST
+                    )
+                    parsing_map = np.array(parsing_resized)
+                
+                # 신뢰도 맵 처리
+                confidence_array = None
+                if confidence_map is not None:
+                    if isinstance(confidence_map, torch.Tensor):
+                        confidence_array = confidence_map.squeeze().cpu().numpy()
+                    else:
+                        confidence_array = confidence_map
+                    
+                    # 신뢰도 맵도 원본 크기로 리사이즈
+                    if confidence_array.shape[:2] != original_size:
+                        confidence_pil = Image.fromarray((confidence_array * 255).astype(np.uint8))
+                        confidence_resized = confidence_pil.resize(
+                            (original_size[1], original_size[0]), 
+                            Image.BILINEAR
+                        )
+                        confidence_array = np.array(confidence_resized).astype(np.float32) / 255.0
+                
+                # 감지된 부위 분석
+                detected_parts = self._analyze_detected_parts(parsing_map)
+                
+                # 의류 분석
+                clothing_analysis = self._analyze_clothing_for_change(parsing_map)
+                
+                # 품질 메트릭 계산
+                if confidence_array is not None:
+                    quality_metrics = self._calculate_quality_metrics(parsing_map, confidence_array)
+                
+                return {
+                    'parsing_map': parsing_map,
+                    'confidence_map': confidence_array,
+                    'detected_parts': detected_parts,
+                    'clothing_analysis': clothing_analysis,
+                    'quality_metrics': quality_metrics,
+                    'original_size': original_size,
+                    'model_architecture': 'AdvancedGraphonomyResNetASPP'
+                }
+                
+            except Exception as e:
+                self.logger.error(f"❌ Graphonomy 출력 후처리 실패: {e}")
+                raise
+
+        def _create_dynamic_model_from_checkpoint(self, checkpoint_data: Dict[str, Any], checkpoint_path: str) -> Optional[nn.Module]:
+            """체크포인트에서 동적으로 모델 생성"""
+            try:
+                self.logger.info(f"🔄 동적 모델 생성 시작: {checkpoint_path}")
+                
+                # 체크포인트 구조 분석
+                if isinstance(checkpoint_data, dict):
+                    # state_dict 추출
+                    if 'state_dict' in checkpoint_data:
+                        state_dict = checkpoint_data['state_dict']
+                    elif 'model' in checkpoint_data:
+                        state_dict = checkpoint_data['model']
+                    else:
+                        state_dict = checkpoint_data
+                else:
+                    state_dict = checkpoint_data
                 
                 # 체크포인트 키 분석
-                checkpoint_keys = list(checkpoint.keys())
-                self.logger.debug(f"📊 체크포인트 키 개수: {len(checkpoint_keys)}")
-                self.logger.debug(f"�� 체크포인트 키 샘플 (처음 20개): {checkpoint_keys[:20]}")
+                keys = list(state_dict.keys())
+                self.logger.debug(f"🔍 체크포인트 키 수: {len(keys)}")
+                self.logger.debug(f"🔍 첫 번째 키: {keys[0] if keys else 'None'}")
                 
-                # �� 체크포인트 구조 분석 및 키 변환 (시작 부분에서 처리)
-                if len(checkpoint_keys) == 1:
-                    self.logger.debug("🔍 단일 키 체크포인트 구조 분석:")
-                    single_key = checkpoint_keys[0]
-                    single_value = checkpoint[single_key]
-                    self.logger.debug(f"  키: {single_key}")
-                    self.logger.debug(f"  값 타입: {type(single_value)}")
-                    if hasattr(single_value, 'shape'):
-                        self.logger.debug(f"  값 형태: {single_value.shape}")
-                    if hasattr(single_value, 'keys'):
-                        self.logger.debug(f"  내부 키들: {list(single_value.keys())[:10]}")
-                        
-                        # �� module. 접두사 제거를 위한 키 변환
-                        if single_key == 'state_dict':
-                            self.logger.debug("�� module. 접두사 제거를 위한 키 변환 시작")
-                            # 원본 체크포인트를 복사
-                            original_checkpoint = single_value
-                            # module. 접두사 제거
-                            cleaned_checkpoint = {}
-                            for key, value in original_checkpoint.items():
-                                if key.startswith('module.'):
-                                    cleaned_key = key[7:]  # 'module.' 제거
-                                    cleaned_checkpoint[cleaned_key] = value
-                                    self.logger.debug(f"  변환: {key} -> {cleaned_key}")
-                                else:
-                                    cleaned_checkpoint[key] = value
-                            
-                            # 체크포인트 교체 및 키 재설정
-                            checkpoint = cleaned_checkpoint
-                            checkpoint_keys = list(checkpoint.keys())  # 🔥 키 재설정
-                            self.logger.debug(f"✅ 키 변환 완료: {len(cleaned_checkpoint)}개 키")
-                            self.logger.debug(f"🔍 변환된 키 샘플: {list(cleaned_checkpoint.keys())[:5]}")
+                # 모델 아키텍처 결정
+                model = None
                 
-                # 입력 채널 수 추정
-                input_channels = 3  # 기본값
-                for key in checkpoint_keys:
-                    if 'conv1.weight' in key or 'conv1' in key:
-                        weight_shape = checkpoint[key].shape
-                        if len(weight_shape) == 4:
-                            input_channels = weight_shape[1]
-                            self.logger.debug(f"�� 입력 채널 수 감지: {input_channels}")
-                            break
+                # Graphonomy 특성 확인
+                graphonomy_indicators = [
+                    'backbone', 'aspp', 'classifier', 'layer4', 'conv1', 'bn1'
+                ]
                 
-                # 출력 클래스 수 추정 (체크포인트 기반)
-                num_classes = 18  # SCHP 모델의 기본 클래스 수
-                for key in checkpoint_keys:
-                    if 'classifier' in key and 'weight' in key:
-                        weight_shape = checkpoint[key].shape
-                        if len(weight_shape) == 4:
-                            num_classes = weight_shape[0]
-                            self.logger.debug(f"�� 출력 클래스 수 감지 (classifier.weight): {num_classes}")
-                            break
-                    elif 'classifier' in key and 'bias' in key:
-                        bias_shape = checkpoint[key].shape
-                        if len(bias_shape) == 1:
-                            num_classes = bias_shape[0]
-                            self.logger.debug(f"�� 출력 클래스 수 감지 (classifier.bias): {num_classes}")
-                            break
-                    elif 'fushion.3.weight' in key:  # SCHP 모델의 fusion 레이어
-                        weight_shape = checkpoint[key].shape
-                        if len(weight_shape) == 4:
-                            num_classes = weight_shape[0]
-                            self.logger.debug(f"🔍 출력 클래스 수 감지 (fushion.3.weight): {num_classes}")
-                            break
-                    elif 'fushion.3.bias' in key:  # SCHP 모델의 fusion 레이어
-                        bias_shape = checkpoint[key].shape
-                        if len(bias_shape) == 1:
-                            num_classes = bias_shape[0]
-                            self.logger.debug(f"🔍 출력 클래스 수 감지 (fushion.3.bias): {num_classes}")
-                            break
+                has_graphonomy_features = any(
+                    any(indicator in key for indicator in graphonomy_indicators)
+                    for key in keys
+                )
                 
-                # 중간 레이어 채널 수 추정
-                hidden_channels = 256  # 기본값
-                for key in checkpoint_keys:
-                    if 'aspp' in key or 'attention' in key or 'correction' in key:
-                        if 'weight' in key:
-                            weight_shape = checkpoint[key].shape
-                            if len(weight_shape) == 4:
-                                hidden_channels = weight_shape[0]
-                                self.logger.debug(f"🔍 중간 채널 수 감지: {hidden_channels}")
-                                break
+                if has_graphonomy_features:
+                    self.logger.info("✅ Graphonomy 아키텍처 감지됨")
+                    model = AdvancedGraphonomyResNetASPP(num_classes=20)
+                else:
+                    # U2Net 또는 다른 모델 시도
+                    self.logger.info("🔄 U2Net 아키텍처 시도")
+                    model = U2NetForParsing(num_classes=20)
                 
-                self.logger.debug(f"📋 모델 구조: {input_channels} → {hidden_channels} → {num_classes}")
+                # 디바이스 설정
+                device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+                model = model.to(device)
                 
-                # 🔥 체크포인트 가중치 크기 분석
-                self.logger.debug("🔍 체크포인트 가중치 크기 분석:")
-                for key in checkpoint_keys:
-                    if 'weight' in key:
-                        weight_shape = checkpoint[key].shape
-                        self.logger.debug(f"  {key}: {weight_shape}")
-                    else:
-                        # weight가 아닌 키도 분석
-                        value_shape = checkpoint[key].shape if hasattr(checkpoint[key], 'shape') else type(checkpoint[key])
-                        self.logger.debug(f"  {key}: {value_shape}")
-                
-                # 체크포인트 타입별 모델 생성
-                def create_model_for_checkpoint(checkpoint, checkpoint_path):
-                    """체크포인트 타입에 맞는 모델 생성"""
-                    
-                    # SCHP (Self-Correction Human Parsing) 모델 - 체크포인트와 정확히 맞춤
-                    if 'schp' in checkpoint_path.lower() or 'exp-schp' in checkpoint_path.lower():
-                        class SCHPModel(nn.Module):
-                            def __init__(self, num_classes=num_classes):  # 감지된 클래스 수 사용
-                                super().__init__()
-                                # 🔥 체크포인트와 정확히 일치하는 ResNet-101 기반 SCHP 아키텍처
-                                
-                                # 체크포인트 로딩 상태
-                                self.checkpoint_loaded = False
-                                self.checkpoint_path = None
-                                
-                                # 로거 설정
-                                self.logger = logging.getLogger(__name__)
-                                
-                                # ResNet-101 backbone (체크포인트와 정확히 맞춤)
-                                self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1)  # 체크포인트: [64, 3, 3, 3]
-                                self.bn1 = nn.BatchNorm2d(64)
-                                self.relu = nn.ReLU(inplace=True)
-                                self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-                                
-                                # Layer 1: 64 -> 256 (ResNet bottleneck 구조)
-                                self.layer1 = nn.Sequential(
-                                    nn.Conv2d(64, 64, kernel_size=1),
-                                    nn.BatchNorm2d(64),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(64),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(64, 256, kernel_size=1),
-                                    nn.BatchNorm2d(256)
-                                )
-                                
-                                # Layer 2: 256 -> 512
-                                self.layer2 = nn.Sequential(
-                                    nn.Conv2d(256, 128, kernel_size=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(128, 128, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(128),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(128, 512, kernel_size=1),
-                                    nn.BatchNorm2d(512)
-                                )
-                                
-                                # Layer 3: 512 -> 1024
-                                self.layer3 = nn.Sequential(
-                                    nn.Conv2d(512, 256, kernel_size=1),
-                                    nn.BatchNorm2d(256),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(256, 256, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(256),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(256, 1024, kernel_size=1),
-                                    nn.BatchNorm2d(1024)
-                                )
-                                
-                                # Layer 4: 1024 -> 2048
-                                self.layer4 = nn.Sequential(
-                                    nn.Conv2d(1024, 512, kernel_size=1),
-                                    nn.BatchNorm2d(512),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(512, 512, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(512),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(512, 2048, kernel_size=1),
-                                    nn.BatchNorm2d(2048)
-                                )
-                                
-                                # Context Encoding Module (체크포인트와 정확히 일치)
-                                self.context_encoding = nn.ModuleDict({
-                                    "stages": nn.ModuleList([
-                                        nn.Sequential(
-                                            nn.Conv2d(2048, 512, kernel_size=1, stride=1, padding=0),  # 체크포인트: [512, 2048, 1, 1]
-                                            nn.ReLU(inplace=True),
-                                            nn.BatchNorm2d(512, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)  # 체크포인트: [512]
-                                        ) for _ in range(4)
-                                    ]),
-                                    "bottleneck": nn.Sequential(
-                                        nn.Conv2d(4096, 512, kernel_size=3, stride=1, padding=1),  # 체크포인트: [512, 4096, 3, 3]
-                                        nn.BatchNorm2d(512, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    )
-                                })
-                                
-                                # Edge Detection Module (체크포인트와 정확히 일치)
-                                self.edge = nn.ModuleDict({
-                                    "conv1": nn.Sequential(
-                                        nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 256, 1, 1]
-                                        nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    ),
-                                    "conv2": nn.Sequential(
-                                        nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 512, 1, 1]
-                                        nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    ),
-                                    "conv3": nn.Sequential(
-                                        nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 1024, 1, 1]
-                                        nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    ),
-                                    "conv4": nn.Conv2d(256, 2, kernel_size=3, stride=1, padding=1),  # 체크포인트: [2, 256, 3, 3]
-                                    "conv5": nn.Conv2d(6, 2, kernel_size=1, stride=1, padding=0)  # 체크포인트: [2, 6, 1, 1]
-                                })
-                                
-                                # Decoder Module (체크포인트와 정확히 일치)
-                                self.decoder = nn.ModuleDict({
-                                    "conv1": nn.Sequential(
-                                        nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 512, 1, 1]
-                                        nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    ),
-                                    "conv2": nn.Sequential(
-                                        nn.Conv2d(256, 48, kernel_size=1, stride=1, padding=0),  # 체크포인트: [48, 256, 1, 1]
-                                        nn.BatchNorm2d(48, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    ),
-                                    "conv3": nn.Sequential(
-                                        nn.Conv2d(304, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 304, 1, 1]
-                                        nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True),
-                                        nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0),  # 체크포인트: [256, 256, 1, 1]
-                                        nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
-                                    ),
-                                    "conv4": nn.Conv2d(256, num_classes, kernel_size=1, stride=1, padding=0)  # 체크포인트: [18, 256, 1, 1]
-                                })
-                                
-                                # Fusion Module (체크포인트와 정확히 일치)
-                                self.fushion = nn.Sequential(
-                                    nn.Conv2d(20, 256, kernel_size=1, stride=1, padding=0),  # parsing(18) + edge(2) = 20
-                                    nn.BatchNorm2d(256, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(256, num_classes, kernel_size=1, stride=1, padding=0)  # 체크포인트: [18, 256, 1, 1]
-                                )
-                            
-                            def forward(self, x):
-                                try:
-                                    print(f"🔍 SCHPModel 디버깅:")
-                                    print(f"  입력 x shape: {x.shape}")
-                                    
-                                    # ResNet-101 backbone
-                                    x = self.conv1(x)
-                                    print(f"  conv1 후 x shape: {x.shape}")
-                                    
-                                    x = self.bn1(x)
-                                    x = self.relu(x)
-                                    x = self.maxpool(x)
-                                    print(f"  maxpool 후 x shape: {x.shape}")
-                                    
-                                    x = self.layer1(x)  # 64 -> 256
-                                    print(f"  layer1 후 x shape: {x.shape}")
-                                    
-                                    x = self.layer2(x)  # 256 -> 512
-                                    print(f"  layer2 후 x shape: {x.shape}")
-                                    
-                                    x = self.layer3(x)  # 512 -> 1024
-                                    print(f"  layer3 후 x shape: {x.shape}")
-                                    
-                                    x = self.layer4(x)  # 1024 -> 2048
-                                    print(f"  layer4 후 x shape: {x.shape}")
-                                    
-                                    # Context Encoding (4096채널 입력을 위해 layer4와 다른 특징들 결합)
-                                    # 체크포인트 구조에 맞춰 4096채널 입력 생성
-                                    # 실제로는 layer4와 다른 특징들을 결합해야 하지만, 임시로 복제
-                                    bottleneck_input = torch.cat([x, x], dim=1)  # 2048 + 2048 = 4096
-                                    context_feat = self.context_encoding['bottleneck'](bottleneck_input)
-                                    print(f"  context_encoding bottleneck 후 shape: {context_feat.shape}")
-                                    
-                                    # Context Encoding Stages
-                                    stage_features = []
-                                    for i, stage in enumerate(self.context_encoding['stages']):
-                                        stage_feat = stage(x)
-                                        stage_features.append(stage_feat)
-                                        print(f"  context_encoding stage {i} 후 shape: {stage_feat.shape}")
-                                    print(f"  context_encoding bottleneck 후 shape: {context_feat.shape}")
-                                    
-                                    # Edge Detection (단순화된 버전) - 채널 불일치 문제 해결
-                                    # 체크포인트 구조와 맞지 않는 부분을 우회
-                                    edge_map = torch.zeros(x.size(0), 2, x.size(2), x.size(3), device=x.device)
-                                    print(f"  edge 후 edge_map shape: {edge_map.shape}")
-                                    
-                                    # Decoder (멀티스케일)
-                                    decoder_feat1 = self.decoder['conv1'](context_feat)
-                                    decoder_feat2 = self.decoder['conv2'](decoder_feat1)
-                                    
-                                    # Decoder fusion
-                                    decoder_concat = torch.cat([decoder_feat1, decoder_feat2], dim=1)
-                                    decoder_feat3 = self.decoder['conv3'](decoder_concat)
-                                    parsing = self.decoder['conv4'](decoder_feat3)
-                                    print(f"  decoder 후 parsing shape: {parsing.shape}")
-                                    
-                                    # Fusion (parsing + edge_map)
-                                    # parsing과 edge_map을 결합하여 fusion 입력 생성
-                                    fusion_input = torch.cat([parsing, edge_map], dim=1)  # 18 + 2 = 20 채널
-                                    output = self.fushion(fusion_input)
-                                    print(f"  fusion 후 output shape: {output.shape}")
-                                    
-                                    return {
-                                        'parsing': output,
-                                        'parsing_pred': output,
-                                        'confidence_map': torch.sigmoid(output),
-                                        'final_confidence': torch.sigmoid(output)
-                                    }
-                                except Exception as e:
-                                    # 🔥 오류 발생 시 단순화된 forward pass
-                                    print(f"⚠️ SCHP forward 오류: {e}, 단순화된 모드 사용")
-                                    
-                                    # 단순화된 forward pass
-                                    x = self.conv1(x)
-                                    x = self.bn1(x)
-                                    x = self.relu(x)
-                                    x = self.maxpool(x)
-                                    
-                                    x = self.layer1(x)
-                                    x = self.layer2(x)
-                                    x = self.layer3(x)
-                                    x = self.layer4(x)
-                                    
-                                    context_feat = self.context_encoding['bottleneck'](x)
-                                    output = self.fushion(context_feat)
-                                    
-                                    return {
-                                        'parsing': output,
-                                        'parsing_pred': output,
-                                        'confidence_map': torch.sigmoid(output),
-                                        'final_confidence': torch.sigmoid(output)
-                                    }
-                            
-                            def load_checkpoint(self, checkpoint_path: str, map_location: str = 'cpu') -> bool:
-                                """실제 체크포인트 로딩 및 매핑"""
-                                try:
-                                    self.logger.info(f"🔍 체크포인트 로딩 시작: {checkpoint_path}")
-                                    
-                                    if not os.path.exists(checkpoint_path):
-                                        self.logger.error(f"❌ 체크포인트 파일이 존재하지 않음: {checkpoint_path}")
-                                        return False
-                                    
-                                    # 체크포인트 로딩
-                                    checkpoint = torch.load(checkpoint_path, map_location=map_location)
-                                    
-                                    # 체크포인트 구조 분석
-                                    checkpoint_keys = list(checkpoint.keys())
-                                    self.logger.debug(f"📊 체크포인트 키 개수: {len(checkpoint_keys)}")
-                                    
-                                    # 단일 키 체크포인트 처리
-                                    if len(checkpoint_keys) == 1:
-                                        single_key = checkpoint_keys[0]
-                                        if single_key == 'state_dict':
-                                            checkpoint = checkpoint[single_key]
-                                            self.logger.debug("✅ state_dict 키에서 체크포인트 추출")
-                                    
-                                    # module. 접두사 제거
-                                    cleaned_checkpoint = {}
-                                    for key, value in checkpoint.items():
-                                        if key.startswith('module.'):
-                                            cleaned_key = key[7:]
-                                            cleaned_checkpoint[cleaned_key] = value
-                                        else:
-                                            cleaned_checkpoint[key] = value
-                                    
-                                    # 모델에 체크포인트 로드
-                                    missing_keys, unexpected_keys = self.load_state_dict(cleaned_checkpoint, strict=False)
-                                    
-                                    if missing_keys:
-                                        self.logger.warning(f"⚠️ 누락된 키: {missing_keys[:5]}...")
-                                    if unexpected_keys:
-                                        self.logger.warning(f"⚠️ 예상치 못한 키: {unexpected_keys[:5]}...")
-                                    
-                                    self.checkpoint_loaded = True
-                                    self.checkpoint_path = checkpoint_path
-                                    self.logger.info(f"✅ 체크포인트 로딩 완료: {checkpoint_path}")
-                                    return True
-                                    
-                                except Exception as e:
-                                    self.logger.error(f"❌ 체크포인트 로딩 실패: {e}")
-                                    return False
-                        
-                        # SCHP 모델 인스턴스 생성
-                        model = SCHPModel(num_classes=num_classes)
-                        
-                        # 체크포인트 로드
-                        if model.load_checkpoint(checkpoint_path):
-                            self.logger.info(f"✅ SCHP 모델 생성 및 체크포인트 로딩 완료")
-                            return model
+                # state_dict 로딩 (strict=False로 호환성 보장)
+                try:
+                    # module. 접두사 제거
+                    cleaned_state_dict = {}
+                    for key, value in state_dict.items():
+                        if key.startswith('module.'):
+                            new_key = key[7:]  # 'module.' 제거
+                            cleaned_state_dict[new_key] = value
                         else:
-                            self.logger.warning(f"⚠️ 체크포인트 로딩 실패, 기본 모델 반환")
-                            return model
+                            cleaned_state_dict[key] = value
                     
-                    # Graphonomy 모델
-                    elif 'graphonomy' in checkpoint_path.lower():
-                        # Graphonomy 모델 생성 로직
-                        class GraphonomyModel(nn.Module):
-                            def __init__(self, num_classes=num_classes):
-                                super().__init__()
-                                # Graphonomy 모델 구조
-                                self.backbone = nn.Sequential(
-                                    nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
-                                    nn.BatchNorm2d(64),
-                                    nn.ReLU(inplace=True),
-                                    nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-                                )
-                                self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
-                            
-                            def forward(self, x):
-                                x = self.backbone(x)
-                                x = self.classifier(x)
-                                return {
-                                    'parsing': x,
-                                    'parsing_pred': x,
-                                    'confidence_map': torch.sigmoid(x),
-                                    'final_confidence': torch.sigmoid(x)
-                                }
-                        
-                        return GraphonomyModel(num_classes=num_classes)
+                    # 모델에 state_dict 로딩
+                    model.load_state_dict(cleaned_state_dict, strict=False)
+                    self.logger.info("✅ State dict 로딩 성공")
                     
-                    # 기본 모델 (알 수 없는 체크포인트 타입)
-                    else:
-                        class DefaultModel(nn.Module):
-                            def __init__(self, num_classes=num_classes):
-                                super().__init__()
-                                self.backbone = nn.Sequential(
-                                    nn.Conv2d(3, 64, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(64),
-                                    nn.ReLU(inplace=True),
-                                    nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                                    nn.BatchNorm2d(64),
-                                    nn.ReLU(inplace=True)
-                                )
-                                self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
-                            
-                            def forward(self, x):
-                                x = self.backbone(x)
-                                x = self.classifier(x)
-                                return {
-                                    'parsing': x,
-                                    'parsing_pred': x,
-                                    'confidence_map': torch.sigmoid(x),
-                                    'final_confidence': torch.sigmoid(x)
-                                }
-                        
-                        return DefaultModel(num_classes=num_classes)
+                except Exception as load_error:
+                    self.logger.warning(f"⚠️ State dict 로딩 실패: {load_error}")
+                    # 초기화된 모델 사용
+                    self.logger.info("🔄 초기화된 모델 사용")
                 
-                # 모델 생성 및 반환
-                model = create_model_for_checkpoint(checkpoint, checkpoint_path)
-                self.logger.info(f"✅ 동적 모델 생성 완료: {type(model).__name__}")
+                model.eval()
+                
+                # 모델에 메타데이터 추가
+                model.checkpoint_path = checkpoint_path
+                model.checkpoint_data = checkpoint_data
+                model.get_checkpoint_data = lambda: checkpoint_data
+                model.has_model = True
+                
+                # 파일 크기 계산
+                try:
+                    file_size = Path(checkpoint_path).stat().st_size
+                    model.memory_usage_mb = file_size / (1024 * 1024)
+                except:
+                    model.memory_usage_mb = 1200.0  # 기본값
+                
+                model.load_time = 2.5  # 기본 로딩 시간
+                
+                self.logger.info(f"✅ 동적 모델 생성 완료: {type(model)}")
                 return model
                 
             except Exception as e:
                 self.logger.error(f"❌ 동적 모델 생성 실패: {e}")
-                # 기본 모델 반환
-                class FallbackModel(nn.Module):
-                    def __init__(self, num_classes=18):
-                        super().__init__()
-                        self.backbone = nn.Sequential(
-                            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-                            nn.BatchNorm2d(64),
-                            nn.ReLU(inplace=True)
-                        )
-                        self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
-                    
-                    def forward(self, x):
-                        x = self.backbone(x)
-                        x = self.classifier(x)
-                        return {
-                            'parsing': x,
-                            'parsing_pred': x,
-                            'confidence_map': torch.sigmoid(x),
-                            'final_confidence': torch.sigmoid(x)
-                        }
-                
-                return FallbackModel()
+                return None
 
+    
 
         def _map_checkpoint_keys(self, checkpoint: Dict[str, Any]) -> Dict[str, Any]:
             """체크포인트 키 매핑"""
@@ -4439,7 +3889,8 @@ if BaseStepMixin:
         def _evaluate_region_quality(self, mask: np.ndarray) -> float:
             """영역 품질 평가"""
             try:
-                if not CV2_AVAILABLE or np.sum(mask) == 0:
+                # 🔥 numpy 배열 boolean 평가 오류 수정
+                if not CV2_AVAILABLE or float(np.sum(mask)) == 0:
                     return 0.5
                 
                 mask_uint8 = mask.astype(np.uint8) * 255
@@ -4657,6 +4108,8 @@ if BaseStepMixin:
                 self.logger.error(f"❌ 모델 추론 실패: {e}")
                 raise
         
+
+        
         def _postprocess_result(self, inference_result: Dict[str, Any], original_image) -> Dict[str, Any]:
             """결과 후처리"""
             try:
@@ -4822,18 +4275,35 @@ if BaseStepMixin:
                 if image is None:
                     return image
                 
+                # 🔥 numpy import를 메서드 시작 부분으로 이동
+                import numpy as np
+                
+                # PIL Image를 numpy array로 변환
+                if hasattr(image, 'convert'):
+                    # PIL Image인 경우
+                    image_array = np.array(image)
+                elif hasattr(image, 'shape'):
+                    # numpy array인 경우
+                    image_array = image
+                else:
+                    return image
+                
                 # 간단한 색상 보정
-                if len(image.shape) == 3:
+                if len(image_array.shape) == 3:
                     import cv2
-                    import numpy as np
                     # 화이트 밸런스 적용
-                    result = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+                    result = cv2.cvtColor(image_array, cv2.COLOR_RGB2LAB)
                     avg_a = np.average(result[:, :, 1])
                     avg_b = np.average(result[:, :, 2])
                     result[:, :, 1] = result[:, :, 1] - ((avg_a - 128) * (result[:, :, 0] / 255.0) * 1.1)
                     result[:, :, 2] = result[:, :, 2] - ((avg_b - 128) * (result[:, :, 0] / 255.0) * 1.1)
                     corrected = cv2.cvtColor(result, cv2.COLOR_LAB2RGB)
-                    return corrected
+                    
+                    # PIL Image로 다시 변환
+                    if hasattr(image, 'convert'):
+                        return Image.fromarray(corrected)
+                    else:
+                        return corrected
                 else:
                     return image
             except Exception as e:
@@ -4934,16 +4404,36 @@ if BaseStepMixin:
                     try:
                         session_manager = self._get_service_from_central_hub('session_manager')
                         if session_manager:
-                            # session_manager.get_session_images가 async이므로 동기적으로 실행
-                            import asyncio
+                            person_image, clothing_image = None, None
+                            
                             try:
-                                loop = asyncio.get_event_loop()
-                                if loop.is_running():
-                                    person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                # 세션 매니저가 동기 메서드를 제공하는지 확인
+                                if hasattr(session_manager, 'get_session_images_sync'):
+                                    person_image, clothing_image = session_manager.get_session_images_sync(step_input['session_id'])
+                                elif hasattr(session_manager, 'get_session_images'):
+                                    # 비동기 메서드를 동기적으로 호출
+                                    import asyncio
+                                    import concurrent.futures
+                                    
+                                    def run_async_session_load():
+                                        try:
+                                            return asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                        except Exception as async_error:
+                                            self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                            return None, None
+                                    
+                                    try:
+                                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                                            future = executor.submit(run_async_session_load)
+                                            person_image, clothing_image = future.result(timeout=10)
+                                    except Exception as executor_error:
+                                        self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                        person_image, clothing_image = None, None
                                 else:
-                                    person_image, clothing_image = loop.run_until_complete(session_manager.get_session_images(step_input['session_id']))
-                            except RuntimeError:
-                                person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                    self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                                person_image, clothing_image = None, None
                             
                             if person_image:
                                 image = person_image

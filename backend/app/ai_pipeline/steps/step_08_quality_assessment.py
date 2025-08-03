@@ -1832,7 +1832,10 @@ class QualityAssessmentStep(BaseStepMixin):
                 
                 # 구조적 복잡성
                 gray = np.mean(image, axis=2)
-                edges = np.abs(np.gradient(gray)[0]) + np.abs(np.gradient(gray)[1])
+                
+                # 🔥 안전한 그래디언트 계산 - shape 불일치 방지
+                grad_y, grad_x = np.gradient(gray)
+                edges = np.abs(grad_x) + np.abs(grad_y)
                 structural_complexity = np.mean(edges) / 255.0
                 
                 # 밝기 분포
@@ -1870,7 +1873,12 @@ class QualityAssessmentStep(BaseStepMixin):
             
             # 이미지의 신호 품질 추정
             signal_power = np.var(gray)
-            noise_estimate = np.var(np.diff(gray, axis=0)) + np.var(np.diff(gray, axis=1))
+            
+            # 🔥 안전한 노이즈 추정 - shape 불일치 방지
+            diff_v = np.diff(gray, axis=0)  # 수직 차분 (H-1, W)
+            diff_h = np.diff(gray, axis=1)  # 수평 차분 (H, W-1)
+            
+            noise_estimate = np.var(diff_v) + np.var(diff_h)
             
             if noise_estimate > 0:
                 psnr = 10 * np.log10(signal_power / noise_estimate)
@@ -1918,7 +1926,10 @@ class QualityAssessmentStep(BaseStepMixin):
                 
                 # 텍스처 복잡도 계산
                 gray = np.mean(image, axis=2)
-                edges = np.abs(np.gradient(gray)[0]) + np.abs(np.gradient(gray)[1])
+                
+                # 🔥 안전한 그래디언트 계산 - shape 불일치 방지
+                grad_y, grad_x = np.gradient(gray)
+                edges = np.abs(grad_x) + np.abs(grad_y)
                 texture_complexity = np.mean(edges)
                 
                 # Inception Score 추정 (1-5 범위)

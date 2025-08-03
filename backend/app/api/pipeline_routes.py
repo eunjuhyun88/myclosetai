@@ -1801,7 +1801,7 @@ async def complete_pipeline_processing(
             "total_processing_time": total_processing_time,
             
             # 핵심 결과 (프론트엔드 호환)
-            "fitted_image": step7_result.get("fitted_image"),
+            "fitted_image": step7_result.get("fitted_image"),  # 이미 Base64로 변환됨
             "fit_score": step7_result.get("fit_score", 0.88),
             "confidence": step7_result.get("confidence", 0.85),
             "quality_score": step7_result.get("quality_score", 0.87),

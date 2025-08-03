@@ -10,6 +10,7 @@
 ✅ 메모리 관리 완벽 - MPS 캐시 자동 정리
 ✅ 프로덕션 레벨 안정성 - 모든 엣지케이스 처리
 ✅ Step 파일들 100% 지원 - 모든 필수 함수 제공
+✅ MPS Border Padding 모드 호환성 패치 추가
 
 핵심 철학:
 - 안전함이 최우선 (Safety First)
@@ -19,7 +20,7 @@
 
 Author: MyCloset AI Team  
 Date: 2025-07-22
-Version: 2.0 (M3 Max Optimized Complete)
+Version: 2.1 (M3 Max Optimized Complete + MPS Padding Fix)
 """
 
 import os
@@ -80,7 +81,96 @@ IS_M3_MAX = detect_m3_max()
 IS_CONDA_ENV = CONDA_INFO['conda_env'] != 'none'
 
 # ==============================================
-# 🔥 3. 라이브러리 호환성 관리자
+# 🔥 3. MPS Border Padding 모드 호환성 패치
+# ==============================================
+
+def apply_mps_padding_patch():
+    """MPS Border Padding 모드 호환성 패치 적용"""
+    try:
+        import torch
+        import torch.nn.functional as F
+        
+        if not hasattr(torch.backends, 'mps') or not torch.backends.mps.is_available():
+            return False
+        
+        # 원본 F.pad 함수 저장
+        if not hasattr(F, '_original_pad'):
+            F._original_pad = F.pad
+        
+        def safe_pad(input, pad, mode='constant', value=0):
+            """MPS 호환 안전한 padding 함수"""
+            try:
+                # MPS에서 지원하지 않는 Border padding 모드를 constant로 대체
+                if mode == 'border':
+                    mode = 'constant'
+                    logger.debug("🔄 MPS Border padding을 constant로 대체")
+                
+                # MPS에서 지원하지 않는 reflect padding 모드를 constant로 대체
+                if mode == 'reflect':
+                    mode = 'constant'
+                    logger.debug("🔄 MPS Reflect padding을 constant로 대체")
+                
+                return F._original_pad(input, pad, mode=mode, value=value)
+                
+            except Exception as e:
+                if "Unsupported Border padding mode" in str(e) or "Unsupported padding mode" in str(e):
+                    logger.warning(f"⚠️ MPS padding 모드 오류 감지, constant로 대체: {e}")
+                    return F._original_pad(input, pad, mode='constant', value=value)
+                else:
+                    raise e
+        
+        # 패치 적용
+        F.pad = safe_pad
+        logger.info("✅ MPS Border Padding 모드 호환성 패치 적용 완료")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"⚠️ MPS Padding 패치 적용 실패: {e}")
+        return False
+
+def apply_mps_conv_padding_patch():
+    """MPS Conv2d Padding 호환성 패치"""
+    try:
+        import torch
+        import torch.nn as nn
+        
+        if not hasattr(torch.backends, 'mps') or not torch.backends.mps.is_available():
+            return False
+        
+        # 원본 Conv2d 저장
+        if not hasattr(nn, '_original_Conv2d'):
+            nn._original_Conv2d = nn.Conv2d
+        
+        class SafeConv2d(nn._original_Conv2d):
+            """MPS 호환 안전한 Conv2d"""
+            
+            def forward(self, input):
+                try:
+                    return super().forward(input)
+                except Exception as e:
+                    if "Unsupported Border padding mode" in str(e) or "Unsupported padding mode" in str(e):
+                        logger.warning(f"⚠️ MPS Conv2d padding 오류 감지, 패딩 모드 조정: {e}")
+                        # 패딩 모드를 'zeros'로 강제 변경
+                        self.padding_mode = 'zeros'
+                        return super().forward(input)
+                    else:
+                        raise e
+        
+        # 패치 적용
+        nn.Conv2d = SafeConv2d
+        logger.info("✅ MPS Conv2d Padding 호환성 패치 적용 완료")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"⚠️ MPS Conv2d 패치 적용 실패: {e}")
+        return False
+
+# 패치 자동 적용
+MPS_PADDING_PATCH_APPLIED = apply_mps_padding_patch()
+MPS_CONV_PADDING_PATCH_APPLIED = apply_mps_conv_padding_patch()
+
+# ==============================================
+# 🔥 4. 라이브러리 호환성 관리자
 # ==============================================
 
 class LibraryManager:
@@ -117,6 +207,10 @@ class LibraryManager:
         
         # PIL 로딩 (conda 우선)
         self._load_pil()
+        
+        # MPS 패치 상태 로깅
+        if self.mps_available:
+            logger.info(f"🍎 MPS 사용 가능 - Padding 패치: {MPS_PADDING_PATCH_APPLIED}, Conv 패치: {MPS_CONV_PADDING_PATCH_APPLIED}")
     
     def _load_numpy(self):
         """NumPy 안전 로딩"""
@@ -219,7 +313,7 @@ DEFAULT_DEVICE = _lib_manager.device_type
 TORCH_VERSION = _lib_manager.torch_version
 
 # ==============================================
-# 🔥 4. 메모리 관리 최적화 함수들
+# 🔥 5. 메모리 관리 최적화 함수들
 # ==============================================
 
 def safe_mps_empty_cache() -> bool:
@@ -339,7 +433,7 @@ def memory_efficient_context():
                     f"{final_memory['used_gb']:.1f}GB")
 
 # ==============================================
-# 🔥 5. 안전한 PyTorch 연산 함수들
+# 🔥 6. 안전한 PyTorch 연산 함수들
 # ==============================================
 
 def safe_max(tensor: Any, dim: Optional[int] = None, keepdim: bool = False) -> Any:
@@ -499,7 +593,7 @@ def safe_interpolate(input_tensor: Any, size: Optional[Tuple[int, int]] = None,
             return input_tensor
 
 # ==============================================
-# 🔥 6. 키포인트 추출 최적화 함수들
+# 🔥 7. 키포인트 추출 최적화 함수들
 # ==============================================
 
 def extract_keypoints_from_heatmaps(heatmaps: Any, threshold: float = 0.1) -> List[Tuple[int, int, float]]:
@@ -616,7 +710,7 @@ def extract_human_parsing_regions(parsing_output: Any, num_classes: int = 20) ->
         return {}
 
 # ==============================================
-# 🔥 7. 이미지 변환 최적화 함수들
+# 🔥 8. 이미지 변환 최적화 함수들
 # ==============================================
 
 def tensor_to_pil(tensor: Any) -> Optional[Any]:
@@ -823,7 +917,7 @@ def preprocess_image(image: Any, target_size: Tuple[int, int] = (512, 512),
         return None
 
 # ==============================================
-# 🔥 8. Step별 특화 전처리 함수들
+# 🔥 9. Step별 특화 전처리 함수들
 # ==============================================
 
 def preprocess_pose_input(image: Any, target_size: Tuple[int, int] = (256, 192)) -> Optional[Any]:
@@ -873,7 +967,7 @@ def postprocess_segmentation(output: Any, original_size: Optional[Tuple[int, int
         return None
 
 # ==============================================
-# 🔥 9. 장치 관리 함수들
+# 🔥 10. 장치 관리 함수들
 # ==============================================
 
 def get_optimal_device() -> str:
@@ -910,7 +1004,7 @@ def ensure_tensor_device(tensor: Any, target_device: str) -> Any:
         return tensor
 
 # ==============================================
-# 🔥 10. 오류 처리 및 복구 함수들
+# 🔥 11. 오류 처리 및 복구 함수들
 # ==============================================
 
 def safe_operation_wrapper(operation: Callable, *args, **kwargs) -> Any:
@@ -952,7 +1046,7 @@ def safe_operation_wrapper(operation: Callable, *args, **kwargs) -> Any:
         return None
 
 # ==============================================
-# 🔥 11. 모듈 정보 및 상태 체크
+# 🔥 12. 모듈 정보 및 상태 체크
 # ==============================================
 
 def get_system_info() -> Dict[str, Any]:
@@ -993,7 +1087,7 @@ def print_system_status():
     print("=" * 60)
 
 # ==============================================
-# 🔥 12. 모듈 초기화 및 상태 체크
+# 🔥 13. 모듈 초기화 및 상태 체크
 # ==============================================
 
 # 모듈 로드 완료 메시지

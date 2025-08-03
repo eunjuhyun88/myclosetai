@@ -888,8 +888,10 @@ class GeometricMatchingModule(nn.Module):
         grid = self.grid_generator(theta, person_image.size())
         
         # 의류 이미지에 변형 적용
+        # 🔥 MPS 호환성을 위한 padding_mode 조정
+        padding_mode = 'zeros' if grid.device.type == 'mps' else 'border'
         warped_clothing = F.grid_sample(clothing_image, grid, mode='bilinear', 
-                                      padding_mode='border', align_corners=False)
+                                      padding_mode=padding_mode, align_corners=False)
         
         return {
             'transformation_matrix': theta,
@@ -1505,9 +1507,11 @@ class CompleteAdvancedGeometricMatchingAI(nn.Module):
         transformation_grid = self._generate_transformation_grid(final_transform, input_size)
 
         # 9. Apply transformation to clothing
+        # 🔥 MPS 호환성을 위한 padding_mode 조정
+        padding_mode = 'zeros' if transformation_grid.device.type == 'mps' else 'border'
         warped_clothing = F.grid_sample(
             clothing_image, transformation_grid, mode='bilinear',
-            padding_mode='border', align_corners=False
+            padding_mode=padding_mode, align_corners=False
         )
 
         return {
@@ -1775,13 +1779,19 @@ class AdvancedGeometricMatcher:
 
     def compute_transformation_matrix_procrustes(self, src_keypoints: torch.Tensor, 
                                                dst_keypoints: torch.Tensor) -> torch.Tensor:
-        """Procrustes 분석 기반 최적 변형 계산"""
+        """Procrustes 분석 기반 최적 변형 계산 (MPS float64 호환성 패치)"""
         try:
+            # 🔥 MPS float64 문제 해결: float32로 변환 후 CPU로 이동
+            if src_keypoints.device.type == 'mps':
+                src_keypoints = src_keypoints.to(torch.float32)
+            if dst_keypoints.device.type == 'mps':
+                dst_keypoints = dst_keypoints.to(torch.float32)
+            
             src_np = src_keypoints.cpu().numpy()
             dst_np = dst_keypoints.cpu().numpy()
             
             if SCIPY_AVAILABLE:
-                # Procrustes 분석
+                # 🔥 MPS float64 호환성을 위한 강화된 Procrustes 분석
                 def objective(params):
                     tx, ty, scale, rotation = params
                     
@@ -1789,40 +1799,62 @@ class AdvancedGeometricMatcher:
                     transform_matrix = np.array([
                         [scale * cos_r, -scale * sin_r, tx],
                         [scale * sin_r, scale * cos_r, ty]
-                    ])
+                    ], dtype=np.float32)  # 명시적으로 float32 사용
                     
-                    src_homogeneous = np.column_stack([src_np, np.ones(len(src_np))])
+                    src_homogeneous = np.column_stack([src_np, np.ones(len(src_np))]).astype(np.float32)
                     transformed = src_homogeneous @ transform_matrix.T
                     
                     error = np.sum((transformed - dst_np) ** 2)
-                    return error
+                    return float(error)  # float32로 반환
                 
-                # 최적화
-                initial_params = [0, 0, 1, 0]
-                result = minimize(objective, initial_params, method='BFGS')
+                # 최적화 (float32 기반)
+                initial_params = np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32)
+                try:
+                    result = minimize(objective, initial_params, method='BFGS')
+                    # 🔥 MPS 호환성을 위한 float32 강제 변환
+                    if hasattr(result, 'x'):
+                        result.x = result.x.astype(np.float32)
+                except Exception as opt_error:
+                    self.logger.warning(f"⚠️ 최적화 실패, 기본값 사용: {opt_error}")
+                    result = type('obj', (object,), {'success': False})()
                 
                 if result.success:
-                    tx, ty, scale, rotation = result.x
+                    tx, ty, scale, rotation = result.x.astype(np.float32)
                     cos_r, sin_r = np.cos(rotation), np.sin(rotation)
                     
                     transform_matrix = np.array([
                         [scale * cos_r, -scale * sin_r, tx],
                         [scale * sin_r, scale * cos_r, ty]
-                    ])
+                    ], dtype=np.float32)
                 else:
-                    transform_matrix = np.array([[1, 0, 0], [0, 1, 0]])
+                    transform_matrix = np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
             else:
-                # 간단한 최소제곱법
-                ones = np.ones((src_np.shape[0], 1))
-                src_homogeneous = np.hstack([src_np, ones])
+                # 간단한 최소제곱법 (float32 기반)
+                ones = np.ones((src_np.shape[0], 1), dtype=np.float32)
+                src_homogeneous = np.hstack([src_np, ones]).astype(np.float32)
                 transform_matrix, _, _, _ = np.linalg.lstsq(src_homogeneous, dst_np, rcond=None)
-                transform_matrix = transform_matrix.T
+                transform_matrix = transform_matrix.T.astype(np.float32)
             
-            return torch.from_numpy(transform_matrix).float().to(src_keypoints.device).unsqueeze(0)
+            # 🔥 결과를 float32로 생성하여 MPS 호환성 보장
+            result_tensor = torch.from_numpy(transform_matrix).float()
+            
+            # 🔥 MPS 호환성을 위한 float32 강제 변환
+            if result_tensor.dtype != torch.float32:
+                result_tensor = result_tensor.to(torch.float32)
+            
+            # 원본 디바이스로 이동 (float32 유지)
+            if src_keypoints.device.type == 'mps':
+                result_tensor = result_tensor.to(src_keypoints.device)
+            else:
+                result_tensor = result_tensor.to(src_keypoints.device)
+            
+            return result_tensor.unsqueeze(0)
             
         except Exception as e:
-            self.logger.warning(f"Procrustes 분석 실패: {e}")
-            return torch.eye(2, 3, device=src_keypoints.device).unsqueeze(0)
+            self.logger.warning(f"⚠️ Procrustes 분석 실패: {e}")
+            # 🔥 MPS 호환성을 위한 float32 Identity 행렬 생성
+            identity_matrix = torch.eye(2, 3, dtype=torch.float32, device=src_keypoints.device)
+            return identity_matrix.unsqueeze(0)
 
 # ==============================================
 # 🔥 9. GeometricMatchingStep 메인 클래스 (Central Hub DI Container 완전 연동)
@@ -2077,11 +2109,26 @@ class GeometricMatchingStep(BaseStepMixin):
             # 4. Optical Flow 모델 로딩 - 20.1MB (선택적)
             try:
                 # 🔥 Optical Flow는 선택적 모델이므로 실패해도 계속 진행
-                raft_model = self.model_loader.load_model(
-                    model_name="raft-things.pth",
-                    step_name="GeometricMatchingStep",
-                    model_type="geometric_matching"
-                )
+                # 여러 경로에서 모델 찾기 시도
+                raft_model = None
+                model_paths = [
+                    "raft-things.pth",
+                    "ai_models/step_04_geometric_matching/ultra_models/raft-things.pth",
+                    "ai_models/step_04_geometric_matching/ultra_models/models/raft-things.pth"
+                ]
+                
+                for model_path in model_paths:
+                    try:
+                        raft_model = self.model_loader.load_model(
+                            model_name=model_path,
+                            step_name="GeometricMatchingStep",
+                            model_type="geometric_matching"
+                        )
+                        if raft_model:
+                            break
+                    except Exception as path_e:
+                        self.logger.debug(f"⚠️ {model_path} 로딩 실패: {path_e}")
+                        continue
                 
                 if raft_model:
                     self.ai_models['optical_flow'] = raft_model
@@ -2627,11 +2674,42 @@ class GeometricMatchingStep(BaseStepMixin):
                 )
                 clothing_keypoints = person_keypoints  # 동일한 구조 가정
                 
-                # Procrustes 분석 기반 최적 변형
+                # 🔥 차원 검증 및 수정
+                if isinstance(person_keypoints, list) and len(person_keypoints) > 0:
+                    # 키포인트 리스트를 numpy 배열로 변환
+                    if isinstance(person_keypoints[0], (list, tuple)):
+                        person_keypoints = np.array(person_keypoints, dtype=np.float32)
+                        clothing_keypoints = person_keypoints.copy()
+                    else:
+                        # 단일 키포인트인 경우 2D 배열로 변환
+                        person_keypoints = np.array([person_keypoints], dtype=np.float32)
+                        clothing_keypoints = person_keypoints.copy()
+                
+                # 차원 검증
+                if person_keypoints.ndim == 1:
+                    person_keypoints = person_keypoints.reshape(1, -1)
+                    clothing_keypoints = clothing_keypoints.reshape(1, -1)
+                
+                # 최소 3개의 키포인트가 필요 (Procrustes 분석 요구사항)
+                if person_keypoints.shape[0] < 3:
+                    # 기본 키포인트 추가
+                    default_keypoints = np.array([
+                        [0.0, 0.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0]
+                    ], dtype=np.float32)
+                    person_keypoints = np.vstack([person_keypoints, default_keypoints[:3-person_keypoints.shape[0]]])
+                    clothing_keypoints = person_keypoints.copy()
+                
+                # Procrustes 분석 기반 최적 변형 (MPS float32 호환성)
                 transformation_matrix = self.geometric_matcher.compute_transformation_matrix_procrustes(
-                    torch.tensor(clothing_keypoints, device=self.device),
-                    torch.tensor(person_keypoints, device=self.device)
+                    torch.tensor(clothing_keypoints, dtype=torch.float32, device=self.device),
+                    torch.tensor(person_keypoints, dtype=torch.float32, device=self.device)
                 )
+                
+                # 🔥 MPS 호환성을 위한 float32 강제 변환
+                if transformation_matrix is not None and transformation_matrix.dtype != torch.float32:
+                    transformation_matrix = transformation_matrix.to(torch.float32)
                 
                 self.logger.info("✅ Procrustes 분석 기반 매칭 완료")
                 return {
@@ -2676,16 +2754,23 @@ class GeometricMatchingStep(BaseStepMixin):
         
         # 폴백: Identity 변형
         if transformation_matrix is None:
-            transformation_matrix = torch.eye(2, 3, device=self.device).unsqueeze(0)
+            # 🔥 MPS 호환성을 위한 float32 Identity 행렬 생성
+            transformation_matrix = torch.eye(2, 3, dtype=torch.float32, device=self.device).unsqueeze(0)
+        
+        # 🔥 MPS 호환성을 위한 float32 강제 변환
+        if transformation_matrix is not None and transformation_matrix.dtype != torch.float32:
+            transformation_matrix = transformation_matrix.to(torch.float32)
         
         if transformation_grid is None:
             transformation_grid = self._create_identity_grid(1, 256, 192)
         
         if warped_clothing is None:
             try:
+                # 🔥 MPS 호환성을 위한 padding_mode 조정
+                padding_mode = 'zeros' if transformation_grid.device.type == 'mps' else 'border'
                 warped_clothing = F.grid_sample(
                     clothing_tensor, transformation_grid, mode='bilinear',
-                    padding_mode='border', align_corners=False
+                    padding_mode=padding_mode, align_corners=False
                 )
             except Exception:
                 warped_clothing = clothing_tensor.clone()
@@ -3462,13 +3547,17 @@ class GeometricMatchingStep(BaseStepMixin):
             self.logger.warning(f"M3 Max 최적화 실패: {e}")
 
     def _create_identity_grid(self, batch_size: int, H: int, W: int) -> torch.Tensor:
-        """Identity 그리드 생성"""
+        """Identity 그리드 생성 (MPS float32 호환성)"""
+        # 🔥 MPS 호환성을 위한 float32 dtype 명시
         y, x = torch.meshgrid(
-            torch.linspace(-1, 1, H, device=self.device),
-            torch.linspace(-1, 1, W, device=self.device),
+            torch.linspace(-1, 1, H, dtype=torch.float32, device=self.device),
+            torch.linspace(-1, 1, W, dtype=torch.float32, device=self.device),
             indexing='ij'
         )
         grid = torch.stack([x, y], dim=-1).unsqueeze(0).repeat(batch_size, 1, 1, 1)
+        # 🔥 MPS 호환성을 위한 float32 강제 변환
+        if grid.dtype != torch.float32:
+            grid = grid.to(torch.float32)
         return grid
 
     def _preprocess_image(self, image) -> np.ndarray:

@@ -422,8 +422,37 @@ if BaseStepMixin is None:
                     try:
                         session_manager = self._get_service_from_central_hub('session_manager')
                         if session_manager:
-                            import asyncio
-                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                            person_image, clothing_image = None, None
+                            
+                            try:
+                                # 세션 매니저가 동기 메서드를 제공하는지 확인
+                                if hasattr(session_manager, 'get_session_images_sync'):
+                                    person_image, clothing_image = session_manager.get_session_images_sync(step_input['session_id'])
+                                elif hasattr(session_manager, 'get_session_images'):
+                                    # 비동기 메서드를 동기적으로 호출
+                                    import asyncio
+                                    import concurrent.futures
+                                    
+                                    def run_async_session_load():
+                                        try:
+                                            return asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                        except Exception as async_error:
+                                            self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                            return None, None
+                                    
+                                    try:
+                                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                                            future = executor.submit(run_async_session_load)
+                                            person_image, clothing_image = future.result(timeout=10)
+                                    except Exception as executor_error:
+                                        self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                        person_image, clothing_image = None, None
+                                else:
+                                    self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                                person_image, clothing_image = None, None
+                            
                             if person_image:
                                 image = person_image
                     except Exception as e:
@@ -1637,6 +1666,7 @@ class HRNetModel:
         self.model = None
         self.loaded = False
         self.input_size = (256, 192)  # HRNet 기본 입력 크기
+        self.device = DEVICE  # 디바이스 속성 추가
         self.logger = logging.getLogger(f"{__name__}.HRNetModel")
     
     def load_model(self) -> bool:
@@ -1647,8 +1677,41 @@ class HRNetModel:
             if self.model_path and self.model_path.exists():
                 # 체크포인트 로딩
                 checkpoint = torch.load(self.model_path, map_location='cpu', weights_only=True)
-                self.model.load_state_dict(checkpoint, strict=False)
-                self.logger.debug(f"✅ HRNet 체크포인트 로딩: {self.model_path}")
+                
+                # 체크포인트 키 확인 및 매핑
+                if isinstance(checkpoint, dict):
+                    if 'state_dict' in checkpoint:
+                        state_dict = checkpoint['state_dict']
+                    else:
+                        state_dict = checkpoint
+                    
+                    # 모델 state_dict와 체크포인트 키 매핑
+                    model_state_dict = self.model.state_dict()
+                    mapped_state_dict = {}
+                    
+                    for key, value in state_dict.items():
+                        # 키 매핑 로직
+                        if key in model_state_dict:
+                            if model_state_dict[key].shape == value.shape:
+                                mapped_state_dict[key] = value
+                            else:
+                                self.logger.warning(f"⚠️ HRNet 키 {key} 형태 불일치: {value.shape} vs {model_state_dict[key].shape}")
+                        else:
+                            # 키 이름 변환 시도
+                            mapped_key = self._map_hrnet_checkpoint_key(key)
+                            if mapped_key and mapped_key in model_state_dict:
+                                if model_state_dict[mapped_key].shape == value.shape:
+                                    mapped_state_dict[mapped_key] = value
+                                else:
+                                    self.logger.warning(f"⚠️ HRNet 매핑된 키 {mapped_key} 형태 불일치")
+                    
+                    if mapped_state_dict:
+                        self.model.load_state_dict(mapped_state_dict, strict=False)
+                        self.logger.info(f"✅ HRNet 체크포인트 매핑 성공: {len(mapped_state_dict)}개 키")
+                    else:
+                        self.logger.warning("⚠️ HRNet 체크포인트 매핑 실패 - 랜덤 초기화 사용")
+                else:
+                    self.logger.warning("⚠️ HRNet 체크포인트 형식 오류 - 랜덤 초기화 사용")
             else:
                 self.logger.info("✅ HRNet 베이스 모델 생성")
             
@@ -1660,6 +1723,53 @@ class HRNetModel:
         except Exception as e:
             self.logger.error(f"❌ HRNet 모델 로딩 실패: {e}")
             return False
+    
+    def _map_hrnet_checkpoint_key(self, key: str) -> Optional[str]:
+        """HRNet 체크포인트 키를 모델 구조에 맞게 정확히 매핑"""
+        
+        # 🔥 체크포인트 분석 결과에 따른 정확한 매핑
+        # 체크포인트: backbone.stage1.0.conv1.weight
+        # 모델: layer1.0.conv1.weight
+        
+        # Stage 1 매핑 (ResNet-like)
+        if key.startswith('backbone.stage1.'):
+            return key.replace('backbone.stage1.', 'stage1.')
+        
+        # Stage 2-4 매핑 (HRNet branches)
+        elif key.startswith('backbone.stage2.'):
+            return key.replace('backbone.stage2.', 'stage2.')
+        elif key.startswith('backbone.stage3.'):
+            return key.replace('backbone.stage3.', 'stage3.')
+        elif key.startswith('backbone.stage4.'):
+            return key.replace('backbone.stage4.', 'stage4.')
+        
+        # Stem 매핑 (conv1, conv2, bn1, bn2)
+        elif key.startswith('backbone.conv1.'):
+            return key.replace('backbone.conv1.', 'conv1.')
+        elif key.startswith('backbone.conv2.'):
+            return key.replace('backbone.conv2.', 'conv2.')
+        elif key.startswith('backbone.bn1.'):
+            return key.replace('backbone.bn1.', 'bn1.')
+        elif key.startswith('backbone.bn2.'):
+            return key.replace('backbone.bn2.', 'bn2.')
+        
+        # Final layer 매핑
+        elif key.startswith('keypoint_head.final_layer.'):
+            return key.replace('keypoint_head.final_layer.', 'final_layer.')
+        
+        # 기타 일반적인 매핑
+        key_mappings = {
+            'module.': '',
+            'model.': '',
+            'net.': '',
+            'hrnet.': '',
+        }
+        
+        for old_prefix, new_prefix in key_mappings.items():
+            if key.startswith(old_prefix):
+                return key.replace(old_prefix, new_prefix)
+        
+        return key
     
     def _create_hrnet_model(self) -> nn.Module:
         """완전한 HRNet 모델 생성 (Multi-Resolution Parallel Networks)"""
@@ -1895,12 +2005,12 @@ class HRNetModel:
                 return x_fuse
         
         class PoseHighResolutionNet(nn.Module):
-            """완전한 HRNet 포즈 추정 네트워크"""
+            """완전한 HRNet 포즈 추정 네트워크 (체크포인트 호환)"""
             
             def __init__(self, cfg=None, **kwargs):
                 super().__init__()
                 
-                # HRNet-W48 설정 (기본값)
+                # HRNet-W48 설정 (체크포인트와 호환)
                 if cfg is None:
                     cfg = {
                         'STAGE2': {
@@ -1931,15 +2041,15 @@ class HRNetModel:
                 
                 self.inplanes = 64
                 
-                # Stem 네트워크
+                # Stem 네트워크 (3채널 입력 보장)
                 self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1, bias=False)
                 self.bn1 = nn.BatchNorm2d(64)
                 self.conv2 = nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1, bias=False)
                 self.bn2 = nn.BatchNorm2d(64)
                 self.relu = nn.ReLU(inplace=True)
                 
-                # Stage 1 (ResNet-like)
-                self.layer1 = self._make_layer(Bottleneck, 64, 4)
+                # Stage 1 (ResNet-like) - BasicBlock 사용하여 64채널 출력
+                self.stage1 = self._make_layer(BasicBlock, 64, 4)
                 
                 # Stage 2
                 stage2_cfg = cfg['STAGE2']
@@ -1948,7 +2058,8 @@ class HRNetModel:
                 num_channels = [
                     num_channels[i] * block.expansion for i in range(len(num_channels))
                 ]
-                self.transition1 = self._make_transition_layer([256], num_channels)
+                # Stage 1의 출력은 64채널 (BasicBlock expansion=1, 64*1=64)
+                self.transition1 = self._make_transition_layer([64], num_channels)
                 self.stage2, pre_stage_channels = self._make_stage(
                     stage2_cfg, num_channels)
                 
@@ -2077,6 +2188,11 @@ class HRNetModel:
             
             def forward(self, x):
                 # Stem
+                # 디버깅: 입력 텐서 형태 확인
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"🔍 HRNet 입력 텐서 형태: {x.shape}")
+                    self.logger.info(f"🔍 HRNet 입력 텐서 채널: {x.shape[1]}")
+                
                 x = self.conv1(x)
                 x = self.bn1(x)
                 x = self.relu(x)
@@ -2085,7 +2201,12 @@ class HRNetModel:
                 x = self.relu(x)
                 
                 # Stage 1
-                x = self.layer1(x)
+                x = self.stage1(x)
+                
+                # 디버깅: Stage 1 후 텐서 형태 확인
+                if hasattr(self, 'logger'):
+                    self.logger.info(f"🔍 HRNet Stage 1 후 텐서 형태: {x.shape}")
+                    self.logger.info(f"🔍 HRNet Stage 1 후 텐서 채널: {x.shape[1]}")
                 
                 # Stage 2
                 x_list = []
@@ -2213,6 +2334,10 @@ class HRNetModel:
         ])
         
         tensor = transform(Image.fromarray(padded)).unsqueeze(0)
+        
+        # 디버깅: 텐서 형태 확인
+        self.logger.info(f"🔍 HRNet 전처리 후 텐서 형태: {tensor.shape}")
+        self.logger.info(f"🔍 HRNet 전처리 후 텐서 채널: {tensor.shape[1]}")
         
         return tensor.to(self.device), scale_factor
     
@@ -3372,16 +3497,36 @@ class PoseEstimationStep(BaseStepMixin):
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # session_manager.get_session_images가 async이므로 동기적으로 실행
-                        import asyncio
+                        person_image, clothing_image = None, None
+                        
                         try:
-                            loop = asyncio.get_event_loop()
-                            if loop.is_running():
-                                person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                            # 세션 매니저가 동기 메서드를 제공하는지 확인
+                            if hasattr(session_manager, 'get_session_images_sync'):
+                                person_image, clothing_image = session_manager.get_session_images_sync(step_input['session_id'])
+                            elif hasattr(session_manager, 'get_session_images'):
+                                # 비동기 메서드를 동기적으로 호출
+                                import asyncio
+                                import concurrent.futures
+                                
+                                def run_async_session_load():
+                                    try:
+                                        return asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                    except Exception as async_error:
+                                        self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                        return None, None
+                                
+                                try:
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(run_async_session_load)
+                                        person_image, clothing_image = future.result(timeout=10)
+                                except Exception as executor_error:
+                                    self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                    person_image, clothing_image = None, None
                             else:
-                                person_image, clothing_image = loop.run_until_complete(session_manager.get_session_images(step_input['session_id']))
-                        except RuntimeError:
-                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(step_input['session_id']))
+                                self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                            person_image, clothing_image = None, None
                         
                         if person_image:
                             image = person_image
@@ -3435,22 +3580,53 @@ class PoseEstimationStep(BaseStepMixin):
         try:
             start_time = time.time()
             
+            # 🔥 디버깅: 입력 데이터 상세 로깅
+            self.logger.info(f"🔍 [DEBUG] Pose Estimation 입력 데이터 키들: {list(processed_input.keys())}")
+            self.logger.info(f"🔍 [DEBUG] Pose Estimation 입력 데이터 타입들: {[(k, type(v).__name__) for k, v in processed_input.items()]}")
+            
+            # 입력 데이터 검증
+            if not processed_input:
+                self.logger.error("❌ [DEBUG] Pose Estimation 입력 데이터가 비어있습니다")
+                raise ValueError("입력 데이터가 비어있습니다")
+            
+            self.logger.info(f"✅ [DEBUG] Pose Estimation 입력 데이터 검증 완료")
+            
             # 🔥 Session에서 이미지 데이터를 먼저 가져오기
             image = None
             if 'session_id' in processed_input:
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # 세션에서 원본 이미지 직접 로드 (동기적으로)
-                        import asyncio
+                        person_image, clothing_image = None, None
+                        
                         try:
-                            loop = asyncio.get_event_loop()
-                            if loop.is_running():
-                                person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
+                            # 세션 매니저가 동기 메서드를 제공하는지 확인
+                            if hasattr(session_manager, 'get_session_images_sync'):
+                                person_image, clothing_image = session_manager.get_session_images_sync(processed_input['session_id'])
+                            elif hasattr(session_manager, 'get_session_images'):
+                                # 비동기 메서드를 동기적으로 호출
+                                import asyncio
+                                import concurrent.futures
+                                
+                                def run_async_session_load():
+                                    try:
+                                        return asyncio.run(session_manager.get_session_images(processed_input['session_id']))
+                                    except Exception as async_error:
+                                        self.logger.warning(f"⚠️ 비동기 세션 로드 실패: {async_error}")
+                                        return None, None
+                                
+                                try:
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(run_async_session_load)
+                                        person_image, clothing_image = future.result(timeout=10)
+                                except Exception as executor_error:
+                                    self.logger.warning(f"⚠️ 세션 로드 ThreadPoolExecutor 실패: {executor_error}")
+                                    person_image, clothing_image = None, None
                             else:
-                                person_image, clothing_image = loop.run_until_complete(session_manager.get_session_images(processed_input['session_id']))
-                        except RuntimeError:
-                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(processed_input['session_id']))
+                                self.logger.warning("⚠️ 세션 매니저에 적절한 메서드가 없음")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                            person_image, clothing_image = None, None
                         image = person_image  # 포즈 추정은 사람 이미지 사용
                         self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: {type(image)}")
                 except Exception as e:
