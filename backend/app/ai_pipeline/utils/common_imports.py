@@ -638,10 +638,7 @@ HUMAN_PARSING_CLASSES = {
 # ==============================================
 
 # 환경 정보 출력
-print(f"🔥 MyCloset AI - Common Imports v2.0 초기화 완료!")
-print(f"🖥️ 환경: M3 Max={IS_M3_MAX}, conda={CONDA_INFO['conda_env']}")
-print(f"🎯 디바이스: {DEVICE}, PyTorch={TORCH_AVAILABLE}, 메모리={MEMORY_GB:.1f}GB")
-print(f"📚 라이브러리: PIL={PIL_AVAILABLE}, CV2={CV2_AVAILABLE}, SciPy={SCIPY_AVAILABLE}")
+print("✅ 라이브러리 로드 완료")
 
 # 전역으로 사용 가능하도록 설정
 globals()['safe_copy'] = safe_copy

@@ -46,6 +46,14 @@ import sys
 import traceback
 import gc
 
+# Step 로깅 활성화
+STEP_LOGGING = os.getenv('STEP_LOGGING', 'true').lower() == 'true'
+
+def print_step(message):
+    """Step 실행 정보만 출력"""
+    if STEP_LOGGING:
+        print(f"🔧 {message}")
+
 from typing import Optional, Dict, Any, List, Tuple, Union, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
@@ -154,21 +162,127 @@ def _get_session_manager():
             else:
                 logger.warning("⚠️ Central Hub에 SessionManager 없음")
         
-        # 최종 폴백: 직접 생성
-        print("🔄 SessionManager 직접 생성 시도...")
-        logger.info("🔄 SessionManager 직접 생성 시도...")
+        # 최종 폴백: SimpleSessionManager 직접 생성
+        print("🔄 SimpleSessionManager 직접 생성 시도...")
+        logger.info("🔄 SimpleSessionManager 직접 생성 시도...")
 
-        session_manager = SessionManager()
-        print("✅ SessionManager 직접 생성 성공")
-        logger.info("✅ SessionManager 직접 생성 성공")
+        # SimpleSessionManager 클래스 정의 (내부 클래스)
+        class SimpleSessionManager:
+            def __init__(self):
+                self.sessions = {}
+            
+            async def create_session(self, person_image, clothing_image, measurements):
+                session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+                self.sessions[session_id] = {
+                    'session_id': session_id,
+                    'status': 'active',
+                    'created_at': datetime.now().isoformat(),
+                    'data': {}
+                }
+                return session_id
+            
+            async def get_session_status(self, session_id):
+                if session_id in self.sessions:
+                    return self.sessions[session_id]
+                return {"session_id": session_id, "status": "not_found"}
+            
+            async def update_session(self, session_id, session_data):
+                if session_id in self.sessions:
+                    if 'data' not in self.sessions[session_id]:
+                        self.sessions[session_id]['data'] = {}
+                    self.sessions[session_id]['data'].update(session_data)
+                    return True
+                return False
+            
+            async def get_session_images(self, session_id):
+                if session_id in self.sessions:
+                    session = self.sessions[session_id]
+                    if 'data' in session and session['data']:
+                        person_img_b64 = session['data'].get('original_person_image', '')
+                        clothing_img_b64 = session['data'].get('original_clothing_image', '')
+                        if person_img_b64 and clothing_img_b64:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
+                            person_bytes = base64.b64decode(person_img_b64)
+                            person_img = Image.open(BytesIO(person_bytes)).convert('RGB')
+                            clothing_bytes = base64.b64decode(clothing_img_b64)
+                            clothing_img = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                            return person_img, clothing_img
+                raise Exception(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            async def prepare_step_input_data(self, session_id, step_id):
+                if session_id not in self.sessions:
+                    raise Exception(f"세션을 찾을 수 없습니다: {session_id}")
+                session = self.sessions[session_id]
+                input_data = {'session_id': session_id, 'step_id': step_id}
+                if 'data' in session and session['data']:
+                    data = session['data']
+                    if 'measurements' in data:
+                        input_data.update(data['measurements'])
+                    for key, value in data.items():
+                        if key.startswith('step_') and key.endswith('_result'):
+                            input_data[key] = value
+                    if 'original_person_image' in data and 'original_clothing_image' in data:
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        person_img_b64 = data['original_person_image']
+                        person_bytes = base64.b64decode(person_img_b64)
+                        person_img = Image.open(BytesIO(person_bytes)).convert('RGB')
+                        input_data['person_image'] = person_img
+                        clothing_img_b64 = data['original_clothing_image']
+                        clothing_bytes = base64.b64decode(clothing_img_b64)
+                        clothing_img = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                        input_data['clothing_image'] = clothing_img
+                return input_data
+            
+            async def save_step_result(self, session_id, step_id, result):
+                if session_id not in self.sessions:
+                    raise Exception(f"세션을 찾을 수 없습니다: {session_id}")
+                session = self.sessions[session_id]
+                if 'data' not in session:
+                    session['data'] = {}
+                step_key = f'step_{step_id:02d}_result'
+                session['data'][step_key] = result
+                session['data'][f'step_{step_id:02d}_completed'] = True
+                return True
+            
+            async def get_all_sessions_status(self):
+                """모든 세션의 상태를 반환하는 메서드 (비동기)"""
+                result = {}
+                for session_id, session_data in self.sessions.items():
+                    result[session_id] = {
+                        'session_id': session_id,
+                        'status': session_data.get('status', 'unknown'),
+                        'created_at': session_data.get('created_at', ''),
+                        'data_keys': list(session_data.get('data', {}).keys())
+                    }
+                return result
+            
+            def get_all_sessions_status_sync(self):
+                """모든 세션의 상태를 반환하는 메서드 (동기)"""
+                result = {}
+                for session_id, session_data in self.sessions.items():
+                    result[session_id] = {
+                        'session_id': session_id,
+                        'status': session_data.get('status', 'unknown'),
+                        'created_at': session_data.get('created_at', ''),
+                        'data_keys': list(session_data.get('data', {}).keys())
+                    }
+                return result
+
+        session_manager = SimpleSessionManager()
+        print("✅ SimpleSessionManager 직접 생성 성공")
+        logger.info("✅ SimpleSessionManager 직접 생성 성공")
         
         # Central Hub에 등록 시도
         if container:
             try:
                 container.register('session_manager', session_manager)
-                logger.info("✅ SessionManager Central Hub 등록 성공")
+                logger.info("✅ SimpleSessionManager Central Hub 등록 성공")
             except Exception as e:
-                logger.warning(f"⚠️ SessionManager Central Hub 등록 실패: {e}")
+                logger.warning(f"⚠️ SimpleSessionManager Central Hub 등록 실패: {e}")
         
         return session_manager
         
@@ -254,6 +368,11 @@ def _get_or_create_global_session_manager():
                     self.sessions = {}
                 
                 async def create_session(self, person_image, clothing_image, measurements):
+                    # 세션 수가 100개를 넘으면 오래된 세션 정리
+                    if len(self.sessions) >= 100:
+                        logger.info(f"🔍 세션 수 제한 도달: {len(self.sessions)}개, 정리 시작")
+                        await self._cleanup_old_sessions()
+                    
                     session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
                     logger.info(f"✅ SimpleSessionManager 세션 생성: {session_id}")
                     logger.info(f"🔍 생성 전 세션 수: {len(self.sessions)}")
@@ -263,6 +382,7 @@ def _get_or_create_global_session_manager():
                         'session_id': session_id,
                         'status': 'active',
                         'created_at': datetime.now().isoformat(),
+                        'last_activity': datetime.now().isoformat(),
                         'data': {}
                     }
                     
@@ -272,11 +392,112 @@ def _get_or_create_global_session_manager():
                     
                     return session_id
                 
+                async def _cleanup_old_sessions(self, max_age_hours: int = 24, max_inactive_hours: int = 2):  # 24시간 생성, 2시간 비활동
+                    """오래된 세션 정리 (생성 시간 + 비활동 시간 기준)"""
+                    current_time = time.time()
+                    cleaned_count = 0
+                    
+                    logger.info(f"🔍 세션 정리 시작: 현재 세션 수 {len(self.sessions)}개")
+                    
+                    for session_id in list(self.sessions.keys()):
+                        session_data = self.sessions[session_id]
+                        should_cleanup = False
+                        cleanup_reason = ""
+                        
+                        # 1. 생성 시간 기준 정리 (24시간)
+                        if 'created_at' in session_data:
+                            try:
+                                created_time = datetime.fromisoformat(session_data['created_at']).timestamp()
+                                age_hours = (current_time - created_time) / 3600
+                                
+                                if age_hours > max_age_hours:
+                                    should_cleanup = True
+                                    cleanup_reason = f"생성 후 {age_hours:.1f}시간 경과"
+                            except Exception as e:
+                                logger.warning(f"⚠️ 세션 {session_id}의 created_at 형식 오류: {e}")
+                        
+                        # 2. 비활동 시간 기준 정리 (2시간)
+                        if not should_cleanup and 'last_activity' in session_data:
+                            try:
+                                last_activity = datetime.fromisoformat(session_data['last_activity']).timestamp()
+                                inactive_hours = (current_time - last_activity) / 3600
+                                
+                                if inactive_hours > max_inactive_hours:
+                                    should_cleanup = True
+                                    cleanup_reason = f"비활동 {inactive_hours:.1f}시간"
+                            except Exception as e:
+                                logger.warning(f"⚠️ 세션 {session_id}의 last_activity 형식 오류: {e}")
+                        
+                        # 3. 세션 정리 실행
+                        if should_cleanup:
+                            logger.info(f"🧹 세션 삭제: {session_id} ({cleanup_reason})")
+                            del self.sessions[session_id]
+                            cleaned_count += 1
+                        else:
+                            logger.debug(f"🔍 세션 유지: {session_id}")
+                    
+                    if cleaned_count > 0:
+                        logger.info(f"🧹 세션 {cleaned_count}개 정리 완료")
+                    else:
+                        logger.info(f"🔍 정리할 세션 없음")
+                    
+                    logger.info(f"🔍 세션 정리 완료: 남은 세션 수 {len(self.sessions)}개")
+                    current_time = time.time()
+                    cleaned_count = 0
+                    
+                    logger.info(f"🔍 세션 정리 시작: 현재 세션 수 {len(self.sessions)}개")
+                    
+                    for session_id in list(self.sessions.keys()):
+                        session_data = self.sessions[session_id]
+                        should_cleanup = False
+                        cleanup_reason = ""
+                        
+                        # 1. 생성 시간 기준 정리 (24시간)
+                        if 'created_at' in session_data:
+                            try:
+                                created_time = datetime.fromisoformat(session_data['created_at']).timestamp()
+                                age_hours = (current_time - created_time) / 3600
+                                
+                                if age_hours > max_age_hours:
+                                    should_cleanup = True
+                                    cleanup_reason = f"생성 후 {age_hours:.1f}시간 경과"
+                            except Exception as e:
+                                logger.warning(f"⚠️ 세션 {session_id}의 created_at 형식 오류: {e}")
+                        
+                        # 2. 비활동 시간 기준 정리 (2시간)
+                        if not should_cleanup and 'last_activity' in session_data:
+                            try:
+                                last_activity = datetime.fromisoformat(session_data['last_activity']).timestamp()
+                                inactive_hours = (current_time - last_activity) / 3600
+                                
+                                if inactive_hours > max_inactive_hours:
+                                    should_cleanup = True
+                                    cleanup_reason = f"비활동 {inactive_hours:.1f}시간"
+                            except Exception as e:
+                                logger.warning(f"⚠️ 세션 {session_id}의 last_activity 형식 오류: {e}")
+                        
+                        # 3. 세션 정리 실행
+                        if should_cleanup:
+                            logger.info(f"🧹 세션 삭제: {session_id} ({cleanup_reason})")
+                            del self.sessions[session_id]
+                            cleaned_count += 1
+                        else:
+                            logger.debug(f"🔍 세션 유지: {session_id}")
+                    
+                    if cleaned_count > 0:
+                        logger.info(f"🧹 세션 {cleaned_count}개 정리 완료")
+                    else:
+                        logger.info(f"🔍 정리할 세션 없음")
+                    
+                    logger.info(f"🔍 세션 정리 완료: 남은 세션 수 {len(self.sessions)}개")
+                
                 async def get_session_status(self, session_id):
                     logger.info(f"✅ SimpleSessionManager 세션 상태 조회: {session_id}")
                     logger.info(f"🔍 현재 세션 키들: {list(self.sessions.keys())}")
                     logger.info(f"🔍 요청된 세션 ID: {session_id}")
                     logger.info(f"🔍 세션 존재 여부: {session_id in self.sessions}")
+                    logger.info(f"🔍 총 세션 수: {len(self.sessions)}개")
+                    logger.info(f"🔍 세션 매니저 ID: {id(self)}")
                     
                     if session_id in self.sessions:
                         session = self.sessions[session_id]
@@ -305,8 +526,11 @@ def _get_or_create_global_session_manager():
                             self.sessions[session_id]['data'] = {}
                         
                         self.sessions[session_id]['data'].update(session_data)
+                        # 마지막 활동 시간 업데이트
+                        self.sessions[session_id]['last_activity'] = datetime.now().isoformat()
                         logger.info(f"🔍 저장된 세션 데이터 키들: {list(session_data.keys())}")
                         logger.info(f"🔍 업데이트 후 세션 데이터 키들: {list(self.sessions[session_id]['data'].keys())}")
+                        logger.info(f"🔍 세션 업데이트 완료: {session_id} (총 세션 수: {len(self.sessions)}개)")
                         return True
                     else:
                         logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
@@ -362,6 +586,128 @@ def _get_or_create_global_session_manager():
                         logger.warning(f"⚠️ 세션을 찾을 수 없음: {session_id}")
                         logger.warning(f"⚠️ 사용 가능한 세션: {list(self.sessions.keys())}")
                         raise Exception(f"세션을 찾을 수 없습니다: {session_id}")
+                
+                async def prepare_step_input_data(self, session_id: str, step_id: int):
+                    """세션에서 Step 입력 데이터를 준비하는 메서드"""
+                    logger.info(f"✅ SimpleSessionManager prepare_step_input_data: {session_id}, step_id={step_id}")
+                    logger.info(f"🔍 현재 세션 키들: {list(self.sessions.keys())}")
+                    logger.info(f"🔍 요청된 세션 ID: {session_id}")
+                    logger.info(f"🔍 세션 존재 여부: {session_id in self.sessions}")
+                    
+                    if session_id not in self.sessions:
+                        logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
+                        raise Exception(f"세션을 찾을 수 없습니다: {session_id}")
+                    
+                    session = self.sessions[session_id]
+                    logger.info(f"🔍 세션 구조: {list(session.keys())}")
+                    
+                    # 기본 입력 데이터 준비
+                    input_data = {
+                        'session_id': session_id,
+                        'step_id': step_id
+                    }
+                    
+                    # 세션 데이터에서 필요한 정보 추출
+                    if 'data' in session and session['data']:
+                        data = session['data']
+                        
+                        # 측정값 추가
+                        if 'measurements' in data:
+                            input_data.update(data['measurements'])
+                        
+                        # 이전 단계 결과들 추가
+                        for key, value in data.items():
+                            if key.startswith('step_') and key.endswith('_result'):
+                                input_data[key] = value
+                        
+                        # 이미지 데이터는 별도로 처리 (PIL Image로 변환)
+                        if 'original_person_image' in data and 'original_clothing_image' in data:
+                            try:
+                                import base64
+                                from io import BytesIO
+                                from PIL import Image
+                                
+                                # person_image 변환
+                                person_img_b64 = data['original_person_image']
+                                person_bytes = base64.b64decode(person_img_b64)
+                                person_img = Image.open(BytesIO(person_bytes)).convert('RGB')
+                                input_data['person_image'] = person_img
+                                
+                                # clothing_image 변환
+                                clothing_img_b64 = data['original_clothing_image']
+                                clothing_bytes = base64.b64decode(clothing_img_b64)
+                                clothing_img = Image.open(BytesIO(clothing_bytes)).convert('RGB')
+                                input_data['clothing_image'] = clothing_img
+                                
+                                logger.info(f"✅ 이미지 변환 완료: {person_img.size}, {clothing_img.size}")
+                            except Exception as e:
+                                logger.error(f"❌ 이미지 변환 실패: {e}")
+                                raise Exception(f"이미지 변환 실패: {e}")
+                    
+                    logger.info(f"✅ prepare_step_input_data 완료: {list(input_data.keys())}")
+                    return input_data
+                
+                async def save_step_result(self, session_id: str, step_id: int, result: dict):
+                    """Step 결과를 세션에 저장하는 메서드"""
+                    logger.info(f"✅ SimpleSessionManager save_step_result: {session_id}, step_id={step_id}")
+                    
+                    if session_id not in self.sessions:
+                        logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
+                        raise Exception(f"세션을 찾을 수 없습니다: {session_id}")
+                    
+                    session = self.sessions[session_id]
+                    if 'data' not in session:
+                        session['data'] = {}
+                    
+                    # Step 결과 저장
+                    step_key = f'step_{step_id:02d}_result'
+                    session['data'][step_key] = result
+                    session['data'][f'step_{step_id:02d}_completed'] = True
+                    
+                    # 파이프라인 완료 시 세션 정리 (Step 8 완료 후)
+                    if step_id == 8:
+                        logger.info(f"🎉 파이프라인 완료! 세션 {session_id} 정리 예약")
+                        # 30분 후 세션 정리 (결과 확인 시간 고려)
+                        import asyncio
+                        asyncio.create_task(self._schedule_session_cleanup(session_id, delay_minutes=30))
+                    
+                    logger.info(f"✅ Step {step_id} 결과 저장 완료: {step_key}")
+                    return True
+                
+                async def _schedule_session_cleanup(self, session_id: str, delay_minutes: int = 30):
+                    """지연 후 세션 정리"""
+                    import asyncio
+                    await asyncio.sleep(delay_minutes * 60)  # 분을 초로 변환
+                    
+                    if session_id in self.sessions:
+                        del self.sessions[session_id]
+                        logger.info(f"🧹 완료된 세션 정리: {session_id}")
+                    else:
+                        logger.info(f"🔍 이미 정리된 세션: {session_id}")
+                
+                async def get_all_sessions_status(self):
+                    """모든 세션의 상태를 반환하는 메서드 (비동기)"""
+                    result = {}
+                    for session_id, session_data in self.sessions.items():
+                        result[session_id] = {
+                            'session_id': session_id,
+                            'status': session_data.get('status', 'unknown'),
+                            'created_at': session_data.get('created_at', ''),
+                            'data_keys': list(session_data.get('data', {}).keys())
+                        }
+                    return result
+                
+                def get_all_sessions_status_sync(self):
+                    """모든 세션의 상태를 반환하는 메서드 (동기)"""
+                    result = {}
+                    for session_id, session_data in self.sessions.items():
+                        result[session_id] = {
+                            'session_id': session_id,
+                            'status': session_data.get('status', 'unknown'),
+                            'created_at': session_data.get('created_at', ''),
+                            'data_keys': list(session_data.get('data', {}).keys())
+                        }
+                    return result
             
             _global_session_manager = SimpleSessionManager()
             logger.info("✅ 글로벌 SimpleSessionManager 생성 완료")
@@ -478,14 +824,29 @@ def _process_step_sync(
     api_input: Dict[str, Any],
     session_id: Optional[str] = None
 ) -> Dict[str, Any]:
+    print_step(f"Step {step_id} ({step_name}) 시작")
     """동기 Step 처리 로직 (별도 스레드에서 실행)"""
+    
+    # 🔥 추가 디버깅: 함수 시작 로그
+    logger.info(f"🔥 _process_step_sync 시작: step_name={step_name}, step_id={step_id}, session_id={session_id}")
+    logger.info(f"🔥 _process_step_sync - api_input 키들: {list(api_input.keys()) if api_input else 'None'}")
+    
     try:
+        # 🔥 추가 디버깅: Central Hub 서비스 조회 전
+        logger.info(f"🔥 _process_step_sync - Central Hub 서비스 조회 시작")
+        
         # Central Hub 서비스 조회
         step_service_manager = _get_step_service_manager()
         session_manager = _get_session_manager()
         container = _get_central_hub_container()
         
+        logger.info(f"🔥 _process_step_sync - Central Hub 서비스 조회 완료:")
+        logger.info(f"   - step_service_manager: {step_service_manager is not None}")
+        logger.info(f"   - session_manager: {session_manager is not None}")
+        logger.info(f"   - container: {container is not None}")
+        
         if not step_service_manager:
+            logger.error(f"❌ _process_step_sync - StepServiceManager not available from Central Hub")
             raise Exception("StepServiceManager not available from Central Hub")
         
         # 세션 처리
@@ -534,14 +895,65 @@ def _process_step_sync(
         if 'original_clothing_image' in existing_session_data:
             logger.info(f"  - original_clothing_image length: {len(existing_session_data['original_clothing_image'])}")
         
-        # Central Hub 기반 Step 처리 (동기적으로)
-        result = step_service_manager.process_step_by_name_sync(
-            step_name=step_name,
-            api_input=enhanced_input
-        )
+        # 🔥 추가 디버깅: process_step_by_name_sync 호출 전
+        logger.info(f"🔥 _process_step_sync - process_step_by_name_sync 호출 시작")
+        logger.info(f"🔥 _process_step_sync - step_service_manager 타입: {type(step_service_manager)}")
+        logger.info(f"🔥 _process_step_sync - process_step_by_name_sync 메서드 존재 여부: {hasattr(step_service_manager, 'process_step_by_name_sync')}")
+        logger.info(f"🔥 _process_step_sync - enhanced_input 키들: {list(enhanced_input.keys())}")
+        
+        # 🔥 추가 디버깅: Step 처리 전 상태 확인
+        logger.info(f"🔥 _process_step_sync - Step 처리 전 상태:")
+        logger.info(f"   - step_name: {step_name}")
+        logger.info(f"   - step_id: {step_id}")
+        logger.info(f"   - step_service_manager 타입: {type(step_service_manager)}")
+        logger.info(f"   - process_step_by_name_sync 메서드 존재 여부: {hasattr(step_service_manager, 'process_step_by_name_sync')}")
+        logger.info(f"   - enhanced_input 키들: {list(enhanced_input.keys())}")
+        
+        # 🔥 추가 디버깅: Step 처리 전 상태 확인
+        logger.info(f"🔥 _process_step_sync - Step 처리 전 상태:")
+        logger.info(f"   - step_name: {step_name}")
+        logger.info(f"   - step_id: {step_id}")
+        logger.info(f"   - step_service_manager 타입: {type(step_service_manager)}")
+        logger.info(f"   - process_step_by_name_sync 메서드 존재 여부: {hasattr(step_service_manager, 'process_step_by_name_sync')}")
+        logger.info(f"   - enhanced_input 키들: {list(enhanced_input.keys())}")
+        
+        # 🔥 추가 디버깅: Step 처리 시작
+        logger.info(f"🔥 _process_step_sync - process_step_by_name_sync 호출 시작")
+        logger.info(f"🔥 _process_step_sync - step_name: {step_name}")
+        logger.info(f"🔥 _process_step_sync - enhanced_input 크기: {len(str(enhanced_input))} 문자")
+        
+        try:
+            # Central Hub 기반 Step 처리 (동기적으로)
+            result = step_service_manager.process_step_by_name_sync(
+                step_name=step_name,
+                api_input=enhanced_input
+            )
+            
+            # 🔥 추가 디버깅: Step 처리 완료
+            logger.info(f"🔥 _process_step_sync - process_step_by_name_sync 호출 완료")
+            logger.info(f"🔥 _process_step_sync - 결과 타입: {type(result)}")
+            logger.info(f"🔥 _process_step_sync - 결과 키들: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            logger.info(f"🔥 _process_step_sync - 결과 상세: {result}")
+            
+        except Exception as e:
+            logger.error(f"❌ _process_step_sync - process_step_by_name_sync 호출 중 예외 발생:")
+            logger.error(f"   - step_name: {step_name}")
+            logger.error(f"   - step_id: {step_id}")
+            logger.error(f"   - 예외 타입: {type(e).__name__}")
+            logger.error(f"   - 예외 메시지: {str(e)}")
+            import traceback
+            logger.error(f"   - 스택 트레이스:")
+            logger.error(traceback.format_exc())
+            raise
+        
+        logger.info(f"🔥 _process_step_sync - process_step_by_name_sync 완료")
+        logger.info(f"🔥 _process_step_sync - 결과 타입: {type(result)}")
+        logger.info(f"🔥 _process_step_sync - 결과 키들: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
         
         # 결과 후처리
         if result.get('success', False):
+            print_step(f"Step {step_id} ({step_name}) 완료")
+            
             # 세션 업데이트 (완전 동기적으로)
             if session_manager:
                 session_key = f"step_{step_id:02d}_result"
@@ -647,7 +1059,16 @@ def _process_step_common(
     session_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """공통 Step 처리 로직 (동기 버전)"""
+    
+    # 🔥 추가 디버깅: 함수 시작 로그
+    logger.info(f"🔥 _process_step_common 시작: step_name={step_name}, step_id={step_id}, session_id={session_id}")
+    logger.info(f"🔥 _process_step_common - api_input 키들: {list(api_input.keys()) if api_input else 'None'}")
+    
     try:
+        # 🔥 추가 디버깅: _process_step_sync 호출 전
+        logger.info(f"🔥 _process_step_common - _process_step_sync 호출 시작")
+        logger.info(f"🔥 _process_step_common - _process_step_sync 함수 존재 여부: {_process_step_sync is not None}")
+        
         # 동기적으로 직접 실행
         result = _process_step_sync(
             step_name,
@@ -655,6 +1076,11 @@ def _process_step_common(
             api_input,
             session_id
         )
+        
+        logger.info(f"🔥 _process_step_common - _process_step_sync 완료")
+        logger.info(f"🔥 _process_step_common - 결과 타입: {type(result)}")
+        logger.info(f"🔥 _process_step_common - 결과 키들: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+        
         return result
             
     except AttributeError as e:
@@ -728,11 +1154,27 @@ async def _process_step_async(
     session_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """공통 Step 처리 로직 (비동기 버전 - ThreadPoolExecutor 사용)"""
+    
+    # 🔥 추가 디버깅: 함수 시작 로그
+    logger.info(f"🔥 _process_step_async 시작: step_name={step_name}, step_id={step_id}, session_id={session_id}")
+    logger.info(f"🔥 _process_step_async - api_input 키들: {list(api_input.keys()) if api_input else 'None'}")
+    
     try:
+        # 🔥 추가 디버깅: ThreadPoolExecutor 실행 전
+        logger.info(f"🔥 _process_step_async - ThreadPoolExecutor 실행 시작")
+        
         # ThreadPoolExecutor를 사용하여 별도 스레드에서 실행
         import concurrent.futures
         loop = asyncio.get_running_loop()
+        logger.info(f"🔥 _process_step_async - asyncio loop 획득 완료")
+        
         with concurrent.futures.ThreadPoolExecutor() as executor:
+            logger.info(f"🔥 _process_step_async - ThreadPoolExecutor 생성 완료")
+            
+            # 🔥 추가 디버깅: run_in_executor 호출 전
+            logger.info(f"🔥 _process_step_async - run_in_executor 호출 시작")
+            logger.info(f"🔥 _process_step_async - _process_step_common 함수 존재 여부: {_process_step_common is not None}")
+            
             result = await loop.run_in_executor(
                 executor,
                 _process_step_common,
@@ -741,6 +1183,11 @@ async def _process_step_async(
                 api_input,
                 session_id
             )
+            
+            logger.info(f"🔥 _process_step_async - run_in_executor 완료")
+            logger.info(f"🔥 _process_step_async - 결과 타입: {type(result)}")
+            logger.info(f"🔥 _process_step_async - 결과 키들: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
         return result
             
     except AttributeError as e:
@@ -1369,18 +1816,23 @@ async def step_1_upload_validation(
                 logger.error(f"❌ PIL 변환 실패: {e}")
                 raise HTTPException(status_code=400, detail=f"이미지 변환 실패: {str(e)}")
             
-            # 3. 세션 생성 (Central Hub 기반)
+            # 3. 세션 생성 또는 재사용 (Central Hub 기반)
             try:
-                new_session_id = await session_manager.create_session(
-                    person_image=person_img,
-                    clothing_image=clothing_img,
-                    measurements={}
-                )
-                
-                if not new_session_id:
-                    raise ValueError("세션 ID 생성 실패")
+                # 기존 세션이 있으면 재사용, 없으면 새로 생성
+                if session_id and session_id in session_manager.sessions:
+                    new_session_id = session_id
+                    logger.info(f"✅ 기존 세션 재사용: {new_session_id}")
+                else:
+                    new_session_id = await session_manager.create_session(
+                        person_image=person_img,
+                        clothing_image=clothing_img,
+                        measurements={}
+                    )
                     
-                logger.info(f"✅ Central Hub 기반 세션 생성 성공: {new_session_id}")
+                    if not new_session_id:
+                        raise ValueError("세션 ID 생성 실패")
+                        
+                    logger.info(f"✅ Central Hub 기반 새 세션 생성 성공: {new_session_id}")
                 
             except Exception as e:
                 logger.error(f"❌ 세션 생성 실패: {e}")
@@ -1842,6 +2294,13 @@ async def step_3_human_parsing(
                 logger.info(f"✅ 세션 이미지 로드 성공: {session_id}")
                 print(f"✅ 세션 이미지 로드 성공: {session_id}")
                 
+                # 세션 상태 상세 확인
+                logger.info(f"🔍 STEP_3_API - 첫 번째 세션 조회 후 세션 상태:")
+                logger.info(f"🔍 세션 존재 여부: {session_id in session_manager.sessions}")
+                logger.info(f"🔍 총 세션 수: {len(session_manager.sessions)}개")
+                logger.info(f"🔍 세션 매니저 ID: {id(session_manager)}")
+                logger.info(f"🔍 세션 키들: {list(session_manager.sessions.keys())}")
+                
             except AttributeError as e:
                 logger.error(f"❌ 세션 매니저 메서드 오류: {e}")
                 raise HTTPException(
@@ -1902,6 +2361,13 @@ async def step_3_human_parsing(
                 
                 logger.info(f"✅ 세션에서 이미지 및 이전 단계 결과 로드 완료: {list(api_input.keys())}")
                 print(f"✅ 세션에서 이미지 및 이전 단계 결과 로드 완료: {list(api_input.keys())}")
+                
+                # 세션 상태 상세 확인
+                logger.info(f"🔍 STEP_3_API - 두 번째 세션 조회 후 세션 상태:")
+                logger.info(f"🔍 세션 존재 여부: {session_id in session_manager.sessions}")
+                logger.info(f"🔍 총 세션 수: {len(session_manager.sessions)}개")
+                logger.info(f"🔍 세션 매니저 ID: {id(session_manager)}")
+                logger.info(f"🔍 세션 키들: {list(session_manager.sessions.keys())}")
                 
             except Exception as e:
                 logger.error(f"❌ 세션에서 데이터 로드 실패: {e}")
@@ -2129,6 +2595,13 @@ async def step_4_pose_estimation(
             logger.info(f"✅ 세션 이미지 로드 성공: {session_id}")
             print(f"✅ 세션 이미지 로드 성공: {session_id}")
             
+            # 세션 상태 상세 확인
+            logger.info(f"🔍 STEP_4_API - 첫 번째 세션 조회 후 세션 상태:")
+            logger.info(f"🔍 세션 존재 여부: {session_id in session_manager.sessions}")
+            logger.info(f"🔍 총 세션 수: {len(session_manager.sessions)}개")
+            logger.info(f"🔍 세션 매니저 ID: {id(session_manager)}")
+            logger.info(f"🔍 세션 키들: {list(session_manager.sessions.keys())}")
+            
         except AttributeError as e:
             logger.error(f"❌ 세션 매니저 메서드 오류: {e}")
             raise HTTPException(
@@ -2189,6 +2662,13 @@ async def step_4_pose_estimation(
             logger.info(f"✅ 세션에서 이미지 및 이전 단계 결과 로드 완료: {list(api_input.keys())}")
             print(f"✅ 세션에서 이미지 및 이전 단계 결과 로드 완료: {list(api_input.keys())}")
             
+            # 세션 상태 상세 확인
+            logger.info(f"🔍 STEP_4_API - 두 번째 세션 조회 후 세션 상태:")
+            logger.info(f"🔍 세션 존재 여부: {session_id in session_manager.sessions}")
+            logger.info(f"🔍 총 세션 수: {len(session_manager.sessions)}개")
+            logger.info(f"🔍 세션 매니저 ID: {id(session_manager)}")
+            logger.info(f"🔍 세션 키들: {list(session_manager.sessions.keys())}")
+            
         except Exception as e:
             logger.error(f"❌ 세션에서 데이터 로드 실패: {e}")
             print(f"❌ 세션에서 데이터 로드 실패: {e}")
@@ -2227,6 +2707,12 @@ async def step_4_pose_estimation(
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
         
+        # 🔥 Step 4 완료 시점 세션 상태 확인
+        logger.info(f"🔥 STEP_4_API 완료 시점 - session_manager ID: {id(session_manager)}")
+        logger.info(f"🔥 STEP_4_API 완료 시점 - session_manager 주소: {hex(id(session_manager))}")
+        logger.info(f"🔥 STEP_4_API 완료 시점 - session_manager.sessions 키들: {list(session_manager.sessions.keys())}")
+        logger.info(f"🔥 STEP_4_API 완료 시점 - session_id 존재 여부: {session_id in session_manager.sessions}")
+        
         return JSONResponse(content=format_step_api_response(
             success=True,
             message="포즈 추정 완료 - Central Hub DI Container 기반 처리",
@@ -2262,43 +2748,20 @@ async def step_5_clothing_analysis(
     """5단계: 의류 분석 - Central Hub DI Container 기반 SAM 2.4GB 모델"""
     start_time = time.time()
     
+    # 🔥 Step 5 시작 시 세션 상태 확인
+    logger.info(f"🔥 STEP_5_API 시작: session_id={session_id}")
+    logger.info(f"🔥 STEP_5_API - session_manager 호출 전")
+    
+    # 세션 매니저 가져오기
+    session_manager = get_session_manager()
+    logger.info(f"🔥 STEP_5_API - session_manager 호출 후")
+    logger.info(f"🔥 STEP_5_API - session_manager ID: {id(session_manager)}")
+    logger.info(f"🔥 STEP_5_API - session_manager 주소: {hex(id(session_manager))}")
+    logger.info(f"🔥 STEP_5_API - session_manager.sessions 키들: {list(session_manager.sessions.keys())}")
+    logger.info(f"🔥 STEP_5_API - session_id 존재 여부: {session_id in session_manager.sessions}")
+    
     try:
-        # 1. 세션 검증 및 이미지 로드 (첫 번째 세션 조회)
-        try:
-            print(f"🔥 STEP_5_API - 첫 번째 세션 조회 시작: get_session_images")
-            logger.info(f"🔥 STEP_5_API - 첫 번째 세션 조회 시작: get_session_images")
-            
-            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
-            logger.info(f"✅ 세션 이미지 로드 성공: {session_id}")
-            print(f"✅ 세션 이미지 로드 성공: {session_id}")
-            
-        except AttributeError as e:
-            logger.error(f"❌ 세션 매니저 메서드 오류: {e}")
-            raise HTTPException(
-                status_code=500, 
-                detail=f"세션 매니저에 get_session_images 메서드가 없습니다: {e}"
-            )
-        except FileNotFoundError as e:
-            logger.error(f"❌ 세션 이미지 파일 없음: {e}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"세션 이미지 파일을 찾을 수 없습니다: {session_id}"
-            )
-        except PermissionError as e:
-            logger.error(f"❌ 세션 파일 접근 권한 없음: {e}")
-            raise HTTPException(
-                status_code=403, 
-                detail=f"세션 파일에 접근할 권한이 없습니다: {e}"
-            )
-        except Exception as e:
-            logger.error(f"❌ 세션 로드 실패: {type(e).__name__}: {e}")
-            print(f"❌ 세션 로드 실패: {type(e).__name__}: {e}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"세션을 찾을 수 없습니다: {session_id} - {e}"
-            )
-        
-        # 2. WebSocket 진행률 알림 (시작)
+        # 1. WebSocket 진행률 알림 (시작)
         try:
             websocket_manager = _get_websocket_manager()
             if websocket_manager:
@@ -2314,10 +2777,18 @@ async def step_5_clothing_analysis(
         except Exception as e:
             logger.warning(f"⚠️ WebSocket 알림 실패: {type(e).__name__}: {e}")
         
-        # 3. 🔥 세션에서 이미지 로드 (prepare_step_input_data 사용) - 두 번째 세션 조회
+        # 2. 🔥 세션에서 이미지 로드 (prepare_step_input_data 사용)
         try:
-            print(f"🔥 STEP_5_API - 두 번째 세션 조회 시작: prepare_step_input_data")
-            logger.info(f"🔥 STEP_5_API - 두 번째 세션 조회 시작: prepare_step_input_data")
+            print(f"🔥 STEP_5_API - 세션 조회 시작: prepare_step_input_data")
+            logger.info(f"🔥 STEP_5_API - 세션 조회 시작: prepare_step_input_data")
+            
+            # session_manager가 None인지 확인
+            if session_manager is None:
+                raise HTTPException(status_code=500, detail="세션 매니저가 초기화되지 않았습니다")
+            
+            # prepare_step_input_data 메서드가 있는지 확인
+            if not hasattr(session_manager, 'prepare_step_input_data'):
+                raise HTTPException(status_code=500, detail="세션 매니저에 prepare_step_input_data 메서드가 없습니다")
             
             # 세션 매니저의 prepare_step_input_data를 사용하여 이미지와 이전 단계 결과를 모두 가져오기
             api_input = await session_manager.prepare_step_input_data(session_id, 5)
@@ -2332,6 +2803,15 @@ async def step_5_clothing_analysis(
             logger.info(f"✅ 세션에서 이미지 및 이전 단계 결과 로드 완료: {list(api_input.keys())}")
             print(f"✅ 세션에서 이미지 및 이전 단계 결과 로드 완료: {list(api_input.keys())}")
             
+            # 세션 상태 상세 확인
+            logger.info(f"🔍 STEP_5_API - 세션 조회 후 세션 상태:")
+            logger.info(f"🔍 세션 존재 여부: {session_id in session_manager.sessions}")
+            logger.info(f"🔍 총 세션 수: {len(session_manager.sessions)}개")
+            logger.info(f"🔍 세션 매니저 ID: {id(session_manager)}")
+            logger.info(f"🔍 세션 키들: {list(session_manager.sessions.keys())}")
+            
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"❌ 세션에서 데이터 로드 실패: {e}")
             print(f"❌ 세션에서 데이터 로드 실패: {e}")
@@ -2352,6 +2832,21 @@ async def step_5_clothing_analysis(
         
         # 결과 처리
         enhanced_result = enhance_step_result_for_frontend(result, 5)
+        
+        # 🔥 Step 5 결과를 세션에 저장
+        try:
+            await session_manager.save_step_result(session_id, 5, enhanced_result)
+            logger.info(f"✅ Step 5 결과 세션 저장 완료: {session_id}")
+            
+            # 🔥 Step 5 완료 후 세션 상태 확인
+            logger.info(f"🔥 STEP_5_API 완료 후 세션 상태:")
+            logger.info(f"🔥 세션 존재 여부: {session_id in session_manager.sessions}")
+            logger.info(f"🔥 총 세션 수: {len(session_manager.sessions)}개")
+            logger.info(f"🔥 세션 매니저 ID: {id(session_manager)}")
+            logger.info(f"🔥 세션 키들: {list(session_manager.sessions.keys())}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Step 5 결과 세션 저장 실패: {e}")
         
         # WebSocket 진행률 알림
         try:
@@ -2406,43 +2901,20 @@ async def step_6_geometric_matching(
     """6단계: 기하학적 매칭 - Central Hub DI Container 기반 처리"""
     start_time = time.time()
     
+    # 🔥 Step 6 시작 시 세션 상태 확인
+    logger.info(f"🔥 STEP_6_API 시작: session_id={session_id}")
+    logger.info(f"🔥 STEP_6_API - session_manager 호출 전")
+    
+    # 세션 매니저 가져오기
+    session_manager = get_session_manager()
+    logger.info(f"🔥 STEP_6_API - session_manager 호출 후")
+    logger.info(f"🔥 STEP_6_API - session_manager ID: {id(session_manager)}")
+    logger.info(f"🔥 STEP_6_API - session_manager 주소: {hex(id(session_manager))}")
+    logger.info(f"🔥 STEP_6_API - session_manager.sessions 키들: {list(session_manager.sessions.keys())}")
+    logger.info(f"🔥 STEP_6_API - session_id 존재 여부: {session_id in session_manager.sessions}")
+    
     try:
-        # 1. 세션 검증 및 이미지 로드 (첫 번째 세션 조회)
-        try:
-            print(f"🔥 STEP_6_API - 첫 번째 세션 조회 시작: get_session_images")
-            logger.info(f"🔥 STEP_6_API - 첫 번째 세션 조회 시작: get_session_images")
-            
-            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
-            logger.info(f"✅ 세션 이미지 로드 성공: {session_id}")
-            print(f"✅ 세션 이미지 로드 성공: {session_id}")
-            
-        except AttributeError as e:
-            logger.error(f"❌ 세션 매니저 메서드 오류: {e}")
-            raise HTTPException(
-                status_code=500, 
-                detail=f"세션 매니저에 get_session_images 메서드가 없습니다: {e}"
-            )
-        except FileNotFoundError as e:
-            logger.error(f"❌ 세션 이미지 파일 없음: {e}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"세션 이미지 파일을 찾을 수 없습니다: {session_id}"
-            )
-        except PermissionError as e:
-            logger.error(f"❌ 세션 파일 접근 권한 없음: {e}")
-            raise HTTPException(
-                status_code=403, 
-                detail=f"세션 파일에 접근할 권한이 없습니다: {e}"
-            )
-        except Exception as e:
-            logger.error(f"❌ 세션 로드 실패: {type(e).__name__}: {e}")
-            print(f"❌ 세션 로드 실패: {type(e).__name__}: {e}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"세션을 찾을 수 없습니다: {session_id} - {e}"
-            )
-        
-        # 2. WebSocket 진행률 알림 (시작)
+        # 1. WebSocket 진행률 알림 (시작)
         try:
             websocket_manager = _get_websocket_manager()
             if websocket_manager:
@@ -2458,10 +2930,10 @@ async def step_6_geometric_matching(
         except Exception as e:
             logger.warning(f"⚠️ WebSocket 알림 실패: {type(e).__name__}: {e}")
         
-        # 3. 🔥 세션에서 이미지 로드 (prepare_step_input_data 사용) - 두 번째 세션 조회
+        # 2. 🔥 세션에서 이미지 로드 (prepare_step_input_data 사용)
         try:
-            print(f"🔥 STEP_6_API - 두 번째 세션 조회 시작: prepare_step_input_data")
-            logger.info(f"🔥 STEP_6_API - 두 번째 세션 조회 시작: prepare_step_input_data")
+            print(f"🔥 STEP_6_API - 세션 조회 시작: prepare_step_input_data")
+            logger.info(f"🔥 STEP_6_API - 세션 조회 시작: prepare_step_input_data")
             
             # 세션 매니저의 prepare_step_input_data를 사용하여 이미지와 이전 단계 결과를 모두 가져오기
             api_input = await session_manager.prepare_step_input_data(session_id, 6)
@@ -2681,6 +3153,18 @@ async def process_step_7_virtual_fitting(
     """
     logger.info(f"🚀 Step 7 API 호출: ClothWarping + VirtualFitting 순차 실행 /api/step/7/virtual-fitting")
     
+    # 🔥 Step 7 시작 시 세션 상태 확인
+    logger.info(f"🔥 STEP_7_API 시작: session_id={session_id}")
+    logger.info(f"🔥 STEP_7_API - session_manager 호출 전")
+    
+    # 세션 매니저 가져오기
+    session_manager = get_session_manager()
+    logger.info(f"🔥 STEP_7_API - session_manager 호출 후")
+    logger.info(f"🔥 STEP_7_API - session_manager ID: {id(session_manager)}")
+    logger.info(f"🔥 STEP_7_API - session_manager 주소: {hex(id(session_manager))}")
+    logger.info(f"🔥 STEP_7_API - session_manager.sessions 키들: {list(session_manager.sessions.keys())}")
+    logger.info(f"🔥 STEP_7_API - session_id 존재 여부: {session_id in session_manager.sessions}")
+    
     step_start_time = time.time()
     
     try:
@@ -2820,89 +3304,101 @@ async def process_step_7_virtual_fitting(
                 logger.error(f"❌ VirtualFitting 처리 실패: {e}")
                 raise StepProcessingError(f"가상 피팅 처리 실패: {e}", step_id=6, error_code="VIRTUAL_FITTING_ERROR")
             
-            # 5. 🔥 Step 7 완료 후 자동으로 Step 8 실행
-            logger.info(f"🚀 Step 7 완료, 자동으로 Step 8 실행 시작...")
+            # 5. 🔥 Step 7 완료 - 자동 Step 8 실행 비활성화
+            logger.info(f"🚀 Step 7 완료 - 자동 Step 8 실행 비활성화됨")
+            logger.info(f"🚀 Step 8은 별도 API 호출로 실행해야 합니다")
             
-            try:
-                # Step 8 실행 (Post Processing + Quality Assessment)
-                logger.info("🧠 자동 실행: Step 8 - Post Processing + Quality Assessment 시작...")
-                
-                # Step 8 입력 데이터 준비
-                step8_input = {
-                    'session_id': session_id,
-                    'analysis_depth': 'comprehensive',
-                    'virtual_fitting_result': result,
-                    'cloth_warping_result': cloth_warping_result
-                }
-                
-                # Step 8 실행 (PostProcessing + QualityAssessment)
-                post_processing_result = await _process_step_async(
-                    step_name='PostProcessing',
-                    step_id=7,  # step_07_post_processing.py
-                    api_input=step8_input,
-                    session_id=session_id
-                )
-                
-                if not post_processing_result.get('success'):
-                    logger.error(f"❌ 자동 Step 8 PostProcessing 실패: {post_processing_result.get('error')}")
-                    raise Exception(f"PostProcessing 실패: {post_processing_result.get('error')}")
-                
-                # PostProcessing 결과를 QualityAssessment 입력에 추가
-                step8_input['post_processing_result'] = post_processing_result
-                step8_input['processed_image'] = post_processing_result.get('processed_image')
-                step8_input['enhancement_data'] = post_processing_result.get('enhancement_data')
-                
-                quality_assessment_result = await _process_step_async(
-                    step_name='QualityAssessment',
-                    step_id=8,  # step_08_quality_assessment.py
-                    api_input=step8_input,
-                    session_id=session_id
-                )
-                
-                if not quality_assessment_result.get('success'):
-                    logger.error(f"❌ 자동 Step 8 QualityAssessment 실패: {quality_assessment_result.get('error')}")
-                    raise Exception(f"QualityAssessment 실패: {quality_assessment_result.get('error')}")
-                
-                logger.info("✅ 자동 실행: Step 8 - Post Processing + Quality Assessment 완료")
-                
-                # 🔥 최종 결과 통합 (Step 7 + Step 8)
-                final_result = {
-                    **quality_assessment_result,
-                    'cloth_warping_result': cloth_warping_result,
-                    'virtual_fitting_result': result,
-                    'post_processing_result': post_processing_result,
-                    'quality_assessment_result': quality_assessment_result,
-                    'step_sequence': ['ClothWarping', 'VirtualFitting', 'PostProcessing', 'QualityAssessment'],
-                    'step_sequence_ids': [5, 6, 7, 8],
-                    'auto_completed': True,
-                    'pipeline_completed': True
-                }
-                
-                logger.info("🎉 Step 7-8 자동 완료!")
-                
-            except Exception as e:
-                logger.error(f"❌ 자동 Step 8 실행 실패: {e}")
-                # 자동 실행 실패 시 Step 7 결과만 사용
-                final_result = {
-                    **result,
-                    'cloth_warping_result': cloth_warping_result,
-                    'step_sequence': ['ClothWarping', 'VirtualFitting'],
-                    'step_sequence_ids': [5, 6],
-                    'combined_processing': True
-                }
+            # 자동 Step 8 실행 비활성화 (중복 실행 방지)
+            # try:
+            #     # Step 8 실행 (Post Processing + Quality Assessment)
+            #     logger.info("🧠 자동 실행: Step 8 - Post Processing + Quality Assessment 시작...")
+            #     
+            #     # Step 8 입력 데이터 준비
+            #     step8_input = {
+            #         'session_id': session_id,
+            #         'analysis_depth': 'comprehensive',
+            #         'virtual_fitting_result': result,
+            #         'cloth_warping_result': cloth_warping_result
+            #     }
+            #     
+            #     # Step 8 실행 (PostProcessing + QualityAssessment)
+            #     post_processing_result = await _process_step_async(
+            #         step_name='PostProcessing',
+            #         step_id=7,  # step_07_post_processing.py
+            #         api_input=step8_input,
+            #         session_id=session_id
+            #     )
+            #     
+            #     if not post_processing_result.get('success'):
+            #         logger.error(f"❌ 자동 Step 8 PostProcessing 실패: {post_processing_result.get('error')}")
+            #         raise Exception(f"PostProcessing 실패: {post_processing_result.get('error')}")
+            #     
+            #     # PostProcessing 결과를 QualityAssessment 입력에 추가
+            #     step8_input['post_processing_result'] = post_processing_result
+            #     step8_input['processed_image'] = post_processing_result.get('processed_image')
+            #     step8_input['enhancement_data'] = post_processing_result.get('enhancement_data')
+            #     
+            #     quality_assessment_result = await _process_step_async(
+            #         step_name='QualityAssessment',
+            #         step_id=8,  # step_08_quality_assessment.py
+            #         api_input=step8_input,
+            #         session_id=session_id
+            #     )
+            #     
+            # 자동 Step 8 실행 비활성화 (중복 실행 방지)
+            # if not quality_assessment_result.get('success'):
+            #     logger.error(f"❌ 자동 Step 8 QualityAssessment 실패: {quality_assessment_result.get('error')}")
+            #     raise Exception(f"QualityAssessment 실패: {quality_assessment_result.get('error')}")
+            # 
+            # logger.info("✅ 자동 실행: Step 8 - Post Processing + Quality Assessment 완료")
+            # 
+            # # 🔥 최종 결과 통합 (Step 7 + Step 8)
+            # final_result = {
+            #     **quality_assessment_result,
+            #     'cloth_warping_result': cloth_warping_result,
+            #     'virtual_fitting_result': result,
+            #     'post_processing_result': post_processing_result,
+            #     'quality_assessment_result': quality_assessment_result,
+            #     'step_sequence': ['ClothWarping', 'VirtualFitting', 'PostProcessing', 'QualityAssessment'],
+            #     'step_sequence_ids': [5, 6, 7, 8],
+            #     'auto_completed': True,
+            #     'pipeline_completed': True
+            # }
+            # 
+            # logger.info("🎉 Step 7-8 자동 완료!")
+            # 
+            # except Exception as e:
+            #     logger.error(f"❌ 자동 Step 8 실행 실패: {e}")
+            #     # 자동 실행 실패 시 Step 7 결과만 사용
+            #     final_result = {
+            #         **result,
+            #         'cloth_warping_result': cloth_warping_result,
+            #         'step_sequence': ['ClothWarping', 'VirtualFitting'],
+            #         'step_sequence_ids': [5, 6],
+            #         'combined_processing': True
+            #     }
             
-            logger.info(f"✅ Step 7-8 완료: ClothWarping + VirtualFitting + PostProcessing + QualityAssessment 순차 실행 성공")
+            # Step 7만 완료 - Step 8은 별도 API 호출로 실행
+            final_result = {
+                **result,
+                'cloth_warping_result': cloth_warping_result,
+                'step_sequence': ['ClothWarping', 'VirtualFitting'],
+                'step_sequence_ids': [5, 6],
+                'combined_processing': True
+            }
+            
+            logger.info(f"✅ Step 7 완료: ClothWarping + VirtualFitting 순차 실행 성공")
             
             # 6. 🔥 세션 업데이트 (완전 동기적으로)
             try:
                 if session_manager:
-                    # Step 7-8 결과를 세션에 저장
+                    # Step 7 결과를 세션에 저장
                     await session_manager.save_step_result(
                         session_id=session_id,
-                        step_id=8,  # 최종 단계
+                        step_id=7,  # Step 7
                         result=final_result
                     )
-                    logger.info(f"✅ Step 7-8 결과 세션 저장 완료: {session_id}")
+                    logger.info(f"✅ Step 7 결과 세션 저장 완료: {session_id}")
             except Exception as e:
                 logger.warning(f"⚠️ 세션 저장 실패: {e}")
             
@@ -2911,11 +3407,10 @@ async def process_step_7_virtual_fitting(
                 websocket_manager = _get_websocket_manager()
                 if websocket_manager:
                     await websocket_manager.broadcast({
-                        'type': 'pipeline_completed',
+                        'type': 'step_completed',
                         'session_id': session_id,
-                        'message': 'Step 7-8 자동 완료!',
+                        'message': 'Step 7 완료!',
                         'central_hub_used': True,
-                        'auto_completed': True,
                         'step_sequence': final_result.get('step_sequence', [])
                     })
             except Exception:
@@ -2926,9 +3421,9 @@ async def process_step_7_virtual_fitting(
             
             return JSONResponse(content=format_step_api_response(
                 success=True,
-                message="Step 7-8 자동 완료: ClothWarping + VirtualFitting + PostProcessing + QualityAssessment",
-                step_name="Complete Pipeline (Step 7-8)",
-                step_id=8,  # 최종 단계
+                message="Step 7 완료: ClothWarping + VirtualFitting",
+                step_name="Virtual Fitting (Step 7)",
+                step_id=7,  # Step 7
                 processing_time=processing_time,
                 session_id=session_id,
                 confidence=final_result.get('confidence', 0.85),
@@ -2937,14 +3432,12 @@ async def process_step_7_virtual_fitting(
                 recommendations=final_result.get('recommendations'),
                 details={
                     **final_result.get('details', {}),
-                    "ai_model": "ClothWarping + OOTDiffusion 14GB + PostProcessing + QualityAssessment",
+                    "ai_model": "ClothWarping + OOTDiffusion 14GB",
                     "model_size": "14GB+",
                     "central_hub_processing": True,
                     "di_container_v70": True,
                     "step_sequence": final_result.get('step_sequence', []),
                     "step_sequence_ids": final_result.get('step_sequence_ids', []),
-                    "auto_completed": True,
-                    "pipeline_completed": True,
                     "fitting_quality": fitting_quality,
                     "diffusion_steps": int(diffusion_steps) if diffusion_steps.isdigit() else 20,
                     "guidance_scale": float(guidance_scale) if guidance_scale.replace('.', '').isdigit() else 7.5
@@ -3015,6 +3508,18 @@ async def step_8_result_analysis(
     """
     logger.info(f"🚀 Step 8 API 호출: PostProcessing + QualityAssessment 순차 실행 /api/step/8/result-analysis")
     
+    # 🔥 Step 8 시작 시 세션 상태 확인
+    logger.info(f"🔥 STEP_8_API 시작: session_id={session_id}")
+    logger.info(f"🔥 STEP_8_API - session_manager 호출 전")
+    
+    # 세션 매니저 가져오기
+    session_manager = get_session_manager()
+    logger.info(f"🔥 STEP_8_API - session_manager 호출 후")
+    logger.info(f"🔥 STEP_8_API - session_manager ID: {id(session_manager)}")
+    logger.info(f"🔥 STEP_8_API - session_manager 주소: {hex(id(session_manager))}")
+    logger.info(f"🔥 STEP_8_API - session_manager.sessions 키들: {list(session_manager.sessions.keys())}")
+    logger.info(f"🔥 STEP_8_API - session_id 존재 여부: {session_id in session_manager.sessions}")
+    
     start_time = time.time()
     
     try:
@@ -3054,36 +3559,138 @@ async def step_8_result_analysis(
             # 🔥 kwargs 전달 방식으로 변경 (세션 의존성 제거)
             api_input = {
                 'session_id': session_id,
-                'analysis_depth': analysis_depth
+                'analysis_depth': analysis_depth,
+                # PostProcessingStep config 파라미터들 추가
+                'quality_level': 'high',
+                'upscale_factor': 4,
+                'enhancement_strength': 0.8,
+                # PostProcessingStep이 요구하는 입력 데이터 추가
+                'fitted_image': None,  # Step 7 결과에서 가져올 예정
+                'enhancement_options': {
+                    'quality_level': 'high',
+                    'upscale_factor': 4,
+                    'enhancement_strength': 0.8
+                }
             }
+            
+            # 🔥 PostProcessingStep이 기대하는 fitting_result 형태로 데이터 준비
+            post_processing_input = {
+                'fitting_result': {
+                    'fitted_image': None,  # Step 7 결과에서 가져올 예정
+                    'result_image': None,  # Step 7 결과에서 가져올 예정
+                    'enhanced_image': None,  # Step 7 결과에서 가져올 예정
+                    'session_id': session_id,
+                    'step_id': 7,
+                    'step_name': 'PostProcessing'
+                },
+                'enhancement_options': {
+                    'quality_level': 'high',
+                    'upscale_factor': 4,
+                    'enhancement_strength': 0.8
+                }
+            }
+            logger.info(f"🔥 STEP_8_API - 초기 api_input 생성: {api_input}")
             
             # 🔥 이전 단계 결과를 kwargs로 전달 (선택적)
             try:
+                logger.info(f"🔥 STEP_8_API - get_session_status 호출 시작")
                 session_data = await session_manager.get_session_status(session_id)
+                logger.info(f"🔥 STEP_8_API - get_session_status 호출 완료")
+                
                 if session_data:
+                    logger.info(f"🔥 STEP_8_API - session_data 키들: {list(session_data.keys())}")
                     # Step 1-7 결과가 있으면 kwargs로 전달
                     for step_num in range(1, 8):
                         step_key = f'step_{step_num:02d}_result'
                         if step_key in session_data:
                             api_input[step_key] = session_data[step_key]
                             logger.info(f"✅ {step_key}를 kwargs로 전달")
+                            
+                                                # Step 7 결과에서 fitted_image 추출
+                    if step_num == 7 and 'fitted_image' in session_data[step_key]:
+                        api_input['fitted_image'] = session_data[step_key]['fitted_image']
+                        # PostProcessingStep용 fitting_result에도 추가
+                        post_processing_input['fitting_result']['fitted_image'] = session_data[step_key]['fitted_image']
+                        post_processing_input['fitting_result']['result_image'] = session_data[step_key].get('result_image', session_data[step_key]['fitted_image'])
+                        post_processing_input['fitting_result']['enhanced_image'] = session_data[step_key].get('enhanced_image', session_data[step_key]['fitted_image'])
+                        logger.info("✅ Step 7 fitted_image를 PostProcessing 입력에 추가")
                     
                     # 세션 데이터 자체를 포함 (Step에서 직접 접근)
                     api_input['session_data'] = session_data
                     logger.info("✅ 세션 데이터를 kwargs에 포함")
+                else:
+                    logger.warning(f"⚠️ session_data가 None입니다")
             except Exception as e:
                 logger.warning(f"⚠️ 이전 단계 결과 kwargs 전달 실패: {e}")
             
             # 3. 🔥 Step 1: PostProcessing 실행
             try:
                 logger.info("🧠 Step 1/2: PostProcessing 실행 시작...")
+                logger.info(f"🔥 STEP_8_API - PostProcessing _process_step_async 호출 시작")
+                logger.info(f"🔥 STEP_8_API - PostProcessing api_input 키들: {list(api_input.keys())}")
+                logger.info(f"🔥 STEP_8_API - PostProcessing config 파라미터 확인:")
+                logger.info(f"   - quality_level: {api_input.get('quality_level', 'NOT_FOUND')}")
+                logger.info(f"   - upscale_factor: {api_input.get('upscale_factor', 'NOT_FOUND')}")
+                logger.info(f"   - enhancement_strength: {api_input.get('enhancement_strength', 'NOT_FOUND')}")
+                
+                # 🔥 추가 디버깅: _process_step_async 호출 전 상태 확인
+                logger.info(f"🔥 STEP_8_API - _process_step_async 호출 직전 상태:")
+                logger.info(f"   - step_name: PostProcessing")
+                logger.info(f"   - step_id: 7")
+                logger.info(f"   - session_id: {session_id}")
+                logger.info(f"   - api_input 타입: {type(api_input)}")
+                logger.info(f"   - api_input 크기: {len(str(api_input))} 문자")
+                
+                # 🔥 추가 디버깅: 함수 존재 여부 확인
+                logger.info(f"🔥 STEP_8_API - _process_step_async 함수 존재 여부: {_process_step_async is not None}")
+                logger.info(f"🔥 STEP_8_API - _process_step_async 함수 타입: {type(_process_step_async)}")
+                
+                # 🔥 추가 디버깅: PostProcessingStep 호출 전 상태 확인
+                logger.info(f"🔥 STEP_8_API - PostProcessingStep 호출 전 최종 확인:")
+                logger.info(f"   - step_name: PostProcessing")
+                logger.info(f"   - step_id: 7")
+                logger.info(f"   - session_id: {session_id}")
+                logger.info(f"   - api_input 키들: {list(api_input.keys())}")
+                logger.info(f"   - api_input 크기: {len(str(api_input))} 문자")
+                
+                # 🔥 추가 디버깅: _process_step_async 함수 존재 여부 확인
+                logger.info(f"🔥 STEP_8_API - _process_step_async 함수 존재 여부: {_process_step_async is not None}")
+                logger.info(f"🔥 STEP_8_API - _process_step_async 함수 타입: {type(_process_step_async)}")
+                
+                # 🔥 PostProcessingStep 호출 시 step_id 수정
+                # step_07_post_processing.py는 실제로는 step_id=7이 아닐 수 있음
+                # 실제 파일명과 step_id를 맞춰서 호출
+                logger.info(f"🔥 STEP_8_API - PostProcessingStep 호출 전 최종 확인:")
+                logger.info(f"   - step_name: PostProcessing")
+                logger.info(f"   - step_id: 7")
+                logger.info(f"   - session_id: {session_id}")
+                logger.info(f"   - post_processing_input 키들: {list(post_processing_input.keys())}")
+                logger.info(f"   - post_processing_input 크기: {len(str(post_processing_input))} 문자")
+                
+                # 🔥 추가 디버깅: _process_step_async 함수 존재 여부 확인
+                logger.info(f"🔥 STEP_8_API - _process_step_async 함수 존재 여부: {_process_step_async is not None}")
+                logger.info(f"🔥 STEP_8_API - _process_step_async 함수 타입: {type(_process_step_async)}")
                 
                 post_processing_result = await _process_step_async(
                     step_name='PostProcessing',
-                    step_id=7,  # 실제 step_07_post_processing.py
-                    api_input=api_input,
+                    step_id=7,  # step_07_post_processing.py
+                    api_input=post_processing_input,  # PostProcessingStep이 기대하는 형태로 변경
                     session_id=session_id
                 )
+                
+                logger.info(f"🔥 STEP_8_API - PostProcessing _process_step_async 호출 완료")
+                logger.info(f"🔥 STEP_8_API - PostProcessing 결과 타입: {type(post_processing_result)}")
+                logger.info(f"🔥 STEP_8_API - PostProcessing 결과 키들: {list(post_processing_result.keys()) if isinstance(post_processing_result, dict) else 'Not a dict'}")
+                logger.info(f"🔥 STEP_8_API - PostProcessing 결과 상세: {post_processing_result}")
+                
+                # 🔥 추가 디버깅: PostProcessing 결과 검증
+                if isinstance(post_processing_result, dict):
+                    success = post_processing_result.get('success', False)
+                    error = post_processing_result.get('error', None)
+                    logger.info(f"🔥 STEP_8_API - PostProcessing success: {success}")
+                    logger.info(f"🔥 STEP_8_API - PostProcessing error: {error}")
+                else:
+                    logger.warning(f"⚠️ STEP_8_API - PostProcessing 결과가 딕셔너리가 아님: {type(post_processing_result)}")
                 
                 if not post_processing_result.get('success'):
                     error_msg = post_processing_result.get('error', 'Unknown error')
@@ -3097,13 +3704,37 @@ async def step_8_result_analysis(
                 api_input['processed_image'] = post_processing_result.get('processed_image')
                 api_input['enhancement_data'] = post_processing_result.get('enhancement_data')
                 
+                logger.info(f"🔥 STEP_8_API - PostProcessing 완료 후 QualityAssessment 준비")
+                
             except Exception as e:
                 logger.error(f"❌ PostProcessing 처리 실패: {e}")
+                logger.error(f"❌ PostProcessing 예외 타입: {type(e).__name__}")
+                logger.error(f"❌ PostProcessing 예외 상세: {str(e)}")
+                logger.error(f"❌ PostProcessing 스택 트레이스:")
+                import traceback
+                logger.error(traceback.format_exc())
+                
+                # 🔥 추가 디버깅: PostProcessing 실패 시 상세 정보
+                logger.error(f"❌ PostProcessing 실패 시 상세 정보:")
+                logger.error(f"   - step_name: PostProcessing")
+                logger.error(f"   - step_id: 7")
+                logger.error(f"   - session_id: {session_id}")
+                logger.error(f"   - api_input 키들: {list(api_input.keys()) if api_input else 'None'}")
+                logger.error(f"   - api_input 크기: {len(str(api_input)) if api_input else 0} 문자")
+                
                 raise StepProcessingError(f"후처리 분석 실패: {e}", step_id=7, error_code="POST_PROCESSING_ERROR")
             
             # 4. 🔥 Step 2: QualityAssessment 실행
             try:
                 logger.info("🧠 Step 2/2: QualityAssessment 실행 시작...")
+                logger.info(f"🔥 STEP_8_API - QualityAssessment _process_step_async 호출 시작")
+                
+                # 🔥 추가 디버깅: QualityAssessment 호출 전 상태 확인
+                logger.info(f"🔥 STEP_8_API - QualityAssessment 호출 전 최종 확인:")
+                logger.info(f"   - step_name: QualityAssessment")
+                logger.info(f"   - step_id: 8")
+                logger.info(f"   - session_id: {session_id}")
+                logger.info(f"   - api_input 키들: {list(api_input.keys())}")
                 
                 result = await _process_step_async(
                     step_name='QualityAssessment',
@@ -3111,6 +3742,9 @@ async def step_8_result_analysis(
                     api_input=api_input,
                     session_id=session_id
                 )
+                
+                logger.info(f"🔥 STEP_8_API - QualityAssessment _process_step_async 호출 완료")
+                logger.info(f"🔥 STEP_8_API - QualityAssessment 결과: {result}")
                 
                 if not result.get('success'):
                     error_msg = result.get('error', 'Unknown error')
@@ -3121,9 +3755,12 @@ async def step_8_result_analysis(
                 
             except StepProcessingError:
                 # StepProcessingError는 그대로 전파
+                logger.error(f"❌ QualityAssessment StepProcessingError 발생")
                 raise
             except Exception as e:
                 logger.error(f"❌ QualityAssessment 처리 실패: {e}")
+                logger.error(f"❌ QualityAssessment 예외 타입: {type(e).__name__}")
+                logger.error(f"❌ QualityAssessment 예외 상세: {str(e)}")
                 raise StepProcessingError(f"품질 평가 실패: {e}", step_id=8, error_code="QUALITY_ASSESSMENT_ERROR")
             
             # 5. 🔥 최종 결과 통합
@@ -3295,6 +3932,184 @@ async def step_8_result_analysis(
 # =============================================================================
 # 🎯 완전한 파이프라인 처리 (Central Hub 기반 229GB)
 # =============================================================================
+
+@router.post("/auto-complete", response_model=APIResponse)
+async def auto_complete_pipeline_processing(
+    session_id: str = Form(..., description="세션 ID (Step 1, 2 완료 후)"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """🔥 자동 완료 파이프라인 - Step 3부터 Step 8까지 순차 실행"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("auto_complete_pipeline"):
+            logger.info(f"🚀 자동 완료 파이프라인 시작: {session_id}")
+            
+            # 1. 세션 검증
+            try:
+                person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. 🔥 Step 3부터 Step 8까지 순차 실행
+            final_result = None
+            
+            # Step 3: Human Parsing
+            logger.info(f"🔥 Step 3 실행: Human Parsing")
+            step3_result = await _process_step_async(
+                step_name='HumanParsingStep',
+                step_id=3,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step3_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 3 실패: {step3_result.get('error', 'Unknown error')}")
+            
+            # Step 4: Pose Estimation
+            logger.info(f"🔥 Step 4 실행: Pose Estimation")
+            step4_result = await _process_step_async(
+                step_name='PoseEstimationStep',
+                step_id=2,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step4_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 4 실패: {step4_result.get('error', 'Unknown error')}")
+            
+            # Step 5: Clothing Analysis
+            logger.info(f"🔥 Step 5 실행: Clothing Analysis")
+            step5_result = await _process_step_async(
+                step_name='ClothSegmentationStep',
+                step_id=3,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step5_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 5 실패: {step5_result.get('error', 'Unknown error')}")
+            
+            # Step 6: Geometric Matching
+            logger.info(f"🔥 Step 6 실행: Geometric Matching")
+            step6_result = await _process_step_async(
+                step_name='GeometricMatchingStep',
+                step_id=4,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step6_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 6 실패: {step6_result.get('error', 'Unknown error')}")
+            
+            # Step 7: Virtual Fitting (ClothWarping + VirtualFitting)
+            logger.info(f"🔥 Step 7 실행: Virtual Fitting")
+            step7_result = await _process_step_async(
+                step_name='ClothWarpingStep',
+                step_id=5,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step7_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 7-1 실패: {step7_result.get('error', 'Unknown error')}")
+            
+            # Step 7-2: VirtualFitting
+            step7_2_result = await _process_step_async(
+                step_name='VirtualFittingStep',
+                step_id=6,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step7_2_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 7-2 실패: {step7_2_result.get('error', 'Unknown error')}")
+            
+            # Step 8: Result Analysis (PostProcessing + QualityAssessment)
+            logger.info(f"🔥 Step 8 실행: Result Analysis")
+            step8_result = await _process_step_async(
+                step_name='PostProcessingStep',
+                step_id=7,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step8_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 8-1 실패: {step8_result.get('error', 'Unknown error')}")
+            
+            # Step 8-2: QualityAssessment
+            step8_2_result = await _process_step_async(
+                step_name='QualityAssessmentStep',
+                step_id=8,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step8_2_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 8-2 실패: {step8_2_result.get('error', 'Unknown error')}")
+            
+            # 3. 최종 결과 통합
+            final_result = {
+                **step8_2_result,
+                'step_sequence': ['HumanParsing', 'PoseEstimation', 'ClothSegmentation', 'GeometricMatching', 'ClothWarping', 'VirtualFitting', 'PostProcessing', 'QualityAssessment'],
+                'step_sequence_ids': [3, 2, 3, 4, 5, 6, 7, 8],
+                'auto_complete': True,
+                'all_steps_completed': True
+            }
+            
+            # 4. 세션에 최종 결과 저장
+            await session_manager.save_step_result(session_id, 8, final_result)
+            
+            # 5. WebSocket 알림
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'auto_complete_finished',
+                        'session_id': session_id,
+                        'message': '자동 완료 파이프라인 완료!',
+                        'central_hub_used': True
+                    })
+            except Exception:
+                pass
+            
+            # 6. 백그라운드 메모리 최적화
+            background_tasks.add_task(safe_mps_empty_cache)
+            background_tasks.add_task(gc.collect)
+            
+            # 7. 응답 생성
+            processing_time = time.time() - start_time
+            
+            return JSONResponse(content=format_step_api_response(
+                success=True,
+                message="자동 완료 파이프라인 처리 완료 - Step 3부터 Step 8까지 순차 실행",
+                step_name="Auto Complete Pipeline",
+                step_id=0,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=final_result.get('confidence', 0.85),
+                fitted_image=final_result.get('fitted_image'),
+                fit_score=final_result.get('fit_score'),
+                recommendations=final_result.get('recommendations'),
+                details={
+                    **final_result.get('details', {}),
+                    "pipeline_type": "auto_complete",
+                    "all_steps_completed": True,
+                    "session_based": True,
+                    "central_hub_processing": True,
+                    "auto_complete": True
+                }
+            ))
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 자동 완료 파이프라인 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"자동 완료 파이프라인 처리 실패: {str(e)}")
 
 @router.post("/complete", response_model=APIResponse)
 async def complete_pipeline_processing(
@@ -3494,7 +4309,7 @@ async def step_api_health_main(
 ):
     """8단계 AI API 헬스체크 - Central Hub DI Container 기반"""
     try:
-        session_stats = session_manager.get_all_sessions_status()
+        session_stats = await session_manager.get_all_sessions_status()
         
         # StepServiceManager 상태 확인
         try:
@@ -3655,7 +4470,7 @@ async def get_all_sessions(
 ):
     """모든 세션 상태 조회 - Central Hub 기반"""
     try:
-        all_sessions = session_manager.get_all_sessions_status()
+        all_sessions = await session_manager.get_all_sessions_status()
         return JSONResponse(content={
             "success": True,
             "sessions": all_sessions,
@@ -3833,7 +4648,7 @@ async def cleanup_sessions(
         await session_manager.cleanup_expired_sessions()
         
         # 현재 세션 통계
-        stats = session_manager.get_all_sessions_status()
+        stats = await session_manager.get_all_sessions_status()
         
         # Central Hub 메모리 최적화
         optimize_central_hub_memory()
@@ -3872,6 +4687,86 @@ async def cleanup_all_sessions(
     except Exception as e:
         logger.error(f"❌ 모든 세션 정리 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/cleanup/old")
+async def cleanup_old_sessions(
+    hours: int = Form(1, description="정리할 세션의 나이 (시간)"),
+    session_manager = Depends(get_session_manager_dependency)
+):
+    """오래된 세션 정리 - Central Hub 기반"""
+    try:
+        # 현재 세션 수 확인
+        current_count = len(session_manager.sessions)
+        
+        # 오래된 세션 정리 (1시간 이상)
+        cleaned_count = 0
+        current_time = time.time()
+        
+        for session_id in list(session_manager.sessions.keys()):
+            session_data = session_manager.sessions[session_id]
+            if 'created_at' in session_data:
+                session_age = current_time - session_data['created_at']
+                if session_age > (hours * 3600):  # 시간을 초로 변환
+                    del session_manager.sessions[session_id]
+                    cleaned_count += 1
+        
+        # Central Hub 메모리 최적화
+        optimize_central_hub_memory()
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"{hours}시간 이상 된 세션 정리 완료",
+            "cleaned_sessions": cleaned_count,
+            "remaining_sessions": len(session_manager.sessions),
+            "cleanup_type": "old_sessions",
+            "age_threshold_hours": hours,
+            "central_hub_based": True,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"❌ 오래된 세션 정리 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/sessions/count")
+async def get_session_count(
+    session_manager = Depends(get_session_manager_dependency)
+):
+    """현재 세션 수 조회 - Central Hub 기반"""
+    try:
+        print(f"🔍 세션 카운트 디버깅 - session_manager: {session_manager}")
+        print(f"🔍 세션 카운트 디버깅 - session_manager 타입: {type(session_manager)}")
+        
+        # session_manager가 None인지 확인
+        if session_manager is None:
+            print("❌ 세션 매니저가 None입니다")
+            raise HTTPException(status_code=500, detail="세션 매니저가 초기화되지 않았습니다")
+        
+        # sessions 속성이 있는지 확인
+        if not hasattr(session_manager, 'sessions'):
+            print(f"❌ session_manager에 sessions 속성이 없습니다. 사용 가능한 속성: {dir(session_manager)}")
+            raise HTTPException(status_code=500, detail="세션 매니저에 sessions 속성이 없습니다")
+        
+        print(f"🔍 세션 카운트 디버깅 - sessions: {session_manager.sessions}")
+        print(f"🔍 세션 카운트 디버깅 - sessions 타입: {type(session_manager.sessions)}")
+        
+        session_count = len(session_manager.sessions)
+        print(f"🔍 세션 카운트 디버깅 - session_count: {session_count}")
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"현재 세션 수: {session_count}",
+            "session_count": session_count,
+            "session_ids": list(session_manager.sessions.keys()),
+            "central_hub_based": True,
+            "timestamp": datetime.now().isoformat()
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ 세션 수 조회 실패 - 예외: {e}")
+        print(f"❌ 세션 수 조회 실패 - 예외 타입: {type(e)}")
+        logger.error(f"❌ 세션 수 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"세션 수 조회 실패: {str(e)}")
 
 @router.post("/restart-service")
 async def restart_step_service():
@@ -4387,7 +5282,7 @@ async def step_api_status(
 ):
     """8단계 AI API 상태 조회 - Central Hub DI Container 기반"""
     try:
-        session_stats = session_manager.get_all_sessions_status()
+        session_stats = await session_manager.get_all_sessions_status()
         container = _get_central_hub_container()
         
         return JSONResponse(content={

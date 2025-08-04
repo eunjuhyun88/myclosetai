@@ -884,38 +884,12 @@ for step_info in _di_step_loader._step_mapping.values():
 # ==============================================
 
 def _print_initialization_summary():
-    """초기화 요약 출력 (DI Container 포함)"""
+    """초기화 요약 출력 (간단 버전)"""
     status = get_pipeline_status()
     available_count = status['available_steps']
     total_count = status['total_steps']
-    success_rate = status['success_rate']
-    di_stats = status.get('di_container_stats', {})
     
-    print(f"\n🔥 MyCloset AI 파이프라인 시스템 v8.1 초기화 완료! (오류 수정)")
-    print(f"🔗 DI Container v4.0: {'✅ 활성화' if DI_CONTAINER_AVAILABLE else '❌ 비활성화'}")
-    print(f"📊 사용 가능한 Step: {available_count}/{total_count}개 ({success_rate:.1f}%)")
-    print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'}")
-    print(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-    print(f"🖥️ 디바이스: {DEVICE}")
-    print(f"⚡ PyTorch MPS: {'✅' if MPS_AVAILABLE else '❌'}")
-    print(f"🔬 SciPy: {'✅' if SCIPY_AVAILABLE else '❌'}")  # 추가
-    print(f"🛠️ 유틸리티: {sum(UTILS_STATUS.values())}/4개 사용 가능")
-    
-    if DI_CONTAINER_AVAILABLE and di_stats:
-        if 'statistics' in di_stats:
-            stats = di_stats['statistics']
-            lazy_resolutions = stats.get('lazy_resolutions', 0)
-            circular_prevented = stats.get('circular_references_prevented', 0)
-            print(f"🔗 DI 지연 해결: {lazy_resolutions}회")
-            print(f"🚫 순환참조 차단: {circular_prevented}회")
-    
-    if available_count > 0:
-        print(f"✅ 로드된 Steps: {', '.join(status['loaded_steps'])}")
-    
-    if status['failed_steps']:
-        print(f"⚠️ 실패한 Steps: {', '.join(status['failed_steps'])}")
-    
-    print("🚀 파이프라인 시스템 준비 완료!\n")
+    print(f"✅ 파이프라인 시스템 준비 완료 ({available_count}/{total_count}개 Step)")
 
 # 초기화 상태 출력 (한 번만)
 if not hasattr(sys, '_mycloset_pipeline_di_initialized'):

@@ -432,26 +432,11 @@ __all__ = _get_available_exports()
 # =============================================================================
 
 def _print_initialization_summary():
-    """초기화 요약 출력"""
+    """초기화 요약 출력 (간단 버전)"""
     available_services = [k for k, v in SERVICE_STATUS.items() if v]
     total_services = len(SERVICE_STATUS)
-    success_rate = (len(available_services) / total_services) * 100
     
-    print(f"\n🍎 MyCloset AI 서비스 시스템 v7.0 초기화 완료!")
-    print(f"🔧 사용 가능한 서비스: {len(available_services)}/{total_services}개 ({success_rate:.1f}%)")
-    print(f"🐍 conda 환경: {'✅' if IS_CONDA else '❌'}")
-    print(f"🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-    print(f"🖥️ 디바이스: {DEVICE}")
-    
-    if available_services:
-        print(f"✅ 로드된 서비스: {', '.join(available_services)}")
-    
-    unavailable_services = [k for k, v in SERVICE_STATUS.items() if not v]
-    if unavailable_services:
-        print(f"⚠️ 구현 대기 서비스: {', '.join(unavailable_services)}")
-        print(f"💡 이는 정상적인 상태입니다 (단계적 구현)")
-    
-    print("🚀 서비스 시스템 준비 완료!\n")
+    print(f"✅ 서비스 시스템 준비 완료 ({len(available_services)}/{total_services}개 서비스)")
 
 # 초기화 상태 출력 (한 번만)
 if not hasattr(sys, '_mycloset_services_initialized'):

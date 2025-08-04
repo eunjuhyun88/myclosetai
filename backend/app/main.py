@@ -60,36 +60,50 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # 로그 레벨 조정 (불필요한 상세 정보 숨기기) - 중복 방지
 import logging
-# 이미 설정된 경우 스킵
-if not logging.getLogger().handlers:
-    logging.basicConfig(
-        level=logging.INFO,  # INFO 레벨로 설정 (디버깅용)
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+import os
+import sys
 
-# 특정 모듈들의 로그 레벨 조정 (더 엄격하게)
+# 환경변수로 출력 제어
+QUIET_MODE = os.getenv('QUIET_MODE', 'false').lower() == 'true'  # 기본값을 false로 변경
+STEP_LOGGING = os.getenv('STEP_LOGGING', 'true').lower() == 'true'  # Step 로깅 활성화
+MODEL_LOGGING = os.getenv('MODEL_LOGGING', 'true').lower() == 'true'  # 모델 로딩 로깅 활성화
+
+# 로그 레벨 조정 (모델 로딩 로그를 보기 위해)
+if MODEL_LOGGING:
+    logging.disable(logging.DEBUG)  # DEBUG만 차단
+    os.environ['LOG_LEVEL'] = 'INFO'
+    os.environ['LOG_MODE'] = 'model_loading'
+else:
+    # 모든 로그를 완전히 차단
+    logging.disable(logging.CRITICAL)
+    os.environ['LOG_LEVEL'] = 'CRITICAL'
+    os.environ['LOG_MODE'] = 'minimal'
+
+# 루트 로거 설정
+root_logger = logging.getLogger()
+root_logger.handlers.clear()
+if MODEL_LOGGING:
+    root_logger.setLevel(logging.INFO)
+else:
+    root_logger.setLevel(logging.CRITICAL)
+
+# 모든 로거의 핸들러 제거 및 레벨 설정
+for name in logging.root.manager.loggerDict:
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    if MODEL_LOGGING:
+        logger.setLevel(logging.INFO)
+        logger.propagate = True
+    else:
+        logger.setLevel(logging.CRITICAL)
+        logger.propagate = False
+
+# 특정 모듈들의 로그 완전 차단
 quiet_modules = [
-    'app.ai_pipeline.steps.step_01_human_parsing',
-    'app.ai_pipeline.steps.step_02_pose_estimation', 
-    'app.ai_pipeline.steps.step_03_cloth_segmentation',
-    'app.ai_pipeline.steps.step_04_geometric_matching',
-    'app.ai_pipeline.steps.step_05_cloth_warping',
-    'app.ai_pipeline.steps.step_06_virtual_fitting',
-    'app.ai_pipeline.steps.step_07_post_processing',
-    'app.ai_pipeline.steps.step_08_quality_assessment',
-    'app.ai_pipeline.utils.model_loader',
-    'app.core.di_container',
-    'app.services.step_service',
-    'steps.HumanParsingStep',
-    'steps.PoseEstimationStep',
-    'steps.ClothSegmentationStep',
-    'steps.GeometricMatchingStep',
-    'steps.ClothWarpingStep',
-    'steps.VirtualFittingStep',
-    'steps.PostProcessingStep',
-    'steps.QualityAssessmentStep',
-    # 추가 모듈들 (verbose 로깅 방지)
+    'app.core',
+    'app.services', 
+    'app.api',
+    'backend.app',
     'transformers',
     'torch',
     'torchvision',
@@ -97,25 +111,98 @@ quiet_modules = [
     'cv2',
     'numpy',
     'segformer',
-    'segformer.encoder',
-    'segformer.encoder.block',
-    'segformer.encoder.block.3',
-    'segformer.encoder.block.3.2',
-    'segformer.encoder.block.3.2.attention',
-    'segformer.encoder.block.3.2.attention.self',
-    'segformer.encoder.block.3.2.attention.self.key',
-    'segformer.encoder.block.3.2.attention.self.key.bias'
+    'uvicorn',
+    'fastapi',
+    'uvicorn.access',
+    'uvicorn.error',
+    'step_model_requests',
+    'step_interface',
+    'di_container',
+    'step_service'
 ]
 
+# Step 관련 모듈은 조건부로 로깅 활성화
+if STEP_LOGGING:
+    step_modules = [
+        'app.ai_pipeline.steps',
+        'app.ai_pipeline.steps.step_01_human_parsing',
+        'app.ai_pipeline.steps.step_02_pose_estimation',
+        'app.ai_pipeline.steps.step_03_cloth_segmentation',
+        'app.ai_pipeline.steps.step_04_geometric_matching',
+        'app.ai_pipeline.steps.step_05_cloth_warping',
+        'app.ai_pipeline.steps.step_06_virtual_fitting',
+        'app.ai_pipeline.steps.step_07_post_processing',
+        'app.ai_pipeline.steps.step_08_quality_assessment'
+    ]
+    for module in step_modules:
+        logger = logging.getLogger(module)
+        logger.setLevel(logging.INFO)
+else:
+    quiet_modules.extend([
+        'app.ai_pipeline.steps',
+        'app.ai_pipeline.steps.step_01_human_parsing',
+        'app.ai_pipeline.steps.step_02_pose_estimation',
+        'app.ai_pipeline.steps.step_03_cloth_segmentation',
+        'app.ai_pipeline.steps.step_04_geometric_matching',
+        'app.ai_pipeline.steps.step_05_cloth_warping',
+        'app.ai_pipeline.steps.step_06_virtual_fitting',
+        'app.ai_pipeline.steps.step_07_post_processing',
+        'app.ai_pipeline.steps.step_08_quality_assessment'
+    ])
+
+# 모델 로딩 관련 모듈은 조건부로 로깅 활성화
+if MODEL_LOGGING:
+    model_modules = [
+        'app.ai_pipeline.utils.model_loader',
+        'app.ai_pipeline.utils.checkpoint_model_loader',
+        'app.ai_pipeline.utils.dynamic_model_detector',
+        'app.ai_pipeline.utils.smart_model_mapper',
+        'app.ai_pipeline.utils.universal_step_loader',
+        'app.core.di_container',
+        'app.services.model_manager',
+        'app.services.ai_models'
+    ]
+    for module in model_modules:
+        logger = logging.getLogger(module)
+        logger.setLevel(logging.INFO)
+        logger.propagate = True
+else:
+    quiet_modules.extend(model_modules)
+
+# 모든 quiet 모듈의 로그 완전 차단
 for module in quiet_modules:
     logger = logging.getLogger(module)
-    logger.setLevel(logging.WARNING)  # WARNING 레벨로 설정 (INFO, DEBUG 메시지 숨김)
+    logger.handlers.clear()
+    logger.setLevel(logging.CRITICAL)
+    logger.propagate = False
 
-# 추가적으로 특정 패턴의 로그 숨기기
-logging.getLogger('PIL').setLevel(logging.WARNING)
-logging.getLogger('torch').setLevel(logging.WARNING)
-logging.getLogger('torchvision').setLevel(logging.WARNING)
-logging.getLogger('transformers').setLevel(logging.WARNING)
+# 핵심 정보만 출력하는 간단한 함수
+def print_status(message):
+    """핵심 상태 정보만 출력"""
+    if not QUIET_MODE:
+        print(f"✅ {message}")
+
+def print_error(message):
+    """에러 정보만 출력"""
+    print(f"❌ {message}")
+
+def print_warning(message):
+    """경고 정보만 출력"""
+    if not QUIET_MODE:
+        print(f"⚠️ {message}")
+
+def print_step(message):
+    """Step 실행 정보만 출력"""
+    if STEP_LOGGING:
+        print(f"🔧 {message}")
+
+def print_model(message):
+    """모델 로딩 정보만 출력"""
+    if MODEL_LOGGING:
+        print(f"🧠 {message}")
+
+if not QUIET_MODE:
+    print("🔇 로그 출력 최소화 완료 (Step 로깅: " + ("활성화" if STEP_LOGGING else "비활성화") + ", 모델 로깅: " + ("활성화" if MODEL_LOGGING else "비활성화") + ")")
 
 # =============================================================================
 # 🔥 1. 실행 경로 자동 수정 및 시스템 정보
@@ -210,11 +297,7 @@ IS_CONDA = SYSTEM_INFO['is_conda']
 IS_M3_MAX = SYSTEM_INFO['is_m3_max']
 IS_MYCLOSET_ENV = SYSTEM_INFO['is_mycloset_env']
 
-print(f"🔧 시스템 정보:")
-print(f"  🐍 conda: {'✅' if IS_CONDA else '❌'} ({SYSTEM_INFO['conda_env']})")
-print(f"  🎯 mycloset-ai-clean: {'✅' if IS_MYCLOSET_ENV else '⚠️'}")
-print(f"  🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-print(f"  💾 메모리: {SYSTEM_INFO['memory_gb']}GB")
+print_status("시스템 정보 감지 완료")
 
 # =============================================================================
 # 🔥 2. 로깅 설정
@@ -237,11 +320,11 @@ try:
     from fastapi.staticfiles import StaticFiles
     import uvicorn
     
-    logger.info("✅ FastAPI 라이브러리 import 성공")
+    print_status("FastAPI 라이브러리 import 성공")
     
 except ImportError as e:
-    logger.error(f"❌ FastAPI 라이브러리 import 실패: {e}")
-    logger.error("설치 명령: conda install fastapi uvicorn python-multipart websockets")
+    print_error(f"FastAPI 라이브러리 import 실패: {e}")
+    print_error("설치 명령: conda install fastapi uvicorn python-multipart websockets")
     sys.exit(1)
 
 # PyTorch 안전 import
@@ -257,16 +340,16 @@ try:
     # 디바이스 감지
     if torch.backends.mps.is_available() and IS_M3_MAX:
         DEVICE = 'mps'
-        logger.info("✅ PyTorch MPS (M3 Max) 사용")
+        print_status("PyTorch MPS (M3 Max) 사용")
     elif torch.cuda.is_available():
         DEVICE = 'cuda'
-        logger.info("✅ PyTorch CUDA 사용")
+        print_status("PyTorch CUDA 사용")
     else:
         DEVICE = 'cpu'
-        logger.info("✅ PyTorch CPU 사용")
+        print_status("PyTorch CPU 사용")
     
 except ImportError:
-    logger.warning("⚠️ PyTorch import 실패")
+    print_warning("⚠️ PyTorch import 실패")
 
 # =============================================================================
 # 🔥 4. Central Hub DI Container v7.0 우선 초기화 (핵심!)
@@ -276,7 +359,7 @@ CENTRAL_HUB_CONTAINER_AVAILABLE = False
 central_hub_container = None
 
 try:
-    logger.info("🔥 Central Hub DI Container v7.0 우선 초기화 중...")
+    print_status("🔥 Central Hub DI Container v7.0 우선 초기화 중...")
     from app.core.di_container import (
         get_global_container,
         initialize_di_system,
@@ -294,8 +377,8 @@ try:
     
     if central_hub_container:
         CENTRAL_HUB_CONTAINER_AVAILABLE = True
-        logger.info(f"✅ Central Hub DI Container v7.0 초기화 완료!")
-        logger.info(f"📊 Container ID: {getattr(central_hub_container, 'container_id', 'default')}")
+        print_status(f"✅ Central Hub DI Container v7.0 초기화 완료!")
+        print_status(f"📊 Container ID: {getattr(central_hub_container, 'container_id', 'default')}")
         
         # Container에 시스템 정보 등록
         central_hub_container.register('system_info', SYSTEM_INFO)
@@ -304,15 +387,15 @@ try:
         central_hub_container.register('is_conda', IS_CONDA)
         central_hub_container.register('is_mycloset_env', IS_MYCLOSET_ENV)
         
-        logger.info(f"🔥 중앙 허브 DI Container - 모든 의존성 관리의 단일 중심")
+        print_status(f"🔥 중앙 허브 DI Container - 모든 의존성 관리의 단일 중심")
     else:
-        logger.error("❌ Central Hub DI Container 초기화 실패")
+        print_error("❌ Central Hub DI Container 초기화 실패")
         
 except ImportError as e:
-    logger.error(f"❌ Central Hub DI Container import 실패: {e}")
+    print_error(f"❌ Central Hub DI Container import 실패: {e}")
     CENTRAL_HUB_CONTAINER_AVAILABLE = False
 except Exception as e:
-    logger.error(f"❌ Central Hub DI Container 초기화 실패: {e}")
+    print_error(f"❌ Central Hub DI Container 초기화 실패: {e}")
     CENTRAL_HUB_CONTAINER_AVAILABLE = False
 
 # =============================================================================
@@ -338,9 +421,9 @@ os.environ['MYCLOSET_IS_MYCLOSET_ENV'] = str(IS_MYCLOSET_ENV)
 try:
     from app.core.config import get_settings
     settings = get_settings()
-    logger.info("✅ 설정 모듈 import 성공")
+    print_status("✅ 설정 모듈 import 성공")
 except ImportError as e:
-    logger.warning(f"⚠️ 설정 모듈 import 실패: {e}")
+    print_warning(f"⚠️ 설정 모듈 import 실패: {e}")
     
     # 폴백 설정
     class Settings:
@@ -373,7 +456,7 @@ step_service_manager = None
 async def _register_core_services_to_central_hub(container):
     """핵심 서비스들을 Central Hub에 등록"""
     try:
-        logger.info("🔄 핵심 서비스들 Central Hub 등록 중...")
+        print_status("🔄 핵심 서비스들 Central Hub 등록 중...")
         
         # StepServiceManager 등록
         try:
@@ -385,43 +468,43 @@ async def _register_core_services_to_central_hub(container):
             
             step_service_manager = await get_step_service_manager_async()
             container.register('step_service_manager', step_service_manager)
-            logger.info("✅ StepServiceManager Central Hub 등록 완료")
+            print_status("✅ StepServiceManager Central Hub 등록 완료")
             
             global STEP_SERVICE_MANAGER_AVAILABLE
             STEP_SERVICE_MANAGER_AVAILABLE = True
             
         except Exception as e:
-            logger.error(f"❌ StepServiceManager 등록 실패: {e}")
+            print_error(f"❌ StepServiceManager 등록 실패: {e}")
         
         # SessionManager 등록
         try:
-            logger.info("🔄 SessionManager 초기화 시작...")
+            print_status("🔄 SessionManager 초기화 시작...")
             from app.core.session_manager import SessionManager
             
-            logger.info("🔄 SessionManager 인스턴스 생성 중...")
+            print_status("🔄 SessionManager 인스턴스 생성 중...")
             session_manager = SessionManager()
-            logger.info("✅ SessionManager 인스턴스 생성 완료")
+            print_status("✅ SessionManager 인스턴스 생성 완료")
             
-            logger.info("🔄 SessionManager Central Hub 등록 중...")
+            print_status("🔄 SessionManager Central Hub 등록 중...")
             container.register('session_manager', session_manager)
-            logger.info("✅ SessionManager Central Hub 등록 완료")
+            print_status("✅ SessionManager Central Hub 등록 완료")
             
         except Exception as e:
-            logger.error(f"❌ SessionManager 등록 실패: {e}")
-            logger.error(f"❌ SessionManager 등록 실패 상세: {traceback.format_exc()}")
+            print_error(f"❌ SessionManager 등록 실패: {e}")
+            print_error(f"❌ SessionManager 등록 실패 상세: {traceback.format_exc()}")
             
             # 대체 방법: 간단한 SessionManager 등록
             try:
-                logger.info("🔄 대체 SessionManager 등록 시도...")
+                print_status("🔄 대체 SessionManager 등록 시도...")
                 from app.core.session_manager import get_session_manager
                 session_manager = get_session_manager()
                 if session_manager:
                     container.register('session_manager', session_manager)
-                    logger.info("✅ 대체 SessionManager 등록 완료")
+                    print_status("✅ 대체 SessionManager 등록 완료")
                 else:
-                    logger.error("❌ 대체 SessionManager도 실패")
+                    print_error("❌ 대체 SessionManager도 실패")
             except Exception as e2:
-                logger.error(f"❌ 대체 SessionManager 등록 실패: {e2}")
+                print_error(f"❌ 대체 SessionManager 등록 실패: {e2}")
         
         # WebSocketManager 등록
         try:
@@ -430,9 +513,9 @@ async def _register_core_services_to_central_hub(container):
             # 백그라운드 태스크 시작
             await websocket_manager.start_background_tasks()
             container.register('websocket_manager', websocket_manager)
-            logger.info("✅ WebSocketManager Central Hub 등록 완료")
+            print_status("✅ WebSocketManager Central Hub 등록 완료")
         except Exception as e:
-            logger.error(f"❌ WebSocketManager 등록 실패: {e}")
+            print_error(f"❌ WebSocketManager 등록 실패: {e}")
         
         # StepImplementationManager 등록
         try:
@@ -440,19 +523,19 @@ async def _register_core_services_to_central_hub(container):
             impl_manager = get_step_implementation_manager()
             if impl_manager:
                 container.register('step_implementation_manager', impl_manager)
-                logger.info("✅ StepImplementationManager Central Hub 등록 완료")
+                print_status("✅ StepImplementationManager Central Hub 등록 완료")
         except Exception as e:
-            logger.error(f"❌ StepImplementationManager 등록 실패: {e}")
+            print_error(f"❌ StepImplementationManager 등록 실패: {e}")
         
-        logger.info("🎯 핵심 서비스들 Central Hub 등록 완료")
+        print_status("🎯 핵심 서비스들 Central Hub 등록 완료")
         
     except Exception as e:
-        logger.error(f"❌ 핵심 서비스 등록 실패: {e}")
+        print_error(f"❌ 핵심 서비스 등록 실패: {e}")
 
 async def _register_step_factory_to_central_hub(container):
     """StepFactory를 Central Hub에 등록"""
     try:
-        logger.info("🔄 StepFactory Central Hub 등록 중...")
+        print_status("🔄 StepFactory Central Hub 등록 중...")
         
         from app.ai_pipeline.factories.step_factory import get_global_step_factory
         step_factory = get_global_step_factory()
@@ -462,14 +545,14 @@ async def _register_step_factory_to_central_hub(container):
             
             # StepFactory 통계 확인
             stats = step_factory.get_statistics()
-            logger.info(f"✅ StepFactory Central Hub 등록 완료")
-            logger.info(f"   - 등록된 Step: {stats.get('registration', {}).get('registered_steps_count', 0)}개")
-            logger.info(f"   - 로딩된 클래스: {len(stats.get('loaded_classes', []))}개")
+            print_status(f"✅ StepFactory Central Hub 등록 완료")
+            print_status(f"   - 등록된 Step: {stats.get('registration', {}).get('registered_steps_count', 0)}개")
+            print_status(f"   - 로딩된 클래스: {len(stats.get('loaded_classes', []))}개")
         else:
-            logger.error("❌ StepFactory 인스턴스를 가져올 수 없음")
+            print_error("❌ StepFactory 인스턴스를 가져올 수 없음")
         
     except Exception as e:
-        logger.error(f"❌ StepFactory 등록 실패: {e}")
+        print_error(f"❌ StepFactory 등록 실패: {e}")
 
 async def _validate_central_hub_services(container) -> Dict[str, Any]:
     """Central Hub 서비스 검증"""
@@ -526,12 +609,12 @@ async def _cleanup_central_hub_services(container):
         # Central Hub 메모리 최적화
         if hasattr(container, 'optimize_memory'):
             optimization_result = container.optimize_memory()
-            logger.info(f"Central Hub 메모리 최적화: {optimization_result}")
+            print_status(f"Central Hub 메모리 최적화: {optimization_result}")
         
-        logger.info("✅ Central Hub 서비스 정리 완료")
+        print_status("✅ Central Hub 서비스 정리 완료")
         
     except Exception as e:
-        logger.error(f"❌ Central Hub 서비스 정리 실패: {e}")
+        print_error(f"❌ Central Hub 서비스 정리 실패: {e}")
 
 # =============================================================================
 # 🔥 8. Central Hub 기반 앱 생명주기 관리
@@ -542,15 +625,15 @@ async def lifespan(app: FastAPI):
     """Central Hub DI Container 기반 앱 생명주기 관리"""
     
     # ===== 🔥 시작 시 Central Hub 초기화 =====
-    logger.info("🚀 MyCloset AI Backend 시작 - Central Hub DI Container v7.0")
+    print_status("🚀 MyCloset AI Backend 시작 - Central Hub DI Container v7.0")
     
     try:
         # 1. Central Hub DI Container 확인
         if not CENTRAL_HUB_CONTAINER_AVAILABLE or not central_hub_container:
-            logger.error("❌ Central Hub DI Container 초기화 실패")
+            print_error("❌ Central Hub DI Container 초기화 실패")
             raise RuntimeError("Central Hub DI Container not available")
         
-        logger.info("✅ Central Hub DI Container 초기화 완료")
+        print_status("✅ Central Hub DI Container 초기화 완료")
         
         # 2. 핵심 서비스들 Central Hub에 등록
         await _register_core_services_to_central_hub(central_hub_container)
@@ -564,27 +647,27 @@ async def lifespan(app: FastAPI):
         # 5. Central Hub 상태 검증
         validation_result = await _validate_central_hub_services(central_hub_container)
         if not validation_result['success']:
-            logger.warning(f"⚠️ Central Hub 검증 경고: {validation_result['issues']}")
+            print_warning(f"⚠️ Central Hub 검증 경고: {validation_result['issues']}")
         
-        logger.info("🎉 Central Hub 기반 MyCloset AI Backend 시작 완료!")
+        print_status("🎉 Central Hub 기반 MyCloset AI Backend 시작 완료!")
         
         yield  # 앱 실행
         
     except Exception as e:
-        logger.error(f"❌ Central Hub 초기화 실패: {e}")
+        print_error(f"❌ Central Hub 초기화 실패: {e}")
         yield  # 에러가 있어도 앱은 시작 (폴백 모드)
     
     # ===== 🔥 종료 시 Central Hub 정리 =====
-    logger.info("🧹 MyCloset AI Backend 종료 - Central Hub 정리 시작")
+    print_status("🧹 MyCloset AI Backend 종료 - Central Hub 정리 시작")
     
     try:
         if hasattr(app.state, 'central_hub_container') and app.state.central_hub_container:
             await _cleanup_central_hub_services(app.state.central_hub_container)
         
-        logger.info("✅ Central Hub 정리 완료")
+        print_status("✅ Central Hub 정리 완료")
         
     except Exception as e:
-        logger.error(f"❌ Central Hub 정리 실패: {e}")
+        print_error(f"❌ Central Hub 정리 실패: {e}")
 
 # =============================================================================
 # 🔥 9. Central Hub 기반 FastAPI 앱 생성
@@ -616,10 +699,10 @@ def _setup_central_hub_cors(app):
             allow_headers=["*"],
         )
         
-        logger.info(f"✅ Central Hub 기반 CORS 설정 완료: {len(origins)}개 origin")
+        print_status(f"✅ Central Hub 기반 CORS 설정 완료: {len(origins)}개 origin")
         
     except Exception as e:
-        logger.error(f"❌ Central Hub CORS 설정 실패: {e}")
+        print_error(f"❌ Central Hub CORS 설정 실패: {e}")
 
 def _get_default_cors_origins():
     """기본 CORS origins"""
@@ -647,17 +730,17 @@ def _setup_central_hub_middleware(app):
             
             # Step API 요청은 상세 로깅
             if request.url.path.startswith("/api/step/"):
-                logger.info(
+                print_status(
                     f"🔥 CENTRAL HUB STEP API: {request.method} {request.url.path} - "
                     f"{response.status_code} ({process_time:.3f}s)"
                 )
             
             return response
         
-        logger.info("✅ Central Hub 기반 미들웨어 설정 완료")
+        print_status("✅ Central Hub 기반 미들웨어 설정 완료")
         
     except Exception as e:
-        logger.error(f"❌ Central Hub 미들웨어 설정 실패: {e}")
+        print_error(f"❌ Central Hub 미들웨어 설정 실패: {e}")
 
 def _register_central_hub_routers(app) -> int:
     """Central Hub 기반 라우터 등록"""
@@ -670,55 +753,55 @@ def _register_central_hub_routers(app) -> int:
         # Central Hub 기반 라우터 등록
         registered_count = register_routers(app)
         
-        logger.info(f"✅ Central Hub 기반 라우터 등록: {registered_count}개")
+        print_status(f"✅ Central Hub 기반 라우터 등록: {registered_count}개")
         
         # 🔥 핫픽스 라우터 제거 (실제 라우터와 충돌 방지)
-        logger.info("ℹ️ 핫픽스 라우터 제거됨 (실제 라우터 사용)")
+        print_status("ℹ️ 핫픽스 라우터 제거됨 (실제 라우터 사용)")
         
         # 🔥 시스템 정보 라우터 추가 등록
         try:
             from app.api.system_routes import router as system_router
             SYSTEM_ROUTER_AVAILABLE = True
-            logger.info("✅ system_routes.py 라우터 로드 성공")
+            print_status("✅ system_routes.py 라우터 로드 성공")
         except ImportError as e:
             SYSTEM_ROUTER_AVAILABLE = False
-            logger.warning(f"⚠️ system_routes.py 라우터 로드 실패: {e}")
+            print_warning(f"⚠️ system_routes.py 라우터 로드 실패: {e}")
             system_router = None
 
         # 시스템 정보 라우터 등록 (step_routes 등록 뒤에)
         if SYSTEM_ROUTER_AVAILABLE and system_router:
             try:
                 app.include_router(system_router)
-                logger.info("✅ 시스템 정보 라우터 등록 완료: /api/system/*")
+                print_status("✅ 시스템 정보 라우터 등록 완료: /api/system/*")
                 # ROUTER_STATUS 업데이트 (app.api.__init__.py에서 관리됨)
             except AttributeError as e:
-                logger.error(f"❌ 시스템 정보 라우터 속성 오류: {e}")
+                print_error(f"❌ 시스템 정보 라우터 속성 오류: {e}")
             except TypeError as e:
-                logger.error(f"❌ 시스템 정보 라우터 타입 오류: {e}")
+                print_error(f"❌ 시스템 정보 라우터 타입 오류: {e}")
             except ValueError as e:
-                logger.error(f"❌ 시스템 정보 라우터 값 오류: {e}")
+                print_error(f"❌ 시스템 정보 라우터 값 오류: {e}")
             except Exception as e:
-                logger.error(f"❌ 시스템 정보 라우터 등록 실패: {type(e).__name__}: {e}")
+                print_error(f"❌ 시스템 정보 라우터 등록 실패: {type(e).__name__}: {e}")
         else:
-            logger.warning("⚠️ 시스템 정보 라우터 등록 생략")
+            print_warning("⚠️ 시스템 정보 라우터 등록 생략")
         
     except AttributeError as e:
-        logger.error(f"❌ Central Hub 라우터 등록 속성 오류: {e}")
+        print_error(f"❌ Central Hub 라우터 등록 속성 오류: {e}")
         # 폴백: 기본 헬스체크만 등록
         _register_fallback_health_router(app)
         registered_count = 1
     except TypeError as e:
-        logger.error(f"❌ Central Hub 라우터 등록 타입 오류: {e}")
+        print_error(f"❌ Central Hub 라우터 등록 타입 오류: {e}")
         # 폴백: 기본 헬스체크만 등록
         _register_fallback_health_router(app)
         registered_count = 1
     except ValueError as e:
-        logger.error(f"❌ Central Hub 라우터 등록 값 오류: {e}")
+        print_error(f"❌ Central Hub 라우터 등록 값 오류: {e}")
         # 폴백: 기본 헬스체크만 등록
         _register_fallback_health_router(app)
         registered_count = 1
     except Exception as e:
-        logger.error(f"❌ Central Hub 라우터 등록 실패: {type(e).__name__}: {e}")
+        print_error(f"❌ Central Hub 라우터 등록 실패: {type(e).__name__}: {e}")
         # 폴백: 기본 헬스체크만 등록
         _register_fallback_health_router(app)
         registered_count = 1
@@ -730,7 +813,7 @@ def _setup_central_hub_error_handlers(app):
     try:
         @app.exception_handler(Exception)
         async def central_hub_exception_handler(request, exc):
-            logger.error(f"❌ Central Hub 기반 앱에서 처리되지 않은 예외: {exc}")
+            print_error(f"❌ Central Hub 기반 앱에서 처리되지 않은 예외: {exc}")
             
             # Central Hub 상태 정보 추가
             error_context = {
@@ -748,16 +831,16 @@ def _setup_central_hub_error_handlers(app):
                 status_code=500
             )
         
-        logger.info("✅ Central Hub 기반 에러 핸들러 설정 완료")
+        print_status("✅ Central Hub 기반 에러 핸들러 설정 완료")
         
     except AttributeError as e:
-        logger.error(f"❌ Central Hub 에러 핸들러 설정 속성 오류: {e}")
+        print_error(f"❌ Central Hub 에러 핸들러 설정 속성 오류: {e}")
     except TypeError as e:
-        logger.error(f"❌ Central Hub 에러 핸들러 설정 타입 오류: {e}")
+        print_error(f"❌ Central Hub 에러 핸들러 설정 타입 오류: {e}")
     except ValueError as e:
-        logger.error(f"❌ Central Hub 에러 핸들러 설정 값 오류: {e}")
+        print_error(f"❌ Central Hub 에러 핸들러 설정 값 오류: {e}")
     except Exception as e:
-        logger.error(f"❌ Central Hub 에러 핸들러 설정 실패: {type(e).__name__}: {e}")
+        print_error(f"❌ Central Hub 에러 핸들러 설정 실패: {type(e).__name__}: {e}")
 
 def _add_central_hub_endpoints(app):
     """Central Hub 전용 엔드포인트 추가"""
@@ -826,10 +909,10 @@ def _add_central_hub_endpoints(app):
                     'error': str(e)
                 }, status_code=500)
         
-        logger.info("✅ Central Hub 전용 엔드포인트 추가 완료")
+        print_status("✅ Central Hub 전용 엔드포인트 추가 완료")
         
     except Exception as e:
-        logger.error(f"❌ Central Hub 엔드포인트 추가 실패: {e}")
+        print_error(f"❌ Central Hub 엔드포인트 추가 실패: {e}")
 
 def _register_fallback_health_router(app):
     """폴백 헬스체크 라우터"""
@@ -862,7 +945,7 @@ def create_app() -> FastAPI:
     
     # Central Hub 기반 라우터 등록
     registered_count = _register_central_hub_routers(app)
-    logger.info(f"🎯 Central Hub 기반 라우터 등록 완료: {registered_count}개")
+    print_status(f"🎯 Central Hub 기반 라우터 등록 완료: {registered_count}개")
     
     # Central Hub 기반 에러 핸들러 설정
     _setup_central_hub_error_handlers(app)
@@ -870,7 +953,7 @@ def create_app() -> FastAPI:
     # Central Hub 상태 확인 엔드포인트 추가
     _add_central_hub_endpoints(app)
     
-    logger.info("🏭 Central Hub 기반 FastAPI 앱 생성 완료!")
+    print_status("🏭 Central Hub 기반 FastAPI 앱 생성 완료!")
     return app
 
 # =============================================================================
@@ -962,7 +1045,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
     
     try:
         await websocket.accept()
-        logger.info(f"🔌 Central Hub WebSocket 연결 성공: {session_id}")
+        print_status(f"🔌 Central Hub WebSocket 연결 성공: {session_id}")
         
         # Central Hub Container를 통한 WebSocket 관리자 조회
         websocket_manager = None
@@ -1013,14 +1096,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
             except WebSocketDisconnect:
                 break
             except Exception as e:
-                logger.error(f"❌ Central Hub WebSocket 메시지 처리 오류: {e}")
+                print_error(f"❌ Central Hub WebSocket 메시지 처리 오류: {e}")
                 break
     
     except Exception as e:
-        logger.error(f"❌ Central Hub WebSocket 연결 오류: {e}")
+        print_error(f"❌ Central Hub WebSocket 연결 오류: {e}")
     
     finally:
-        logger.info(f"🔌 Central Hub WebSocket 연결 종료: {session_id}")
+        print_status(f"🔌 Central Hub WebSocket 연결 종료: {session_id}")
 
 # =============================================================================
 # 🔥 13. 서버 시작 함수 및 메인 실행
@@ -1029,72 +1112,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
 def main():
     """메인 실행 함수"""
     
-    print("\n" + "="*120)
-    print("🔥 MyCloset AI 백엔드 서버 - Central Hub DI Container v7.0 완전 연동 v29.0")
-    print("="*120)
-    print("🏗️ 새로운 통합 아키텍처 (Central Hub Pattern):")
-    print("  ✅ Central Hub DI Container v7.0 완전 연동 - 모든 의존성의 단일 중심")
-    print("  ✅ 순환참조 완전 해결 - TYPE_CHECKING + 지연 import")
-    print("  ✅ 단방향 의존성 그래프 - Dependency Inversion 적용")
-    print("  ✅ StepServiceManager v15.0 완벽 연동")
-    print("  ✅ RealAIStepImplementationManager v14.0 완전 통합")
-    print("  ✅ step_routes.py v5.0 완전 호환")
-    print("  ✅ system_routes.py 시스템 정보 API 완전 통합")
-    print("  ✅ step_implementations.py DetailedDataSpec 완전 통합")
-    print("  ✅ BaseStepMixin v20.0 의존성 주입")
-    print("  ✅ SmartModelPathMapper 동적 경로 매핑")
-    print("  ✅ 실제 229GB AI 모델 완전 활용")
-    print("  ✅ BodyMeasurements 스키마 완전 호환")
-    print("  ✅ WebSocket 실시간 진행률 추적")
-    print("  ✅ 세션 기반 이미지 관리")
-    print("  ✅ M3 Max 128GB + conda 환경 최적화")
-    print("  ✅ React/TypeScript 프론트엔드 100% 호환")
-    print("="*120)
-    print("🚀 Central Hub DI Container v7.0 상태:")
-    print(f"  ✅ 중앙 허브 DI Container: {'활성화' if CENTRAL_HUB_CONTAINER_AVAILABLE else '비활성화'}")
-    print(f"  ✅ StepServiceManager v15.0: {'연동' if STEP_SERVICE_MANAGER_AVAILABLE else '대기'}")
-    print(f"  ✅ 서비스 개수: {len(central_hub_container.list_services()) if central_hub_container and hasattr(central_hub_container, 'list_services') else 0}개")
-    print(f"  ✅ Container ID: {getattr(central_hub_container, 'container_id', 'unknown') if central_hub_container else 'N/A'}")
-    print(f"  ✅ Single Source of Truth: 구현 완료")
-    print(f"  ✅ Dependency Inversion: 적용 완료")
-    print(f"  ✅ 순환참조 해결: 완료")
-    
-    print("="*120)
-    print("🌐 서버 정보:")
-    print(f"  📍 주소: http://{settings.HOST}:{settings.PORT}")
-    print(f"  📚 API 문서: http://{settings.HOST}:{settings.PORT}/docs")
-    print(f"  ❤️ 헬스체크: http://{settings.HOST}:{settings.PORT}/health")
-    print(f"  🔌 WebSocket: ws://{settings.HOST}:{settings.PORT}/ws")
-    print(f"  🔥 Central Hub 상태: http://{settings.HOST}:{settings.PORT}/central-hub/status")
-    print(f"  🔥 Central Hub 서비스: http://{settings.HOST}:{settings.PORT}/central-hub/services")
-    print(f"  🔥 시스템 정보: http://{settings.HOST}:{settings.PORT}/api/system/info")
-    print(f"  🔥 시스템 헬스: http://{settings.HOST}:{settings.PORT}/api/system/health")
-    print(f"  🔥 시스템 상태: http://{settings.HOST}:{settings.PORT}/api/system/status")
-    print(f"  🐍 conda: {'✅' if IS_CONDA else '❌'} ({SYSTEM_INFO['conda_env']})")
-    print(f"  🎯 mycloset-ai-clean: {'✅' if IS_MYCLOSET_ENV else '⚠️'}")
-    print(f"  🍎 M3 Max: {'✅' if IS_M3_MAX else '❌'}")
-    print(f"  🖥️ 디바이스: {DEVICE}")
-    print(f"  💾 메모리: {SYSTEM_INFO['memory_gb']}GB")
-    print("="*120)
-    print("🔥 Central Hub DI Container v7.0 완전 연동 완성!")
-    print("📦 모든 의존성이 단일 중심을 통해 관리됩니다!")
-    print("✨ 순환참조 없는 깔끔한 아키텍처!")
-    print("🤖 실제 AI 모델 229GB 기반 8단계 가상 피팅 파이프라인!")
-    print("🎯 GitHub 구조 기반 완전한 통합 아키텍처!")
-    print("🚀 Single Source of Truth 패턴 완전 구현!")
-    print("="*120)
+    if not QUIET_MODE:
+        print("🚀 MyCloset AI 서버 시작")
+        print(f"📍 서버 주소: http://0.0.0.0:8000")
     
     # 개발 서버 설정
     config = {
         "host": settings.HOST,
         "port": settings.PORT,
-        "reload": False,  # reload=False로 설정하여 안정성 향상
-        "log_level": "info",
-        "access_log": True
+        "reload": False,
+        "log_level": "error",
+        "access_log": False
     }
-    
-    print(f"🚀 서버 시작: http://{config['host']}:{config['port']}")
-    print("🔥 Central Hub DI Container v7.0 프론트엔드 연결 대기 중...")
     
     # uvicorn 서버 시작
     uvicorn.run(app, **config)
@@ -1110,5 +1139,5 @@ if __name__ == "__main__":
         print("\n✅ Central Hub DI Container v7.0 기반 서버가 안전하게 종료되었습니다.")
     except Exception as e:
         print(f"\n❌ 서버 실행 오류: {e}")
-        logger.error(f"서버 실행 오류: {e}")
+        print_error(f"서버 실행 오류: {e}")
         traceback.print_exc()

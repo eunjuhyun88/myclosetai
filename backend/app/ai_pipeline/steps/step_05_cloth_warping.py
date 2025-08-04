@@ -2606,12 +2606,54 @@ class ClothWarpingStep(BaseStepMixin):
             
             loaded_count = len(self.loaded_models)
             self.logger.info(f"🧠 Enhanced Cloth Warping 모델 로딩 완료: {loaded_count}개 모델")
+            print(f"🧠 Cloth Warping AI 모델 로딩 완료: {loaded_count}개 모델")
             self.logger.debug(f"   - 체크포인트 모델: {'✅' if checkpoint_loaded else '❌'}")
             self.logger.info(f"   - 고급 AI 네트워크: {len([m for m in self.loaded_models if 'network' in m])}개")
             
         except Exception as e:
             self.logger.error(f"❌ Central Hub Warping 모델 로딩 실패: {e}")
+            # 🔥 Mock 모델 대신 실제 AI 네트워크 강제 생성
+            self.logger.info("🔥 실제 AI 네트워크 강제 생성 시도...")
             self._create_advanced_ai_networks()
+            
+            # 🔥 Mock 모델 제거 및 실제 모델 강제 생성
+            mock_models_to_remove = []
+            for model_name, model in self.ai_models.items():
+                if hasattr(model, 'model_name') and 'mock' in model.model_name:
+                    mock_models_to_remove.append(model_name)
+                    self.logger.warning(f"⚠️ Mock 모델 감지됨: {model_name} - 제거 예정")
+            
+            for model_name in mock_models_to_remove:
+                if model_name in self.ai_models:
+                    del self.ai_models[model_name]
+                if model_name in self.loaded_models:
+                    self.loaded_models.remove(model_name)
+                self.logger.info(f"✅ Mock 모델 제거 완료: {model_name}")
+            
+            # 실제 모델이 없으면 강제로 생성
+            if not self.loaded_models:
+                self.logger.warning("⚠️ 실제 모델이 없음 - 강제 생성 시도")
+                try:
+                    # TPS 네트워크 강제 생성
+                    self.tps_network = AdvancedTPSWarpingNetwork(
+                        num_control_points=self.config.tps_control_points, 
+                        input_channels=6
+                    ).to(self.device)
+                    self.ai_models['tps_network'] = self.tps_network
+                    self.loaded_models.append('tps_network')
+                    self.logger.info("✅ TPS 네트워크 강제 생성 완료")
+                    
+                    # RAFT 네트워크 강제 생성
+                    self.raft_network = RAFTFlowWarpingNetwork(small_model=False).to(self.device)
+                    self.ai_models['raft_network'] = self.raft_network
+                    self.loaded_models.append('raft_network')
+                    self.logger.info("✅ RAFT 네트워크 강제 생성 완료")
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ 실제 모델 강제 생성 실패: {e}")
+                    # 최후의 수단으로만 Mock 모델 생성
+                    self.logger.error("❌ 모든 실제 모델 생성 실패 - Mock 모델로 폴백")
+                    self._create_mock_warping_models()
 
     def _create_advanced_ai_networks(self):
         """고급 AI 네트워크 직접 생성 (체크포인트 없이도 완전 AI 추론 가능)"""

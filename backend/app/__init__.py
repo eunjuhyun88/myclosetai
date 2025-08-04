@@ -204,7 +204,8 @@ def print_system_info():
 
 # 시스템 정보 출력 (한 번만)
 if not hasattr(sys, '_mycloset_app_initialized'):
-    print_system_info()
+    # 간단한 시스템 정보만 출력
+    print("✅ 시스템 정보 감지 완료")
     sys._mycloset_app_initialized = True
 
 # =============================================================================
