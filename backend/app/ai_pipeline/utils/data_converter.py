@@ -1058,6 +1058,275 @@ def get_optimal_image_size(step_name: str) -> Tuple[int, int]:
 def get_system_status() -> Dict[str, Any]:
     """시스템 상태 확인 (Central Hub 정보 포함)"""
     status = {
+        "module": "DataConverter",
+        "version": "9.0",
+        "libraries": {
+            "numpy": NUMPY_AVAILABLE,
+            "pil": PIL_AVAILABLE,
+            "cv2": CV2_AVAILABLE,
+            "torch": TORCH_AVAILABLE
+        },
+        "device": DEFAULT_DEVICE if TORCH_AVAILABLE else "cpu",
+        "m3_max_optimized": MPS_AVAILABLE if TORCH_AVAILABLE else False
+    }
+    return status
+
+# =============================================================================
+# 🔥 Virtual Fitting 전용 전처리/후처리 함수들
+# =============================================================================
+
+def preprocess_for_ootd(person_img: Any, cloth_img: Any, target_size: Tuple[int, int] = (768, 1024)) -> Tuple[Any, Any]:
+    """OOTD 모델용 전처리"""
+    try:
+        if not PIL_AVAILABLE or not TORCH_AVAILABLE:
+            return person_img, cloth_img
+        
+        # PIL 이미지로 변환
+        if not isinstance(person_img, Image.Image):
+            person_img = Image.fromarray(person_img)
+        if not isinstance(cloth_img, Image.Image):
+            cloth_img = Image.fromarray(cloth_img)
+        
+        # 리사이즈
+        person_img = person_img.resize(target_size, Image.LANCZOS)
+        cloth_img = cloth_img.resize(target_size, Image.LANCZOS)
+        
+        # 텐서로 변환
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
+        
+        person_tensor = transform(person_img).unsqueeze(0)
+        cloth_tensor = transform(cloth_img).unsqueeze(0)
+        
+        return person_tensor, cloth_tensor
+        
+    except Exception as e:
+        logging.error(f"OOTD 전처리 실패: {e}")
+        return person_img, cloth_img
+
+def preprocess_for_viton_hd(person_img: Any, cloth_img: Any, target_size: Tuple[int, int] = (512, 512)) -> Tuple[Any, Any]:
+    """VITON-HD 모델용 전처리"""
+    try:
+        if not PIL_AVAILABLE or not TORCH_AVAILABLE:
+            return person_img, cloth_img
+        
+        # PIL 이미지로 변환
+        if not isinstance(person_img, Image.Image):
+            person_img = Image.fromarray(person_img)
+        if not isinstance(cloth_img, Image.Image):
+            cloth_img = Image.fromarray(cloth_img)
+        
+        # 리사이즈
+        person_img = person_img.resize(target_size, Image.LANCZOS)
+        cloth_img = cloth_img.resize(target_size, Image.LANCZOS)
+        
+        # 텐서로 변환
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        person_tensor = transform(person_img).unsqueeze(0)
+        cloth_tensor = transform(cloth_img).unsqueeze(0)
+        
+        return person_tensor, cloth_tensor
+        
+    except Exception as e:
+        logging.error(f"VITON-HD 전처리 실패: {e}")
+        return person_img, cloth_img
+
+def setup_diffusion_pipeline(model_path: str = None, device: str = "cpu") -> Any:
+    """Diffusion 파이프라인 설정"""
+    try:
+        if not TORCH_AVAILABLE:
+            return None
+        
+        # Diffusers 라이브러리 체크
+        try:
+            from diffusers import StableDiffusionInpaintPipeline
+            DIFFUSERS_AVAILABLE = True
+        except ImportError:
+            DIFFUSERS_AVAILABLE = False
+            logging.warning("Diffusers 라이브러리가 설치되지 않음")
+            return None
+        
+        if not DIFFUSERS_AVAILABLE:
+            return None
+        
+        # 파이프라인 생성
+        pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting",
+            torch_dtype=torch.float16 if device != "cpu" else torch.float32
+        )
+        
+        # 디바이스 설정
+        pipeline = pipeline.to(device)
+        
+        return pipeline
+        
+    except Exception as e:
+        logging.error(f"Diffusion 파이프라인 설정 실패: {e}")
+        return None
+
+def tensor_to_pil(tensor: Any) -> Any:
+    """텐서를 PIL 이미지로 변환"""
+    try:
+        if not TORCH_AVAILABLE or not PIL_AVAILABLE:
+            return tensor
+        
+        # 정규화 해제
+        if tensor.min() < 0 or tensor.max() > 1:
+            tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min())
+        
+        # PIL 이미지로 변환
+        if tensor.dim() == 4:
+            tensor = tensor.squeeze(0)
+        
+        # 채널 순서 변경 (C, H, W) -> (H, W, C)
+        if tensor.shape[0] == 3:
+            tensor = tensor.permute(1, 2, 0)
+        
+        # NumPy로 변환
+        numpy_img = tensor.detach().cpu().numpy()
+        
+        # PIL 이미지로 변환
+        pil_img = Image.fromarray((numpy_img * 255).astype(np.uint8))
+        
+        return pil_img
+        
+    except Exception as e:
+        logging.error(f"텐서를 PIL로 변환 실패: {e}")
+        return tensor
+
+def pil_to_tensor(pil_img: Any) -> Any:
+    """PIL 이미지를 텐서로 변환"""
+    try:
+        if not PIL_AVAILABLE or not TORCH_AVAILABLE:
+            return pil_img
+        
+        # NumPy로 변환
+        numpy_img = np.array(pil_img)
+        
+        # 텐서로 변환
+        tensor = torch.from_numpy(numpy_img).float() / 255.0
+        
+        # 채널 순서 변경 (H, W, C) -> (C, H, W)
+        if tensor.dim() == 3 and tensor.shape[2] == 3:
+            tensor = tensor.permute(2, 0, 1)
+        
+        # 배치 차원 추가
+        tensor = tensor.unsqueeze(0)
+        
+        return tensor
+        
+    except Exception as e:
+        logging.error(f"PIL을 텐서로 변환 실패: {e}")
+        return pil_img
+
+def generate_inpainting_mask(person_img: Any, fitting_mode: str = "upper_body") -> Any:
+    """인페인팅 마스크 생성"""
+    try:
+        if not PIL_AVAILABLE or not CV2_AVAILABLE:
+            return None
+        
+        # PIL 이미지로 변환
+        if not isinstance(person_img, Image.Image):
+            person_img = Image.fromarray(person_img)
+        
+        # NumPy로 변환
+        numpy_img = np.array(person_img)
+        
+        # 그레이스케일 변환
+        gray = cv2.cvtColor(numpy_img, cv2.COLOR_RGB2GRAY)
+        
+        # 마스크 생성 (간단한 버전)
+        if fitting_mode == "upper_body":
+            # 상반신 마스크
+            h, w = gray.shape
+            mask = np.zeros((h, w), dtype=np.uint8)
+            mask[h//4:3*h//4, w//4:3*w//4] = 255
+        else:
+            # 전체 마스크
+            mask = np.ones((gray.shape[0], gray.shape[1]), dtype=np.uint8) * 255
+        
+        # PIL 이미지로 변환
+        mask_pil = Image.fromarray(mask)
+        
+        return mask_pil
+        
+    except Exception as e:
+        logging.error(f"인페인팅 마스크 생성 실패: {e}")
+        return None
+
+def generate_diffusion_prompt(fitting_mode: str, cloth_tensor: Any) -> str:
+    """Diffusion 프롬프트 생성"""
+    try:
+        base_prompt = "person wearing"
+        
+        if fitting_mode == "upper_body":
+            base_prompt += " shirt, t-shirt, or top"
+        elif fitting_mode == "lower_body":
+            base_prompt += " pants, jeans, or skirt"
+        elif fitting_mode == "full_body":
+            base_prompt += " complete outfit"
+        else:
+            base_prompt += " clothing"
+        
+        # 의류 색상 분석 (간단한 버전)
+        if TORCH_AVAILABLE and cloth_tensor is not None:
+            try:
+                # 평균 색상 계산
+                avg_color = cloth_tensor.mean(dim=[2, 3])  # (B, C)
+                
+                # 색상 이름 매핑
+                color_names = ["black", "white", "red", "blue", "green", "yellow", "purple", "pink", "brown", "gray"]
+                color_idx = torch.argmax(avg_color[0]).item()
+                
+                if color_idx < len(color_names):
+                    base_prompt += f", {color_names[color_idx]} color"
+            except:
+                pass
+        
+        base_prompt += ", high quality, realistic, detailed"
+        
+        return base_prompt
+        
+    except Exception as e:
+        logging.error(f"Diffusion 프롬프트 생성 실패: {e}")
+        return "person wearing clothing, high quality, realistic"
+
+def apply_viton_postprocessing(fitted_tensor: Any, processed_data: Dict[str, Any]) -> Any:
+    """VITON-HD 후처리"""
+    try:
+        if not TORCH_AVAILABLE:
+            return fitted_tensor
+        
+        # 기본 후처리
+        # 1. 정규화 해제
+        if fitted_tensor.min() < 0 or fitted_tensor.max() > 1:
+            fitted_tensor = (fitted_tensor - fitted_tensor.min()) / (fitted_tensor.max() - fitted_tensor.min())
+        
+        # 2. 클램핑
+        fitted_tensor = torch.clamp(fitted_tensor, 0, 1)
+        
+        # 3. 색상 보정 (간단한 버전)
+        if 'original_person' in processed_data:
+            original_person = processed_data['original_person']
+            if TORCH_AVAILABLE and isinstance(original_person, torch.Tensor):
+                # 색상 히스토그램 매칭 (간단한 버전)
+                fitted_mean = fitted_tensor.mean()
+                original_mean = original_person.mean()
+                fitted_tensor = fitted_tensor * (original_mean / (fitted_mean + 1e-8))
+        
+        return fitted_tensor
+        
+    except Exception as e:
+        logging.error(f"VITON-HD 후처리 실패: {e}")
+        return fitted_tensor
+    """시스템 상태 확인 (Central Hub 정보 포함)"""
+    status = {
         "torch_available": TORCH_AVAILABLE,
         "torch_version": TORCH_VERSION,
         "mps_available": MPS_AVAILABLE,

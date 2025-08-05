@@ -11,7 +11,7 @@ class SimulationStepProcessor:
     def __init__(self):
         self.results = {}
     
-    async def process_step_3_human_parsing(self, person_image) -> Dict[str, Any]:
+    async def process_step_1_human_parsing(self, person_image) -> Dict[str, Any]:
         """3단계: 인간 파싱 시뮬레이션"""
         logger.info("🎭 Step 3: 인간 파싱 시뮬레이션 시작")
         
@@ -48,7 +48,7 @@ class SimulationStepProcessor:
         logger.info("✅ Step 3 시뮬레이션 완료")
         return result
     
-    async def process_step_4_pose_estimation(self, person_image) -> Dict[str, Any]:
+    async def process_step_2_pose_estimation(self, person_image) -> Dict[str, Any]:
         """4단계: 포즈 추정 시뮬레이션"""
         logger.info("🤸 Step 4: 포즈 추정 시뮬레이션 시작")
         
@@ -91,7 +91,7 @@ class SimulationStepProcessor:
         logger.info("✅ Step 4 시뮬레이션 완료")
         return result
     
-    async def process_step_5_cloth_segmentation(self, clothing_image) -> Dict[str, Any]:
+    async def process_step_3_cloth_segmentation(self, clothing_image) -> Dict[str, Any]:
         """5단계: 의류 분할 시뮬레이션"""
         logger.info("👕 Step 5: 의류 분할 시뮬레이션 시작")
         
@@ -131,7 +131,7 @@ class SimulationStepProcessor:
         logger.info("✅ Step 5 시뮬레이션 완료")
         return result
     
-    async def process_step_6_geometric_matching(self, pose_data, cloth_data) -> Dict[str, Any]:
+    async def process_step_4_geometric_matching(self, pose_data, cloth_data) -> Dict[str, Any]:
         """6단계: 기하학적 매칭 시뮬레이션"""
         logger.info("📐 Step 6: 기하학적 매칭 시뮬레이션 시작")
         
@@ -174,7 +174,7 @@ class SimulationStepProcessor:
         logger.info("✅ Step 6 시뮬레이션 완료")
         return result
     
-    async def process_step_7_virtual_fitting(self, person_image, cloth_image, matching_data) -> Dict[str, Any]:
+    async def process_step_6_virtual_fitting(self, person_image, cloth_image, matching_data) -> Dict[str, Any]:
         """7단계: 가상 피팅 시뮬레이션"""
         logger.info("🎭 Step 7: 가상 피팅 시뮬레이션 시작")
         

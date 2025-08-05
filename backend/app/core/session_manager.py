@@ -55,42 +55,79 @@ def safe_serialize_session_data(obj: Any, max_depth: int = 5, current_depth: int
         
         # 리스트/튜플
         elif isinstance(obj, (list, tuple)):
-            return [safe_serialize_session_data(item, max_depth, current_depth + 1) for item in obj[:50]]
+            try:
+                return [safe_serialize_session_data(item, max_depth, current_depth + 1) for item in obj[:50]]
+            except Exception:
+                return f"<list_serialization_error:{len(obj)}_items>"
         
         # 딕셔너리
         elif isinstance(obj, dict):
-            result = {}
-            for key, value in list(obj.items())[:30]:  # 최대 30개 키
-                if isinstance(key, str) and not key.startswith('_'):
-                    try:
-                        result[key] = safe_serialize_session_data(value, max_depth, current_depth + 1)
-                    except Exception:
-                        result[key] = f"<serialization_error:{type(value).__name__}>"
-            return result
+            try:
+                result = {}
+                for key, value in list(obj.items())[:30]:  # 최대 30개 키
+                    if isinstance(key, str) and not key.startswith('_'):
+                        try:
+                            result[key] = safe_serialize_session_data(value, max_depth, current_depth + 1)
+                        except Exception:
+                            result[key] = f"<serialization_error:{type(value).__name__}>"
+                return result
+            except Exception:
+                return f"<dict_serialization_error:{len(obj)}_keys>"
         
         # PIL Image 객체
         elif hasattr(obj, 'size') and hasattr(obj, 'mode'):
-            return {
-                "type": "PIL_Image",
-                "size": obj.size,
-                "mode": str(obj.mode)
-            }
+            try:
+                return {
+                    "type": "PIL_Image",
+                    "size": obj.size,
+                    "mode": str(obj.mode)
+                }
+            except Exception:
+                return {"type": "PIL_Image", "error": "serialization_failed"}
         
         # numpy 배열
         elif hasattr(obj, 'shape') and hasattr(obj, 'dtype'):
-            return {
-                "type": "numpy_array",
-                "shape": list(obj.shape),
-                "dtype": str(obj.dtype)
-            }
+            try:
+                # 작은 배열만 직렬화
+                if len(obj.shape) <= 3 and all(s <= 1000 for s in obj.shape):
+                    return {
+                        "type": "numpy_array",
+                        "shape": list(obj.shape),
+                        "dtype": str(obj.dtype),
+                        "data": obj.tolist()
+                    }
+                else:
+                    return {
+                        "type": "numpy_array",
+                        "shape": list(obj.shape),
+                        "dtype": str(obj.dtype),
+                        "size": "too_large"
+                    }
+            except Exception:
+                return {"type": "numpy_array", "error": "serialization_failed"}
         
         # Path 객체
         elif hasattr(obj, '__fspath__'):
             return str(obj)
         
+        # torch.Tensor 객체
+        elif hasattr(obj, 'shape') and hasattr(obj, 'dtype') and hasattr(obj, 'device'):
+            try:
+                return {
+                    "type": "torch_tensor",
+                    "shape": list(obj.shape),
+                    "dtype": str(obj.dtype),
+                    "device": str(obj.device)
+                }
+            except Exception:
+                return {"type": "torch_tensor", "error": "serialization_failed"}
+        
         # 기타 객체는 문자열로
         else:
-            return str(obj)
+            try:
+                return str(obj)
+            except Exception:
+                return f"<object_serialization_error:{type(obj).__name__}>"
             
     except Exception as e:
         return f"<serialization_error:{type(obj).__name__}:{str(e)[:30]}>"
@@ -302,8 +339,59 @@ class SessionData:
     # =========================================================================
     
     def to_safe_dict(self) -> Dict[str, Any]:
-        """순환참조 방지 안전한 딕셔너리 변환 (완전 통합)"""
+        """순환참조 방지 안전한 딕셔너리 변환 (근본적 해결)"""
         try:
+            # 🔥 실제 Step 결과 데이터를 안전하게 직렬화
+            safe_step_results = {}
+            for step_id, result in self.step_results.items():
+                try:
+                    # 전체 결과를 안전하게 직렬화
+                    safe_step_results[f"step_{step_id}_result"] = safe_serialize_session_data(result, max_depth=5)
+                except Exception as e:
+                    # 직렬화 실패 시 중요한 데이터만 추출
+                    try:
+                        if isinstance(result, dict):
+                            safe_result = {}
+                            for key, value in result.items():
+                                if key in ['transformation_matrix', 'segmentation_mask', 'pose_keypoints', 'confidence', 'quality_score', 'warped_clothing', 'fitted_image']:
+                                    if hasattr(value, 'tolist'):  # numpy array
+                                        safe_result[key] = value.tolist()
+                                    elif isinstance(value, (int, float, str, bool)):
+                                        safe_result[key] = value
+                                    elif hasattr(value, 'size'):  # PIL Image
+                                        safe_result[key] = {"type": "PIL_Image", "size": value.size, "mode": value.mode}
+                                    else:
+                                        safe_result[key] = str(type(value))
+                            safe_step_results[f"step_{step_id}_result"] = safe_result
+                        else:
+                            safe_step_results[f"step_{step_id}_result"] = {"type": str(type(result))}
+                    except Exception as e2:
+                        safe_step_results[f"step_{step_id}_result"] = {"error": f"{str(e)[:30]} | {str(e2)[:30]}"}
+            
+            # Step 데이터 캐시도 안전하게 직렬화
+            safe_step_data_cache = {}
+            for step_id, data in self.step_data_cache.items():
+                try:
+                    safe_step_data_cache[f"step_{step_id}_data"] = safe_serialize_session_data(data, max_depth=5)
+                except Exception as e:
+                    try:
+                        if isinstance(data, dict):
+                            safe_data = {}
+                            for key, value in data.items():
+                                if isinstance(value, (int, float, str, bool)):
+                                    safe_data[key] = value
+                                elif hasattr(value, 'tolist'):  # numpy array
+                                    safe_data[key] = value.tolist()
+                                elif hasattr(value, 'size'):  # PIL Image
+                                    safe_data[key] = {"type": "PIL_Image", "size": value.size, "mode": value.mode}
+                                else:
+                                    safe_data[key] = str(type(value))
+                            safe_step_data_cache[f"step_{step_id}_data"] = safe_data
+                        else:
+                            safe_step_data_cache[f"step_{step_id}_data"] = {"type": str(type(data))}
+                    except Exception as e2:
+                        safe_step_data_cache[f"step_{step_id}_data"] = {"error": f"{str(e)[:30]} | {str(e2)[:30]}"}
+            
             return {
                 "session_id": self.session_id,
                 "created_at": self.metadata.created_at.isoformat(),
@@ -317,13 +405,16 @@ class SessionData:
                 "step_processing_times": dict(self.step_processing_times),
                 "step_quality_scores": dict(self.step_quality_scores),
                 "memory_usage_peak": float(self.memory_usage_peak),
-                "custom_data_keys": list(self.custom_data.keys()),  # 🔥 커스텀 데이터 키 목록
+                "custom_data_keys": list(self.custom_data.keys()),
+                # 🔥 실제 Step 결과 데이터 포함 (전체)
+                "step_results": safe_step_results,
+                "step_data_cache": safe_step_data_cache,
                 "circular_reference_safe": True
             }
         except Exception as e:
             return {
                 "session_id": getattr(self, 'session_id', 'unknown'),
-                "error": str(e),
+                "error": str(e)[:100],
                 "circular_reference_safe": True,
                 "fallback_mode": True
             }
@@ -514,80 +605,99 @@ class SessionData:
 class SessionManager:
     """세션 관리자 (SQLite 데이터베이스 통합)"""
     
+    def __new__(cls, *args, **kwargs):
+        """싱글톤 패턴 강화 - 직접 인스턴스 생성 방지"""
+        global _session_manager_instance
+        
+        if _session_manager_instance is not None:
+            logger.warning("⚠️ SessionManager 직접 생성 시도 감지 - 기존 싱글톤 인스턴스 반환")
+            logger.warning(f"⚠️ 기존 인스턴스 ID: {id(_session_manager_instance)}")
+            return _session_manager_instance
+        
+        with _manager_lock:
+            if _session_manager_instance is None:
+                logger.info("🔄 SessionManager 싱글톤 인스턴스 생성")
+                _session_manager_instance = super().__new__(cls)
+                return _session_manager_instance
+            else:
+                logger.warning("⚠️ SessionManager 중복 생성 시도 - 기존 인스턴스 반환")
+                return _session_manager_instance
+
     def __init__(self, base_path: Optional[Path] = None):
-        """SessionManager 초기화 (SQLite 통합) - 강화된 버전"""
+        """SessionManager 초기화 (SQLite 통합) - 강화된 버전 + 싱글톤 보장"""
+        # 싱글톤 인스턴스가 이미 초기화되었는지 확인
+        if hasattr(self, '_initialized'):
+            logger.info("✅ SessionManager 이미 초기화됨 - 재초기화 건너뜀")
+            return
+        
+        print("🔄 SessionManager 초기화 시작...")
+        logger.info("🔄 SessionManager 초기화 시작...")
+        
+        # 기본 경로 설정
+        if base_path is None:
+            base_path = Path("sessions")
+        
+        self.base_path = Path(base_path)
+        self.sessions_dir = self.base_path / "data"
+        self.db_path = self.base_path / "sessions.db"
+        
+        # 디렉토리 생성
         try:
-            print("🔄 SessionManager 초기화 시작...")
-            logger.info("🔄 SessionManager 초기화 시작...")
-            
-            # 기본 경로 설정
-            if base_path is None:
-                base_path = Path("sessions")
-            
-            self.base_path = Path(base_path)
-            self.sessions_dir = self.base_path / "data"
-            self.db_path = self.base_path / "sessions.db"
-            
-            # 디렉토리 생성
-            try:
-                self.sessions_dir.mkdir(parents=True, exist_ok=True)
-                logger.info("✅ 세션 디렉토리 생성 완료")
-            except Exception as e:
-                logger.warning(f"⚠️ 세션 디렉토리 생성 실패: {e}")
-                self.sessions_dir = Path("/tmp/mycloset_sessions")
-                self.sessions_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 메모리 세션 (캐시)
-            self.sessions: Dict[str, SessionData] = {}
-            self._lock = threading.Lock()
-            
-            # 세션 제한
-            self.max_sessions = 100
-            self.session_timeout_hours = 24
-            
-            # SQLite 데이터베이스 초기화 (안전한 방식)
-            try:
-                # 데이터베이스 경로 설정
-                self.db_path = self.base_path / "sessions.db"
-                logger.info(f"🔄 SQLite 데이터베이스 경로: {self.db_path}")
-                
-                # 데이터베이스 초기화 (타임아웃 없이)
-                self._init_database()
-                logger.info("✅ SQLite 데이터베이스 초기화 완료")
-                
-                # 🔥 기존 세션 복구
-                logger.info("🔄 기존 세션 복구 시작...")
-                self._reload_all_sessions_from_db()
-                logger.info(f"✅ 기존 세션 복구 완료: {len(self.sessions)}개 세션")
-                
-            except Exception as db_error:
-                logger.warning(f"⚠️ SQLite 데이터베이스 초기화 실패, 메모리 모드로 진행: {db_error}")
-                self.db_path = None
-            
-            # 정리 작업 시작 (서버 시작 문제 해결을 위해 임시 비활성화)
-            try:
-                # 서버 시작 중에는 정리 작업을 비활성화
-                logger.info("⚠️ 서버 시작 중 - 정리 작업 비활성화")
-                self._cleanup_task = None
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ 정리 작업 설정 실패: {cleanup_error}")
-            
-            # 🔥 초기화 검증
-            logger.info(f"✅ SessionManager 초기화 검증:")
-            logger.info(f"   - 세션 디렉토리: {self.sessions_dir}")
-            logger.info(f"   - 데이터베이스 경로: {self.db_path}")
-            logger.info(f"   - 메모리 세션 수: {len(self.sessions)}")
-            logger.info(f"   - 세션 매니저 ID: {id(self)}")
-            logger.info(f"   - 세션 매니저 주소: {hex(id(self))}")
-            
-            print("✅ SessionManager 초기화 완료")
-            logger.info("✅ SessionManager 초기화 완료")
-            
+            self.sessions_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("✅ 세션 디렉토리 생성 완료")
         except Exception as e:
-            logger.error(f"❌ SessionManager 초기화 실패: {e}")
-            logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
-            # 폴백 초기화
-            self._fallback_initialization()
+            logger.warning(f"⚠️ 세션 디렉토리 생성 실패: {e}")
+            self.sessions_dir = Path("/tmp/mycloset_sessions")
+            self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 메모리 세션 (캐시)
+        self.sessions: Dict[str, SessionData] = {}
+        self._lock = threading.Lock()
+        
+        # 세션 제한
+        self.max_sessions = 100
+        self.session_timeout_hours = 24
+        
+        # SQLite 데이터베이스 초기화 (안전한 방식)
+        try:
+            # 데이터베이스 경로 설정
+            self.db_path = self.base_path / "sessions.db"
+            logger.info(f"🔄 SQLite 데이터베이스 경로: {self.db_path}")
+            
+            # 데이터베이스 초기화 (타임아웃 없이)
+            self._init_database()
+            logger.info("✅ SQLite 데이터베이스 초기화 완료")
+            
+            # 🔥 기존 세션 복구
+            logger.info("🔄 기존 세션 복구 시작...")
+            self._reload_all_sessions_from_db()
+            logger.info(f"✅ 기존 세션 복구 완료: {len(self.sessions)}개 세션")
+            
+        except Exception as db_error:
+            logger.warning(f"⚠️ SQLite 데이터베이스 초기화 실패, 메모리 모드로 진행: {db_error}")
+            self.db_path = None
+        
+        # 정리 작업 시작 (서버 시작 문제 해결을 위해 임시 비활성화)
+        try:
+            # 서버 시작 중에는 정리 작업을 비활성화
+            logger.info("⚠️ 서버 시작 중 - 정리 작업 비활성화")
+            self._cleanup_task = None
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️ 정리 작업 설정 실패: {cleanup_error}")
+        
+        # 🔥 초기화 검증
+        logger.info(f"✅ SessionManager 초기화 검증:")
+        logger.info(f"   - 세션 디렉토리: {self.sessions_dir}")
+        logger.info(f"   - 데이터베이스 경로: {self.db_path}")
+        logger.info(f"   - 메모리 세션 수: {len(self.sessions)}")
+        logger.info(f"   - 세션 매니저 ID: {id(self)}")
+        logger.info(f"   - 세션 매니저 주소: {hex(id(self))}")
+        
+        print("✅ SessionManager 초기화 완료")
+        logger.info("✅ SessionManager 초기화 완료")
+        
+        # 싱글톤 인스턴스 초기화 플래그 설정
+        self._initialized = True
     
     def _init_database(self):
         """SQLite 데이터베이스 초기화 (강화된 버전)"""
@@ -743,46 +853,136 @@ class SessionManager:
             return False
     
     def _reload_all_sessions_from_db(self):
-        """모든 세션을 데이터베이스에서 재로드 (강화된 버전)"""
+        """완전한 지연 로딩 - 아무것도 미리 로드하지 않음"""
         try:
-            logger.info(f"🔄 모든 세션 재로드 시작")
+            logger.info(f"🔄 완전한 지연 로딩 모드 - 세션 목록을 미리 로드하지 않음")
             
             if self.db_path is None or not self.db_path.exists():
                 logger.warning("⚠️ 데이터베이스 파일이 없음 - 메모리 모드")
                 return
             
             with self._lock:
-                # 기존 메모리 세션 백업
-                old_sessions = self.sessions.copy()
-                logger.info(f"🔍 기존 메모리 세션 수: {len(old_sessions)}")
+                # 기존 메모리 세션은 유지 (이미 로드된 것들)
+                logger.info(f"🔍 기존 메모리 세션 수: {len(self.sessions)}")
                 
-                # 데이터베이스에서 모든 세션 로드
-                with sqlite3.connect(self.db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT session_id FROM session_metadata")
-                    session_ids = [row[0] for row in cursor.fetchall()]
-                    cursor.close()
+                # 완전한 지연 로딩: 세션 목록도 미리 로드하지 않음
+                self._session_ids = {}  # 빈 딕셔너리로 시작
+                self._lazy_loading_enabled = True
                 
-                logger.info(f"🔍 데이터베이스 세션 수: {len(session_ids)}")
-                logger.info(f"🔍 데이터베이스 세션 ID들: {session_ids}")
-                
-                # 각 세션을 메모리에 로드
-                loaded_count = 0
-                for sid in session_ids:
-                    if sid not in self.sessions:
-                        session_data = self._load_session_from_db(sid)
-                        if session_data:
-                            self.sessions[sid] = session_data
-                            loaded_count += 1
-                            logger.info(f"✅ 세션 재로드 완료: {sid}")
-                        else:
-                            logger.warning(f"⚠️ 세션 재로드 실패: {sid}")
-                
-                logger.info(f"✅ 모든 세션 재로드 완료. 총 {len(self.sessions)}개 세션 (새로 로드: {loaded_count}개)")
+                logger.info(f"✅ 완전한 지연 로딩 모드 활성화 - 세션 목록을 필요할 때만 조회")
                 
         except Exception as e:
-            logger.error(f"❌ 모든 세션 재로드 실패: {e}")
+            logger.error(f"❌ 완전한 지연 로딩 초기화 실패: {e}")
             logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+    
+    def _load_session_on_demand(self, session_id: str) -> Optional[SessionData]:
+        """세션이 필요할 때만 데이터베이스에서 로드 (극한 메모리 최적화)"""
+        try:
+            # 이미 메모리에 있는 경우
+            if session_id in self.sessions:
+                return self.sessions[session_id]
+            
+            # 데이터베이스에서 세션 존재 여부 확인
+            if not self._session_exists_in_db(session_id):
+                logger.warning(f"⚠️ 세션 ID가 데이터베이스에 존재하지 않음: {session_id}")
+                return None
+            
+            # 데이터베이스에서 세션 로드
+            session_data = self._load_session_from_db(session_id)
+            if session_data:
+                # 극한 메모리 최적화: 최대 5개까지만 유지
+                if len(self.sessions) >= 5:
+                    # 가장 오래된 세션 제거
+                    oldest_session = min(self.sessions.keys(), 
+                                       key=lambda k: self.sessions[k].metadata.last_accessed)
+                    del self.sessions[oldest_session]
+                    logger.info(f"🔄 메모리 캐시에서 오래된 세션 제거: {oldest_session}")
+                
+                self.sessions[session_id] = session_data
+                logger.info(f"✅ 세션 지연 로딩 완료: {session_id}")
+                return session_data
+            else:
+                logger.warning(f"⚠️ 세션 로드 실패: {session_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ 세션 지연 로딩 실패 {session_id}: {e}")
+            return None
+    
+    def _session_exists_in_db(self, session_id: str) -> bool:
+        """데이터베이스에서 세션 존재 여부 확인"""
+        try:
+            if self.db_path is None or not self.db_path.exists():
+                return False
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM session_metadata WHERE session_id = ?", (session_id,))
+                exists = cursor.fetchone() is not None
+                cursor.close()
+            
+            return exists
+        except Exception as e:
+            logger.error(f"❌ 세션 존재 여부 확인 실패: {e}")
+            return False
+    
+    def get_session_count(self) -> int:
+        """총 세션 수 반환 (완전한 지연 로딩 - 데이터베이스에서 직접 조회)"""
+        try:
+            if self.db_path is None or not self.db_path.exists():
+                return len(self.sessions)
+            
+            # 데이터베이스에서 직접 세션 수 조회
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM session_metadata")
+                count = cursor.fetchone()[0]
+                cursor.close()
+            
+            return count
+        except Exception as e:
+            logger.error(f"❌ 세션 수 조회 실패: {e}")
+            return len(self.sessions)  # 폴백
+    
+    def get_active_session_count(self) -> int:
+        """메모리에 로드된 활성 세션 수 반환"""
+        return len(self.sessions)
+    
+    def get_memory_usage_info(self) -> Dict[str, Any]:
+        """메모리 사용량 정보 반환"""
+        try:
+            import psutil
+            memory = psutil.virtual_memory()
+            return {
+                'total_memory_gb': memory.total / (1024**3),
+                'used_memory_gb': memory.used / (1024**3),
+                'available_memory_gb': memory.available / (1024**3),
+                'memory_percent': memory.percent,
+                'active_sessions': len(self.sessions),
+                'session_cache_size_mb': self._estimate_session_cache_size()
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _estimate_session_cache_size(self) -> float:
+        """세션 캐시 크기 추정 (MB)"""
+        try:
+            total_size = 0
+            for session_data in self.sessions.values():
+                # 기본 세션 데이터 크기 추정
+                total_size += 1024  # 1KB per session (기본 추정)
+                
+                # 이미지 캐시 크기 추가
+                if hasattr(session_data, 'image_cache'):
+                    for img in session_data.image_cache.values():
+                        if hasattr(img, 'size'):
+                            # PIL Image 크기 추정 (RGB, 3 bytes per pixel)
+                            width, height = img.size
+                            total_size += width * height * 3
+            
+            return total_size / (1024 * 1024)  # MB로 변환
+        except Exception:
+            return 0.0
     
     def _force_reload_session(self, session_id: str) -> Optional[SessionData]:
         """강제로 세션을 데이터베이스에서 재로드 (강화된 버전)"""
@@ -1058,6 +1258,162 @@ class SessionManager:
             raise
     
     async def get_session_images(self, session_id: str) -> Tuple[Image.Image, Image.Image]:
+        """세션의 원본 이미지들 반환 (비동기, 지연 로딩)"""
+        try:
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 동기 방식으로 이미지 로드 (await 제거)
+            def load_image_sync(path: str) -> Image.Image:
+                return Image.open(path).convert('RGB')
+            
+            person_image = load_image_sync(session_data.metadata.person_image.path)
+            clothing_image = load_image_sync(session_data.metadata.clothing_image.path)
+            
+            return person_image, clothing_image
+            
+        except Exception as e:
+            logger.error(f"❌ 세션 이미지 로드 실패: {e}")
+            raise
+    
+    def get_session_images_sync(self, session_id: str) -> Tuple[Image.Image, Image.Image]:
+        """세션의 원본 이미지들 반환 (동기, 지연 로딩)"""
+        try:
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 동기 방식으로 이미지 로드
+            def load_image_sync(path: str) -> Image.Image:
+                return Image.open(path).convert('RGB')
+            
+            person_image = load_image_sync(session_data.metadata.person_image.path)
+            clothing_image = load_image_sync(session_data.metadata.clothing_image.path)
+            
+            logger.info(f"✅ 동기 이미지 로드 완료: person={person_image.size}, clothing={clothing_image.size}")
+            return person_image, clothing_image
+            
+        except Exception as e:
+            logger.error(f"❌ 동기 세션 이미지 로드 실패: {e}")
+            return None, None
+    
+    async def get_step_images(self, session_id: str, step_id: int) -> Dict[str, Image.Image]:
+        """특정 Step의 이미지들 반환 (지연 로딩)"""
+        try:
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            step_images = {}
+            session_dir = self.sessions_dir
+            
+            # Step 이미지 파일들 찾기
+            step_pattern = f"{session_id}_step_{step_id}_*.jpg"
+            step_files = list(session_dir.glob(step_pattern))
+            
+            for image_path in step_files:
+                # 파일명에서 이미지 타입 추출
+                filename = image_path.name
+                image_type = filename.replace(f"{session_id}_step_{step_id}_", "").replace(".jpg", "")
+                
+                # 이미지 로드 (동기 방식)
+                try:
+                    image = Image.open(str(image_path)).convert('RGB')
+                    step_images[image_type] = image
+                    logger.info(f"✅ Step 이미지 로드 완료: {image_type} -> {image_path}")
+                except Exception as img_error:
+                    logger.warning(f"⚠️ Step 이미지 로드 실패: {image_path} - {img_error}")
+            
+            logger.info(f"✅ Step {step_id} 이미지 로드 완료: {len(step_images)}개")
+            return step_images
+            
+        except Exception as e:
+            logger.error(f"❌ Step 이미지 로드 실패: {e}")
+            return {}
+    
+    def get_all_step_images_sync(self, session_id: str) -> Dict[int, Dict[str, Image.Image]]:
+        """모든 Step의 이미지들 반환 (동기 버전, 지연 로딩)"""
+        try:
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            all_step_images = {}
+            
+            # 완료된 Step들의 이미지 로드
+            for step_id in session_data.metadata.completed_steps:
+                step_images = self.get_step_images_sync(session_id, step_id)
+                if step_images:
+                    all_step_images[step_id] = step_images
+            
+            logger.info(f"✅ 모든 Step 이미지 로드 완료: {len(all_step_images)}개 Step")
+            return all_step_images
+            
+        except Exception as e:
+            logger.error(f"❌ 모든 Step 이미지 로드 실패: {e}")
+            return {}
+    
+    def get_step_images_sync(self, session_id: str, step_id: int) -> Dict[str, Image.Image]:
+        """특정 Step의 이미지들 반환 (동기 버전, 지연 로딩)"""
+        try:
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            step_images = {}
+            session_dir = self.sessions_dir
+            
+            # Step 이미지 파일들 찾기
+            step_pattern = f"{session_id}_step_{step_id}_*.jpg"
+            step_files = list(session_dir.glob(step_pattern))
+            
+            for image_path in step_files:
+                # 파일명에서 이미지 타입 추출
+                filename = image_path.name
+                image_type = filename.replace(f"{session_id}_step_{step_id}_", "").replace(".jpg", "")
+                
+                # 이미지 로드 (동기 방식)
+                try:
+                    image = Image.open(str(image_path)).convert('RGB')
+                    step_images[image_type] = image
+                    logger.info(f"✅ Step 이미지 로드 완료: {image_type} -> {image_path}")
+                except Exception as img_error:
+                    logger.warning(f"⚠️ Step 이미지 로드 실패: {image_path} - {img_error}")
+            
+            logger.info(f"✅ Step {step_id} 이미지 로드 완료: {len(step_images)}개")
+            return step_images
+            
+        except Exception as e:
+            logger.error(f"❌ Step 이미지 로드 실패: {e}")
+            return {}
+    
+    async def get_all_step_images(self, session_id: str) -> Dict[int, Dict[str, Image.Image]]:
+        """모든 Step의 이미지들 반환 (비동기 버전)"""
+        try:
+            session_data = self.sessions.get(session_id)
+            if not session_data:
+                raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
+            
+            all_step_images = {}
+            
+            # 완료된 Step들의 이미지 로드
+            for step_id in session_data.metadata.completed_steps:
+                step_images = self.get_step_images_sync(session_id, step_id)
+                if step_images:
+                    all_step_images[step_id] = step_images
+            
+            logger.info(f"✅ 모든 Step 이미지 로드 완료: {len(all_step_images)}개 Step")
+            return all_step_images
+            
+        except Exception as e:
+            logger.error(f"❌ 모든 Step 이미지 로드 실패: {e}")
+            return {}
         """
         🔥 세션에서 이미지 로드 (기존 함수명 유지 + 순환참조 안전성)
         
@@ -1104,7 +1460,8 @@ class SessionManager:
         session_id: str, 
         step_id: int,
         result: Dict[str, Any],
-        result_image: Optional[Image.Image] = None
+        result_image: Optional[Image.Image] = None,
+        step_images: Optional[Dict[str, Image.Image]] = None
     ):
         """Step 결과 저장 (강화된 버전)"""
         try:
@@ -1112,8 +1469,8 @@ class SessionManager:
             logger.info(f"🔥 SAVE_STEP_RESULT - 현재 메모리 세션 수: {len(self.sessions)}")
             logger.info(f"🔥 SAVE_STEP_RESULT - 메모리 세션 키들: {list(self.sessions.keys())}")
             
-            # 세션 데이터 조회
-            session_data = self.sessions.get(session_id)
+            # 지연 로딩으로 세션 데이터 조회
+            session_data = self._load_session_on_demand(session_id)
             if not session_data:
                 logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
                 # 세션 복구 시도
@@ -1134,6 +1491,17 @@ class SessionManager:
                 image_path = self.sessions_dir / f"{session_id}_step_{step_id}_result.jpg"
                 await self._save_image_async(result_image, image_path)
                 logger.info(f"✅ 결과 이미지 저장 완료: {image_path}")
+            
+            # Step 간 전달용 이미지들 저장
+            if step_images:
+                logger.info(f"🔥 Step 간 이미지 저장 시작: {len(step_images)}개 이미지")
+                for image_name, image in step_images.items():
+                    image_path = self.sessions_dir / f"{session_id}_step_{step_id}_{image_name}.jpg"
+                    await self._save_image_async(image, image_path)
+                    logger.info(f"✅ Step 이미지 저장 완료: {image_name} -> {image_path}")
+                    
+                    # 결과에 이미지 경로 추가
+                    result[f"step_{step_id}_{image_name}_path"] = str(image_path)
             
             # 🔥 강화된 데이터베이스 저장
             db_save_success = self._save_session_to_db(session_data)
@@ -1158,16 +1526,16 @@ class SessionManager:
             raise
     
     async def get_session_status(self, session_id: str) -> Dict[str, Any]:
-        """세션 상태 조회 (강화된 버전)"""
+        """세션 상태 조회 (강화된 버전, 지연 로딩)"""
         try:
             logger.info(f"🔥 GET_SESSION_STATUS 시작: {session_id}")
             logger.info(f"🔥 GET_SESSION_STATUS - 현재 메모리 세션 수: {len(self.sessions)}")
             logger.info(f"🔥 GET_SESSION_STATUS - 메모리 세션 키들: {list(self.sessions.keys())}")
             
-            # 세션 데이터 조회
-            session_data = self.sessions.get(session_id)
+            # 지연 로딩으로 세션 데이터 조회
+            session_data = self._load_session_on_demand(session_id)
             if not session_data:
-                logger.warning(f"⚠️ 메모리에 세션 없음 - 복구 시도: {session_id}")
+                logger.warning(f"⚠️ 세션 없음 - 복구 시도: {session_id}")
                 # 세션 복구 시도
                 session_data = await self._recover_session_data(session_id)
                 if not session_data:
@@ -1182,6 +1550,51 @@ class SessionManager:
                         "completed_steps": [],
                         "progress_percent": 0.0
                     }
+            
+            logger.info(f"✅ 세션 데이터 조회 성공: {session_id}")
+            
+            # 접근 시간 업데이트
+            session_data.update_access_time()
+            
+            # 상태 정보 생성
+            status_dict = self._create_session_status_dict(session_data)
+            
+            logger.info(f"✅ GET_SESSION_STATUS 완료: {session_id}")
+            return status_dict
+            
+        except Exception as e:
+            logger.error(f"❌ 세션 상태 조회 실패: {e}")
+            logger.error(f"❌ 상세 오류: {traceback.format_exc()}")
+            return {
+                "session_id": session_id,
+                "status": "error",
+                "error": str(e),
+                "created_at": None,
+                "last_accessed": None,
+                "total_steps": 8,
+                "completed_steps": [],
+                "progress_percent": 0.0
+            }
+    
+    def get_session_status_sync(self, session_id: str) -> Dict[str, Any]:
+        """세션 상태 조회 (동기 버전, 지연 로딩)"""
+        try:
+            logger.info(f"🔥 GET_SESSION_STATUS_SYNC 시작: {session_id}")
+            
+            # 지연 로딩으로 세션 데이터 조회
+            session_data = self._load_session_on_demand(session_id)
+            if not session_data:
+                logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
+                return {
+                    "session_id": session_id,
+                    "status": "not_found",
+                    "error": f"세션을 찾을 수 없습니다: {session_id}",
+                    "created_at": None,
+                    "last_accessed": None,
+                    "total_steps": 8,
+                    "completed_steps": [],
+                    "progress_percent": 0.0
+                }
             
             logger.info(f"✅ 세션 데이터 조회 성공: {session_id}")
             
@@ -1327,7 +1740,24 @@ class SessionManager:
     def get_all_sessions_status(self) -> Dict[str, Any]:
         """전체 세션 상태 조회 (기존 함수명 유지 + 순환참조 방지)"""
         try:
-            return self.to_safe_dict()  # 순환참조 방지 메서드 사용
+            with self._lock:
+                sessions_info = {}
+                for session_id, session_data in self.sessions.items():
+                    try:
+                        sessions_info[session_id] = session_data.to_safe_dict()
+                    except Exception as e:
+                        logger.warning(f"세션 {session_id} 변환 실패: {e}")
+                        sessions_info[session_id] = {
+                            "session_id": session_id,
+                            "error": str(e),
+                            "circular_reference_safe": True
+                        }
+                
+                return {
+                    "sessions": sessions_info,
+                    "total_sessions": len(sessions_info),
+                    "circular_reference_safe": True
+                }
         except Exception as e:
             logger.error(f"세션 상태 조회 실패: {e}")
             return {
@@ -1384,9 +1814,10 @@ class SessionManager:
     # =========================================================================
     
     async def validate_step_dependencies(self, session_id: str, step_id: int) -> Dict[str, Any]:
-        """Step 의존성 검증 (순환참조 안전)"""
+        """Step 의존성 검증 (순환참조 안전, 지연 로딩)"""
         try:
-            session_data = self.sessions.get(session_id)
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
             if not session_data:
                 raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
             
@@ -1408,19 +1839,14 @@ class SessionManager:
             logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 ID 타입: {type(session_id)}")
             logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 메모리 세션 키 타입들: {[type(key) for key in self.sessions.keys()]}")
             
-            # 🔥 강화된 세션 조회 로직
+            # 🔥 지연 로딩으로 세션 조회
             logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 조회 시작: {session_id}")
-            session_data = self.sessions.get(session_id)
+            session_data = self._load_session_on_demand(session_id)
             logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 조회 결과: {session_data is not None}")
             logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 데이터 ID: {id(session_data) if session_data else 'None'}")
             
             if not session_data:
-                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 메모리에 세션 없음: {session_id}")
-                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 ID 타입: {type(session_id)}")
-                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 메모리 세션 키들: {list(self.sessions.keys())}")
-                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 메모리 세션 키 타입들: {[type(key) for key in self.sessions.keys()]}")
-                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 ID in 세션: {session_id in self.sessions}")
-                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 ID == 키 비교: {[session_id == key for key in self.sessions.keys()]}")
+                logger.error(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 없음: {session_id}")
                 
                 # 🔥 강화된 복구 로직
                 session_data = await self._recover_session_data(session_id)
@@ -1428,7 +1854,7 @@ class SessionManager:
                 if not session_data:
                     raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
             else:
-                logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 메모리에서 세션 찾음: {session_id}")
+                logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 찾음: {session_id}")
                 logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 데이터 ID: {id(session_data)}")
                 logger.info(f"🔥 PREPARE_STEP_INPUT_DATA - 세션 데이터 주소: {hex(id(session_data))}")
             
@@ -1452,7 +1878,7 @@ class SessionManager:
                     logger.info(f"🔄 캐시에 이미지 없음 - 파일에서 로드: {session_id}")
                     
                     try:
-                        person_image, clothing_image = await self.get_session_images(session_id)
+                        person_image, clothing_image = self.get_session_images_sync(session_id)
                         
                         # 캐시에 저장
                         session_data.cache_image('person_image', person_image)
@@ -1506,7 +1932,19 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"❌ 원본 이미지 로드 중 오류: {e}")
             
+            # 🔥 base64 이미지 데이터도 포함 (Step에서 사용할 수 있도록)
+            try:
+                session_dict = session_data.to_safe_dict()
+                if 'original_person_image' in session_dict:
+                    input_data['original_person_image'] = session_dict['original_person_image']
+                if 'original_clothing_image' in session_dict:
+                    input_data['original_clothing_image'] = session_dict['original_clothing_image']
+                logger.info(f"✅ base64 이미지 데이터 포함 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ base64 이미지 데이터 포함 실패: {e}")
+            
             logger.info(f"✅ PREPARE_STEP_INPUT_DATA 완료: session_id={session_id}, step_id={step_id}")
+            logger.info(f"✅ 반환되는 input_data 키들: {list(input_data.keys())}")
             return input_data
             
         except Exception as e:
@@ -1540,9 +1978,10 @@ class SessionManager:
             return {'error': str(e)}
     
     async def clear_session_image_cache(self, session_id: str) -> bool:
-        """세션의 이미지 캐시 정리"""
+        """세션의 이미지 캐시 정리 (지연 로딩)"""
         try:
-            session_data = self.sessions.get(session_id)
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
             if not session_data:
                 raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
             
@@ -1554,9 +1993,10 @@ class SessionManager:
             return False
     
     async def get_pipeline_progress(self, session_id: str) -> Dict[str, Any]:
-        """파이프라인 진행률 상세 조회 (순환참조 안전)"""
+        """파이프라인 진행률 상세 조회 (순환참조 안전, 지연 로딩)"""
         try:
-            session_data = self.sessions.get(session_id)
+            # 지연 로딩으로 세션 데이터 가져오기
+            session_data = self._load_session_on_demand(session_id)
             if not session_data:
                 raise ValueError(f"세션을 찾을 수 없습니다: {session_id}")
             
@@ -1884,46 +2324,27 @@ _session_manager_instance: Optional[SessionManager] = None
 _manager_lock = threading.RLock()
 
 def get_session_manager() -> SessionManager:
-    """강화된 전역 세션 매니저 싱글톤 인스턴스 반환"""
+    """🔥 강화된 전역 세션 매니저 싱글톤 인스턴스 반환 (Thread-Safe)"""
     global _session_manager_instance
-    
-    print(f"🔥 GET_SESSION_MANAGER 호출됨")
-    print(f"🔥 GET_SESSION_MANAGER - 현재 인스턴스: {_session_manager_instance is not None}")
-    print(f"🔥 GET_SESSION_MANAGER - 인스턴스 ID: {id(_session_manager_instance) if _session_manager_instance else 'None'}")
-    print(f"🔥 GET_SESSION_MANAGER - 인스턴스 주소: {hex(id(_session_manager_instance)) if _session_manager_instance else 'None'}")
     
     logger.info(f"🔥 GET_SESSION_MANAGER 호출됨")
     logger.info(f"🔥 GET_SESSION_MANAGER - 현재 인스턴스: {_session_manager_instance is not None}")
     logger.info(f"🔥 GET_SESSION_MANAGER - 인스턴스 ID: {id(_session_manager_instance) if _session_manager_instance else 'None'}")
-    logger.info(f"🔥 GET_SESSION_MANAGER - 인스턴스 주소: {hex(id(_session_manager_instance)) if _session_manager_instance else 'None'}")
     
     if _session_manager_instance is None:
-        print(f"🔥 GET_SESSION_MANAGER - 인스턴스가 None입니다! 새로 생성합니다.")
-        logger.error(f"🔥 GET_SESSION_MANAGER - 인스턴스가 None입니다! 새로 생성합니다.")
+        logger.info(f"🔥 GET_SESSION_MANAGER - 인스턴스가 None입니다! 새로 생성합니다.")
         with _manager_lock:
             if _session_manager_instance is None:
-                print("🔄 강화된 전역 SessionManager 인스턴스 생성 시작")
                 logger.info("🔄 강화된 전역 SessionManager 인스턴스 생성 시작")
                 _session_manager_instance = SessionManager()
-                print("✅ 강화된 전역 SessionManager 인스턴스 생성 완료")
                 logger.info("✅ 강화된 전역 SessionManager 인스턴스 생성 완료")
-                print(f"✅ 현재 메모리 세션 수: {len(_session_manager_instance.sessions)}")
                 logger.info(f"✅ 현재 메모리 세션 수: {len(_session_manager_instance.sessions)}")
-                print(f"✅ 새로 생성된 인스턴스 ID: {id(_session_manager_instance)}")
                 logger.info(f"✅ 새로 생성된 인스턴스 ID: {id(_session_manager_instance)}")
-                print(f"✅ 새로 생성된 인스턴스 주소: {hex(id(_session_manager_instance))}")
-                logger.info(f"✅ 새로 생성된 인스턴스 주소: {hex(id(_session_manager_instance))}")
             else:
-                print("✅ 기존 전역 SessionManager 인스턴스 사용")
                 logger.info("✅ 기존 전역 SessionManager 인스턴스 사용")
     else:
-        print(f"✅ 전역 SessionManager 인스턴스 사용 중 (세션 수: {len(_session_manager_instance.sessions)})")
         logger.info(f"✅ 전역 SessionManager 인스턴스 사용 중 (세션 수: {len(_session_manager_instance.sessions)})")
-        print(f"✅ 사용 중인 인스턴스 ID: {id(_session_manager_instance)}")
         logger.info(f"✅ 사용 중인 인스턴스 ID: {id(_session_manager_instance)}")
-        print(f"✅ 사용 중인 인스턴스 주소: {hex(id(_session_manager_instance))}")
-        logger.info(f"✅ 사용 중인 인스턴스 주소: {hex(id(_session_manager_instance))}")
-        print(f"✅ 사용 중인 세션 키들: {list(_session_manager_instance.sessions.keys())}")
         logger.info(f"✅ 사용 중인 세션 키들: {list(_session_manager_instance.sessions.keys())}")
     
     return _session_manager_instance
@@ -1978,7 +2399,7 @@ async def test_session_manager():
         logger.info(f"✅ 테스트 세션 생성: {session_id}")
         
         # 2. 이미지 로드 테스트 (기존 호환)
-        person_img, clothing_img = await manager.get_session_images(session_id)
+        person_img, clothing_img = manager.get_session_images_sync(session_id)
         logger.info(f"✅ 이미지 로드 테스트: {person_img.size}, {clothing_img.size}")
         
         # 3. Step 1 결과 저장 테스트 (기존 호환 + 순환참조 안전)
@@ -2036,12 +2457,126 @@ async def test_session_manager():
         logger.error(f"❌ SessionManager 테스트 실패: {e}")
         return False
 
-if __name__ == "__main__":
-    # 직접 실행 시 테스트
-    import asyncio
+# =============================================================================
+# 🔥 SessionManager 유틸리티 함수들 (Central Hub 통합)
+# =============================================================================
+
+# 전역 변수 선언
+_global_session_manager = None
+
+def _get_or_create_global_session_manager():
+    """글로벌 SessionManager 인스턴스 생성 또는 조회"""
+    global _global_session_manager
     
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(test_session_manager())
+    if _global_session_manager is None:
+        try:
+            # SessionManager를 직접 import해서 생성 시도
+            from app.core.session_manager import get_session_manager
+            _global_session_manager = get_session_manager()
+            logger.info("✅ 글로벌 SessionManager 인스턴스 생성 완료")
+        except Exception as e:
+            logger.error(f"❌ 글로벌 SessionManager 생성 실패: {e}")
+            return None
+    
+    return _global_session_manager
+
+def _get_central_hub_container():
+    """Central Hub Container 조회"""
+    try:
+        from app.core.di_container import get_container
+        return get_container()
+    except Exception as e:
+        logger.warning(f"⚠️ Central Hub Container 조회 실패: {e}")
+        return None
+
+def _get_session_manager():
+    """Central Hub를 통한 SessionManager 조회 - 단일 인스턴스 보장"""
+    try:
+        print("🔄 SessionManager 조회 시작...")
+        logger.info("🔄 SessionManager 조회 시작...")
+        
+        # 🔥 핵심 수정: 항상 글로벌 인스턴스 사용 (단일 인스턴스 보장)
+        global_session_manager = _get_or_create_global_session_manager()
+        if global_session_manager:
+            logger.info("✅ 글로벌 SessionManager 사용 (단일 인스턴스 보장)")
+            return global_session_manager
+        
+        # 폴백: Central Hub에서 조회
+        container = _get_central_hub_container()
+        if container:
+            logger.info("✅ Central Hub Container 발견")
+            session_manager = container.get('session_manager')
+            if session_manager:
+                logger.info("✅ Central Hub에서 SessionManager 조회 성공")
+                return session_manager
+            else:
+                logger.warning("⚠️ Central Hub에 SessionManager 없음")
+        
+        # 최종 폴백: SessionManager 직접 생성
+        print("🔄 SessionManager 직접 생성 시도...")
+        logger.info("🔄 SessionManager 직접 생성 시도...")
+
+        # 싱글톤 패턴 강화: get_session_manager() 사용
+        from app.core.session_manager import get_session_manager
+        session_manager = get_session_manager()
+        print("✅ SessionManager 싱글톤 인스턴스 조회 성공")
+        logger.info("✅ SessionManager 싱글톤 인스턴스 조회 성공")
+        
+        # Central Hub에 등록 시도
+        if container:
+            try:
+                container.register('session_manager', session_manager)
+                logger.info("✅ SessionManager Central Hub 등록 성공")
+            except Exception as e:
+                logger.warning(f"⚠️ SessionManager Central Hub 등록 실패: {e}")
+        
+        return session_manager
+        
+    except Exception as e:
+        logger.error(f"❌ SessionManager 조회/생성 실패: {e}")
+        logger.error(f"❌ SessionManager 오류 상세: {traceback.format_exc()}")
+        
+        logger.error("❌ 모든 SessionManager 생성 방법 실패")
+        return None
+
+# =============================================================================
+# 🧪 SessionManager 싱글톤 패턴 테스트 함수
+# =============================================================================
+
+def test_session_manager_singleton():
+    """SessionManager 싱글톤 패턴 테스트"""
+    try:
+        logger.info("🧪 SessionManager 싱글톤 패턴 테스트 시작")
+        
+        # 첫 번째 인스턴스 생성
+        instance1 = get_session_manager()
+        logger.info(f"✅ 첫 번째 인스턴스 생성: {id(instance1)}")
+        
+        # 두 번째 인스턴스 생성 (동일해야 함)
+        instance2 = get_session_manager()
+        logger.info(f"✅ 두 번째 인스턴스 생성: {id(instance2)}")
+        
+        # 세 번째 인스턴스 생성 (동일해야 함)
+        instance3 = SessionManager()
+        logger.info(f"✅ 세 번째 인스턴스 생성: {id(instance3)}")
+        
+        # 인스턴스 ID 비교
+        if id(instance1) == id(instance2) == id(instance3):
+            logger.info("🎉 SessionManager 싱글톤 패턴 테스트 성공!")
+            logger.info(f"   - 모든 인스턴스가 동일: {id(instance1)}")
+            return True
+        else:
+            logger.error("❌ SessionManager 싱글톤 패턴 테스트 실패!")
+            logger.error(f"   - instance1: {id(instance1)}")
+            logger.error(f"   - instance2: {id(instance2)}")
+            logger.error(f"   - instance3: {id(instance3)}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ SessionManager 싱글톤 패턴 테스트 중 오류: {e}")
+        return False
+
+
 
 # =============================================================================
 # 🎉 EXPORT (기존 호환 + 새로운 기능 + 순환참조 해결)
@@ -2070,6 +2605,11 @@ __all__ = [
     
     # 순환참조 해결 함수
     "safe_serialize_session_data",
+    
+    # Central Hub 통합 함수들
+    "_get_session_manager",
+    "_get_or_create_global_session_manager",
+    "_get_central_hub_container",
 ]
 
 logger.info("🎉 완전한 SessionManager 모듈 로드 완료!")

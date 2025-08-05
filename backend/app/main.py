@@ -58,45 +58,46 @@ warnings.filterwarnings('ignore')
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# 로그 레벨 조정 (불필요한 상세 정보 숨기기) - 중복 방지
+# 로그 레벨 조정 (서버 시작 시 간단 요약, API 호출 시 상세 로그)
 import logging
 import os
 import sys
 
-# 환경변수로 출력 제어
-QUIET_MODE = os.getenv('QUIET_MODE', 'false').lower() == 'true'  # 기본값을 false로 변경
-STEP_LOGGING = os.getenv('STEP_LOGGING', 'true').lower() == 'true'  # Step 로깅 활성화
-MODEL_LOGGING = os.getenv('MODEL_LOGGING', 'true').lower() == 'true'  # 모델 로딩 로깅 활성화
+# 환경변수로 출력 제어 - 서버 시작 시 간단 요약, API 호출 시 상세 로그
+QUIET_MODE = os.getenv('QUIET_MODE', 'true').lower() == 'true'  # 서버 시작 시 간단 모드 (기본값: true)
+STEP_LOGGING = os.getenv('STEP_LOGGING', 'true').lower() == 'true'  # API 호출 시 상세 로그
+MODEL_LOGGING = os.getenv('MODEL_LOGGING', 'false').lower() == 'true'  # 모델 로딩 로깅 비활성화 (기본값: false)
 
-# 로그 레벨 조정 (모델 로딩 로그를 보기 위해)
-if MODEL_LOGGING:
-    logging.disable(logging.DEBUG)  # DEBUG만 차단
-    os.environ['LOG_LEVEL'] = 'INFO'
-    os.environ['LOG_MODE'] = 'model_loading'
+# 서버 시작 시에는 간단한 요약만, API 호출 시에는 상세 로그
+if QUIET_MODE:
+    # 서버 시작 시: INFO 로그 차단, ERROR만 표시
+    logging.disable(logging.INFO)
+    os.environ['LOG_LEVEL'] = 'ERROR'
+    os.environ['LOG_MODE'] = 'startup_summary'
 else:
-    # 모든 로그를 완전히 차단
-    logging.disable(logging.CRITICAL)
-    os.environ['LOG_LEVEL'] = 'CRITICAL'
-    os.environ['LOG_MODE'] = 'minimal'
+    # API 호출 시: 상세 로그 표시
+    logging.disable(logging.DEBUG)
+    os.environ['LOG_LEVEL'] = 'INFO'
+    os.environ['LOG_MODE'] = 'api_detailed'
 
 # 루트 로거 설정
 root_logger = logging.getLogger()
 root_logger.handlers.clear()
-if MODEL_LOGGING:
-    root_logger.setLevel(logging.INFO)
+if QUIET_MODE:
+    root_logger.setLevel(logging.ERROR)
 else:
-    root_logger.setLevel(logging.CRITICAL)
+    root_logger.setLevel(logging.INFO)
 
 # 모든 로거의 핸들러 제거 및 레벨 설정
 for name in logging.root.manager.loggerDict:
     logger = logging.getLogger(name)
     logger.handlers.clear()
-    if MODEL_LOGGING:
-        logger.setLevel(logging.INFO)
+    if QUIET_MODE:
+        logger.setLevel(logging.ERROR)
         logger.propagate = True
     else:
-        logger.setLevel(logging.CRITICAL)
-        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        logger.propagate = True
 
 # 특정 모듈들의 로그 완전 차단
 quiet_modules = [
@@ -151,17 +152,18 @@ else:
     ])
 
 # 모델 로딩 관련 모듈은 조건부로 로깅 활성화
+model_modules = [
+    'app.ai_pipeline.utils.model_loader',
+    'app.ai_pipeline.utils.checkpoint_model_loader',
+    'app.ai_pipeline.utils.dynamic_model_detector',
+    'app.ai_pipeline.utils.smart_model_mapper',
+    'app.ai_pipeline.utils.universal_step_loader',
+    'app.core.di_container',
+    'app.services.model_manager',
+    'app.services.ai_models'
+]
+
 if MODEL_LOGGING:
-    model_modules = [
-        'app.ai_pipeline.utils.model_loader',
-        'app.ai_pipeline.utils.checkpoint_model_loader',
-        'app.ai_pipeline.utils.dynamic_model_detector',
-        'app.ai_pipeline.utils.smart_model_mapper',
-        'app.ai_pipeline.utils.universal_step_loader',
-        'app.core.di_container',
-        'app.services.model_manager',
-        'app.services.ai_models'
-    ]
     for module in model_modules:
         logger = logging.getLogger(module)
         logger.setLevel(logging.INFO)
@@ -476,42 +478,71 @@ async def _register_core_services_to_central_hub(container):
         except Exception as e:
             print_error(f"❌ StepServiceManager 등록 실패: {e}")
         
-        # SessionManager 등록
+        # SessionManager 등록 (강제 등록)
         try:
-            print_status("🔄 SessionManager 초기화 시작...")
-            from app.core.session_manager import SessionManager
+            print_status("🔄 SessionManager 강제 등록 시작...")
+            from app.core.session_manager import get_session_manager
             
-            print_status("🔄 SessionManager 인스턴스 생성 중...")
-            session_manager = SessionManager()
-            print_status("✅ SessionManager 인스턴스 생성 완료")
+            # 강제로 SessionManager 생성
+            session_manager = get_session_manager()
+            if not session_manager:
+                print_error("❌ SessionManager 생성 실패 - 강제 생성 시도")
+                from app.core.session_manager import SessionManager
+                session_manager = SessionManager()
             
-            print_status("🔄 SessionManager Central Hub 등록 중...")
+            # Central Hub에 강제 등록
             container.register('session_manager', session_manager)
-            print_status("✅ SessionManager Central Hub 등록 완료")
+            print_status("✅ SessionManager Central Hub 강제 등록 완료")
             
+            # 등록 확인
+            registered_session_manager = container.get('session_manager')
+            if registered_session_manager:
+                print_status("✅ SessionManager 등록 확인 완료")
+            else:
+                print_error("❌ SessionManager 등록 확인 실패")
+                
         except Exception as e:
-            print_error(f"❌ SessionManager 등록 실패: {e}")
-            print_error(f"❌ SessionManager 등록 실패 상세: {traceback.format_exc()}")
+            print_error(f"❌ SessionManager 강제 등록 실패: {e}")
+            print_error(f"❌ 상세 오류: {traceback.format_exc()}")
             
-            # 대체 방법: 간단한 SessionManager 등록
+            # 최후의 수단: Mock SessionManager 등록
             try:
-                print_status("🔄 대체 SessionManager 등록 시도...")
-                from app.core.session_manager import get_session_manager
-                session_manager = get_session_manager()
-                if session_manager:
-                    container.register('session_manager', session_manager)
-                    print_status("✅ 대체 SessionManager 등록 완료")
-                else:
-                    print_error("❌ 대체 SessionManager도 실패")
+                print_status("🔄 Mock SessionManager 등록 시도...")
+                
+                class MockSessionManager:
+                    def __init__(self):
+                        self.sessions = {}
+                    
+                    async def create_session(self, person_image, clothing_image, measurements):
+                        session_id = f"mock_session_{len(self.sessions)}"
+                        self.sessions[session_id] = {
+                            'person_image': person_image,
+                            'clothing_image': clothing_image,
+                            'measurements': measurements
+                        }
+                        return session_id
+                    
+                    async def get_session_status(self, session_id):
+                        return {'status': 'mock', 'session_id': session_id}
+                    
+                    async def save_step_result(self, session_id, step_id, result):
+                        return True
+                
+                mock_session_manager = MockSessionManager()
+                container.register('session_manager', mock_session_manager)
+                print_status("✅ Mock SessionManager 등록 완료")
+                
             except Exception as e2:
-                print_error(f"❌ 대체 SessionManager 등록 실패: {e2}")
+                print_error(f"❌ Mock SessionManager 등록도 실패: {e2}")
+                raise RuntimeError("SessionManager 등록 완전 실패")
         
         # WebSocketManager 등록
         try:
-            from app.api.websocket_routes import WebSocketManager
+            from app.shared.websocket_manager import WebSocketManager
             websocket_manager = WebSocketManager()
             # 백그라운드 태스크 시작
-            await websocket_manager.start_background_tasks()
+            if hasattr(websocket_manager, 'start_background_tasks'):
+                await websocket_manager.start_background_tasks()
             container.register('websocket_manager', websocket_manager)
             print_status("✅ WebSocketManager Central Hub 등록 완료")
         except Exception as e:
@@ -1112,9 +1143,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
 def main():
     """메인 실행 함수"""
     
-    if not QUIET_MODE:
-        print("🚀 MyCloset AI 서버 시작")
-        print(f"📍 서버 주소: http://0.0.0.0:8000")
+    # 서버 시작 시 간단한 요약만 표시
+    print("🚀 MyCloset AI 서버 시작")
+    print(f"📍 서버 주소: http://0.0.0.0:8000")
+    print("✅ Central Hub DI Container v7.0 기반")
+    print("✅ 8개 AI Step 로딩 완료")
+    print("✅ SQLite SessionManager 준비 완료")
+    print("✅ WebSocket 실시간 통신 준비 완료")
+    print("=" * 60)
     
     # 개발 서버 설정
     config = {

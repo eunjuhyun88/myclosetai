@@ -1591,6 +1591,7 @@ interface StepResult {
     fitting_quality?: string;
   };
   fitted_image?: string;
+  warped_cloth?: string;
   fit_score?: number;
   recommendations?: string[];
 }
@@ -1639,62 +1640,62 @@ interface PipelineStep {
   processing_time: number;
 }
 
-// 백엔드와 완전 동일한 8단계 정의
+// 🔥 새로운 8단계 AI 파이프라인 정의
 const PIPELINE_STEPS: PipelineStep[] = [
   {
     id: 1,
-    name: "이미지 업로드 검증",
-    description: "사용자 사진과 의류 이미지를 검증합니다",
-    endpoint: "/api/step/1/upload-validation",
-    processing_time: 0.5
-  },
-  {
-    id: 2,
-    name: "신체 측정값 검증",
-    description: "키와 몸무게 등 신체 정보를 검증합니다",
-    endpoint: "/api/step/2/measurements-validation",
-    processing_time: 0.3
-  },
-  {
-    id: 3,
     name: "인체 파싱",
     description: "AI가 신체 부위를 20개 영역으로 분석합니다",
-    endpoint: "/api/step/3/human-parsing",
+    endpoint: "/api/step/1/human-parsing",
     processing_time: 1.2
   },
   {
-    id: 4,
+    id: 2,
     name: "포즈 추정",
     description: "18개 키포인트로 자세를 분석합니다",
-    endpoint: "/api/step/4/pose-estimation",
+    endpoint: "/api/step/2/pose-estimation",
     processing_time: 0.8
   },
   {
-    id: 5,
-    name: "의류 분석",
-    description: "의류 스타일과 색상을 분석합니다",
-    endpoint: "/api/step/5/clothing-analysis",
+    id: 3,
+    name: "의류 세그멘테이션",
+    description: "의류 영역을 정확히 분리합니다",
+    endpoint: "/api/step/3/cloth-segmentation",
     processing_time: 0.6
   },
   {
-    id: 6,
+    id: 4,
     name: "기하학적 매칭",
     description: "신체와 의류를 정확히 매칭합니다",
-    endpoint: "/api/step/6/geometric-matching",
+    endpoint: "/api/step/4/geometric-matching",
     processing_time: 1.5
   },
   {
-    id: 7,
+    id: 5,
+    name: "의류 워핑",
+    description: "의류를 신체에 맞게 변형합니다",
+    endpoint: "/api/step/5/cloth-warping",
+    processing_time: 1.0
+  },
+  {
+    id: 6,
     name: "가상 피팅",
     description: "AI로 가상 착용 결과를 생성합니다",
-    endpoint: "/api/step/7/virtual-fitting",
+    endpoint: "/api/step/6/virtual-fitting",
     processing_time: 2.5
   },
   {
+    id: 7,
+    name: "후처리",
+    description: "이미지 품질을 개선합니다",
+    endpoint: "/api/step/7/post-processing",
+    processing_time: 0.8
+  },
+  {
     id: 8,
-    name: "결과 분석",
-    description: "최종 결과를 확인하고 저장합니다",
-    endpoint: "/api/step/8/result-analysis",
+    name: "품질 평가",
+    description: "최종 결과를 분석하고 평가합니다",
+    endpoint: "/api/step/8/quality-assessment",
     processing_time: 0.3
   }
 ];
@@ -1977,12 +1978,25 @@ const fileUtils = {
 // =================================================================
 
 const App: React.FC = () => {
+  // usePipeline hook 사용 - 자동 실행 제거로 인해 더 이상 필요하지 않음
+
   // API 클라이언트 초기화
-  const [apiClient] = useState(() => new APIClient());
+  const [apiClient] = useState(() => {
+    const client = new APIClient();
+    
+    // 🔥 새로고침 후 세션 복구: localStorage에서 세션 ID 복원
+    const savedSessionId = localStorage.getItem('mycloset_session_id');
+    if (savedSessionId) {
+      client.setSessionId(savedSessionId);
+      console.log('🔄 세션 복구됨:', savedSessionId);
+    }
+    
+    return client;
+  });
   const [pipelineClient] = useState(() => new PipelineAPIClient());
 
-  // 현재 단계 관리
-  const [currentStep, setCurrentStep] = useState(1);
+  // 현재 단계 관리 (0: 업로드/측정, 1-8: AI 파이프라인)
+  const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   
   // 파일 상태
@@ -2027,8 +2041,538 @@ const App: React.FC = () => {
   const personImageRef = useRef<HTMLInputElement>(null);
   const clothingImageRef = useRef<HTMLInputElement>(null);
 
-  // Step 2 완료 후 자동 실행
-  const [autoProcessing, setAutoProcessing] = useState(false);
+  // Step 0 완료 후 자동 실행
+  
+  const executeFullPipeline = async () => {
+    if (!personImage || !clothingImage) {
+      setError('이미지를 먼저 업로드해주세요.');
+      return;
+    }
+    
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('전체 파이프라인 시작...');
+    setError(null);
+    setResult(null);
+    
+    try {
+      // �� pipeline API 호출 (전체 파이프라인 실행)
+      const result = await apiClient.runCompletePipeline(
+        personImage, 
+        clothingImage, 
+        measurements
+      );
+      
+      if (result.success) {
+        setResult(result);
+        setProgress(100);
+        setProgressMessage('🎉 전체 파이프라인 완료!');
+      } else {
+        throw new Error(result.message || '파이프라인 실행 실패');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ 전체 파이프라인 실패:', error);
+      setError(`전체 파이프라인 실패: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setProgress(0);
+      setProgressMessage('');
+    }
+  };
+  // Step 1 실행 함수 (인체 파싱)
+  const executeStep1 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 1: 인체 파싱 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (localStorage에서 복구됨)
+      const currentSessionId = apiClient.getSessionId();
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. 이미지 업로드를 먼저 완료해주세요.');
+      }
+      
+      console.log('🔍 Step 1 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 1: apiClient.callStepAPI 사용하여 실제 AI 추론 호출
+      const formData = new FormData();
+      
+      // 세션 ID 추가
+      formData.append('session_id', currentSessionId);
+      
+      // 이미지 추가
+      if (personImage) formData.append('person_image', personImage);
+      if (clothingImage) formData.append('clothing_image', clothingImage);
+      
+      // 측정값 추가
+      formData.append('height', measurements.height.toString());
+      formData.append('weight', measurements.weight.toString());
+      
+      // 기타 파라미터
+      formData.append('confidence_threshold', '0.7');
+      formData.append('enhance_quality', 'true');
+      formData.append('force_ai_processing', 'true');
+      
+      console.log('🚀 Step 1 인체 파싱 시작:', {
+        person_image: personImage?.name,
+        clothing_image: clothingImage?.name,
+        height: measurements.height,
+        weight: measurements.weight,
+        endpoint: '/api/step/1/human-parsing'
+      });
+      
+      // 🔥 apiClient.callStepAPI 사용하여 실제 AI 추론 호출
+      const result = await apiClient.callStepAPI(1, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 1 실패: ${result.error || result.message}`);
+      }
+      
+      // 세션 ID 업데이트
+      if (result.session_id) {
+        apiClient.setSessionId(result.session_id);
+      }
+      
+      setStepResults(prev => ({ ...prev, 1: result }));
+      setCompletedSteps(prev => [...prev, 1]);
+      
+      // 🔥 Step 1 완료 후 currentStep을 1로 설정
+      setCurrentStep(1);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+      console.log('✅ Step 1 인체 파싱 완료:', result);
+      
+    } catch (error) {
+      console.error('Step 1 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 1 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Step 2 실행 함수 (포즈 추정)
+  const executeStep2 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 2: 포즈 추정 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (더 안전한 방식)
+      let currentSessionId = stepResults[1]?.session_id || 
+                           stepResults[1]?.details?.session_id || 
+                           apiClient.getSessionId() ||
+                           localStorage.getItem('mycloset_session_id');
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. Step 1을 먼저 완료해주세요.');
+      }
+      
+      // 세션 ID가 있으면 apiClient에 설정
+      apiClient.setSessionId(currentSessionId);
+      
+      console.log('🔍 Step 2 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 2: 세션 ID만 전송 (이미지와 측정값은 백엔드에서 세션에서 로드)
+      const formData = new FormData();
+      formData.append('session_id', currentSessionId);
+      
+      console.log('🚀 Step 2 포즈 추정 시작:', {
+        session_id: currentSessionId,
+        endpoint: '/api/step/2/pose-estimation'
+      });
+      
+      const result = await apiClient.callStepAPI(2, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 2 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 2: result }));
+      setCompletedSteps(prev => [...prev, 2]);
+      
+      // 🔥 Step 2 완료 후 currentStep을 2로 설정
+      setCurrentStep(2);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+    } catch (error) {
+      console.error('Step 2 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 2 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Step 3 실행 함수 (의류 세그멘테이션)
+  const executeStep3 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 3: 의류 세그멘테이션 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (더 안전한 방식)
+      let currentSessionId = stepResults[2]?.session_id || 
+                           stepResults[2]?.details?.session_id || 
+                           stepResults[1]?.session_id ||
+                           stepResults[1]?.details?.session_id ||
+                           apiClient.getSessionId() ||
+                           localStorage.getItem('mycloset_session_id');
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. Step 2를 먼저 완료해주세요.');
+      }
+      
+      // 세션 ID가 있으면 apiClient에 설정
+      apiClient.setSessionId(currentSessionId);
+      console.log('🔍 Step 3 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 3: 세션 ID만 전송 (이미지와 측정값은 백엔드에서 세션에서 로드)
+      const formData = new FormData();
+      formData.append('session_id', currentSessionId);
+      
+      console.log('🚀 Step 3 의류 세그멘테이션 시작:', {
+        session_id: currentSessionId,
+        endpoint: '/api/step/3/cloth-segmentation'
+      });
+      
+      const result = await apiClient.callStepAPI(3, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 3 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 3: result }));
+      setCompletedSteps(prev => [...prev, 3]);
+      
+      // 🔥 Step 3 완료 후 currentStep을 3으로 설정
+      setCurrentStep(3);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+    } catch (error) {
+      console.error('Step 3 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 3 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Step 4 실행 함수 (기하학적 매칭)
+  const executeStep4 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 4: 기하학적 매칭 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (더 안전한 방식)
+      let currentSessionId = stepResults[3]?.session_id || 
+                           stepResults[3]?.details?.session_id || 
+                           stepResults[2]?.session_id ||
+                           stepResults[2]?.details?.session_id ||
+                           stepResults[1]?.session_id ||
+                           stepResults[1]?.details?.session_id ||
+                           apiClient.getSessionId() ||
+                           localStorage.getItem('mycloset_session_id');
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. Step 3을 먼저 완료해주세요.');
+      }
+      
+      // 세션 ID가 있으면 apiClient에 설정
+      apiClient.setSessionId(currentSessionId);
+      console.log('🔍 Step 4 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 4: 세션 ID만 전송 (이미지와 측정값은 백엔드에서 세션에서 로드)
+      const formData = new FormData();
+      formData.append('session_id', currentSessionId);
+      
+      console.log('🚀 Step 4 기하학적 매칭 시작:', {
+        session_id: currentSessionId,
+        endpoint: '/api/step/4/geometric-matching'
+      });
+      
+      const result = await apiClient.callStepAPI(4, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 4 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 4: result }));
+      setCompletedSteps(prev => [...prev, 4]);
+      
+      // 🔥 Step 4 완료 후 currentStep을 4로 설정
+      setCurrentStep(4);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+    } catch (error) {
+      console.error('Step 4 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 4 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Step 5 실행 함수 (의류 워핑)
+  const executeStep5 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 5: 의류 워핑 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (더 안전한 방식)
+      let currentSessionId = stepResults[4]?.session_id || 
+                           stepResults[4]?.details?.session_id || 
+                           stepResults[3]?.session_id ||
+                           stepResults[3]?.details?.session_id ||
+                           stepResults[2]?.session_id ||
+                           stepResults[2]?.details?.session_id ||
+                           stepResults[1]?.session_id ||
+                           stepResults[1]?.details?.session_id ||
+                           apiClient.getSessionId() ||
+                           localStorage.getItem('mycloset_session_id');
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. Step 4를 먼저 완료해주세요.');
+      }
+      
+      // 세션 ID가 있으면 apiClient에 설정
+      apiClient.setSessionId(currentSessionId);
+      console.log('🔍 Step 5 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 5: 세션 ID만 전송 (이미지와 측정값은 백엔드에서 세션에서 로드)
+      const formData = new FormData();
+      formData.append('session_id', currentSessionId);
+      
+      console.log('🚀 Step 5 의류 워핑 시작:', {
+        session_id: currentSessionId,
+        endpoint: '/api/step/5/cloth-warping'
+      });
+      
+      const result = await apiClient.callStepAPI(5, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 5 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 5: result }));
+      setCompletedSteps(prev => [...prev, 5]);
+      
+      // 🔥 Step 5 완료 후 currentStep을 5로 설정
+      setCurrentStep(5);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+    } catch (error) {
+      console.error('Step 5 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 5 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Step 6 실행 함수 (가상 피팅)
+  const executeStep6 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 6: 가상 피팅 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (더 안전한 방식)
+      let currentSessionId = stepResults[5]?.session_id || 
+                           stepResults[5]?.details?.session_id || 
+                           stepResults[4]?.session_id ||
+                           stepResults[4]?.details?.session_id ||
+                           stepResults[3]?.session_id ||
+                           stepResults[3]?.details?.session_id ||
+                           stepResults[2]?.session_id ||
+                           stepResults[2]?.details?.session_id ||
+                           stepResults[1]?.session_id ||
+                           stepResults[1]?.details?.session_id ||
+                           apiClient.getSessionId() ||
+                           localStorage.getItem('mycloset_session_id');
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. Step 5를 먼저 완료해주세요.');
+      }
+      
+      // 세션 ID가 있으면 apiClient에 설정
+      apiClient.setSessionId(currentSessionId);
+      console.log('🔍 Step 6 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 6: 세션 ID만 전송 (이미지와 측정값은 백엔드에서 세션에서 로드)
+      const formData = new FormData();
+      formData.append('session_id', currentSessionId);
+      
+      console.log('🚀 Step 6 가상 피팅 시작:', {
+        session_id: currentSessionId,
+        endpoint: '/api/step/6/virtual-fitting'
+      });
+      
+      const result = await apiClient.callStepAPI(6, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 6 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 6: result }));
+      setCompletedSteps(prev => [...prev, 6]);
+      
+      // 🔥 Step 6 완료 후 currentStep을 6으로 설정
+      setCurrentStep(6);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+    } catch (error) {
+      console.error('Step 6 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 6 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Step 7 실행 함수 (후처리)
+  const executeStep7 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 7: 후처리 중...');
+    
+    try {
+      // 🔥 세션 ID 확인 (더 안전한 방식)
+      let currentSessionId = stepResults[6]?.session_id || 
+                           stepResults[6]?.details?.session_id || 
+                           stepResults[5]?.session_id ||
+                           stepResults[5]?.details?.session_id ||
+                           stepResults[4]?.session_id ||
+                           stepResults[4]?.details?.session_id ||
+                           stepResults[3]?.session_id ||
+                           stepResults[3]?.details?.session_id ||
+                           stepResults[2]?.session_id ||
+                           stepResults[2]?.details?.session_id ||
+                           stepResults[1]?.session_id ||
+                           stepResults[1]?.details?.session_id ||
+                           apiClient.getSessionId() ||
+                           localStorage.getItem('mycloset_session_id');
+      
+      if (!currentSessionId) {
+        throw new Error('세션 ID가 없습니다. Step 6을 먼저 완료해주세요.');
+      }
+      
+      // 세션 ID가 있으면 apiClient에 설정
+      apiClient.setSessionId(currentSessionId);
+      console.log('🔍 Step 7 실행 - 세션 ID:', currentSessionId);
+      
+      // 🔥 Step 7: 세션 ID만 전송 (이미지와 측정값은 백엔드에서 세션에서 로드)
+      const formData = new FormData();
+      formData.append('session_id', currentSessionId);
+      
+      console.log('🚀 Step 7 후처리 시작:', {
+        session_id: currentSessionId,
+        endpoint: '/api/step/7/post-processing'
+      });
+      
+      const result = await apiClient.callStepAPI(7, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 7 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 7: result }));
+      setCompletedSteps(prev => [...prev, 7]);
+      
+      // 🔥 Step 7 완료 후 currentStep을 7로 설정
+      setCurrentStep(7);
+      
+      // 결과 이미지가 있으면 표시
+      if (result.details?.result_image) {
+        setPersonImagePreview(result.details.result_image);
+      }
+      
+    } catch (error) {
+      console.error('Step 7 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 7 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Step 8 실행 함수 (품질 평가)
+  const executeStep8 = async () => {
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Step 8: 품질 평가 중...');
+    
+    try {
+      const formData = new FormData();
+      formData.append('session_id', stepResults[7]?.session_id || apiClient.getSessionId() || '');
+      
+      const result = await apiClient.callStepAPI(8, formData);
+      
+      if (!result.success) {
+        throw new Error(`Step 8 실패: ${result.error || result.message}`);
+      }
+      
+      setStepResults(prev => ({ ...prev, 8: result }));
+      setCompletedSteps(prev => [...prev, 8]);
+      
+      // 🔥 Step 8 완료 후 currentStep을 8로 설정
+      setCurrentStep(8);
+      
+      // 최종 결과 설정
+      if (result.fitted_image) {
+        setResult({
+          success: true,
+          message: '가상 피팅 완료!',
+          processing_time: result.processing_time,
+          confidence: result.confidence,
+          session_id: result.session_id || '',
+          fit_score: result.fit_score || 0.85,
+          measurements: {
+            chest: measurements.height * 0.5,
+            waist: measurements.height * 0.45,
+            hip: measurements.height * 0.55,
+            bmi: measurements.weight / Math.pow(measurements.height / 100, 2)
+          },
+          clothing_analysis: {
+            category: 'shirt',
+            style: 'casual',
+            dominant_color: [255, 255, 255],
+            material: 'cotton',
+            pattern: 'solid'
+          },
+          recommendations: result.recommendations || ['피팅이 완료되었습니다!']
+        });
+      }
+      
+    } catch (error) {
+      console.error('Step 8 실행 실패:', error);
+      setError(error instanceof Error ? error.message : 'Step 8 실행 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
 
   // =================================================================
   // 🔧 이펙트들
@@ -2100,13 +2644,6 @@ const App: React.FC = () => {
     });
   }, [apiClient]);
 
-  // Step 2 완료 후 자동으로 Step 3-8 실행
-  useEffect(() => {
-    if (completedSteps.includes(2) && currentStep === 2 && !isProcessing && !autoProcessing) {
-      console.log('🚀 Step 2 완료됨 - Step 3-8 자동 시작!');
-      autoProcessRemainingSteps();
-    }
-  }, [completedSteps, currentStep, isProcessing, autoProcessing]);
 
   // 컴포넌트 언마운트 시 WebSocket 정리
   useEffect(() => {
@@ -2154,374 +2691,6 @@ const App: React.FC = () => {
     `);
   }, [isServerHealthy]);
 
-  // =================================================================
-  // 🔧 핵심 처리 함수들
-  // =================================================================
-  const autoProcessRemainingSteps = async () => {
-    // 세션 ID 추출
-    const sessionId = 
-      stepResults[1]?.session_id ||
-      stepResults[1]?.details?.session_id ||
-      apiClient.getSessionId();
-
-    if (!sessionId) {
-      setError('세션 ID가 없습니다. Step 1부터 다시 시작해주세요.');
-      return;
-    }
-
-    console.log('✅ 세션 ID 확정:', sessionId);
-    setAutoProcessing(true);
-    setIsProcessing(true);
-
-    try {
-      // WebSocket 연결 시도
-      try {
-        await apiClient.connectWebSocket(sessionId);
-      } catch (error) {
-        console.warn('WebSocket 연결 실패, HTTP 폴링으로 진행:', error);
-      }
-
-      // 🔥 단계별 설정
-      const stepsConfig = [
-        {
-          stepId: 3,
-          endpoint: '/api/step/3/human-parsing',
-          progressPercent: 37.5,
-          stepName: 'AI 인체 파싱 중...',
-          params: {
-            session_id: sessionId,
-            force_real_ai_processing: 'true',
-            disable_mock_mode: 'true',
-            disable_fallback_mode: 'true',
-            disable_simulation_mode: 'true'
-          }
-        },
-        {
-          stepId: 4,
-          endpoint: '/api/step/4/pose-estimation',
-          progressPercent: 50.0,
-          stepName: 'AI 포즈 추정 중...',
-          params: {
-            session_id: sessionId,
-            force_real_ai_processing: 'true',
-            disable_mock_mode: 'true',
-            disable_fallback_mode: 'true',
-            disable_simulation_mode: 'true',
-            detection_confidence: '0.5'
-          }
-        },
-        {
-          stepId: 5,
-          endpoint: '/api/step/5/clothing-analysis',
-          progressPercent: 62.5,
-          stepName: 'AI 의류 분석 중...',
-          params: {
-            session_id: sessionId,
-            force_real_ai_processing: 'true',
-            disable_mock_mode: 'true',
-            disable_fallback_mode: 'true',
-            disable_simulation_mode: 'true',
-            analysis_detail: 'medium'
-          }
-        },
-        {
-          stepId: 6,
-          endpoint: '/api/step/6/geometric-matching',
-          progressPercent: 75.0,
-          stepName: 'AI 기하학적 매칭 중...',
-          params: {
-            session_id: sessionId,
-            force_real_ai_processing: 'true',
-            disable_mock_mode: 'true',
-            disable_fallback_mode: 'true',
-            disable_simulation_mode: 'true',
-            matching_precision: 'high'
-          }
-        },
-        {
-          stepId: 7,
-          endpoint: '/api/step/7/virtual-fitting',
-          progressPercent: 87.5,
-          stepName: 'AI 가상 피팅 생성 중...',
-          isSpecialStep: true, // Step 7 특별 처리 플래그
-          kwargsData: {
-            fitting_quality: 'high',
-            force_real_ai_processing: true,
-            disable_mock_mode: true,
-            disable_fallback_mode: true,
-            disable_simulation_mode: true,
-            processing_mode: 'production',
-            require_real_ai_models: true,
-            strict_mode: true,
-            no_fallback_allowed: true,
-            real_ai_only: true,
-            enable_ootdiffusion: true,
-            diffusion_steps: 50,
-            guidance_scale: 7.5,
-            generate_real_image: true,
-            fabric_type: 'cotton',
-            clothing_type: 'shirt'
-          },
-          params: {
-            session_id: sessionId
-          }
-        },
-        {
-          stepId: 8,
-          endpoint: '/api/step/8/result-analysis',
-          progressPercent: 100.0,
-          stepName: '최종 결과 분석 중...',
-          params: {
-            session_id: sessionId,
-            force_real_ai_processing: 'true',
-            disable_mock_mode: 'true',
-            disable_fallback_mode: 'true',
-            disable_simulation_mode: 'true',
-            analysis_depth: 'comprehensive'
-          }
-        }
-      ];
-
-      let finalTryOnResult = null;
-    console.log('🧪 for 루프 시작 전 - Step 7 처리 코드 확인');
-
-    for (const stepConfig of stepsConfig) {
-      const { stepId, endpoint, progressPercent, stepName, params } = stepConfig;
-      console.log('🔥 Step 7 특별 처리 시작 - kwargs를 URL에 추가');
-
-      setProgress(progressPercent);
-      setProgressMessage(`Step ${stepId}: ${stepName}`);
-      
-      // 🔥 Step 7 특별 처리
-      if (stepId === 7) {
-        console.log('🎯 Step 7 감지됨! 특별 처리 시작');
-
-        // FormData는 session_id만
-        const formData = new FormData();
-        formData.append('session_id', sessionId);
-        
-        // kwargs 데이터 준비
-        const kwargsData = {
-          fitting_quality: 'high',
-          force_real_ai_processing: true,
-          disable_mock_mode: true,
-          disable_fallback_mode: true,
-          disable_simulation_mode: true,
-          processing_mode: 'production',
-          require_real_ai_models: true,
-          strict_mode: true,
-          no_fallback_allowed: true,
-          real_ai_only: true,
-          enable_ootdiffusion: true,
-          diffusion_steps: 50,
-          guidance_scale: 7.5,
-          generate_real_image: true,
-          fabric_type: 'cotton',
-          clothing_type: 'shirt'
-        };
-        
-        // URL에 kwargs 쿼리 파라미터 추가
-        const kwargsParam = encodeURIComponent(JSON.stringify(kwargsData));
-        const fullUrl = `http://localhost:8000${endpoint}?kwargs=${kwargsParam}`;
-        
-        console.log(`🔥 Step 7 URL with kwargs:`, {
-          url: fullUrl.substring(0, 150) + '...',
-          kwargsData,
-          sessionId
-        });
-        
-        const response = await fetch(fullUrl, {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'X-AI-Processing-Required': 'true',
-            'X-Disable-Mock-Mode': 'true',
-            'X-Disable-Fallback-Mode': 'true',
-            'X-Production-Mode': 'true',
-            'X-Real-AI-Models-Only': 'true',
-            'X-No-Simulation': 'true',
-            'X-Force-Real-Processing': 'true'
-          }
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`❌ Step 7 HTTP 오류:`, {
-            status: response.status,
-            statusText: response.statusText,
-            errorText,
-            url: fullUrl.substring(0, 100) + '...'
-          });
-          throw new Error(`Step 7 실패: ${errorText}`);
-        }
-        
-        const stepResult = await response.json();
-        
-        if (!stepResult.success) {
-          console.error(`❌ Step 7 처리 실패:`, stepResult);
-          throw new Error(`Step 7 실패: ${stepResult.error || '알 수 없는 오류'}`);
-        }
-        
-        console.log(`✅ Step 7 완료:`, stepResult);
-        
-        // 🔥 Step 7 결과 처리
-        console.log('🔍 Step 7 결과 상세 분석:', {
-          success: stepResult.success,
-          fitted_image: stepResult.fitted_image ? '있음' : '없음',
-          fitted_image_length: stepResult.fitted_image?.length || 0,
-          fit_score: stepResult.fit_score,
-          confidence: stepResult.confidence
-        });
-        
-        if (stepResult.fitted_image && stepResult.fitted_image.length > 10000) {
-          console.log('🎉 fitted_image 발견! 결과 생성 중...');
-          
-          let imageDataUrl;
-          
-          if (stepResult.fitted_image.startsWith('data:')) {
-            imageDataUrl = stepResult.fitted_image;
-          } else {
-            console.log('🔄 Base64를 Data URL로 변환');
-            imageDataUrl = `data:image/jpeg;base64,${stepResult.fitted_image}`;
-          }
-          
-          const heightInMeters = measurements.height / 100;
-          const bmi = measurements.weight / (heightInMeters * heightInMeters);
-          
-          finalTryOnResult = {
-            success: true,
-            message: '실제 AI 가상 피팅 완료!',
-            processing_time: stepResult.processing_time || 2.5,
-            confidence: stepResult.confidence || 0.9,
-            session_id: sessionId,
-            fitted_image: imageDataUrl,
-            fit_score: stepResult.fit_score || 0.9,
-            measurements: {
-              chest: measurements.height * 0.5,
-              waist: measurements.height * 0.45,
-              hip: measurements.height * 0.55,
-              bmi: Math.round(bmi * 100) / 100
-            },
-            clothing_analysis: {
-              category: stepResult.details?.category || "상의",
-              style: stepResult.details?.style || "캐주얼",
-              dominant_color: [100, 150, 200],
-              color_name: "블루",
-              material: "코튼",
-              pattern: "솔리드"
-            },
-            recommendations: stepResult.recommendations || [
-              "✅ 실제 AI가 생성한 가상 피팅 결과입니다",
-              "이 의류는 당신의 체형에 잘 맞습니다",
-              "색상이 잘 어울립니다"
-            ]
-          };
-          
-          console.log('🎯 finalTryOnResult 생성 완료:', {
-            confidence: finalTryOnResult.confidence,
-            fit_score: finalTryOnResult.fit_score,
-            fitted_image_length: finalTryOnResult.fitted_image?.length || 0,
-            success: finalTryOnResult.success,
-            message: finalTryOnResult.message,
-            session_id: finalTryOnResult.session_id
-          });
-        } else {
-          console.error('❌ Step 7에서 유효한 실제 AI 이미지를 받지 못함');
-          throw new Error('Step 7: 실제 AI 가상 피팅 이미지 생성 실패');
-        }
-        
-        // Step 7 결과 저장
-        setStepResults(prev => ({
-          ...prev,
-          [stepId]: stepResult
-        }));
-        
-        setCompletedSteps(prev => [...prev, stepId]);
-        
-      } else {
-        // 🔥 다른 Step들은 기존 방식
-        const formData = new FormData();
-        
-        Object.entries(params).forEach(([key, value]) => {
-          formData.append(key, value);
-        });
-        
-        console.log(`🔥 Step ${stepId} 실제 AI 처리 강제 요청:`, {
-          endpoint,
-          sessionId,
-          mockDisabled: true,
-          formDataEntries: Object.fromEntries(formData.entries())
-        });
-        
-        const response = await fetch(`http://localhost:8000${endpoint}`, {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'X-AI-Processing-Required': 'true',
-            'X-Disable-Mock-Mode': 'true',
-            'X-Disable-Fallback-Mode': 'true',
-            'X-Production-Mode': 'true',
-            'X-Real-AI-Models-Only': 'true',
-            'X-No-Simulation': 'true',
-            'X-Force-Real-Processing': 'true'
-          }
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`❌ Step ${stepId} HTTP 오류:`, {
-            status: response.status,
-            statusText: response.statusText,
-            errorText
-          });
-          throw new Error(`Step ${stepId} 실패: ${errorText}`);
-        }
-        
-        const stepResult = await response.json();
-        
-        if (!stepResult.success) {
-          console.error(`❌ Step ${stepId} 처리 실패:`, stepResult);
-          throw new Error(`Step ${stepId} 실패: ${stepResult.error || '알 수 없는 오류'}`);
-        }
-        
-        console.log(`✅ Step ${stepId} 완료:`, stepResult);
-        
-        // 다른 Step들 결과 저장
-        setStepResults(prev => ({
-          ...prev,
-          [stepId]: stepResult
-        }));
-        
-        setCompletedSteps(prev => [...prev, stepId]);
-      }
-    }
-          // 🔥 최종 결과 React State 업데이트
-    if (finalTryOnResult) {
-      console.log('🎯 최종 결과 React State 업데이트 시작:', {
-        confidence: finalTryOnResult.confidence,
-        fit_score: finalTryOnResult.fit_score || 0, // 🔥 수정: || 0 추가
-        fitted_image_length: finalTryOnResult.fitted_image?.length || 0,
-        message: finalTryOnResult.message,
-        success: finalTryOnResult.success,
-        session_id: finalTryOnResult.session_id
-      });
-      
-      setResult(finalTryOnResult);
-      setCurrentStep(8);
-      
-      console.log('✅ React State 업데이트 및 Step 8 이동 완료');
-    } else {
-      throw new Error('최종 가상 피팅 결과를 생성하지 못했습니다.');
-    }
-      
-    } catch (error) {
-      console.error('❌ 자동 처리 실패:', error);
-      setError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsProcessing(false);
-      setAutoProcessing(false);
-    }
-  };
 
   // =================================================================
   // 🔧 이벤트 핸들러들
@@ -2588,13 +2757,13 @@ const App: React.FC = () => {
     }
   }, [handleImageUpload]);
 
-  // 다음/이전 단계 이동
   const goToNextStep = useCallback(() => {
+    // 단순히 다음 단계로 이동만 (실행하지 않음)
     if (currentStep < 8) {
-      setCompletedSteps(prev => [...prev, currentStep]);
       setCurrentStep(prev => prev + 1);
     }
   }, [currentStep]);
+
 
   const goToPreviousStep = useCallback(() => {
     if (currentStep > 1) {
@@ -2605,7 +2774,7 @@ const App: React.FC = () => {
 
   // 리셋
   const reset = useCallback(() => {
-    setCurrentStep(1);
+    setCurrentStep(0);
     setCompletedSteps([]);
     setPersonImage(null);
     setClothingImage(null);
@@ -2616,276 +2785,29 @@ const App: React.FC = () => {
     setFileErrors({});
     setError(null);
     setIsProcessing(false);
-    setAutoProcessing(false);
     setProgress(0);
     setProgressMessage('');
+    setHasValidatedImages(false); // 🔥 이미지 검증 상태 초기화
     apiClient.disconnectWebSocket();
     apiClient.setSessionId('');
+    
+    // 🔥 localStorage에서 세션 ID 제거
+    localStorage.removeItem('mycloset_session_id');
+    console.log('🗑️ 세션 ID 제거됨');
   }, [apiClient]);
 
+  // 🔥 이미지 업로드 후 자동으로 검증 실행 (한 번만 실행되도록 수정)
+  const [hasValidatedImages, setHasValidatedImages] = useState(false);
+  
+  useEffect(() => {
+    if (personImage && clothingImage && measurements.height > 0 && measurements.weight > 0 && !hasValidatedImages) {
+      console.log('🔄 이미지와 측정값이 모두 준비됨 - 자동 검증 시작');
+      setHasValidatedImages(true);
+      validateAndUploadImages();
+    }
+  }, [personImage, clothingImage, measurements.height, measurements.weight, hasValidatedImages]);
+
   const clearError = useCallback(() => setError(null), []);
-
-  const executeRemainingSteps = async (sessionId: string): Promise<void> => {
-  const stepsConfig = [
-    {
-      stepId: 3,
-      endpoint: '/api/step/3/human-parsing',
-      progressPercent: 40,
-      stepName: 'AI 인체 파싱 중...',
-    },
-    {
-      stepId: 4,
-      endpoint: '/api/step/4/pose-estimation',
-      progressPercent: 50,
-      stepName: 'AI 포즈 추정 중...',
-    },
-    {
-      stepId: 5,
-      endpoint: '/api/step/5/clothing-analysis',
-      progressPercent: 60,
-      stepName: 'AI 의류 분석 중...',
-    },
-    {
-      stepId: 6,
-      endpoint: '/api/step/6/geometric-matching',
-      progressPercent: 75,
-      stepName: 'AI 기하학적 매칭 중...',
-    },
-    {
-     stepId: 7,
-      endpoint: '/api/step/7/virtual-fitting',
-      progressPercent: 90,
-      stepName: 'AI 가상 피팅 생성 중...',
-    },
-    {
-      stepId: 8,
-      endpoint: '/api/step/8/result-analysis',
-      progressPercent: 95,
-      stepName: '최종 결과 분석 중...',
-    }
-  ];
-  
-  // 🔥 결과 추적을 위한 변수
-  let finalTryOnResult: TryOnResult | null = null;
-
-  for (const stepConfig of stepsConfig) {
-    const { stepId, endpoint, progressPercent, stepName } = stepConfig;
-    
-    setProgress(progressPercent);
-    setProgressMessage(`Step ${stepId}: ${stepName}`);
-    
-    const formData = new FormData();
-    formData.append('session_id', sessionId);
-    
-    // 🔥 백엔드 Mock 모드 비활성화 파라미터 추가
-    formData.append('force_real_ai_processing', 'true');
-    formData.append('disable_mock_mode', 'true');
-    formData.append('disable_fallback_mode', 'true');
-    formData.append('disable_simulation_mode', 'true');
-    formData.append('processing_mode', 'production');
-    formData.append('require_real_ai_models', 'true');
-    formData.append('strict_mode', 'true');
-    
-    // Step별 특수 파라미터
-    if (stepId === 3) {
-      formData.append('enable_graphonomy', 'true');
-      formData.append('model_quality', 'high');
-    } else if (stepId === 4) {
-      formData.append('enable_openpose', 'true');
-      formData.append('keypoint_threshold', '0.3');
-    } else if (stepId === 5) {
-      formData.append('enable_sam_model', 'true');
-      formData.append('segmentation_quality', 'high');
-    } else if (stepId === 7) {
-      formData.append('enable_ootdiffusion', 'true');
-      formData.append('diffusion_steps', '50');
-      formData.append('guidance_scale', '7.5');
-      formData.append('generate_real_image', 'true');
-    }
-    
-    console.log(`🔥 Step ${stepId} 실제 AI 처리 강제 요청:`, {
-      endpoint,
-      sessionId,
-      mockDisabled: true,
-      formDataEntries: Object.fromEntries(formData.entries())
-    });
-    
-    const response = await fetch(`http://localhost:8000${endpoint}`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        // 🔥 백엔드에게 실제 AI 처리 요청임을 명시하는 헤더
-        'X-AI-Processing-Required': 'true',
-        'X-Disable-Mock-Mode': 'true',
-        'X-Disable-Fallback-Mode': 'true',
-        'X-Production-Mode': 'true',
-        'X-Real-AI-Models-Only': 'true'
-      }
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ Step ${stepId} HTTP 오류:`, {
-        status: response.status,
-        statusText: response.statusText,
-        errorText
-      });
-      throw new Error(`Step ${stepId} 실패: ${errorText}`);
-    }
-    
-    const stepResult = await response.json();
-    
-    if (!stepResult.success) {
-      console.error(`❌ Step ${stepId} 처리 실패:`, stepResult);
-      throw new Error(`Step ${stepId} 실패: ${stepResult.error || '알 수 없는 오류'}`);
-    }
-    
-    // 🔥 Mock 감지를 완전히 차단 (실제 AI 처리만 인정)
-  const isMockData = 
-    stepResult.isMockData === true ||
-    stepResult.mock_implementation === true ||
-    (stepResult.fallback_mode === true && stepResult.is_real_ai_output !== true);
-
-    if (isMockData) {
-      console.warn(`⚠️ Step ${stepId}에서 Mock 데이터 감지됨:`, {
-        message: stepResult.message,
-        mock_implementation: stepResult.mock_implementation,
-        fallback_mode: stepResult.fallback_mode,
-        simulation_mode: stepResult.simulation_mode
-      });
-      console.warn('💡 백엔드에서 실제 AI 모델이 로드되지 않았을 가능성이 있습니다.');
-      
-      // 사용자에게 경고 메시지 표시
-      setProgressMessage(`⚠️ Step ${stepId}: Mock 데이터 감지 - AI 모델 확인 필요`);
-    }
-    
-    console.log(`✅ Step ${stepId} 완료:`, {
-      success: stepResult.success,
-      message: stepResult.message,
-      confidence: stepResult.confidence,
-      processing_time: stepResult.processing_time,
-      isMockData,
-      hasRealImage: stepId === 7 ? (stepResult.fitted_image?.length > 10000) : 'N/A'
-    });
-    
-    // 🔥 Step 7에서 결과 처리 - 즉시 결과 생성 및 저장
-    if (stepId === 7) {
-      console.log('🔍 Step 7 결과 상세 분석:', {
-        success: stepResult.success,
-        fitted_image: stepResult.fitted_image ? '있음' : '없음',
-        fitted_image_length: stepResult.fitted_image?.length || 0,
-        fit_score: stepResult.fit_score,
-        confidence: stepResult.confidence,
-        details: stepResult.details,
-        fallback_mode: stepResult.fallback_mode,
-        mock_implementation: stepResult.mock_implementation,
-        is_real_ai_output: stepResult.fitted_image && stepResult.fitted_image.length > 10000
-      });
-      
-      // fitted_image가 있으면 즉시 TryOnResult 생성
-      if (stepResult.fitted_image) {
-        console.log('🎉 fitted_image 발견! 결과 생성 중...');
-        
-        // 🔥 실제 AI 이미지인지 확인
-        const isRealAIImage = stepResult.fitted_image.length > 10000; // 10KB 이상
-        const hasDataUrl = stepResult.fitted_image.startsWith('data:image');
-        
-        // Base64 데이터 형식 확인 및 정리
-        let cleanBase64 = stepResult.fitted_image;
-        if (hasDataUrl) {
-          console.log('📄 Data URL 형식 이미지 감지');
-        } else {
-          cleanBase64 = `data:image/jpeg;base64,${stepResult.fitted_image}`;
-          console.log('🔄 Base64를 Data URL로 변환');
-        }
-        
-        const heightInMeters = measurements.height / 100;
-        const bmi = measurements.weight / (heightInMeters * heightInMeters);
-        
-        // 🔥 결과를 로컬 변수에 먼저 저장
-        finalTryOnResult = {
-          success: true,
-          message: isRealAIImage ? 
-            stepResult.message : 
-            `${stepResult.message} ⚠️ 이미지 크기가 작습니다 (${stepResult.fitted_image.length}자) - AI 모델 확인 필요`,
-          processing_time: stepResult.processing_time,
-          confidence: stepResult.confidence,
-          session_id: sessionId,
-          fitted_image: cleanBase64,
-          fit_score: stepResult.fit_score || 0.75,
-          measurements: {
-            chest: measurements.height * 0.5,
-            waist: measurements.height * 0.45,
-            hip: measurements.height * 0.55,
-            bmi: Math.round(bmi * 100) / 100
-          },
-          clothing_analysis: {
-            category: stepResult.details?.category || "상의",
-            style: stepResult.details?.style || "캐주얼",
-            dominant_color: [100, 150, 200],
-            color_name: "블루",
-            material: "코튼",
-            pattern: "솔리드"
-          },
-          recommendations: stepResult.recommendations || [
-            isRealAIImage ? 
-              "✅ AI가 생성한 실제 가상 피팅 결과입니다" :
-              "⚠️ Mock 데이터가 반환되었습니다. 백엔드 AI 모델을 확인해주세요",
-            "이 의류는 당신의 체형에 잘 맞습니다",
-            "색상이 잘 어울립니다"
-          ]
-        };
-        
-        console.log('🎯 finalTryOnResult 생성 완료:', {
-          success: finalTryOnResult.success,
-          message: finalTryOnResult.message,
-          confidence: finalTryOnResult.confidence,
-          fit_score: finalTryOnResult.fit_score,
-          fitted_image_length: finalTryOnResult.fitted_image?.length || 0,
-          fitted_image_preview: finalTryOnResult.fitted_image?.substring(0, 100) + '...' || 'No image',
-          isRealAIImage,
-          isMockData
-        });
-        
-      } else {
-        console.warn('⚠️ Step 7에서 fitted_image를 얻지 못했습니다!');
-        console.log('Step 7 전체 응답:', stepResult);
-      }
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-  
-  // 🔥 모든 단계 완료 후 React State 업데이트
-  if (finalTryOnResult) {
-    console.log('🎯 최종 결과 React State 업데이트 시작:', {
-      success: finalTryOnResult.success,
-      message: finalTryOnResult.message,
-      confidence: finalTryOnResult.confidence,
-      fit_score: finalTryOnResult.fit_score,
-      fitted_image_length: finalTryOnResult.fitted_image?.length || 0,
-      fitted_image_preview: finalTryOnResult.fitted_image?.substring(0, 100) + '...' || 'No image'
-    });
-    
-    // 🔥 React State 업데이트를 Promise로 처리
-    return new Promise<void>((resolve) => {
-      setResult(finalTryOnResult);
-      
-      // State 업데이트 후 Step 8로 이동
-      setTimeout(() => {
-        setCurrentStep(8);
-        setCompletedSteps(prev => [...prev, 1, 2, 3, 4, 5, 6, 7]);
-        
-        console.log('✅ React State 업데이트 및 Step 8 이동 완료');
-        console.log('🎯 최종 result 상태 확인:', finalTryOnResult ? '결과 있음' : '결과 없음');
-        resolve();
-      }, 100); // 100ms 대기로 React State 업데이트 보장
-    });
-  } else {
-    console.error('❌ finalTryOnResult가 생성되지 않았습니다!');
-    throw new Error('가상 피팅 결과를 생성하지 못했습니다.');
-  }
-};
 
 
   // =================================================================
@@ -3035,35 +2957,39 @@ const App: React.FC = () => {
     });
 
     switch (currentStep) {
-      case 1:
-        const step1CanProceed = personImage && clothingImage && 
+      case 0:
+        // 이미지 업로드 단계: 두 이미지가 모두 업로드되고 에러가 없으면 진행 가능
+        const step0CanProceed = personImage && clothingImage && 
                !fileErrors.person && !fileErrors.clothing;
-        console.log('Step 1 조건 확인:', {
+        console.log('Step 0 조건 확인:', {
           personImage: !!personImage,
           clothingImage: !!clothingImage,
           fileErrors_person: fileErrors.person,
           fileErrors_clothing: fileErrors.clothing,
+          canProceed: step0CanProceed
+        });
+        return step0CanProceed;
+      case 1:
+        // 치수 입력 단계: 키와 몸무게가 유효하면 진행 가능
+        const step1CanProceed = measurements.height > 0 && measurements.weight > 0 &&
+               measurements.height >= 100 && measurements.height <= 250 &&
+               measurements.weight >= 30 && measurements.weight <= 300;
+        console.log('Step 1 조건 확인:', {
+          height: measurements.height,
+          weight: measurements.weight,
           canProceed: step1CanProceed
         });
         return step1CanProceed;
       case 2:
-        const step2CanProceed = measurements.height > 0 && measurements.weight > 0 &&
-               measurements.height >= 100 && measurements.height <= 250 &&
-               measurements.weight >= 30 && measurements.weight <= 300;
-        console.log('Step 2 조건 확인:', {
-          height: measurements.height,
-          weight: measurements.weight,
-          canProceed: step2CanProceed
-        });
-        return step2CanProceed;
       case 3:
       case 4:
       case 5:
       case 6:
-        return stepResults[currentStep]?.success;
       case 7:
-        return result?.success;
+        return stepResults[currentStep]?.success;
       case 8:
+        return result?.success;
+      case 9:
         return true;
       default:
         return false;
@@ -3114,86 +3040,119 @@ const App: React.FC = () => {
   setProgress(0);
   setProgressMessage('전체 파이프라인 시작...');
   setError(null);
-  
-  // 🔥 result 상태 초기화
   setResult(null);
   
   try {
-    // Step 1: 이미지 업로드
-    setProgress(10);
-    setProgressMessage('Step 1: 이미지 업로드 중...');
+    // �� pipeline API 호출 (전체 파이프라인 실행)
+    const result = await apiClient.runCompletePipeline(
+      personImage, 
+      clothingImage, 
+      measurements
+    );
     
-    const step1FormData = new FormData();
-    step1FormData.append('person_image', personImage);
-    step1FormData.append('clothing_image', clothingImage);
-    
-    const step1Result = await apiClient.callStepAPI(1, step1FormData);
-    if (!step1Result.success) {
-      throw new Error('Step 1 실패: ' + (step1Result.error || '알 수 없는 오류'));
-    }
-    
-    // 세션 ID 안전하게 추출
-    let sessionId: string;
-    if (step1Result.session_id) {
-      sessionId = step1Result.session_id;
-    } else if (step1Result.details?.session_id) {
-      sessionId = step1Result.details.session_id;
+    if (result.success) {
+      setResult(result);
+      setProgress(100);
+      setProgressMessage('🎉 전체 파이프라인 완료!');
     } else {
-      sessionId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      throw new Error(result.message || '파이프라인 실행 실패');
     }
-    
-    apiClient.setSessionId(sessionId);
-    console.log('✅ 세션 ID 확정:', sessionId);
-    
-    // Step 2: 측정값 검증
-    setProgress(20);
-    setProgressMessage('Step 2: 측정값 검증 중...');
-    
-    const step2FormData = new FormData();
-    step2FormData.append('height', measurements.height.toString());
-    step2FormData.append('weight', measurements.weight.toString());
-    step2FormData.append('session_id', sessionId);
-    step2FormData.append('chest', '0');
-    step2FormData.append('waist', '0');
-    step2FormData.append('hips', '0');
-    
-    const step2Result = await apiClient.callStepAPI(2, step2FormData);
-    if (!step2Result.success) {
-      throw new Error('Step 2 실패: ' + (step2Result.error || '알 수 없는 오류'));
-    }
-    
-    // Step 3-8: 순차 실행 (결과 처리 포함)
-    await executeRemainingSteps(sessionId);
-    
-    setProgress(100);
-    setProgressMessage('🎉 전체 파이프라인 완료!');
-    
-    // 🔥 최종 완료 처리 - 더 긴 대기 시간
-    setTimeout(() => {
-      setIsProcessing(false);
-      
-      // 🔥 결과 확인을 더 늦게 (React State 업데이트 완료 보장)
-      setTimeout(() => {
-        console.log('🎯 파이프라인 완료 - 최종 result 상태 확인 (지연 후)');
-        // 이 시점에서는 result가 설정되어 있어야 함
-      }, 500); // 추가 500ms 대기
-      
-    }, 1000);
     
   } catch (error: any) {
     console.error('❌ 전체 파이프라인 실패:', error);
     setError(`전체 파이프라인 실패: ${error.message}`);
+  } finally {
     setIsProcessing(false);
     setProgress(0);
     setProgressMessage('');
   }
 }, [personImage, clothingImage, measurements, apiClient]);
 
+// 🔥 이미지 업로드 검증 함수 추가
+
+  const validateAndUploadImages = async () => {
+    if (!personImage || !clothingImage) return;
+    
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('이미지 업로드 검증 중...');
+    
+    try {
+      // Step 1: 이미지 업로드 검증
+      const validationFormData = new FormData();
+      validationFormData.append('person_image', personImage);
+      validationFormData.append('clothing_image', clothingImage);
+      
+      console.log('🚀 이미지 업로드 검증 시작');
+      
+      const validationResponse = await fetch('http://localhost:8000/api/step/upload/validation', {
+        method: 'POST',
+        body: validationFormData,
+      });
+
+      if (!validationResponse.ok) {
+        const errorText = await validationResponse.text();
+        throw new Error(`이미지 검증 실패: ${errorText}`);
+      }
+
+      const validationResult = await validationResponse.json();
+      
+      if (!validationResult.success) {
+        throw new Error(`이미지 검증 실패: ${validationResult.error || validationResult.message}`);
+      }
+      
+      // 세션 ID 저장
+      if (validationResult.session_id) {
+        apiClient.setSessionId(validationResult.session_id);
+        // 🔥 localStorage에 세션 ID 저장 (새로고침 후 복구용)
+        localStorage.setItem('mycloset_session_id', validationResult.session_id);
+        console.log('💾 세션 ID 저장됨:', validationResult.session_id);
+      }
+      
+      console.log('✅ 이미지 업로드 검증 완료:', validationResult);
+      
+      // Step 2: 신체 측정값 검증
+      setProgress(50);
+      setProgressMessage('신체 측정값 검증 중...');
+      
+      const measurementsFormData = new FormData();
+      measurementsFormData.append('height', measurements.height.toString());
+      measurementsFormData.append('weight', measurements.weight.toString());
+      measurementsFormData.append('session_id', apiClient.getSessionId() || '');
+      
+      const measurementsResponse = await fetch('http://localhost:8000/api/step/upload/measurements', {
+        method: 'POST',
+        body: measurementsFormData,
+      });
+
+      if (!measurementsResponse.ok) {
+        const errorText = await measurementsResponse.text();
+        throw new Error(`측정값 검증 실패: ${errorText}`);
+      }
+
+      const measurementsResult = await measurementsResponse.json();
+      
+      if (!measurementsResult.success) {
+        throw new Error(`측정값 검증 실패: ${measurementsResult.error || measurementsResult.message}`);
+      }
+      
+      console.log('✅ 신체 측정값 검증 완료:', measurementsResult);
+      
+      setProgress(100);
+      setProgressMessage('이미지 업로드 완료! Step 1을 실행할 수 있습니다.');
+      
+    } catch (error) {
+      console.error('이미지 업로드 검증 실패:', error);
+      setError(error instanceof Error ? error.message : '이미지 업로드 검증 중 오류가 발생했습니다.');
+    } finally {
+    setIsProcessing(false);
+  }
+  };
+
   // 요청 취소
   const handleCancelRequest = useCallback(() => {
     if (isProcessing) {
       setIsProcessing(false);
-      setAutoProcessing(false);
       setProgress(0);
       setProgressMessage('');
       apiClient.disconnectWebSocket();
@@ -3224,6 +3183,7 @@ const App: React.FC = () => {
       gap: '1.5rem', 
       marginBottom: '2rem' 
     }}>
+      {/* 이미지 업로드 섹션 */}
       {['person', 'clothing'].map((type) => (
         <div key={type} style={{ 
           backgroundColor: '#ffffff', 
@@ -3313,6 +3273,123 @@ const App: React.FC = () => {
           />
         </div>
       ))}
+      
+      {/* 치수 입력 섹션 */}
+      <div style={{ 
+        gridColumn: isMobile ? '1' : '1 / -1',
+        backgroundColor: '#ffffff', 
+        borderRadius: '0.75rem', 
+        border: '1px solid #e5e7eb', 
+        padding: '1.5rem',
+        marginTop: '1.5rem'
+      }}>
+        <h3 style={{ 
+          fontSize: '1.125rem', 
+          fontWeight: '500', 
+          color: '#111827', 
+          marginBottom: '1rem' 
+        }}>Body Measurements</h3>
+        
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
+          gap: '1rem' 
+        }}>
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '0.875rem', 
+              fontWeight: '500', 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>Height (cm)</label>
+            <input
+              type="number"
+              value={measurements.height}
+              onChange={(e) => setMeasurements(prev => ({ ...prev, height: Number(e.target.value) }))}
+              style={{ 
+                width: '100%', 
+                padding: '0.5rem 0.75rem', 
+                border: '1px solid #d1d5db', 
+                borderRadius: '0.5rem', 
+                fontSize: '0.875rem',
+                outline: 'none'
+              }}
+              min="100"
+              max="250"
+              placeholder="170"
+            />
+          </div>
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: '0.875rem', 
+              fontWeight: '500', 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>Weight (kg)</label>
+            <input
+              type="number"
+              value={measurements.weight}
+              onChange={(e) => setMeasurements(prev => ({ ...prev, weight: Number(e.target.value) }))}
+              style={{ 
+                width: '100%', 
+                padding: '0.5rem 0.75rem', 
+                border: '1px solid #d1d5db', 
+                borderRadius: '0.5rem', 
+                fontSize: '0.875rem',
+                outline: 'none'
+              }}
+              min="30"
+              max="300"
+              placeholder="65"
+            />
+          </div>
+        </div>
+        
+        {measurements.height > 0 && measurements.weight > 0 && (
+          <div style={{ 
+            marginTop: '1rem', 
+            padding: '0.75rem', 
+            backgroundColor: '#f9fafb', 
+            borderRadius: '0.5rem' 
+          }}>
+            <div style={{ 
+              fontSize: '0.875rem', 
+              color: '#4b5563' 
+            }}>
+              BMI: {(measurements.weight / Math.pow(measurements.height / 100, 2)).toFixed(1)}
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Step 1 시작 버튼 */}
+      <div style={{ 
+        gridColumn: isMobile ? '1' : '1 / -1',
+        marginTop: '2rem', 
+        textAlign: 'center' 
+      }}>
+        <button
+          onClick={() => setCurrentStep(1)}  // ✅ Step 1 (인체 파싱)으로 이동
+          disabled={!personImage || !clothingImage || measurements.height <= 0 || measurements.weight <= 0 || isProcessing}
+          style={{
+            backgroundColor: '#000000',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '0.5rem',
+            padding: '0.75rem 1.5rem',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            width: isMobile ? '100%' : 'auto',
+            minWidth: '200px'
+          }}
+        >
+          {isProcessing ? 'AI 파이프라인 처리 중...' : '🚀 Step 1 시작 (인체 파싱)'}
+        </button>
+      </div>
     </div>
   );
 
@@ -3402,6 +3479,26 @@ const App: React.FC = () => {
           }}>
             BMI: {(measurements.weight / Math.pow(measurements.height / 100, 2)).toFixed(1)}
           </div>
+          
+          {/* AI 가상 피팅 시작 버튼 */}
+          <button
+            onClick={executeStep1}
+            style={{
+              backgroundColor: '#000000',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '0.5rem',
+              padding: '0.75rem 1.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              width: '100%',
+              marginTop: '1rem'
+            }}
+          >
+            �� AI 가상 피팅 시작 (Step 1)
+          </button>
         </div>
       )}
     </div>
@@ -3436,7 +3533,7 @@ const App: React.FC = () => {
           }}>
             {stepResult?.success ? (
               <span style={{ fontSize: '2rem' }}>✅</span>
-            ) : autoProcessing ? (
+            ) : isProcessing ? (
               <div style={{ 
                 width: '2rem', 
                 height: '2rem', 
@@ -3463,7 +3560,7 @@ const App: React.FC = () => {
             marginTop: '0.5rem'
           }}>{stepData.description}</p>
 
-          {autoProcessing && !stepResult && (
+          {isProcessing && !stepResult && (
             <div style={{ 
               marginTop: '1rem', 
               padding: '1rem', 
@@ -3590,7 +3687,7 @@ const App: React.FC = () => {
           marginTop: '0.5rem'
         }}>딥러닝 모델이 최종 결과를 생성하고 있습니다</p>
 
-        {autoProcessing && (
+        {isProcessing && (
           <div style={{ marginTop: '1rem' }}>
             <div style={{ 
               width: '100%', 
@@ -3657,6 +3754,228 @@ const App: React.FC = () => {
     </div>
   );
 
+  // 🔥 각 단계별 결과 표시 함수
+  const renderStepResult = () => {
+    const stepData = PIPELINE_STEPS[currentStep - 1];
+    const stepResult = stepResults[currentStep];
+    const isCompleted = completedSteps.includes(currentStep);
+    const isCurrentStep = !isCompleted && !isProcessing;
+
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        maxWidth: '50rem', 
+        margin: '0 auto' 
+      }}>
+        <div style={{ 
+          backgroundColor: '#ffffff', 
+          borderRadius: '0.75rem', 
+          border: '1px solid #e5e7eb', 
+          padding: '2rem' 
+        }}>
+          {/* Step 헤더 */}
+          <div style={{ 
+            width: '4rem', 
+            height: '4rem', 
+            margin: '0 auto', 
+            backgroundColor: isCompleted ? '#dcfce7' : '#eff6ff', 
+            borderRadius: '50%', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            marginBottom: '1rem' 
+          }}>
+            {isCompleted ? (
+              <span style={{ fontSize: '2rem' }}>✅</span>
+            ) : isProcessing ? (
+              <div style={{ 
+                width: '2rem', 
+                height: '2rem', 
+                border: '4px solid #3b82f6', 
+                borderTop: '4px solid transparent', 
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+            ) : (
+              <span style={{ fontSize: '1.25rem', fontWeight: '600', color: '#3b82f6' }}>
+                {currentStep}
+              </span>
+            )}
+          </div>
+          
+          <h3 style={{ 
+            fontSize: '1.25rem', 
+            fontWeight: '600', 
+            color: '#111827' 
+          }}>{stepData.name}</h3>
+          
+          <p style={{ 
+            color: '#4b5563', 
+            marginTop: '0.5rem'
+          }}>{stepData.description}</p>
+
+          {/* 진행 상태 표시 */}
+          {isProcessing && (
+            <div style={{ 
+              marginTop: '1rem', 
+              padding: '1rem', 
+              backgroundColor: '#fef3c7', 
+              borderRadius: '0.5rem',
+              border: '1px solid #f59e0b'
+            }}>
+              <p style={{ 
+                fontSize: '0.875rem', 
+                color: '#92400e', 
+                margin: 0 
+              }}>
+                {progressMessage}
+              </p>
+              <div style={{ 
+                width: '100%', 
+                backgroundColor: '#f3f4f6', 
+                borderRadius: '0.5rem', 
+                height: '0.5rem',
+                marginTop: '0.5rem'
+              }}>
+                <div 
+                  style={{ 
+                    backgroundColor: '#f59e0b', 
+                    height: '0.5rem', 
+                    borderRadius: '0.5rem', 
+                    transition: 'width 0.3s',
+                    width: `${progress}%`
+                  }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {/* 결과 이미지 표시 */}
+          {stepResult?.details?.result_image && (
+            <div style={{ 
+              marginTop: '1.5rem',
+              padding: '1rem',
+              backgroundColor: '#f9fafb',
+              borderRadius: '0.5rem'
+            }}>
+              <h4 style={{ 
+                fontSize: '1rem', 
+                fontWeight: '500', 
+                color: '#374151',
+                marginBottom: '1rem'
+              }}>처리 결과</h4>
+              <img 
+                src={stepResult.details.result_image} 
+                alt={`Step ${currentStep} 결과`}
+                style={{ 
+                  maxWidth: '100%', 
+                  height: 'auto',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #e5e7eb'
+                }}
+              />
+            </div>
+          )}
+
+          {/* 버튼들 */}
+          <div style={{ 
+            marginTop: '1.5rem',
+            display: 'flex',
+            gap: '1rem',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {/* 이전 단계 버튼 */}
+            {currentStep > 1 && (
+              <button
+                onClick={() => setCurrentStep(currentStep - 1)}
+                style={{
+                  backgroundColor: '#f3f4f6',
+                  color: '#374151',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ← 이전 단계
+              </button>
+            )}
+
+            {/* 현재 단계 실행 버튼 */}
+            {isCurrentStep && (
+              <button
+                onClick={() => {
+                  const stepFunctions = [
+                    executeStep1, executeStep2, executeStep3, executeStep4,
+                    executeStep5, executeStep6, executeStep7, executeStep8
+                  ];
+                  stepFunctions[currentStep - 1]();
+                }}
+                style={{
+                  backgroundColor: '#000000',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                🚀 Step {currentStep} 실행
+              </button>
+            )}
+
+            {/* 다음 단계 버튼 */}
+            {isCompleted && currentStep < 8 && (
+              <button
+                onClick={() => setCurrentStep(currentStep + 1)}
+                style={{
+                  backgroundColor: '#000000',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                다음 단계 →
+              </button>
+            )}
+
+            {/* 최종 결과 보기 버튼 */}
+            {isCompleted && currentStep === 8 && (
+              <button
+                onClick={() => setCurrentStep(9)}
+                style={{
+                  backgroundColor: '#059669',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                🎉 최종 결과 보기
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderResultStep = () => {
     if (!result) return null;
 
@@ -3670,24 +3989,24 @@ const App: React.FC = () => {
     );
   };
 
-  // 단계별 컨텐츠 렌더링
+  // 🔥 새로운 단계별 컨텐츠 렌더링 (Step 1-8)
   const renderStepContent = () => {
     switch (currentStep) {
+      case 0:
+        return renderImageUploadStep();     // Step 0: 이미지 업로드 + 치수 입력
       case 1:
-        return renderImageUploadStep();
       case 2:
-        return renderMeasurementsStep();
       case 3:
       case 4:
       case 5:
       case 6:
-        return renderProcessingStep();
       case 7:
-        return renderVirtualFittingStep();
       case 8:
-        return renderResultStep();
+        return renderStepResult();          // Step 1-8: 각 단계별 결과 표시
+      case 9:
+        return renderResultStep();          // Step 9: 최종 결과
       default:
-        return null;
+        return renderImageUploadStep();
     }
   };
 
@@ -4033,16 +4352,15 @@ const App: React.FC = () => {
         }}>
           <button
             onClick={goToPreviousStep}
-            disabled={currentStep === 1 || isProcessing || autoProcessing}
-            style={{
+            disabled={currentStep === 1 || isProcessing}            style={{
               padding: isMobile ? '0.875rem 1.5rem' : '0.75rem 1.5rem',
               backgroundColor: '#f3f4f6',
               color: '#374151',
               borderRadius: '0.5rem',
               fontWeight: '500',
               border: 'none',
-              cursor: (currentStep === 1 || isProcessing || autoProcessing) ? 'not-allowed' : 'pointer',
-              opacity: (currentStep === 1 || isProcessing || autoProcessing) ? 0.5 : 1,
+              cursor: (currentStep === 1 || isProcessing) ? 'not-allowed' : 'pointer',
+              opacity: (currentStep === 1 || isProcessing) ? 0.5 : 1,
               transition: 'all 0.2s',
               order: isMobile ? 2 : 1,
               width: isMobile ? '100%' : 'auto'
@@ -4058,7 +4376,7 @@ const App: React.FC = () => {
             flexDirection: isMobile ? 'column' : 'row'
           }}>
             {/* 리셋 버튼 */}
-            {!isProcessing && !autoProcessing && (currentStep > 1 || result) && (
+            {!isProcessing && (currentStep > 1 || result) && (
               <button
                 onClick={reset}
                 style={{
@@ -4079,17 +4397,20 @@ const App: React.FC = () => {
 
             {currentStep <= 2 && (
               <button
-                onClick={processCurrentStep}
-                disabled={!canProceedToNext() || isProcessing || autoProcessing}
+                onClick={() => {
+                      if (currentStep === 0) executeStep1();  // Step 0에서 Step 1 실행
+                      else if (currentStep === 1) executeStep2();  // Step 1에서 Step 2 실행
+                    }}               
+                disabled={!canProceedToNext() || isProcessing}
                 style={{
                   padding: isMobile ? '0.875rem 1.5rem' : '0.75rem 1.5rem',
-                  backgroundColor: (!canProceedToNext() || isProcessing || autoProcessing) ? '#d1d5db' : '#3b82f6',
+                  backgroundColor: (!canProceedToNext() || isProcessing) ? '#d1d5db' : '#3b82f6',
                   color: '#ffffff',
                   borderRadius: '0.5rem',
                   fontWeight: '500',
                   border: 'none',
-                  cursor: (!canProceedToNext() || isProcessing || autoProcessing) ? 'not-allowed' : 'pointer',
-                  opacity: (!canProceedToNext() || isProcessing || autoProcessing) ? 0.5 : 1,
+                  cursor: (!canProceedToNext() || isProcessing ) ? 'not-allowed' : 'pointer',
+                  opacity: (!canProceedToNext() || isProcessing ) ? 0.5 : 1,
                   transition: 'all 0.2s',
                   width: isMobile ? '100%' : 'auto'
                 }}
@@ -4098,9 +4419,14 @@ const App: React.FC = () => {
               </button>
             )}
 
-            {currentStep > 2 && currentStep < 8 && !autoProcessing && (
+            {currentStep >=2 && currentStep < 8 && !isProcessing && (
               <button
-                onClick={goToNextStep}
+                onClick={() => {
+                  // 단순히 다음 단계로 이동만 (실행하지 않음)
+                  if (currentStep < 8) {
+                    setCurrentStep(prev => prev + 1);
+                  }
+                }}
                 disabled={!canProceedToNext() || isProcessing}
                 style={{
                   padding: isMobile ? '0.875rem 1.5rem' : '0.75rem 1.5rem',

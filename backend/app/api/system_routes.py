@@ -10,7 +10,7 @@ import psutil
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from ..core.logging_config import get_logger
@@ -451,3 +451,235 @@ async def get_mock_data_analysis():
             },
             status_code=500
         ) 
+
+@router.get("/cleanup-sessions")
+async def cleanup_sessions(
+    max_age_hours: int = Query(24, description="최대 보관 시간 (시간)"),
+    keep_count: int = Query(50, description="보관할 세션 수"),
+    mode: str = Query("stats", description="정리 모드: stats, age, count"),
+    dry_run: bool = Query(True, description="실제 삭제하지 않고 미리보기만"),
+    sessions_dir: str = Query("backend/sessions/data", description="세션 디렉토리 경로")
+):
+    """세션 정리 API"""
+    try:
+        from pathlib import Path
+        import shutil
+        import time
+        import re
+        from typing import List, Dict, Any
+        
+        class SessionCleaner:
+            def __init__(self, sessions_dir: str, max_age_hours: int = 24):
+                self.sessions_dir = Path(sessions_dir)
+                self.max_age_hours = max_age_hours
+                self.current_time = time.time()
+            
+            def get_file_session_info(self, file_path: Path) -> Dict[str, Any]:
+                try:
+                    filename = file_path.name
+                    match = re.match(r'session_(\d+)_([a-f0-9]+)_', filename)
+                    
+                    if match:
+                        timestamp = int(match.group(1))
+                        session_id = match.group(2)
+                        created_time = timestamp
+                        
+                        return {
+                            'session_id': session_id,
+                            'created_time': created_time,
+                            'age_hours': (self.current_time - created_time) / 3600,
+                            'size_mb': file_path.stat().st_size / (1024 * 1024),
+                            'files_count': 1,
+                            'file_path': file_path
+                        }
+                    else:
+                        created_time = file_path.stat().st_ctime
+                        return {
+                            'session_id': file_path.stem,
+                            'created_time': created_time,
+                            'age_hours': (self.current_time - created_time) / 3600,
+                            'size_mb': file_path.stat().st_size / (1024 * 1024),
+                            'files_count': 1,
+                            'file_path': file_path
+                        }
+                except Exception as e:
+                    return None
+            
+            def get_all_sessions(self) -> List[Dict[str, Any]]:
+                sessions = []
+                
+                if not self.sessions_dir.exists():
+                    return sessions
+                
+                for file_path in self.sessions_dir.iterdir():
+                    if file_path.is_file() and file_path.name.startswith('session_'):
+                        session_info = self.get_file_session_info(file_path)
+                        if session_info:
+                            sessions.append(session_info)
+                
+                # 세션 ID별로 그룹화하여 중복 제거
+                session_groups = {}
+                for session in sessions:
+                    session_id = session['session_id']
+                    if session_id not in session_groups:
+                        session_groups[session_id] = session
+                    else:
+                        existing = session_groups[session_id]
+                        existing['size_mb'] += session['size_mb']
+                        existing['files_count'] += session['files_count']
+                        if session['created_time'] < existing['created_time']:
+                            existing['created_time'] = session['created_time']
+                            existing['age_hours'] = session['age_hours']
+                
+                sessions = list(session_groups.values())
+                sessions.sort(key=lambda x: x['age_hours'], reverse=True)
+                return sessions
+            
+            def cleanup_old_sessions(self, dry_run: bool = True) -> Dict[str, Any]:
+                sessions = self.get_all_sessions()
+                
+                if not sessions:
+                    return {'cleaned': 0, 'total_size_mb': 0, 'sessions': []}
+                
+                sessions_to_clean = []
+                total_size_to_clean = 0
+                
+                for session in sessions:
+                    if session['age_hours'] > self.max_age_hours:
+                        sessions_to_clean.append(session)
+                        total_size_to_clean += session['size_mb']
+                
+                if not dry_run:
+                    cleaned_count = 0
+                    for session in sessions_to_clean:
+                        try:
+                            if 'file_path' in session:
+                                file_path = session['file_path']
+                                if file_path.exists():
+                                    file_path.unlink()
+                                    cleaned_count += 1
+                        except Exception as e:
+                            pass
+                    
+                    return {
+                        'cleaned': cleaned_count,
+                        'total_size_mb': total_size_to_clean,
+                        'sessions': sessions_to_clean
+                    }
+                else:
+                    return {
+                        'cleaned': 0,
+                        'total_size_mb': total_size_to_clean,
+                        'sessions': sessions_to_clean
+                    }
+            
+            def cleanup_by_count(self, keep_count: int = 50, dry_run: bool = True) -> Dict[str, Any]:
+                sessions = self.get_all_sessions()
+                
+                if len(sessions) <= keep_count:
+                    return {'cleaned': 0, 'total_size_mb': 0, 'sessions': []}
+                
+                sessions_to_clean = sessions[keep_count:]
+                total_size_to_clean = sum(s['size_mb'] for s in sessions_to_clean)
+                
+                if not dry_run:
+                    cleaned_count = 0
+                    for session in sessions_to_clean:
+                        try:
+                            if 'file_path' in session:
+                                file_path = session['file_path']
+                                if file_path.exists():
+                                    file_path.unlink()
+                                    cleaned_count += 1
+                        except Exception as e:
+                            pass
+                    
+                    return {
+                        'cleaned': cleaned_count,
+                        'total_size_mb': total_size_to_clean,
+                        'sessions': sessions_to_clean
+                    }
+                else:
+                    return {
+                        'cleaned': 0,
+                        'total_size_mb': total_size_to_clean,
+                        'sessions': sessions_to_clean
+                    }
+            
+            def show_session_stats(self):
+                sessions = self.get_all_sessions()
+                
+                if not sessions:
+                    return {
+                        'total_sessions': 0,
+                        'total_size_mb': 0,
+                        'avg_age_hours': 0,
+                        'oldest_session_hours': 0,
+                        'newest_session_hours': 0,
+                        'age_distribution': {}
+                    }
+                
+                total_size = sum(s['size_mb'] for s in sessions)
+                avg_age = sum(s['age_hours'] for s in sessions) / len(sessions)
+                
+                age_groups = {
+                    '1시간 이내': 0,
+                    '1-6시간': 0,
+                    '6-24시간': 0,
+                    '24시간 이상': 0
+                }
+                
+                for session in sessions:
+                    age = session['age_hours']
+                    if age <= 1:
+                        age_groups['1시간 이내'] += 1
+                    elif age <= 6:
+                        age_groups['1-6시간'] += 1
+                    elif age <= 24:
+                        age_groups['6-24시간'] += 1
+                    else:
+                        age_groups['24시간 이상'] += 1
+                
+                return {
+                    'total_sessions': len(sessions),
+                    'total_size_mb': total_size,
+                    'avg_age_hours': avg_age,
+                    'oldest_session_hours': sessions[0]['age_hours'],
+                    'newest_session_hours': sessions[-1]['age_hours'],
+                    'age_distribution': age_groups
+                }
+        
+        cleaner = SessionCleaner(sessions_dir, max_age_hours)
+        
+        if mode == "stats":
+            stats = cleaner.show_session_stats()
+            return {
+                "status": "success",
+                "message": "세션 통계 조회 완료",
+                "data": stats
+            }
+        elif mode == "age":
+            result = cleaner.cleanup_old_sessions(dry_run=dry_run)
+            return {
+                "status": "success",
+                "message": f"나이 기준 세션 정리 완료 (dry_run={dry_run})",
+                "data": result
+            }
+        elif mode == "count":
+            result = cleaner.cleanup_by_count(keep_count, dry_run=dry_run)
+            return {
+                "status": "success",
+                "message": f"개수 기준 세션 정리 완료 (dry_run={dry_run})",
+                "data": result
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "잘못된 모드입니다. stats, age, count 중 하나를 선택하세요."
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"세션 정리 중 오류 발생: {str(e)}"
+        } 

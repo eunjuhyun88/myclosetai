@@ -19,13 +19,143 @@ import gc
 # PyTorch 선택적 import (M3 Max 최적화)
 try:
     import torch
+    import torch.nn as nn
     import torch.backends.mps
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
     torch = None
+    nn = None
 
 logger = logging.getLogger(__name__)
+
+class TryOnGenerator(nn.Module):
+    """Try-On 생성 모듈"""
+    
+    def __init__(self, input_channels=6, output_channels=3, feature_dim=256):
+        super().__init__()
+        
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Conv2d(input_channels, 64, 7, stride=2, padding=3),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, 4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 256, 4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 512, 4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(512, 256, 4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, output_channels, 4, stride=2, padding=1),
+            nn.Tanh()
+        )
+        
+        # Skip connections
+        self.skip_conv1 = nn.Conv2d(64, 64, 1)
+        self.skip_conv2 = nn.Conv2d(128, 128, 1)
+        self.skip_conv3 = nn.Conv2d(256, 256, 1)
+    
+    def forward(self, person_img, warped_cloth):
+        # Concatenate inputs
+        x = torch.cat([person_img, warped_cloth], dim=1)
+        
+        # Encoder with skip connections
+        enc1 = self.encoder[:3](x)  # 64 channels
+        enc2 = self.encoder[3:6](enc1)  # 128 channels
+        enc3 = self.encoder[6:9](enc2)  # 256 channels
+        enc4 = self.encoder[9:](enc3)  # 512 channels
+        
+        # Decoder with skip connections
+        dec4 = self.decoder[:3](enc4)  # 256 channels
+        dec4 = dec4 + self.skip_conv3(enc3)
+        
+        dec3 = self.decoder[3:6](dec4)  # 128 channels
+        dec3 = dec3 + self.skip_conv2(enc2)
+        
+        dec2 = self.decoder[6:9](dec3)  # 64 channels
+        dec2 = dec2 + self.skip_conv1(enc1)
+        
+        output = self.decoder[9:](dec2)  # 3 channels
+        
+        return output
+
+class RefinementNetwork(nn.Module):
+    """정제 네트워크"""
+    
+    def __init__(self, input_channels=3, output_channels=3):
+        super().__init__()
+        
+        # Multi-scale feature extraction
+        self.feature_extractor = nn.Sequential(
+            nn.Conv2d(input_channels, 64, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Attention mechanism
+        self.attention = nn.Sequential(
+            nn.Conv2d(256, 64, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 1, 1),
+            nn.Sigmoid()
+        )
+        
+        # Refinement blocks
+        self.refinement_blocks = nn.ModuleList([
+            self._make_refinement_block(256, 256),
+            self._make_refinement_block(256, 128),
+            self._make_refinement_block(128, 64)
+        ])
+        
+        # Output layer
+        self.output_conv = nn.Conv2d(64, output_channels, 3, padding=1)
+        
+    def _make_refinement_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+    
+    def forward(self, x):
+        # Feature extraction
+        features = self.feature_extractor(x)
+        
+        # Attention
+        attention_weights = self.attention(features)
+        attended_features = features * attention_weights
+        
+        # Refinement
+        refined = attended_features
+        for block in self.refinement_blocks:
+            refined = block(refined)
+        
+        # Output
+        output = self.output_conv(refined)
+        
+        return output + x  # Residual connection
 
 class AIVirtualTryOnPipeline:
     """

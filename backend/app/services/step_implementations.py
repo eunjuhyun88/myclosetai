@@ -86,51 +86,12 @@ warnings.filterwarnings('ignore', category=ImportWarning)
 # 🔥 3단계: Central Hub DI Container 안전한 연결
 # =============================================================================
 
-def _get_central_hub_container():
-    """Central Hub DI Container 안전한 동적 해결 (순환참조 완전 방지)"""
-    try:
-        import importlib
-        module = importlib.import_module('app.core.di_container')
-        get_global_fn = getattr(module, 'get_global_container', None)
-        if get_global_fn:
-            container = get_global_fn()
-            logger.debug("✅ Central Hub DI Container 연결 성공")
-            return container
-        logger.warning("⚠️ get_global_container 함수 없음")
-        return None
-    except ImportError as e:
-        logger.warning(f"⚠️ Central Hub DI Container import 실패: {e}")
-        return None
-    except Exception as e:
-        logger.debug(f"Central Hub Container 연결 오류: {e}")
-        return None
-
-def _get_service_from_central_hub(service_key: str):
-    """Central Hub를 통한 안전한 서비스 조회"""
-    try:
-        container = _get_central_hub_container()
-        if container:
-            service = container.get(service_key)
-            if service:
-                logger.debug(f"✅ Central Hub에서 {service_key} 서비스 조회 성공")
-            return service
-        return None
-    except Exception as e:
-        logger.debug(f"Central Hub 서비스 조회 실패 ({service_key}): {e}")
-        return None
-
-def _inject_dependencies_to_step_via_central_hub(step_instance):
-    """Central Hub DI Container를 통한 안전한 의존성 주입"""
-    try:
-        container = _get_central_hub_container()
-        if container and hasattr(container, 'inject_to_step'):
-            injection_count = container.inject_to_step(step_instance)
-            logger.debug(f"✅ Central Hub 의존성 주입 완료: {injection_count}개")
-            return injection_count
-        return 0
-    except Exception as e:
-        logger.debug(f"Central Hub 의존성 주입 실패: {e}")
-        return 0
+# step_utils.py에서 유틸리티 함수들 import
+from .step_utils import (
+    _get_central_hub_container,
+    _get_service_from_central_hub,
+    _inject_dependencies_to_step_safe as _inject_dependencies_to_step_via_central_hub
+)
 
 # =============================================================================
 # 🔥 4단계: 환경 정보 수집
@@ -654,165 +615,24 @@ class CentralHubInputDataConverter:
         self.logger = logging.getLogger(f"{__name__}.CentralHubInputDataConverter")
         self.central_hub_container = _get_central_hub_container()
     
+    # step_utils.py에서 데이터 변환 함수들 import
+    from .step_utils import (
+        convert_upload_file_to_image as _convert_upload_file_to_image,
+        convert_base64_to_image as _convert_base64_to_image,
+        convert_image_to_base64 as _convert_image_to_base64
+    )
+    
     async def convert_upload_file_to_image(self, upload_file) -> Optional[Any]:
-        """UploadFile을 이미지로 변환 (Central Hub 기반)"""
-        try:
-            # PIL이 사용 가능한지 확인
-            try:
-                from PIL import Image
-                PIL_AVAILABLE = True
-            except ImportError:
-                PIL_AVAILABLE = False
-                self.logger.warning("PIL 사용 불가능")
-                return None
-            
-            if not PIL_AVAILABLE:
-                return None
-            
-            # UploadFile 내용 읽기
-            if hasattr(upload_file, 'read'):
-                if asyncio.iscoroutinefunction(upload_file.read):
-                    content = await upload_file.read()
-                else:
-                    content = upload_file.read()
-            elif hasattr(upload_file, 'file'):
-                content = upload_file.file.read()
-            else:
-                content = upload_file
-            
-            # PIL 이미지로 변환
-            pil_image = Image.open(BytesIO(content))
-            
-            # RGB 모드로 변환
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # numpy 배열로 변환 (PyTorch 호환)
-            try:
-                import numpy as np
-                image_array = np.array(pil_image)
-                
-                # PyTorch 텐서로 변환 (가능한 경우)
-                if PYTORCH_AVAILABLE:
-                    import torch
-                    image_tensor = torch.from_numpy(image_array).permute(2, 0, 1).float()
-                    self.logger.debug(f"✅ 이미지 변환 완료: {image_tensor.shape}")
-                    return image_tensor
-                else:
-                    self.logger.debug(f"✅ 이미지 변환 완료: {image_array.shape}")
-                    return image_array
-                    
-            except ImportError:
-                self.logger.debug(f"✅ PIL 이미지 변환 완료: {pil_image.size}")
-                return pil_image
-            
-        except Exception as e:
-            self.logger.error(f"❌ 이미지 변환 실패: {e}")
-            return None
+        """UploadFile을 이미지로 변환 (step_utils.py 사용)"""
+        return await _convert_upload_file_to_image(upload_file)
     
     def convert_base64_to_image(self, base64_str: str) -> Optional[Any]:
-        """Base64 문자열을 이미지로 변환 (Central Hub 기반)"""
-        try:
-            try:
-                from PIL import Image
-                PIL_AVAILABLE = True
-            except ImportError:
-                PIL_AVAILABLE = False
-                return None
-            
-            # Base64 디코딩
-            if ',' in base64_str:
-                base64_str = base64_str.split(',')[1]
-            
-            image_data = base64.b64decode(base64_str)
-            
-            # PIL 이미지로 변환
-            pil_image = Image.open(BytesIO(image_data))
-            
-            # RGB 모드로 변환
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # numpy/torch 변환
-            try:
-                import numpy as np
-                image_array = np.array(pil_image)
-                
-                if PYTORCH_AVAILABLE:
-                    import torch
-                    image_tensor = torch.from_numpy(image_array).permute(2, 0, 1).float()
-                    self.logger.debug(f"✅ Base64 이미지 변환 완료: {image_tensor.shape}")
-                    return image_tensor
-                else:
-                    self.logger.debug(f"✅ Base64 이미지 변환 완료: {image_array.shape}")
-                    return image_array
-                    
-            except ImportError:
-                self.logger.debug(f"✅ Base64 PIL 이미지 변환 완료: {pil_image.size}")
-                return pil_image
-            
-        except Exception as e:
-            self.logger.error(f"❌ Base64 이미지 변환 실패: {e}")
-            return None
+        """Base64 문자열을 이미지로 변환 (step_utils.py 사용)"""
+        return _convert_base64_to_image(base64_str)
     
     def convert_image_to_base64(self, image_data: Any) -> str:
-        """이미지를 Base64 문자열로 변환 (Central Hub 기반)"""
-        try:
-            try:
-                from PIL import Image
-                PIL_AVAILABLE = True
-            except ImportError:
-                PIL_AVAILABLE = False
-                return ""
-            
-            pil_image = None
-            
-            # PyTorch 텐서인 경우
-            if PYTORCH_AVAILABLE:
-                try:
-                    import torch
-                    if isinstance(image_data, torch.Tensor):
-                        if len(image_data.shape) == 3:  # C, H, W
-                            image_array = image_data.permute(1, 2, 0).cpu().numpy()
-                        else:  # H, W, C
-                            image_array = image_data.cpu().numpy()
-                        
-                        if image_array.dtype != 'uint8':
-                            image_array = (image_array * 255).astype('uint8')
-                        
-                        pil_image = Image.fromarray(image_array)
-                except Exception:
-                    pass
-            
-            # numpy 배열인 경우
-            if pil_image is None:
-                try:
-                    import numpy as np
-                    if isinstance(image_data, np.ndarray):
-                        if image_data.dtype != np.uint8:
-                            image_data = (image_data * 255).astype(np.uint8)
-                        pil_image = Image.fromarray(image_data)
-                except Exception:
-                    pass
-            
-            # PIL 이미지인 경우
-            if pil_image is None and hasattr(image_data, 'mode'):
-                pil_image = image_data
-            
-            if pil_image is None:
-                return ""
-            
-            # Base64로 인코딩
-            buffer = BytesIO()
-            pil_image.save(buffer, format='PNG', optimize=True)
-            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-            self.logger.debug("✅ 이미지 Base64 변환 완료")
-            return f"data:image/png;base64,{image_base64}"
-            
-        except Exception as e:
-            self.logger.error(f"❌ 이미지 Base64 변환 실패: {e}")
-            return ""
+        """이미지를 Base64 문자열로 변환 (step_utils.py 사용)"""
+        return _convert_image_to_base64(image_data)
     
     def prepare_step_input(self, step_name: str, raw_input: Dict[str, Any]) -> Dict[str, Any]:
         """Step별 특화 입력 데이터 준비 (Central Hub 기반)"""
@@ -2133,55 +1953,55 @@ async def process_virtual_fitting_implementation(
     }
     api_input.update(kwargs)
     
-    return await manager.process_step_by_name("VirtualFittingStep", api_input)
+    return await manager.process_step_by_name("virtual_fitting", api_input)
 
 def process_human_parsing_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Human Parsing Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("HumanParsingStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("human_parsing", input_data, **kwargs))
 
 def process_pose_estimation_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Pose Estimation Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("PoseEstimationStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("pose_estimation", input_data, **kwargs))
 
 def process_cloth_segmentation_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Cloth Segmentation Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("ClothSegmentationStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("cloth_segmentation", input_data, **kwargs))
 
 def process_geometric_matching_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Geometric Matching Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("GeometricMatchingStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("geometric_matching", input_data, **kwargs))
 
 def process_cloth_warping_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Cloth Warping Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("ClothWarpingStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("cloth_warping", input_data, **kwargs))
 
 def process_virtual_fitting_implementation_sync(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Virtual Fitting Step 실행 (동기 버전, 기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("VirtualFittingStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("virtual_fitting", input_data, **kwargs))
 
 def process_post_processing_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Post Processing Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("PostProcessingStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("post_processing", input_data, **kwargs))
 
 def process_quality_assessment_implementation(input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Quality Assessment Step 실행 (기존 함수명 유지)"""
     manager = get_step_implementation_manager()
     loop = asyncio.get_event_loop()
-    return loop.run_until_complete(manager.process_step_by_name("QualityAssessmentStep", input_data, **kwargs))
+    return loop.run_until_complete(manager.process_step_by_name("quality_assessment", input_data, **kwargs))
 
 # =============================================================================
 # 🔥 12단계: 고급 처리 함수들 (Central Hub + DetailedDataSpec 기반, 기존 함수명 유지)

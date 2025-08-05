@@ -493,6 +493,8 @@ step_router = _safe_import_step_routes_central_hub()
 if step_router:
     AVAILABLE_ROUTERS['step_routes'] = step_router
 
+
+
 # WebSocket 라우터 (Central Hub 연동)
 websocket_router = _safe_import_websocket_routes_central_hub()
 if websocket_router:
@@ -567,6 +569,8 @@ def register_routers(app) -> int:
         else:
             logger.error("❌ step_routes가 AVAILABLE_ROUTERS에 없음!")
             logger.error(f"🔍 사용 가능한 라우터: {list(AVAILABLE_ROUTERS.keys())}")
+        
+
         
         # Virtual Try-on 라우터 - Central Hub 연동
         if 'virtual_tryon' in AVAILABLE_ROUTERS:

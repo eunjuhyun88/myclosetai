@@ -3985,6 +3985,46 @@ class BaseStepMixin:
         except Exception as e:
             self.logger.debug(f"서비스 조회 실패 ({service_key}): {e}")
             return None
+
+    def _get_service_from_central_hub(self, service_key: str):
+        """Central Hub를 통한 안전한 서비스 조회 (GitHub Step 클래스 호환)"""
+        try:
+            # 1. Central Hub Container를 통한 조회
+            if hasattr(self, 'central_hub_container') and self.central_hub_container:
+                service = self.central_hub_container.get(service_key)
+                if service:
+                    self.logger.debug(f"✅ {self.step_name} Central Hub에서 {service_key} 조회 성공")
+                    return service
+            
+            # 2. DI Container를 통한 조회 (기존 호환성)
+            if hasattr(self, 'di_container') and self.di_container:
+                service = self.di_container.get(service_key)
+                if service:
+                    self.logger.debug(f"✅ {self.step_name} DI Container에서 {service_key} 조회 성공")
+                    return service
+            
+            # 3. 전역 함수를 통한 조회 (폴백)
+            try:
+                service = _get_service_from_central_hub(service_key)
+                if service:
+                    self.logger.debug(f"✅ {self.step_name} 전역 함수에서 {service_key} 조회 성공")
+                    return service
+            except Exception:
+                pass
+            
+            # 4. 직접 속성 확인 (최종 폴백)
+            if hasattr(self, service_key):
+                service = getattr(self, service_key)
+                if service:
+                    self.logger.debug(f"✅ {self.step_name} 직접 속성에서 {service_key} 조회 성공")
+                    return service
+            
+            self.logger.warning(f"⚠️ {self.step_name} {service_key} 서비스를 찾을 수 없음")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ {self.step_name} {service_key} 서비스 조회 실패: {e}")
+            return None
     
     def register_service(self, service_key: str, service_instance: Any, singleton: bool = True):
         """Central Hub DI Container에 서비스 등록"""

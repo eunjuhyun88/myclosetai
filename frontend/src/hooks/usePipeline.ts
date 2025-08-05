@@ -68,59 +68,59 @@ export interface PipelineStep {
 const PIPELINE_STEPS: Omit<PipelineStep, 'status' | 'progress'>[] = [
   {
     id: 1,
-    name: 'upload_validation',
-    korean: '이미지 업로드 검증',
-    description: '사용자 사진과 의류 이미지를 검증합니다',
-    endpoint: '/api/step/1/upload-validation'
-  },
-  {
-    id: 2,
-    name: 'measurements_validation',
-    korean: '신체 측정값 검증', 
-    description: '키와 몸무게 등 신체 정보를 검증합니다',
-    endpoint: '/api/step/2/measurements-validation'
-  },
-  {
-    id: 3,
     name: 'human_parsing',
     korean: '인체 파싱',
     description: 'AI가 신체 부위를 20개 영역으로 분석합니다',
-    endpoint: '/api/step/3/human-parsing'
+    endpoint: '/api/step/1/human-parsing'
   },
   {
-    id: 4,
+    id: 2,
     name: 'pose_estimation',
     korean: '포즈 추정',
     description: '18개 키포인트로 자세를 분석합니다',
-    endpoint: '/api/step/4/pose-estimation'
+    endpoint: '/api/step/2/pose-estimation'
   },
   {
-    id: 5,
-    name: 'clothing_analysis',
-    korean: '의류 분석',
-    description: '의류 스타일과 색상을 분석합니다',
-    endpoint: '/api/step/5/clothing-analysis'
+    id: 3,
+    name: 'cloth_segmentation',
+    korean: '의류 세그멘테이션',
+    description: '의류 영역을 정확히 분할합니다',
+    endpoint: '/api/step/3/cloth-segmentation'
   },
   {
-    id: 6,
+    id: 4,
     name: 'geometric_matching',
     korean: '기하학적 매칭',
     description: '신체와 의류를 정확히 매칭합니다',
-    endpoint: '/api/step/6/geometric-matching'
+    endpoint: '/api/step/4/geometric-matching'
   },
   {
-    id: 7,
+    id: 5,
+    name: 'cloth_warping',
+    korean: '의류 워핑',
+    description: '의류를 신체에 맞게 변형합니다',
+    endpoint: '/api/step/5/cloth-warping'
+  },
+  {
+    id: 6,
     name: 'virtual_fitting',
     korean: '가상 피팅',
     description: 'AI로 가상 착용 결과를 생성합니다',
-    endpoint: '/api/step/7/virtual-fitting'
+    endpoint: '/api/step/6/virtual-fitting'
+  },
+  {
+    id: 7,
+    name: 'post_processing',
+    korean: '후처리',
+    description: '결과 이미지를 최적화합니다',
+    endpoint: '/api/step/7/post-processing'
   },
   {
     id: 8,
-    name: 'result_analysis',
-    korean: '결과 분석',
-    description: '최종 결과를 확인하고 저장합니다',
-    endpoint: '/api/step/8/result-analysis'
+    name: 'quality_assessment',
+    korean: '품질 평가',
+    description: '최종 결과를 평가하고 저장합니다',
+    endpoint: '/api/step/8/quality-assessment'
   }
 ];
 
@@ -180,6 +180,8 @@ class StepAPIClient {
     
     try {
       console.log(`🚀 Step ${stepId} API 호출:`, url);
+      console.log(`🔍 Step ${stepId} 설정:`, stepConfig);
+      console.log(`📡 Step ${stepId} URL:`, url);
       
       const response = await this.fetchWithTimeout(url, {
         method: 'POST',
@@ -322,7 +324,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
         formData.append('session_id', sessionId);
       }
 
-      // Step 1,2: 이미지와 측정값 필요
+      // Step 0,1,2: 이미지와 측정값 필요 (세션 생성 및 AI 처리 단계)
       if (stepId <= 2) {
         if (personImage) formData.append('person_image', personImage);
         if (clothingImage) formData.append('clothing_image', clothingImage);
@@ -339,8 +341,8 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
       // API 호출
       const result = await apiClient.current!.callStepAPI(stepId, formData);
 
-      // 세션 ID 업데이트 (Step 1에서)
-      if (stepId === 1 && result.session_id) {
+      // 세션 ID 업데이트 (Step 0,1,2에서 세션 생성)
+      if (result.session_id && (stepId <= 2 || !sessionId)) {
         setSessionId(result.session_id);
       }
 
@@ -361,8 +363,8 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
       // 결과 저장
       setStepResults(prev => ({ ...prev, [stepId]: result }));
 
-      // Step 8 완료 시 최종 결과 설정
-      if (stepId === 8) {
+      // Step 9 완료 시 최종 결과 설정
+      if (stepId === 9) {
         setFinalResult(result);
       }
 
@@ -386,67 +388,7 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     }
   }, [mounted, sessionId, initializeAPI]);
 
-  // =================================================================
-  // 🔧 전체 파이프라인 실행 (단계별)
-  // =================================================================
-
-  const runAllSteps = useCallback(async (
-    personImage: File,
-    clothingImage: File, 
-    measurements: UserMeasurements
-  ): Promise<any> => {
-    if (!mounted) return;
-
-    try {
-      setIsProcessing(true);
-      setProgress(0);
-      setError(null);
-      setFinalResult(null);
-      
-      // 새 세션 시작
-      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setSessionId(newSessionId);
-
-      // 모든 단계 초기화
-      setPipelineSteps(PIPELINE_STEPS.map(step => ({
-        ...step,
-        status: 'pending',
-        progress: 0
-      })));
-      setStepResults({});
-
-      console.log('🚀 8단계 파이프라인 시작');
-
-      // Step 1: 이미지 업로드 검증
-      setProgress(12.5);
-      await callStep(1, personImage, clothingImage, measurements);
-
-      // Step 2: 측정값 검증
-      setProgress(25);
-      await callStep(2, personImage, clothingImage, measurements);
-
-      // Step 3-8: 순차 처리 (세션 기반)
-      for (let stepId = 3; stepId <= 8; stepId++) {
-        setProgress(12.5 * stepId);
-        await callStep(stepId);
-      }
-
-      setProgress(100);
-      setProgressMessage('🎉 8단계 파이프라인 완료!');
-      
-      console.log('✅ 8단계 파이프라인 완료');
-      return stepResults[8] || finalResult;
-
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : '파이프라인 처리 실패';
-      setError(errorMessage);
-      console.error('❌ 파이프라인 실패:', error);
-      throw error;
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [mounted, callStep, stepResults, finalResult]);
-
+ 
   // =================================================================
   // 🔧 개별 단계 실행 함수들 (App.tsx 호환용)
   // =================================================================
@@ -455,8 +397,8 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     return await callStep(1, personImage, clothingImage, measurements);
   }, [callStep]);
 
-  const processStep2 = useCallback(async (measurements: UserMeasurements) => {
-    return await callStep(2, undefined, undefined, measurements);
+  const processStep2 = useCallback(async () => {
+    return await callStep(2);
   }, [callStep]);
 
   const processStep3 = useCallback(async () => {
@@ -598,7 +540,6 @@ export const usePipeline = (options: UsePipelineOptions = {}) => {
     finalResult,
 
     // 전체 파이프라인 실행
-    runAllSteps,
 
     // 개별 단계 실행 (App.tsx 호환)
     processStep1,

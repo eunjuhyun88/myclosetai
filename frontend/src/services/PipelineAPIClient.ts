@@ -1156,7 +1156,7 @@ class PipelineAPIClient {
     formData.append('person_image', personImage);
     formData.append('clothing_image', clothingImage);
 
-    return await this.request('/api/step/1/upload-validation', {
+    return await this.request('/api/step/upload/validation', {
       method: 'POST',
       body: formData
     });
@@ -1182,7 +1182,7 @@ class PipelineAPIClient {
     if (measurements.waist) formData.append('waist', measurements.waist.toString());
     if (measurements.hips) formData.append('hips', measurements.hips.toString());
 
-    return await this.request('/api/step/2/measurements-validation', {
+    return await this.request('/api/upload/measurements', {
       method: 'POST',
       body: formData
     });
@@ -1197,7 +1197,7 @@ class PipelineAPIClient {
     formData.append('session_id', sessionId);
     formData.append('enhance_quality', String(options.enhance_quality ?? true));
 
-    return await this.request('/api/step/3/human-parsing', {
+    return await this.request('/api/step/1/human-parsing', {
       method: 'POST',
       body: formData
     });
@@ -1212,7 +1212,7 @@ class PipelineAPIClient {
     formData.append('session_id', sessionId);
     formData.append('detection_confidence', String(options.detection_confidence ?? 0.5));
 
-    return await this.request('/api/step/4/pose-estimation', {
+    return await this.request('/api/step/2/pose-estimation', {
       method: 'POST',
       body: formData
     });
@@ -1227,7 +1227,7 @@ class PipelineAPIClient {
     formData.append('session_id', sessionId);
     formData.append('analysis_detail', options.analysis_detail || 'medium');
 
-    return await this.request('/api/step/5/clothing-analysis', {
+    return await this.request('/api/step/3/cloth-segmentation', {
       method: 'POST',
       body: formData
     });
@@ -1242,7 +1242,7 @@ class PipelineAPIClient {
     formData.append('session_id', sessionId);
     formData.append('matching_precision', options.matching_precision || 'high');
 
-    return await this.request('/api/step/6/geometric-matching', {
+    return await this.request('/api/step/4/geometric-matching', {
       method: 'POST',
       body: formData
     });
@@ -1257,7 +1257,7 @@ class PipelineAPIClient {
     formData.append('session_id', sessionId);
     formData.append('fitting_quality', options.fitting_quality || 'high');
 
-    return await this.request('/api/step/7/virtual-fitting', {
+    return await this.request('/api/step/6/virtual-fitting', {
       method: 'POST',
       body: formData
     });
@@ -1272,7 +1272,7 @@ class PipelineAPIClient {
     formData.append('session_id', sessionId);
     formData.append('analysis_depth', options.analysis_depth || 'comprehensive');
 
-    return await this.request('/api/step/8/result-analysis', {
+    return await this.request('/api/step/8/quality-assessment', {
       method: 'POST',
       body: formData
     });

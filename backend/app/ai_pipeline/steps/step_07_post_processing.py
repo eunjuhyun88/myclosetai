@@ -2237,6 +2237,12 @@ class PostProcessingStep(BaseStepMixin):
         """
         🔥 실제 AI 추론 메서드 (완전 리팩토링 v10.0)
         """
+        import time  # time 모듈 import 추가
+        
+        print(f"🔥 [디버깅] _run_ai_inference() 진입!")
+        print(f"🔥 [디버깅] processed_input 키들: {list(processed_input.keys()) if processed_input else 'None'}")
+        print(f"🔥 [디버깅] processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        
         try:
             start_time = time.time()
             self.logger.info(f"🧠 {self.step_name} 실제 AI 추론 시작")
@@ -3134,6 +3140,11 @@ class PostProcessingStep(BaseStepMixin):
         """
         🔥 단계별 세분화된 에러 처리가 적용된 Post Processing process 메서드
         """
+        print(f"🔥 [디버깅] PostProcessingStep.process() 진입!")
+        print(f"🔥 [디버깅] fitting_result 키들: {list(fitting_result.keys()) if fitting_result else 'None'}")
+        print(f"🔥 [디버깅] enhancement_options 키들: {list(enhancement_options.keys()) if enhancement_options else 'None'}")
+        print(f"🔥 [디버깅] kwargs 키들: {list(kwargs.keys()) if kwargs else 'None'}")
+        
         start_time = time.time()
         errors = []
         stage_status = {}

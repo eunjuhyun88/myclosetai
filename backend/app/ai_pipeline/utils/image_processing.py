@@ -1740,6 +1740,354 @@ def split_batch(batch: torch.Tensor) -> List[torch.Tensor]:
         logger.error(f"❌ 배치 분할 실패: {e}")
         return []
 
+def create_geometric_matching_visualization(person_image: Any, clothing_image: Any, 
+                                          transformation_matrix: Any, 
+                                          keypoints: List = None) -> Optional[Any]:
+    """기하학적 매칭 시각화"""
+    try:
+        if not PIL_AVAILABLE or not NUMPY_AVAILABLE:
+            return None
+        
+        # 간단한 시각화 구현
+        person_pil = convert_to_pil(person_image)
+        clothing_pil = convert_to_pil(clothing_image)
+        
+        if person_pil is None or clothing_pil is None:
+            return None
+        
+        # 이미지들을 나란히 배치
+        width = person_pil.width
+        height = person_pil.height
+        
+        # 새 이미지 생성
+        result_image = Image.new('RGB', (width * 2, height))
+        result_image.paste(person_pil, (0, 0))
+        result_image.paste(clothing_pil, (width, 0))
+        
+        return result_image
+        
+    except Exception as e:
+        logging.error(f"기하학적 매칭 시각화 실패: {e}")
+        return None
+
+# =============================================================================
+# 🔥 Virtual Fitting 전용 이미지 처리 클래스들
+# =============================================================================
+
+class PoseProcessor:
+    """포즈 처리 및 분석 클래스"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        
+    def extract_pose_features(self, person_image: np.ndarray) -> Dict[str, Any]:
+        """인체 포즈 특징 추출"""
+        try:
+            if not CV2_AVAILABLE:
+                return {"pose_map": None, "keypoints": None}
+            
+            # 간단한 포즈 맵 생성 (실제로는 MediaPipe나 OpenPose 사용)
+            gray = cv2.cvtColor(person_image, cv2.COLOR_RGB2GRAY)
+            
+            # 엣지 검출
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # 윤곽선 검출
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # 포즈 맵 생성
+            pose_map = np.zeros_like(gray)
+            if contours:
+                # 가장 큰 윤곽선을 포즈로 간주
+                largest_contour = max(contours, key=cv2.contourArea)
+                cv2.drawContours(pose_map, [largest_contour], -1, 255, 2)
+            
+            return {
+                "pose_map": pose_map,
+                "keypoints": self._estimate_keypoints(person_image),
+                "confidence": 0.8
+            }
+            
+        except Exception as e:
+            self.logger.error(f"포즈 특징 추출 실패: {e}")
+            return {"pose_map": None, "keypoints": None, "confidence": 0.0}
+    
+    def _estimate_keypoints(self, person_image: np.ndarray) -> List[Tuple[int, int]]:
+        """키포인트 추정 (간단한 버전)"""
+        try:
+            h, w = person_image.shape[:2]
+            
+            # 기본 키포인트 위치 추정
+            keypoints = [
+                (w // 2, h // 4),      # 머리
+                (w // 2, h // 3),      # 목
+                (w // 2, h // 2),      # 어깨
+                (w // 3, h // 2),      # 왼쪽 팔
+                (2 * w // 3, h // 2),  # 오른쪽 팔
+                (w // 2, 2 * h // 3),  # 허리
+                (w // 3, 3 * h // 4),  # 왼쪽 다리
+                (2 * w // 3, 3 * h // 4)  # 오른쪽 다리
+            ]
+            
+            return keypoints
+            
+        except Exception as e:
+            self.logger.error(f"키포인트 추정 실패: {e}")
+            return []
+
+class LightingAdapter:
+    """조명 적응 클래스"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        
+    def adapt_lighting(self, fitted_image: np.ndarray, original_person: np.ndarray) -> np.ndarray:
+        """조명 적응 처리"""
+        try:
+            if not NUMPY_AVAILABLE or not PIL_AVAILABLE:
+                return fitted_image
+            
+            # 원본 이미지의 조명 특성 분석
+            original_lighting = self._analyze_lighting(original_person)
+            
+            # 피팅된 이미지에 조명 적용
+            adapted_image = self._apply_lighting(fitted_image, original_lighting)
+            
+            return adapted_image
+            
+        except Exception as e:
+            self.logger.error(f"조명 적응 실패: {e}")
+            return fitted_image
+    
+    def _analyze_lighting(self, image: np.ndarray) -> Dict[str, float]:
+        """조명 특성 분석"""
+        try:
+            # 밝기 분석
+            brightness = np.mean(image)
+            
+            # 대비 분석
+            contrast = np.std(image)
+            
+            # 색온도 분석 (간단한 버전)
+            r_mean = np.mean(image[:, :, 0])
+            b_mean = np.mean(image[:, :, 2])
+            color_temp = r_mean / (b_mean + 1e-6)
+            
+            return {
+                "brightness": brightness,
+                "contrast": contrast,
+                "color_temperature": color_temp
+            }
+            
+        except Exception as e:
+            self.logger.error(f"조명 분석 실패: {e}")
+            return {"brightness": 128, "contrast": 50, "color_temperature": 1.0}
+    
+    def _apply_lighting(self, image: np.ndarray, lighting_info: Dict[str, float]) -> np.ndarray:
+        """조명 정보를 이미지에 적용"""
+        try:
+            # PIL 이미지로 변환
+            pil_image = Image.fromarray(image.astype(np.uint8))
+            
+            # 밝기 조정
+            brightness_factor = lighting_info["brightness"] / 128.0
+            enhancer = ImageEnhance.Brightness(pil_image)
+            pil_image = enhancer.enhance(brightness_factor)
+            
+            # 대비 조정
+            contrast_factor = lighting_info["contrast"] / 50.0
+            enhancer = ImageEnhance.Contrast(pil_image)
+            pil_image = enhancer.enhance(contrast_factor)
+            
+            # 색온도 조정
+            if lighting_info["color_temperature"] > 1.2:
+                # 따뜻한 톤
+                enhancer = ImageEnhance.Color(pil_image)
+                pil_image = enhancer.enhance(1.1)
+            elif lighting_info["color_temperature"] < 0.8:
+                # 차가운 톤
+                enhancer = ImageEnhance.Color(pil_image)
+                pil_image = enhancer.enhance(0.9)
+            
+            return np.array(pil_image)
+            
+        except Exception as e:
+            self.logger.error(f"조명 적용 실패: {e}")
+            return image
+
+class TextureEnhancer:
+    """텍스처 향상 클래스"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        
+    def enhance_texture(self, fitted_image: np.ndarray, cloth_image: np.ndarray) -> np.ndarray:
+        """텍스처 향상 처리"""
+        try:
+            if not NUMPY_AVAILABLE or not CV2_AVAILABLE:
+                return fitted_image
+            
+            # 의류 텍스처 분석
+            cloth_texture = self._analyze_texture(cloth_image)
+            
+            # 텍스처 향상 적용
+            enhanced_image = self._apply_texture_enhancement(fitted_image, cloth_texture)
+            
+            return enhanced_image
+            
+        except Exception as e:
+            self.logger.error(f"텍스처 향상 실패: {e}")
+            return fitted_image
+    
+    def _analyze_texture(self, image: np.ndarray) -> Dict[str, float]:
+        """텍스처 특성 분석"""
+        try:
+            # 그레이스케일 변환
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            
+            # 텍스처 복잡도 계산
+            # Laplacian 분산으로 텍스처 복잡도 측정
+            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+            texture_complexity = np.var(laplacian)
+            
+            # 엣지 밀도 계산
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            
+            # 로컬 이진 패턴 (간단한 버전)
+            lbp = self._calculate_lbp(gray)
+            lbp_entropy = self._calculate_entropy(lbp)
+            
+            return {
+                "complexity": texture_complexity,
+                "edge_density": edge_density,
+                "lbp_entropy": lbp_entropy
+            }
+            
+        except Exception as e:
+            self.logger.error(f"텍스처 분석 실패: {e}")
+            return {"complexity": 100, "edge_density": 0.1, "lbp_entropy": 5.0}
+    
+    def _calculate_lbp(self, gray_image: np.ndarray) -> np.ndarray:
+        """로컬 이진 패턴 계산 (간단한 버전)"""
+        try:
+            h, w = gray_image.shape
+            lbp = np.zeros((h-2, w-2), dtype=np.uint8)
+            
+            for i in range(1, h-1):
+                for j in range(1, w-1):
+                    center = gray_image[i, j]
+                    code = 0
+                    
+                    # 8-이웃 픽셀 체크
+                    neighbors = [
+                        gray_image[i-1, j-1], gray_image[i-1, j], gray_image[i-1, j+1],
+                        gray_image[i, j+1], gray_image[i+1, j+1], gray_image[i+1, j],
+                        gray_image[i+1, j-1], gray_image[i, j-1]
+                    ]
+                    
+                    for k, neighbor in enumerate(neighbors):
+                        if neighbor >= center:
+                            code |= (1 << k)
+                    
+                    lbp[i-1, j-1] = code
+            
+            return lbp
+            
+        except Exception as e:
+            self.logger.error(f"LBP 계산 실패: {e}")
+            return np.zeros((gray_image.shape[0]-2, gray_image.shape[1]-2), dtype=np.uint8)
+    
+    def _calculate_entropy(self, image: np.ndarray) -> float:
+        """엔트로피 계산"""
+        try:
+            hist, _ = np.histogram(image.flatten(), bins=256, range=(0, 256))
+            hist = hist[hist > 0]  # 0이 아닌 값만
+            prob = hist / hist.sum()
+            entropy = -np.sum(prob * np.log2(prob))
+            return entropy
+            
+        except Exception as e:
+            self.logger.error(f"엔트로피 계산 실패: {e}")
+            return 0.0
+    
+    def _apply_texture_enhancement(self, image: np.ndarray, texture_info: Dict[str, float]) -> np.ndarray:
+        """텍스처 향상 적용"""
+        try:
+            # 텍스처 복잡도에 따른 필터 적용
+            if texture_info["complexity"] > 200:
+                # 고복잡도 텍스처 - 선명도 향상
+                kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+                enhanced = cv2.filter2D(image, -1, kernel)
+            elif texture_info["complexity"] < 50:
+                # 저복잡도 텍스처 - 부드럽게
+                enhanced = cv2.GaussianBlur(image, (3, 3), 0.5)
+            else:
+                # 중간 복잡도 - 약간의 선명도 향상
+                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+                enhanced = cv2.filter2D(image, -1, kernel)
+            
+            # 엣지 밀도에 따른 조정
+            if texture_info["edge_density"] > 0.15:
+                # 엣지가 많은 경우 - 약간 부드럽게
+                enhanced = cv2.bilateralFilter(enhanced, 9, 75, 75)
+            
+            return enhanced
+            
+        except Exception as e:
+            self.logger.error(f"텍스처 향상 적용 실패: {e}")
+            return image
+
+def create_geometric_matching_visualization(person_image: Any, clothing_image: Any, 
+                                          transformation_matrix: Any, 
+                                          keypoints: List = None) -> Optional[Any]:
+    """기하학적 매칭 시각화"""
+    try:
+        if not _ensure_pil():
+            return person_image
+        
+        person_pil = convert_to_pil(person_image)
+        clothing_pil = convert_to_pil(clothing_image)
+        
+        if person_pil is None or clothing_pil is None:
+            return person_image
+        
+        # 원본 이미지들을 같은 크기로 리사이즈
+        target_size = (512, 512)
+        person_resized = resize_image(person_pil, target_size)
+        clothing_resized = resize_image(clothing_pil, target_size)
+        
+        # 시각화 이미지 생성
+        vis_image = Image.new('RGB', (target_size[0] * 2, target_size[1] * 2), (255, 255, 255))
+        
+        # 원본 이미지 배치
+        vis_image.paste(person_resized, (0, 0))
+        vis_image.paste(clothing_resized, (target_size[0], 0))
+        
+        # 변환 매트릭스 정보 추가
+        draw = ImageDraw.Draw(vis_image)
+        
+        # 변환 매트릭스 정보 표시
+        if transformation_matrix is not None:
+            matrix_text = f"Transform Matrix: {str(transformation_matrix)[:50]}..."
+            draw.text((10, target_size[1] + 10), matrix_text, fill=(0, 0, 0))
+        
+        # 키포인트 정보 표시
+        if keypoints:
+            keypoint_text = f"Keypoints: {len(keypoints)} detected"
+            draw.text((10, target_size[1] + 30), keypoint_text, fill=(0, 0, 0))
+        
+        # 라벨 추가
+        draw.text((10, 10), "Person Image", fill=(255, 255, 255))
+        draw.text((target_size[0] + 10, 10), "Clothing Image", fill=(255, 255, 255))
+        
+        logger.debug("✅ 기하학적 매칭 시각화 완료")
+        return vis_image
+        
+    except Exception as e:
+        logger.error(f"❌ 기하학적 매칭 시각화 실패: {e}")
+        return person_image
+
 # =============================================================================
 # 🔥 16. 모듈 정보 및 내보내기
 # =============================================================================
@@ -1795,6 +2143,7 @@ __all__ = [
     'add_text_to_image',
     'create_comparison_image',
     'create_pose_visualization',
+    'create_geometric_matching_visualization',
     
     # 메모리 관리
     'cleanup_image_memory',

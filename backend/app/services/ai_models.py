@@ -31,6 +31,55 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+class ClothingFeatureExtractor(nn.Module):
+    """의류 특징 추출기"""
+    
+    def __init__(self, in_channels=3, out_channels=512):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels, 64, 7, stride=2, padding=3),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(3, stride=2, padding=1),
+            
+            self._make_layer(64, 128, 2, stride=2),
+            self._make_layer(128, 256, 2, stride=2),
+            self._make_layer(256, 512, 2, stride=2),
+            
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        
+        self.feature_proj = nn.Sequential(
+            nn.Linear(512, out_channels),
+            nn.ReLU(inplace=True),
+            nn.Linear(out_channels, out_channels)
+        )
+    
+    def _make_layer(self, in_planes, planes, blocks, stride=1):
+        layers = []
+        layers.append(nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1))
+        layers.append(nn.BatchNorm2d(planes))
+        layers.append(nn.ReLU(inplace=True))
+        
+        for _ in range(1, blocks):
+            layers.append(nn.Conv2d(planes, planes, 3, padding=1))
+            layers.append(nn.BatchNorm2d(planes))
+            layers.append(nn.ReLU(inplace=True))
+        
+        return nn.Sequential(*layers)
+    
+    def forward(self, cloth_img):
+        features = self.encoder(cloth_img)
+        features = features.view(features.size(0), -1)
+        features = self.feature_proj(features)
+        
+        # Reshape for spatial conditioning
+        b, c = features.shape
+        h, w = cloth_img.shape[2] // 8, cloth_img.shape[3] // 8
+        features = features.view(b, c, 1, 1).expand(b, c, h, w)
+        
+        return features
+
 class BaseAIModel:
     """AI 모델 베이스 클래스"""
     

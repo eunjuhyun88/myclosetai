@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple, Any, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from concurrent.futures import ThreadPoolExecutor
-import sqlite3
+# sqlite3 import 제거 (SQLite 충돌 방지)
 
 # PyTorch import (안전)
 try:
@@ -226,40 +226,22 @@ class DynamicModelDetector:
         self.scan_results: Dict[str, Any] = {}
         self.last_scan_time = 0.0
         
-        # 캐시 데이터베이스
-        self.cache_db_path = Path("model_detection_cache.db")
-        self._init_cache_db()
+        # 메모리 기반 캐시 (SQLite 제거로 충돌 방지)
+        self.cache_data = {}
+        self._init_memory_cache()
         
         # 스레드 동기화
         self._lock = threading.RLock()
         
         self.logger.info(f"🔍 DynamicModelDetector 초기화 - 탐색 경로: {len(self.search_paths)}개")
     
-    def _init_cache_db(self):
-        """캐시 데이터베이스 초기화"""
+    def _init_memory_cache(self):
+        """메모리 기반 캐시 초기화 (SQLite 충돌 방지)"""
         try:
-            with sqlite3.connect(self.cache_db_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS model_cache (
-                        file_path TEXT PRIMARY KEY,
-                        file_name TEXT,
-                        file_size_mb REAL,
-                        category TEXT,
-                        format TEXT,
-                        confidence_score REAL,
-                        step_assignment TEXT,
-                        priority INTEGER,
-                        pytorch_valid BOOLEAN,
-                        parameter_count INTEGER,
-                        last_modified REAL,
-                        checksum TEXT,
-                        scan_time REAL
-                    )
-                """)
-                conn.commit()
-            self.logger.debug("✅ 모델 캐시 DB 초기화 완료")
+            self.cache_data = {}
+            self.logger.debug("✅ 메모리 기반 모델 캐시 초기화 완료")
         except Exception as e:
-            self.logger.warning(f"⚠️ 캐시 DB 초기화 실패: {e}")
+            self.logger.warning(f"⚠️ 메모리 캐시 초기화 실패: {e}")
     
     def scan_all_models(self, force_rescan: bool = False) -> Dict[str, DetectedModelFile]:
         """모든 경로에서 모델 파일 탐지"""
@@ -303,8 +285,8 @@ class DynamicModelDetector:
                 # Step별 최적 모델 선택
                 self._assign_optimal_models()
                 
-                # 캐시 업데이트
-                self._update_cache()
+                # 메모리 캐시 업데이트
+                self._update_memory_cache()
                 
                 self.last_scan_time = time.time()
                 scan_duration = time.time() - start_time
@@ -554,37 +536,30 @@ class DynamicModelDetector:
         except Exception as e:
             self.logger.error(f"❌ 최적 모델 할당 실패: {e}")
     
-    def _update_cache(self):
-        """캐시 데이터베이스 업데이트"""
+    def _update_memory_cache(self):
+        """메모리 캐시 업데이트 (SQLite 충돌 방지)"""
         try:
-            with sqlite3.connect(self.cache_db_path) as conn:
-                # 기존 데이터 삭제
-                conn.execute("DELETE FROM model_cache")
-                
-                # 새 데이터 삽입
-                for model_info in self.detected_models.values():
-                    conn.execute("""
-                        INSERT INTO model_cache VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        str(model_info.file_path),
-                        model_info.file_name,
-                        model_info.file_size_mb,
-                        model_info.category.value,
-                        model_info.format.value,
-                        model_info.confidence_score,
-                        model_info.step_assignment,
-                        model_info.priority,
-                        model_info.pytorch_valid,
-                        model_info.parameter_count,
-                        model_info.last_modified,
-                        model_info.checksum,
-                        time.time()
-                    ))
-                
-                conn.commit()
+            # 메모리에 모델 정보 저장
+            for model_info in self.detected_models.values():
+                self.cache_data[str(model_info.file_path)] = {
+                    'file_name': model_info.file_name,
+                    'file_size_mb': model_info.file_size_mb,
+                    'category': model_info.category.value,
+                    'format': model_info.format.value,
+                    'confidence_score': model_info.confidence_score,
+                    'step_assignment': model_info.step_assignment,
+                    'priority': model_info.priority,
+                    'pytorch_valid': model_info.pytorch_valid,
+                    'parameter_count': model_info.parameter_count,
+                    'last_modified': model_info.last_modified,
+                    'checksum': model_info.checksum,
+                    'scan_time': time.time()
+                }
+            
+            self.logger.debug(f"✅ 메모리 캐시 업데이트 완료: {len(self.cache_data)}개 모델")
             
         except Exception as e:
-            self.logger.warning(f"⚠️ 캐시 업데이트 실패: {e}")
+            self.logger.warning(f"⚠️ 메모리 캐시 업데이트 실패: {e}")
     
     def get_step_models(self, step_name: str) -> List[DetectedModelFile]:
         """특정 Step의 모델들 반환"""

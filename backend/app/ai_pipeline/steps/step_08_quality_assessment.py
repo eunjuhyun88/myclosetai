@@ -207,6 +207,10 @@ if BaseStepMixin is None:
             **kwargs
         ) -> Dict[str, Any]:
             """기본 process 메서드 - _run_ai_inference 호출"""
+            print(f"🔥 [디버깅] QualityAssessmentStep.process() 진입!")
+            print(f"🔥 [디버깅] kwargs 키들: {list(kwargs.keys()) if kwargs else 'None'}")
+            print(f"🔥 [디버깅] kwargs 값들: {[(k, type(v).__name__) for k, v in kwargs.items()] if kwargs else 'None'}")
+            
             try:
                 start_time = time.time()
                 
@@ -1413,6 +1417,12 @@ class QualityAssessmentStep(BaseStepMixin):
 
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Quality Assessment AI 추론 (BaseStepMixin v20.0 호환)"""
+        import time  # time 모듈 import 추가
+        
+        print(f"🔥 [디버깅] _run_ai_inference() 진입!")
+        print(f"🔥 [디버깅] processed_input 키들: {list(processed_input.keys()) if processed_input else 'None'}")
+        print(f"🔥 [디버깅] processed_input 값들: {[(k, type(v).__name__) for k, v in processed_input.items()] if processed_input else 'None'}")
+        
         try:
             start_time = time.time()
             

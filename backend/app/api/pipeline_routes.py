@@ -32,9 +32,22 @@ import torch
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.websockets import WebSocketState
+from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
 import numpy as np
 import cv2
+
+# Step Routes에서 필요한 함수들 import
+from .step_routes import (
+    get_session_manager_dependency,
+    get_step_service_manager_dependency,
+    _process_step_async,
+    create_performance_monitor,
+    log_session_count,
+    _get_websocket_manager,
+    format_step_api_response,
+    APIResponse
+)
 
 # ============================================
 # 🔧 안전한 Import (호환성 보장)
@@ -1568,6 +1581,161 @@ async def virtual_tryon_endpoint(
 # 🎯 Complete Pipeline API (단계별 통합 호출)
 # ============================================
 
+@router.post("/auto-complete", response_model=APIResponse)
+async def auto_complete_pipeline_processing(
+    session_id: str = Form(..., description="세션 ID (Step 1, 2 완료 후)"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """🔥 자동 완료 파이프라인 - Step 3부터 Step 8까지 순차 실행"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("auto_complete_pipeline"):
+            logger.info(f"🚀 자동 완료 파이프라인 시작: {session_id}")
+            
+            # 1. 세션 검증
+            try:
+                person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                logger.info(f"✅ 세션에서 이미지 로드 성공: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. 🔥 Step 3부터 Step 8까지 순차 실행
+            final_result = None
+            
+            # Step 3: Cloth Segmentation
+            logger.info(f"🔥 Step 3 실행: Cloth Segmentation")
+            step3_result = await _process_step_async(
+                step_name='ClothSegmentationStep',
+                step_id=3,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step3_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 3 실패: {step3_result.get('error', 'Unknown error')}")
+            
+            # Step 4: Geometric Matching
+            logger.info(f"🔥 Step 4 실행: Geometric Matching")
+            step4_result = await _process_step_async(
+                step_name='GeometricMatchingStep',
+                step_id=4,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step4_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 4 실패: {step4_result.get('error', 'Unknown error')}")
+            
+            # Step 5: Cloth Warping
+            logger.info(f"🔥 Step 5 실행: Cloth Warping")
+            step5_result = await _process_step_async(
+                step_name='ClothWarpingStep',
+                step_id=5,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step5_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 5 실패: {step5_result.get('error', 'Unknown error')}")
+            
+            # Step 6: Virtual Fitting
+            logger.info(f"🔥 Step 6 실행: Virtual Fitting")
+            step6_result = await _process_step_async(
+                step_name='VirtualFittingStep',
+                step_id=6,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step6_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 6 실패: {step6_result.get('error', 'Unknown error')}")
+            
+            # Step 7: Post Processing
+            logger.info(f"🔥 Step 7 실행: Post Processing")
+            step7_result = await _process_step_async(
+                step_name='PostProcessingStep',
+                step_id=7,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step7_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 7 실패: {step7_result.get('error', 'Unknown error')}")
+            
+            # Step 8: Quality Assessment
+            logger.info(f"🔥 Step 8 실행: Quality Assessment")
+            step8_result = await _process_step_async(
+                step_name='QualityAssessmentStep',
+                step_id=8,
+                api_input={'session_id': session_id},
+                session_id=session_id
+            )
+            
+            if not step8_result.get('success'):
+                raise HTTPException(status_code=500, detail=f"Step 8 실패: {step8_result.get('error', 'Unknown error')}")
+            
+            # 3. 최종 결과 통합
+            final_result = {
+                **step8_result,
+                'step_sequence': ['ClothSegmentation', 'GeometricMatching', 'ClothWarping', 'VirtualFitting', 'PostProcessing', 'QualityAssessment'],
+                'step_sequence_ids': [3, 4, 5, 6, 7, 8],
+                'auto_complete': True,
+                'all_steps_completed': True
+            }
+            
+            # 4. 세션에 최종 결과 저장
+            await session_manager.save_step_result(session_id, 8, final_result)
+            
+            # 5. WebSocket 알림
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'auto_complete_finished',
+                        'session_id': session_id,
+                        'message': '자동 완료 파이프라인 완료!',
+                        'central_hub_used': True
+                    })
+            except Exception:
+                pass
+            
+            # 6. 백그라운드 메모리 최적화
+            background_tasks.add_task(gc.collect)
+            
+            # 7. 응답 생성
+            processing_time = time.time() - start_time
+            
+            return format_step_api_response(
+                success=True,
+                message="자동 완료 파이프라인 처리 완료 - Step 3부터 Step 8까지 순차 실행",
+                step_name="Auto Complete Pipeline",
+                step_id=0,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=final_result.get('confidence', 0.85),
+                fitted_image=final_result.get('fitted_image'),
+                fit_score=final_result.get('fit_score'),
+                recommendations=final_result.get('recommendations'),
+                details={
+                    **final_result.get('details', {}),
+                    "pipeline_type": "auto_complete",
+                    "all_steps_completed": True,
+                    "session_based": True,
+                    "central_hub_processing": True,
+                    "auto_complete": True
+                }
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 자동 완료 파이프라인 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"자동 완료 파이프라인 처리 실패: {str(e)}")
+
 @router.post("/complete")
 async def complete_pipeline_processing(
     background_tasks: BackgroundTasks,
@@ -2240,8 +2408,8 @@ logger.info("✅ Complete Pipeline API 추가 완료")
 logger.info("🎯 새로운 엔드포인트: POST /api/complete")
 logger.info("🚀 프론트엔드 Complete 버튼 → 8단계 통합 처리")
 
-@router.post("/step/1/upload-validation")
-async def step1_upload_validation(
+@router.post("/upload/validation")
+async def upload_validation(
     person_image: UploadFile = File(...),
     clothing_image: UploadFile = File(...),
 ):
@@ -2294,8 +2462,8 @@ async def step1_upload_validation(
             "processing_time": time.time() - start_time
         }
 
-@router.post("/step/2/measurements-validation")
-async def step2_measurements_validation(
+@router.post("/upload/measurements")
+async def upload_measurements(
     height: float = Form(...),
     weight: float = Form(...),
 ):
@@ -2350,364 +2518,1094 @@ async def step2_measurements_validation(
             "processing_time": time.time() - start_time
         }
 
-@router.post("/step/3/human-parsing")
-async def step3_human_parsing(
-    person_image: UploadFile = File(...),
-    height: float = Form(...),
-    weight: float = Form(...),
+@router.post("/step/1/human-parsing", response_model=APIResponse)
+async def step1_human_parsing(
+    session_id: str = Form(..., description="세션 ID"),
+    confidence_threshold: float = Form(0.7, description="신뢰도 임계값", ge=0.1, le=1.0),
+    enhance_quality: bool = Form(True, description="품질 향상 여부"),
+    force_ai_processing: bool = Form(True, description="AI 처리 강제"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
 ):
-    """3단계: 인체 파싱 (20개 부위 분석) (기존 함수명 유지)"""
+    """1단계: Human Parsing - Central Hub DI Container 기반 Graphonomy 1.2GB AI 모델"""
     start_time = time.time()
     
     try:
-        # 이미지 로드
-        person_pil = await load_image_from_upload(person_image)
-        
-        # 시뮬레이션: 실제로는 AI 모델 호출
-        await asyncio.sleep(1)
-        
-        # 인체 부위 20개 영역 정의
-        body_parts = [
-            "head", "hair", "face", "neck", "chest", "back", "arms", "hands",
-            "waist", "hips", "thighs", "knees", "calves", "feet", "shoulders",
-            "elbows", "wrists", "torso", "abdomen", "pelvis"
-        ]
-        
-        # 시뮬레이션된 결과
-        parsing_results = {
-            part: {
-                "detected": True,
-                "confidence": 0.8 + random.random() * 0.15,
-                "area_percentage": random.uniform(2, 8)
-            }
-            for part in body_parts
-        }
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step_name": "인체 파싱",
-            "step_id": 3,
-            "message": f"20개 신체 부위 분석 완료",
-            "processing_time": processing_time,
-            "confidence": 0.87,
-            "details": {
-                "total_parts": len(body_parts),
-                "detected_parts": len([p for p in parsing_results.values() if p["detected"]]),
-                "parsing_results": parsing_results,
-                "image_size": f"{person_pil.width}x{person_pil.height}",
-                "body_ratio": height / person_pil.height
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "step_name": "인체 파싱",
-            "step_id": 3,
-            "error": str(e),
-            "processing_time": time.time() - start_time
-        }
-
-@router.post("/step/4/pose-estimation")
-async def step4_pose_estimation(
-    person_image: UploadFile = File(...),
-):
-    """4단계: 포즈 추정 (18개 키포인트) (기존 함수명 유지)"""
-    start_time = time.time()
-    
-    try:
-        # 이미지 로드
-        person_pil = await load_image_from_upload(person_image)
-        
-        # 시뮬레이션: 실제로는 OpenPose 등 사용
-        await asyncio.sleep(1.2)
-        
-        # 18개 키포인트 정의
-        keypoints = [
-            "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-            "left_wrist", "right_wrist", "left_hip", "right_hip",
-            "left_knee", "right_knee", "left_ankle", "right_ankle", "neck"
-        ]
-        
-        # 시뮬레이션된 키포인트 좌표
-        pose_results = {
-            point: {
-                "x": random.randint(50, person_pil.width - 50),
-                "y": random.randint(50, person_pil.height - 50),
-                "confidence": 0.7 + random.random() * 0.25,
-                "visible": random.random() > 0.1
-            }
-            for point in keypoints
-        }
-        
-        # 포즈 분석
-        pose_confidence = sum(p["confidence"] for p in pose_results.values()) / len(pose_results)
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step_name": "포즈 추정",
-            "step_id": 4,
-            "message": f"18개 키포인트 분석 완료",
-            "processing_time": processing_time,
-            "confidence": round(pose_confidence, 2),
-            "details": {
-                "total_keypoints": len(keypoints),
-                "detected_keypoints": len([p for p in pose_results.values() if p["visible"]]),
-                "pose_results": pose_results,
-                "pose_type": "standing",
-                "symmetry_score": 0.85
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "step_name": "포즈 추정",
-            "step_id": 4,
-            "error": str(e),
-            "processing_time": time.time() - start_time
-        }
-
-@router.post("/step/5/clothing-analysis")
-async def step5_clothing_analysis(
-    clothing_image: UploadFile = File(...),
-):
-    """5단계: 의류 분석 (스타일, 색상, 카테고리) (기존 함수명 유지)"""
-    start_time = time.time()
-    
-    try:
-        # 이미지 로드
-        clothing_pil = await load_image_from_upload(clothing_image)
-        
-        # 시뮬레이션: 실제로는 의류 분석 AI 모델 사용
-        await asyncio.sleep(0.8)
-        
-        # 시뮬레이션된 의류 분석 결과
-        categories = ["shirt", "t-shirt", "dress", "jacket", "pants", "skirt"]
-        styles = ["casual", "formal", "sporty", "elegant", "vintage"]
-        colors = ["red", "blue", "green", "black", "white", "gray", "pink"]
-        
-        selected_category = random.choice(categories)
-        selected_style = random.choice(styles)
-        dominant_color = random.choice(colors)
-        
-        analysis_results = {
-            "category": selected_category,
-            "style": selected_style,
-            "dominant_color": dominant_color,
-            "color_rgb": [random.randint(0, 255) for _ in range(3)],
-            "fabric_type": random.choice(["cotton", "polyester", "silk", "denim"]),
-            "pattern": random.choice(["solid", "stripes", "dots", "floral"]),
-            "season": random.choice(["spring", "summer", "autumn", "winter"]),
-            "formality": random.choice(["casual", "semi-formal", "formal"])
-        }
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step_name": "의류 분석",
-            "step_id": 5,
-            "message": f"{selected_category} ({selected_style}) 분석 완료",
-            "processing_time": processing_time,
-            "confidence": 0.82,
-            "details": {
-                **analysis_results,
-                "image_size": f"{clothing_pil.width}x{clothing_pil.height}",
-                "quality_score": 0.9
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "step_name": "의류 분석",
-            "step_id": 5,
-            "error": str(e),
-            "processing_time": time.time() - start_time
-        }
-
-@router.post("/step/6/geometric-matching")
-async def step6_geometric_matching(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(...),
-    weight: float = Form(...),
-):
-    """6단계: 기하학적 매칭 (기존 함수명 유지)"""
-    start_time = time.time()
-    
-    try:
-        # 이미지들 로드
-        person_pil = await load_image_from_upload(person_image)
-        clothing_pil = await load_image_from_upload(clothing_image)
-        
-        # 시뮬레이션: 실제로는 기하학적 변환 계산
-        await asyncio.sleep(1.5)
-        
-        # 매칭 결과 시뮬레이션
-        matching_results = {
-            "size_compatibility": random.uniform(0.7, 0.95),
-            "pose_alignment": random.uniform(0.8, 0.98),
-            "proportion_match": random.uniform(0.75, 0.92),
-            "scale_factor": random.uniform(0.85, 1.15),
-            "rotation_angle": random.uniform(-5, 5),
-            "translation_x": random.uniform(-10, 10),
-            "translation_y": random.uniform(-15, 15)
-        }
-        
-        overall_match = sum(matching_results[k] for k in ["size_compatibility", "pose_alignment", "proportion_match"]) / 3
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step_name": "기하학적 매칭",
-            "step_id": 6,
-            "message": f"매칭 정확도 {overall_match*100:.1f}%",
-            "processing_time": processing_time,
-            "confidence": round(overall_match, 2),
-            "details": {
-                **matching_results,
-                "person_dimensions": f"{person_pil.width}x{person_pil.height}",
-                "clothing_dimensions": f"{clothing_pil.width}x{clothing_pil.height}",
-                "bmi_factor": weight / ((height / 100) ** 2),
-                "matching_quality": "good" if overall_match > 0.8 else "fair"
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "step_name": "기하학적 매칭",
-            "step_id": 6,
-            "error": str(e),
-            "processing_time": time.time() - start_time
-        }
-
-@router.post("/step/7/virtual-fitting")
-async def step7_virtual_fitting(
-    person_image: UploadFile = File(...),
-    clothing_image: UploadFile = File(...),
-    height: float = Form(...),
-    weight: float = Form(...),
-    session_id: Optional[str] = Form(None),
-):
-    """7단계: 실제 가상 피팅 생성 (기존 함수명 유지)"""
-    start_time = time.time()
-    
-    try:
-        # 이전 단계들의 결과를 종합하여 최종 가상 피팅 실행
-        logger.info(f"🎭 7단계: 가상 피팅 생성 시작 - 세션: {session_id}")
-        
-        # 이미지 로드
-        person_pil = await load_image_from_upload(person_image)
-        clothing_pil = await load_image_from_upload(clothing_image)
-        
-        # 실제 가상 피팅 처리 (기존 virtual_tryon_endpoint 로직 사용)
-        # 시뮬레이션을 위해 간단한 처리
-        await asyncio.sleep(3)
-        
-        # 더미 결과 이미지 생성 (실제로는 AI 모델 결과)
-        result_image = person_pil.copy()
-        
-        # PIL 이미지를 base64로 변환
-        buffer = io.BytesIO()
-        result_image.save(buffer, format="JPEG")
-        img_base64 = base64.b64encode(buffer.getvalue()).decode()
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step_name": "가상 피팅",
-            "step_id": 7,
-            "message": "가상 피팅 이미지 생성 완료",
-            "processing_time": processing_time,
-            "confidence": 0.89,
-            "fitted_image": img_base64,
-            "fit_score": 0.87,
-            "details": {
-                "final_dimensions": f"{result_image.width}x{result_image.height}",
-                "quality_metrics": {
-                    "realism_score": 0.85,
-                    "fit_accuracy": 0.89,
-                    "color_preservation": 0.92
-                },
-                "session_id": session_id
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "step_name": "가상 피팅",
-            "step_id": 7,
-            "error": str(e),
-            "processing_time": time.time() - start_time
-        }
-
-@router.post("/step/8/result-analysis")
-async def step8_result_analysis(
-    fitted_image_base64: str = Form(...),
-    fit_score: float = Form(...),
-    confidence: float = Form(...),
-):
-    """8단계: 결과 분석 및 추천 (기존 함수명 유지)"""
-    start_time = time.time()
-    
-    try:
-        # 결과 분석
-        await asyncio.sleep(0.5)
-        
-        # 추천 생성
-        recommendations = []
-        
-        if fit_score > 0.9:
-            recommendations.append("✨ 완벽한 핏입니다! 이 스타일을 강력히 추천합니다.")
-        elif fit_score > 0.8:
-            recommendations.append("👍 좋은 핏입니다! 이 스타일이 잘 어울립니다.")
-        elif fit_score > 0.7:
-            recommendations.append("👌 괜찮은 핏입니다. 다른 사이즈도 고려해보세요.")
-        else:
-            recommendations.append("🤔 다른 사이즈나 스타일을 시도해보시는 것을 추천합니다.")
+        with create_performance_monitor("step_1_human_parsing_central_hub"):
+            # 🔥 Step 1 디버깅 로그 시작
+            print(f"🔥 STEP_1_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_1_API 시작: session_id={session_id}")
             
-        if confidence > 0.85:
-            recommendations.append("🎯 AI 분석 신뢰도가 높습니다.")
-        
-        recommendations.append("📱 결과를 저장하거나 공유할 수 있습니다.")
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "success": True,
-            "step_name": "결과 분석",
-            "step_id": 8,
-            "message": "최종 분석 및 추천 완료",
-            "processing_time": processing_time,
-            "confidence": 1.0,
-            "recommendations": recommendations,
-            "details": {
-                "final_fit_score": fit_score,
-                "final_confidence": confidence,
-                "analysis_complete": True,
-                "recommendation_count": len(recommendations)
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_1_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_1 - 세션 이미지 로딩 완료: {session_id}")
+            except AttributeError as e:
+                logger.error(f"❌ 세션 매니저 메서드 오류: {e}")
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"세션 매니저에 get_session_images 메서드가 없습니다: {e}"
+                )
+            except FileNotFoundError as e:
+                logger.error(f"❌ 세션 이미지 파일 없음: {e}")
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"세션 이미지 파일을 찾을 수 없습니다: {session_id}"
+                )
+            except PermissionError as e:
+                logger.error(f"❌ 세션 파일 접근 권한 없음: {e}")
+                raise HTTPException(
+                    status_code=403, 
+                    detail=f"세션 파일에 접근할 권한이 없습니다: {e}"
+                )
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {type(e).__name__}: {e}")
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"세션을 찾을 수 없습니다: {session_id} - {e}"
+                )
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 1,
+                        'step_name': 'Human Parsing',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'confidence_threshold': confidence_threshold,
+                'enhance_quality': enhance_quality,
+                'force_ai_processing': force_ai_processing
             }
-        }
-        
+            
+            result = await _process_step_async(
+                step_name="HumanParsingStep",
+                step_id=1,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 1, result)
+                    logger.info(f"✅ Step 1 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 1 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 1,
+                        'step_name': 'Human Parsing',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Human Parsing 완료'),
+                step_name="HumanParsing",
+                step_id=1,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.87),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=12.5,  # 1/8 * 100
+                next_step=2
+            )
+            
     except Exception as e:
-        return {
-            "success": False,
-            "step_name": "결과 분석",
-            "step_id": 8,
-            "error": str(e),
-            "processing_time": time.time() - start_time
-        }
+        logger.error(f"❌ Step 1 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Human Parsing 실패: {str(e)}",
+            step_name="HumanParsing",
+            step_id=1,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/2/pose-estimation", response_model=APIResponse)
+async def step2_pose_estimation(
+    session_id: str = Form(..., description="세션 ID"),
+    detection_confidence: float = Form(0.5, description="검출 신뢰도", ge=0.1, le=1.0),
+    clothing_type: str = Form("shirt", description="의류 타입"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """2단계: Pose Estimation - Central Hub DI Container 기반 MediaPipe/OpenPose AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_2_pose_estimation_central_hub"):
+            # 🔥 Step 2 디버깅 로그 시작
+            print(f"🔥 STEP_2_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_2_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_2_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_2 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 2,
+                        'step_name': 'Pose Estimation',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'detection_confidence': detection_confidence,
+                'clothing_type': clothing_type
+            }
+            
+            result = await _process_step_async(
+                step_name="PoseEstimationStep",
+                step_id=2,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 2, result)
+                    logger.info(f"✅ Step 2 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 2 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 2,
+                        'step_name': 'Pose Estimation',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Pose Estimation 완료'),
+                step_name="PoseEstimation",
+                step_id=2,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.89),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=25.0,  # 2/8 * 100
+                next_step=3
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 2 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Pose Estimation 실패: {str(e)}",
+            step_name="PoseEstimation",
+            step_id=2,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/3/cloth-segmentation", response_model=APIResponse)
+async def step3_cloth_segmentation(
+    session_id: str = Form(..., description="세션 ID"),
+    analysis_detail: str = Form("medium", description="분석 상세도 (low/medium/high)"),
+    clothing_type: str = Form("shirt", description="의류 타입"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """3단계: Cloth Segmentation - Central Hub DI Container 기반 SAM AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_3_cloth_segmentation_central_hub"):
+            # 🔥 Step 3 디버깅 로그 시작
+            print(f"🔥 STEP_3_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_3_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_3_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_3 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 3,
+                        'step_name': 'Cloth Segmentation',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'analysis_detail': analysis_detail,
+                'clothing_type': clothing_type
+            }
+            
+            result = await _process_step_async(
+                step_name="ClothSegmentationStep",
+                step_id=3,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 3, result)
+                    logger.info(f"✅ Step 3 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 3 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 3,
+                        'step_name': 'Cloth Segmentation',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Cloth Segmentation 완료'),
+                step_name="ClothSegmentation",
+                step_id=3,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.91),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=37.5,  # 3/8 * 100
+                next_step=4
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 3 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Cloth Segmentation 실패: {str(e)}",
+            step_name="ClothSegmentation",
+            step_id=3,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/4/geometric-matching", response_model=APIResponse)
+async def step4_geometric_matching(
+    session_id: str = Form(..., description="세션 ID"),
+    matching_precision: str = Form("high", description="매칭 정밀도 (low/medium/high)"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """4단계: Geometric Matching - Central Hub DI Container 기반 TPS 변환 AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_4_geometric_matching_central_hub"):
+            # 🔥 Step 4 디버깅 로그 시작
+            print(f"🔥 STEP_4_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_4_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_4_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_4 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 4,
+                        'step_name': 'Geometric Matching',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'matching_precision': matching_precision
+            }
+            
+            result = await _process_step_async(
+                step_name="GeometricMatchingStep",
+                step_id=4,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 4, result)
+                    logger.info(f"✅ Step 4 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 4 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 4,
+                        'step_name': 'Geometric Matching',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Geometric Matching 완료'),
+                step_name="GeometricMatching",
+                step_id=4,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.88),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=50.0,  # 4/8 * 100
+                next_step=5
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 4 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Geometric Matching 실패: {str(e)}",
+            step_name="GeometricMatching",
+            step_id=4,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/5/cloth-warping", response_model=APIResponse)
+async def step5_cloth_warping(
+    session_id: str = Form(..., description="세션 ID"),
+    warping_quality: str = Form("high", description="워핑 품질 (low/medium/high)"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """5단계: Cloth Warping - Central Hub DI Container 기반 TPS 변환 AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_5_cloth_warping_central_hub"):
+            # 🔥 Step 5 디버깅 로그 시작
+            print(f"🔥 STEP_5_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_5_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_5_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_5 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 5,
+                        'step_name': 'Cloth Warping',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'warping_quality': warping_quality
+            }
+            
+            result = await _process_step_async(
+                step_name="ClothWarpingStep",
+                step_id=5,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 5, result)
+                    logger.info(f"✅ Step 5 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 5 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 5,
+                        'step_name': 'Cloth Warping',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Cloth Warping 완료'),
+                step_name="ClothWarping",
+                step_id=5,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.90),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=62.5,  # 5/8 * 100
+                next_step=6
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 5 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Cloth Warping 실패: {str(e)}",
+            step_name="ClothWarping",
+            step_id=5,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/6/virtual-fitting", response_model=APIResponse)
+async def step6_virtual_fitting(
+    session_id: str = Form(..., description="세션 ID"),
+    fitting_quality: str = Form("high", description="피팅 품질 (low/medium/high)"),
+    force_real_ai_processing: str = Form("true", description="실제 AI 처리 강제"),
+    disable_mock_mode: str = Form("true", description="Mock 모드 비활성화"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """6단계: Virtual Fitting - Central Hub DI Container 기반 Diffusion AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_6_virtual_fitting_central_hub"):
+            # 🔥 Step 6 디버깅 로그 시작
+            print(f"🔥 STEP_6_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_6_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_6_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_6 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 6,
+                        'step_name': 'Virtual Fitting',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'fitting_quality': fitting_quality,
+                'force_real_ai_processing': force_real_ai_processing,
+                'disable_mock_mode': disable_mock_mode
+            }
+            
+            result = await _process_step_async(
+                step_name="VirtualFittingStep",
+                step_id=6,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 6, result)
+                    logger.info(f"✅ Step 6 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 6 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 6,
+                        'step_name': 'Virtual Fitting',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Virtual Fitting 완료'),
+                step_name="VirtualFitting",
+                step_id=6,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.92),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=75.0,  # 6/8 * 100
+                next_step=7
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 6 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Virtual Fitting 실패: {str(e)}",
+            step_name="VirtualFitting",
+            step_id=6,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/7/post-processing", response_model=APIResponse)
+async def step7_post_processing(
+    session_id: str = Form(..., description="세션 ID"),
+    processing_quality: str = Form("high", description="후처리 품질 (low/medium/high)"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """7단계: Post Processing - Central Hub DI Container 기반 이미지 향상 AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_7_post_processing_central_hub"):
+            # 🔥 Step 7 디버깅 로그 시작
+            print(f"🔥 STEP_7_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_7_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_7_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_7 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 7,
+                        'step_name': 'Post Processing',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'processing_quality': processing_quality
+            }
+            
+            result = await _process_step_async(
+                step_name="PostProcessingStep",
+                step_id=7,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 7, result)
+                    logger.info(f"✅ Step 7 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 7 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 7,
+                        'step_name': 'Post Processing',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Post Processing 완료'),
+                step_name="PostProcessing",
+                step_id=7,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.94),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=87.5,  # 7/8 * 100
+                next_step=8
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 7 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Post Processing 실패: {str(e)}",
+            step_name="PostProcessing",
+            step_id=7,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
+
+@router.post("/step/8/quality-assessment", response_model=APIResponse)
+async def step8_quality_assessment(
+    session_id: str = Form(..., description="세션 ID"),
+    assessment_depth: str = Form("comprehensive", description="평가 깊이 (basic/comprehensive)"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    session_manager = Depends(get_session_manager_dependency),
+    step_service = Depends(get_step_service_manager_dependency)
+):
+    """8단계: Quality Assessment - Central Hub DI Container 기반 품질 평가 AI 모델"""
+    start_time = time.time()
+    
+    try:
+        with create_performance_monitor("step_8_quality_assessment_central_hub"):
+            # 🔥 Step 8 디버깅 로그 시작
+            print(f"🔥 STEP_8_API 시작: session_id={session_id}")
+            logger.info(f"🔥 STEP_8_API 시작: session_id={session_id}")
+            
+            # 세션 매니저 가져오기
+            session_manager = get_session_manager()
+            log_session_count(session_manager, "STEP_8_API")
+            
+            # 1. 세션 검증 및 이미지 로드 (데이터베이스 연동)
+            try:
+                # 세션 데이터베이스에서 이미지 정보 조회
+                if hasattr(session_manager, 'session_db') and session_manager.session_db:
+                    try:
+                        # 데이터베이스에서 세션 이미지 정보 조회
+                        session_images = session_manager.session_db.get_session_images(session_id)
+                        if session_images:
+                            person_img_path = session_images.get('person_image_path')
+                            clothing_img_path = session_images.get('clothing_image_path')
+                            logger.info(f"✅ 데이터베이스에서 세션 이미지 경로 조회: {session_id}")
+                        else:
+                            # 데이터베이스에 없으면 메모리에서 조회
+                            person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                            logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ 데이터베이스 조회 실패, 메모리에서 조회: {db_error}")
+                        person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                        logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                else:
+                    # 데이터베이스가 없으면 메모리에서만 조회
+                    person_img_path, clothing_img_path = await session_manager.get_session_images(session_id)
+                    logger.info(f"✅ 메모리에서 세션 이미지 로딩: {session_id}")
+                
+                logger.info(f"✅ STEP_8 - 세션 이미지 로딩 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ 세션 로드 실패: {e}")
+                raise HTTPException(status_code=404, detail=f"세션을 찾을 수 없습니다: {session_id}")
+            
+            # 2. WebSocket 진행률 알림 (시작)
+            try:
+                websocket_manager = _get_websocket_manager()
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_started',
+                        'step_id': 8,
+                        'step_name': 'Quality Assessment',
+                        'session_id': session_id,
+                        'progress': 0
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 알림 실패: {e}")
+            
+            # 3. 실제 AI Step 처리
+            api_input = {
+                'session_id': session_id,
+                'assessment_depth': assessment_depth
+            }
+            
+            result = await _process_step_async(
+                step_name="QualityAssessmentStep",
+                step_id=8,
+                api_input=api_input,
+                session_id=session_id
+            )
+            
+            processing_time = time.time() - start_time
+            
+            # 🔥 Step 결과를 세션 데이터베이스에 저장
+            try:
+                if hasattr(session_manager, 'save_step_result'):
+                    await session_manager.save_step_result(session_id, 8, result)
+                    logger.info(f"✅ Step 8 결과를 세션 데이터베이스에 저장 완료: {session_id}")
+                else:
+                    logger.warning(f"⚠️ session_manager에 save_step_result 메서드가 없음")
+            except Exception as save_error:
+                logger.warning(f"⚠️ Step 8 결과 저장 실패: {save_error}")
+            
+            # 4. WebSocket 진행률 알림 (완료)
+            try:
+                if websocket_manager:
+                    await websocket_manager.broadcast({
+                        'type': 'step_completed',
+                        'step_id': 8,
+                        'step_name': 'Quality Assessment',
+                        'session_id': session_id,
+                        'progress': 100,
+                        'result': result
+                    }, session_id)
+            except Exception as e:
+                logger.warning(f"⚠️ WebSocket 완료 알림 실패: {e}")
+            
+            return format_step_api_response(
+                success=result.get('success', True),
+                message=result.get('message', 'Quality Assessment 완료'),
+                step_name="QualityAssessment",
+                step_id=8,
+                processing_time=processing_time,
+                session_id=session_id,
+                confidence=result.get('confidence', 0.95),
+                details=result.get('details', {}),
+                error=result.get('error'),
+                fitted_image=result.get('fitted_image'),
+                fit_score=result.get('fit_score'),
+                recommendations=result.get('recommendations'),
+                progress_percentage=100.0,  # 8/8 * 100
+                next_step=None
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Step 8 처리 실패: {e}")
+        return format_step_api_response(
+            success=False,
+            message=f"Quality Assessment 실패: {str(e)}",
+            step_name="QualityAssessment",
+            step_id=8,
+            processing_time=time.time() - start_time,
+            session_id=session_id,
+            error=str(e)
+        )
 
 # ============================================
 # 🔄 기존 API 엔드포인트들 (계속 유지)
