@@ -1746,13 +1746,17 @@ class ModelLoader:
         "hrnet_w48_coco_256x192": "checkpoints/step_02_pose_estimation/hrnet_w48_coco_256x192.pth",
         "hrnet_w48_coco_256x192.pth": "checkpoints/step_02_pose_estimation/hrnet_w48_coco_256x192.pth",
         
-        # Geometric Matching (✅ 실제 파일 존재 확인됨)
-        "gmm_final": "step_04_geometric_matching/gmm_final.pth",
+        # Geometric Matching (✅ 실제 파일 존재 확인됨 - 새로운 고성능 모델들)
+        "gmm_final": "step_04_geometric_matching/gmm_final.pth",  # VITON-HD 기반 (1.3GB)
         "gmm_final.pth": "step_04_geometric_matching/gmm_final.pth",
-        "tps_network": "checkpoints/step_04_geometric_matching/tps_network.pth",
-        "tps_network.pth": "checkpoints/step_04_geometric_matching/tps_network.pth",
-        "raft-things": "step_04_geometric_matching/models/raft-things.pth",
-        "raft-things.pth": "step_04_geometric_matching/models/raft-things.pth",
+        "viton_hd_warping": "step_04_geometric_matching/gmm_final.pth",  # 대안 모델
+        "viton_hd_warping.pth": "step_04_geometric_matching/gmm_final.pth",
+        "tps_network": "step_04_geometric_matching/tps_network.pth",  # 548MB
+        "tps_network.pth": "step_04_geometric_matching/tps_network.pth",
+        "raft-things": "step_04_geometric_matching/raft-things.pth",  # VGG19 기반 (548MB)
+        "raft-things.pth": "step_04_geometric_matching/raft-things.pth",
+        "vgg19_warping": "step_04_geometric_matching/raft-things.pth",  # 대안 모델
+        "vgg19_warping.pth": "step_04_geometric_matching/raft-things.pth",
         "raft-chairs": "step_04_geometric_matching/models/raft-chairs.pth",
         "raft-chairs.pth": "step_04_geometric_matching/models/raft-chairs.pth",
         "raft-kitti": "step_04_geometric_matching/models/raft-kitti.pth",
@@ -1761,8 +1765,20 @@ class ModelLoader:
         "raft-sintel.pth": "step_04_geometric_matching/models/raft-sintel.pth",
         "raft-small": "step_04_geometric_matching/models/raft-small.pth",
         "raft-small.pth": "step_04_geometric_matching/models/raft-small.pth",
-        "sam_vit_h_4b8939": "step_04_geometric_matching/sam_vit_h_4b8939.pth",
+        "sam_vit_h_4b8939": "step_04_geometric_matching/sam_vit_h_4b8939.pth",  # 2.4GB
         "sam_vit_h_4b8939.pth": "step_04_geometric_matching/sam_vit_h_4b8939.pth",
+        "ViT-L-14": "step_04_geometric_matching/ViT-L-14.pt",  # CLIP 기반 (577MB)
+        "ViT-L-14.pt": "step_04_geometric_matching/ViT-L-14.pt",
+        "clip_vit_b32": "step_04_geometric_matching/ViT-L-14.pt",  # 대안 모델
+        "clip_vit_b32.pth": "step_04_geometric_matching/ViT-L-14.pt",
+        "resnet101_geometric": "step_04_geometric_matching/resnet101_geometric.pth",  # VGG16 Ultra (528MB)
+        "resnet101_geometric.pth": "step_04_geometric_matching/resnet101_geometric.pth",
+        "vgg16_warping_ultra": "step_04_geometric_matching/resnet101_geometric.pth",  # 대안 모델
+        "vgg16_warping_ultra.pth": "step_04_geometric_matching/resnet101_geometric.pth",
+        "efficientnet_b0_ultra": "step_04_geometric_matching/efficientnet_b0_ultra.pth",  # VGG19 기반 (548MB)
+        "efficientnet_b0_ultra.pth": "step_04_geometric_matching/efficientnet_b0_ultra.pth",
+        "vgg19_warping": "step_04_geometric_matching/efficientnet_b0_ultra.pth",  # 대안 모델
+        "vgg19_warping.pth": "step_04_geometric_matching/efficientnet_b0_ultra.pth",
         
         # Cloth Warping (✅ 6616.6MB 검증됨)
         "realvis": "checkpoints/step_05_cloth_warping/RealVisXL_V4.0.safetensors",

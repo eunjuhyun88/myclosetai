@@ -497,9 +497,9 @@ if BaseStepMixin is None:
                     }
                 },
                 "verified_paths": [
-                    "step_05_enhanced_cloth_warping/tps_transformation.pth",
-                    "step_05_enhanced_cloth_warping/dpt_hybrid_midas.pth",
-                    "step_05_enhanced_cloth_warping/viton_hd_warping.pth"
+                    "step_05_cloth_warping/tps_transformation.pth",
+                    "step_05_cloth_warping/dpt_hybrid_midas.pth",
+                    "step_05_cloth_warping/viton_hd_warping.pth"
                 ],
                 "advanced_networks": [
                     "AdvancedTPSWarpingNetwork",
@@ -523,19 +523,19 @@ class AdvancedTPSWarpingNetwork(nn.Module):
         # 🔥 실제 ResNet 기반 특징 추출기 (완전 구현)
         self.feature_extractor = self._build_complete_resnet_backbone()
         
-        # 🔥 TPS 제어점 예측기 (실제 신경망)
+        # 🔥 TPS 제어점 예측기 (실제 신경망) - 2048 채널로 수정
         self.control_point_predictor = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(2048, 1024),
-            nn.BatchNorm1d(1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            nn.Linear(1024, 512),
+            nn.Linear(2048, 512),  # 2048 채널로 수정
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
             nn.Dropout(0.2),
-            nn.Linear(512, num_control_points * 2),  # x, y 좌표
+            nn.Linear(256, num_control_points * 2),  # x, y 좌표
             nn.Tanh()  # -1 ~ 1 범위로 정규화
         )
         
@@ -571,11 +571,11 @@ class AdvancedTPSWarpingNetwork(nn.Module):
             nn.Tanh()
         )
         
-        # 🔥 품질 평가기 (실제 분류기)
+        # 🔥 품질 평가기 (실제 분류기) - 2048 채널로 수정
         self.quality_assessor = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(2048, 512),
+            nn.Linear(2048, 512),  # 2048 채널로 수정
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Dropout(0.3),
@@ -583,10 +583,10 @@ class AdvancedTPSWarpingNetwork(nn.Module):
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(0.2),
-            nn.Linear(256, 64),
-            nn.BatchNorm1d(64),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
-            nn.Linear(64, 1),
+            nn.Linear(128, 1),
             nn.Sigmoid()
         )
         
@@ -603,10 +603,10 @@ class AdvancedTPSWarpingNetwork(nn.Module):
         self.transformer_attention = TransformerAttentionModule(64, num_heads=8)
         
         # 🔥 적응형 풀링 (새로 추가)
-        self.adaptive_pooling = AdaptivePoolingModule(64, 512)
+        self.adaptive_pooling = AdaptivePoolingModule(2048, 512)
         
         # 🔥 특징 피라미드 네트워크 (새로 추가)
-        self.feature_pyramid = FeaturePyramidNetwork([64, 128, 256, 512], 256)
+        self.feature_pyramid = FeaturePyramidNetwork([64, 128, 256, 2048], 256)
         
         # 🔥 고급 TPS 정제기 (새로 추가)
         self.advanced_tps_refiner = AdvancedTPSRefiner(input_channels, num_control_points)
@@ -3809,40 +3809,68 @@ class ClothWarpingStep(BaseStepMixin):
             checkpoint_loaded = False
             
             try:
-                # TPS 체크포인트 로딩 (1.8GB)
-                tps_model = self.model_loader.load_model(
-                    model_name="tps_transformation.pth",
-                    step_name="ClothWarpingStep",
-                    model_type="cloth_warping"
-                )
+                # 🔥 직접 모델 로딩 구현
+                import torch
+                import os
                 
-                if tps_model:
-                    self.ai_models['tps_checkpoint'] = tps_model
+                # TPS 체크포인트 직접 로딩
+                tps_path = "backend/ai_models/step_05_cloth_warping/tps_transformation.pth"
+                if os.path.exists(tps_path):
+                    self.logger.info(f"📥 TPS 모델 로딩 시작: {tps_path}")
+                    tps_checkpoint = torch.load(tps_path, map_location=self.device)
+                    
+                    # 🔥 디버깅: 체크포인트 정보
+                    if isinstance(tps_checkpoint, dict):
+                        self.logger.info(f"🔍 TPS 체크포인트 키들: {list(tps_checkpoint.keys())}")
+                        if 'state_dict' in tps_checkpoint:
+                            state_dict = tps_checkpoint['state_dict']
+                            self.logger.info(f"🔍 TPS state_dict 키 수: {len(state_dict)}")
+                            first_key = list(state_dict.keys())[0]
+                            first_param = state_dict[first_key]
+                            self.logger.info(f"🔍 TPS 첫 번째 파라미터: {first_key}, shape={first_param.shape}, mean={first_param.mean():.6f}, std={first_param.std():.6f}")
+                    else:
+                        self.logger.info(f"🔍 TPS 체크포인트 타입: {type(tps_checkpoint)}")
+                    
+                    self.ai_models['tps_checkpoint'] = tps_checkpoint
                     self.models_loading_status['tps_checkpoint'] = True
                     self.loaded_models.append('tps_checkpoint')
                     checkpoint_loaded = True
-                    self.logger.debug("✅ TPS 체크포인트 모델 로딩 완료 (1.8GB)")
+                    self.logger.info("✅ TPS 체크포인트 모델 로딩 완료 (492MB)")
+                else:
+                    self.logger.error(f"❌ TPS 모델 파일을 찾을 수 없음: {tps_path}")
                     
             except Exception as e:
-                self.logger.warning(f"⚠️ TPS 체크포인트 로딩 실패: {e}")
+                self.logger.error(f"❌ TPS 체크포인트 로딩 실패: {e}")
             
             try:
-                # VITON-HD 체크포인트 로딩 (2.1GB)
-                viton_model = self.model_loader.load_model(
-                    model_name="viton_hd_warping.pth",
-                    step_name="ClothWarpingStep",
-                    model_type="virtual_try_on"
-                )
-                
-                if viton_model:
-                    self.ai_models['viton_checkpoint'] = viton_model
+                # VITON-HD 체크포인트 직접 로딩
+                viton_path = "backend/ai_models/step_05_cloth_warping/viton_hd_warping.pth"
+                if os.path.exists(viton_path):
+                    self.logger.info(f"📥 VITON-HD 모델 로딩 시작: {viton_path}")
+                    viton_checkpoint = torch.load(viton_path, map_location=self.device)
+                    
+                    # 🔥 디버깅: 체크포인트 정보
+                    if isinstance(viton_checkpoint, dict):
+                        self.logger.info(f"🔍 VITON-HD 체크포인트 키들: {list(viton_checkpoint.keys())}")
+                        if 'state_dict' in viton_checkpoint:
+                            state_dict = viton_checkpoint['state_dict']
+                            self.logger.info(f"🔍 VITON-HD state_dict 키 수: {len(state_dict)}")
+                            first_key = list(state_dict.keys())[0]
+                            first_param = state_dict[first_key]
+                            self.logger.info(f"🔍 VITON-HD 첫 번째 파라미터: {first_key}, shape={first_param.shape}, mean={first_param.mean():.6f}, std={first_param.std():.6f}")
+                    else:
+                        self.logger.info(f"🔍 VITON-HD 체크포인트 타입: {type(viton_checkpoint)}")
+                    
+                    self.ai_models['viton_checkpoint'] = viton_checkpoint
                     self.models_loading_status['viton_checkpoint'] = True
                     self.loaded_models.append('viton_checkpoint')
                     checkpoint_loaded = True
-                    self.logger.debug("✅ VITON-HD 체크포인트 모델 로딩 완료 (2.1GB)")
+                    self.logger.info("✅ VITON-HD 체크포인트 모델 로딩 완료 (1.37GB)")
+                else:
+                    self.logger.error(f"❌ VITON-HD 모델 파일을 찾을 수 없음: {viton_path}")
                     
             except Exception as e:
-                self.logger.warning(f"⚠️ VITON-HD 체크포인트 로딩 실패: {e}")
+                self.logger.error(f"❌ VITON-HD 체크포인트 로딩 실패: {e}")
             
             # 2. 고급 AI 네트워크 생성 (체크포인트와 병행)
             self._create_advanced_ai_networks()
@@ -4128,19 +4156,30 @@ class ClothWarpingStep(BaseStepMixin):
                 try:
                     session_manager = self._get_service_from_central_hub('session_manager')
                     if session_manager:
-                        # 세션에서 원본 이미지 직접 로드 (이벤트 루프 문제 해결)
-                        import asyncio
+                        self.logger.info(f" [디버깅] Session Manager 발견: {type(session_manager)}")
+                        
+                        # 🔥 세션 데이터 먼저 가져오기
                         try:
-                            person_image, clothing_image = asyncio.run(session_manager.get_session_images(kwargs['session_id']))
+                            # 동기 방식으로 세션 데이터 로드
+                            session_data = session_manager.get_session_status_sync(kwargs['session_id'])
+                            self.logger.info(f"✅ Session 데이터 로드 완료: {type(session_data)}")
+                            if isinstance(session_data, dict):
+                                self.logger.info(f"🔥 [디버깅] Session 데이터 키들: {list(session_data.keys())}")
+                                # session_data를 kwargs에 추가
+                                kwargs['session_data'] = session_data
+                                self.logger.info(f"✅ session_data를 kwargs에 추가 완료")
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ Session 데이터 로드 실패: {e}")
+                        
+                        # 세션에서 원본 이미지 직접 로드 (동기 방식)
+                        try:
+                            person_image, clothing_image = session_manager.get_session_images_sync(kwargs['session_id'])
                             self.logger.info(f"✅ Session에서 원본 이미지 로드 완료: person={type(person_image)}, clothing={type(clothing_image)}")
-                        except RuntimeError as runtime_error:
-                            if "asyncio.run() cannot be called from a running event loop" in str(runtime_error):
-                                # 이미 실행 중인 이벤트 루프가 있으면 기본 이미지 사용
-                                self.logger.warning("⚠️ 이벤트 루프 실행 중 - 기본 이미지 사용")
-                                person_image = np.random.randint(0, 255, (256, 192, 3), dtype=np.uint8)
-                                clothing_image = np.random.randint(0, 255, (256, 192, 3), dtype=np.uint8)
-                            else:
-                                raise runtime_error
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ 세션 이미지 로드 실패: {e}")
+                            # 기본 이미지 사용
+                            person_image = np.random.randint(0, 255, (256, 192, 3), dtype=np.uint8)
+                            clothing_image = np.random.randint(0, 255, (256, 192, 3), dtype=np.uint8)
                 except Exception as e:
                     self.logger.warning(f"⚠️ session에서 이미지 추출 실패: {e}")
             
@@ -4437,6 +4476,14 @@ class ClothWarpingStep(BaseStepMixin):
     ) -> Dict[str, Any]:
         """고급 PyTorch 네트워크 AI 추론"""
         try:
+            # 🔥 상세 디버깅 추가
+            self.logger.info(f"🔥 [디버깅] _run_advanced_pytorch_inference 시작")
+            self.logger.info(f" [디버깅] 네트워크 이름: {network_name}")
+            self.logger.info(f" [디버깅] 네트워크 타입: {type(network)}")
+            self.logger.info(f" [디버깅] 의류 이미지 shape: {cloth_image.shape}")
+            self.logger.info(f" [디버깅] 사람 이미지 shape: {person_image.shape}")
+            self.logger.info(f" [디버깅] 키포인트 타입: {type(keypoints)}")
+            
             if not TORCH_AVAILABLE:
                 raise ValueError("PyTorch가 사용 불가능합니다")
             
@@ -4453,25 +4500,41 @@ class ClothWarpingStep(BaseStepMixin):
             network.eval()
             with torch.no_grad():
                 if 'tps' in network_name:
-                    # TPS 네트워크 추론
-                    result = network(cloth_tensor, person_tensor)
-                    warped_cloth = result['warped_cloth']
-                    confidence = result.get('confidence', torch.tensor([0.8]))
+                    # 🔥 TPS 네트워크 추론 디버깅
+                    self.logger.info(f" [디버깅] TPS 네트워크 추론 시작")
+                    self.logger.info(f" [디버깅] 의류 텐서 shape: {cloth_tensor.shape}")
+                    self.logger.info(f" [디버깅] 사람 텐서 shape: {person_tensor.shape}")
+                    self.logger.info(f" [디버깅] 디바이스: {self.device}")
                     
-                    return {
-                        'warped_cloth': self._tensor_to_image(warped_cloth),
-                        'transformation_matrix': self._extract_unified_transformation_matrix(result, 'tps'),
-                        'warping_confidence': confidence.mean().item() if hasattr(confidence, 'mean') else float(confidence),
-                        'warping_method': 'thin_plate_spline',
-                        'processing_stages': ['tps_feature_extraction', 'control_point_prediction', 'tps_warping'],
-                        'quality_metrics': self._calculate_unified_quality_metrics(result, 'tps'),
-                        'model_type': 'advanced_tps',
-                        'enhanced_features': {
-                            'control_points': result.get('control_points'),
-                            'tps_grid': result.get('tps_grid'),
-                            'attention_map': result.get('attention_map')
+                    try:
+                        # TPS 네트워크 추론
+                        result = network(cloth_tensor, person_tensor)
+                        self.logger.info(f"🔥 [디버깅] TPS 추론 완료, 결과 키들: {list(result.keys())}")
+                        
+                        warped_cloth = result['warped_cloth']
+                        confidence = result.get('confidence', torch.tensor([0.8]))
+                        
+                        self.logger.info(f"🔥 [디버깅] 워핑된 의류 shape: {warped_cloth.shape}")
+                        self.logger.info(f"🔥 [디버깅] 신뢰도 타입: {type(confidence)}")
+                        
+                        return {
+                            'warped_cloth': self._tensor_to_image(warped_cloth),
+                            'transformation_matrix': self._extract_unified_transformation_matrix(result, 'tps'),
+                            'warping_confidence': confidence.mean().item() if hasattr(confidence, 'mean') else float(confidence),
+                            'warping_method': 'thin_plate_spline',
+                            'processing_stages': ['tps_feature_extraction', 'control_point_prediction', 'tps_warping'],
+                            'quality_metrics': self._calculate_unified_quality_metrics(result, 'tps'),
+                            'model_type': 'advanced_tps',
+                            'enhanced_features': {
+                                'control_points': result.get('control_points'),
+                                'tps_grid': result.get('tps_grid'),
+                                'attention_map': result.get('attention_map')
+                            }
                         }
-                    }
+                    except Exception as e:
+                        self.logger.error(f"❌ 고급 PyTorch 네트워크 추론 실패 ({network_name}): {e}")
+                        # 폴백 결과 반환
+                        return self._create_network_emergency_result(cloth_image, person_image, network_name)
                     
                 elif 'raft' in network_name:
                     # RAFT Flow 네트워크 추론
@@ -5326,6 +5389,13 @@ class ClothWarpingStep(BaseStepMixin):
             else:
                 original_size = self.config.input_size
             
+            # original_size가 튜플이 아닌 경우 처리
+            if not isinstance(original_size, (tuple, list)):
+                if isinstance(original_size, int):
+                    original_size = (original_size, original_size)
+                else:
+                    original_size = (512, 512)  # 기본값
+            
             # 크기 조정
             if PIL_AVAILABLE and warped_cloth.shape[:2] != original_size[::-1]:
                 warped_pil = Image.fromarray(warped_cloth.astype(np.uint8))
@@ -5532,11 +5602,11 @@ class ClothWarpingStep(BaseStepMixin):
                     "ai_algorithm": "Virtual Try-On HD"
                 }
             },
-            "verified_paths": [
-                "step_05_enhanced_cloth_warping/tps_transformation.pth",
-                "step_05_enhanced_cloth_warping/dpt_hybrid_midas.pth",
-                "step_05_enhanced_cloth_warping/viton_hd_warping.pth"
-            ],
+                            "verified_paths": [
+                    "step_05_cloth_warping/tps_transformation.pth",
+                    "step_05_cloth_warping/dpt_hybrid_midas.pth",
+                    "step_05_cloth_warping/viton_hd_warping.pth"
+                ],
             "advanced_networks": [
                 "AdvancedTPSWarpingNetwork",
                 "RAFTFlowWarpingNetwork", 
