@@ -1569,7 +1569,35 @@ class PipelineManager:
                 performance_metrics=self._get_performance_metrics(step_results)
             )
             
-            self.logger.info(f"🎉 DI Container 기반 8단계 가상 피팅 완료! 총 시간: {total_time:.2f}초, 품질: {quality_score:.3f}")
+            # 🔥 전체 성능 요약 로그 추가
+            self.logger.info(f"🎉 DI Container 기반 8단계 가상 피팅 완료!")
+            self.logger.info(f"   📊 총 처리 시간: {total_time:.3f}초")
+            self.logger.info(f"   📊 평균 Step 시간: {total_time/8:.3f}초")
+            self.logger.info(f"   📊 품질 점수: {quality_score:.3f}")
+            self.logger.info(f"   📊 품질 등급: {quality_grade}")
+            self.logger.info(f"   🖥️ 사용 디바이스: {self.device}")
+            self.logger.info(f"   🧠 DI Container 사용: {self.use_di_container}")
+            
+            # Step별 상세 시간 로그
+            self.logger.info(f"   📋 Step별 처리 시간:")
+            for step_name, step_time in step_timings.items():
+                step_success = step_results.get(step_name, {}).get('success', False)
+                status_icon = "✅" if step_success else "❌"
+                self.logger.info(f"      {status_icon} {step_name}: {step_time:.3f}초")
+            
+            # 성능 통계
+            successful_steps = len([r for r in step_results.values() if r.get('success', False)])
+            failed_steps = len(step_results) - successful_steps
+            self.logger.info(f"   📈 성공한 Step: {successful_steps}/8")
+            self.logger.info(f"   📉 실패한 Step: {failed_steps}/8")
+            
+            # 메모리 사용량 (대략적)
+            try:
+                import psutil
+                memory_usage = psutil.Process().memory_info().rss / (1024 * 1024)
+                self.logger.info(f"   💾 메모리 사용량: {memory_usage:.1f}MB")
+            except:
+                pass
             
             return result
             

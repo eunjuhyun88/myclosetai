@@ -492,6 +492,16 @@ if pipeline_router:
 step_router = _safe_import_step_routes_central_hub()
 if step_router:
     AVAILABLE_ROUTERS['step_routes'] = step_router
+else:
+    # 🔥 강제로 step_routes 등록 시도
+    logger.warning("⚠️ step_routes 로드 실패, 강제 등록 시도...")
+    try:
+        from .step_routes import router as step_router
+        AVAILABLE_ROUTERS['step_routes'] = step_router
+        ROUTER_STATUS['step_routes'] = True
+        logger.info("✅ step_routes 강제 등록 성공")
+    except Exception as e:
+        logger.error(f"❌ step_routes 강제 등록 실패: {e}")
 
 
 
@@ -569,6 +579,37 @@ def register_routers(app) -> int:
         else:
             logger.error("❌ step_routes가 AVAILABLE_ROUTERS에 없음!")
             logger.error(f"🔍 사용 가능한 라우터: {list(AVAILABLE_ROUTERS.keys())}")
+            
+            # 🔥 강제로 step_routes 등록 시도
+            logger.info("🔄 step_routes 강제 등록 시도...")
+            try:
+                step_router = _safe_import_step_routes_central_hub()
+                if step_router:
+                    AVAILABLE_ROUTERS['step_routes'] = step_router
+                    logger.info("✅ step_routes 강제 등록 성공")
+                    
+                    # Central Hub Container를 step_router 상태에 추가
+                    if container and hasattr(step_router, 'dependencies'):
+                        from fastapi import Depends
+                        step_router.dependencies.append(
+                            Depends(lambda: container)
+                        )
+                        logger.info("✅ Central Hub Container 의존성 추가됨")
+                    
+                    try:
+                        app.include_router(
+                            step_router,
+                            prefix="/api/step",  # 프론트엔드 호환성
+                            tags=["step-pipeline-central-hub"]
+                        )
+                        registered_count += 1
+                        logger.info("✅ 강제 등록된 step_routes 라우터 등록 완료 (/api/step)")
+                    except Exception as e:
+                        logger.error(f"❌ 강제 등록된 step_routes 라우터 등록 실패: {e}")
+                else:
+                    logger.error("❌ step_routes 강제 등록 실패")
+            except Exception as e:
+                logger.error(f"❌ step_routes 강제 등록 중 오류: {e}")
         
 
         

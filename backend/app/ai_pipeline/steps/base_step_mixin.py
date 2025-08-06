@@ -2137,8 +2137,25 @@ class BaseStepMixin:
         return default_requirements
 
     def _run_ai_inference(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """🔥 실제 AI 추론 실행 (Central Hub 기반)"""
+        """🔥 실제 AI 추론 실행 (Central Hub 기반) - 상세 시간 측정"""
+        # 성능 측정 유틸리티 import
         try:
+            from app.ai_pipeline.utils.performance_metrics import create_step_timer, log_step_performance
+            timer = create_step_timer(self.step_name, getattr(self, 'step_id', 0))
+        except ImportError:
+            # 폴백: 기본 시간 측정
+            timer = None
+            total_start_time = time.time()
+            timing_details = {}
+        
+        try:
+            # 🔥 1단계: 의존성 확인 및 모델 로딩
+            if timer:
+                timer.start_stage("의존성 확인 및 모델 로딩")
+            else:
+                stage_start = time.time()
+                self.logger.info(f"🔥 [{self.step_name}] 1단계: 의존성 확인 및 모델 로딩 시작")
+            
             # ModelLoader 의존성 확인
             if not hasattr(self, 'model_loader') or not self.model_loader:
                 raise ValueError("ModelLoader가 주입되지 않음 - Central Hub 연동 필요")
@@ -2153,34 +2170,125 @@ class BaseStepMixin:
             if hasattr(primary_model, 'get_checkpoint_data'):
                 checkpoint_data = primary_model.get_checkpoint_data()
             
+            if not timer:
+                timing_details['dependency_check_and_model_loading'] = time.time() - stage_start
+                self.logger.info(f"✅ [{self.step_name}] 1단계 완료: {timing_details['dependency_check_and_model_loading']:.3f}초")
+            
+            # 🔥 2단계: 입력 데이터 검증
+            if timer:
+                timer.start_stage("입력 데이터 검증")
+            else:
+                stage_start = time.time()
+                self.logger.info(f"🔥 [{self.step_name}] 2단계: 입력 데이터 검증 시작")
+            
             # 입력 데이터 검증
             if not input_data:
                 raise ValueError("입력 데이터 없음")
             
-            self.logger.info(f"🔄 {self.step_name} 실제 AI 추론 시작 (Central Hub 기반)")
-            start_time = time.time()
+            if not timer:
+                timing_details['input_validation'] = time.time() - stage_start
+                self.logger.info(f"✅ [{self.step_name}] 2단계 완료: {timing_details['input_validation']:.3f}초")
+            
+            # 🔥 3단계: 디바이스 설정
+            if timer:
+                timer.start_stage("디바이스 설정")
+            else:
+                stage_start = time.time()
+                self.logger.info(f"🔥 [{self.step_name}] 3단계: 디바이스 설정 시작")
             
             # GPU/MPS 처리
             device = 'mps' if TORCH_AVAILABLE and MPS_AVAILABLE else 'cpu'
             
+            if not timer:
+                timing_details['device_setup'] = time.time() - stage_start
+                self.logger.info(f"✅ [{self.step_name}] 3단계 완료: {timing_details['device_setup']:.3f}초 (디바이스: {device})")
+            
+            # 🔥 4단계: 실제 AI 추론 실행
+            if timer:
+                timer.start_stage("실제 AI 추론")
+            else:
+                stage_start = time.time()
+                self.logger.info(f"🔥 [{self.step_name}] 4단계: 실제 AI 추론 실행 시작")
+            
             # 🔥 Step별 특화 AI 추론 (체크포인트 사용)
             ai_result = self._run_step_specific_inference(input_data, checkpoint_data, device)
             
-            inference_time = time.time() - start_time
+            if not timer:
+                timing_details['actual_ai_inference'] = time.time() - stage_start
+                self.logger.info(f"✅ [{self.step_name}] 4단계 완료: {timing_details['actual_ai_inference']:.3f}초")
             
-            return {
-                **ai_result,
-                'processing_time': inference_time,
-                'device_used': device,
-                'model_loaded': True,
-                'checkpoint_used': checkpoint_data is not None,
-                'step_name': self.step_name,
-                'central_hub_integrated': True
-            }
+            # 🔥 5단계: 결과 정리
+            if timer:
+                timer.start_stage("결과 정리")
+            else:
+                stage_start = time.time()
+                self.logger.info(f"🔥 [{self.step_name}] 5단계: 결과 정리 시작")
+            
+            # 상세 시간 정보 추가
+            if timer:
+                timing_data = timer.end_timing(success=True, device=device, model="primary")
+                total_inference_time = timing_data['total_time']
+                result = {
+                    **ai_result,
+                    'processing_time': total_inference_time,
+                    'device_used': device,
+                    'model_loaded': True,
+                    'checkpoint_used': checkpoint_data is not None,
+                    'step_name': self.step_name,
+                    'central_hub_integrated': True,
+                    'timing_breakdown': timing_data['stage_times'],
+                    'total_inference_time': total_inference_time
+                }
+                
+                # 성능 로그 출력
+                log_step_performance(self.step_name, getattr(self, 'step_id', 0), timing_data)
+            else:
+                total_inference_time = time.time() - total_start_time
+                timing_details['result_preparation'] = time.time() - stage_start
+                self.logger.info(f"✅ [{self.step_name}] 5단계 완료: {timing_details['result_preparation']:.3f}초")
+                
+                result = {
+                    **ai_result,
+                    'processing_time': total_inference_time,
+                    'device_used': device,
+                    'model_loaded': True,
+                    'checkpoint_used': checkpoint_data is not None,
+                    'step_name': self.step_name,
+                    'central_hub_integrated': True,
+                    'timing_breakdown': timing_details,
+                    'total_inference_time': total_inference_time
+                }
+                
+                # 🔥 최종 시간 요약 로그
+                self.logger.info(f"🎯 [{self.step_name}] 전체 추론 완료!")
+                self.logger.info(f"   📊 총 추론 시간: {total_inference_time:.3f}초")
+                self.logger.info(f"   📊 의존성 확인: {timing_details.get('dependency_check_and_model_loading', 0):.3f}초")
+                self.logger.info(f"   📊 입력 검증: {timing_details.get('input_validation', 0):.3f}초")
+                self.logger.info(f"   📊 디바이스 설정: {timing_details.get('device_setup', 0):.3f}초")
+                self.logger.info(f"   📊 실제 AI 추론: {timing_details.get('actual_ai_inference', 0):.3f}초")
+                self.logger.info(f"   📊 결과 정리: {timing_details.get('result_preparation', 0):.3f}초")
+                self.logger.info(f"   🖥️ 사용 디바이스: {device}")
+                self.logger.info(f"   🧠 체크포인트 사용: {checkpoint_data is not None}")
+            
+            return result
             
         except Exception as e:
-            self.logger.error(f"❌ {self.step_name} AI 추론 실패: {e}")
-            return self._create_error_response(str(e))
+            if timer:
+                timing_data = timer.end_timing(success=False, device="unknown", model="unknown")
+                total_inference_time = timing_data['total_time']
+                self.logger.error(f"❌ [{self.step_name}] AI 추론 실패 (총 시간: {total_inference_time:.3f}초): {e}")
+            else:
+                total_inference_time = time.time() - total_start_time
+                self.logger.error(f"❌ [{self.step_name}] AI 추론 실패 (총 시간: {total_inference_time:.3f}초): {e}")
+            
+            error_result = self._create_error_response(str(e))
+            error_result.update({
+                'processing_time': total_inference_time,
+                'timing_breakdown': timing_data.get('stage_times', {}) if timer else timing_details,
+                'total_inference_time': total_inference_time,
+                'step_name': self.step_name
+            })
+            return error_result
 
     def _load_primary_model(self):
         """주요 모델 로딩 (Central Hub 기반)"""

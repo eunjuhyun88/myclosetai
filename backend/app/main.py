@@ -58,6 +58,18 @@ warnings.filterwarnings('ignore')
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+# MediaPipe 및 TensorFlow Lite 경고 무시 추가
+os.environ['MEDIAPIPE_DISABLE_GPU'] = '1'  # GPU 관련 경고 무시
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # TensorFlow 최적화 경고 무시
+os.environ['ABSL_LOGGING_MIN_LEVEL'] = '2'  # absl 로깅 레벨 설정
+
+# 추가 경고 필터링
+warnings.filterwarnings('ignore', category=UserWarning, module='mediapipe')
+warnings.filterwarnings('ignore', category=UserWarning, module='tensorflow')
+warnings.filterwarnings('ignore', category=UserWarning, module='absl')
+warnings.filterwarnings('ignore', message='.*inference_feedback_manager.*')
+warnings.filterwarnings('ignore', message='.*landmark_projection_calculator.*')
+
 # 로그 레벨 조정 (서버 시작 시 간단 요약, API 호출 시 상세 로그)
 import logging
 import os

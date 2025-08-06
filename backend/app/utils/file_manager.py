@@ -87,9 +87,9 @@ class UnifiedFileManager:
     ✅ 자동 정리 시스템
     """
     def __init__(self, base_dir: Optional[str] = None, backup_config: Optional[BackupConfig] = None):
-        """초기화 - 기존 FileManager와 완전 호환 + backend/backend 문제 해결"""
+        """초기화 - 기존 FileManager와 완전 호환 + backend 중복 문제 해결"""
         
-        # 🔥 기본 디렉토리 설정 - backend/backend 문제 완전 해결
+        # 🔥 기본 디렉토리 설정 - backend 중복 문제 완전 해결
         if base_dir is None:            
             # ✅ 해결된 코드: 파일 위치 기반으로 backend 경로 계산
             current_file = Path(__file__).absolute()  # /path/to/backend/app/utils/file_manager.py

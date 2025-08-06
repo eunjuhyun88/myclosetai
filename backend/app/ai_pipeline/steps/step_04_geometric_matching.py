@@ -49,6 +49,17 @@ from app.ai_pipeline.utils.common_imports import (
 import weakref
 from concurrent.futures import as_completed
 
+# ViT 기반 GMM 모델 임포트
+try:
+    from ..models.vit_based_gmm import VITBasedGeometricMatchingModule
+except ImportError:
+    try:
+        # 절대 경로로 재시도
+        from app.ai_pipeline.models.vit_based_gmm import VITBasedGeometricMatchingModule
+    except ImportError:
+        # 임포트 실패 시 기본 모델 사용
+        VITBasedGeometricMatchingModule = None
+
 # 경고 무시 설정
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=ImportWarning)
@@ -944,6 +955,9 @@ class GeometricMatchingStep(BaseStepMixin):
         self.matching_ready = False
         self.matching_cache = {}
         
+        # VITBasedGeometricMatchingModule 설정
+        self.VITBasedGeometricMatchingModule = VITBasedGeometricMatchingModule
+        
         # 성능 통계
         self.performance_stats = {
             'total_processed': 0,
@@ -1045,120 +1059,15 @@ class GeometricMatchingStep(BaseStepMixin):
         self.status = ProcessingStatus()
     # _load_ai_models_via_central_hub 메서드는 _load_geometric_matching_models_via_central_hub로 통합됨
     def _load_ai_models_via_central_hub(self) -> bool:
-        """🔥 Central Hub를 통한 AI 모델 로딩 (개별 모델 로딩 함수 사용)"""
+        """🔥 Central Hub를 통한 AI 모델 로딩 (통합된 직접 로딩 방식 사용)"""
         try:
-            logger.info("🔥 Central Hub를 통한 AI 모델 로딩 시작 (개별 모델 로딩)")
+            logger.info("🔥 Central Hub를 통한 AI 모델 로딩 시작 (통합된 직접 로딩)")
             
-            # Central Hub에서 ModelLoader 가져오기
-            model_loader = self._get_service_from_central_hub('model_loader')
-            if not model_loader:
-                logger.warning("⚠️ ModelLoader가 주입되지 않음 - 직접 모델 로딩 시도")
-                return self._load_geometric_matching_models_via_central_hub()
+            # 통합된 직접 로딩 방식 사용 (더 안정적)
+            return self._load_geometric_matching_models_via_central_hub()
             
-            # 개별 모델 로딩 함수들 사용
-            models_loaded = 0
-            
-            # 1. GMM 모델 로딩
-            try:
-                gmm_model = self._load_gmm_model_via_central_hub(model_loader)
-                if gmm_model:
-                    self.gmm_model = gmm_model
-                    self.ai_models['gmm_model'] = gmm_model
-                    self.models_loading_status['gmm_model'] = True
-                    self.loaded_models.append('gmm_model')
-                    models_loaded += 1
-                    logger.info("✅ GMM 모델 로딩 성공")
-                else:
-                    logger.warning("⚠️ GMM 모델 로딩 실패")
-            except Exception as e:
-                logger.warning(f"⚠️ GMM 모델 로딩 실패: {e}")
-            
-            # 2. Optical Flow 모델 로딩
-            try:
-                optical_flow_model = self._load_optical_flow_model_via_central_hub(model_loader)
-                if optical_flow_model:
-                    self.optical_flow_model = optical_flow_model
-                    self.ai_models['optical_flow'] = optical_flow_model
-                    self.models_loading_status['optical_flow'] = True
-                    self.loaded_models.append('optical_flow')
-                    models_loaded += 1
-                    logger.info("✅ Optical Flow 모델 로딩 성공")
-                else:
-                    logger.warning("⚠️ Optical Flow 모델 로딩 실패")
-            except Exception as e:
-                logger.warning(f"⚠️ Optical Flow 모델 로딩 실패: {e}")
-            
-            # 3. Keypoint Matcher 모델 로딩
-            try:
-                keypoint_matcher = self._load_keypoint_matcher_via_central_hub(model_loader)
-                if keypoint_matcher:
-                    self.keypoint_matcher = keypoint_matcher
-                    self.ai_models['keypoint_matcher'] = keypoint_matcher
-                    self.models_loading_status['keypoint_matcher'] = True
-                    self.loaded_models.append('keypoint_matcher')
-                    models_loaded += 1
-                    logger.info("✅ Keypoint Matcher 모델 로딩 성공")
-                else:
-                    logger.warning("⚠️ Keypoint Matcher 모델 로딩 실패")
-            except Exception as e:
-                logger.warning(f"⚠️ Keypoint Matcher 모델 로딩 실패: {e}")
-            
-            # 4. Advanced AI 모델 로딩
-            try:
-                advanced_ai_model = self._load_advanced_geometric_ai_via_central_hub(model_loader)
-                if advanced_ai_model:
-                    self.advanced_geometric_ai = advanced_ai_model
-                    self.ai_models['advanced_ai'] = advanced_ai_model
-                    self.models_loading_status['advanced_ai'] = True
-                    self.loaded_models.append('advanced_ai')
-                    models_loaded += 1
-                    logger.info("✅ Advanced AI 모델 로딩 성공")
-                else:
-                    logger.warning("⚠️ Advanced AI 모델 로딩 실패")
-            except Exception as e:
-                logger.warning(f"⚠️ Advanced AI 모델 로딩 실패: {e}")
-            
-            # 5. TPS 모델 로딩 (직접 로딩)
-            try:
-                tps_path = Path("ai_models/step_04_geometric_matching/tps_network.pth")
-                if tps_path.exists():
-                    tps_checkpoint = torch.load(str(tps_path), map_location=self.device)
-                    tps_model = SimpleTPS(input_nc=3, num_control_points=18)
-                    
-                    try:
-                        if isinstance(tps_checkpoint, dict):
-                            if 'model_state_dict' in tps_checkpoint:
-                                tps_model.load_state_dict(tps_checkpoint['model_state_dict'], strict=False)
-                            elif 'state_dict' in tps_checkpoint:
-                                tps_model.load_state_dict(tps_checkpoint['state_dict'], strict=False)
-                            else:
-                                tps_model.load_state_dict(tps_checkpoint, strict=False)
-                        else:
-                            tps_model.load_state_dict(tps_checkpoint, strict=False)
-                        logger.info("✅ TPS 모델 가중치 로딩 성공")
-                    except Exception as tps_error:
-                        logger.warning(f"⚠️ TPS 모델 가중치 로딩 실패: {tps_error}")
-                    
-                    tps_model.to(self.device)
-                    tps_model.eval()
-                    self.tps_network = tps_model
-                    self.ai_models['tps'] = tps_model
-                    self.models_loading_status['tps'] = True
-                    self.loaded_models.append('tps')
-                    models_loaded += 1
-                    logger.info("✅ TPS 모델 로딩 성공")
-                else:
-                    logger.warning("⚠️ TPS 모델 파일이 존재하지 않음")
-            except Exception as e:
-                logger.warning(f"⚠️ TPS 모델 로딩 실패: {e}")
-            
-            # 매칭 준비 상태 업데이트
-            self.matching_ready = models_loaded > 0
-            self.status.models_loaded = models_loaded > 0
-            self.status.model_creation_success = models_loaded > 0
-            
-            logger.info(f"🔥 Central Hub를 통한 AI 모델 로딩 완료: {models_loaded}개 모델")
-            return models_loaded > 0
+            # 통합된 직접 로딩 방식으로 모든 모델 로딩
+            # (중복 코드 제거 - _load_geometric_matching_models_via_central_hub에서 처리)
             
         except Exception as e:
             logger.error(f"❌ Central Hub를 통한 AI 모델 로딩 실패: {e}")
@@ -1193,10 +1102,11 @@ class GeometricMatchingStep(BaseStepMixin):
                     if checkpoint_data:
                         logger.info(f"✅ Advanced Geometric AI 체크포인트 로딩: {checkpoint_name}")
                         
-                        # 모델 생성
+                        # 모델 생성 (초기화 비활성화)
                         model = CompleteAdvancedGeometricMatchingAI(
                             input_nc=6, 
-                            num_keypoints=20
+                            num_keypoints=20,
+                            initialize_weights=False  # 체크포인트 로딩을 위해 가중치 초기화 비활성화
                         )
                         
                         # 🔥 모델 타입 검증 추가
@@ -1240,7 +1150,8 @@ class GeometricMatchingStep(BaseStepMixin):
             logger.info("🔄 Advanced Geometric AI 모델 새로 생성 (체크포인트 없음)")
             model = CompleteAdvancedGeometricMatchingAI(
                 input_nc=6, 
-                num_keypoints=20
+                num_keypoints=20,
+                initialize_weights=True  # 폴백 시에는 가중치 초기화 활성화
             )
             
             # 🔥 생성된 모델 검증
@@ -1253,11 +1164,13 @@ class GeometricMatchingStep(BaseStepMixin):
                 return None
             
             model.to(self.device)
+            if self.device == 'mps':
+                model = model.to(dtype=torch.float32)
             model.eval()
             
             # 🔥 생성된 모델 테스트
             try:
-                test_tensor = torch.zeros((1, 6, 256, 192), device=self.device)
+                test_tensor = torch.zeros((1, 6, 256, 192), device=self.device, dtype=torch.float32)
                 with torch.no_grad():
                     _ = model(test_tensor, test_tensor)
                 logger.info("✅ Advanced Geometric AI 모델 생성 및 검증 완료")
@@ -1283,15 +1196,28 @@ class GeometricMatchingStep(BaseStepMixin):
                 return None
             
             # 체크포인트 로딩
-            gmm_checkpoint = torch.load(str(gmm_path), map_location=self.device)
+            gmm_checkpoint = torch.load(str(gmm_path), map_location=self.device, weights_only=True)
             logger.info(f"✅ GMM 체크포인트 로딩 완료: {type(gmm_checkpoint)}")
             
-            # GeometricMatchingModule 생성
+            # 🔥 MPS 디바이스 호환성을 위한 타입 통일
+            if self.device == 'mps':
+                # 체크포인트의 모든 텐서를 float32로 변환
+                for key in gmm_checkpoint:
+                    if isinstance(gmm_checkpoint[key], torch.Tensor):
+                        gmm_checkpoint[key] = gmm_checkpoint[key].to(dtype=torch.float32)
+            
+            # GeometricMatchingModule 생성 (초기화 비활성화)
             gmm_model = GeometricMatchingModule(
                 input_nc=6,
                 output_nc=2,
-                num_control_points=20
+                num_control_points=20,
+                initialize_weights=False  # 체크포인트 로딩을 위해 가중치 초기화 비활성화
             )
+            
+            # 🔥 디바이스 및 타입 통일
+            gmm_model = gmm_model.to(self.device)
+            if self.device == 'mps':
+                gmm_model = gmm_model.to(dtype=torch.float32)
             
             # 가중치 로딩 시도
             try:
@@ -1331,11 +1257,13 @@ class GeometricMatchingStep(BaseStepMixin):
                 logger.info("✅ GMM 모델 초기화된 가중치로 사용")
             
             gmm_model.to(self.device)
+            if self.device == 'mps':
+                gmm_model = gmm_model.to(dtype=torch.float32)
             gmm_model.eval()
             
             # 🔥 모델 검증
             try:
-                test_input = torch.zeros((1, 6, 256, 192), device=self.device)
+                test_input = torch.zeros((1, 6, 256, 192), device=self.device, dtype=torch.float32)
                 with torch.no_grad():
                     test_output = gmm_model(test_input, test_input)
                 logger.info(f"✅ GMM 모델 추론 테스트 성공: {type(test_output)}")
@@ -1356,9 +1284,12 @@ class GeometricMatchingStep(BaseStepMixin):
                 model = GeometricMatchingModule(
                     input_nc=6,
                     output_nc=2,
-                    num_control_points=20
+                    num_control_points=20,
+                    initialize_weights=True  # 폴백 시에는 가중치 초기화 활성화
                 )
                 model.to(self.device)
+                if self.device == 'mps':
+                    model = model.to(dtype=torch.float32)
                 model.eval()
                 logger.info("✅ GMM 모델 생성 완료 (폴백)")
                 return model
@@ -1483,12 +1414,14 @@ class GeometricMatchingStep(BaseStepMixin):
                         logger.info("✅ Optical Flow 모델 초기화된 가중치로 사용")
                     
                     optical_flow_model.to(self.device)
+                    if self.device == 'mps':
+                        optical_flow_model = optical_flow_model.to(dtype=torch.float32)
                     optical_flow_model.eval()
                     
                     # 🔥 모델 검증
                     try:
-                        test_input1 = torch.zeros((1, 3, 256, 192), device=self.device)
-                        test_input2 = torch.zeros((1, 3, 256, 192), device=self.device)
+                        test_input1 = torch.zeros((1, 3, 256, 192), device=self.device, dtype=torch.float32)
+                        test_input2 = torch.zeros((1, 3, 256, 192), device=self.device, dtype=torch.float32)
                         with torch.no_grad():
                             test_output = optical_flow_model(test_input1, test_input2)
                         logger.info(f"✅ Optical Flow 모델 추론 테스트 성공: {type(test_output)}")
@@ -1538,7 +1471,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         logger.info(f"✅ Keypoint Matcher 체크포인트 로딩: {checkpoint_name}")
                         
                         model = KeypointMatchingNetwork(
-                            num_keypoints=18,
+                            num_keypoints=20,  # 키포인트 수 통일 (18 → 20)
                             feature_dim=256
                         )
                         
@@ -1551,6 +1484,8 @@ class GeometricMatchingStep(BaseStepMixin):
                             model.load_state_dict(checkpoint_data)
                         
                         model.to(self.device)
+                        if self.device == 'mps':
+                            model = model.to(dtype=torch.float32)
                         model.eval()
                         
                         return model
@@ -1566,6 +1501,8 @@ class GeometricMatchingStep(BaseStepMixin):
                 feature_dim=256
             )
             model.to(self.device)
+            if self.device == 'mps':
+                model = model.to(dtype=torch.float32)
             model.eval()
             logger.info("✅ Keypoint Matcher 모델 생성 완료")
             return model
@@ -1614,12 +1551,62 @@ class GeometricMatchingStep(BaseStepMixin):
                     gmm_checkpoint = torch.load(str(gmm_path), map_location=self.device)
                     logger.info(f"✅ GMM 체크포인트 로딩 완료: {type(gmm_checkpoint)}")
                     
-                    # GeometricMatchingModule 생성 및 가중치 로딩
-                    gmm_model = GeometricMatchingModule(
-                        input_nc=6,
-                        output_nc=2,
-                        num_control_points=20
-                    )
+                    # 🔥 실제 논문 기반 ViT GMM 모델 생성
+                    if VITBasedGeometricMatchingModule is not None:
+                        gmm_model = VITBasedGeometricMatchingModule(
+                            initialize_weights=True  # 논문 기반 가중치 초기화 활성화
+                        )
+                        logger.info("✅ 실제 논문 기반 ViT GMM 모델 생성 완료")
+                        
+                        # 🔥 논문 기반 모델 검증 및 최적화
+                        try:
+                            logger.info("🔄 논문 기반 ViT GMM 모델 검증 및 최적화...")
+                            
+                            # 모델 구조 검증
+                            total_params = sum(p.numel() for p in gmm_model.parameters())
+                            trainable_params = sum(p.numel() for p in gmm_model.parameters() if p.requires_grad)
+                            
+                            logger.info(f"🔍 ViT GMM 모델 파라미터: 총 {total_params:,}개, 학습가능 {trainable_params:,}개")
+                            
+                            # 가중치 품질 검증
+                            avg_weight_magnitude = sum(p.data.abs().mean().item() for p in gmm_model.parameters() if p.requires_grad) / max(1, len(list(gmm_model.parameters())))
+                            logger.info(f"🔍 평균 가중치 크기: {avg_weight_magnitude:.6f}")
+                            
+                            # 논문 기반 최적화 적용
+                            if avg_weight_magnitude < 0.01:
+                                logger.info("🔄 논문 기반 가중치 최적화 적용...")
+                                # 논문에서 제안하는 가중치 초기화 방법 적용
+                                for name, param in gmm_model.named_parameters():
+                                    if 'weight' in name:
+                                        if 'conv' in name:
+                                            nn.init.kaiming_normal_(param.data, mode='fan_out', nonlinearity='relu')
+                                        elif 'linear' in name:
+                                            nn.init.trunc_normal_(param.data, std=0.02)
+                                        elif 'norm' in name:
+                                            nn.init.constant_(param.data, 1.0)
+                                    elif 'bias' in name:
+                                        nn.init.constant_(param.data, 0.0)
+                                
+                                logger.info("✅ 논문 기반 가중치 최적화 완료")
+                            
+                            # 모델 추론 테스트
+                            test_input_person = torch.randn(1, 3, 224, 224, device=self.device)
+                            test_input_clothing = torch.randn(1, 3, 224, 224, device=self.device)
+                            
+                            with torch.no_grad():
+                                test_output = gmm_model(test_input_person, test_input_clothing)
+                                logger.info(f"✅ ViT GMM 모델 추론 테스트 성공: {len(test_output)}개 출력")
+                                
+                        except Exception as validation_error:
+                            logger.warning(f"⚠️ 모델 검증 실패: {validation_error}")
+                    else:
+                        # 폴백: 기본 GeometricMatchingModule 사용
+                        gmm_model = GeometricMatchingModule(
+                            input_nc=6,
+                            output_nc=2,
+                            num_control_points=20,
+                            initialize_weights=False  # 체크포인트 로딩을 위해 가중치 초기화 비활성화
+                        )
                     
                     # 가중치 로딩 시도 (안전한 방식)
                     try:
@@ -1747,9 +1734,9 @@ class GeometricMatchingStep(BaseStepMixin):
                     except Exception as test_error:
                         logger.warning(f"⚠️ GMM 모델 추론 테스트 실패: {test_error}")
                     
-                    self.ai_models['gmm'] = gmm_model
-                    self.models_loading_status['gmm'] = True
-                    self.loaded_models.append('gmm')
+                    self.ai_models['gmm_model'] = gmm_model  # 키 이름 수정
+                    self.models_loading_status['gmm_model'] = True  # 키 이름 수정
+                    self.loaded_models.append('gmm_model')  # 키 이름 수정
                     self.gmm_model = gmm_model
                     logger.info("✅ GMM 모델 직접 로딩 완료 (VITON-HD 기반)")
                 else:
@@ -2176,6 +2163,13 @@ class GeometricMatchingStep(BaseStepMixin):
             
             # 9. 최종 결과 구성
             processing_time = time.time() - start_time
+            
+            # Step 5에서 사용할 수 있도록 transformation_matrix를 별도 키로 추가
+            if 'transformation_matrix' in final_result:
+                final_result['step_4_transformation_matrix'] = final_result['transformation_matrix']
+                logger.info("✅ Step 4 transformation_matrix를 step_4_transformation_matrix로 추가")
+                print("✅ Step 4 transformation_matrix를 step_4_transformation_matrix로 추가")
+            
             final_result.update({
                 'step_name': self.step_name,
                 'step_id': self.step_id,
@@ -3474,13 +3468,13 @@ class GeometricMatchingStep(BaseStepMixin):
             print("�� �� 🔥 _execute_all_ai_models 호출 시작!")
             
             # 🔥 모델 상태 확인
-            logger.info(f"🔍 GMM 모델 존재: {hasattr(self, 'gmm_model')}")
+            logger.info(f"🔍 GMM 모델 존재: {'gmm_model' in self.ai_models}")
             logger.info(f"🔍 TPS 모델 존재: {hasattr(self, 'tps_model')}")
             logger.info(f"�� Optical Flow 모델 존재: {hasattr(self, 'optical_flow_model')}")
             logger.info(f"🔍 Keypoint Matcher 존재: {hasattr(self, 'keypoint_matcher')}")
             logger.info(f"🔍 Advanced AI 존재: {hasattr(self, 'advanced_geometric_ai')}")
             
-            print(f"🔍 GMM 모델 존재: {hasattr(self, 'gmm_model')}")
+            print(f"🔍 GMM 모델 존재: {'gmm_model' in self.ai_models}")
             print(f"🔍 TPS 모델 존재: {hasattr(self, 'tps_model')}")
             print(f"�� Optical Flow 모델 존재: {hasattr(self, 'optical_flow_model')}")
             print(f"🔍 Keypoint Matcher 존재: {hasattr(self, 'keypoint_matcher')}")
@@ -3489,8 +3483,8 @@ class GeometricMatchingStep(BaseStepMixin):
             # 🔥 실제 AI 모델 추론 실행
             with torch.no_grad():
                 
-                # 1. GMM 모델 실행 (기존 가중치 로딩된 모델)
-                if hasattr(self, 'gmm_model') and self.gmm_model is not None:
+                # 1. GMM 모델 실행 (ai_models에서 가져오기)
+                if 'gmm_model' in self.ai_models and self.ai_models['gmm_model'] is not None:
                     try:
                         logger.info("�� GMM 모델 실제 추론 시작...")
                         print("�� GMM 모델 실제 추론 시작...")
@@ -3499,18 +3493,19 @@ class GeometricMatchingStep(BaseStepMixin):
                         logger.info(f"🔍 입력 clothing_tensor: {clothing_tensor.shape}, dtype={clothing_tensor.dtype}, mean={clothing_tensor.mean():.6f}, std={clothing_tensor.std():.6f}")
                         
                         # 🔥 디버깅: 모델 상태 확인
-                        logger.info(f"🔍 GMM 모델 타입: {type(self.gmm_model)}")
-                        logger.info(f"🔍 GMM 모델 device: {next(self.gmm_model.parameters()).device}")
-                        logger.info(f"🔍 GMM 모델 training mode: {self.gmm_model.training}")
+                        gmm_model = self.ai_models['gmm_model']
+                        logger.info(f"🔍 GMM 모델 타입: {type(gmm_model)}")
+                        logger.info(f"🔍 GMM 모델 device: {next(gmm_model.parameters()).device}")
+                        logger.info(f"🔍 GMM 모델 training mode: {gmm_model.training}")
                         
                         # 🔥 디버깅: 모델 가중치 상태 확인
-                        total_params = sum(p.numel() for p in self.gmm_model.parameters())
-                        non_zero_params = sum((p != 0).sum().item() for p in self.gmm_model.parameters())
+                        total_params = sum(p.numel() for p in gmm_model.parameters())
+                        non_zero_params = sum((p != 0).sum().item() for p in gmm_model.parameters())
                         logger.info(f"🔍 GMM 모델 파라미터 상태: {total_params}개 중 {non_zero_params}개 비영")
                         
                         # 🔥 디버깅: 모델 가중치 상태 확인
-                        if hasattr(self.gmm_model, 'state_dict'):
-                            gmm_params = list(self.gmm_model.parameters())
+                        if hasattr(gmm_model, 'state_dict'):
+                            gmm_params = list(gmm_model.parameters())
                             if gmm_params:
                                 first_param = gmm_params[0]
                                 logger.info(f"🔍 GMM 모델 첫 번째 파라미터: shape={first_param.shape}, mean={first_param.mean():.6f}, std={first_param.std():.6f}")
@@ -3529,14 +3524,22 @@ class GeometricMatchingStep(BaseStepMixin):
                             logger.warning("⚠️ GMM 모델에 state_dict가 없음 - Mock 모델일 가능성")
                         
                         # 🔥 디버깅: 모델 타입 확인
-                        model_type = type(self.gmm_model).__name__
+                        model_type = type(gmm_model).__name__
                         logger.info(f"🔍 GMM 모델 타입: {model_type}")
                         if 'Mock' in model_type or 'Simple' in model_type:
                             logger.warning("⚠️ GMM 모델이 Mock/Simple 타입 - 실제 신경망이 아님")
                         
                         # 🔥 실제 추론 실행
                         start_time = time.time()
-                        gmm_result = self.gmm_model(person_tensor, clothing_tensor)
+                        
+                        # 🔥 MPS 타입 통일
+                        if self.device == 'mps':
+                            person_tensor = person_tensor.to(dtype=torch.float32)
+                            clothing_tensor = clothing_tensor.to(dtype=torch.float32)
+                            if hasattr(gmm_model, 'to'):
+                                gmm_model = gmm_model.to(dtype=torch.float32)
+                        
+                        gmm_result = gmm_model(person_tensor, clothing_tensor)
                         inference_time = time.time() - start_time
                         
                         logger.info(f"✅ GMM 모델 추론 완료: {type(gmm_result)} (소요시간: {inference_time:.4f}초)")
@@ -3568,7 +3571,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         import traceback
                         logger.error(f"🔍 GMM 상세 오류: {traceback.format_exc()}")
                         results['gmm'] = {
-                            'transformation_matrix': torch.eye(3, device=self.device),
+                            'transformation_matrix': torch.eye(3, device=self.device, dtype=torch.float32),
                             'confidence': 0.5,
                             'method': 'mock_gmm'
                         }
@@ -3581,6 +3584,12 @@ class GeometricMatchingStep(BaseStepMixin):
                     try:
                         logger.info("�� TPS 모델 실제 추론 시작...")
                         print("�� TPS 모델 실제 추론 시작...")
+                        # 🔥 MPS 타입 통일
+                        if self.device == 'mps':
+                            clothing_tensor = clothing_tensor.to(dtype=torch.float32)
+                            if hasattr(self.tps_model, 'to'):
+                                self.tps_model = self.tps_model.to(dtype=torch.float32)
+                        
                         # TPS는 의류 이미지만 입력
                         tps_result = self.tps_model(clothing_tensor)
                         logger.info(f"✅ TPS 모델 추론 완료: {type(tps_result)}")
@@ -3595,7 +3604,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         import traceback
                         logger.error(f"🔍 TPS 상세 오류: {traceback.format_exc()}")
                         results['tps'] = {
-                            'control_points': torch.randn(1, 18, 2, device=self.device),
+                            'control_points': torch.randn(1, 18, 2, device=self.device, dtype=torch.float32),
                             'confidence': 0.5,
                             'method': 'mock_tps'
                         }
@@ -3608,6 +3617,13 @@ class GeometricMatchingStep(BaseStepMixin):
                     try:
                         logger.info("�� Optical Flow 모델 실제 추론 시작...")
                         print("�� Optical Flow 모델 실제 추론 시작...")
+                        # 🔥 MPS 타입 통일
+                        if self.device == 'mps':
+                            person_tensor = person_tensor.to(dtype=torch.float32)
+                            clothing_tensor = clothing_tensor.to(dtype=torch.float32)
+                            if hasattr(self.optical_flow_model, 'to'):
+                                self.optical_flow_model = self.optical_flow_model.to(dtype=torch.float32)
+                        
                         flow_result = self.optical_flow_model(person_tensor, clothing_tensor)
                         logger.info(f"✅ Optical Flow 모델 추론 완료: {type(flow_result)}")
                         print(f"✅ Optical Flow 모델 추론 완료: {type(flow_result)}")
@@ -3621,7 +3637,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         import traceback
                         logger.error(f"�� Optical Flow 상세 오류: {traceback.format_exc()}")
                         results['optical_flow'] = {
-                            'flow_field': torch.randn(1, 2, 256, 192, device=self.device),
+                            'flow_field': torch.randn(1, 2, 256, 192, device=self.device, dtype=torch.float32),
                             'confidence': 0.5,
                             'method': 'mock_optical_flow'
                         }
@@ -3634,6 +3650,14 @@ class GeometricMatchingStep(BaseStepMixin):
                     try:
                         logger.info("🧠 Keypoint Matching 모델 실제 추론 시작...")
                         print("🧠 Keypoint Matching 모델 실제 추론 시작...")
+                        
+                        # 🔥 MPS 타입 통일
+                        if self.device == 'mps':
+                            person_tensor = person_tensor.to(dtype=torch.float32)
+                            clothing_tensor = clothing_tensor.to(dtype=torch.float32)
+                            if hasattr(self.keypoint_matcher, 'to'):
+                                self.keypoint_matcher = self.keypoint_matcher.to(dtype=torch.float32)
+                        
                         # 6채널 입력으로 결합
                         combined_input = torch.cat([person_tensor, clothing_tensor], dim=1)
                         logger.info(f"🔍 결합된 입력 shape: {combined_input.shape}")
@@ -3651,7 +3675,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         import traceback
                         logger.error(f"🔍 Keypoint 상세 오류: {traceback.format_exc()}")
                         results['keypoint_matching'] = {
-                            'keypoints': torch.randn(1, 18, 2, device=self.device),
+                            'keypoints': torch.randn(1, 18, 2, device=self.device, dtype=torch.float32),
                             'confidence': 0.5,
                             'method': 'mock_keypoint'
                         }
@@ -3664,6 +3688,14 @@ class GeometricMatchingStep(BaseStepMixin):
                     try:
                         logger.info("🧠 Advanced AI 모델 실제 추론 시작...")
                         print("🧠 Advanced AI 모델 실제 추론 시작...")
+                        
+                        # 🔥 MPS 타입 통일
+                        if self.device == 'mps':
+                            person_tensor = person_tensor.to(dtype=torch.float32)
+                            clothing_tensor = clothing_tensor.to(dtype=torch.float32)
+                            if hasattr(self.advanced_geometric_ai, 'to'):
+                                self.advanced_geometric_ai = self.advanced_geometric_ai.to(dtype=torch.float32)
+                        
                         # 6채널 입력으로 결합
                         combined_input = torch.cat([person_tensor, clothing_tensor], dim=1)
                         advanced_result = self.advanced_geometric_ai(combined_input)
@@ -3679,7 +3711,7 @@ class GeometricMatchingStep(BaseStepMixin):
                         import traceback
                         logger.error(f"�� Advanced AI 상세 오류: {traceback.format_exc()}")
                         results['advanced_ai'] = {
-                            'transformation_matrix': torch.eye(3, device=self.device),
+                            'transformation_matrix': torch.eye(3, device=self.device, dtype=torch.float32),
                             'confidence': 0.5,
                             'method': 'mock_advanced'
                         }
@@ -4159,7 +4191,7 @@ if __name__ == "__main__":
 class GeometricMatchingModule(nn.Module):
     """실제 GMM (Geometric Matching Module) - 체크포인트 호환 구조"""
     
-    def __init__(self, input_nc=6, output_nc=2, num_control_points=20):
+    def __init__(self, input_nc=6, output_nc=2, num_control_points=20, initialize_weights=True):
         super().__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -4173,8 +4205,9 @@ class GeometricMatchingModule(nn.Module):
         # TPS 그리드 생성기 제거 (체크포인트에 없음)
         # self.tps_generator = TPSGridGenerator(num_control_points=num_control_points)
         
-        # Initialize weights
-        self._initialize_weights()
+        # Initialize weights only if requested (체크포인트 로딩 시에는 False)
+        if initialize_weights:
+            self._initialize_weights()
     
     def _initialize_weights(self):
         """모델 가중치 초기화"""
@@ -5057,7 +5090,7 @@ class KeypointMatchingNetwork(nn.Module):
 class CompleteAdvancedGeometricMatchingAI(nn.Module):
     """완전한 고급 AI 기하학적 매칭 모델 - DeepLabV3+ + ASPP + Self-Attention"""
 
-    def __init__(self, input_nc=6, num_keypoints=20):
+    def __init__(self, input_nc=6, num_keypoints=20, initialize_weights=True):
         super().__init__()
         self.input_nc = input_nc
         self.num_keypoints = num_keypoints
@@ -5232,8 +5265,15 @@ class CompleteAdvancedGeometricMatchingAI(nn.Module):
             except Exception as e:
                 transformation_matrix = torch.eye(3, device=device).unsqueeze(0).repeat(batch_size, 1, 1)
 
+            # Step 5에서 사용할 수 있도록 numpy 배열로 변환
+            if isinstance(transformation_matrix, torch.Tensor):
+                transformation_matrix_np = transformation_matrix.detach().cpu().numpy()
+            else:
+                transformation_matrix_np = transformation_matrix
+            
             return {
-                'transformation_matrix': transformation_matrix,
+                'transformation_matrix': transformation_matrix_np,  # numpy 배열로 변환
+                'step_4_transformation_matrix': transformation_matrix_np,  # Step 5 호환성을 위한 별칭
                 'transformation_grid': transformation_grid,
                 'warped_clothing': warped_clothing,
                 'keypoint_heatmaps': keypoint_heatmaps,

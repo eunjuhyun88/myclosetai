@@ -13,6 +13,58 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class ResNetGraphonomyModel(nn.Module):
+    """ResNet 기반 Graphonomy 모델"""
+    def __init__(self, num_classes=20):
+        super().__init__()
+        from .graphonomy_models import ResNet101Backbone
+        self.backbone = ResNet101Backbone()
+        self.classifier = nn.Conv2d(2048, num_classes, kernel_size=1)
+        self.edge_head = nn.Conv2d(2048, 1, kernel_size=1)
+    
+    def forward(self, x):
+        features = self.backbone(x)
+        parsing = self.classifier(features['layer4'])
+        edge = self.edge_head(features['layer4'])
+        return {'parsing': parsing, 'edge': edge}
+
+
+class SimpleGraphonomyModel(nn.Module):
+    """단순한 Graphonomy 모델"""
+    def __init__(self, num_classes=20):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, 7, stride=2, padding=3),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(3, stride=2, padding=1)
+        )
+        self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
+    
+    def forward(self, x):
+        features = self.features(x)
+        parsing = self.classifier(features)
+        return {'parsing': parsing}
+
+
+class FallbackGraphonomyModel(nn.Module):
+    """폴백 모델"""
+    def __init__(self, num_classes=20):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
+    
+    def forward(self, x):
+        features = self.features(x)
+        parsing = self.classifier(features)
+        return {'parsing': parsing}
+
+
 class GraphonomyCheckpointAnalyzer:
     """Graphonomy 체크포인트 분석기"""
     
@@ -136,60 +188,14 @@ class GraphonomyModelFactory:
     
     def _create_resnet_graphonomy_model(self) -> nn.Module:
         """ResNet 기반 Graphonomy 모델"""
-        class ResNetGraphonomyModel(nn.Module):
-            def __init__(self, num_classes=20):
-                super().__init__()
-                from .graphonomy_models import ResNet101Backbone
-                self.backbone = ResNet101Backbone()
-                self.classifier = nn.Conv2d(2048, num_classes, kernel_size=1)
-                self.edge_head = nn.Conv2d(2048, 1, kernel_size=1)
-            
-            def forward(self, x):
-                features = self.backbone(x)
-                parsing = self.classifier(features['layer4'])
-                edge = self.edge_head(features['layer4'])
-                return {'parsing': parsing, 'edge': edge}
-        
         return ResNetGraphonomyModel(num_classes=20)
     
     def _create_simple_graphonomy_model(self) -> nn.Module:
         """단순한 Graphonomy 모델"""
-        class SimpleGraphonomyModel(nn.Module):
-            def __init__(self, num_classes=20):
-                super().__init__()
-                self.features = nn.Sequential(
-                    nn.Conv2d(3, 64, 7, stride=2, padding=3),
-                    nn.BatchNorm2d(64),
-                    nn.ReLU(inplace=True),
-                    nn.MaxPool2d(3, stride=2, padding=1)
-                )
-                self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
-            
-            def forward(self, x):
-                features = self.features(x)
-                parsing = self.classifier(features)
-                return {'parsing': parsing}
-        
         return SimpleGraphonomyModel(num_classes=20)
     
     def _create_fallback_model(self) -> nn.Module:
         """폴백 모델"""
-        class FallbackGraphonomyModel(nn.Module):
-            def __init__(self, num_classes=20):
-                super().__init__()
-                self.features = nn.Sequential(
-                    nn.Conv2d(3, 32, 3, padding=1),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(32, 64, 3, padding=1),
-                    nn.ReLU(inplace=True)
-                )
-                self.classifier = nn.Conv2d(64, num_classes, kernel_size=1)
-            
-            def forward(self, x):
-                features = self.features(x)
-                parsing = self.classifier(features)
-                return {'parsing': parsing}
-        
         return FallbackGraphonomyModel(num_classes=20)
 
 

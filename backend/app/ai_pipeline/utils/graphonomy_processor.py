@@ -13,12 +13,67 @@ import logging
 import gc
 import time
 import warnings
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Tuple, Union, List
 from pathlib import Path
 from PIL import Image
 import traceback
 
 logger = logging.getLogger(__name__)
+
+class DynamicGraphonomyModel(nn.Module):
+    """동적 Graphonomy 모델 (외부에서 import 가능)"""
+    def __init__(self, config, num_classes=20):
+        super().__init__()
+        
+        backbone_channels = config.get('backbone_channels', 512)
+        classifier_in_channels = config.get('classifier_in_channels', 512)
+        
+        # 백본 네트워크
+        self.backbone = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+        
+        # 채널 수 맞추기
+        if classifier_in_channels != 512:
+            self.channel_adapter = nn.Conv2d(512, classifier_in_channels, kernel_size=1)
+        else:
+            self.channel_adapter = nn.Identity()
+        
+        # 분류기
+        self.classifier = nn.Conv2d(classifier_in_channels, num_classes, kernel_size=1)
+        self.edge_classifier = nn.Conv2d(classifier_in_channels, 1, kernel_size=1)
+    
+    def forward(self, x):
+        features = self.backbone(x)
+        adapted_features = self.channel_adapter(features)
+        
+        # 분류 결과
+        parsing_output = self.classifier(adapted_features)
+        edge_output = self.edge_classifier(adapted_features)
+        
+        # 업샘플링
+        parsing_output = F.interpolate(
+            parsing_output, size=x.shape[2:], 
+            mode='bilinear', align_corners=False
+        )
+        edge_output = F.interpolate(
+            edge_output, size=x.shape[2:], 
+            mode='bilinear', align_corners=False
+        )
+        
+        return {
+            'parsing': parsing_output,
+            'edge': edge_output
+        }
+
 
 class GraphonomyModelProcessor:
     """Graphonomy 1.2GB 모델 전용 처리기 (완전 안정화)"""
@@ -394,60 +449,9 @@ class GraphonomyModelProcessor:
     def _create_dynamic_model(self, config: Dict[str, Any]) -> nn.Module:
         """동적 Graphonomy 모델 생성"""
         try:
-            class DynamicGraphonomyModel(nn.Module):
-                def __init__(self, config, num_classes=20):
-                    super().__init__()
-                    
-                    backbone_channels = config['backbone_channels']
-                    classifier_in_channels = config['classifier_in_channels']
-                    
-                    # 백본 네트워크
-                    self.backbone = nn.Sequential(
-                        nn.Conv2d(3, 64, kernel_size=3, padding=1),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(64, 128, kernel_size=3, padding=1),
-                        nn.ReLU(inplace=True),
-                        nn.MaxPool2d(2),
-                        nn.Conv2d(128, 256, kernel_size=3, padding=1),
-                        nn.ReLU(inplace=True),
-                        nn.Conv2d(256, 512, kernel_size=3, padding=1),
-                        nn.ReLU(inplace=True),
-                    )
-                    
-                    # 채널 수 맞추기
-                    if classifier_in_channels != 512:
-                        self.channel_adapter = nn.Conv2d(512, classifier_in_channels, kernel_size=1)
-                    else:
-                        self.channel_adapter = nn.Identity()
-                    
-                    # 분류기
-                    self.classifier = nn.Conv2d(classifier_in_channels, num_classes, kernel_size=1)
-                    self.edge_classifier = nn.Conv2d(classifier_in_channels, 1, kernel_size=1)
-                
-                def forward(self, x):
-                    features = self.backbone(x)
-                    adapted_features = self.channel_adapter(features)
-                    
-                    # 분류 결과
-                    parsing_output = self.classifier(adapted_features)
-                    edge_output = self.edge_classifier(adapted_features)
-                    
-                    # 업샘플링
-                    parsing_output = F.interpolate(
-                        parsing_output, size=x.shape[2:], 
-                        mode='bilinear', align_corners=False
-                    )
-                    edge_output = F.interpolate(
-                        edge_output, size=x.shape[2:], 
-                        mode='bilinear', align_corners=False
-                    )
-                    
-                    return {
-                        'parsing': parsing_output,
-                        'edge': edge_output
-                    }
-            
             model = DynamicGraphonomyModel(config, num_classes=20)
+            model.to(self.device)
+            model.eval()
             self.logger.debug("✅ 동적 Graphonomy 모델 생성 완료")
             return model
             

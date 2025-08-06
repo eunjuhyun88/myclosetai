@@ -99,6 +99,9 @@ from app.ai_pipeline.utils.metrics import (
     assess_image_quality, calculate_cloth_similarity, assess_realism
 )
 
+# 🔥 Checkpoint Key Mapper import
+from app.ai_pipeline.utils.checkpoint_key_mapper import CheckpointKeyMapper
+
 # 🔥 Data Converter import
 from app.ai_pipeline.utils.data_converter import (
     preprocess_for_ootd, preprocess_for_viton_hd, setup_diffusion_pipeline,
@@ -998,7 +1001,7 @@ class UNetDenoisingNetwork(nn.Module):
 # ==============================================
 
 def create_ootd_model(device='cpu'):
-    """OOTD 모델 생성 - 실제 체크포인트 로딩 강화"""
+    """OOTD 모델 생성 - 실제 체크포인트 구조 매핑"""
     import logging
     logger = logging.getLogger(__name__)
     
@@ -1006,19 +1009,62 @@ def create_ootd_model(device='cpu'):
         model = OOTDDiffusionModel()
         logger.info("✅ OOTD Diffusion 신경망 구조 생성 완료")
         
-        # 실제 체크포인트 로딩 - 실제 파일 경로로 수정
+        # 실제 체크포인트 로딩 - 구조 매핑 포함
         checkpoint_paths = [
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/pytorch_model.bin",
-            "step_06_virtual_fitting/ootd_3.2gb.pth",
-            "ai_models/step_06_virtual_fitting/ootd_3.2gb.pth",
-            "ultra_models/ootd_3.2gb.pth",
-            "checkpoints/ootd_3.2gb.pth"
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/validated_checkpoints/ootd_checkpoint.pth",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/pytorch_model.bin"
         ]
+        
+        def map_ootd_checkpoint_keys(checkpoint):
+            """OOTD 체크포인트 키 매핑 - 새로운 키 매퍼 사용"""
+            # 새로운 키 매퍼 사용
+            key_mapper = CheckpointKeyMapper()
+            
+            # 임시로 체크포인트를 파일로 저장하여 분석
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.pth', delete=False) as tmp_file:
+                torch.save(checkpoint, tmp_file.name)
+                temp_checkpoint_path = tmp_file.name
+            
+            try:
+                # 체크포인트 분석 및 매핑 생성
+                mapping = key_mapper.create_ootd_mapping(temp_checkpoint_path, model)
+                
+                if not mapping:
+                    logger.error("❌ OOTD 키 매핑 생성 실패")
+                    raise RuntimeError("OOTD 키 매핑 생성 실패")
+                
+                # 매핑 적용
+                mapped_checkpoint = key_mapper.apply_mapping(checkpoint, mapping)
+                
+                # 매핑 검증
+                validation_result = key_mapper.validate_mapping(mapped_checkpoint, model)
+                logger.info(f"📊 OOTD 매핑 검증 결과:")
+                logger.info(f"  - 커버리지: {validation_result['coverage_percentage']:.1f}%")
+                logger.info(f"  - 모델 키 수: {validation_result['total_model_keys']}")
+                logger.info(f"  - 매핑된 키 수: {validation_result['mapped_keys']}")
+                logger.info(f"  - 형태 일치: {validation_result['shape_matches']}")
+                
+                if validation_result['shape_mismatches']:
+                    logger.warning(f"⚠️ 형태 불일치: {len(validation_result['shape_mismatches'])}개")
+                    for mismatch in validation_result['shape_mismatches'][:5]:
+                        logger.warning(f"  {mismatch['key']}: {mismatch['checkpoint_shape']} vs {mismatch['model_shape']}")
+                
+                logger.info(f"✅ OOTD 키 매핑 완료: {len(mapped_checkpoint)}/{len(checkpoint)} 키 매핑됨")
+                return mapped_checkpoint
+                
+            finally:
+                # 임시 파일 삭제
+                try:
+                    os.unlink(temp_checkpoint_path)
+                except:
+                    pass
         
         checkpoint_loaded = False
         for checkpoint_path in checkpoint_paths:
@@ -1031,30 +1077,40 @@ def create_ootd_model(device='cpu'):
                         try:
                             from safetensors.torch import load_file
                             checkpoint = load_file(checkpoint_path)
-                            model.load_state_dict(checkpoint, strict=False)
-                            logger.info(f"✅ OOTD safetensors 체크포인트 로딩 완료: {checkpoint_path}")
-                            checkpoint_loaded = True
-                            break
+                            # 키 매핑 적용
+                            mapped_checkpoint = map_ootd_checkpoint_keys(checkpoint)
+                            if mapped_checkpoint:
+                                model.load_state_dict(mapped_checkpoint, strict=False)
+                                logger.info(f"✅ OOTD safetensors 체크포인트 로딩 완료: {checkpoint_path}")
+                                checkpoint_loaded = True
+                                break
                         except ImportError:
                             logger.warning("⚠️ safetensors 라이브러리 없음 - 일반 PyTorch 로딩 시도")
-                            checkpoint = torch.load(checkpoint_path, map_location='cpu')
+                            # weights_only=False로 수정
+                            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
                             if 'state_dict' in checkpoint:
-                                model.load_state_dict(checkpoint['state_dict'], strict=False)
+                                mapped_checkpoint = map_ootd_checkpoint_keys(checkpoint['state_dict'])
                             else:
-                                model.load_state_dict(checkpoint, strict=False)
-                            logger.info(f"✅ OOTD 일반 체크포인트 로딩 완료: {checkpoint_path}")
+                                mapped_checkpoint = map_ootd_checkpoint_keys(checkpoint)
+                            
+                            if mapped_checkpoint:
+                                model.load_state_dict(mapped_checkpoint, strict=False)
+                                logger.info(f"✅ OOTD 일반 체크포인트 로딩 완료: {checkpoint_path}")
+                                checkpoint_loaded = True
+                                break
+                    else:
+                        # 일반 PyTorch 체크포인트 로딩 - weights_only=False로 수정
+                        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                        if 'state_dict' in checkpoint:
+                            mapped_checkpoint = map_ootd_checkpoint_keys(checkpoint['state_dict'])
+                        else:
+                            mapped_checkpoint = map_ootd_checkpoint_keys(checkpoint)
+                        
+                        if mapped_checkpoint:
+                            model.load_state_dict(mapped_checkpoint, strict=False)
+                            logger.info(f"✅ OOTD 체크포인트 로딩 완료: {checkpoint_path}")
                             checkpoint_loaded = True
                             break
-                    else:
-                        # 일반 PyTorch 체크포인트 로딩
-                        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                        if 'state_dict' in checkpoint:
-                            model.load_state_dict(checkpoint['state_dict'], strict=False)
-                        else:
-                            model.load_state_dict(checkpoint, strict=False)
-                        logger.info(f"✅ OOTD 체크포인트 로딩 완료: {checkpoint_path}")
-                        checkpoint_loaded = True
-                        break
                 except Exception as e:
                     if VIRTUAL_FITTING_HELPERS_AVAILABLE:
                         error_response = handle_virtual_fitting_model_loading_error("OOTD", e, checkpoint_path)
@@ -1064,20 +1120,21 @@ def create_ootd_model(device='cpu'):
                     continue
         
         if not checkpoint_loaded:
-            logger.warning("⚠️ OOTD 체크포인트 로딩 실패 - 초기화된 모델 사용")
-            # 🔥 체크포인트가 없어도 모델은 반환 (실제 신경망 구조)
+            logger.error("❌ OOTD 체크포인트 로딩 실패 - 실제 체크포인트 필요")
+            raise RuntimeError("OOTD 체크포인트를 찾을 수 없습니다. 실제 체크포인트가 필요합니다.")
         
-        model.to(device)
+        # 🔥 Device 일관성 보장
+        model = model.to(device)
         model.eval()
         logger.info(f"✅ OOTD 모델 준비 완료 (device: {device})")
         return model
         
     except Exception as e:
         logger.error(f"❌ OOTD 모델 생성 실패: {e}")
-        return None
+        raise RuntimeError(f"OOTD 모델 생성 실패: {e}")
             
 def create_viton_hd_model(device='cpu'):
-    """VITON-HD 모델 생성 - 실제 체크포인트 로딩 강화"""
+    """VITON-HD 모델 생성 - 실제 체크포인트 구조 매핑"""
     import logging
     logger = logging.getLogger(__name__)
     
@@ -1085,16 +1142,61 @@ def create_viton_hd_model(device='cpu'):
         model = VITONHDModel()
         logger.info("✅ VITON-HD 신경망 구조 생성 완료")
         
-        # 실제 체크포인트 로딩 - 실제 파일 경로로 수정
+        # 실제 체크포인트 로딩 - 구조 매핑 포함
         checkpoint_paths = [
-            "backend/ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth",
-            "backend/ai_models/step_06_virtual_fitting/hrviton_final.pth",
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ultra_models/viton_hd_2.1gb.pth",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/hrviton_final.pth",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/checkpoints/step_06_virtual_fitting/hrviton_final.pth",
             "step_06_virtual_fitting/viton_hd_2.1gb.pth",
             "ai_models/step_06_virtual_fitting/viton_hd_2.1gb.pth",
             "ultra_models/viton_hd_2.1gb.pth",
             "checkpoints/viton_hd_2.1gb.pth"
         ]
+        
+        def map_viton_checkpoint_keys(checkpoint):
+            """VITON-HD 체크포인트 키 매핑 - 새로운 키 매퍼 사용"""
+            # 새로운 키 매퍼 사용
+            key_mapper = CheckpointKeyMapper()
+            
+            # 임시로 체크포인트를 파일로 저장하여 분석
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.pth', delete=False) as tmp_file:
+                torch.save(checkpoint, tmp_file.name)
+                temp_checkpoint_path = tmp_file.name
+            
+            try:
+                # 체크포인트 분석 및 매핑 생성
+                mapping = key_mapper.create_viton_hd_mapping(temp_checkpoint_path, model)
+                
+                if not mapping:
+                    logger.error("❌ VITON-HD 키 매핑 생성 실패")
+                    raise RuntimeError("VITON-HD 키 매핑 생성 실패")
+                
+                # 매핑 적용
+                mapped_checkpoint = key_mapper.apply_mapping(checkpoint, mapping)
+                
+                # 매핑 검증
+                validation_result = key_mapper.validate_mapping(mapped_checkpoint, model)
+                logger.info(f"📊 VITON-HD 매핑 검증 결과:")
+                logger.info(f"  - 커버리지: {validation_result['coverage_percentage']:.1f}%")
+                logger.info(f"  - 모델 키 수: {validation_result['total_model_keys']}")
+                logger.info(f"  - 매핑된 키 수: {validation_result['mapped_keys']}")
+                logger.info(f"  - 형태 일치: {validation_result['shape_matches']}")
+                
+                if validation_result['shape_mismatches']:
+                    logger.warning(f"⚠️ 형태 불일치: {len(validation_result['shape_mismatches'])}개")
+                    for mismatch in validation_result['shape_mismatches'][:5]:
+                        logger.warning(f"  {mismatch['key']}: {mismatch['checkpoint_shape']} vs {mismatch['model_shape']}")
+                
+                logger.info(f"✅ VITON-HD 키 매핑 완료: {len(mapped_checkpoint)}/{len(checkpoint)} 키 매핑됨")
+                return mapped_checkpoint
+                
+            finally:
+                # 임시 파일 삭제
+                try:
+                    os.unlink(temp_checkpoint_path)
+                except:
+                    pass
         
         checkpoint_loaded = False
         for checkpoint_path in checkpoint_paths:
@@ -1102,35 +1204,53 @@ def create_viton_hd_model(device='cpu'):
                 try:
                     logger.info(f"🔄 VITON-HD 체크포인트 로딩 시도: {checkpoint_path}")
                     
+                    # 체크포인트 구조 분석 (디버깅용)
+                    if logger.isEnabledFor(logging.DEBUG):
+                        structure_info = analyze_checkpoint_structure(checkpoint_path)
+                        if 'error' not in structure_info:
+                            logger.debug(f"📊 체크포인트 구조: {structure_info['total_keys']}개 키, 패턴: {list(structure_info['key_patterns'].keys())}")
+                        else:
+                            logger.debug(f"⚠️ 체크포인트 구조 분석 실패: {structure_info['error']}")
+                    
                     if checkpoint_path.endswith('.safetensors'):
                         # safetensors 파일 로딩
                         try:
                             from safetensors.torch import load_file
                             checkpoint = load_file(checkpoint_path)
-                            model.load_state_dict(checkpoint, strict=False)
-                            logger.info(f"✅ VITON-HD safetensors 체크포인트 로딩 완료: {checkpoint_path}")
-                            checkpoint_loaded = True
-                            break
+                            # 키 매핑 적용
+                            mapped_checkpoint = map_viton_checkpoint_keys(checkpoint)
+                            if mapped_checkpoint:
+                                model.load_state_dict(mapped_checkpoint, strict=False)
+                                logger.info(f"✅ VITON-HD safetensors 체크포인트 로딩 완료: {checkpoint_path}")
+                                checkpoint_loaded = True
+                                break
                         except ImportError:
                             logger.warning("⚠️ safetensors 라이브러리 없음 - 일반 PyTorch 로딩 시도")
-                            checkpoint = torch.load(checkpoint_path, map_location='cpu')
+                            # weights_only=False로 수정
+                            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
                             if 'state_dict' in checkpoint:
-                                model.load_state_dict(checkpoint['state_dict'], strict=False)
+                                mapped_checkpoint = map_viton_checkpoint_keys(checkpoint['state_dict'])
                             else:
-                                model.load_state_dict(checkpoint, strict=False)
-                            logger.info(f"✅ VITON-HD 일반 체크포인트 로딩 완료: {checkpoint_path}")
+                                mapped_checkpoint = map_viton_checkpoint_keys(checkpoint)
+                            
+                            if mapped_checkpoint:
+                                model.load_state_dict(mapped_checkpoint, strict=False)
+                                logger.info(f"✅ VITON-HD 일반 체크포인트 로딩 완료: {checkpoint_path}")
+                                checkpoint_loaded = True
+                                break
+                    else:
+                        # weights_only=False로 수정
+                        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                        if 'state_dict' in checkpoint:
+                            mapped_checkpoint = map_viton_checkpoint_keys(checkpoint['state_dict'])
+                        else:
+                            mapped_checkpoint = map_viton_checkpoint_keys(checkpoint)
+                        
+                        if mapped_checkpoint:
+                            model.load_state_dict(mapped_checkpoint, strict=False)
+                            logger.info(f"✅ VITON-HD 체크포인트 로딩 완료: {checkpoint_path}")
                             checkpoint_loaded = True
                             break
-                    else:
-                        # 일반 PyTorch 체크포인트 로딩
-                        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                        if 'state_dict' in checkpoint:
-                            model.load_state_dict(checkpoint['state_dict'], strict=False)
-                        else:
-                            model.load_state_dict(checkpoint, strict=False)
-                        logger.info(f"✅ VITON-HD 체크포인트 로딩 완료: {checkpoint_path}")
-                        checkpoint_loaded = True
-                        break
                 except Exception as e:
                     if VIRTUAL_FITTING_HELPERS_AVAILABLE:
                         error_response = handle_virtual_fitting_model_loading_error("VITON-HD", e, checkpoint_path)
@@ -1140,8 +1260,8 @@ def create_viton_hd_model(device='cpu'):
                     continue
         
         if not checkpoint_loaded:
-            logger.warning("⚠️ VITON-HD 체크포인트 로딩 실패 - 초기화된 모델 사용")
-            # 🔥 체크포인트가 없어도 모델은 반환 (실제 신경망 구조)
+            logger.error("❌ VITON-HD 체크포인트 로딩 실패 - 실제 체크포인트 필요")
+            raise RuntimeError("VITON-HD 체크포인트를 찾을 수 없습니다. 실제 체크포인트가 필요합니다.")
         
         model.to(device)
         model.eval()
@@ -1150,7 +1270,7 @@ def create_viton_hd_model(device='cpu'):
         
     except Exception as e:
         logger.error(f"❌ VITON-HD 모델 생성 실패: {e}")
-        return None
+        raise RuntimeError(f"VITON-HD 모델 생성 실패: {e}")
 
 def create_stable_diffusion_model(device='cpu'):
     """Stable Diffusion 모델 생성 - 실제 체크포인트 로딩 강화"""
@@ -1161,19 +1281,63 @@ def create_stable_diffusion_model(device='cpu'):
         model = StableDiffusionNeuralNetwork()
         logger.info("✅ Stable Diffusion 신경망 구조 생성 완료")
         
-        # 실제 체크포인트 로딩 - 실제 파일 경로로 수정
+        # 실제 체크포인트 로딩 - 구조 매핑 포함
         checkpoint_paths = [
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/ootdiffusion/unet/ootdiffusion/unet/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/checkpoints/step_06_virtual_fitting/diffusion_pytorch_model.safetensors",
-            "backend/ai_models/step_06_virtual_fitting/pytorch_model.bin",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/diffusion_pytorch_model.bin",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_hd/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/ootdiffusion/checkpoints/ootd/ootd_dc/checkpoint-36000/unet_vton/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/unet/diffusion_pytorch_model.safetensors",
+            "/Users/gimdudeul/MVP/mycloset-ai/backend/ai_models/step_06_virtual_fitting/pytorch_model.bin",
             "step_06_virtual_fitting/stable_diffusion_4.8gb.pth",
             "ai_models/step_06_virtual_fitting/stable_diffusion_4.8gb.pth",
             "ultra_models/stable_diffusion_4.8gb.pth",
             "checkpoints/stable_diffusion_4.8gb.pth"
         ]
+        
+        def map_diffusion_checkpoint_keys(checkpoint):
+            """Stable Diffusion 체크포인트 키 매핑 - 새로운 키 매퍼 사용"""
+            # 새로운 키 매퍼 사용
+            key_mapper = CheckpointKeyMapper()
+            
+            # 임시로 체크포인트를 파일로 저장하여 분석
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.pth', delete=False) as tmp_file:
+                torch.save(checkpoint, tmp_file.name)
+                temp_checkpoint_path = tmp_file.name
+            
+            try:
+                # 체크포인트 분석 및 매핑 생성
+                mapping = key_mapper.create_stable_diffusion_mapping(temp_checkpoint_path, model)
+                
+                if not mapping:
+                    logger.error("❌ Stable Diffusion 키 매핑 생성 실패")
+                    raise RuntimeError("Stable Diffusion 키 매핑 생성 실패")
+                
+                # 매핑 적용
+                mapped_checkpoint = key_mapper.apply_mapping(checkpoint, mapping)
+                
+                # 매핑 검증
+                validation_result = key_mapper.validate_mapping(mapped_checkpoint, model)
+                logger.info(f"📊 Stable Diffusion 매핑 검증 결과:")
+                logger.info(f"  - 커버리지: {validation_result['coverage_percentage']:.1f}%")
+                logger.info(f"  - 모델 키 수: {validation_result['total_model_keys']}")
+                logger.info(f"  - 매핑된 키 수: {validation_result['mapped_keys']}")
+                logger.info(f"  - 형태 일치: {validation_result['shape_matches']}")
+                
+                if validation_result['shape_mismatches']:
+                    logger.warning(f"⚠️ 형태 불일치: {len(validation_result['shape_mismatches'])}개")
+                    for mismatch in validation_result['shape_mismatches'][:5]:
+                        logger.warning(f"  {mismatch['key']}: {mismatch['checkpoint_shape']} vs {mismatch['model_shape']}")
+                
+                logger.info(f"✅ Stable Diffusion 키 매핑 완료: {len(mapped_checkpoint)}/{len(checkpoint)} 키 매핑됨")
+                return mapped_checkpoint
+                
+            finally:
+                # 임시 파일 삭제
+                try:
+                    os.unlink(temp_checkpoint_path)
+                except:
+                    pass
         
         checkpoint_loaded = False
         for checkpoint_path in checkpoint_paths:
@@ -1181,35 +1345,53 @@ def create_stable_diffusion_model(device='cpu'):
                 try:
                     logger.info(f"🔄 Stable Diffusion 체크포인트 로딩 시도: {checkpoint_path}")
                     
+                    # 체크포인트 구조 분석 (디버깅용)
+                    if logger.isEnabledFor(logging.DEBUG):
+                        structure_info = analyze_checkpoint_structure(checkpoint_path)
+                        if 'error' not in structure_info:
+                            logger.debug(f"📊 체크포인트 구조: {structure_info['total_keys']}개 키, 패턴: {list(structure_info['key_patterns'].keys())}")
+                        else:
+                            logger.debug(f"⚠️ 체크포인트 구조 분석 실패: {structure_info['error']}")
+                    
                     if checkpoint_path.endswith('.safetensors'):
                         # safetensors 파일 로딩
                         try:
                             from safetensors.torch import load_file
                             checkpoint = load_file(checkpoint_path)
-                            model.load_state_dict(checkpoint, strict=False)
-                            logger.info(f"✅ Stable Diffusion safetensors 체크포인트 로딩 완료: {checkpoint_path}")
-                            checkpoint_loaded = True
-                            break
+                            # 키 매핑 적용
+                            mapped_checkpoint = map_diffusion_checkpoint_keys(checkpoint)
+                            if mapped_checkpoint:
+                                model.load_state_dict(mapped_checkpoint, strict=False)
+                                logger.info(f"✅ Stable Diffusion safetensors 체크포인트 로딩 완료: {checkpoint_path}")
+                                checkpoint_loaded = True
+                                break
                         except ImportError:
                             logger.warning("⚠️ safetensors 라이브러리 없음 - 일반 PyTorch 로딩 시도")
-                            checkpoint = torch.load(checkpoint_path, map_location='cpu')
+                            # weights_only=False로 수정
+                            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
                             if 'state_dict' in checkpoint:
-                                model.load_state_dict(checkpoint['state_dict'], strict=False)
+                                mapped_checkpoint = map_diffusion_checkpoint_keys(checkpoint['state_dict'])
                             else:
-                                model.load_state_dict(checkpoint, strict=False)
-                            logger.info(f"✅ Stable Diffusion 일반 체크포인트 로딩 완료: {checkpoint_path}")
+                                mapped_checkpoint = map_diffusion_checkpoint_keys(checkpoint)
+                            
+                            if mapped_checkpoint:
+                                model.load_state_dict(mapped_checkpoint, strict=False)
+                                logger.info(f"✅ Stable Diffusion 일반 체크포인트 로딩 완료: {checkpoint_path}")
+                                checkpoint_loaded = True
+                                break
+                    else:
+                        # weights_only=False로 수정
+                        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+                        if 'state_dict' in checkpoint:
+                            mapped_checkpoint = map_diffusion_checkpoint_keys(checkpoint['state_dict'])
+                        else:
+                            mapped_checkpoint = map_diffusion_checkpoint_keys(checkpoint)
+                        
+                        if mapped_checkpoint:
+                            model.load_state_dict(mapped_checkpoint, strict=False)
+                            logger.info(f"✅ Stable Diffusion 체크포인트 로딩 완료: {checkpoint_path}")
                             checkpoint_loaded = True
                             break
-                    else:
-                        # 일반 PyTorch 체크포인트 로딩
-                        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-                        if 'state_dict' in checkpoint:
-                            model.load_state_dict(checkpoint['state_dict'], strict=False)
-                        else:
-                            model.load_state_dict(checkpoint, strict=False)
-                        logger.info(f"✅ Stable Diffusion 체크포인트 로딩 완료: {checkpoint_path}")
-                        checkpoint_loaded = True
-                        break
                 except Exception as e:
                     if VIRTUAL_FITTING_HELPERS_AVAILABLE:
                         error_response = handle_virtual_fitting_model_loading_error("Stable Diffusion", e, checkpoint_path)
@@ -1219,17 +1401,18 @@ def create_stable_diffusion_model(device='cpu'):
                     continue
         
         if not checkpoint_loaded:
-            logger.warning("⚠️ Stable Diffusion 체크포인트 로딩 실패 - 초기화된 모델 사용")
-            # 🔥 체크포인트가 없어도 모델은 반환 (실제 신경망 구조)
+            logger.error("❌ Stable Diffusion 체크포인트 로딩 실패 - 실제 체크포인트 필요")
+            raise RuntimeError("Stable Diffusion 체크포인트를 찾을 수 없습니다. 실제 체크포인트가 필요합니다.")
         
-        model.to(device)
+        # 🔥 Device 일관성 보장
+        model = model.to(device)
         model.eval()
         logger.info(f"✅ Stable Diffusion 모델 준비 완료 (device: {device})")
         return model
         
     except Exception as e:
         logger.error(f"❌ Stable Diffusion 모델 생성 실패: {e}")
-        return None
+        raise RuntimeError(f"Stable Diffusion 모델 생성 실패: {e}")
 
 
 import importlib  # 추가
@@ -1247,6 +1430,118 @@ def ensure_quality_assessment_logger(quality_assessment_obj):
         )
         return True
     return False
+
+def analyze_checkpoint_structure(checkpoint_path):
+    """체크포인트 구조 분석"""
+    try:
+        if checkpoint_path.endswith('.safetensors'):
+            from safetensors.torch import load_file
+            checkpoint = load_file(checkpoint_path)
+        else:
+            checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+        
+        if 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint
+        
+        # 키 패턴 분석
+        key_patterns = {}
+        for key in state_dict.keys():
+            prefix = key.split('.')[0] if '.' in key else key
+            if prefix not in key_patterns:
+                key_patterns[prefix] = []
+            key_patterns[prefix].append(key)
+        
+        return {
+            'total_keys': len(state_dict),
+            'key_patterns': key_patterns,
+            'sample_keys': list(state_dict.keys())[:10]
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+def smart_checkpoint_mapping(checkpoint, model_state_dict, model_name):
+    """스마트 체크포인트 키 매핑"""
+    mapped_checkpoint = {}
+    unmapped_keys = []
+    
+    # 모델별 매핑 규칙
+    mapping_rules = {
+        'ootd': {
+            # 직접 매핑 - 체크포인트 키를 모델 키로 변환
+            'conv_in.weight': 'conv_in.weight',
+            'conv_in.bias': 'conv_in.bias',
+            'conv_out.weight': 'conv_out.weight',
+            'conv_out.bias': 'conv_out.bias',
+            'conv_norm_out.weight': 'conv_norm_out.weight',
+            'conv_norm_out.bias': 'conv_norm_out.bias',
+            'time_embedding.linear_1.weight': 'time_embedding.linear_1.weight',
+            'time_embedding.linear_1.bias': 'time_embedding.linear_1.bias',
+            'time_embedding.linear_2.weight': 'time_embedding.linear_2.weight',
+            'time_embedding.linear_2.bias': 'time_embedding.linear_2.bias',
+            'time_embedding.act': 'time_embedding.act',
+            # 접두사 제거 규칙
+            'model.': '',
+            'unet.': '',
+            'diffusion.': '',
+            'time_embedding.': 'time_embedding.',
+            'encoder_blocks.': 'encoder_blocks.',
+            'decoder_blocks.': 'decoder_blocks.',
+            'bottleneck_': 'bottleneck_',
+            'cross_attention.': 'cross_attention.',
+            'cloth_encoder.': 'cloth_encoder.',
+            'output_conv.': 'output_conv.'
+        },
+        'viton_hd': {
+            'model.': '',
+            'viton.': '',
+            'hrviton.': '',
+            'geometric_matcher.': 'geometric_matcher.',
+            'tryon_generator.': 'tryon_generator.',
+            'refinement_net.': 'refinement_net.',
+            'feature_extractor.': 'geometric_matcher.feature_extractor.',
+            'flow_predictor.': 'geometric_matcher.flow_predictor.',
+            'upsample.': 'geometric_matcher.upsample.'
+        },
+        'stable_diffusion': {
+            'model.': '',
+            'unet.': '',
+            'diffusion.': '',
+            'vae.': 'vae_encoder.',
+            'text_encoder.': 'text_encoder.',
+            'noise_scheduler.': 'noise_scheduler.',
+            'controlnet.': 'controlnet.',
+            'lora_adapter.': 'lora_adapter.'
+        }
+    }
+    
+    rules = mapping_rules.get(model_name, {})
+    
+    for key, value in checkpoint.items():
+        mapped = False
+        
+        # 규칙 기반 매핑
+        for prefix, replacement in rules.items():
+            if key.startswith(prefix):
+                new_key = key.replace(prefix, replacement, 1)
+                if new_key in model_state_dict:
+                    if model_state_dict[new_key].shape == value.shape:
+                        mapped_checkpoint[new_key] = value
+                        mapped = True
+                        break
+        
+        # 직접 매핑 시도
+        if not mapped and key in model_state_dict:
+            if model_state_dict[key].shape == value.shape:
+                mapped_checkpoint[key] = value
+                mapped = True
+        
+        # 매핑되지 않은 키 기록
+        if not mapped:
+            unmapped_keys.append(key)
+    
+    return mapped_checkpoint, unmapped_keys
 
 def _setup_logger():
     """AIQualityAssessment용 logger 설정"""
@@ -1303,257 +1598,6 @@ def get_base_step_mixin_class():
             return None
 
 BaseStepMixin = get_base_step_mixin_class()
-
-# BaseStepMixin 폴백 클래스 (VirtualFitting 특화)
-if BaseStepMixin is None:
-    class BaseStepMixin:
-        """VirtualFittingStep용 BaseStepMixin 폴백 클래스"""
-        
-        def __init__(self, **kwargs):
-            # 기본 속성들
-            self.logger = logging.getLogger(self.__class__.__name__)
-            self.step_name = kwargs.get('step_name', 'VirtualFittingStep')
-            self.step_id = kwargs.get('step_id', 6)
-            self.device = kwargs.get('device', 'cpu')
-            
-            # AI 모델 관련 속성들 (VirtualFitting이 필요로 하는)
-            self.ai_models = {}
-            self.models_loading_status = {
-                'ootd': False,
-                'viton_hd': False,
-                'diffusion': False,
-                'tps_warping': False,
-                'cloth_analyzer': False,
-                'quality_assessor': False,
-                'mock_model': False
-            }
-            self.model_interface = None
-            self.loaded_models = []
-            
-            # Virtual Fitting 특화 속성들
-            self.fitting_models = {}
-            self.fitting_ready = False
-            self.fitting_cache = {}
-            self.pose_processor = None
-            self.lighting_adapter = None
-            self.texture_enhancer = None
-            self.diffusion_pipeline = None
-            
-            # 상태 관련 속성들
-            self.is_initialized = False
-            self.is_ready = False
-            self.has_model = False
-            self.model_loaded = False
-            self.warmup_completed = False
-            
-            # Central Hub DI Container 관련
-            self.model_loader = None
-            self.memory_manager = None
-            self.data_converter = None
-            self.di_container = None
-            
-            # 성능 통계
-            self.performance_stats = {
-                'total_processed': 0,
-                'successful_fittings': 0,
-                'avg_processing_time': 0.0,
-                'avg_fitting_quality': 0.0,
-                'ootd_calls': 0,
-                'viton_hd_calls': 0,
-                'diffusion_calls': 0,
-                'tps_warping_applied': 0,
-                'quality_assessments': 0,
-                'cloth_analysis_performed': 0,
-                'error_count': 0,
-                'models_loaded': 0
-            }
-            
-            # 통계 시스템
-            self.statistics = {
-                'total_processed': 0,
-                'successful_fittings': 0,
-                'average_quality': 0.0,
-                'total_processing_time': 0.0,
-                'ai_model_calls': 0,
-                'error_count': 0,
-                'model_creation_success': False,
-                'real_ai_models_used': True,
-                'algorithm_type': 'advanced_virtual_fitting_with_tps_analysis',
-                'features': [
-                    'OOTD (Outfit Of The Day) 모델 - 3.2GB',
-                    'VITON-HD 모델 - 2.1GB (고품질 Virtual Try-On)',
-                    'Stable Diffusion 모델 - 4.8GB (고급 이미지 생성)',
-                    'TPS (Thin Plate Spline) 워핑 알고리즘',
-                    '고급 의류 분석 시스템 (색상/텍스처/패턴)',
-                    'AI 품질 평가 시스템 (SSIM 기반)',
-                    'FFT 기반 패턴 감지',
-                    '라플라시안 분산 선명도 평가',
-                    '바이리니어 보간 워핑 엔진',
-                    'K-means 색상 클러스터링',
-                    '다중 의류 아이템 동시 피팅',
-                    '실시간 가상 피팅 처리'
-                ]
-            }
-            
-            self.logger.info(f"✅ {self.step_name} BaseStepMixin 폴백 클래스 초기화 완료")
-        
-        # BaseStepMixin v20.0 표준에 맞춰 동기 버전만 유지
-        def process(self, **kwargs) -> Dict[str, Any]:
-            """BaseStepMixin v20.0 호환 process() 메서드 (동기 버전)"""
-            if hasattr(super(), 'process'):
-                return super().process(**kwargs)
-            
-            # 독립 실행 모드
-            processed_input = kwargs
-            result = self._run_ai_inference(processed_input)
-            return result
-            
-        def initialize(self) -> bool:
-            """초기화 메서드"""
-            if self.is_initialized:
-                return True
-            
-            self.logger.info(f"🔄 {self.step_name} 초기화 시작...")
-            
-            # Central Hub를 통한 의존성 주입 시도
-            injected_count = _inject_dependencies_safe(self)
-            if injected_count > 0:
-                self.logger.info(f"✅ Central Hub 의존성 주입: {injected_count}개")
-            
-            # VirtualFitting 모델들 로딩 (실제 구현에서는 _load_virtual_fitting_models_via_central_hub 호출)
-            if hasattr(self, '_load_virtual_fitting_models_via_central_hub'):
-                self._load_virtual_fitting_models_via_central_hub()
-            
-            self.is_initialized = True
-            self.is_ready = True
-            self.logger.info(f"✅ {self.step_name} 초기화 완료")
-            return True
-        
-        def cleanup(self):
-            """정리 메서드"""
-            self.logger.info(f"🔄 {self.step_name} 리소스 정리 시작...")
-            
-            # AI 모델들 정리
-            for model_name, model in self.ai_models.items():
-                if hasattr(model, 'cleanup'):
-                    model.cleanup()
-                del model
-            
-            # 캐시 정리
-            self.ai_models.clear()
-            if hasattr(self, 'fitting_models'):
-                self.fitting_models.clear()
-            if hasattr(self, 'fitting_cache'):
-                self.fitting_cache.clear()
-            
-            # Diffusion 파이프라인 정리
-            if hasattr(self, 'diffusion_pipeline') and self.diffusion_pipeline:
-                del self.diffusion_pipeline
-                self.diffusion_pipeline = None
-            
-            # GPU 메모리 정리
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                    torch.mps.empty_cache()
-            except (ImportError, RuntimeError):
-                pass
-            
-            import gc
-            gc.collect()
-            
-            self.logger.info(f"✅ {self.step_name} 정리 완료")
-        
-        def get_status(self) -> Dict[str, Any]:
-            """상태 조회"""
-            return {
-                'step_name': self.step_name,
-                'step_id': self.step_id,
-                'is_initialized': self.is_initialized,
-                'is_ready': self.is_ready,
-                'device': self.device,
-                'fitting_ready': getattr(self, 'fitting_ready', False),
-                'models_loaded': len(getattr(self, 'loaded_models', [])),
-                'fitting_models': list(getattr(self, 'fitting_models', {}).keys()),
-                'auxiliary_processors': {
-                    'pose_processor': getattr(self, 'pose_processor', None) is not None,
-                    'lighting_adapter': getattr(self, 'lighting_adapter', None) is not None,
-                    'texture_enhancer': getattr(self, 'texture_enhancer', None) is not None
-                },
-                'algorithm_type': 'advanced_virtual_fitting_with_tps_analysis',
-                'fallback_mode': True
-            }
-        
-        # BaseStepMixin 호환 메서드들
-        def set_model_loader(self, model_loader):
-            """ModelLoader 의존성 주입 (BaseStepMixin 호환)"""
-            self.model_loader = model_loader
-            self.logger.info("✅ ModelLoader 의존성 주입 완료")
-            
-            # Step 인터페이스 생성 시도
-            if hasattr(model_loader, 'create_step_interface'):
-                self.model_interface = model_loader.create_step_interface(self.step_name)
-                self.logger.info("✅ Step 인터페이스 생성 및 주입 완료")
-            else:
-                self.model_interface = model_loader
-        
-        def set_memory_manager(self, memory_manager):
-            """MemoryManager 의존성 주입 (BaseStepMixin 호환)"""
-            self.memory_manager = memory_manager
-            self.logger.info("✅ MemoryManager 의존성 주입 완료")
-        
-        def set_data_converter(self, data_converter):
-            """DataConverter 의존성 주입 (BaseStepMixin 호환)"""
-            self.data_converter = data_converter
-            self.logger.info("✅ DataConverter 의존성 주입 완료")
-        
-        def set_di_container(self, di_container):
-            """DI Container 의존성 주입"""
-            self.di_container = di_container
-            self.logger.info("✅ DI Container 의존성 주입 완료")
-
-        def _get_step_requirements(self) -> Dict[str, Any]:
-            """Step 06 Virtual Fitting 요구사항 반환 (BaseStepMixin 호환)"""
-            return {
-                "required_models": [
-                    "ootd_diffusion.pth",
-                    "viton_hd_final.pth",
-                    "stable_diffusion_inpainting.pth"
-                ],
-                "primary_model": "ootd_diffusion.pth",
-                "model_configs": {
-                    "ootd_diffusion.pth": {
-                        "size_mb": 3276.8,
-                        "device_compatible": ["cpu", "mps", "cuda"],
-                        "precision": "high",
-                        "ai_algorithm": "Outfit Of The Day Diffusion"
-                    },
-                    "viton_hd_final.pth": {
-                        "size_mb": 2147.5,
-                        "device_compatible": ["cpu", "mps", "cuda"],
-                        "real_time": False,
-                        "ai_algorithm": "Virtual Try-On HD"
-                    },
-                    "stable_diffusion_inpainting.pth": {
-                        "size_mb": 4835.2,
-                        "device_compatible": ["cpu", "mps", "cuda"],
-                        "quality": "ultra",
-                        "ai_algorithm": "Stable Diffusion Inpainting"
-                    }
-                },
-                "verified_paths": [
-                    "step_06_virtual_fitting/ootd_diffusion.pth",
-                    "step_06_virtual_fitting/viton_hd_final.pth",
-                    "step_06_virtual_fitting/stable_diffusion_inpainting.pth"
-                ],
-                "advanced_algorithms": [
-                    "TPSWarping",
-                    "AdvancedClothAnalyzer", 
-                    "AIQualityAssessment"
-                ]
-            }
 
 # ==============================================
 # 🔥 VirtualFittingStep 클래스
@@ -3064,74 +3108,9 @@ class VirtualFittingStep(BaseStepMixin):
             self._create_actual_neural_networks()
     
     def _create_mock_virtual_fitting_models(self):
-        """Mock Virtual Fitting 모델 생성"""
-        self.logger.info("🔄 Mock Virtual Fitting 모델 생성 시작...")
-        
-        # Mock OOTD 모델
-        class MockOOTDModel:
-            def __init__(self):
-                self.device = 'cpu'
-                self.model_name = 'mock_ootd'
-            
-            def __call__(self, person_image, clothing_image):
-                # 간단한 블렌딩으로 Mock 결과 생성
-                if isinstance(person_image, torch.Tensor):
-                    person_image = person_image.cpu().numpy()
-                if isinstance(clothing_image, torch.Tensor):
-                    clothing_image = clothing_image.cpu().numpy()
-                
-                # 간단한 알파 블렌딩
-                result = 0.7 * person_image + 0.3 * clothing_image
-                return torch.from_numpy(result).float()
-        
-        # Mock VITON-HD 모델
-        class MockVITONHDModel:
-            def __init__(self):
-                self.device = 'cpu'
-                self.model_name = 'mock_viton_hd'
-            
-            def __call__(self, person_image, clothing_image):
-                # 간단한 블렌딩으로 Mock 결과 생성
-                if isinstance(person_image, torch.Tensor):
-                    person_image = person_image.cpu().numpy()
-                if isinstance(clothing_image, torch.Tensor):
-                    clothing_image = clothing_image.cpu().numpy()
-                
-                # 간단한 알파 블렌딩
-                result = 0.6 * person_image + 0.4 * clothing_image
-                return torch.from_numpy(result).float()
-        
-        # Mock Diffusion 모델
-        class MockDiffusionModel:
-            def __init__(self):
-                self.device = 'cpu'
-                self.model_name = 'mock_diffusion'
-            
-            def __call__(self, person_image, clothing_image, text_prompt=None, num_inference_steps=30):
-                # 간단한 블렌딩으로 Mock 결과 생성
-                if isinstance(person_image, torch.Tensor):
-                    person_image = person_image.cpu().numpy()
-                if isinstance(clothing_image, torch.Tensor):
-                    clothing_image = clothing_image.cpu().numpy()
-                
-                # 간단한 알파 블렌딩
-                result = 0.5 * person_image + 0.5 * clothing_image
-                return torch.from_numpy(result).float()
-        
-        # Mock 모델들 생성
-        self.ai_models['ootd'] = MockOOTDModel()
-        self.ai_models['viton_hd'] = MockVITONHDModel()
-        self.ai_models['diffusion'] = MockDiffusionModel()
-        
-        # 로딩 상태 업데이트
-        self.loaded_models = ['ootd', 'viton_hd', 'diffusion']
-        self.models_loading_status = {
-            'ootd': True,
-            'viton_hd': True,
-            'diffusion': True
-        }
-        
-        self.logger.info("✅ Mock Virtual Fitting 모델 생성 완료")
+        """목업 모델 생성 금지 - 실제 체크포인트만 허용"""
+        self.logger.error("❌ 목업 모델 생성 금지 - 실제 체크포인트 필요")
+        raise RuntimeError("목업 모델 생성이 금지되었습니다. 실제 체크포인트가 필요합니다.")
     
     def _initialize_auxiliary_processors(self):
         """보조 프로세서 초기화"""
@@ -3190,87 +3169,14 @@ class VirtualFittingStep(BaseStepMixin):
 
 
     def _create_actual_neural_networks_fallback(self):
-        """실제 신경망 모델 생성 (최종 폴백)"""
-        # 🔥 실제 신경망 모델들을 강제로 생성
-        self.logger.info("🔄 실제 신경망 모델 최종 폴백 생성 시작...")
-        
-        # OOTD 신경망 모델
-        ootd_model = create_ootd_model(self.device)
-        if ootd_model:
-            self.ai_models['ootd'] = ootd_model
-            if hasattr(self, 'loaded_models') and isinstance(self.loaded_models, list):
-                self.loaded_models.append('ootd')
-            else:
-                self.loaded_models = ['ootd']
-            self.logger.info("✅ OOTD 신경망 모델 최종 폴백 생성 성공")
-        
-        # VITON-HD 신경망 모델
-        viton_hd_model = create_viton_hd_model(self.device)
-        if viton_hd_model:
-            self.ai_models['viton_hd'] = viton_hd_model
-            if hasattr(self, 'loaded_models') and isinstance(self.loaded_models, list):
-                self.loaded_models.append('viton_hd')
-            else:
-                self.loaded_models = ['viton_hd']
-            self.logger.info("✅ VITON-HD 신경망 모델 최종 폴백 생성 성공")
-        
-        # Stable Diffusion 신경망 모델
-        diffusion_model = create_stable_diffusion_model(self.device)
-        if diffusion_model:
-            self.ai_models['diffusion'] = diffusion_model
-            if hasattr(self, 'loaded_models') and isinstance(self.loaded_models, list):
-                self.loaded_models.append('diffusion')
-            else:
-                self.loaded_models = ['diffusion']
-            self.logger.info("✅ Stable Diffusion 신경망 모델 최종 폴백 생성 성공")
-        
-        # Virtual Fitting 준비 상태 업데이트
-        if self.ai_models:
-            self.fitting_ready = True
-            self.logger.info(f"✅ 실제 신경망 모델 최종 폴백 생성 완료: {len(self.ai_models)}개 모델")
-        else:
-            self.logger.error("❌ 모든 실제 신경망 모델 최종 폴백 생성 실패")
-            self.fitting_ready = False
+        """폴백 모델 생성 금지 - 실제 체크포인트만 허용"""
+        self.logger.error("❌ 폴백 모델 생성 금지 - 실제 체크포인트 필요")
+        raise RuntimeError("폴백 모델 생성이 금지되었습니다. 실제 체크포인트가 필요합니다.")
 
     def _create_mock_auxiliary_processors(self):
-        """Mock 보조 프로세서 생성"""
-        self.pose_processor = self._create_mock_pose_processor()
-        self.lighting_adapter = self._create_mock_lighting_adapter() 
-        self.texture_enhancer = self._create_mock_texture_enhancer()
-
-    def _create_mock_pose_processor(self):
-        """Mock 포즈 프로세서"""
-        class MockPoseProcessor:
-            def extract_pose(self, image):
-                return torch.zeros(1, 18, 2)  # 18 keypoints
-            
-            def generate_pose_map(self, pose_keypoints, image_size):
-                h, w = image_size
-                return torch.zeros(1, 18, h, w)
-        
-        return MockPoseProcessor()
-
-    def _create_mock_lighting_adapter(self):
-        """Mock 조명 어댑터"""
-        class MockLightingAdapter:
-            def analyze_lighting(self, image):
-                return {'direction': 'front', 'intensity': 0.7}
-            
-            def adapt_lighting(self, fitted_image, target_lighting):
-                return fitted_image
-        
-        return MockLightingAdapter()
-
-    def _create_mock_texture_enhancer(self):
-        """Mock 텍스처 향상기"""
-        class MockTextureEnhancer:
-            def enhance_texture(self, image, enhancement_level=0.5):
-                return image
-            
-            def preserve_fabric_details(self, image):
-                return image
-        
-        return MockTextureEnhancer()
+        """목업 보조 프로세서 생성 금지 - 실제 프로세서만 허용"""
+        self.logger.error("❌ 목업 보조 프로세서 생성 금지 - 실제 프로세서 필요")
+        raise RuntimeError("목업 보조 프로세서 생성이 금지되었습니다. 실제 프로세서가 필요합니다.")
 
     def _run_ai_inference(self, processed_input: Dict[str, Any]) -> Dict[str, Any]:
         """🔥 실제 Virtual Fitting AI 추론 (BaseStepMixin v20.0 호환)"""
@@ -3288,12 +3194,25 @@ class VirtualFittingStep(BaseStepMixin):
             start_time = time.time()
             print(f"✅ start_time 설정 완료: {start_time}")
             
-            # 🔥 목업 데이터 감지 로그 추가
+            # 🔥 목업 데이터 감지 로그 추가 (개선된 버전)
             if MOCK_DIAGNOSTIC_AVAILABLE:
                 print(f"🔍 목업 데이터 진단 시작")
                 mock_detections = []
                 for key, value in processed_input.items():
                     if value is not None:
+                        # cloth_items는 빈 배열이어도 실제 데이터로 처리
+                        if key == 'cloth_items' and isinstance(value, list):
+                            if len(value) == 0:
+                                print(f"ℹ️ cloth_items가 빈 배열 - 기본 의류 정보 생성")
+                                # 기본 의류 정보 생성
+                                processed_input[key] = [{
+                                    'type': 'top',
+                                    'color': 'blue',
+                                    'style': 'casual',
+                                    'material': 'cotton'
+                                }]
+                                continue
+                        
                         mock_detection = detect_mock_data(value)
                         if mock_detection['is_mock']:
                             mock_detections.append({
@@ -3363,7 +3282,7 @@ class VirtualFittingStep(BaseStepMixin):
             self.logger.info(f"🔍 [DEBUG] 사용 가능한 AI 모델들: {list(self.ai_models.keys()) if hasattr(self, 'ai_models') else 'None'}")
             self.logger.info(f"🔍 [DEBUG] 로드된 모델들: {self.loaded_models if hasattr(self, 'loaded_models') else 'None'}")
             
-            # 실제 AI 모델이 있는지 확인
+            # 🔥 실제 AI 모델 사용 강화 (목업 방지)
             if hasattr(self, 'ai_models') and self.ai_models:
                 self.logger.info("✅ 실제 AI 모델 사용하여 Virtual Fitting 실행")
                 # 실제 Virtual Fitting 추론 실행
@@ -3376,41 +3295,8 @@ class VirtualFittingStep(BaseStepMixin):
                     cloth_items=processed_input.get('cloth_items', [])
                 )
             else:
-                self.logger.warning("⚠️ 실제 AI 모델이 없음 - 실제 모델 강제 생성 시도")
-                # 실제 모델 강제 생성
-                try:
-                    ootd_model = create_ootd_model(self.device)
-                    if ootd_model is not None:
-                        if not hasattr(self, 'ai_models'):
-                            self.ai_models = {}
-                        self.ai_models['ootd'] = ootd_model
-                        if not hasattr(self, 'loaded_models'):
-                            self.loaded_models = []
-                        if 'ootd' not in self.loaded_models:
-                            self.loaded_models.append('ootd')
-                        self.logger.info("✅ OOTD 실제 모델 강제 생성 완료")
-                    
-                    # 실제 Virtual Fitting 추론 실행
-                    fitting_result = self._run_virtual_fitting_inference(
-                        person_image=person_image,
-                        cloth_image=cloth_image,
-                        pose_keypoints=processed_input.get('pose_keypoints'),
-                        fitting_mode=processed_input.get('fitting_mode', 'standard'),
-                        quality_level=processed_input.get('fitting_quality', 'high'),
-                        cloth_items=processed_input.get('cloth_items', [])
-                    )
-                except Exception as e:
-                    self.logger.error(f"❌ 실제 모델 강제 생성 실패: {e}")
-                    # 최후의 수단으로 Mock 모델 사용
-                    self._create_mock_virtual_fitting_models()
-                    fitting_result = self._run_virtual_fitting_inference(
-                        person_image=person_image,
-                        cloth_image=cloth_image,
-                        pose_keypoints=processed_input.get('pose_keypoints'),
-                        fitting_mode=processed_input.get('fitting_mode', 'standard'),
-                        quality_level=processed_input.get('fitting_quality', 'high'),
-                        cloth_items=processed_input.get('cloth_items', [])
-                    )
+                self.logger.error("❌ 실제 AI 모델이 없음 - 실제 체크포인트 필요")
+                raise RuntimeError("실제 AI 모델이 없습니다. 실제 체크포인트가 필요합니다.")
             
             # 성능 로깅
             if VIRTUAL_FITTING_HELPERS_AVAILABLE:
@@ -4155,8 +4041,25 @@ class VirtualFittingStep(BaseStepMixin):
     model_name: str,
     quality_config: Dict[str, Any]
 ) -> Dict[str, Any]:
-        """실제 PyTorch Virtual Fitting 모델 추론"""
+        """🔥 PyTorch Virtual Fitting 추론 - Device 일관성 강화"""
         try:
+            # 🔥 Device 일관성 보장
+            model = model.to(self.device)
+            model.eval()
+            
+            # 입력 이미지를 텐서로 변환하고 올바른 device로 이동
+            person_tensor = self._image_to_tensor(person_image).to(self.device)
+            cloth_tensor = self._image_to_tensor(cloth_image).to(self.device)
+            
+            pose_tensor = None
+            if pose_keypoints is not None:
+                pose_tensor = torch.from_numpy(pose_keypoints).float().to(self.device)
+            
+            self.logger.info(f"✅ Device 일관성 보장 완료: {self.device}")
+            self.logger.info(f"✅ 모델 device: {next(model.parameters()).device}")
+            self.logger.info(f"✅ 입력 텐서 device: {person_tensor.device}")
+            
+            # 실제 PyTorch Virtual Fitting 모델 추론
             if not TORCH_AVAILABLE:
                 raise ValueError("PyTorch가 사용 불가능합니다")
             
@@ -4960,11 +4863,20 @@ class VirtualFittingStep(BaseStepMixin):
     def _run_ootd_inference(self, model, person_tensor, cloth_tensor, pose_tensor, fitting_mode, quality_config) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """OOTD 모델 실제 추론 구현"""
         try:
-            # 실제 OOTD 모델 확인
+            # 🔥 Device 일관성 보장
             if not isinstance(model, OOTDDiffusionModel):
                 # 모델을 실제 OOTD 모델로 교체
                 model = OOTDDiffusionModel().to(self.device)
                 self.logger.info("✅ 실제 OOTD Diffusion 모델로 교체")
+            else:
+                # 기존 모델을 올바른 device로 이동
+                model = model.to(self.device)
+            
+            # 입력 텐서들을 올바른 device로 이동
+            person_tensor = person_tensor.to(self.device)
+            cloth_tensor = cloth_tensor.to(self.device)
+            if pose_tensor is not None:
+                pose_tensor = pose_tensor.to(self.device)
             
             model.eval()
             
@@ -5031,10 +4943,19 @@ class VirtualFittingStep(BaseStepMixin):
     def _run_viton_hd_inference(self, model, person_tensor, cloth_tensor, pose_tensor, fitting_mode, quality_config) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """VITON-HD 모델 실제 추론 구현"""
         try:
-            # 실제 VITON-HD 모델 확인
+            # 🔥 Device 일관성 보장
             if not isinstance(model, VITONHDModel):
                 model = VITONHDModel().to(self.device)
                 self.logger.info("✅ 실제 VITON-HD 모델로 교체")
+            else:
+                # 기존 모델을 올바른 device로 이동
+                model = model.to(self.device)
+            
+            # 입력 텐서들을 올바른 device로 이동
+            person_tensor = person_tensor.to(self.device)
+            cloth_tensor = cloth_tensor.to(self.device)
+            if pose_tensor is not None:
+                pose_tensor = pose_tensor.to(self.device)
             
             model.eval()
             

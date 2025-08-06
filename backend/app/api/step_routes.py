@@ -45,6 +45,7 @@ import os
 import sys
 import traceback
 import gc
+from typing import Optional, Dict, Any, List, Tuple, Union, TYPE_CHECKING
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -56,6 +57,20 @@ def print_step(message):
     """Step 실행 정보만 출력"""
     if STEP_LOGGING:
         print(f"🔧 {message}")
+
+def log_step_performance(step_name: str, step_id: int, processing_time: float, success: bool = True, additional_info: Dict[str, Any] = None):
+    """Step 성능 로그 출력"""
+    status_icon = "✅" if success else "❌"
+    print(f"🎯 {status_icon} [{step_name}] Step {step_id} 완료 - {processing_time:.3f}초")
+    
+    if additional_info:
+        for key, value in additional_info.items():
+            if isinstance(value, float):
+                print(f"   📊 {key}: {value:.3f}")
+            else:
+                print(f"   📊 {key}: {value}")
+    
+    logger.info(f"🎯 {status_icon} [{step_name}] Step {step_id} 완료 - {processing_time:.3f}초")
 
 def log_session_count(session_manager, operation_name):
     """세션 수와 마지막 세션 정보만 로그에 출력"""
@@ -996,6 +1011,15 @@ async def step_1_human_parsing(
             step_result = enhanced_result.get('result', {})
             intermediate_results = step_result.get('intermediate_results', {})
             
+            # 🔥 Step 1 성능 로그 출력
+            additional_info = {
+                'confidence': enhanced_result.get('confidence', 0.88),
+                'ai_model': 'Graphonomy-1.2GB',
+                'model_size': '1.2GB',
+                'unique_labels': intermediate_results.get('unique_labels', 0)
+            }
+            log_step_performance("Human Parsing", 1, processing_time, True, additional_info)
+            
             return JSONResponse(content=format_step_api_response(
                 success=True,
                 message="Human Parsing 완료 - Central Hub DI Container 기반 Graphonomy 1.2GB",
@@ -1314,6 +1338,15 @@ async def step_2_pose_estimation(
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
         
+        # 🔥 Step 2 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.86),
+            'ai_model': enhanced_result.get('ai_model', 'MediaPipe-Pose'),
+            'keypoints_count': enhanced_result.get('keypoints_count', 0),
+            'detected_pose_confidence': enhanced_result.get('detected_pose_confidence', 0.85)
+        }
+        log_step_performance("Pose Estimation", 2, processing_time, True, additional_info)
+        
         # 🔥 Step 2 완료 시점 세션 상태 확인
         logger.info(f"🔥 STEP_2 완료 시점 - session_manager ID: {id(session_manager)}")
         logger.info(f"🔥 STEP_2 완료 시점 - session_manager 주소: {hex(id(session_manager))}")
@@ -1507,6 +1540,15 @@ async def step_3_cloth_segmentation(
         step_result = enhanced_result.get('result', {})
         intermediate_results = step_result.get('intermediate_results', {})
         
+        # 🔥 Step 3 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.84),
+            'ai_model': 'SAM-2.4GB',
+            'model_size': '2.4GB',
+            'analysis_detail': analysis_detail
+        }
+        log_step_performance("Cloth Segmentation", 3, processing_time, True, additional_info)
+        
         return JSONResponse(content=format_step_api_response(
             success=True,
             message="의류 분석 완료 - Central Hub DI Container 기반 SAM 2.4GB",
@@ -1657,6 +1699,15 @@ async def step_4_geometric_matching(
         
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
+        
+        # 🔥 Step 4 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.85),
+            'ai_model': 'VIT-Based-GMM',
+            'model_size': '1.8GB',
+            'matching_precision': matching_precision
+        }
+        log_step_performance("Geometric Matching", 4, processing_time, True, additional_info)
         
         # 🔥 Step 4 중간 결과물 추출
         step4_intermediate_results = {}
@@ -1873,6 +1924,15 @@ async def step_5_cloth_warping(
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
         
+        # 🔥 Step 5 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.85),
+            'ai_model': 'ClothWarping',
+            'model_size': '1.5GB',
+            'warping_quality': warping_quality
+        }
+        log_step_performance("Cloth Warping", 5, processing_time, True, additional_info)
+        
         return JSONResponse(content=format_step_api_response(
             success=True,
             message="Central Hub 기반 의류 워핑 완료",
@@ -2049,6 +2109,15 @@ async def step_6_virtual_fitting(
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
         
+        # 🔥 Step 6 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.85),
+            'ai_model': 'OOTDiffusion-14GB',
+            'model_size': '14GB',
+            'fitting_quality': fitting_quality
+        }
+        log_step_performance("Virtual Fitting", 6, processing_time, True, additional_info)
+        
         return JSONResponse(content=format_step_api_response(
             success=True,
             message="Central Hub 기반 가상 피팅 완료",
@@ -2176,6 +2245,15 @@ async def step_7_post_processing(
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
         
+        # 🔥 Step 7 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.85),
+            'ai_model': 'PostProcessing',
+            'model_size': '0.8GB',
+            'processing_quality': processing_quality
+        }
+        log_step_performance("Post Processing", 7, processing_time, True, additional_info)
+        
         return JSONResponse(content=format_step_api_response(
             success=True,
             message="Central Hub 기반 후처리 완료",
@@ -2300,6 +2378,15 @@ async def step_8_quality_assessment(
         
         background_tasks.add_task(optimize_central_hub_memory)
         processing_time = time.time() - start_time
+        
+        # 🔥 Step 8 성능 로그 출력
+        additional_info = {
+            'confidence': enhanced_result.get('confidence', 0.85),
+            'ai_model': 'QualityAssessment',
+            'model_size': '0.5GB',
+            'assessment_depth': assessment_depth
+        }
+        log_step_performance("Quality Assessment", 8, processing_time, True, additional_info)
         
         return JSONResponse(content=format_step_api_response(
             success=True,

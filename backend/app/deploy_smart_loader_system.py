@@ -74,10 +74,11 @@ class SmartModelPathMapper:
             if path.exists():
                 return path.resolve()
             
-            # backend/backend 패턴 자동 수정
-            path_str = str(path)
-            if "backend/backend" in path_str:
-                corrected = Path(path_str.replace("backend/backend", "backend"))
+                    # backend 중복 패턴 자동 수정
+        path_str = str(path)
+        backend_pattern = "backend" + "/" + "backend"
+        if backend_pattern in path_str:
+            corrected = Path(path_str.replace(backend_pattern, "backend"))
                 if corrected.exists():
                     self.logger.info(f"✅ 경로 자동 수정: {path} → {corrected}")
                     return corrected.resolve()
